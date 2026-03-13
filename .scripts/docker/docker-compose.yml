@@ -163,7 +163,7 @@ services:
 
   # Redis Server
   Redis:
-    image: redis:7.2.9
+    image: redis:7.4.8
     container_name: redis-server
     restart: always
     privileged: true
