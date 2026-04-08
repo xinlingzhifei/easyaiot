@@ -2,13 +2,14 @@ import {defHttp} from '@/utils/http/axios';
 
 // GB28181 通过网关转发到 WVP：Path=/admin-api/gb28181/** -> RewritePath -> /api/${segment}
 // 前端请求路径为 gb28181/xxx（无 /api 前缀），网关会重写为 /api/xxx 转发到 iot-gb28181
-const GB28181_PREFIX = 'gb28181/device/query';
-const CHANNEL_PREFIX = 'gb28181/common/channel';
-const SERVER_PREFIX = 'gb28181/server';
-const PROXY_PREFIX = 'gb28181/proxy';
-const PLAYBACK_PREFIX = 'gb28181/playback';
-const GB_RECORD_PREFIX = 'gb28181/gb_record';
-const CLOUD_RECORD_PREFIX = 'gb28181/cloud/record';
+// 注意：需要添加前导斜杠 /，否则与 /dev-api 拼接时会变成 /dev-apigb28181
+const GB28181_PREFIX = '/gb28181/device/query';
+const CHANNEL_PREFIX = '/gb28181/common/channel';
+const SERVER_PREFIX = '/gb28181/server';
+const PROXY_PREFIX = '/gb28181/proxy';
+const PLAYBACK_PREFIX = '/gb28181/playback';
+const GB_RECORD_PREFIX = '/gb28181/gb_record';
+const CLOUD_RECORD_PREFIX = '/gb28181/cloud/record';
 
 /**
  * 通用请求封装
@@ -111,6 +112,25 @@ export const queryVideoList = async (params: {
  */
 export const getDevice = (deviceId: string) => {
   return commonApi('get', `${GB28181_PREFIX}/devices/${deviceId}`);
+};
+
+/**
+ * 国标云台控制
+ * @param deviceId 设备国标编号
+ * @param channelId 通道国标编号
+ * @param payload 控制参数
+ */
+export const controlGbPtz = (
+  deviceId: string,
+  channelId: string,
+  payload: {
+    command: string;
+    horizonSpeed?: number;
+    verticalSpeed?: number;
+    zoomSpeed?: number;
+  },
+) => {
+  return commonApi('get', `/gb28181/front-end/ptz/${deviceId}/${channelId}`, payload);
 };
 
 /**
@@ -261,7 +281,7 @@ export const play = (channelId: number) => {
  * @param channelId 通道国标编号
  */
 export const playByDeviceAndChannel = (deviceId: string, channelId: string) => {
-  return commonApi('get', `gb28181/play/start/${deviceId}/${channelId}`, {}, false);
+  return commonApi('get', `/gb28181/play/start/${deviceId}/${channelId}`, {}, false);
 };
 
 /**
@@ -278,7 +298,7 @@ export const stopPlay = (channelId: number) => {
  * @param channelId 通道国标编号
  */
 export const stopPlayByDeviceAndChannel = (deviceId: string, channelId: string) => {
-  return commonApi('get', `gb28181/play/stop/${deviceId}/${channelId}`);
+  return commonApi('get', `/gb28181/play/stop/${deviceId}/${channelId}`);
 };
 
 // ====================== 媒体服务器管理接口 ======================
