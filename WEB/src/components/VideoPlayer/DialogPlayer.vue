@@ -106,7 +106,7 @@ import Ptz from "@/components/Player/module/ptz.vue";
 import {copyText} from "@/utils/copyTextToClipboard";
 import {useMessage} from "@/hooks/web/useMessage";
 import {controlPTZ} from "@/api/device/camera";
-import {playByDeviceAndChannel} from "@/api/device/gb28181";
+import {controlGbPtz, playByDeviceAndChannel} from "@/api/device/gb28181";
 
 const {createMessage} = useMessage()
 
@@ -147,9 +147,14 @@ const [register, {closeModal}] = useModalInner(async (record) => {
 
   const deviceId = record?.deviceId || record?.deviceIdentification;
   const channelId = record?.channelId ?? record?.deviceId;
+  const gbRecord = Boolean(deviceId && channelId);
+
+  // 标记国标设备信息，用于云台控制接口分流
+  state.deviceIdentification = gbRecord ? String(deviceId) : '';
+  state.presetPos = gbRecord ? String(channelId) : '';
 
   // 国标通道：无 http_stream 时先请求点播接口获取播放地址
-  if ((deviceId && channelId) && !record?.['http_stream']) {
+  if (gbRecord && !record?.['http_stream']) {
     state.playLoading = true;
     try {
       const res = await playByDeviceAndChannel(deviceId, channelId);
@@ -190,7 +195,29 @@ const handleCopy = (value: string) => {
   copyText(value);
 };
 
-const handlePtzCamera = (command: string, speed: number) => {
+const handlePtzCamera = async (command: string, speed: number) => {
+  // 国标通道优先走国标云台接口
+  if (state.deviceIdentification && state.presetPos) {
+    const commandMap = {
+      UP: 'up',
+      DOWN: 'down',
+      LEFT: 'left',
+      RIGHT: 'right',
+      ZOOM_IN: 'zoomin',
+      ZOOM_OUT: 'zoomout',
+      STOP: 'stop',
+    };
+    const gbCommand = commandMap[command];
+    if (!gbCommand) return;
+    await controlGbPtz(state.deviceIdentification, state.presetPos, {
+      command: gbCommand,
+      horizonSpeed: ['LEFT', 'RIGHT'].includes(command) ? speed : 0,
+      verticalSpeed: ['UP', 'DOWN'].includes(command) ? speed : 0,
+      zoomSpeed: ['ZOOM_IN', 'ZOOM_OUT'].includes(command) ? Math.min(Math.max(Math.round(speed / 10), 1), 15) : 0,
+    });
+    return;
+  }
+
   // 方向指令映射为坐标
   const directionMap = {
     UP:    { x: 0, y: speed, z: 0 },
