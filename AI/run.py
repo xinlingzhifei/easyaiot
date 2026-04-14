@@ -292,8 +292,20 @@ def create_app():
                         user = user_pass.split(':')[0]
                         safe_uri = database_uri.replace(user_pass, f"{user}:***")
             print(f"数据库连接: {safe_uri}")
-            from db_models import Model, TrainTask, ExportRecord, InferenceTask, LLMModel, OCRResult, AIService, AutoLabelTask, AutoLabelResult
+            from db_models import (
+                Model,
+                TrainTask,
+                ExportRecord,
+                InferenceTask,
+                LLMModel,
+                OCRResult,
+                AIService,
+                AutoLabelTask,
+                AutoLabelResult,
+                ensure_model_table_status_column,
+            )
             db.create_all()
+            ensure_model_table_status_column(db.engine)
             print(f"✅ 数据库连接成功，表结构已创建/验证")
         except Exception as e:
             error_msg = str(e)

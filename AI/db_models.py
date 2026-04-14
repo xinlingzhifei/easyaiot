@@ -25,6 +25,8 @@ class Model(db.Model):
     model_path = db.Column(db.String(500), nullable=True)
     image_url = db.Column(db.String(500))
     version = db.Column(db.String(20), default="V1.0.0")
+    # 0=未部署 1=已部署 2=训练中 3=已下线（与前端模型管理一致）
+    status = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -324,3 +326,26 @@ class AutoLabelResult(db.Model):
     
     def __repr__(self):
         return f'<AutoLabelResult {self.id} ({self.status})>'
+
+
+def ensure_model_table_status_column(engine):
+    """
+    老库仅有 model 表但无 status 列时补列。
+    SQLAlchemy create_all() 不会为已存在的表追加新列。
+    """
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'model' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('model')}
+        if 'status' in col_names:
+            return
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE model ADD COLUMN status INTEGER DEFAULT 0'))
+        log.info('已为 model 表添加 status 列')
+    except Exception as e:
+        log.warning('ensure_model_table_status_column: %s', e)

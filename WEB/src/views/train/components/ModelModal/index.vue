@@ -157,6 +157,10 @@ async function modelEdit(record) {
   try {
     state.editLoading = true;
     Object.assign(modelRef, record);
+    // 列表接口字段为 model_path；表单绑定为 filePath
+    modelRef.filePath = record.filePath ?? record.model_path ?? '';
+    const s = record.status;
+    modelRef.status = s === '' || s === undefined || s === null ? 0 : Number(s);
     state.editLoading = false;
   } catch (error) {
     console.error(error);

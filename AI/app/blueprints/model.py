@@ -41,6 +41,12 @@ def models():
                     Model.description.ilike(f'%{search}%')
                 )
             )
+        status_q = request.args.get('status', '').strip()
+        if status_q != '':
+            try:
+                query = query.filter(Model.status == int(status_q))
+            except ValueError:
+                pass
 
         pagination = query.paginate(
             page=page_no,
@@ -53,6 +59,7 @@ def models():
             'name': p.name,
             'version': p.version,
             'description': p.description,
+            'status': p.status if p.status is not None else 0,
             'created_at': p.created_at.isoformat() if p.created_at else None,
             'updated_at': p.updated_at.isoformat() if p.updated_at else None,
             'imageUrl': p.image_url,
@@ -485,6 +492,14 @@ def create_model():
         file_path = data.get('filePath', '')
         image_url = data.get('imageUrl', '')
         version = data.get('version', 'V1.0.0')
+        status = 0
+        if data.get('status') is not None:
+            try:
+                st = int(data['status'])
+                if st in (0, 1, 2, 3):
+                    status = st
+            except (TypeError, ValueError):
+                pass
 
         if not name:
             return jsonify({'code': 400, 'msg': '模型名称不能为空'}), 400
@@ -507,7 +522,8 @@ def create_model():
             description=description,
             model_path=file_path,
             image_url=image_url,
-            version=version
+            version=version,
+            status=status
         )
         db.session.add(model)
         db.session.commit()
@@ -519,6 +535,7 @@ def create_model():
                 'id': model.id,
                 'name': model.name,
                 'version': model.version,
+                'status': getattr(model, 'status', 0) or 0,
                 'filePath': model.model_path,
                 'imageUrl': model.image_url
             }
@@ -577,6 +594,13 @@ def update_model(model_id):
             model.model_path = data['filePath']
         if 'imageUrl' in data:
             model.image_url = data['imageUrl']
+        if 'status' in data and data['status'] is not None:
+            try:
+                st = int(data['status'])
+                if st in (0, 1, 2, 3):
+                    model.status = st
+            except (TypeError, ValueError):
+                pass
 
         db.session.commit()
 
@@ -587,6 +611,7 @@ def update_model(model_id):
                 'id': model.id,
                 'name': model.name,
                 'version': model.version,
+                'status': getattr(model, 'status', 0) or 0,
                 'filePath': model.model_path,
                 'imageUrl': model.image_url
             }
@@ -843,6 +868,7 @@ def get_model(model_id):
             'data': {
                 'name': model_name,
                 'version': model.version,
+                'status': getattr(model, 'status', 0) or 0,
                 'model_path': model.model_path,
                 'onnx_model_path': model.onnx_model_path
             },
