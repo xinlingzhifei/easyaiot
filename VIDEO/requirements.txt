@@ -45,5 +45,8 @@ kafka-python>=2.0.2
 # OCR识别
 paddlepaddle==3.2.0
 paddleocr==3.2.0
+# 人脸识别与向量库
+insightface
+pymilvus
 # 语音转文本
 pydub==0.25.1

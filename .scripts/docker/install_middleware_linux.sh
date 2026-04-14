@@ -55,6 +55,7 @@ MIDDLEWARE_SERVICES=(
     "Redis"
     "Kafka"
     "MinIO"
+    "Milvus"
     "SRS"
     "NodeRED"
     "EMQX"
@@ -69,6 +70,7 @@ MIDDLEWARE_PORTS["TDengine"]="6030"
 MIDDLEWARE_PORTS["Redis"]="6379"
 MIDDLEWARE_PORTS["Kafka"]="9092"
 MIDDLEWARE_PORTS["MinIO"]="9000"
+MIDDLEWARE_PORTS["Milvus"]="9091"
 MIDDLEWARE_PORTS["SRS"]="1935"
 MIDDLEWARE_PORTS["NodeRED"]="1880"
 MIDDLEWARE_PORTS["EMQX"]="1883"
@@ -82,6 +84,7 @@ MIDDLEWARE_HEALTH_ENDPOINTS["TDengine"]=""
 MIDDLEWARE_HEALTH_ENDPOINTS["Redis"]=""
 MIDDLEWARE_HEALTH_ENDPOINTS["Kafka"]=""
 MIDDLEWARE_HEALTH_ENDPOINTS["MinIO"]="/minio/health/live"
+MIDDLEWARE_HEALTH_ENDPOINTS["Milvus"]="/healthz"
 MIDDLEWARE_HEALTH_ENDPOINTS["SRS"]="/api/v1/versions"
 MIDDLEWARE_HEALTH_ENDPOINTS["NodeRED"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["EMQX"]="/api/v5/status"
@@ -1912,6 +1915,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/mq_data/data:1000:1000:777"    # Kafka 数据（uid=1000, gid=1000）
         "${SCRIPT_DIR}/minio_data/data:::"             # MinIO 数据（使用默认权限）
         "${SCRIPT_DIR}/minio_data/config:::"           # MinIO 配置（使用默认权限）
+        "${SCRIPT_DIR}/milvus_data:::"                 # Milvus 数据（使用默认权限）
         "${SCRIPT_DIR}/srs_data/conf:::"               # SRS 配置（使用默认权限）
         "${SCRIPT_DIR}/srs_data/data:::"              # SRS 数据（使用默认权限）
         "${SCRIPT_DIR}/srs_data/playbacks:::"          # SRS 回放（使用默认权限）
@@ -2005,6 +2009,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/redis_data"
         "${SCRIPT_DIR}/mq_data"
         "${SCRIPT_DIR}/minio_data"
+        "${SCRIPT_DIR}/milvus_data"
         "${SCRIPT_DIR}/srs_data"
         "${SCRIPT_DIR}/nodered_data"
         "${SCRIPT_DIR}/../zlmediakit"
@@ -4772,6 +4777,7 @@ cleanup_stale_containers() {
                 "Redis") container_names+=("redis-server") ;;
                 "Kafka") container_names+=("kafka-server") ;;
                 "MinIO") container_names+=("minio-server") ;;
+                "Milvus") container_names+=("milvus-server") ;;
                 "SRS") container_names+=("srs-server") ;;
                 "NodeRED") container_names+=("nodered-server") ;;
                 "EMQX") container_names+=("emqx-server") ;;
@@ -4781,7 +4787,7 @@ cleanup_stale_containers() {
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|srs-server|nodered-server|emqx-server|zlmediakit-server)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -5213,7 +5219,8 @@ clean_middleware() {
             "taos_data"                 # TDengine 数据和日志
             "redis_data"                # Redis 数据和日志
             "mq_data"                   # Kafka 数据
-            "minio_data"                 # MinIO 数据和配置
+            "minio_data"                # MinIO 数据和配置
+            "milvus_data"               # Milvus 数据
             "srs_data"                  # SRS 配置、数据和回放
             "nodered_data"              # NodeRED 数据
         )

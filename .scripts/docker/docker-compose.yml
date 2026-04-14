@@ -280,6 +280,30 @@ services:
     networks:
       - easyaiot-network
 
+  # Milvus Vector Database
+  Milvus:
+    image: milvusdb/milvus:v2.6.0
+    container_name: milvus-server
+    restart: always
+    command: ["milvus", "run", "standalone"]
+    environment:
+      - TZ=Asia/Shanghai
+      - ETCD_USE_EMBED=true
+      - COMMON_STORAGETYPE=local
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - "./milvus_data:/var/lib/milvus:rw"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - easyaiot-network
+
   # SRS Server
   SRS:
     image: ossrs/srs:5
@@ -419,6 +443,8 @@ volumes:
   mq_data:
     driver: local
   minio_data:
+    driver: local
+  milvus_data:
     driver: local
   srs_data:
     driver: local
