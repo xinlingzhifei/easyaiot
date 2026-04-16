@@ -169,6 +169,16 @@ spring:
         missing-topics-fatal: false
         # 两次poll之间的最大间隔，默认值为5分钟。如果超过这个间隔会触发reBalance
         poll-timeout: 600000
+    # 算法告警到 Doris ODS 的异步下沉 Topic 规划
+    algorithm-ods:
+      face:
+        dispatch-topic: iot-algorithm-face-ods-dispatch
+        group-id: iot-sink-face-ods-sink-consumer
+        ods-topic: ods.face.raw
+      plate:
+        dispatch-topic: iot-algorithm-plate-ods-dispatch
+        group-id: iot-sink-plate-ods-sink-consumer
+        ods-topic: ods.plate.raw
 
 --- #################### 定时任务相关配置 ####################
 

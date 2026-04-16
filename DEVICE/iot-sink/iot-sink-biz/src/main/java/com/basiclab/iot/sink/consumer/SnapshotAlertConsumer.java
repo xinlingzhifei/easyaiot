@@ -3,6 +3,7 @@ package com.basiclab.iot.sink.consumer;
 import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.sink.domain.model.AlertNotificationMessage;
 import com.basiclab.iot.sink.service.AlertService;
+import com.basiclab.iot.sink.service.AlgorithmOdsDispatchService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,9 @@ public class SnapshotAlertConsumer {
 
     @Autowired
     private AlertService alertService;
+
+    @Autowired
+    private AlgorithmOdsDispatchService algorithmOdsDispatchService;
 
     @Autowired(required = false)
     private org.springframework.kafka.core.KafkaTemplate<String, String> iotKafkaTemplate;
@@ -230,6 +234,9 @@ public class SnapshotAlertConsumer {
 
             log.info("开始处理抓拍算法任务告警: deviceId={}, deviceName={}, taskId={}, taskName={}", 
                     message.getDeviceId(), message.getDeviceName(), message.getTaskId(), message.getTaskName());
+
+            // 独立分流到ODS预处理队列，异步执行，不阻塞主告警链路
+            algorithmOdsDispatchService.dispatchByDetectionSwitch(message, messageJson, topic);
             
             // 检查告警时间
             String alertTime = null;

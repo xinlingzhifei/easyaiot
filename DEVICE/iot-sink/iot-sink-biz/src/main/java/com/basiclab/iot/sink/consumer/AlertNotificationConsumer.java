@@ -3,6 +3,7 @@ package com.basiclab.iot.sink.consumer;
 import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.sink.domain.model.AlertNotificationMessage;
 import com.basiclab.iot.sink.service.AlertService;
+import com.basiclab.iot.sink.service.AlgorithmOdsDispatchService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,9 @@ public class AlertNotificationConsumer {
 
     @Autowired
     private AlertService alertService;
+
+    @Autowired
+    private AlgorithmOdsDispatchService algorithmOdsDispatchService;
 
     @Autowired(required = false)
     private org.springframework.kafka.core.KafkaTemplate<String, String> iotKafkaTemplate;
@@ -92,6 +96,9 @@ public class AlertNotificationConsumer {
 
             log.info("开始处理告警: deviceId={}, deviceName={}, taskId={}, taskName={}", 
                     message.getDeviceId(), message.getDeviceName(), message.getTaskId(), message.getTaskName());
+
+            // 独立分流到ODS预处理队列，异步执行，不阻塞主告警链路
+            algorithmOdsDispatchService.dispatchByDetectionSwitch(message, messageJson, topic);
             
             // 记录通知配置信息
             List<Map<String, Object>> channels = message.getChannels();

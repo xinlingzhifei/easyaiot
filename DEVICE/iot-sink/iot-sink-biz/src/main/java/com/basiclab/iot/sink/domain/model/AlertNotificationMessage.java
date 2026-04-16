@@ -71,6 +71,16 @@ public class AlertNotificationMessage {
      * false: 不需要发送通知（没有通知配置或通知人列表为空）
      */
     private Boolean shouldNotify;
+
+    /**
+     * 是否开启了人脸检测（用于人脸ODS下沉分流）
+     */
+    private Boolean faceDetectionEnabled;
+
+    /**
+     * 是否开启了车牌检测（用于车牌ODS下沉分流）
+     */
+    private Boolean plateDetectionEnabled;
     
     /**
      * 告警信息内部类
