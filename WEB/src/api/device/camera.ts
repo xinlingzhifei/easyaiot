@@ -180,7 +180,14 @@ export const getOnvifProfiles = (device_ip: string, device_port: number, auth: {
 
 // ====================== 设备发现接口 ======================
 export const discoverDevices = () => {
-  return commonApi('get', `${CAMERA_PREFIX}/discovery`);
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    {
+      url: `${CAMERA_PREFIX}/discovery`,
+      timeout: 120 * 1000,
+    },
+    { isTransformResponse: true },
+  );
 };
 
 export const refreshDevices = () => {
