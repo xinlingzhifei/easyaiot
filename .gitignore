@@ -58,9 +58,9 @@ hs_err_pid*
 # .scripts/nexus3 数据目录
 .scripts/nexus3/nexus_data/
 
-# .scripts/zlmediakit 数据目录（排除整个目录及其所有文件）
-.scripts/zlmediakit/
-**/.scripts/zlmediakit/**
+# ZLMediaKit 挂载目录（与 docker-compose 中 ../zlmediakit 对应）；运行时数据
+.scripts/zlmediakit/www/
+.scripts/zlmediakit/log/
 
 # alert_images 文件夹
 **/alert_images/

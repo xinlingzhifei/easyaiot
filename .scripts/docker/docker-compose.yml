@@ -406,6 +406,7 @@ services:
 
     environment:
       - TZ=Asia/Shanghai
+    # 数据目录：.scripts/zlmediakit（相对本文件为 ../zlmediakit）
     volumes:
       - "../zlmediakit/www:/opt/media/bin/www:rw"
       - "../zlmediakit/log:/opt/media/log:rw"
