@@ -118,10 +118,7 @@
             </TabPane>
           </Tabs>
         </TabPane>
-        <TabPane key="2" tab="ONVIF扫描">
-          <OnvifScan ref="onvifScanRef" />
-        </TabPane>
-        <TabPane key="3" tab="设备目录">
+        <TabPane key="2" tab="设备目录">
           <DirectoryManage
             ref="directoryManageRef"
             @view="handleCardView"
@@ -131,26 +128,29 @@
             @toggleStream="handleCardToggleStream"
           />
         </TabPane>
-        <TabPane key="4" tab="抓拍空间">
+        <TabPane key="3" tab="抓拍空间">
           <SnapSpace ref="snapSpaceRef"/>
         </TabPane>
-        <TabPane key="5" tab="录像空间">
+        <TabPane key="4" tab="录像空间">
           <RecordSpace ref="recordSpaceRef"/>
         </TabPane>
-        <TabPane key="6" tab="推流转发">
+        <TabPane key="5" tab="推流转发">
           <StreamForward ref="streamForwardRef"/>
         </TabPane>
-        <TabPane key="7" tab="算法任务">
+        <TabPane key="6" tab="算法任务">
           <AlgorithmTask ref="algorithmTaskRef"/>
         </TabPane>
-        <TabPane key="8" tab="GB28181分屏监控">
+        <TabPane key="7" tab="GB28181分屏监控">
           <Gb28181SplitScreen ref="gb28181SplitScreenRef"/>
         </TabPane>
-        <TabPane key="9" tab="GB28181拉流代理">
+        <TabPane key="8" tab="GB28181拉流代理">
           <Gb28181PullProxy ref="gb28181PullProxyRef"/>
         </TabPane>
-        <TabPane key="10" tab="GB28181节点管理">
+        <TabPane key="9" tab="GB28181节点管理">
           <Gb28181Node ref="gb28181NodeRef"/>
+        </TabPane>
+        <TabPane key="10" tab="ONVIF扫描">
+          <OnvifScan ref="onvifScanRef" />
         </TabPane>
       </Tabs>
     </div>
@@ -233,26 +233,25 @@ const gb28181PullProxyRef = ref();
 const gb28181NodeRef = ref();
 const onvifScanRef = ref<{ refresh: () => void } | null>(null);
 
-/** 一级 Tab key：1 设备列表 … 10 GB28181节点（与模板 TabPane key 一致） */
+/** 一级 Tab key：1 设备列表 … 10 ONVIF 扫描（与模板 TabPane key 一致） */
 const CAMERA_TAB_KEYS = {
   DEVICE_LIST: '1',
-  ONVIF: '2',
-  DIRECTORY: '3',
-  SNAP: '4',
-  RECORD: '5',
-  STREAM_FORWARD: '6',
-  ALGORITHM: '7',
-  GB_SPLIT: '8',
-  GB_PULL_PROXY: '9',
-  GB_NODE: '10',
+  DIRECTORY: '2',
+  SNAP: '3',
+  RECORD: '4',
+  STREAM_FORWARD: '5',
+  ALGORITHM: '6',
+  GB_SPLIT: '7',
+  GB_PULL_PROXY: '8',
+  GB_NODE: '9',
+  ONVIF: '10',
 } as const;
 
 const CAMERA_TAB_ID_SET = new Set<string>(Object.values(CAMERA_TAB_KEYS));
 
-/** 路由 ?tab=：兼容旧版 ONVIF=11，并过滤非法值避免 Tabs 异常 */
+/** 路由 ?tab=：仅接受 1～10 有效 key，非法则回退设备列表 */
 function normalizeCameraRouteTab(tab: string): string {
-  const mapped = tab === '11' ? CAMERA_TAB_KEYS.ONVIF : tab;
-  return CAMERA_TAB_ID_SET.has(mapped) ? mapped : CAMERA_TAB_KEYS.DEVICE_LIST;
+  return CAMERA_TAB_ID_SET.has(tab) ? tab : CAMERA_TAB_KEYS.DEVICE_LIST;
 }
 
 // Tab切换
