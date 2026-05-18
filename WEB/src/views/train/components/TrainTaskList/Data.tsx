@@ -9,11 +9,6 @@ const getProgressColor = (percent) => {
 export function getBasicColumns(): BasicColumn[] {
   return [
     {
-      title: '任务ID',
-      dataIndex: 'id',
-      width: 90,
-    },
-    {
       title: '任务名称',
       dataIndex: 'name',
       width: 160,

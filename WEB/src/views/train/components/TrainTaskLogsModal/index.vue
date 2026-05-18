@@ -47,7 +47,7 @@ const emit = defineEmits(['close', 'success']);
 const [registerModal, {closeModal}] = useModalInner((data) => {
   const {record} = data;
   state.taskId = record.id;
-  state.taskName = record.name || record.task_name || `训练任务 #${record.id}`;
+  state.taskName = record.name || record.task_name || '未命名训练任务';
   if (record.id) {
     startPolling();
   }

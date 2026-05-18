@@ -23,7 +23,7 @@
             <ListItem :class="getItemClass(item)">
               <div class="task-info">
                 <div class="status" :style="getStatusBadgeStyle(item)">{{ getStatusText(item) }}</div>
-                <div class="title o2" :title="item.name">{{ item.name || `任务 #${item.id}` }}</div>
+                <div class="title o2" :title="item.name">{{ item.name || '未命名任务' }}</div>
                 <div class="props">
                   <div class="flex" style="justify-content: space-between;">
                     <div class="prop">
@@ -55,10 +55,6 @@
                           {{ getProgressPercent(item) }}%
                         </div>
                       </div>
-                    </div>
-                    <div class="prop">
-                      <div class="label">任务ID</div>
-                      <div class="value">{{ item.id }}</div>
                     </div>
                   </div>
                 </div>
@@ -445,18 +441,23 @@ function handleDelete(record: Record<string, unknown>) {
           }
 
           &.progress-prop {
-            flex: 1.2;
+            flex: 1;
 
             .progress-block {
+              display: flex;
+              align-items: center;
+              gap: 6px;
               margin-top: 6px;
+              padding-right: 16px;
+              box-sizing: border-box;
             }
 
             .progress-bar {
+              flex: 1;
               height: 8px;
               background: #e8e8e8;
               border-radius: 4px;
               overflow: hidden;
-              margin-bottom: 4px;
             }
 
             .progress-bar-inner {
@@ -467,9 +468,12 @@ function handleDelete(record: Record<string, unknown>) {
             }
 
             .progress-value {
+              flex-shrink: 0;
+              min-width: 36px;
               font-size: 14px;
               font-weight: 700;
               line-height: 14px;
+              text-align: right;
             }
           }
         }
