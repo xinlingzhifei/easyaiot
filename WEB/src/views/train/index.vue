@@ -8,7 +8,8 @@
         @tabClick="handleTabClick"
       >
         <TabPane key="1" tab="模型管理">
-          <ModelList></ModelList>
+          <GpuStackMonitorTip class="page-monitor-tip" />
+          <ModelList />
         </TabPane>
         <TabPane key="6" tab="模型训练">
           <TrainTaskList></TrainTaskList>
@@ -40,6 +41,7 @@ import AiModelTool from "@/views/train/components/AiModelTool/index.vue";
 import ModelExport from "@/views/train/components/ModelExport/index.vue";
 import DeployService from "@/views/train/components/DeployService/index.vue";
 import LLMManage from "@/views/train/components/LLMManage/index.vue";
+import GpuStackMonitorTip from '@/components/GpuStackMonitorTip/index.vue';
 
 defineOptions({name: 'TRAIN'})
 

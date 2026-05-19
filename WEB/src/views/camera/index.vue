@@ -14,6 +14,7 @@
             class="device-list-sub-tabs"
           >
             <TabPane key="source" tab="直连设备">
+              <GpuStackMonitorTip class="page-monitor-tip" />
               <!-- 列表模式 -->
               <BasicTable v-if="viewMode === 'table'" @register="registerTable">
                 <template #toolbar>
@@ -185,6 +186,7 @@ import Gb28181SplitScreen from "@/views/gb28181/components/SplitScreen/index.vue
 import Gb28181Video from "@/views/gb28181/components/Video/index.vue";
 import Gb28181PullProxy from "@/views/gb28181/components/PullProxy/index.vue";
 import Gb28181Node from "@/views/gb28181/components/Node/index.vue";
+import GpuStackMonitorTip from '@/components/GpuStackMonitorTip/index.vue';
 
 defineOptions({name: 'CAMERA'})
 

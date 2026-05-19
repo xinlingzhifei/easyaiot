@@ -50,7 +50,11 @@ BIGDATA_FLINK_DWS_ADS_SQL_LOCAL="${BIGDATA_FLINK_SQL_DIR}/02_dws_ads_session_job
 # GPUStack Worker（本机算力节点，与 compose 中的 gpustack-server 配合）
 GPUSTACK_WORKER_NAME="${GPUSTACK_WORKER_NAME:-gpustack-worker}"
 GPUSTACK_WORKER_IMAGE="${GPUSTACK_WORKER_IMAGE:-quay.io/gpustack/gpustack:v2.1.2}"
-GPUSTACK_TOKEN="${GPUSTACK_TOKEN:-gpustack_70d21b253802d295_3d02018bab52e4df1249cd72cb77acf3}"
+GPUSTACK_CLUSTER_NAME="${GPUSTACK_CLUSTER_NAME:-easyaiot}"
+GPUSTACK_ADMIN_USER="${GPUSTACK_ADMIN_USER:-admin}"
+GPUSTACK_ADMIN_PASSWORD="${GPUSTACK_ADMIN_PASSWORD:-${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}}"
+# GPUSTACK_TOKEN 由 API 动态获取；若已导出则优先使用环境变量中的值
+GPUSTACK_API_COOKIE_FILE="${SCRIPT_DIR}/logs/.gpustack_api_cookie"
 
 # 日志文件配置
 LOG_DIR="${SCRIPT_DIR}/logs"
@@ -2515,6 +2519,228 @@ docker_cli() {
     docker "$@"
 }
 
+# GPUStack API 基础地址（脚本在宿主机执行，连本机 Server）
+_gpustack_api_base() {
+    echo "http://127.0.0.1:10180"
+}
+
+# 登录 GPUStack 管理 API（Session Cookie）
+gpustack_api_login() {
+    local api_base http_code
+    api_base=$(_gpustack_api_base)
+    rm -f "$GPUSTACK_API_COOKIE_FILE"
+
+    http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+        -X POST "${api_base}/auth/login" \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        -c "$GPUSTACK_API_COOKIE_FILE" \
+        --data-urlencode "username=${GPUSTACK_ADMIN_USER}" \
+        --data-urlencode "password=${GPUSTACK_ADMIN_PASSWORD}" 2>/dev/null || echo "000")
+
+    if [ "$http_code" = "200" ] || [ "$http_code" = "204" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# 按名称查询集群 ID
+gpustack_api_get_cluster_id_by_name() {
+    local cluster_name="$1"
+    local api_base resp
+    api_base=$(_gpustack_api_base)
+
+    if [ ! -f "$GPUSTACK_API_COOKIE_FILE" ]; then
+        return 1
+    fi
+
+    resp=$(curl -sS -G "${api_base}/v2/clusters" \
+        --data-urlencode "name=${cluster_name}" \
+        -b "$GPUSTACK_API_COOKIE_FILE" 2>/dev/null) || return 1
+
+    CLUSTER_NAME="$cluster_name" RESP="$resp" python3 - <<'PY'
+import json, os, sys
+name = os.environ.get("CLUSTER_NAME", "")
+try:
+    data = json.loads(os.environ.get("RESP", "{}"))
+except json.JSONDecodeError:
+    sys.exit(1)
+for item in data.get("items", []):
+    if item.get("name") == name:
+        print(item["id"])
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+# 创建 Docker 类型集群
+gpustack_api_create_cluster() {
+    local cluster_name="$1"
+    local server_url="$2"
+    local api_base resp http_code cluster_id
+    api_base=$(_gpustack_api_base)
+
+    if [ ! -f "$GPUSTACK_API_COOKIE_FILE" ]; then
+        return 1
+    fi
+
+    resp=$(curl -sS -w $'\n%{http_code}' \
+        -X POST "${api_base}/v2/clusters" \
+        -H 'Content-Type: application/json' \
+        -b "$GPUSTACK_API_COOKIE_FILE" \
+        -d "$(CLUSTER_NAME="$cluster_name" SERVER_URL="$server_url" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "name": os.environ["CLUSTER_NAME"],
+    "provider": "Docker",
+    "server_url": os.environ.get("SERVER_URL") or None,
+}))
+PY
+)" 2>/dev/null) || return 1
+
+    http_code="${resp##*$'\n'}"
+    resp="${resp%$'\n'*}"
+
+    if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+        echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])" 2>/dev/null
+        return 0
+    fi
+
+    if [ "$http_code" = "409" ]; then
+        gpustack_api_get_cluster_id_by_name "$cluster_name"
+        return $?
+    fi
+
+    return 1
+}
+
+# 获取集群 Worker 注册令牌
+gpustack_api_get_registration_token() {
+    local cluster_id="$1"
+    local api_base resp
+    api_base=$(_gpustack_api_base)
+
+    if [ ! -f "$GPUSTACK_API_COOKIE_FILE" ] || [ -z "$cluster_id" ]; then
+        return 1
+    fi
+
+    resp=$(curl -sS "${api_base}/v2/clusters/${cluster_id}/registration-token" \
+        -b "$GPUSTACK_API_COOKIE_FILE" 2>/dev/null) || return 1
+
+    echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null
+}
+
+# 自动创建 easyaiot 集群并获取注册令牌
+ensure_gpustack_cluster_and_token() {
+    local host_ip server_url cluster_id token
+
+    if [ -n "${GPUSTACK_TOKEN:-}" ]; then
+        print_info "使用环境变量 GPUSTACK_TOKEN（跳过 API 获取）"
+        return 0
+    fi
+
+    if ! command -v curl &>/dev/null || ! command -v python3 &>/dev/null; then
+        print_error "需要 curl 与 python3 才能配置 GPUStack 集群"
+        return 1
+    fi
+
+    if ! gpustack_api_login; then
+        print_error "GPUStack 登录失败，请检查 GPUSTACK_ADMIN_USER / GPUSTACK_ADMIN_PASSWORD"
+        print_info "默认密码与 docker-compose 中 GPUSTACK_BOOTSTRAP_PASSWORD 一致（仅首次初始化有效）"
+        return 1
+    fi
+
+    host_ip=$(get_host_ip)
+    if [ -z "$host_ip" ]; then
+        host_ip="127.0.0.1"
+    fi
+    server_url="http://${host_ip}:10180"
+
+    cluster_id=$(gpustack_api_get_cluster_id_by_name "$GPUSTACK_CLUSTER_NAME" 2>/dev/null) || cluster_id=""
+    if [ -z "$cluster_id" ]; then
+        print_info "集群「${GPUSTACK_CLUSTER_NAME}」不存在，正在自动创建..."
+        cluster_id=$(gpustack_api_create_cluster "$GPUSTACK_CLUSTER_NAME" "$server_url" 2>/dev/null) || cluster_id=""
+        if [ -z "$cluster_id" ]; then
+            print_error "自动创建 GPUStack 集群失败"
+            return 2
+        fi
+        print_success "已创建 GPUStack 集群: ${GPUSTACK_CLUSTER_NAME} (id=${cluster_id})"
+    else
+        print_info "GPUStack 集群已存在: ${GPUSTACK_CLUSTER_NAME} (id=${cluster_id})"
+    fi
+
+    token=$(gpustack_api_get_registration_token "$cluster_id" 2>/dev/null) || token=""
+    if [ -z "$token" ]; then
+        print_error "获取集群注册令牌失败"
+        return 3
+    fi
+
+    GPUSTACK_TOKEN="$token"
+    export GPUSTACK_TOKEN
+    print_success "已获取集群「${GPUSTACK_CLUSTER_NAME}」注册令牌"
+    return 0
+}
+
+# 提示用户手动创建集群后重试
+prompt_manual_gpustack_cluster_setup() {
+    local host_ip console_url
+    host_ip=$(get_host_ip)
+    console_url="http://${host_ip:-localhost}:10180"
+
+    print_section "需要手动创建 GPUStack 集群"
+    print_warning "无法自动创建或获取集群「${GPUSTACK_CLUSTER_NAME}」的注册令牌"
+    echo ""
+    print_info "请打开 GPUStack 控制台: ${console_url}"
+    print_info "  用户: ${GPUSTACK_ADMIN_USER}"
+    print_info "  密码: 安装时 GPUSTACK_BOOTSTRAP_PASSWORD（若已修改请使用当前 admin 密码）"
+    print_info "在「集群管理」中创建 Docker 类型集群，名称必须为: ${GREEN}${GPUSTACK_CLUSTER_NAME}${NC}"
+    echo ""
+    echo -ne "${YELLOW}[提示]${NC} 创建完成后按 Enter 重试，输入 q 跳过 GPUStack Worker 部署: "
+    read -r response
+    case "$(echo "$response" | tr '[:upper:]' '[:lower:]')" in
+        q|quit|skip|n|no)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+# 准备 Worker 注册令牌（自动创建集群或引导手动创建）
+prepare_gpustack_worker_token() {
+    local cluster_id token
+
+    if ensure_gpustack_cluster_and_token; then
+        return 0
+    fi
+
+    while true; do
+        if ! prompt_manual_gpustack_cluster_setup; then
+            print_warning "已跳过 GPUStack Worker 部署"
+            return 1
+        fi
+
+        if ! gpustack_api_login; then
+            print_warning "GPUStack 登录失败，请检查账号密码后重试"
+            continue
+        fi
+
+        cluster_id=$(gpustack_api_get_cluster_id_by_name "$GPUSTACK_CLUSTER_NAME" 2>/dev/null) || cluster_id=""
+        if [ -z "$cluster_id" ]; then
+            print_warning "仍未找到集群「${GPUSTACK_CLUSTER_NAME}」，请确认名称正确"
+            continue
+        fi
+
+        token=$(gpustack_api_get_registration_token "$cluster_id" 2>/dev/null) || token=""
+        if [ -n "$token" ]; then
+            GPUSTACK_TOKEN="$token"
+            export GPUSTACK_TOKEN
+            print_success "已获取集群「${GPUSTACK_CLUSTER_NAME}」注册令牌"
+            return 0
+        fi
+
+        print_warning "找到集群但获取注册令牌失败，请检查控制台后重试"
+    done
+}
+
 # 等待 GPUStack Server 就绪
 wait_for_gpustack_server() {
     local max_attempts=60
@@ -2541,6 +2767,10 @@ deploy_gpustack_worker() {
 
     if ! docker_cli ps &>/dev/null; then
         print_error "无法访问 Docker，跳过 GPUStack Worker 部署"
+        return 1
+    fi
+
+    if ! prepare_gpustack_worker_token; then
         return 1
     fi
 
