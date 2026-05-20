@@ -70,22 +70,6 @@ spring:
         min-idle: 1      # 保持最小连接
         max-wait: 2000   # 获取连接最大等待时间
       timeout: 1000        # 操作超时时间
-  # 算法 ODS 下沉配置（按环境显式声明，避免误用默认值）
-  kafka:
-    algorithm-ods:
-      doris:
-        jdbc-url: jdbc:mysql://localhost:9030/easyaiot_person_vehicle_analytics_dw?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai
-        username: root
-        password: ""
-      face:
-        dispatch-topic: iot-algorithm-face-ods-dispatch
-        group-id: iot-sink-face-ods-sink-consumer
-        ods-table: ods_face_event
-      plate:
-        dispatch-topic: iot-algorithm-plate-ods-dispatch
-        group-id: iot-sink-plate-ods-sink-consumer
-        ods-table: ods_plate_event
-
 
 --- #################### 定时任务相关配置 ####################
 

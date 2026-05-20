@@ -33,19 +33,6 @@ cd "$SCRIPT_DIR"
 
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 
-# Flink + Doris 人车四层链路默认参数（与 docker-compose 网络一致）
-BIGDATA_KAFKA_BROKERS="${BIGDATA_KAFKA_BROKERS:-Kafka:9092}"
-BIGDATA_DORIS_FENODES="${BIGDATA_DORIS_FENODES:-fe:8030}"
-BIGDATA_DORIS_USER="${BIGDATA_DORIS_USER:-root}"
-BIGDATA_DORIS_PASSWORD="${BIGDATA_DORIS_PASSWORD:-}"
-
-# SQL 文件路径
-BIGDATA_DORIS_SQL_FILE="${SCRIPT_DIR}/../doris/01_flink_doris_person_vehicle_four_layers.sql"
-BIGDATA_FLINK_DWD_SQL_TEMPLATE="${SCRIPT_DIR}/../flink/01_dwd_attribution_job.sql"
-BIGDATA_FLINK_DWS_ADS_SQL_TEMPLATE="${SCRIPT_DIR}/../flink/02_dws_ads_session_job.sql"
-BIGDATA_FLINK_SQL_DIR="${SCRIPT_DIR}/../flink"
-BIGDATA_FLINK_DWD_SQL_LOCAL="${BIGDATA_FLINK_SQL_DIR}/01_dwd_attribution_job.local.sql"
-BIGDATA_FLINK_DWS_ADS_SQL_LOCAL="${BIGDATA_FLINK_SQL_DIR}/02_dws_ads_session_job.local.sql"
 
 # GPUStack Worker（本机算力节点，与 compose 中的 gpustack-server 配合）
 GPUSTACK_WORKER_NAME="${GPUSTACK_WORKER_NAME:-gpustack-worker}"
@@ -98,10 +85,6 @@ MIDDLEWARE_SERVICES=(
     "NodeRED"
     "EMQX"
     "ZLMediaKit"
-    "FlinkJobManager"
-    "FlinkTaskManager"
-    "DorisFE"
-    "DorisBE"
     "GPUStack"
     "Dify"
 )
@@ -119,10 +102,6 @@ MIDDLEWARE_PORTS["SRS"]="1935"
 MIDDLEWARE_PORTS["NodeRED"]="1880"
 MIDDLEWARE_PORTS["EMQX"]="1883"
 MIDDLEWARE_PORTS["ZLMediaKit"]="6080"
-MIDDLEWARE_PORTS["FlinkJobManager"]="8081"
-MIDDLEWARE_PORTS["FlinkTaskManager"]=""
-MIDDLEWARE_PORTS["DorisFE"]="8030"
-MIDDLEWARE_PORTS["DorisBE"]="8040"
 MIDDLEWARE_PORTS["GPUStack"]="10180"
 MIDDLEWARE_PORTS["Dify"]="${DIFY_HTTP_PORT}"
 
@@ -139,10 +118,6 @@ MIDDLEWARE_HEALTH_ENDPOINTS["SRS"]="/api/v1/versions"
 MIDDLEWARE_HEALTH_ENDPOINTS["NodeRED"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["EMQX"]="/api/v5/status"
 MIDDLEWARE_HEALTH_ENDPOINTS["ZLMediaKit"]="/index/api/getServerConfig"
-MIDDLEWARE_HEALTH_ENDPOINTS["FlinkJobManager"]="/"
-MIDDLEWARE_HEALTH_ENDPOINTS["FlinkTaskManager"]=""
-MIDDLEWARE_HEALTH_ENDPOINTS["DorisFE"]="/api/bootstrap"
-MIDDLEWARE_HEALTH_ENDPOINTS["DorisBE"]="/api/health"
 MIDDLEWARE_HEALTH_ENDPOINTS["GPUStack"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["Dify"]="/"
 
@@ -202,47 +177,6 @@ check_command() {
     return 0
 }
 
-# 生成当前环境可直接执行的 Flink SQL（替换占位符）
-prepare_flink_doris_sql_scripts() {
-    print_section "准备 Flink + Doris SQL 脚本"
-
-    mkdir -p "$BIGDATA_FLINK_SQL_DIR"
-
-    if [ ! -f "$BIGDATA_FLINK_DWD_SQL_TEMPLATE" ] || [ ! -f "$BIGDATA_FLINK_DWS_ADS_SQL_TEMPLATE" ]; then
-        print_error "Flink SQL 模板不存在，请先检查 .scripts/flink 目录"
-        print_info "DWD 模板: $BIGDATA_FLINK_DWD_SQL_TEMPLATE"
-        print_info "DWS/ADS 模板: $BIGDATA_FLINK_DWS_ADS_SQL_TEMPLATE"
-        return 1
-    fi
-
-    local doris_password_escaped=""
-    doris_password_escaped=$(printf '%s\n' "$BIGDATA_DORIS_PASSWORD" | sed -e 's/[\/&]/\\&/g')
-
-    sed \
-        -e "s|\${KAFKA_BROKERS}|${BIGDATA_KAFKA_BROKERS}|g" \
-        -e "s|\${DORIS_FENODES}|${BIGDATA_DORIS_FENODES}|g" \
-        -e "s|\${DORIS_USER}|${BIGDATA_DORIS_USER}|g" \
-        -e "s|\${DORIS_PASSWORD}|${doris_password_escaped}|g" \
-        "$BIGDATA_FLINK_DWD_SQL_TEMPLATE" > "$BIGDATA_FLINK_DWD_SQL_LOCAL"
-
-    sed \
-        -e "s|\${KAFKA_BROKERS}|${BIGDATA_KAFKA_BROKERS}|g" \
-        -e "s|\${DORIS_FENODES}|${BIGDATA_DORIS_FENODES}|g" \
-        -e "s|\${DORIS_USER}|${BIGDATA_DORIS_USER}|g" \
-        -e "s|\${DORIS_PASSWORD}|${doris_password_escaped}|g" \
-        "$BIGDATA_FLINK_DWS_ADS_SQL_TEMPLATE" > "$BIGDATA_FLINK_DWS_ADS_SQL_LOCAL"
-
-    if [ -f "$BIGDATA_FLINK_DWD_SQL_LOCAL" ] && [ -f "$BIGDATA_FLINK_DWS_ADS_SQL_LOCAL" ]; then
-        print_success "已生成本地化 SQL:"
-        print_info "  - $BIGDATA_FLINK_DWD_SQL_LOCAL"
-        print_info "  - $BIGDATA_FLINK_DWS_ADS_SQL_LOCAL"
-        print_info "参数: Kafka=${BIGDATA_KAFKA_BROKERS}, DorisFE=${BIGDATA_DORIS_FENODES}, DorisUser=${BIGDATA_DORIS_USER}"
-        return 0
-    fi
-
-    print_error "生成 Flink SQL 失败"
-    return 1
-}
 
 # 检查 Git 是否已安装
 check_git() {
@@ -2021,12 +1955,6 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/../zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
-        "${SCRIPT_DIR}/flink_data/jm:::"             # Flink JobManager 数据
-        "${SCRIPT_DIR}/flink_data/tm:::"             # Flink TaskManager 数据
-        "${SCRIPT_DIR}/doris_data/fe_meta:::"       # Doris FE 元数据
-        "${SCRIPT_DIR}/doris_data/fe_log:::"         # Doris FE 日志
-        "${SCRIPT_DIR}/doris_data/be_storage:::"     # Doris BE 存储
-        "${SCRIPT_DIR}/doris_data/be_log:::"         # Doris BE 日志
         "${SCRIPT_DIR}/gpustack_data:::"             # GPUStack 数据（配置、内嵌库等）
         "${DIFY_DIR}/volumes:::"                    # Dify 应用/数据库/向量库等
     )
@@ -2118,8 +2046,6 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/milvus_data"
         "${SCRIPT_DIR}/srs_data"
         "${SCRIPT_DIR}/nodered_data"
-        "${SCRIPT_DIR}/flink_data"
-        "${SCRIPT_DIR}/doris_data"
         "${SCRIPT_DIR}/gpustack_data"
         "${DIFY_DIR}"
         "${SCRIPT_DIR}/../zlmediakit"
@@ -3930,142 +3856,6 @@ wait_for_kafka() {
     return 1
 }
 
-# 等待 Flink JobManager 服务就绪
-wait_for_flink_jobmanager() {
-    local max_attempts=90
-    local attempt=0
-
-    print_info "等待 Flink JobManager 服务就绪..."
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -s --connect-timeout 2 "http://localhost:8081/" > /dev/null 2>&1; then
-            print_success "Flink JobManager 服务已就绪"
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        sleep 2
-    done
-
-    print_error "Flink JobManager 服务未就绪"
-    return 1
-}
-
-# 等待 Doris FE 服务就绪
-wait_for_doris_fe() {
-    local max_attempts=90
-    local attempt=0
-
-    print_info "等待 Doris FE 服务就绪..."
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -s --connect-timeout 2 "http://localhost:8030/api/bootstrap" > /dev/null 2>&1; then
-            print_success "Doris FE 服务已就绪"
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        sleep 2
-    done
-
-    print_error "Doris FE 服务未就绪"
-    return 1
-}
-
-# 初始化 Doris 人车四层表结构
-init_doris_person_vehicle_schema() {
-    print_section "初始化 Doris 人车四层表结构"
-
-    if [ ! -f "$BIGDATA_DORIS_SQL_FILE" ]; then
-        print_error "Doris SQL 文件不存在: $BIGDATA_DORIS_SQL_FILE"
-        return 1
-    fi
-
-    if ! docker ps --filter "name=doris-fe-server" --format "{{.Names}}" | grep -q "doris-fe-server"; then
-        print_error "Doris FE 容器未运行"
-        return 1
-    fi
-
-    if ! docker exec doris-fe-server bash -lc "command -v mysql >/dev/null 2>&1"; then
-        print_error "doris-fe-server 容器内未找到 mysql 客户端，无法自动执行 SQL"
-        print_info "请手动执行: docker exec -i doris-fe-server mysql -h127.0.0.1 -P9030 -uroot < $BIGDATA_DORIS_SQL_FILE"
-        return 1
-    fi
-
-    if docker exec -i doris-fe-server mysql -h127.0.0.1 -P9030 -u"${BIGDATA_DORIS_USER}" < "$BIGDATA_DORIS_SQL_FILE" 2>&1 | tee -a "$LOG_FILE"; then
-        print_success "Doris 四层表结构初始化完成"
-        return 0
-    fi
-
-    print_error "Doris 四层表结构初始化失败"
-    return 1
-}
-
-# 提交 Flink SQL 作业（后台运行，避免阻塞安装流程）
-submit_flink_person_vehicle_jobs() {
-    print_section "提交 Flink 人车链路作业"
-
-    if [ ! -f "$BIGDATA_FLINK_DWD_SQL_LOCAL" ] || [ ! -f "$BIGDATA_FLINK_DWS_ADS_SQL_LOCAL" ]; then
-        print_error "本地化 Flink SQL 未生成，请先执行 prepare_flink_doris_sql_scripts"
-        return 1
-    fi
-
-    if ! docker ps --filter "name=flink-jobmanager" --format "{{.Names}}" | grep -q "flink-jobmanager"; then
-        print_error "flink-jobmanager 容器未运行"
-        return 1
-    fi
-
-    local flink_job_overview
-    flink_job_overview=$(curl -s "http://localhost:8081/jobs/overview" || echo "")
-
-    if echo "$flink_job_overview" | grep -q "job_dwd_attribution_person_vehicle"; then
-        print_info "检测到 DWD 作业已存在，跳过重复提交"
-    else
-        docker exec -d flink-jobmanager bash -lc "/opt/flink/bin/sql-client.sh embedded -f /opt/flink/sql/01_dwd_attribution_job.local.sql > /opt/flink/data/job_dwd_attribution.log 2>&1"
-        print_success "DWD 作业已提交: job_dwd_attribution_person_vehicle"
-    fi
-
-    sleep 3
-    flink_job_overview=$(curl -s "http://localhost:8081/jobs/overview" || echo "")
-    if echo "$flink_job_overview" | grep -q "job_dws_ads_session_person_vehicle"; then
-        print_info "检测到 DWS/ADS 作业已存在，跳过重复提交"
-    else
-        docker exec -d flink-jobmanager bash -lc "/opt/flink/bin/sql-client.sh embedded -f /opt/flink/sql/02_dws_ads_session_job.local.sql > /opt/flink/data/job_dws_ads_session.log 2>&1"
-        print_success "DWS/ADS 作业已提交: job_dws_ads_session_person_vehicle"
-    fi
-
-    print_info "可通过以下命令查看作业日志:"
-    print_info "  docker exec flink-jobmanager tail -n 100 /opt/flink/data/job_dwd_attribution.log"
-    print_info "  docker exec flink-jobmanager tail -n 100 /opt/flink/data/job_dws_ads_session.log"
-    return 0
-}
-
-# 一键初始化 Flink + Doris 人车四层链路
-init_bigdata_pipeline() {
-    print_section "初始化 Flink + Doris 人车四层链路"
-
-    if ! prepare_flink_doris_sql_scripts; then
-        return 1
-    fi
-
-    if ! wait_for_kafka; then
-        return 1
-    fi
-    if ! wait_for_doris_fe; then
-        return 1
-    fi
-    if ! wait_for_flink_jobmanager; then
-        return 1
-    fi
-
-    if ! init_doris_person_vehicle_schema; then
-        return 1
-    fi
-
-    if ! submit_flink_person_vehicle_jobs; then
-        return 1
-    fi
-
-    print_success "Flink + Doris 人车四层链路初始化完成"
-    return 0
-}
-
 
 # 等待 TDengine 服务就绪
 wait_for_tdengine() {
@@ -5124,18 +4914,6 @@ extract_ports_from_compose() {
             "Milvus")
                 ports=("19530" "9091")
                 ;;
-            "FlinkJobManager")
-                ports=("8081" "6123")
-                ;;
-            "FlinkTaskManager")
-                ports=()
-                ;;
-            "DorisFE")
-                ports=("8030" "9030" "9010")
-                ;;
-            "DorisBE")
-                ports=("8040" "9060")
-                ;;
             "GPUStack")
                 ports=("10180" "10161")
                 ;;
@@ -5176,10 +4954,6 @@ check_and_clean_ports() {
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
-            "FlinkJobManager") container_name="flink-jobmanager" ;;
-            "FlinkTaskManager") container_name="flink-taskmanager" ;;
-            "DorisFE") container_name="doris-fe-server" ;;
-            "DorisBE") container_name="doris-be-server" ;;
             "GPUStack") container_name="gpustack-server" ;;
             "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
         esac
@@ -5769,11 +5543,7 @@ check_and_clean_ports() {
                                     "EMQX") container_name="emqx-server" ;;
                                     "ZLMediaKit") container_name="zlmediakit-server" ;;
                                     "Milvus") container_name="milvus-server" ;;
-                                    "FlinkJobManager") container_name="flink-jobmanager" ;;
-                                    "FlinkTaskManager") container_name="flink-taskmanager" ;;
-                                    "DorisFE") container_name="doris-fe-server" ;;
-                                    "DorisBE") container_name="doris-be-server" ;;
-                                    "GPUStack") container_name="gpustack-server" ;;
+                                                                                                                                    "GPUStack") container_name="gpustack-server" ;;
                                     "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
                                 esac
                                 
@@ -5896,10 +5666,6 @@ cleanup_stale_containers() {
                 "NodeRED") container_names+=("nodered-server") ;;
                 "EMQX") container_names+=("emqx-server") ;;
                 "ZLMediaKit") container_names+=("zlmediakit-server") ;;
-                "FlinkJobManager") container_names+=("flink-jobmanager") ;;
-                "FlinkTaskManager") container_names+=("flink-taskmanager") ;;
-                "DorisFE") container_names+=("doris-fe-server") ;;
-                "DorisBE") container_names+=("doris-be-server") ;;
                 "GPUStack") container_names+=("gpustack-server") ;;
                 "Dify") container_names+=("${DIFY_PROJECT_NAME}-nginx-1") ;;
             esac
@@ -5907,7 +5673,7 @@ cleanup_stale_containers() {
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|flink-jobmanager|flink-taskmanager|doris-fe-server|doris-be-server|gpustack-server|gpustack-worker|${DIFY_PROJECT_NAME}-)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|gpustack-server|gpustack-worker|${DIFY_PROJECT_NAME}-)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -5959,8 +5725,6 @@ install_middleware() {
     # GPUStack Worker 注册地址
     prepare_gpustack_env
 
-    # 生成当前环境可直接执行的 Flink SQL 脚本
-    prepare_flink_doris_sql_scripts || true
     
     # 检查并拉取缺失的镜像（如果镜像已存在则跳过拉取）
     echo ""
@@ -6004,10 +5768,6 @@ install_middleware() {
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
-            "FlinkJobManager") container_name="flink-jobmanager" ;;
-            "FlinkTaskManager") container_name="flink-taskmanager" ;;
-            "DorisFE") container_name="doris-fe-server" ;;
-            "DorisBE") container_name="doris-be-server" ;;
             "GPUStack") container_name="gpustack-server" ;;
             "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
         esac
@@ -6031,10 +5791,6 @@ install_middleware() {
             case "$service" in
                 "TDengine") print_info "  docker logs tdengine-server" ;;
                 "Redis") print_info "  docker logs redis-server" ;;
-                "FlinkJobManager") print_info "  docker logs flink-jobmanager" ;;
-                "FlinkTaskManager") print_info "  docker logs flink-taskmanager" ;;
-                "DorisFE") print_info "  docker logs doris-fe-server" ;;
-                "DorisBE") print_info "  docker logs doris-be-server" ;;
                 "GPUStack") print_info "  docker logs gpustack-server" ;;
                 "Dify") print_info "  cd ${DIFY_DIR} && docker compose -p ${DIFY_PROJECT_NAME} logs" ;;
                 *) print_info "  docker-compose logs $service" ;;
@@ -6087,9 +5843,6 @@ install_middleware() {
     echo ""
     init_minio
 
-    # 初始化 Flink + Doris 人车四层链路
-    echo ""
-    init_bigdata_pipeline || print_warning "Flink + Doris 链路初始化未完成，可稍后手动执行: ./install_middleware_linux.sh init-bigdata"
     
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
@@ -6122,8 +5875,6 @@ start_middleware() {
     # GPUStack Worker 注册地址
     prepare_gpustack_env
 
-    # 生成当前环境可直接执行的 Flink SQL 脚本
-    prepare_flink_doris_sql_scripts || true
     
     # 清理残留容器
     cleanup_stale_containers
@@ -6151,7 +5902,6 @@ start_middleware() {
     echo ""
     configure_postgresql_max_connections
 
-    print_info "如需一键初始化 Flink + Doris 人车链路，请执行: ./install_middleware_linux.sh init-bigdata"
 
     # 部署 GPUStack Worker（本机算力节点）
     echo ""
@@ -6209,8 +5959,6 @@ restart_middleware() {
     # GPUStack Worker 注册地址
     prepare_gpustack_env
 
-    # 生成当前环境可直接执行的 Flink SQL 脚本
-    prepare_flink_doris_sql_scripts || true
     
     print_info "重启所有中间件服务..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" restart 2>&1 | tee -a "$LOG_FILE"
@@ -6232,7 +5980,6 @@ restart_middleware() {
     echo ""
     configure_postgresql_max_connections
 
-    print_info "如需一键初始化 Flink + Doris 人车链路，请执行: ./install_middleware_linux.sh init-bigdata"
 
     # 重新部署 GPUStack Worker
     echo ""
@@ -6451,8 +6198,6 @@ clean_middleware() {
             "mq_data"                   # Kafka 数据
             "minio_data"                # MinIO 数据和配置
             "milvus_data"               # Milvus 数据
-            "flink_data"                # Flink JobManager / TaskManager 数据
-            "doris_data"                # Doris FE / BE 数据与日志
             "gpustack_data"             # GPUStack 数据
             "dify_data"                 # Dify 部署目录（含 volumes、compose 与 .env）
             "srs_data"                  # SRS 配置、数据和回放
@@ -6587,8 +6332,6 @@ update_middleware() {
     # GPUStack Worker 注册地址
     prepare_gpustack_env
 
-    # 生成当前环境可直接执行的 Flink SQL 脚本
-    prepare_flink_doris_sql_scripts || true
     
     # 检查并拉取缺失的镜像（如果镜像已存在则跳过拉取）
     echo ""
@@ -6602,7 +6345,6 @@ update_middleware() {
     print_info "等待服务就绪..."
     sleep 10
 
-    print_info "如需一键初始化 Flink + Doris 人车链路，请执行: ./install_middleware_linux.sh init-bigdata"
 
     # 部署 GPUStack Worker（本机算力节点）
     echo ""
@@ -6633,7 +6375,6 @@ show_help() {
     echo "  clean           - 清理所有容器和镜像"
     echo "  update          - 更新并重启所有中间件"
     echo "  fix-postgresql  - 修复 PostgreSQL 密码问题"
-    echo "  init-bigdata    - 一键初始化 Flink + Doris 人车四层链路"
     echo "  help            - 显示此帮助信息"
     echo ""
     echo "中间件服务列表:"
@@ -6687,12 +6428,6 @@ main() {
             ensure_postgresql_password
             configure_postgresql_pg_hba
             configure_postgresql_max_connections
-            ;;
-        init-bigdata)
-            check_docker "$@"
-            check_docker_compose
-            check_compose_file
-            init_bigdata_pipeline
             ;;
         help|--help|-h)
             show_help

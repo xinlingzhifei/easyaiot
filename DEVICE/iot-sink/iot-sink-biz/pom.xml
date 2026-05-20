@@ -71,12 +71,6 @@
             <groupId>com.taosdata.jdbc</groupId>
             <artifactId>taos-jdbcdriver</artifactId>
         </dependency>
-        <!-- Doris JDBC（MySQL 协议） -->
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-        </dependency>
-
         <!-- RPC 远程调用相关 -->
         <dependency>
             <groupId>com.basiclab.iot</groupId>
