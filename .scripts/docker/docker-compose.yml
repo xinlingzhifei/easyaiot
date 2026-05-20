@@ -290,12 +290,17 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - ETCD_USE_EMBED=true
+      - DEPLOY_MODE=STANDALONE
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
       - COMMON_STORAGETYPE=local
     ports:
       - "0.0.0.0:19530:19530"
       - "0.0.0.0:9091:9091"
     volumes:
       - "./milvus_data:/var/lib/milvus:rw"
+      - "./milvus_config/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro"
+      - "./milvus_config/user.yaml:/milvus/configs/user.yaml:ro"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9091/healthz || exit 1"]
       interval: 30s
@@ -436,7 +441,7 @@ services:
   # GPUStack v2.1.2 — GPU/算力资源监测与管控（Web UI、集群与 Worker 管理）
   # Web UI: http://localhost:10180  用户 admin，密码见 GPUSTACK_BOOTSTRAP_PASSWORD（仅首次初始化生效）
   # Dify 由 install_middleware_linux.sh 独立 compose 部署，目录: ./dify_data（端口默认 10190）
-  # 管理员默认: andywebjava@163.com / admin / basiclab@iotPe6lJsB7wSMINGCW（脚本自动初始化，可用 DIFY_ADMIN_* 覆盖）
+  # 首次安装请访问 http://<宿主机IP>:10190/install 完成管理员初始化
   GPUStack:
     image: gpustack/gpustack:v2.1.2
     container_name: gpustack-server
