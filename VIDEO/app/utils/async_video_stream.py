@@ -52,6 +52,14 @@ class AsyncVideoStream:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self.read_failed = False
+        self._consecutive_read_failures = 0
+        try:
+            self._read_fail_streak_limit = max(
+                1,
+                int((os.getenv("AI_RTSP_READ_FAIL_STREAK", "30") or "30").strip()),
+            )
+        except ValueError:
+            self._read_fail_streak_limit = 30
 
     def isOpened(self) -> bool:
         return self._cap is not None and self._cap.isOpened()
@@ -75,6 +83,7 @@ class AsyncVideoStream:
     def start(self):
         self._running = True
         self.read_failed = False
+        self._consecutive_read_failures = 0
         self._thread = threading.Thread(target=self._update_loop, daemon=True)
         self._thread.start()
         return self
@@ -85,8 +94,12 @@ class AsyncVideoStream:
                 ret, frame = self._cap.read()
                 if not ret or frame is None:
                     if self._running:
-                        self.read_failed = True
-                    break
+                        self._consecutive_read_failures += 1
+                        if self._consecutive_read_failures >= self._read_fail_streak_limit:
+                            self.read_failed = True
+                            break
+                    continue
+                self._consecutive_read_failures = 0
                 with self._lock:
                     if self._queue is not None:
                         self._queue.append(frame)

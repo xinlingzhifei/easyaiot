@@ -52,6 +52,12 @@ import { notifyTemplateQueryByType } from '@/api/device/notice';
 import { getDeviceChannels, queryVideoList } from '@/api/device/gb28181';
 import DefenseSchedulePicker from './DefenseSchedulePicker.vue';
 import ServiceStatusTab from './ServiceStatusTab.vue';
+import CronExpressionField from './CronExpressionField.vue';
+import {
+  DEFAULT_SNAP_CRON,
+  getSnapCronHelpLines,
+  validateSnapCronMinInterval,
+} from '@/views/camera/utils/cronExpression';
 
 defineOptions({ name: 'AlgorithmTaskModal' });
 
@@ -451,10 +457,17 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       label: 'Cron表达式',
       component: 'Input',
       required: true,
-      componentProps: {
-        placeholder: '例如: 0 */5 * * * * (每5分钟)',
-      },
-      helpMessage: '标准Cron表达式，例如: 0 */5 * * * * 表示每5分钟执行一次',
+      helpMessage: getSnapCronHelpLines(),
+      helpComponentProps: { maxWidth: '480px' },
+      render: ({ model }) =>
+        h(CronExpressionField, {
+          modelValue: model.cron_expression,
+          disabled: isViewMode.value,
+          'onUpdate:modelValue': (value: string) => {
+            model.cron_expression = value;
+            setFieldsValue({ cron_expression: value });
+          },
+        }),
       ifShow: ({ values }) => values.task_type === 'snap',
     },
     {
@@ -975,6 +988,7 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
     isFullDayDefense.value = true; // 默认全天布防
     await setFieldsValue({
       task_type: 'realtime',
+      cron_expression: DEFAULT_SNAP_CRON,
       frame_skip: 25,
       extract_interval: 25,
       tracking_enabled: false,
@@ -1050,6 +1064,12 @@ const handleFieldValueChange = async (key: string, value: any) => {
       notificationChannels.value = [];
       channelTemplates.value = {};
     }
+  } else if (key === 'task_type' && value === 'snap') {
+    const currentValues = await getFieldsValue();
+    if (!currentValues.cron_expression?.trim()) {
+      await setFieldsValue({ cron_expression: DEFAULT_SNAP_CRON });
+    }
+    formValues.value = { ...currentValues, task_type: value, cron_expression: currentValues.cron_expression || DEFAULT_SNAP_CRON };
   } else if (key === 'notification_channels') {
     // 通知渠道变化时，同步更新 notificationChannels
     notificationChannels.value = value || [];
@@ -1156,6 +1176,19 @@ const handleSubmit = async () => {
       confirmLoading.value = false;
       setDrawerProps({ confirmLoading: false });
       return;
+    }
+
+    if (values.task_type === 'snap' && values.cron_expression) {
+      const cronCheck = validateSnapCronMinInterval(values.cron_expression);
+      if (!cronCheck.valid) {
+        createMessage.error(cronCheck.message || 'Cron 表达式无效');
+        confirmLoading.value = false;
+        setDrawerProps({ confirmLoading: false });
+        return;
+      }
+      if (cronCheck.normalized) {
+        values.cron_expression = cronCheck.normalized;
+      }
     }
 
     if (modalData.value.type === 'edit' && modalData.value.record) {

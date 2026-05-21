@@ -11,6 +11,7 @@ from typing import List, Optional, Dict
 from sqlalchemy.orm import joinedload
 
 from models import db, AlgorithmTask, Device, SnapSpace, algorithm_task_device, Pusher
+from app.utils.cron_utils import validate_snap_cron_min_interval
 # 注意：已移除冲突检查，推流转发任务和算法任务可以共存
 # 推流转发任务使用 rtmp_stream/http_stream，算法任务使用 ai_rtmp_stream/ai_http_stream
 import json
@@ -414,6 +415,7 @@ def create_algorithm_task(task_name: str,
         if task_type == 'snap':
             if not cron_expression:
                 raise ValueError("抓拍算法任务必须指定Cron表达式")
+            cron_expression = validate_snap_cron_min_interval(cron_expression)
         else:
             # 实时算法任务：不需要Cron表达式
             cron_expression = None
@@ -652,8 +654,11 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             if 'frame_skip' in kwargs:
                 kwargs['frame_skip'] = 25
         else:
-            # 抓拍算法任务：保留模型字段，不需要清除
-            pass
+            # 抓拍算法任务：校验 cron 最短间隔
+            if 'cron_expression' in kwargs and kwargs['cron_expression']:
+                kwargs['cron_expression'] = validate_snap_cron_min_interval(
+                    kwargs['cron_expression']
+                )
         
         # 验证推送器是否存在（如果提供）
         if 'pusher_id' in kwargs and kwargs['pusher_id']:

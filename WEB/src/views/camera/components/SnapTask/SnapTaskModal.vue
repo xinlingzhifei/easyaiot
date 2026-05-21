@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from 'vue';
+import { ref, computed, h } from 'vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
@@ -47,6 +47,12 @@ import { getSnapSpaceList } from '@/api/device/snap';
 import { getDeviceList } from '@/api/device/camera';
 import { listPushers } from '@/api/device/algorithm_task';
 import RegionDrawer from '../RegionDrawer/index.vue';
+import CronExpressionField from '../AlgorithmTask/CronExpressionField.vue';
+import {
+  DEFAULT_SNAP_CRON,
+  getSnapCronHelpLines,
+  validateSnapCronMinInterval,
+} from '@/views/camera/utils/cronExpression';
 
 defineOptions({ name: 'SnapTaskModal' });
 
@@ -153,10 +159,17 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       label: 'Cron表达式',
       component: 'Input',
       required: true,
-      componentProps: {
-        placeholder: '例如: 0 */5 * * * * (每5分钟)',
-      },
-      helpMessage: '标准Cron表达式，例如: 0 */5 * * * * 表示每5分钟执行一次',
+      helpMessage: getSnapCronHelpLines(),
+      helpComponentProps: { maxWidth: '480px' },
+      render: ({ model }) =>
+        h(CronExpressionField, {
+          modelValue: model.cron_expression,
+          disabled: modalData.value?.type === 'view',
+          'onUpdate:modelValue': (value: string) => {
+            model.cron_expression = value;
+            setFieldsValue({ cron_expression: value });
+          },
+        }),
     },
     {
       field: 'frame_skip',
@@ -389,6 +402,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
     setDrawerProps({ showOkBtn: false });
     // 加载检测区域
     await loadRegions(data.record.id);
+  } else {
+    await setFieldsValue({ cron_expression: DEFAULT_SNAP_CRON });
   }
 });
 
@@ -405,6 +420,18 @@ const updateFormValues = () => {
 const handleSubmit = async () => {
   try {
     const values = await validate();
+
+    if (values.cron_expression) {
+      const cronCheck = validateSnapCronMinInterval(values.cron_expression);
+      if (!cronCheck.valid) {
+        createMessage.error(cronCheck.message || 'Cron 表达式无效');
+        return;
+      }
+      if (cronCheck.normalized) {
+        values.cron_expression = cronCheck.normalized;
+      }
+    }
+
     setDrawerProps({ confirmLoading: true });
     
     if (modalData.value.type === 'edit' && modalData.value.record) {

@@ -80,6 +80,8 @@ declare global {
     VITE_GLOB_APP_SHORT_NAME: string
     VITE_USE_CDN: boolean
     VITE_DROP_CONSOLE: boolean
+    /** 开发时 Vite 是否用轮询监视文件（规避 inotify ENOSPC） */
+    VITE_USE_POLLING: boolean
     VITE_BUILD_COMPRESS: 'gzip' | 'brotli' | 'none'
     VITE_BUILD_COMPRESS_DELETE_ORIGIN_FILE: boolean
     VITE_GENERATE_UI: string

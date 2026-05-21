@@ -56,6 +56,14 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       port: VITE_PORT,
       // Load proxy configuration from .env
       proxy,
+      // Linux 上 IDE/多进程易占满 inotify，触发 ENOSPC；轮询不占用 file watcher 配额
+      watch: isBuild
+        ? undefined
+        : {
+            usePolling: viteEnv.VITE_USE_POLLING !== false,
+            interval: 1000,
+            ignored: ['**/node_modules/**', '**/.git/**', '**/__pycache__/**'],
+          },
     },
     resolve: {
       alias: [

@@ -14,6 +14,7 @@ from apscheduler.triggers.cron import CronTrigger
 from models import db, SnapTask, SnapSpace, Device
 from app.services.snap_space_service import get_minio_client, create_camera_folder
 from app.services.camera_service import get_snapshot_uri
+from app.utils.cron_utils import validate_snap_cron_min_interval
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ def create_snap_task(
         # 验证空间和设备存在
         space = SnapSpace.query.get_or_404(space_id)
         device = Device.query.get_or_404(device_id)
+        cron_expression = validate_snap_cron_min_interval(cron_expression)
         
         # 生成唯一编号
         task_code = f"TASK_{uuid.uuid4().hex[:8].upper()}"
@@ -120,6 +122,11 @@ def update_snap_task(task_id, **kwargs):
             'is_enabled', 'notify_methods', 'alarm_suppress_time'
         ]
         
+        if 'cron_expression' in kwargs and kwargs['cron_expression']:
+            kwargs['cron_expression'] = validate_snap_cron_min_interval(
+                kwargs['cron_expression']
+            )
+
         for field in updatable_fields:
             if field in kwargs:
                 setattr(task, field, kwargs[field])

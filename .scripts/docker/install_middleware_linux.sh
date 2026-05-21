@@ -1802,6 +1802,66 @@ get_host_ip() {
     return 1
 }
 
+# 在宿主机 /etc/hosts 中将 Kafka 解析为宿主机 IP（供宿主机进程使用 Kafka:9092）
+KAFKA_HOSTS_MARKER="# EasyAIoT Kafka (install_middleware_linux.sh)"
+configure_kafka_hosts() {
+    local host_ip hosts_file="/etc/hosts"
+    local entry_line
+
+    host_ip=$(get_host_ip)
+    if [ -z "$host_ip" ]; then
+        host_ip="127.0.0.1"
+        print_warning "无法获取宿主机 IP，Kafka hosts 将使用 127.0.0.1"
+    else
+        print_info "检测到宿主机 IP: $host_ip"
+    fi
+
+    print_info "配置宿主机 hosts：Kafka -> ${host_ip}（供宿主机进程连接 Kafka:9092）"
+    entry_line="${host_ip}	Kafka ${KAFKA_HOSTS_MARKER}"
+
+    if [ ! -f "$hosts_file" ]; then
+        print_warning "未找到 $hosts_file，请手动添加: ${entry_line%%$'\t'*} Kafka"
+        return 1
+    fi
+
+    if grep -qF "$KAFKA_HOSTS_MARKER" "$hosts_file" 2>/dev/null; then
+        local current_ip
+        current_ip=$(grep -F "$KAFKA_HOSTS_MARKER" "$hosts_file" | awk '{print $1}' | head -n 1)
+        if [ "$current_ip" = "$host_ip" ]; then
+            print_success "宿主机 hosts 已配置: Kafka -> $host_ip"
+            return 0
+        fi
+    fi
+
+    _apply_kafka_hosts_entry() {
+        local tmp_hosts
+        tmp_hosts=$(mktemp)
+        grep -vF "$KAFKA_HOSTS_MARKER" "$hosts_file" 2>/dev/null \
+            | grep -Ev '^[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}[[:space:]]+Kafka([[:space:]]|$)' \
+            > "$tmp_hosts"
+        printf '%s\n' "$entry_line" >> "$tmp_hosts"
+        if cp "$tmp_hosts" "$hosts_file" 2>/dev/null; then
+            rm -f "$tmp_hosts"
+            return 0
+        fi
+        if command -v sudo &> /dev/null && sudo cp "$tmp_hosts" "$hosts_file" 2>/dev/null; then
+            rm -f "$tmp_hosts"
+            return 0
+        fi
+        rm -f "$tmp_hosts"
+        return 1
+    }
+
+    if _apply_kafka_hosts_entry; then
+        print_success "宿主机 hosts 已更新: Kafka -> $host_ip"
+        return 0
+    fi
+
+    print_warning "无法写入 $hosts_file（需要 root 权限），请手动添加:"
+    print_warning "  $entry_line"
+    return 1
+}
+
 
 # 创建并设置 NodeRED 数据目录权限
 create_nodered_directories() {
@@ -5737,6 +5797,7 @@ install_middleware() {
     create_redis_directories
     create_nodered_directories
     create_kafka_directories
+    configure_kafka_hosts
     
     # 强制更新 SRS 配置文件（重新获取宿主机 IP）
     prepare_srs_config
@@ -5900,6 +5961,7 @@ start_middleware() {
     create_redis_directories
     create_nodered_directories
     create_kafka_directories
+    configure_kafka_hosts
     
     prepare_srs_config
     prepare_emqx_volumes
@@ -5985,6 +6047,7 @@ restart_middleware() {
     create_redis_directories
     create_nodered_directories
     create_kafka_directories
+    configure_kafka_hosts
     
     prepare_srs_config
     prepare_emqx_volumes
@@ -6386,6 +6449,7 @@ update_middleware() {
     create_redis_directories
     create_nodered_directories
     create_kafka_directories
+    configure_kafka_hosts
     
     prepare_srs_config
     prepare_emqx_volumes
