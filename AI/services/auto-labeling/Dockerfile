@@ -13,6 +13,9 @@ RUN set -ex && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        gcc \
+        g++ \
+        python3-dev \
         libgl1 \
         libglib2.0-0 \
         libgomp1 \
@@ -20,7 +23,9 @@ RUN set -ex && \
 
 COPY requirements.txt .
 RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install -r requirements.txt --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple
+    pip install -r requirements.txt --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    apt-get purge -y --auto-remove gcc g++ python3-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY . .
 

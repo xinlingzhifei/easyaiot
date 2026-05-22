@@ -17,6 +17,7 @@ from flask import current_app
 from onvif import ONVIFCamera
 from wsdiscovery import WSDiscovery, Scope
 
+from app.services.nvr_service import nvr_fields_for_device, resolve_nvr_link
 from app.services.onvif_service import OnvifCamera
 from app.utils.ip_utils import IpReachabilityMonitor, resolve_ipv4_for_stream_urls
 from models import Device, db, DeviceDetectionRegion, DeviceDirectory
@@ -224,10 +225,12 @@ def _to_dict(camera: Device) -> dict:
         'hardware_id': camera.hardware_id,
         'support_move': camera.support_move,
         'support_zoom': camera.support_zoom,
-        'nvr_id': camera.nvr_id if camera.nvr_id else None,
-        'nvr_channel': camera.nvr_channel,
         'directory_id': camera.directory_id if camera.directory_id else None,
-        'online': online_status
+        'rtsp_direct': camera.rtsp_direct,
+        'channel_online': camera.channel_online,
+        'connection_status': camera.connection_status,
+        'online': online_status,
+        **nvr_fields_for_device(camera),
     }
 
 
@@ -906,6 +909,7 @@ def register_camera(register_info: dict) -> str:
         else:
             rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream = _generate_stream_urls(source, id)
         
+        nvr_id, nvr_channel = resolve_nvr_link(register_info)
         # 创建设备记录，优先使用用户提供的字段，缺失的字段从ONVIF获取的信息中填充
         camera = Device(
             id=id,
@@ -928,8 +932,11 @@ def register_camera(register_info: dict) -> str:
             hardware_id=register_info.get('hardware_id') or camera_info.get('hardware_id', ''),
             support_move=register_info.get('support_move') if register_info.get('support_move') is not None else camera_info.get('support_move', False),
             support_zoom=register_info.get('support_zoom') if register_info.get('support_zoom') is not None else camera_info.get('support_zoom', False),
-            nvr_id=register_info.get('nvr_id'),
-            nvr_channel=register_info.get('nvr_channel', 0),
+            nvr_id=nvr_id,
+            nvr_channel=nvr_channel,
+            rtsp_direct=register_info.get('rtsp_direct'),
+            channel_online=register_info.get('channel_online'),
+            connection_status=register_info.get('connection_status'),
             enable_forward=register_info.get('enable_forward'),
             directory_id=directory_id_for_new_device(register_info),
         )
@@ -1179,8 +1186,23 @@ def update_camera(id: str, update_info: dict):
     # cameraType字段只在前端传递，不保存到数据库，用于判断设备类型
     is_custom_from_request = update_info.get('cameraType') == 'custom'
 
+    _NVR_PAYLOAD_KEYS = frozenset({
+        'nvr', 'nvr_ip', 'nvr_port', 'nvr_name', 'nvr_username', 'nvr_password',
+        'nvr_vendor', 'nvr_model', 'nvr_serial', 'nvr_firmware', 'nvr_device_type', 'nvr_mac',
+        'nvr_scheme', 'nvr_rtsp_url', 'nvr_source',
+    })
+    if any(k in update_info for k in ('nvr_id', 'nvr_channel', *_NVR_PAYLOAD_KEYS)):
+        nvr_id, nvr_channel = resolve_nvr_link(update_info)
+        camera.nvr_id = nvr_id
+        camera.nvr_channel = nvr_channel
+
     # 过滤空值并更新字段
     for k, v in (item for item in update_info.items() if item[1] is not None):
+        if k in _NVR_PAYLOAD_KEYS or k in ('nvr_id', 'nvr_channel'):
+            continue
+        if k in ('rtsp_direct', 'channel_online', 'connection_status') and hasattr(camera, k):
+            setattr(camera, k, v)
+            continue
         if hasattr(camera, k):
             # 对于布尔值字段，处理空字符串和字符串类型的布尔值
             if k in ['enable_forward', 'support_move', 'support_zoom']:

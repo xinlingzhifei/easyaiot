@@ -63,6 +63,26 @@ export function getBasicColumns(): BasicColumn[] {
       width: 120,
     },
     {
+      title: '所属NVR',
+      dataIndex: 'nvr_label',
+      width: 140,
+      ellipsis: true,
+      customRender: ({ text }) => text || '—',
+    },
+    {
+      title: 'RTSP(经NVR)',
+      dataIndex: 'source',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: 'RTSP(直连)',
+      dataIndex: 'rtsp_direct',
+      width: 120,
+      ellipsis: true,
+      customRender: ({ text }) => text || '—',
+    },
+    {
       title: '端口',
       dataIndex: 'port',
       width: 60,

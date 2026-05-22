@@ -10,6 +10,7 @@ import uuid
 from flask import current_app
 from minio import Minio
 from minio.error import S3Error
+from sqlalchemy.exc import IntegrityError
 
 from models import db, SnapSpace, SnapTask
 
@@ -30,6 +31,14 @@ def get_minio_client():
     return Minio(minio_endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
 
 
+def _find_snap_space_by_device_id(device_id):
+    """按 device_id 查询抓拍空间（刷新会话，避免脏缓存）。"""
+    if not device_id:
+        return None
+    db.session.expire_all()
+    return SnapSpace.query.filter_by(device_id=device_id).first()
+
+
 def create_snap_space(space_name, save_mode=0, save_time=0, description=None, device_id=None):
     """创建抓拍空间
     
@@ -44,11 +53,12 @@ def create_snap_space(space_name, save_mode=0, save_time=0, description=None, de
         # 刷新数据库会话，确保获取最新数据（避免缓存问题）
         db.session.expire_all()
         
-        # 如果提供了设备ID，检查该设备是否已有抓拍空间
+        # 如果提供了设备ID，检查该设备是否已有抓拍空间（幂等：已存在则直接返回）
         if device_id:
-            existing_space = SnapSpace.query.filter_by(device_id=device_id).first()
+            existing_space = _find_snap_space_by_device_id(device_id)
             if existing_space:
-                raise ValueError(f"设备 '{device_id}' 已有关联的抓拍空间，不能重复创建")
+                logger.info(f"设备 '{device_id}' 已有关联的抓拍空间，返回现有空间")
+                return existing_space
         
         # 注意：允许同名空间，因为通过space_code来保证唯一性
         
@@ -76,21 +86,9 @@ def create_snap_space(space_name, save_mode=0, save_time=0, description=None, de
                         has_files = True
                         break
                 if has_files:
-                    raise ValueError(f"设备 '{device_id}' 已存在文件，不能重复创建")
-        
-        # 如果提供了设备ID，检查该设备在snap-space仓库下是否已有文件夹
-        if device_id:
-            # 检查是否存在该设备的文件夹（有实际文件）
-            device_folder = f"{device_id}/"
-            objects = list(minio_client.list_objects(bucket_name, prefix=device_folder, recursive=True))
-            # 检查是否有实际文件（不是空文件夹）
-            has_files = False
-            for obj in objects:
-                if not obj.object_name.endswith('/'):  # 不是文件夹标记
-                    has_files = True
-                    break
-            if has_files:
-                raise ValueError(f"设备 '{device_id}' 已存在文件夹，不能重复创建")
+                    logger.warning(
+                        f"设备 '{device_id}' 在 MinIO 中已有抓拍文件，将继续确保数据库抓拍空间记录存在"
+                    )
         
         # 创建数据库记录
         snap_space = SnapSpace(
@@ -123,6 +121,17 @@ def create_snap_space(space_name, save_mode=0, save_time=0, description=None, de
         
         logger.info(f"抓拍空间创建成功: {space_name} ({space_code})，bucket: {bucket_name}，设备ID: {device_id}")
         return snap_space
+    except IntegrityError as e:
+        db.session.rollback()
+        if device_id and 'device_id' in str(getattr(e, 'orig', e)):
+            existing_space = _find_snap_space_by_device_id(device_id)
+            if existing_space:
+                logger.info(
+                    f"设备 '{device_id}' 抓拍空间已存在（并发创建），返回现有空间"
+                )
+                return existing_space
+        logger.error(f"创建抓拍空间失败（唯一约束冲突）: {str(e)}", exc_info=True)
+        raise RuntimeError(f"创建抓拍空间失败: {str(e)}")
     except ValueError:
         db.session.rollback()
         raise
@@ -155,7 +164,7 @@ def create_snap_space_for_device(device_id, device_name=None):
             raise ValueError(f"设备 '{device_id}' 不存在")
         
         # 检查该设备是否已有抓拍空间
-        existing_space = SnapSpace.query.filter_by(device_id=device_id).first()
+        existing_space = _find_snap_space_by_device_id(device_id)
         if existing_space:
             logger.info(f"设备 '{device_id}' 已有关联的抓拍空间，返回现有空间")
             return existing_space

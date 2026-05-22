@@ -56,8 +56,12 @@ class Device(db.Model):
     hardware_id = db.Column(db.String(100), nullable=True)
     support_move = db.Column(db.Boolean, nullable=True)
     support_zoom = db.Column(db.Boolean, nullable=True)
-    nvr_id = db.Column(db.Integer, db.ForeignKey('nvr.id', ondelete='CASCADE'), nullable=True)
-    nvr_channel = db.Column(db.SmallInteger, nullable=False)
+    nvr_id = db.Column(db.Integer, db.ForeignKey('nvr.id', ondelete='SET NULL'), nullable=True)
+    nvr_channel = db.Column(db.SmallInteger, nullable=False, default=0, comment='NVR 通道号，0 表示非 NVR 挂载')
+    rtsp_direct = db.Column(db.Text, nullable=True, comment='摄像头直连 RTSP（经 NVR 枚举时 rtsp_direct）')
+    channel_online = db.Column(db.Boolean, nullable=True, comment='NVR 通道在线状态')
+    connection_status = db.Column(db.String(100), nullable=True, comment='NVR 通道连接状态/探测备注')
+    nvr = db.relationship('Nvr', backref=db.backref('cameras', lazy=True), foreign_keys=[nvr_id])
     enable_forward = db.Column(db.Boolean, nullable=True)
     auto_snap_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否开启自动抓拍[默认不开启]')
     directory_id = db.Column(db.Integer, db.ForeignKey('device_directory.id', ondelete='SET NULL'), nullable=True, comment='所属目录ID')
@@ -77,12 +81,30 @@ class Image(db.Model):
     device_id = db.Column(db.String(100), db.ForeignKey('device.id'))  # 添加设备ID外键
 
 class Nvr(db.Model):
-    id = db.Column(db.Integer, primary_key=True, nullable=False)
-    ip = db.Column(db.String(45), nullable=False)
+    __tablename__ = 'nvr'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ip = db.Column(db.String(45), nullable=False, index=True)
+    port = db.Column(db.SmallInteger, nullable=False, default=80)
     username = db.Column(db.String(100), nullable=True)
     password = db.Column(db.String(100), nullable=True)
     name = db.Column(db.String(100), nullable=True)
     model = db.Column(db.String(100), nullable=True)
+    vendor = db.Column(db.String(32), nullable=True, comment='hikvision/dahua 等')
+    serial_number = db.Column(db.String(300), nullable=True)
+    firmware_version = db.Column(db.String(100), nullable=True)
+    device_type = db.Column(db.String(100), nullable=True)
+    mac = db.Column(db.String(17), nullable=True)
+    scheme = db.Column(db.String(8), nullable=True, default='http', comment='http/https')
+    rtsp_url = db.Column(db.Text, nullable=True, comment='NVR 预览/取流 RTSP（对齐 hiktools）')
+    source = db.Column(db.String(32), nullable=True, comment='探测来源 isapi/dahua_cgi 等')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+    @property
+    def web_url(self) -> str:
+        sch = self.scheme or ('https' if (self.port or 80) in (443, 8443) else 'http')
+        return f'{sch}://{self.ip}:{self.port or 80}'
 
 class Alert(db.Model):
     id = db.Column(db.Integer, autoincrement=True, primary_key=True, nullable=False)

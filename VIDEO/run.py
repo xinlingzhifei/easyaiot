@@ -172,7 +172,7 @@ def create_app():
     db.init_app(app)
     with app.app_context():
         try:
-            from models import Device, Image, DeviceDirectory, SnapSpace, SnapTask, DetectionRegion, AlgorithmModelService, RegionModelService, DeviceStorageConfig, Playback, RecordSpace, AlgorithmTask, FrameExtractor, Sorter, Pusher, DeviceDetectionRegion
+            from models import Device, Image, DeviceDirectory, Nvr, SnapSpace, SnapTask, DetectionRegion, AlgorithmModelService, RegionModelService, DeviceStorageConfig, Playback, RecordSpace, AlgorithmTask, FrameExtractor, Sorter, Pusher, DeviceDetectionRegion
             db.create_all()
             
             # 迁移：检查并添加缺失的列和表
@@ -244,6 +244,62 @@ def create_app():
                     """))
                     db.session.commit()
                     print("✅ device.cover_image_path 列添加成功")
+
+                # nvr 表及扩展字段
+                result = db.session.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public' AND table_name = 'nvr'
+                    );
+                """))
+                if not result.scalar():
+                    print("⚠️  nvr 表不存在，正在创建...")
+                    db.create_all()
+                    print("✅ nvr 表创建成功")
+                else:
+                    for col_name, col_def in (
+                        ('port', 'SMALLINT NOT NULL DEFAULT 80'),
+                        ('vendor', 'VARCHAR(32)'),
+                        ('serial_number', 'VARCHAR(300)'),
+                        ('firmware_version', 'VARCHAR(100)'),
+                        ('device_type', 'VARCHAR(100)'),
+                        ('mac', 'VARCHAR(17)'),
+                        ('scheme', 'VARCHAR(8)'),
+                        ('rtsp_url', 'TEXT'),
+                        ('source', 'VARCHAR(32)'),
+                        ('created_at', 'TIMESTAMP WITHOUT TIME ZONE'),
+                        ('updated_at', 'TIMESTAMP WITHOUT TIME ZONE'),
+                    ):
+                        r = db.session.execute(text("""
+                            SELECT EXISTS (
+                                SELECT FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                AND table_name = 'nvr' AND column_name = :col
+                            );
+                        """), {'col': col_name})
+                        if not r.scalar():
+                            print(f"⚠️  nvr.{col_name} 列不存在，正在添加...")
+                            db.session.execute(text(f'ALTER TABLE nvr ADD COLUMN {col_name} {col_def};'))
+                            db.session.commit()
+                            print(f"✅ nvr.{col_name} 列添加成功")
+
+                for col_name, col_def in (
+                    ('rtsp_direct', 'TEXT'),
+                    ('channel_online', 'BOOLEAN'),
+                    ('connection_status', 'VARCHAR(100)'),
+                ):
+                    r = db.session.execute(text("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                            AND table_name = 'device' AND column_name = :col
+                        );
+                    """), {'col': col_name})
+                    if not r.scalar():
+                        print(f"⚠️  device.{col_name} 列不存在，正在添加...")
+                        db.session.execute(text(f'ALTER TABLE device ADD COLUMN {col_name} {col_def};'))
+                        db.session.commit()
+                        print(f"✅ device.{col_name} 列添加成功")
                 
                 # 检查 device_detection_region 表是否存在
                 result = db.session.execute(text("""

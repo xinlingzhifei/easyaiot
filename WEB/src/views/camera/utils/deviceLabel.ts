@@ -53,17 +53,58 @@ export function getGb28181PlayIds(
   return { sipDeviceId, channelId };
 }
 
+export function isNvrChannelDevice(device: {
+  nvr_id?: number | null;
+  device_kind?: string;
+}): boolean {
+  if (device.device_kind === 'nvr_channel') return true;
+  return !!(device.nvr_id && device.nvr_id > 0);
+}
+
+export function isNvrListRow(record: {
+  device_kind?: string;
+  id?: string;
+  _isNvr?: boolean;
+}): boolean {
+  if (record._isNvr) return true;
+  if (record.device_kind === 'nvr') return true;
+  return String(record.id || '').startsWith('nvr_');
+}
+
+export function formatNvrDisplayName(nvr: {
+  name?: string | null;
+  device_name?: string | null;
+  ip?: string;
+  port?: number;
+  id?: number;
+}): string {
+  const base = (nvr.name || nvr.device_name || nvr.ip || `NVR-${nvr.id}`).trim();
+  if (base.startsWith('[NVR]')) return base;
+  return `[NVR] ${base}`;
+}
+
 export function formatCameraDeviceLabel(device: {
   name?: string | null;
   id?: string;
   source?: string | null;
-  device_kind?: 'direct' | 'gb28181' | 'gb28181_sip' | string;
+  device_kind?: 'direct' | 'gb28181' | 'gb28181_sip' | 'nvr' | 'nvr_channel' | string;
+  nvr_id?: number | null;
+  nvr_channel?: number;
+  nvr_label?: string | null;
 }): string {
   const name = (device.name || device.id || '').trim();
-  const prefix = isGb28181Device(device.source, device.device_kind) ? '[GB28181]' : '[直连]';
-  if (device.device_kind === 'gb28181_sip') {
+  if (device.device_kind === 'nvr' || isNvrListRow(device)) {
+    return formatNvrDisplayName({ name, ip: (device as { ip?: string }).ip, id: undefined });
+  }
+  if (isGb28181Device(device.source, device.device_kind)) {
     if (name.startsWith('[GB28181]')) return name;
     return name ? `[GB28181] ${name}` : '[GB28181]';
   }
-  return `${prefix} ${name}`;
+  if (isNvrChannelDevice(device)) {
+    const ch = device.nvr_channel ? `CH${device.nvr_channel} ` : '';
+    const base = name.replace(/^\[NVR\]\s*/i, '').trim();
+    return `[NVR] ${ch}${base}`.trim();
+  }
+  if (name.startsWith('[直连]') || name.startsWith('[NVR]')) return name;
+  return `[直连] ${name}`;
 }

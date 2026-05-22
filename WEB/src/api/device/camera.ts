@@ -51,6 +51,45 @@ export const getBatchStreamStatus = (device_ids: string[]) => {
 };
 
 // ====================== 设备管理接口 ======================
+export interface NvrInfo {
+  id?: number;
+  ip: string;
+  port?: number;
+  scheme?: string;
+  web_url?: string;
+  username?: string;
+  password?: string;
+  name?: string;
+  device_name?: string;
+  model?: string;
+  vendor?: string;
+  vendor_label?: string;
+  serial_number?: string;
+  serial?: string;
+  firmware_version?: string;
+  firmware?: string;
+  device_type?: string;
+  mac?: string;
+  rtsp_url?: string;
+  source?: string;
+  camera_count?: number;
+  cameras?: Array<{
+    id: string;
+    name?: string;
+    ip?: string;
+    port?: number;
+    nvr_channel?: number;
+    source?: string;
+    rtsp_url?: string;
+    rtsp_direct?: string;
+    model?: string;
+    serial?: string;
+    online?: boolean;
+    online_text?: string;
+    connection_status?: string;
+  }>;
+}
+
 export const registerDevice = (data: {
   id?: string;
   name: string;
@@ -70,8 +109,31 @@ export const registerDevice = (data: {
   model?: string;
   serial_number?: string;
   hardware_id?: string;
+  nvr_id?: number | null;
+  nvr_channel?: number;
+  nvr?: NvrInfo;
+  nvr_ip?: string;
+  nvr_port?: number;
+  nvr_name?: string;
+  nvr_vendor?: string;
 }) => {
   return commonApi('post', `${CAMERA_PREFIX}/register/device`, data);
+};
+
+export const getNvrList = (includeCameras = false) => {
+  return commonApi('get', `${CAMERA_PREFIX}/nvr/list`, {
+    include_cameras: includeCameras ? 'true' : 'false',
+  });
+};
+
+export const getNvrDetail = (nvrId: number, includeCameras = true) => {
+  return commonApi('get', `${CAMERA_PREFIX}/nvr/${nvrId}`, {
+    include_cameras: includeCameras ? 'true' : 'false',
+  });
+};
+
+export const upsertNvr = (data: NvrInfo) => {
+  return commonApi('post', `${CAMERA_PREFIX}/nvr/upsert`, data);
 };
 
 /**
@@ -109,6 +171,13 @@ export const updateDevice = (device_id: string, data: {
   model?: string;
   serial_number?: string;
   hardware_id?: string;
+  nvr_id?: number | null;
+  nvr_channel?: number;
+  nvr?: NvrInfo;
+  nvr_ip?: string;
+  nvr_port?: number;
+  nvr_name?: string;
+  nvr_vendor?: string;
 }) => {
   return commonApi('put', `${CAMERA_PREFIX}/device/${device_id}`, data);
 };
@@ -194,6 +263,95 @@ export const refreshDevices = () => {
   return commonApi('post', `${CAMERA_PREFIX}/refresh`);
 };
 
+/** 网段扫描设备（hiktools HTTP 指纹） */
+export interface SegmentScanParams {
+  targets: string;
+  username?: string;
+  password?: string;
+  ports?: string;
+  concurrency?: number;
+  timeout?: number;
+  only_hits?: boolean;
+  /** true 时仅返回识别为 NVR 的设备 */
+  nvr_only?: boolean;
+}
+
+export interface SegmentScanDeviceRow {
+  ip: string;
+  port: number;
+  ports?: number[];
+  vendor?: string;
+  vendor_label?: string;
+  device_role?: string;
+  role_label?: string;
+  is_nvr?: boolean;
+  is_recognized?: boolean;
+  confidence?: number;
+  model?: string;
+  serial?: string;
+  device_name?: string;
+  mac?: string;
+  rtsp_url?: string;
+  devices?: SegmentScanDeviceRow[];
+}
+
+export const scanSegmentDevices = (data: SegmentScanParams) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `${CAMERA_PREFIX}/scan/segment`,
+      data,
+      timeout: 600 * 1000,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export interface NvrChannelRow {
+  channel_id: number;
+  name?: string;
+  camera_ip?: string;
+  camera_port?: number;
+  online?: boolean;
+  rtsp_url?: string;
+  rtsp_direct?: string;
+  model?: string;
+  serial?: string;
+  vendor?: string;
+  probe_error?: string;
+  connection_status?: string;
+}
+
+export interface NvrInventoryResult {
+  nvr_ip: string;
+  nvr_port: number;
+  nvr_vendor?: string;
+  nvr_model?: string;
+  nvr_serial?: string;
+  nvr_device_name?: string;
+  channels: NvrChannelRow[];
+  error?: string;
+}
+
+export const enumerateNvrChannels = (data: {
+  ip: string;
+  port: number;
+  username: string;
+  password: string;
+  timeout?: number;
+  vendor?: string;
+}) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `${CAMERA_PREFIX}/scan/nvr/channels`,
+      data,
+      timeout: 300 * 1000,
+    },
+    { isTransformResponse: true },
+  );
+};
+
 // ====================== MinIO上传接口 ======================
 export const uploadScreenshot = (formData: FormData) => {
   return defHttp.post({
@@ -251,6 +409,15 @@ export interface DeviceInfo {
   support_zoom: boolean;
   enable_forward: boolean;
   cover_image_path?: string;
+  nvr_id?: number | null;
+  nvr_channel?: number;
+  nvr_label?: string | null;
+  nvr?: NvrInfo | null;
+  device_kind?: 'direct' | 'gb28181' | 'gb28181_sip' | 'nvr' | 'nvr_channel' | string;
+  rtsp_direct?: string | null;
+  channel_online?: boolean | null;
+  connection_status?: string | null;
+  channel_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -341,14 +508,22 @@ export interface DirectoryInfoResponse {
  * 获取目录列表（树形结构）
  */
 export const getDirectoryList = () => {
-  return commonApi('get', `${CAMERA_PREFIX}/directory/list`);
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    { url: `${CAMERA_PREFIX}/directory/list`, timeout: 30 * 1000 },
+    { isTransformResponse: true },
+  );
 };
 
 /**
  * 获取分屏监控用目录设备树（目录 + 设备，单次请求）
  */
 export const getDirectoryMonitorTree = () => {
-  return commonApi('get', `${CAMERA_PREFIX}/directory/monitor-tree`);
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    { url: `${CAMERA_PREFIX}/directory/monitor-tree`, timeout: 60 * 1000 },
+    { isTransformResponse: true },
+  );
 };
 
 export interface SyncGb28181DevicesResult {
@@ -360,7 +535,11 @@ export interface SyncGb28181DevicesResult {
  * 从 WVP 手动同步国标通道到设备目录（默认分组）
  */
 export const syncGb28181Devices = () => {
-  return commonApi('post', `${CAMERA_PREFIX}/directory/sync-gb28181`, {}, {}, false);
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    { url: `${CAMERA_PREFIX}/directory/sync-gb28181`, timeout: 120 * 1000 },
+    { isTransformResponse: false },
+  );
 };
 
 /** 校验设备目录 JSON（摄像头不可重复等） */

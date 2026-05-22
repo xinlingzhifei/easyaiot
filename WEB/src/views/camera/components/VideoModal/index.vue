@@ -100,6 +100,13 @@
               </Input>
             </FormItem>
           </template>
+          <NvrMountFields
+            v-if="!state.isView"
+            :disabled="state.isView"
+            v-model:nvr-id="modelRef.nvr_id"
+            v-model:nvr-channel="modelRef.nvr_channel"
+            v-model:nvr="modelRef.nvr"
+          />
         </Form>
         <!-- 其他组件 -->
         <Form
@@ -208,6 +215,18 @@
                 />
               </FormItem>
             </Col>
+            <Col :span="12" v-if="state.isView && modelRef.nvr_label">
+              <FormItem label="所属NVR">
+                <Input :value="modelRef.nvr_label" disabled />
+              </FormItem>
+            </Col>
+            <Col :span="24" v-if="!state.isView">
+              <NvrMountFields
+                v-model:nvr-id="modelRef.nvr_id"
+                v-model:nvr-channel="modelRef.nvr_channel"
+                v-model:nvr="modelRef.nvr"
+              />
+            </Col>
           </Row>
         </Form>
       </Spin>
@@ -219,6 +238,7 @@ import {computed, nextTick, reactive, ref} from 'vue';
 import {BasicModal, useModal, useModalInner} from '@/components/Modal';
 import {BasicTable, useTable} from '@/components/Table';
 import VideoRegisterModal from '../VideoRegisterModal/index.vue';
+import NvrMountFields from '../NvrMountFields/index.vue';
 import {Col, Form, FormItem, Input, Row, Select, Spin,} from 'ant-design-vue';
 import {CopyOutlined} from '@ant-design/icons-vue';
 import {useMessage} from '@/hooks/web/useMessage';
@@ -283,6 +303,10 @@ const modelRef = reactive({
   support_move: '',
   support_zoom: '',
   cameraType: 'custom', // 摄像头类型：custom, hikvision, dahua, uniview
+  nvr_id: null as number | null,
+  nvr_channel: 0,
+  nvr: null as Record<string, unknown> | null,
+  nvr_label: '',
 });
 
 
@@ -334,6 +358,9 @@ const [register, {closeModal}] = useModalInner(async (data) => {
     modelRef.source = '';
     modelRef.name = '';
     modelRef.stream = 0;
+    modelRef.nvr_id = null;
+    modelRef.nvr_channel = 0;
+    modelRef.nvr = null;
   }
 
   // 更新验证规则

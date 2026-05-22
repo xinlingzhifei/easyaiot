@@ -2,6 +2,7 @@
 从 WVP/国标服务同步通道到 VIDEO device 表，供设备目录与分屏监控展示。
 """
 import logging
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -14,6 +15,25 @@ from app.services.camera_service import (
 from models import Device, db
 
 logger = logging.getLogger(__name__)
+
+
+class Gb28181SyncError(RuntimeError):
+    """国标通道同步失败（WVP 不可达或接口异常）。"""
+
+
+def _request_headers() -> dict:
+    headers: dict = {}
+    jwt_token = (os.getenv('JWT_TOKEN') or '').strip()
+    if jwt_token:
+        headers['X-Authorization'] = f'Bearer {jwt_token}'
+    return headers
+
+
+def _http_timeout() -> Tuple[int, int]:
+    """(connect, read) 秒；连接快速失败，避免目录接口被 WVP 拖死。"""
+    connect = int(os.getenv('GB28181_HTTP_CONNECT_TIMEOUT', '3'))
+    read = int(os.getenv('GB28181_HTTP_READ_TIMEOUT', '15'))
+    return connect, read
 
 
 def _extract_list(body: Any) -> List[dict]:
@@ -155,29 +175,43 @@ def backfill_gb28181_ai_stream_urls() -> int:
     return updated
 
 
-def sync_gb28181_channels_to_devices() -> int:
+def sync_gb28181_channels_to_devices(*, strict: bool = False) -> int:
     """
     拉取 WVP 国标设备与通道，写入/更新 device 表并归入默认分组。
     返回本次新创建的设备数量。
+
+    strict=True 时 WVP 不可达会抛出 Gb28181SyncError（供手动同步接口使用）。
     """
     api_root = _gb28181_api_base()
     if not api_root:
-        logger.warning('未配置 GB28181 服务地址，跳过国标通道同步')
+        msg = (
+            '未配置国标服务地址，请设置 GATEWAY_URL（如 http://127.0.0.1:48080）'
+            ' 或 GB28181_SERVICE_URL（如 http://127.0.0.1:48088/api）'
+        )
+        logger.warning(msg)
+        if strict:
+            raise Gb28181SyncError(msg)
         return 0
 
     default_dir = get_or_create_default_directory()
     created = 0
+    headers = _request_headers()
+    timeout = _http_timeout()
 
     try:
         devices_resp = requests.get(
             f'{api_root}/devices',
             params={'page': 1, 'count': 10000},
-            timeout=20,
+            headers=headers,
+            timeout=timeout,
         )
         devices_resp.raise_for_status()
         gb_devices = _extract_list(devices_resp.json())
     except Exception as e:
-        logger.warning(f'拉取国标设备列表失败: {e}')
+        msg = f'拉取国标设备列表失败（{api_root}）: {e}'
+        logger.warning(msg)
+        if strict:
+            raise Gb28181SyncError(msg) from e
         return 0
 
     for gb_dev in gb_devices:
@@ -194,7 +228,8 @@ def sync_gb28181_channels_to_devices() -> int:
             ch_resp = requests.get(
                 f'{api_root}/devices/{sip_id}/channels',
                 params={'page': 1, 'count': 10000},
-                timeout=20,
+                headers=headers,
+                timeout=timeout,
             )
             ch_resp.raise_for_status()
             channels = _extract_list(ch_resp.json())
@@ -222,13 +257,21 @@ def sync_gb28181_channels_to_devices() -> int:
     return created
 
 
+def ensure_directory_layout() -> None:
+    """目录/分屏树加载前：仅整理未分组设备，不阻塞请求去拉 WVP。"""
+    try:
+        sync_unassigned_devices_to_default_directory()
+    except Exception as e:
+        logger.warning(f'未分组设备归入默认目录失败: {e}')
+
+
 def ensure_directory_devices_synced() -> None:
-    """目录/分屏树加载前：同步国标 + 未分组设备归入默认目录。"""
+    """兼容旧调用：完整国标同步 + 目录整理（仅手动同步或后台任务应使用）。"""
     try:
         sync_gb28181_channels_to_devices()
     except Exception as e:
         logger.warning(f'国标设备同步异常: {e}')
-        sync_unassigned_devices_to_default_directory()
+        ensure_directory_layout()
     try:
         backfill_gb28181_ai_stream_urls()
     except Exception as e:

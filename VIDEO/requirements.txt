@@ -21,6 +21,7 @@ Pillow==10.0.0
 python-dotenv==1.0.0
 PyYAML==6.0.2
 requests==2.31.0
+httpx[http2]>=0.27
 psycopg2-binary==2.9.9
 nacos-sdk-python==2.0.9
 minio==7.2.0

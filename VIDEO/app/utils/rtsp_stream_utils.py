@@ -66,6 +66,54 @@ def task_streams_prefer_tcp(device_streams: Dict[str, Any]) -> bool:
     return False
 
 
+def apply_videocapture_stream_timeouts(
+    cap: cv2.VideoCapture,
+    url: str,
+    *,
+    open_timeout_msec: int,
+    read_timeout_msec: int,
+) -> None:
+    """
+    仅为 RTSP 设置 OpenCV 连接/读取超时。
+
+    对 RTMP 设置 CAP_PROP_OPEN_TIMEOUT_MSEC 时，部分 OpenCV/FFmpeg 组合会把超时误解析为
+    rtmp listen 模式（日志形如 tcp://host:port?listen&listen_timeout=...），导致无法拉流。
+    """
+    if not (url or "").startswith("rtsp://"):
+        return
+    try:
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, open_timeout_msec)
+    except (AttributeError, cv2.error):
+        pass
+    try:
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, read_timeout_msec)
+    except (AttributeError, cv2.error):
+        pass
+
+
+def open_network_videocapture(
+    url: str,
+    *,
+    open_timeout_msec: int = 5000,
+    read_timeout_msec: int = 2500,
+) -> cv2.VideoCapture:
+    """打开 RTSP/RTMP 网络流；超时属性仅作用于 RTSP。"""
+    if url.startswith("rtmp://") or url.startswith("rtsp://"):
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+    else:
+        cap = cv2.VideoCapture(url)
+    try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    except (AttributeError, cv2.error):
+        pass
+    apply_videocapture_stream_timeouts(
+        cap, url,
+        open_timeout_msec=open_timeout_msec,
+        read_timeout_msec=read_timeout_msec,
+    )
+    return cap
+
+
 def is_likely_rtsp_flat_corrupt_frame(
     frame,
     std_max: float = 4.0,

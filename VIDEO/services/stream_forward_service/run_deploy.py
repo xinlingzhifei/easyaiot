@@ -39,6 +39,7 @@ sys.path.insert(0, video_root)
 # 导入VIDEO模块的模型
 from models import db, StreamForwardTask, Device
 from app.utils.async_video_stream import AsyncVideoStream, async_rtsp_read_enabled
+from app.utils.rtsp_stream_utils import open_network_videocapture
 
 # Flask应用实例（延迟创建）
 _flask_app = None
@@ -653,26 +654,11 @@ def buffer_worker(device_id: str):
                 logger.info(f"正在连接设备 {device_id} 的 {stream_type} 流: {rtsp_url} (重试次数: {retry_count})")
                 
                 try:
-                    # 使用 FFmpeg 后端
-                    if rtsp_url.startswith('rtmp://') or rtsp_url.startswith('rtsp://'):
-                        cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-                    else:
-                        cap = cv2.VideoCapture(rtsp_url)
-                    
-                    # 设置缓冲区大小为1，减少延迟
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    
-                    # 设置超时参数
-                    if rtsp_url.startswith('rtmp://') or rtsp_url.startswith('rtsp://'):
-                        try:
-                            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, rtsp_open_timeout_msec)
-                        except (AttributeError, cv2.error):
-                            pass
-                        try:
-                            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, rtsp_read_timeout_msec)
-                        except (AttributeError, cv2.error):
-                            pass
-                    
+                    cap = open_network_videocapture(
+                        rtsp_url,
+                        open_timeout_msec=rtsp_open_timeout_msec,
+                        read_timeout_msec=rtsp_read_timeout_msec,
+                    )
                 except Exception as e:
                     logger.error(f"设备 {device_id} 创建 VideoCapture 时出错: {str(e)}")
                     if cap is not None:

@@ -2,6 +2,12 @@ import type { DeviceInfo } from '@/api/device/camera';
 import { getDeviceList } from '@/api/device/camera';
 import { queryVideoList } from '@/api/device/gb28181';
 import { isGb28181Device, parseGb28181Source } from './deviceLabel';
+import {
+  buildCardRowsWithNvr,
+  fetchNvrList,
+  filterStandaloneDirectDevices,
+  nvrToTableRow,
+} from './nvrDeviceGroup';
 import { formatGb28181DeviceDisplayName } from './gb28181DeviceLabel';
 import type { Gb28181CardItem } from '@/views/camera/components/Gb28181DeviceCard/index.vue';
 
@@ -28,8 +34,9 @@ export function isGb28181SipListRow(record: {
   return String(record.id || '').startsWith('gb_sip_');
 }
 
+/** @deprecated 使用 filterStandaloneDirectDevices */
 export function filterDirectDevices(devices: DeviceInfo[]): DeviceInfo[] {
-  return devices.filter((d) => !isGb28181ChannelRecord(d));
+  return filterStandaloneDirectDevices(devices.filter((d) => !isGb28181ChannelRecord(d)));
 }
 
 /** WVP 国标设备 → 卡片数据（与 gb28181/VideoCardList 字段一致） */
@@ -83,7 +90,7 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
   const search = params.search ?? params.deviceName;
   const online = params.online;
 
-  const [devRes, gbRes] = await Promise.all([
+  const [devRes, gbRes, nvrs] = await Promise.all([
     getDeviceList({
       pageNo: 1,
       pageSize: 10000,
@@ -96,40 +103,42 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
       query: search || undefined,
       status: online === true || online === 'true' ? true : online === false || online === 'false' ? false : undefined,
     }),
+    fetchNvrList(),
   ]);
 
-  const direct = filterDirectDevices(devRes?.data ?? []);
+  const allDevices = devRes?.data ?? [];
+  const direct = filterStandaloneDirectDevices(
+    allDevices.filter((d) => !isGb28181ChannelRecord(d)),
+  );
   const gbRows = (gbRes?.data ?? []).map((wvp) => wvpDeviceToTableRow(wvp));
+  const nvrRows = nvrs.map((n) => nvrToTableRow(n));
 
   return {
-    data: [...direct, ...gbRows],
-    total: direct.length + gbRows.length,
+    data: [...direct, ...nvrRows, ...gbRows],
+    total: direct.length + nvrRows.length + gbRows.length,
     directCount: direct.length,
+    nvrCount: nvrRows.length,
     gbCount: gbRows.length,
   };
 }
 
 export type DeviceListDisplayItem =
   | { kind: 'direct'; device: DeviceInfo }
-  | { kind: 'gb_sip'; gbItem: Gb28181CardItem };
+  | { kind: 'gb_sip'; gbItem: Gb28181CardItem }
+  | { kind: 'nvr'; nvrItem: import('./nvrDeviceGroup').NvrCardItem };
 
 export function buildMergedCardRows(
   devices: DeviceInfo[],
   wvpDevices: Record<string, any>[],
+  nvrs: import('./nvrDeviceGroup').NvrInfo[] = [],
 ): DeviceListDisplayItem[] {
-  const items: DeviceListDisplayItem[] = filterDirectDevices(devices).map((device) => ({
-    kind: 'direct' as const,
-    device,
-  }));
+  const gbItems: DeviceListDisplayItem[] = [];
   for (const wvp of wvpDevices || []) {
     const sipId = wvp.deviceIdentification ?? wvp.deviceId;
     if (!sipId) continue;
-    items.push({
-      kind: 'gb_sip' as const,
-      gbItem: wvpDeviceToCardItem(wvp),
-    });
+    gbItems.push({ kind: 'gb_sip' as const, gbItem: wvpDeviceToCardItem(wvp) });
   }
-  return items;
+  return buildCardRowsWithNvr(devices, nvrs, gbItems);
 }
 
 /** @deprecated 表格请用 fetchMergedDeviceList */

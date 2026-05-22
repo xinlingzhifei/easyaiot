@@ -23,6 +23,15 @@
             channel-hint="点击下方通道进行点播播放"
             @back="closeGbDetail"
           />
+          <NvrDeviceDetail
+            v-else-if="nvrDetailVisible"
+            :nvr-id="nvrDetailId"
+            :title="nvrDetailTitle"
+            @back="closeNvrDetail"
+            @view="handleNvrChannelView"
+            @edit="handleNvrChannelEdit"
+            @play="handleCardPlay"
+          />
           <template v-else>
           <!-- 列表模式 -->
           <BasicTable v-if="viewMode === 'table'" @register="registerTable">
@@ -33,6 +42,18 @@
                         <RadarChartOutlined/>
                       </template>
                       扫描局域网ONVIF设备
+                    </a-button>
+                    <a-button @click="handleScanSegmentCamera">
+                      <template #icon>
+                        <SearchOutlined/>
+                      </template>
+                      通过网段注册摄像头
+                    </a-button>
+                    <a-button @click="handleScanSegmentNvr">
+                      <template #icon>
+                        <ClusterOutlined/>
+                      </template>
+                      通过网段注册NVR
                     </a-button>
                     <a-button @click="openAddModal('source')">
                       <template #icon>
@@ -86,7 +107,7 @@
               <div v-else class="card-mode-wrapper">
                 <DeviceMixedCardList
                   ref="deviceMixedCardListRef"
-                  :api="getDeviceList"
+                  :api="fetchMergedDeviceList"
                   :params="{}"
                   @view="handleCardView"
                   @edit="handleCardEdit"
@@ -98,6 +119,7 @@
                   @refresh-gb-device="handleRefreshGbDevice"
                   @view-gb-device="handleViewGbDevice"
                   @edit-gb-device="handleEditGbDevice"
+                  @open-nvr-device="handleOpenNvrDevice"
                 >
                   <template #header>
                     <a-button type="primary" @click="handleScanOnvif">
@@ -105,6 +127,18 @@
                         <RadarChartOutlined/>
                       </template>
                       扫描局域网ONVIF设备
+                    </a-button>
+                    <a-button @click="handleScanSegmentCamera">
+                      <template #icon>
+                        <SearchOutlined/>
+                      </template>
+                      通过网段注册摄像头
+                    </a-button>
+                    <a-button @click="handleScanSegmentNvr">
+                      <template #icon>
+                        <ClusterOutlined/>
+                      </template>
+                      通过网段注册NVR
                     </a-button>
                     <a-button @click="handleRefreshOnvifDevices">
                       <template #icon>
@@ -132,6 +166,7 @@
           <DialogPlayer title="视频播放" @register="registerPlayerAddModel"
                         @success="handlePlayerSuccess"/>
           <VideoModal @register="registerAddModel" @success="handleSuccess"/>
+          <SegmentScanModal @register="registerSegmentScanModal" @success="handleSuccess"/>
           <Gb28181DeviceModal @register="registerGbDeviceModal" @success="handleSuccess"/>
         </TabPane>
         <TabPane key="3" tab="抓拍空间">
@@ -176,7 +211,15 @@ import {
   stopStreamForwarding,
   StreamStatusResponse
 } from '@/api/device/camera';
-import {RadarChartOutlined, SwapOutlined, SyncOutlined, VideoCameraAddOutlined} from '@ant-design/icons-vue';
+import {
+  ClusterOutlined,
+  RadarChartOutlined,
+  SearchOutlined,
+  SwapOutlined,
+  SyncOutlined,
+  VideoCameraAddOutlined,
+} from '@ant-design/icons-vue';
+import SegmentScanModal from './components/SegmentScanModal/index.vue';
 import DialogPlayer from "@/components/VideoPlayer/DialogPlayer.vue";
 import SplitScreenMonitor from "./components/SplitScreenMonitor/index.vue";
 import SnapSpace from "./components/SnapSpace/index.vue";
@@ -184,13 +227,16 @@ import AlgorithmTask from "./components/AlgorithmTask/index.vue";
 import RecordSpace from "./components/RecordSpace/index.vue";
 import DeviceMixedCardList from './components/DeviceMixedCardList/index.vue';
 import Gb28181DeviceDetail from './components/Gb28181DeviceDetail/index.vue';
+import NvrDeviceDetail from './components/NvrDeviceDetail/index.vue';
 import Gb28181DeviceModal from './components/Gb28181DeviceModal/index.vue';
 import type { Gb28181CardItem } from './components/Gb28181DeviceCard/index.vue';
+import type { NvrCardItem } from './utils/nvrDeviceGroup';
 import {
   fetchMergedDeviceList,
   isGb28181SipListRow,
   type GbSipDeviceSummary,
 } from './utils/gb28181DeviceGroup';
+import { isNvrListRow } from './utils/deviceLabel';
 import StreamForward from "./components/StreamForward/index.vue";
 import Gb28181PullProxy from "@/views/gb28181/components/PullProxy/index.vue";
 import { formatCameraDeviceLabel } from './utils/deviceLabel';
@@ -208,6 +254,7 @@ const route = useRoute();
 
 const {createMessage} = useMessage();
 const [registerAddModel, {openModal}] = useModal();
+const [registerSegmentScanModal, {openModal: openSegmentScanModal}] = useModal();
 const [registerGbDeviceModal, {openModal: openGbDeviceModal}] = useModal();
 
 const [registerPlayerAddModel, {openModal: openPlayerAddModel}] = useModal();
@@ -231,6 +278,10 @@ const deviceMixedCardListRef = ref();
 const gbDetailVisible = ref(false);
 const gbDetailSipId = ref('');
 const gbDetailTitle = ref('');
+
+const nvrDetailVisible = ref(false);
+const nvrDetailId = ref(0);
+const nvrDetailTitle = ref('');
 
 // 抓拍空间组件引用
 const snapSpaceRef = ref();
@@ -333,6 +384,30 @@ function closeGbDetail() {
   gbDetailVisible.value = false;
   gbDetailSipId.value = '';
   gbDetailTitle.value = '';
+}
+
+function openNvrDetail(item: NvrCardItem) {
+  nvrDetailId.value = item.nvrId;
+  nvrDetailTitle.value = item.name;
+  nvrDetailVisible.value = true;
+}
+
+function closeNvrDetail() {
+  nvrDetailVisible.value = false;
+  nvrDetailId.value = 0;
+  nvrDetailTitle.value = '';
+}
+
+function handleOpenNvrDevice(item: NvrCardItem) {
+  openNvrDetail(item);
+}
+
+function handleNvrChannelView(device: DeviceInfo) {
+  openAddModal('view', device);
+}
+
+function handleNvrChannelEdit(device: DeviceInfo) {
+  openAddModal('edit', device);
 }
 
 function handleOpenGbDevice(summary: GbSipDeviceSummary) {
@@ -498,6 +573,25 @@ const startStatusCheckTimer = () => {
 
 // 获取表格操作按钮
 const getTableActions = (record) => {
+  if (isNvrListRow(record)) {
+    const nvrId = record.nvr_id_num ?? Number(String(record.id).replace(/^nvr_/, ''));
+    return [
+      {
+        icon: 'ant-design:cluster-outlined',
+        tooltip: '挂载摄像头',
+        onClick: () => {
+          openNvrDetail({
+            nvrId,
+            name: record.name || `[NVR] ${record.ip}`,
+            ip: record.ip,
+            port: record.port ?? 80,
+            camera_count: record.channel_count ?? 0,
+            _nvr: { id: nvrId, ip: record.ip },
+          } as NvrCardItem);
+        },
+      },
+    ];
+  }
   if (isGb28181SipListRow(record)) {
     return [
       {
@@ -698,6 +792,10 @@ const openAddModal = (type, record = null) => {
 
 /** 单机实时 WS-Discovery（GET /video/camera/discovery） */
 const handleScanOnvif = () => openAddModal('onvif');
+
+/** 网段 HTTP 指纹扫描（hiktools） */
+const handleScanSegmentCamera = () => openSegmentScanModal(true, { mode: 'camera' });
+const handleScanSegmentNvr = () => openSegmentScanModal(true, { mode: 'nvr' });
 
 /** 后台刷新已录入设备的 IP（POST /video/camera/refresh） */
 const handleRefreshOnvifDevices = async () => {

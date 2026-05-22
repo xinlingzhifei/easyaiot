@@ -37,7 +37,7 @@ sys.path.insert(0, video_root)
 
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
-from app.utils.gb28181_source import resolve_gb28181_source
+from app.utils.gb28181_source import resolve_gb28181_alternate_pull_url, resolve_gb28181_source
 from app.utils.alert_images_paths import resolve_alert_images_root
 from app.utils.async_video_stream import AsyncVideoStream, async_rtsp_read_enabled
 from app.utils.cron_utils import (
@@ -52,6 +52,7 @@ from app.utils.rtsp_stream_utils import (
     gb28181_async_queue_max,
     is_gb28181_source,
     is_likely_rtsp_flat_corrupt_frame,
+    open_network_videocapture,
     task_streams_prefer_tcp,
 )
 
@@ -1685,33 +1686,12 @@ def buffer_streamer_worker(device_id: str):
 
                 logger.info(f"正在连接设备 {device_id} 的 {stream_type} 流: {rtsp_url} (重试次数: {retry_count})")
 
-                # 强制使用 FFmpeg 后端，避免 OpenCV 尝试其他后端导致错误
                 try:
-                    # 对于 RTMP/RTSP 流，使用 FFmpeg 后端
-                    if rtsp_url.startswith('rtmp://') or rtsp_url.startswith('rtsp://'):
-                        cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-                    else:
-                        cap = cv2.VideoCapture(rtsp_url)
-
-                    # 设置缓冲区大小为1，减少延迟
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-                    # 设置超时参数（毫秒）- 对于 RTMP/RTSP 流设置合理的超时
-                    # 注意：这些属性可能在某些 OpenCV 版本中不可用，使用 try-except 处理
-                    if rtsp_url.startswith('rtmp://') or rtsp_url.startswith('rtsp://'):
-                        try:
-                            # 设置连接超时（毫秒）
-                            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, rtsp_open_timeout_msec)
-                        except (AttributeError, cv2.error):
-                            # 如果属性不存在，忽略错误
-                            pass
-                        try:
-                            # 设置读取超时（毫秒）
-                            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, rtsp_read_timeout_msec)
-                        except (AttributeError, cv2.error):
-                            # 如果属性不存在，忽略错误
-                            pass
-
+                    cap = open_network_videocapture(
+                        rtsp_url,
+                        open_timeout_msec=rtsp_open_timeout_msec,
+                        read_timeout_msec=rtsp_read_timeout_msec,
+                    )
                 except Exception as e:
                     logger.error(f"设备 {device_id} 创建 VideoCapture 时出错: {str(e)}")
                     # 确保释放资源
@@ -1734,6 +1714,22 @@ def buffer_streamer_worker(device_id: str):
                     continue
 
                 if not cap.isOpened():
+                    _fallback_url = None
+                    if _is_gb28181 and _original_source and rtsp_url.startswith('rtmp://'):
+                        _fallback_url = resolve_gb28181_alternate_pull_url(
+                            _original_source, rtsp_url, logger=logger,
+                        )
+                    if _fallback_url:
+                        if cap is not None:
+                            try:
+                                cap.release()
+                            except Exception:
+                                pass
+                        rtsp_url = _fallback_url
+                        retry_count = 0
+                        cap = None
+                        continue
+
                     retry_count += 1
                     if retry_count >= max_retries:
                         logger.error(f"❌ 设备 {device_id} 连接 {stream_type} 流失败，已达到最大重试次数 {max_retries}")
@@ -1744,11 +1740,10 @@ def buffer_streamer_worker(device_id: str):
                         logger.warning(
                             f"设备 {device_id} 无法打开 {stream_type} 流，等待重试... ({retry_count}/{max_retries})")
                         time.sleep(rtsp_retry_delay_sec)
-                    # 确保释放资源
                     if cap is not None:
                         try:
                             cap.release()
-                        except:
+                        except Exception:
                             pass
                         cap = None
                     continue

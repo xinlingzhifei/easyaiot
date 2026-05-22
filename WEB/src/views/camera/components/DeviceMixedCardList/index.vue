@@ -24,7 +24,13 @@
           </template>
           <template #renderItem="{ item }">
             <ListItem
-              v-if="item.type === 'gb_sip'"
+              v-if="item.type === 'nvr'"
+              class="product-item normal nvr-list-item"
+            >
+              <NvrDeviceCard :item="item.nvrItem" @open="handleNvrCardOpen" />
+            </ListItem>
+            <ListItem
+              v-else-if="item.type === 'gb_sip'"
               :class="item.gbItem.onLine ? 'product-item normal' : 'product-item error'"
             >
               <Gb28181DeviceCard
@@ -158,9 +164,12 @@ import {
   buildMergedCardRows,
   type GbSipDeviceSummary,
 } from '@/views/camera/utils/gb28181DeviceGroup';
+import { fetchNvrList } from '@/views/camera/utils/nvrDeviceGroup';
+import type { NvrCardItem } from '@/views/camera/utils/nvrDeviceGroup';
 import Gb28181DeviceCard, {
   type Gb28181CardItem,
 } from '@/views/camera/components/Gb28181DeviceCard/index.vue';
+import NvrDeviceCard from '@/views/camera/components/NvrDeviceCard/index.vue';
 
 const ListItem = List.Item;
 
@@ -181,13 +190,15 @@ const emit = defineEmits([
   'refreshGbDevice',
   'viewGbDevice',
   'editGbDevice',
+  'openNvrDevice',
 ]);
 
 const { createMessage } = useMessage();
 
 type CardRow =
   | { key: string; type: 'direct'; device: DeviceInfo }
-  | { key: string; type: 'gb_sip'; gbItem: Gb28181CardItem };
+  | { key: string; type: 'gb_sip'; gbItem: Gb28181CardItem }
+  | { key: string; type: 'nvr'; nvrItem: NvrCardItem };
 
 const allRows = ref<CardRow[]>([]);
 const state = reactive({ loading: true });
@@ -243,11 +254,18 @@ async function handleSubmit() {
 
 function mergedItemsToRows(items: ReturnType<typeof buildMergedCardRows>): CardRow[] {
   return items.map((item) => {
+    if (item.kind === 'nvr') {
+      return {
+        key: `nvr_${item.nvrItem.nvrId}`,
+        type: 'nvr' as const,
+        nvrItem: item.nvrItem,
+      };
+    }
     if (item.kind === 'gb_sip') {
       return {
-        key: `gb_sip_${item.gbItem.deviceIdentification}`,
+        key: `gb_sip_${(item.gbItem as Gb28181CardItem).deviceIdentification}`,
         type: 'gb_sip' as const,
-        gbItem: item.gbItem,
+        gbItem: item.gbItem as Gb28181CardItem,
       };
     }
     return { key: item.device.id, type: 'direct' as const, device: item.device };
@@ -259,6 +277,12 @@ function filterRows(rows: CardRow[], p: Record<string, any>): CardRow[] {
   const name = (p.deviceName || '').trim().toLowerCase();
   if (name) {
     list = list.filter((row) => {
+      if (row.type === 'nvr') {
+        return (
+          row.nvrItem.name.toLowerCase().includes(name) ||
+          row.nvrItem.ip.toLowerCase().includes(name)
+        );
+      }
       if (row.type === 'gb_sip') {
         return (
           row.gbItem.deviceIdentification.toLowerCase().includes(name) ||
@@ -301,7 +325,7 @@ async function fetch(p: Record<string, any> = {}) {
   try {
     state.loading = true;
     const search = p.deviceName;
-    const [devRes, gbRes] = await Promise.all([
+    const [devRes, gbRes, nvrs] = await Promise.all([
       api({
         ...params,
         pageNo: 1,
@@ -320,6 +344,7 @@ async function fetch(p: Record<string, any> = {}) {
               ? false
               : undefined,
       }),
+      fetchNvrList(),
     ]);
     let devices: DeviceInfo[] = [];
     if (devRes?.data) {
@@ -328,7 +353,7 @@ async function fetch(p: Record<string, any> = {}) {
       devices = devRes;
     }
     const wvpDevices = gbRes?.data ?? [];
-    const items = buildMergedCardRows(devices, wvpDevices);
+    const items = buildMergedCardRows(devices, wvpDevices, nvrs);
     allRows.value = filterRows(mergedItemsToRows(items), p);
     total.value = allRows.value.length;
     if (page.value > 1 && pageRows.value.length === 0) {
@@ -356,6 +381,10 @@ function pageChange(p: number, pz: number) {
 function pageSizeChange(_current: number, size: number) {
   pageSize.value = size;
   page.value = 1;
+}
+
+function handleNvrCardOpen(item: NvrCardItem) {
+  emit('openNvrDevice', item);
 }
 
 function handleGbCardOpen(item: Gb28181CardItem) {

@@ -177,6 +177,117 @@ def _extract_stream_url(payload: dict) -> Optional[str]:
     return url
 
 
+def _all_play_urls_from_body(body: dict) -> List[str]:
+    """播放接口 data 中全部可播放 URL（去重、保序）。"""
+    if not isinstance(body, dict):
+        return []
+    keys = (
+        'rtmp', 'rtmps', 'rtsp', 'rtsps',
+        'flv', 'https_flv', 'ws_flv',
+        'fmp4', 'hls', 'rtc', 'rtcs',
+    )
+    seen = set()
+    out: List[str] = []
+    for key in keys:
+        val = body.get(key)
+        if not isinstance(val, str):
+            continue
+        u = val.strip()
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        out.append(u)
+    return out
+
+
+def _fetch_gb28181_play_body(
+    source: Optional[str],
+    *,
+    timeout: int = 15,
+) -> Tuple[Optional[Tuple[str, str]], Optional[dict], List[str]]:
+    """返回 (device_id, channel_id), play body, errors。"""
+    parsed = parse_gb28181_source(source)
+    if not parsed:
+        return None, None, ['invalid gb28181 source']
+
+    device_id, channel_id = parsed
+    headers = {}
+    jwt_token = (os.getenv('JWT_TOKEN') or '').strip()
+    if jwt_token:
+        headers['X-Authorization'] = f'Bearer {jwt_token}'
+
+    errors: List[str] = []
+    for base_url in _candidate_bases():
+        play_url = _build_play_url(base_url, device_id, channel_id)
+        try:
+            response = requests.get(play_url, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            payload = response.json()
+            body = payload.get('data') if isinstance(payload.get('data'), dict) else payload
+            if isinstance(body, dict) and _all_play_urls_from_body(body):
+                return parsed, body, errors
+            errors.append(f'{base_url}: 未返回可播放流地址')
+        except Exception as exc:
+            errors.append(f'{base_url}: {exc}')
+    return parsed, None, errors
+
+
+def resolve_gb28181_alternate_pull_url(
+    source: Optional[str],
+    current_url: str,
+    *,
+    prefer_schemes: Tuple[str, ...] = ('rtsp', 'rtsps'),
+    timeout: int = 15,
+    logger=None,
+) -> Optional[str]:
+    """
+    OpenCV 拉 GB28181 的 RTMP 失败时，从播放接口选取备用地址（默认 RTSP）。
+
+    用于 rtmp_first 保活策略与 OpenCV RTMP 不兼容时的自动降级。
+    """
+    if not is_gb28181_source(source) or not (current_url or '').strip():
+        return None
+
+    _disable = (os.getenv('GB28181_OPENCV_RTMP_FALLBACK_RTSP', '1').strip().lower()
+                in ('0', 'false', 'no', 'off'))
+    if _disable:
+        return None
+
+    parsed, body, errors = _fetch_gb28181_play_body(source, timeout=timeout)
+    if not parsed or not body:
+        return None
+
+    device_id, channel_id = parsed
+    current = current_url.strip()
+    current_scheme = urlparse(current).scheme.lower()
+    candidates = _all_play_urls_from_body(body)
+
+    for scheme in prefer_schemes:
+        for url in candidates:
+            if urlparse(url).scheme.lower() == scheme and url != current:
+                log_fn = logger.warning if logger else _logger.warning
+                log_fn(
+                    f'GB28181 OpenCV 拉流降级: {device_id}/{channel_id} '
+                    f'{current_scheme} -> {scheme} | {current} -> {url}'
+                )
+                return url
+
+    for url in candidates:
+        if url != current and urlparse(url).scheme.lower() != current_scheme:
+            log_fn = logger.warning if logger else _logger.warning
+            log_fn(
+                f'GB28181 OpenCV 拉流降级(其它协议): {device_id}/{channel_id} '
+                f'{current} -> {url}'
+            )
+            return url
+
+    if logger and errors:
+        logger.debug(
+            f'GB28181 无可用备用拉流地址: {device_id}/{channel_id}, errors={"; ".join(errors)}'
+        )
+    return None
+
+
 def resolve_gb28181_source(
     source: Optional[str],
     *,
