@@ -108,6 +108,7 @@ import {useMessage} from "@/hooks/web/useMessage";
 import {controlPTZ} from "@/api/device/camera";
 import {controlGbPtz, playByDeviceAndChannel} from "@/api/device/gb28181";
 import { getGb28181PlayIds, shouldPlayViaGb28181 } from '@/views/camera/utils/deviceLabel';
+import { pickWvpPlayUrl } from '@/views/camera/utils/devicePlay';
 
 const {createMessage} = useMessage()
 
@@ -160,7 +161,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
     try {
       const res = await playByDeviceAndChannel(sipDeviceId, channelId);
       const streamContent = res?.data?.data ?? res?.data;
-      const url = streamContent?.ws_flv || streamContent?.https_flv || streamContent?.rtmp || '';
+      const url = pickWvpPlayUrl(streamContent) || '';
       if (url) {
         state.currentUrl = url;
         state.iframeUrl = '<iframe src="' + url + '"></iframe>';

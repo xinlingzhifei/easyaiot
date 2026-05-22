@@ -156,6 +156,8 @@ export default {
   methods: {
     create(options) {
       options = options || {};
+      const pageHttps =
+        typeof window !== 'undefined' && window.location.protocol === 'https:';
       this.jessibuca = new window.Jessibuca(
         Object.assign(
           {
@@ -163,13 +165,12 @@ export default {
             decoder: '/static/js/jessibuca/decoder.js',
             videoBuffer: 0.2, // 缓存时长
             isResize: false,
-            useWCS: this.useWCS,
+            useWCS: pageHttps,
             useMSE: this.useMSE,
+            autoWasm: true,
             text: "",
-            // background: "bg.jpg",
             loadingText: "疯狂加载中...",
-            // hasAudio:false,
-            debug: true,
+            debug: false,
             supportDblclickFullscreen: true,
             showBandwidth: this.showBandwidth, // 显示网速
             operateBtns: {
@@ -181,7 +182,13 @@ export default {
             vod: this.vod,
             forceNoOffscreen: !this.useOffscreen,
             isNotMute: true,
-            timeout: 10
+            timeout: 10,
+            loadingTimeout: 10,
+            loadingTimeoutReplay: true,
+            loadingTimeoutReplayTimes: 2,
+            heartTimeoutReplay: true,
+            heartTimeoutReplayTimes: 2,
+            wasmDecodeErrorReplay: true,
           },
           options
         )

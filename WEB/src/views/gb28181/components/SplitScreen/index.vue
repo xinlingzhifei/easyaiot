@@ -195,6 +195,7 @@ import { CollapseContainer } from '@/components/Container';
 import { ScrollContainer } from '@/components/Container';
 import { handleTree } from '@/utils/tree';
 import { playByDeviceAndChannel, queryVideoList, getDeviceChannels } from '@/api/device/gb28181';
+import { pickWvpPlayUrl } from '@/views/camera/utils/devicePlay';
 import type { TreeProps } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
@@ -326,8 +327,9 @@ async function handleSelect(selectedKeys: any, _info?: any) {
     const res = await playByDeviceAndChannel(deviceId, channelId);
     // WVP 返回体为 { code, msg, data: StreamContent }，StreamContent 含 ws_flv / https_flv / rtmp
     const streamContent = res?.data?.data ?? res?.data;
-    if (streamContent?.ws_flv || streamContent?.https_flv || streamContent?.rtmp) {
-      state.playUrls[state.playerIdx] = streamContent.ws_flv || streamContent.https_flv || streamContent.rtmp;
+    const playUrl = pickWvpPlayUrl(streamContent);
+    if (playUrl) {
+      state.playUrls[state.playerIdx] = playUrl;
       createMessage.success('视频加载成功');
     } else {
       createMessage.error(streamContent?.msg || res?.data?.msg || '未获取到播放地址');

@@ -151,13 +151,17 @@ export async function pickDirectPlayUrls(
   if (!aiUrl) {
     return { url: videoUrl };
   }
-  if (!videoUrl || aiUrl === videoUrl) {
+  if (aiUrl === videoUrl) {
     return { url: aiUrl };
   }
 
+  // ai_http_stream 在库中常为预置占位地址（国标同步即有），须探测 ZLM 是否在推流
   const aiReady = await probeStreamPlayable(aiUrl);
   if (!aiReady) {
     return { url: videoUrl };
+  }
+  if (!videoUrl) {
+    return { url: aiUrl };
   }
   return { url: aiUrl, fallbackUrl: videoUrl, preferAi: true };
 }
@@ -166,13 +170,43 @@ export function supportsRtspForward(record: DeviceInfo): boolean {
   return !isGb28181DeviceRecord(record);
 }
 
+/** 从 WVP 点播结果中选取浏览器可播地址（HTTPS 页优先 wss/https，并做 localhost 改写） */
+export function pickWvpPlayUrl(streamContent: Record<string, any> | null | undefined): string | null {
+  if (!streamContent) return null;
+  const isHttps =
+    typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const candidates = isHttps
+    ? [
+        streamContent.wss_flv,
+        streamContent.https_flv,
+        streamContent.wss_fmp4,
+        streamContent.https_fmp4,
+        streamContent.ws_flv,
+        streamContent.flv,
+        streamContent.fmp4,
+      ]
+    : [
+        streamContent.ws_flv,
+        streamContent.flv,
+        streamContent.ws_fmp4,
+        streamContent.fmp4,
+        streamContent.https_flv,
+        streamContent.wss_flv,
+      ];
+  for (const raw of candidates) {
+    const url = toBrowserPlayUrl(raw);
+    if (url) return url;
+  }
+  return toBrowserPlayUrl(streamContent.rtmp);
+}
+
 export async function resolveGb28181StreamUrl(
   sipDeviceId: string,
   channelId: string,
 ): Promise<string | null> {
   const res = await playByDeviceAndChannel(sipDeviceId, channelId);
   const streamContent = (res as any)?.data?.data ?? (res as any)?.data;
-  return streamContent?.ws_flv || streamContent?.https_flv || streamContent?.rtmp || null;
+  return pickWvpPlayUrl(streamContent);
 }
 
 export interface GbChannelPlayUrlResult {
@@ -188,6 +222,10 @@ export async function loadGbChannelSyncedDevice(
   synced?: MonitorTreeDeviceNode | null,
 ): Promise<MonitorTreeDeviceNode | null> {
   if (synced?.ai_http_stream?.trim() || synced?.ai_rtmp_stream?.trim()) {
+    return synced;
+  }
+  // 目录树已有同步设备但无 AI 地址时，跳过详情请求，直接走 WVP 点播
+  if (synced?.id) {
     return synced;
   }
   try {
@@ -212,35 +250,35 @@ export async function resolveGbChannelPlayUrls(
   },
 ): Promise<GbChannelPlayUrlResult> {
   const enableAi = options?.enableAi ?? false;
-  let wvpUrl = options?.wvpUrl ?? null;
-  const loadWvp = async () => {
-    if (!wvpUrl) {
-      wvpUrl = await resolveGb28181StreamUrl(sipDeviceId, channelId);
-    }
-    return wvpUrl;
-  };
+  const wvpPromise =
+    options?.wvpUrl != null
+      ? Promise.resolve(options.wvpUrl)
+      : resolveGb28181StreamUrl(sipDeviceId, channelId);
 
   if (!enableAi) {
-    return { url: await loadWvp() };
+    return { url: await wvpPromise };
   }
 
-  const synced = await loadGbChannelSyncedDevice(
-    sipDeviceId,
-    channelId,
-    options?.synced ?? null,
-  );
+  const [wvpUrl, synced] = await Promise.all([
+    wvpPromise,
+    loadGbChannelSyncedDevice(sipDeviceId, channelId, options?.synced ?? null),
+  ]);
+
   if (synced) {
-    const { url, fallbackUrl, preferAi } = await pickDirectPlayUrls(synced as DirectStreamFields, true);
+    const { url, fallbackUrl, preferAi } = await pickDirectPlayUrls(
+      synced as DirectStreamFields,
+      true,
+    );
     if (url) {
       return {
         url,
-        fallbackUrl: fallbackUrl ?? (await loadWvp()),
+        fallbackUrl: fallbackUrl ?? wvpUrl,
         preferAi,
       };
     }
   }
 
-  return { url: await loadWvp() };
+  return { url: wvpUrl };
 }
 
 export function buildDialogPlayerPayload(
