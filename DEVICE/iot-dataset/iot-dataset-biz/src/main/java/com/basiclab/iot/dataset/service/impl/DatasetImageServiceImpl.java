@@ -10,8 +10,10 @@ import com.basiclab.iot.dataset.dal.dataobject.DatasetTagDO;
 import com.basiclab.iot.dataset.dal.pgsql.DatasetImageMapper;
 import com.basiclab.iot.dataset.dal.pgsql.DatasetMapper;
 import com.basiclab.iot.common.enums.CommonStatusEnum;
+import com.basiclab.iot.common.exception.ServiceException;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImagePageReqVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageSaveReqVO;
+import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageUploadRespVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetSyncCheckRespVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetTagPageReqVO;
 import com.basiclab.iot.dataset.service.DatasetImageService;
@@ -555,15 +557,16 @@ public class DatasetImageServiceImpl implements DatasetImageService {
     }
 
     @Override
-    public void processUpload(MultipartFile file, Long datasetId, Boolean isZip) {
+    public DatasetImageUploadRespVO processUpload(MultipartFile file, Long datasetId, Boolean isZip) {
         try {
-            if (isZip) {
-                processZipUpload(file, datasetId);
-            } else {
-                processImageUpload(file, datasetId);
+            if (Boolean.TRUE.equals(isZip)) {
+                return processZipUpload(file, datasetId);
             }
+            return processImageUpload(file, datasetId);
+        } catch (ServiceException e) {
+            throw e;
         } catch (Exception e) {
-            logger.error("文件上传处理失败: {}", e.getMessage());
+            logger.error("文件上传处理失败: {}", e.getMessage(), e);
             throw exception(FILE_UPLOAD_FAILED, e.getMessage());
         }
     }
@@ -577,23 +580,28 @@ public class DatasetImageServiceImpl implements DatasetImageService {
     }
 
     /**
-     * 处理压缩包上传并解压
+     * 处理压缩包上传并解压（单文件失败不影响已成功条目）
      */
-    private void processZipUpload(MultipartFile file, Long datasetId)
+    private DatasetImageUploadRespVO processZipUpload(MultipartFile file, Long datasetId)
             throws IOException {
+        DatasetImageUploadRespVO result = new DatasetImageUploadRespVO();
+        List<String> failedFiles = new ArrayList<>();
+        byte[] buffer = new byte[8192];
 
-        try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
+        try (ZipInputStream zis = openZipInputStream(file)) {
             ZipEntry zipEntry;
-            byte[] buffer = new byte[1024];
-            int fileCount = 0;
-
             while ((zipEntry = zis.getNextEntry()) != null) {
-                if (zipEntry.isDirectory() || !isValidImageFile(zipEntry.getName())) {
+                if (zipEntry.isDirectory()) {
+                    result.setSkippedCount(result.getSkippedCount() + 1);
+                    continue;
+                }
+                String entryName = zipEntry.getName();
+                String originalFilename = Paths.get(entryName).getFileName().toString();
+                if (!isValidImageFile(originalFilename)) {
+                    result.setSkippedCount(result.getSkippedCount() + 1);
                     continue;
                 }
 
-                // 处理每个图片文件
-                String originalFilename = zipEntry.getName();
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
                 int len;
                 while ((len = zis.read(buffer)) > 0) {
@@ -601,24 +609,46 @@ public class DatasetImageServiceImpl implements DatasetImageService {
                 }
 
                 byte[] fileData = outputStream.toByteArray();
-                saveToMinioAndDB(fileData, originalFilename, datasetId);
-                fileCount++;
+                if (fileData.length == 0) {
+                    result.setSkippedCount(result.getSkippedCount() + 1);
+                    continue;
+                }
+
+                try {
+                    saveToMinioAndDB(fileData, originalFilename, datasetId);
+                    result.setSuccessCount(result.getSuccessCount() + 1);
+                } catch (Exception e) {
+                    result.setFailedCount(result.getFailedCount() + 1);
+                    if (failedFiles.size() < 20) {
+                        failedFiles.add(originalFilename + ": " + e.getMessage());
+                    }
+                    logger.warn("压缩包内文件上传失败: {}", originalFilename, e);
+                }
             }
-            logger.info("成功解压并上传 {} 个文件", fileCount);
         }
+        result.setFailedFiles(failedFiles);
+        logger.info("压缩包上传完成: 成功 {}，失败 {}，跳过 {}",
+                result.getSuccessCount(), result.getFailedCount(), result.getSkippedCount());
+        return result;
+    }
+
+    private ZipInputStream openZipInputStream(MultipartFile file) throws IOException {
+        return new ZipInputStream(file.getInputStream(), StandardCharsets.UTF_8);
     }
 
     /**
      * 处理单个图片上传
      */
-    private void processImageUpload(MultipartFile file, Long datasetId)
+    private DatasetImageUploadRespVO processImageUpload(MultipartFile file, Long datasetId)
             throws IOException {
-
         if (!isValidImageFile(file.getOriginalFilename())) {
             throw exception(INVALID_FILE_TYPE);
         }
 
         saveToMinioAndDB(file.getBytes(), file.getOriginalFilename(), datasetId);
+        DatasetImageUploadRespVO result = new DatasetImageUploadRespVO();
+        result.setSuccessCount(1);
+        return result;
     }
 
     /**

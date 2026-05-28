@@ -4,6 +4,7 @@ import com.basiclab.iot.common.domain.PageResult;
 import com.basiclab.iot.dataset.dal.dataobject.DatasetImageDO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImagePageReqVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageSaveReqVO;
+import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageUploadRespVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetSyncCheckRespVO;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -89,7 +90,7 @@ public interface DatasetImageService {
      * @param datasetId
      * @param isZip
      */
-    void processUpload(MultipartFile file, Long datasetId, Boolean isZip);
+    DatasetImageUploadRespVO processUpload(MultipartFile file, Long datasetId, Boolean isZip);
 
 
     /**

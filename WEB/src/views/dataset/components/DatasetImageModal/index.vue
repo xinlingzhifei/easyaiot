@@ -18,9 +18,9 @@
           <!-- 文件上传区域 -->
           <FormItem :label="uploadLabel" required>
             <Upload
-              :action="state.updateUrl"
               v-model:file-list="state.fileList"
               :before-upload="beforeUpload"
+              :custom-request="noopCustomRequest"
               :accept="acceptType"
               :max-count="1"
               list-type="picture"
@@ -52,16 +52,11 @@ import {Button, Checkbox, Form, FormItem, InputNumber, message, Spin, Upload} fr
 import {UploadOutlined} from '@ant-design/icons-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import {uploadDatasetImage} from '@/api/device/dataset';
-import {useGlobSetting} from "@/hooks/setting";
-
 defineOptions({name: 'DatasetImageModal'});
 
 const {createMessage} = useMessage();
 
-const {uploadUrl} = useGlobSetting();
-
 const state = reactive({
-  updateUrl: `${uploadUrl}/dataset/image/upload-file`,
   datasetId: null as number | null,
   isImage: false,
   isZip: false,
@@ -94,17 +89,21 @@ function handleCancel() {
   closeModal();
 }
 
-// 文件上传前的验证
 function beforeUpload(file: File) {
   const isImage = state.isImage;
   const isLtSize = isImage ? file.size < 50 * 1024 * 1024 : file.size < 200 * 1024 * 1024;
 
   if (!isLtSize) {
     message.error(`文件大小不能超过${isImage ? '50MB' : '200MB'}`);
-    return false;
+    return Upload.LIST_IGNORE;
   }
 
   return true;
+}
+
+/** 阻止 Ant Upload 自动提交，由确认按钮统一调用业务上传接口 */
+function noopCustomRequest(options: { onSuccess?: (body: string) => void }) {
+  options.onSuccess?.('ok');
 }
 
 // 处理上传
@@ -128,13 +127,19 @@ async function handleOk() {
 
   try {
     state.uploading = true;
-    await uploadDatasetImage(formData);
-    createMessage.success('上传成功');
+    const result = await uploadDatasetImage(formData);
+    const failedCount = result?.failedCount ?? 0;
+    const successCount = result?.successCount ?? 0;
+    if (failedCount > 0) {
+      createMessage.warning(`上传完成：成功 ${successCount} 个，失败 ${failedCount} 个`);
+    } else {
+      createMessage.success(successCount > 1 ? `成功上传 ${successCount} 个文件` : '上传成功');
+    }
     emits('success');
     closeModal();
-  } catch (error) {
+  } catch (error: any) {
     console.error('上传失败:', error);
-    createMessage.error('上传失败');
+    createMessage.error(error?.message || '上传失败');
   } finally {
     state.uploading = false;
   }

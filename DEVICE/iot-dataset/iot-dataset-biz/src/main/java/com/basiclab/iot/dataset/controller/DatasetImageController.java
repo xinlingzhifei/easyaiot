@@ -11,6 +11,7 @@ import com.basiclab.iot.dataset.dal.dataobject.DatasetImageDO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImagePageReqVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageRespVO;
 import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageSaveReqVO;
+import com.basiclab.iot.dataset.domain.dataset.vo.DatasetImageUploadRespVO;
 import com.basiclab.iot.dataset.service.DatasetImageService;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.v3.oas.annotations.Operation;
@@ -111,7 +112,7 @@ public class DatasetImageController {
 
     @PostMapping("/upload")
     @Operation(summary = "上传图片或压缩包")
-    public CommonResult<Boolean> uploadDatasetImage(
+    public CommonResult<DatasetImageUploadRespVO> uploadDatasetImage(
             @Parameter(description = "上传的文件", required = true)
             @RequestParam("file") MultipartFile file,
             @Parameter(description = "数据集ID", required = true)
@@ -124,22 +125,54 @@ public class DatasetImageController {
             throw exception(FILE_UPLOAD_FAILED, "上传文件不能为空");
         }
 
-        if (isZip && !"application/zip".equals(file.getContentType())) {
-            throw exception(INVALID_FILE_TYPE, "仅支持ZIP格式");
-        } else if (!isZip && !file.getContentType().startsWith("image/")) {
-            throw exception(INVALID_FILE_TYPE, "仅支持图片格式");
+        if (Boolean.TRUE.equals(isZip)) {
+            if (!isZipFile(file)) {
+                throw exception(INVALID_FILE_TYPE, "仅支持ZIP格式");
+            }
+        } else {
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                throw exception(INVALID_FILE_TYPE, "仅支持图片格式");
+            }
         }
 
         // 验证文件大小
-        long maxSize = isZip ? 200 * 1024 * 1024 : 50 * 1024 * 1024;
+        long maxSize = Boolean.TRUE.equals(isZip) ? 200 * 1024 * 1024 : 50 * 1024 * 1024;
         if (file.getSize() > maxSize) {
-            String msg = isZip ? "压缩包不能超过200MB" : "图片不能超过50MB";
+            String msg = Boolean.TRUE.equals(isZip) ? "压缩包不能超过200MB" : "图片不能超过50MB";
             throw exception(FILE_SIZE_EXCEEDED, msg);
         }
 
-        // 调用服务层处理上传
-        datasetImageService.processUpload(file, datasetId, isZip);
-        return CommonResult.success(true);
+        DatasetImageUploadRespVO uploadResult = datasetImageService.processUpload(file, datasetId, isZip);
+        if (uploadResult.getSuccessCount() <= 0) {
+            String detail = uploadResult.getFailedCount() > 0
+                    ? "压缩包内图片均上传失败，请检查文件或存储配置"
+                    : "压缩包中未找到有效的 JPG/PNG 图片";
+            throw exception(FILE_UPLOAD_FAILED, detail);
+        }
+
+        CommonResult<DatasetImageUploadRespVO> response = CommonResult.success(uploadResult);
+        if (uploadResult.getFailedCount() > 0) {
+            response.setMsg(String.format("成功上传 %d 个文件，%d 个失败",
+                    uploadResult.getSuccessCount(), uploadResult.getFailedCount()));
+        }
+        return response;
+    }
+
+    private static boolean isZipFile(MultipartFile file) {
+        String filename = file.getOriginalFilename();
+        if (filename != null && filename.toLowerCase().endsWith(".zip")) {
+            return true;
+        }
+        String contentType = file.getContentType();
+        if (contentType == null) {
+            return false;
+        }
+        String normalized = contentType.toLowerCase();
+        return "application/zip".equals(normalized)
+                || "application/x-zip-compressed".equals(normalized)
+                || "application/octet-stream".equals(normalized)
+                || "multipart/x-zip".equals(normalized);
     }
 
     @PostMapping("/upload-file")

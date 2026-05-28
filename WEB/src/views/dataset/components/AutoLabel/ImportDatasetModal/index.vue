@@ -226,9 +226,9 @@ const handleUploadImages = async (datasetId: number) => {
     closeModal();
     selectedImageFiles.value = [];
     emits('success');
-  } catch (error) {
+  } catch (error: any) {
     console.error('上传失败:', error);
-    createMessage.error('上传失败');
+    createMessage.error(error?.message || '上传失败');
   } finally {
     loading.value = false;
   }

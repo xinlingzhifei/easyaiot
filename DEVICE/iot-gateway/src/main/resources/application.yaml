@@ -53,6 +53,9 @@ spring:
           uri: lb://dataset-server
           predicates: # 断言，作为路由的匹配条件，对应 RouteDefinition 数组
             - Path=/admin-api/dataset/**, /admin-api/warehouse/**
+          metadata:
+            # 压缩包解压上传可能超过默认 10s，延长至 30 分钟
+            response-timeout: 1800000
           filters:
             - StripPrefix=1
             - RewritePath=/admin-api/dataset/v3/api-docs, /v3/api-docs # 配置，保证转发到 /v3/api-docs

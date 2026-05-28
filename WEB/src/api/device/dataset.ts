@@ -160,16 +160,20 @@ export const exportDatasetTagExcel = (params) => {
   return commonApi('get', Api.DatasetTag + '/export-excel', {params});
 };
 
-// 图片上传接口
+// 图片/压缩包上传（解压与入库可能较慢，延长超时）
 export const uploadDatasetImage = (formData: FormData) => {
-  return defHttp.post({
-    url: `${Api.DatasetImage}/upload`,
-    data: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-      'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
-    }
-  });
+  defHttp.setHeader({'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')});
+  return defHttp.post(
+    {
+      url: `${Api.DatasetImage}/upload`,
+      data: formData,
+      timeout: 30 * 60 * 1000,
+    },
+    {
+      successMessageMode: 'none',
+      errorMessageMode: 'none',
+    },
+  );
 };
 
 // 标注任务

@@ -32,6 +32,9 @@ feign:
       default:
         connectTimeout: 10000
         readTimeout: 10000
+      dataset-server:
+        connectTimeout: 10000
+        readTimeout: 1800000
   compression:
     request:
       enabled: true
