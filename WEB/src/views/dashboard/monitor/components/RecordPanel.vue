@@ -86,7 +86,7 @@ import dayjs, { Dayjs } from 'dayjs'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
 import { useModal } from '@/components/Modal'
 import { useMessage } from '@/hooks/web/useMessage'
-import { queryAlertRecord } from '@/api/device/calculate'
+import { resolveAlertRecordVideoUrl, resolveAlertVideoUrl } from '@/utils/alertRecord'
 
 const { RangePicker } = DatePicker
 const { createMessage } = useMessage()
@@ -194,7 +194,7 @@ const handlePlay = async (record: any) => {
   try {
     // 如果record直接有video_url，直接使用
     if (record.video_url || record.url) {
-      const videoUrl = getVideoUrl(record.video_url || record.url)
+      const videoUrl = resolveAlertVideoUrl(record.video_url || record.url)
       console.log('使用 record 中的 video_url:', videoUrl)
       
       try {
@@ -220,30 +220,21 @@ const handlePlay = async (record: any) => {
     }
     
     console.log('开始查询录像，deviceId:', deviceId, 'time:', record.time)
-    
-    // 查询录像URL
-    const result = await queryAlertRecord({
+
+    const videoUrl = await resolveAlertRecordVideoUrl({
+      id: record.id,
       device_id: String(deviceId),
-      alert_time: record.time,
-      time_range: 60, // 前后60秒
+      time: record.time,
+      record_path: record.record_path,
     })
 
-    console.log('查询录像结果:', result)
-
-    if (result && result.video_url) {
-      // 处理录像URL，添加前缀
-      const videoUrl = getVideoUrl(result.video_url)
-      console.log('获取到录像URL:', videoUrl)
-      
-      // 使用DialogPlayer播放，参数格式：{ id, http_stream }
+    if (videoUrl) {
       try {
         await nextTick()
         openPlayerModal(true, {
           id: deviceId,
           http_stream: videoUrl,
         })
-        console.log('成功调用 openPlayerModal')
-        // 重置错误记录
         lastVideoErrorTime = 0
         lastVideoErrorMsg = ''
       } catch (modalError: any) {
@@ -251,10 +242,7 @@ const handlePlay = async (record: any) => {
         createMessage.error('打开播放器失败: ' + (modalError?.message || '未知错误'))
       }
     } else {
-      // 检查是否是业务错误（code=400）
-      const errorMsg = result?.message || '暂未找到该时间段的录像文件'
-      console.warn('未找到录像:', errorMsg)
-      showVideoErrorOnce(errorMsg)
+      showVideoErrorOnce('暂未找到该时间段的录像文件，请稍后再试')
     }
   } catch (error: any) {
     console.error('播放录像失败:', error)

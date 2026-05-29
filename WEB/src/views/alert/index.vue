@@ -81,7 +81,8 @@ import {BasicTable, TableAction, useTable} from '@/components/Table';
 import {useMessage} from '@/hooks/web/useMessage';
 import {getBasicColumns, getFormConfig} from "./Data";
 import {useRouter} from "vue-router";
-import {queryAlarmList, queryAlertRecord, clearAllAlerts} from "@/api/device/calculate";
+import {queryAlarmList, clearAllAlerts} from "@/api/device/calculate";
+import {resolveAlertRecordVideoUrl} from '@/utils/alertRecord';
 import {Icon} from "@/components/Icon";
 import AlertCards from "@/views/alert/components/AlertCards/index.vue";
 import ImageModal from "@/views/alert/components/ImageModal/index.vue";
@@ -257,68 +258,35 @@ const handleViewImage = (record: Record<string, any>) => {
 let lastVideoErrorTime = 0;
 let lastVideoErrorMsg = '';
 
-// 获取录像播放地址（参考录像空间的处理方式）
-const getVideoUrl = (videoUrl: string): string => {
-  if (!videoUrl) return '';
-  // 如果是完整URL，直接返回
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    return videoUrl;
-  }
-  // 如果是相对路径（以/api/v1/buckets开头），添加前端启动地址前缀
-  if (videoUrl.startsWith('/api/v1/buckets')) {
-    return `${window.location.origin}${videoUrl}`;
-  }
-  // 其他相对路径，拼接API前缀
-  if (videoUrl.startsWith('/')) {
-    return `${import.meta.env.VITE_GLOB_API_URL || ''}${videoUrl}`;
-  }
-  // 其他情况直接返回
-  return videoUrl;
-};
-
 const handleViewVideo = async (record) => {
   if (!record['device_id'] || !record['time']) {
     createMessage.warn('缺少必要信息：设备ID或告警时间');
     return;
   }
-  
+
   try {
-    // 查询录像URL
-    const result = await queryAlertRecord({
+    const videoUrl = await resolveAlertRecordVideoUrl({
+      id: record['id'],
       device_id: record['device_id'],
-      alert_time: record['time'],
-      time_range: 60, // 前后60秒
+      time: record['time'],
+      record_path: record['record_path'],
     });
 
-    if (result && result.video_url) {
-      // 处理录像URL，添加前缀
-      const videoUrl = getVideoUrl(result.video_url);
-      
-      // 使用DialogPlayer播放，参数格式：{ id, http_stream }
+    if (videoUrl) {
       openVideoModal(true, {
         id: record['device_id'],
         http_stream: videoUrl,
       });
-      // 重置错误记录
       lastVideoErrorTime = 0;
       lastVideoErrorMsg = '';
     } else {
-      // 检查是否是业务错误（code=400）
-      const errorMsg = result?.message || '暂未找到该时间段的录像文件';
-      showVideoErrorOnce(errorMsg);
+      showVideoErrorOnce('暂未找到该时间段的录像文件，请稍后再试');
     }
   } catch (error: any) {
     console.error('查询录像失败:', error);
-    // 处理业务错误（HTTP 200但code=400）
     const errorData = error?.response?.data || error?.data;
-    if (errorData && errorData.code === 400) {
-      const errorMsg = errorData.message || '暂未找到该时间段的录像文件';
-      showVideoErrorOnce(errorMsg);
-    } else {
-      // 其他错误
-      const errorMsg = error?.response?.data?.message || error?.message || '查询录像失败，请稍后重试';
-      showVideoErrorOnce(errorMsg);
-    }
+    const errorMsg = errorData?.message || error?.message || '查询录像失败，请稍后重试';
+    showVideoErrorOnce(errorMsg);
   }
 };
 

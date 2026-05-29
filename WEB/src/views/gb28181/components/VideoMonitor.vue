@@ -107,7 +107,8 @@
 <script lang="ts" setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Icon } from '@/components/Icon'
-import { queryAlarmList, queryAlertRecord } from '@/api/device/calculate'
+import { queryAlarmList } from '@/api/device/calculate'
+import { resolveAlertRecordVideoUrl } from '@/utils/alertRecord'
 import { useMessage } from '@/hooks/web/useMessage'
 import Jessibuca from '@/components/Player/module/jessibuca.vue'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
@@ -626,44 +627,28 @@ const handleRecordClick = async (record: any) => {
     createMessage.warn('缺少必要信息：设备ID或告警时间')
     return
   }
-  
-  try {
-    // 查询录像URL
-    const result = await queryAlertRecord({
-      device_id: record.device_id,
-      alert_time: record.time,
-      time_range: 60, // 前后60秒
-    })
 
-    if (result && result.video_url) {
-      // 处理录像URL，添加前缀
-      const videoUrl = getVideoUrl(result.video_url)
-      
-      // 使用DialogPlayer播放，参数格式：{ id, http_stream }
+  try {
+    const videoUrl = await resolveAlertRecordVideoUrl({
+      id: record.id,
+      device_id: record.device_id,
+      time: record.time,
+      record_path: record.record_path,
+    })
+    if (videoUrl) {
       openPlayerModal(true, {
         id: record.device_id,
         http_stream: videoUrl,
       })
-      // 重置错误记录
       lastVideoErrorTime = 0
       lastVideoErrorMsg = ''
     } else {
-      // 检查是否是业务错误（code=400）
-      const errorMsg = result?.message || '暂未找到该时间段的录像文件'
-      showVideoErrorOnce(errorMsg)
+      showVideoErrorOnce('暂未找到该时间段的录像文件，请稍后再试')
     }
   } catch (error: any) {
     console.error('查询录像失败:', error)
-    // 处理业务错误（HTTP 200但code=400）
     const errorData = error?.response?.data || error?.data
-    if (errorData && errorData.code === 400) {
-      const errorMsg = errorData.message || '暂未找到该时间段的录像文件'
-      showVideoErrorOnce(errorMsg)
-    } else {
-      // 其他错误
-      const errorMsg = error?.response?.data?.message || error?.message || '查询录像失败，请稍后重试'
-      showVideoErrorOnce(errorMsg)
-    }
+    showVideoErrorOnce(errorData?.message || error?.message || '查询录像失败，请稍后重试')
   }
 }
 

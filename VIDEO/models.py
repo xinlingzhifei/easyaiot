@@ -119,7 +119,7 @@ class Alert(db.Model):
     # GB28181 device_id 较长时绝对路径易超 200 字符导致截断，iot-sink 无法读盘上传 MinIO
     image_path = db.Column(db.String(500), nullable=True, comment='本地图片路径（算法落盘）')
     image_url = db.Column(db.String(500), nullable=True, comment='MinIO 下载路径（/api/v1/buckets/.../objects/download?prefix=...）')
-    record_path = db.Column(db.String(200), nullable=True)
+    record_path = db.Column(db.String(500), nullable=True, comment='告警录像 MinIO 下载路径（/api/v1/buckets/.../objects/download?prefix=...），非宿主机 /data/playbacks 路径')
     task_type = db.Column(db.String(20), nullable=True, comment='告警事件类型[realtime:实时算法任务,snap:抓拍算法任务]')
     task_id = db.Column(db.Integer, nullable=True, comment='关联的任务ID')
     task_name = db.Column(db.String(255), nullable=True, comment='关联的任务名称')

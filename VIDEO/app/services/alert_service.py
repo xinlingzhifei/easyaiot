@@ -5,11 +5,23 @@
 """
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm.query import Query
 from models import Alert, db
 
 logger = logging.getLogger('alert')
+
+# 与 iot-sink parseAlertEventTime、算法告警 time 字段一致：东八区墙钟
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+
+def is_minio_download_path(path: str) -> bool:
+    """是否为 MinIO 对象下载 API 路径（与 image_url、playback.file_path 一致）。"""
+    if not path or not isinstance(path, str):
+        return False
+    p = path.strip()
+    return p.startswith('/api/v1/buckets/') and '/objects/download' in p
+
 
 def _alert_to_dict(alert: Alert) -> dict:
     """将 Alert 对象转换为字典格式"""
@@ -410,32 +422,51 @@ def create_alert(alert_data: dict) -> dict:
 
 
 def patch_alerts_record(dvr_info: dict):
-    """更新报警记录的录像路径
-    
+    """更新报警记录的录像路径（仅写入 MinIO 下载地址，禁止宿主机本地路径）。
+
+    与 door-god on_dvr 一致：file_path 为
+    ``/api/v1/buckets/{bucket}/objects/download?prefix=...``，非 ``/data/playbacks/...``。
+
     Args:
         dvr_info: DVR信息字典，包含以下字段：
             - event_time: 事件时间，格式：'YYYY-MM-DD HH:MM:SS'
             - duration: 持续时间（秒）
             - device_id: 设备ID
-            - file_path: 录像文件路径
+            - file_path: MinIO 录像下载 API 路径
     """
     try:
-        begin_time = datetime.strptime(dvr_info['event_time'], '%Y-%m-%d %H:%M:%S')
-        end_time = begin_time + timedelta(seconds=dvr_info['duration'])
+        file_path = (dvr_info.get('file_path') or '').strip()
+        if not is_minio_download_path(file_path):
+            logger.warning(
+                '跳过回写告警 record_path：非 MinIO 下载地址 file_path=%s device_id=%s',
+                file_path, dvr_info.get('device_id'),
+            )
+            return
+
+        begin_time = datetime.strptime(dvr_info['event_time'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=SHANGHAI_TZ)
+        end_time = begin_time + timedelta(seconds=int(dvr_info.get('duration') or 1))
+        device_id = dvr_info['device_id']
 
         alerts = Alert.query.filter(
             Alert.time >= begin_time,
             Alert.time <= end_time,
-            Alert.device_id == dvr_info['device_id'],
+            Alert.device_id == device_id,
             Alert.record_path.is_(None)
         ).all()
 
         if alerts:
-            dvr_path = dvr_info['file_path']
             for alert in alerts:
-                alert.record_path = dvr_path
+                alert.record_path = file_path
             db.session.commit()
-            logger.info(f'成功更新 {len(alerts)} 条报警记录的录像路径')
+            logger.info(
+                '成功更新 %s 条告警 record_path（MinIO）device_id=%s path=%s',
+                len(alerts), device_id, file_path[:120],
+            )
+        else:
+            logger.debug(
+                '未匹配到需回写 record_path 的告警 device_id=%s event_time=%s duration=%s',
+                device_id, dvr_info.get('event_time'), dvr_info.get('duration'),
+            )
     except Exception as e:
         logger.error(f'更新报警记录失败: {str(e)}')
         db.session.rollback()

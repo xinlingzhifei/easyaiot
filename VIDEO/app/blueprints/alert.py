@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify, send_file
 from pathlib import Path
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 from urllib.parse import unquote, parse_qs, urlparse
 from app.services.alert_service import (
@@ -216,7 +217,24 @@ def query_alert_record():
     try:
         device_id = request.args.get('device_id')
         alert_time_str = request.args.get('alert_time')
+        alert_id = request.args.get('alert_id')
         time_range = int(request.args.get('time_range', 300))  # 默认前后300秒（5分钟）
+
+        # 已回写 MinIO 路径时直接返回（on_dvr -> patch_alerts_record）
+        if alert_id:
+            try:
+                from models import Alert
+                alert_row = Alert.query.get(int(alert_id))
+                from app.services.alert_service import is_minio_download_path
+                if alert_row and alert_row.record_path and is_minio_download_path(alert_row.record_path):
+                    return api_response(200, 'success', {
+                        'video_url': alert_row.record_path,
+                        'file_path': alert_row.record_path,
+                        'device_id': alert_row.device_id,
+                        'source': 'alert_record_path',
+                    })
+            except (TypeError, ValueError):
+                pass
         
         if not device_id:
             return api_response(400, '设备ID不能为空')
@@ -261,55 +279,56 @@ def query_alert_record():
 
 def _do_query_alert_record(device_id, alert_time_str, time_range):
     """执行实际的查询逻辑"""
-        
-    # 解析告警时间
-    from datetime import datetime, timedelta
-    try:
-        alert_time = datetime.strptime(alert_time_str, '%Y-%m-%d %H:%M:%S')
-    except ValueError:
-        return api_response(400, '告警时间格式错误，应为：YYYY-MM-DD HH:MM:SS')
-    
-    # 计算时间范围（扩大范围以包含更多可能的录像）
-    # 考虑到录像可能有duration，需要扩大查询范围
-    extended_range = time_range + 600  # 额外增加10分钟
-    start_time = alert_time - timedelta(seconds=extended_range)
-    end_time = alert_time + timedelta(seconds=extended_range)
-    
-    # 查询Playback表中匹配的录像
-    # 先查询device_id匹配且event_time在扩展时间范围内的所有录像
+    alert_time_aware, err = _parse_alert_time_str(alert_time_str)
+    if err:
+        return api_response(400, err)
+    alert_time = _to_shanghai_naive(alert_time_aware)
+
+    # 扩大 SQL 检索范围（含 SRS 30s 分片落盘延迟）
+    extended_range = max(time_range + 120, 300)
+    start_time = alert_time_aware - timedelta(seconds=extended_range)
+    end_time = alert_time_aware + timedelta(seconds=extended_range)
+
     from models import Playback
     candidate_playbacks = Playback.query.filter(
         Playback.device_id == device_id,
         Playback.event_time >= start_time,
         Playback.event_time <= end_time
     ).all()
-    
-    # 在Python中过滤：匹配告警时间在录像时间段内的录像
-    # 录像时间段：event_time 到 event_time + duration
+
     matched_playbacks = []
     for playback in candidate_playbacks:
-        playback_start = playback.event_time
-        # 处理时区：统一转换为naive datetime进行比较
-        if playback_start.tzinfo is not None:
-            playback_start = playback_start.replace(tzinfo=None)
-        
-        playback_end = playback_start + timedelta(seconds=playback.duration or 0)
-        
-        # 检查告警时间是否在录像的时间段内
-        if playback_start <= alert_time <= playback_end:
-            matched_playbacks.append((playback, 0))  # 完全匹配，优先级最高
-        # 或者检查录像的event_time是否接近告警时间（兼容旧逻辑）
-        elif abs((playback_start - alert_time).total_seconds()) <= time_range:
-            time_diff = abs((playback_start - alert_time).total_seconds())
+        seg_start = _to_shanghai_naive(playback.event_time)
+        duration = int(playback.duration or 0) or 1
+        seg_end = seg_start + timedelta(seconds=duration)
+        # 兼容旧数据：event_time 曾为文件 mtime（片段结束时刻）
+        legacy_start = seg_start - timedelta(seconds=duration)
+
+        if legacy_start <= alert_time <= seg_end:
+            matched_playbacks.append((playback, 0))
+            continue
+
+        center = seg_start + timedelta(seconds=duration / 2)
+        time_diff = abs((center - alert_time).total_seconds())
+        if time_diff <= time_range:
             matched_playbacks.append((playback, time_diff))
-    
-    # 按时间差排序，选择最接近告警时间的录像
+
     if matched_playbacks:
-        matched_playbacks.sort(key=lambda x: x[1])  # 按时间差排序
+        matched_playbacks.sort(key=lambda x: x[1])
         playbacks = [p[0] for p in matched_playbacks]
+    elif candidate_playbacks:
+        # 有候选但未严格命中：取 event_time 最接近告警的一条（刚落盘/时区边界）
+        def _center_diff(pb):
+            s = _to_shanghai_naive(pb.event_time)
+            d = int(pb.duration or 0) or 1
+            c = s + timedelta(seconds=d / 2)
+            return abs((c - alert_time).total_seconds())
+
+        candidate_playbacks.sort(key=_center_diff)
+        playbacks = [candidate_playbacks[0]]
     else:
         playbacks = []
-    
+
     if not playbacks:
         # 使用debug级别避免重复警告日志
         logger.debug(f'未找到匹配的录像 device_id={device_id}, alert_time={alert_time_str}, time_range={time_range}, candidate_count={len(candidate_playbacks)}')

@@ -95,6 +95,7 @@ export const queryAlertRecord = async (params: {
   device_id: string;
   alert_time: string;
   time_range?: number;
+  alert_id?: number | string;
 }) => {
   const res = await commonApi('get', Api.Alarm + '/record/query', {params}, {}, false);
   // 处理响应数据

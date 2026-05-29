@@ -1558,26 +1558,49 @@ def on_publish_callback():
         return jsonify({'code': 0, 'msg': None})
 
 
-def _parse_srs_dvr_path_date(absolute_file_path: str):
-    """从 SRS DVR 路径解析 date_dir 与 record_time。
+def _parse_srs_dvr_segment_start_from_filename(absolute_file_path: str):
+    """从 SRS DVR 文件名解析片段开始时间（毫秒时间戳）。
 
-    约定：``.../playbacks/<app>/<stream>/YYYY/MM/DD/<file>`` — ``app`` 可为 ``live``、``ai`` 等。
+    约定文件名：``[timestamp].flv``，timestamp 为片段开始时刻（毫秒）。
+    """
+    from datetime import datetime as dt
+
+    filename = os.path.basename(absolute_file_path)
+    stem, ext = os.path.splitext(filename)
+    if ext.lower() != '.flv' or not stem.isdigit():
+        return None
+    try:
+        ts = int(stem)
+        if ts > 10**12:
+            return dt.fromtimestamp(ts / 1000.0)
+        return dt.fromtimestamp(float(ts))
+    except (ValueError, OSError):
+        return None
+
+
+def _parse_srs_dvr_path_date(absolute_file_path: str):
+    """从 SRS DVR 路径解析 date_dir 与 record_time（片段开始时间）。
+
+    约定：``.../playbacks/<app>/<stream>/YYYY/MM/DD/<timestamp>.flv``
+    优先用文件名中的毫秒时间戳；否则回退 mtime/目录日期。
     返回 ``(date_dir, record_time)``；无法解析时返回 ``(None, None)``。
     """
     from datetime import datetime as dt
 
+    segment_start = _parse_srs_dvr_segment_start_from_filename(absolute_file_path)
     parts = [p for p in absolute_file_path.replace("\\", "/").split("/") if p]
     try:
         if "playbacks" not in parts:
             return None, None
         i = parts.index("playbacks")
-        # playbacks, app, stream, YYYY, MM, DD, filename
         if len(parts) < i + 7:
             return None, None
         y, mo, d = parts[i + 3], parts[i + 4], parts[i + 5]
         if len(y) != 4 or not y.isdigit() or not mo.isdigit() or not d.isdigit():
             return None, None
         date_dir = f"{y}/{mo}/{d}"
+        if segment_start is not None:
+            return date_dir, segment_start
         try:
             record_time = dt.fromtimestamp(os.path.getmtime(absolute_file_path))
         except OSError:
@@ -2008,6 +2031,9 @@ def on_dvr_callback():
                 content_type=content_type
             )
             logger.debug(f"on_dvr回调：录像上传成功 device_id={device_id}, bucket={bucket_name}, object_name={object_name}, file_size={file_size} bytes")
+
+            # MinIO 下载 API（告警 record_path / playback.file_path 均使用此地址，非 absolute_file_path）
+            file_path_url = f"/api/v1/buckets/{bucket_name}/objects/download?prefix={quote(object_name, safe='')}"
             
             # 抽取视频封面
             thumbnail_path = None
@@ -2069,9 +2095,6 @@ def on_dvr_callback():
                         record_time = datetime.utcnow()
                         logger.warning(f"on_dvr回调：无法获取文件修改时间，使用当前时间作为record_time")
                 
-                # 构建录像文件的URL格式：/api/v1/buckets/{bucket_name}/objects/download?prefix={object_name}
-                file_path_url = f"/api/v1/buckets/{bucket_name}/objects/download?prefix={quote(object_name, safe='')}"
-                
                 # 查找是否已存在相同文件路径的记录（兼容旧格式和新格式）
                 # 先尝试用URL格式查询
                 existing_playback = Playback.query.filter_by(
@@ -2086,22 +2109,22 @@ def on_dvr_callback():
                         device_id=device_id
                 ).first()
                 
+                shanghai_tz = timezone(timedelta(hours=8))
+                if getattr(record_time, 'tzinfo', None) is None:
+                    record_time = record_time.replace(tzinfo=shanghai_tz)
+
                 if existing_playback:
                     # 更新现有记录（同时更新为URL格式）
                     existing_playback.file_path = file_path_url
                     existing_playback.thumbnail_path = thumbnail_path
                     existing_playback.file_size = file_size
+                    existing_playback.event_time = record_time
                     if duration > 0:
                         existing_playback.duration = duration
-                    # 使用带时区的本地时间（Asia/Shanghai，UTC+8）
-                    shanghai_tz = timezone(timedelta(hours=8))
                     existing_playback.updated_at = datetime.now(shanghai_tz)
                     db.session.commit()
                     logger.debug(f"on_dvr回调：更新Playback记录 playback_id={existing_playback.id}, file_path={file_path_url}, thumbnail_path={thumbnail_path}")
                 else:
-                    # 创建新记录
-                    # 使用带时区的本地时间（Asia/Shanghai，UTC+8）
-                    shanghai_tz = timezone(timedelta(hours=8))
                     current_time = datetime.now(shanghai_tz)
                     playback = Playback(
                         file_path=file_path_url,
@@ -2117,10 +2140,29 @@ def on_dvr_callback():
                     db.session.add(playback)
                     db.session.commit()
                     logger.debug(f"on_dvr回调：创建Playback记录 playback_id={playback.id}, file_path={file_path_url}, thumbnail_path={thumbnail_path}")
+
             except Exception as e:
                 logger.error(f"on_dvr回调：创建/更新Playback记录失败 device_id={device_id}, error={str(e)}", exc_info=True)
                 db.session.rollback()
                 # 记录创建失败不影响主流程，继续执行
+
+            # 关联告警 record_path（与 door-god 一致：仅 MinIO 下载 URL）
+            try:
+                from app.services.alert_service import patch_alerts_record
+                if 'record_time' in locals() and 'file_path_url' in locals():
+                    event_time_str = record_time.strftime('%Y-%m-%d %H:%M:%S')
+                    seg_duration = duration if ('duration' in locals() and duration > 0) else 1
+                    patch_alerts_record({
+                        'event_time': event_time_str,
+                        'duration': seg_duration,
+                        'device_id': device_id,
+                        'file_path': file_path_url,
+                    })
+            except Exception as patch_err:
+                logger.error(
+                    f"on_dvr回调：关联告警 record_path 失败 device_id={device_id}, error={patch_err}",
+                    exc_info=True,
+                )
             
             # MinIO 上传成功后删除本地 SRS 片段，并做设备级数量兜底清理
             try:
