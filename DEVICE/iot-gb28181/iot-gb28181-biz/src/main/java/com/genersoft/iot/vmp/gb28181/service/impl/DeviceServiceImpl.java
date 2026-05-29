@@ -43,6 +43,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -69,6 +70,7 @@ public class DeviceServiceImpl implements IDeviceService, CommandLineRunner {
     @Autowired
     private ISIPCommander sipCommander;
 
+    @Lazy
     @Autowired
     private CatalogResponseMessageHandler catalogResponseMessageHandler;
 

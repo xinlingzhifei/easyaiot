@@ -16,6 +16,7 @@ import org.dom4j.DocumentException;
 import org.dom4j.Element;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ public class CatalogResponseMessageHandler extends SIPRequestProcessorParent imp
 
     private final ConcurrentLinkedQueue<HandlerCatchData> taskQueue = new ConcurrentLinkedQueue<>();
 
+    @Lazy
     @Autowired
     private IDeviceChannelService deviceChannelService;
 
