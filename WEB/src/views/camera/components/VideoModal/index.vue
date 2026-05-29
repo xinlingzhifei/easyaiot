@@ -382,12 +382,12 @@ const [register, {closeModal}] = useModalInner(async (data) => {
   }
 
   // 更新验证规则
-  Object.assign(rulesRef, getRules());
+  applyRules();
 
   if (state.isEdit || state.isView) {
     modelEdit(record);
     // 编辑/查看时也需要更新验证规则
-    Object.assign(rulesRef, getRules());
+    applyRules();
   }
 });
 
@@ -404,10 +404,12 @@ const getRules = () => {
 
   // 根据摄像头类型动态设置验证规则
   if (modelRef.cameraType === 'custom') {
-    // 自定义类型：source必填，ip和port不需要验证
+    // 自定义类型：source必填，其余连接字段不参与校验
     baseRules.source = [{required: true, message: '请输入RTSP取流地址', trigger: ['change']}];
     baseRules.ip = [];
     baseRules.port = [];
+    baseRules.username = [];
+    baseRules.password = [];
   } else if (modelRef.cameraType === 'hikvision' || modelRef.cameraType === 'dahua' || modelRef.cameraType === 'uniview') {
     // 海康/大华/宇视类型：ip、port、username、password必填，source自动生成不需要验证
     baseRules.ip = [
@@ -497,6 +499,28 @@ const getRules = () => {
   return baseRules;
 };
 
+/** 替换校验规则，避免 Object.assign 残留旧类型字段规则 */
+function applyRules() {
+  const nextRules = getRules();
+  Object.keys(rulesRef).forEach((key) => {
+    if (!(key in nextRules)) {
+      delete rulesRef[key];
+    }
+  });
+  Object.assign(rulesRef, nextRules);
+}
+
+/** 新增直连设备时仅校验当前类型可见字段 */
+function getDirectDeviceValidateFields(): string[] {
+  if (modelRef.cameraType === 'custom') {
+    return ['cameraType', 'source', 'name'];
+  }
+  if (modelRef.cameraType === 'hikvision' || modelRef.cameraType === 'dahua' || modelRef.cameraType === 'uniview') {
+    return ['cameraType', 'name', 'ip', 'port', 'username', 'password'];
+  }
+  return ['cameraType', 'name'];
+}
+
 const rulesRef = reactive(getRules());
 
 function handleCLickChange(value) {
@@ -541,7 +565,7 @@ function handleCameraTypeChange(value) {
   }
   
   // 更新验证规则
-  Object.assign(rulesRef, getRules());
+  applyRules();
   // 清除验证错误，但不重置字段值
   clearValidate();
 }
@@ -713,10 +737,10 @@ function handleOk() {
     }
 
     // 更新验证规则以确保使用最新的规则
-    Object.assign(rulesRef, getRules());
+    applyRules();
 
-    // 执行表单验证
-    validate().then(async () => {
+    // 仅校验当前摄像头类型对应的字段，避免隐藏字段残留规则导致失败
+    validate(getDirectDeviceValidateFields()).then(async () => {
       state.editLoading = true;
       try {
         // 如果是海康、大华或宇视类型，确保RTSP地址已生成
@@ -771,14 +795,15 @@ function handleOk() {
         state.editLoading = false;
       }
     }).catch((err) => {
-      createMessage.error('表单验证失败');
+      const firstError = err?.errorFields?.[0]?.errors?.[0];
+      createMessage.error(firstError || '表单验证失败');
       console.error(err);
     });
     return;
   }
 
   // 更新验证规则以确保使用最新的规则
-  Object.assign(rulesRef, getRules());
+  applyRules();
 
   validate().then(async () => {
     state.editLoading = true;
@@ -898,7 +923,8 @@ function handleOk() {
       state.editLoading = false;
     }
   }).catch((err) => {
-    createMessage.error('表单验证失败');
+    const firstError = err?.errorFields?.[0]?.errors?.[0];
+    createMessage.error(firstError || '表单验证失败');
     console.error(err);
   });
 }

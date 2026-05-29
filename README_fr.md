@@ -53,6 +53,7 @@ EasyAIoT est une plateforme intelligente d'Internet des Objets (IoT) à intégra
       <li><strong>Tâches algorithmiques de capture d'images</strong> : Utilisées pour l'analyse des images capturées (instantanés). Effectuent une reconnaissance et une analyse intelligente des images capturées. Adaptées aux scénarios de revue d'événements, de recherche d'images, etc.</li>
     </ul>
   </li>
+  <li><strong>Annotation de jeux de données et gestion multi-formats</strong> : Fournit un espace de travail d'annotation d'images visuel, prenant en charge l'annotation par rectangles et polygones, la gestion des catégories et le suivi de progression ; prend en charge l'importation et l'exportation flexibles des formats de jeux de données courants (YOLO, COCO, ImageFolder, etc.), avec intégration aux jeux de données sur plateforme cloud pour l'importation en un clic et l'exportation synchronisée, assurant la continuité du pipeline complet : collecte de données, annotation, entraînement et déploiement.</li>
   <li><strong>Redirection de flux</strong> : Prend en charge la visualisation directe des flux vidéo en temps réel des caméras sans activer les fonctionnalités d'analyse IA. En créant des tâches de redirection de flux, plusieurs caméras peuvent être redirigées par lots, permettant la visualisation synchrone de plusieurs flux vidéo pour répondre aux besoins des scénarios de surveillance vidéo pure.</li>
   <li><strong>Détection GPU, répartition de charge et coopération multi-GPU</strong> : La plateforme détecte les GPU disponibles et alloue intelligemment l'encodage/décodage vidéo et l'inférence algorithmique selon la charge en temps réel de chaque carte, avec exécution parallèle sur plusieurs GPU lorsque c'est pertinent, afin d'augmenter le débit multi-flux et l'utilisation des ressources tout en préservant la stabilité et la coordination encodage–inférence en configuration multi-cartes.</li>
   <li><strong>Transport intelligent et tirage de flux hautement fiable</strong> : Sur les chemins RTSP et assimilés, le système peut sélectionner et basculer dynamiquement le protocole de transport (couche transport) à partir de l'URL, du chemin et de signaux associés ; par défaut, le tirage depuis les caméras utilise UDP pour réduire la latence. En cas d'écrans gris consécutifs, d'erreurs de décodage ou d'effondrement du flux (blocage du décodage), une reconnexion RTSP et une restauration de liaison sont déclenchées automatiquement afin de limiter artefacts prolongés ou gel d'image.</li>
@@ -464,6 +465,14 @@ EasyAIoT est un projet d'apprentissage open source, sans lien avec des activité
 <div>
   <img src=".image/banner/banner1059.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1060.jpg" alt="Capture d'écran 8" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1107.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1108.png" alt="Capture d'écran 8" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1109.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1110.png" alt="Capture d'écran 8" width="49%">
 </div>
 <div>
   <img src=".image/banner/banner1007.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
