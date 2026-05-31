@@ -1,0 +1,531 @@
+# EasyAIoT 部署指南
+
+> 本文档基于项目源码分析生成，适用于 Linux 环境一键部署。
+
+---
+
+## 一、环境要求
+
+### 1.1 硬件要求
+
+| 资源 | 最低配置 | 推荐配置 |
+|------|---------|---------|
+| CPU | 4 核 | 8 核+ |
+| 内存 | 8 GB | 16 GB+ |
+| 磁盘 | 100 GB | 500 GB+ SSD |
+| GPU | 无（CPU 可运行） | NVIDIA GPU（CUDA 12.8） |
+
+### 1.2 软件要求
+
+| 软件 | 最低版本 | 说明 |
+|------|---------|------|
+| 操作系统 | Ubuntu 20.04 / CentOS 7 | 推荐 Ubuntu 22.04 LTS |
+| Docker | 20.10+ | 需支持 `docker compose` v2 |
+| Docker Compose | v2 | 随 Docker Desktop 自动安装，或独立安装 |
+| NVIDIA Driver | 525+ | 仅 GPU 场景需要 |
+| NVIDIA Container Toolkit | 最新版 | 仅 GPU 场景需要 |
+
+### 1.3 端口要求
+
+部署前确保以下端口未被占用：
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| 1880 | Node-RED | 规则引擎 |
+| 1883 | EMQX | MQTT Broker |
+| 1935 | SRS | 流媒体 RTMP |
+| 5432 | PostgreSQL | 主数据库 |
+| 6000 | VIDEO 服务 | 视频处理 |
+| 6030 | TDengine | 时序数据库 |
+| 6080 | ZLMediaKit | 媒体服务器 |
+| 6379 | Redis | 缓存 |
+| 8848 | Nacos | 注册/配置中心 |
+| 8888 | WEB 前端 | 管理界面 |
+| 9000 | MinIO API | 对象存储 |
+| 9001 | MinIO Console | 对象存储控制台 |
+| 9092 | Kafka | 消息队列 |
+| 10180 | GPUStack | GPU 管理 |
+| 10190 | Dify | LLM 应用平台 |
+| 19530 | Milvus | 向量数据库 |
+| 48080 | API Gateway | 后端网关 |
+| 5000 | AI 服务 | AI 推理 |
+
+---
+
+## 二、快速部署（一键安装）
+
+### 2.1 获取源码
+
+```bash
+git clone https://gitee.com/volara/easyaiot.git
+cd easyaiot
+```
+
+### 2.2 一键安装
+
+```bash
+# 需要 root 权限（用于配置 Docker 镜像源、RTP 端口预留等）
+sudo .scripts/docker/install_linux.sh install
+```
+
+该命令会自动执行以下流程：
+
+1. **环境检查** — 检测 Docker / Docker Compose 是否安装
+2. **IP 检测** — 自动检测宿主机 IP（用于 GB28181/ZLMediaKit 媒体地址注入）
+3. **RTP 端口预留** — 配置 Linux 内核保留端口 30000-30500（避免被临时端口抢占）
+4. **Docker 镜像源配置** — 自动配置 `docker.1ms.run` 加速镜像
+5. **创建 Docker 网络** — 创建统一网络 `easyaiot-network`
+6. **部署中间件** — 依次启动 Nacos、PostgreSQL、Redis、Kafka、MinIO、TDengine、Milvus、SRS、EMQX、ZLMediaKit、GPUStack、Dify、Node-RED
+7. **等待基础服务就绪** — 自动等待 PostgreSQL / Nacos / Redis 健康检查通过
+8. **部署 DEVICE 服务** — 构建并启动 Java 微服务集群（网关 + 8 个业务服务）
+9. **部署 AI 服务** — 构建并启动 Python AI 推理服务
+10. **部署 VIDEO 服务** — 构建并启动 Python 视频处理服务及 6 个子服务
+11. **部署 WEB 前端** — 构建并启动 Vue 3 前端
+
+### 2.3 验证部署
+
+```bash
+# 验证所有服务是否启动成功
+.scripts/docker/install_linux.sh verify
+```
+
+成功后会显示所有服务的访问地址：
+
+```
+服务访问地址:
+  基础服务 (Nacos):     http://localhost:8848/nacos
+  基础服务 (MinIO):     http://localhost:9000 (API), http://localhost:9001 (Console)
+  基础服务 (Milvus):    http://localhost:9091 (Health), localhost:19530 (gRPC)
+  基础服务 (GPUStack):  http://localhost:10180  (用户 admin)
+  Device服务 (Gateway): http://localhost:48080
+  AI服务:               http://localhost:5000
+  Video服务:            http://localhost:6000
+  Web前端:              http://localhost:8888
+```
+
+### 2.4 访问系统
+
+浏览器打开 `http://<服务器IP>:8888`，即可访问 EasyAIoT 管理平台。
+
+---
+
+## 三、分步部署（手动操作）
+
+如果需要更精细的控制，可以按模块分步部署。
+
+### 3.1 第一步：部署中间件
+
+```bash
+cd .scripts/docker
+./install_middleware_linux.sh install
+```
+
+**中间件清单：**
+
+| 中间件 | 镜像 | 端口 | 用途 |
+|--------|------|------|------|
+| Nacos | nacos/nacos-server:v2.5.1 | 8848, 9848, 9849 | 服务注册与配置中心 |
+| PostgreSQL | postgres:18 | 5432 | 主数据库（6 个业务库） |
+| TDengine | tdengine/tsdb:3.3.8.4 | 6030, 6041, 6060 | 时序数据库 |
+| Redis | redis:7.4.8 | 6379 | 缓存与分布式锁 |
+| Kafka | apache/kafka:3.8.0 | 9092, 9093, 9094 | 消息队列 |
+| MinIO | minio/minio | 9000, 9001 | 对象存储 |
+| Milvus | milvusdb/milvus:v2.6.0 | 19530, 9091 | 向量数据库（人脸识别） |
+| SRS | ossrs/srs:5 | 1935, 1985 | 流媒体服务器 |
+| EMQX | emqx/emqx:5.8.7 | 1883, 8083, 18083 | MQTT Broker |
+| ZLMediaKit | zlmediakit/zlmediakit:master | 6080, 5540, 10935 | 媒体服务器 |
+| GPUStack | gpustack/gpustack:v2.1.2 | 10180 | GPU 资源管理 |
+| Dify | dify-api / dify-web / ... | 10190 | LLM 应用平台 |
+| Node-RED | nodered/node-red:latest | 1880 | 规则引擎 |
+
+等待中间件就绪：
+
+```bash
+# 检查 PostgreSQL
+docker exec postgres-server pg_isready -U postgres
+
+# 检查 Nacos
+curl -s http://localhost:8848/nacos/actuator/health
+
+# 检查 Redis
+docker exec redis-server redis-cli -a basiclab@iot975248395 ping
+```
+
+### 3.2 第二步：部署 DEVICE 服务
+
+```bash
+cd DEVICE
+./install_linux.sh install
+```
+
+**DEVICE 服务清单：**
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| iot-gateway | 48080 | API 网关（Spring Cloud Gateway） |
+| iot-system | 48099 | 系统管理 |
+| iot-infra | 48066 | 基础设施 |
+| iot-device | 48055 | 设备管理 |
+| iot-dataset | 48077 | 数据集管理 |
+| iot-message | 48033 | 消息推送 |
+| iot-file | 48022 | 文件服务 |
+| iot-sink | 48011 | 协议适配（MQTT/TCP/HTTP/EMQX） |
+| iot-gb28181 | 5060 | GB28181 视频监控协议 |
+
+**构建方式：**
+- 两阶段构建：`Dockerfile.base`（Maven 依赖缓存）→ 各模块 `Dockerfile`
+- Java 21 + Spring Boot 2.7.18
+- 构建缓存目录：`.build-cache/device/m2/repository`
+
+### 3.3 第三步：部署 AI 服务
+
+```bash
+cd AI
+./install_linux.sh install
+```
+
+**AI 服务说明：**
+- 端口：5000
+- 框架：Flask + PyTorch 2.9+ (CUDA 12.8)
+- 功能：模型训练、推理、部署、OCR、语音、LLM
+- GPU 支持：自动检测 GPU 并启用 NVIDIA Container Runtime
+- 构建缓存：`.build-cache/ai/pip-cache`、`.build-cache/ai/pip-wheels`
+- 基础镜像：`pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel`
+
+### 3.4 第四步：部署 VIDEO 服务
+
+```bash
+cd VIDEO
+./install_linux.sh install
+```
+
+**VIDEO 服务说明：**
+- 端口：6000
+- 框架：Flask + OpenCV + FFmpeg
+- 功能：视频流处理、实时/快照算法分析、录像、告警、人脸识别
+- 子服务：6 个独立微服务（实时算法、快照算法、帧提取、排序、推流、流转发）
+- 消息队列：Kafka（告警事件）
+- 向量数据库：Milvus（人脸识别）
+
+### 3.5 第五步：部署 WEB 前端
+
+```bash
+cd WEB
+./install_linux.sh install
+```
+
+**WEB 前端说明：**
+- 端口：8888
+- 框架：Vue 3.4 + TypeScript + Vite
+- UI 库：Ant Design Vue 4.0
+- 构建：Node.js 18+ / 20+，pnpm 11.3+
+
+---
+
+## 四、单模块管理
+
+每个模块都支持以下命令：
+
+```bash
+./install_linux.sh install    # 安装并启动（首次运行）
+./install_linux.sh start      # 启动
+./install_linux.sh stop       # 停止
+./install_linux.sh restart    # 重启
+./install_linux.sh status     # 查看状态
+./install_linux.sh logs       # 查看日志
+./install_linux.sh build      # 重新构建镜像
+./install_linux.sh clean      # 清理容器和镜像
+./install_linux.sh update     # 更新并重启
+```
+
+**中间件单独管理：**
+
+```bash
+cd .scripts/docker
+./install_middleware_linux.sh install    # 安装所有中间件
+./install_middleware_linux.sh start      # 启动
+./install_middleware_linux.sh stop       # 停止
+./install_middleware_linux.sh status     # 状态
+./install_middleware_linux.sh logs       # 日志
+```
+
+---
+
+## 五、GPU 配置
+
+### 5.1 安装 NVIDIA 驱动
+
+```bash
+# 检查 GPU 是否可用
+nvidia-smi
+
+# 安装 NVIDIA Container Toolkit
+# 参考：https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+
+# 验证 Docker GPU 支持
+docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
+```
+
+### 5.2 GPU 自动检测
+
+安装脚本会自动检测 GPU：
+- 检测到 GPU → 自动启用 `runtime: nvidia`、设置 `NVIDIA_VISIBLE_DEVICES=all`
+- 未检测到 GPU → 使用 CPU 模式运行
+
+### 5.3 多 GPU 配置
+
+AI 服务支持多 GPU 并行推理，通过环境变量控制：
+
+```bash
+# 指定使用 GPU 0 和 1
+export CUDA_VISIBLE_DEVICES=0,1
+```
+
+---
+
+## 六、国产化适配
+
+### 6.1 银河麒麟系统
+
+```bash
+.scripts/docker/install_linux_kylin.sh install
+```
+
+### 6.2 ARM64 架构
+
+```bash
+# 中间件
+.scripts/docker/install_linux_arm.sh install
+
+# AI 服务（ARM 版 Dockerfile）
+cd AI
+./install_linux.sh install  # 脚本会自动选择 ARM Dockerfile
+```
+
+---
+
+## 七、数据库说明
+
+### 7.1 PostgreSQL 业务库
+
+PostgreSQL 启动时会自动创建以下 6 个业务库：
+
+| 库名 | SQL 文件 | 用途 |
+|------|---------|------|
+| ruoyi-vue-pro20 | ruoyi-vue-pro10.sql | 系统管理主库 |
+| iot-ai20 | iot-ai10.sql | AI 服务库 |
+| iot-device10 | iot-device10.sql | 设备管理库 |
+| iot-gb2818110 | iot-gb2818110.sql | 视频监控库 |
+| iot-message10 | iot-message10.sql | 消息推送库 |
+| iot-video10 | iot-video10.sql | 视频处理库 |
+
+初始化脚本位于 `.scripts/postgresql/` 目录，Docker 启动时通过 `docker-entrypoint-initdb.d` 自动执行。
+
+### 7.2 TDengine 时序库
+
+TDengine 启动后会自动初始化超级表，SQL 文件位于 `.scripts/tdengine/tdengine_super_tables.sql`。
+
+### 7.3 数据库备份
+
+```bash
+# 备份所有数据库
+.scripts/postgresql/backup_databases.sh
+```
+
+---
+
+## 八、中间件默认账号密码
+
+| 中间件 | 用户名 | 密码 | 控制台地址 |
+|--------|--------|------|-----------|
+| Nacos | nacos | nacos | http://<IP>:8848/nacos |
+| PostgreSQL | postgres | iot45722414822 | — |
+| Redis | — | basiclab@iot975248395 | — |
+| MinIO | minioadmin | basiclab@iot975248395 | http://<IP>:9001 |
+| EMQX | admin | basiclab@iot6874125784 | http://<IP>:18083 |
+| GPUStack | admin | basiclab@iotp4JWmQSvzdh0z4mF | http://<IP>:10180 |
+| Milvus | — | — | http://<IP>:9091 |
+
+> ⚠️ **安全提示**：生产环境请务必修改所有默认密码。
+
+---
+
+## 九、故障排查
+
+### 9.1 服务启动失败
+
+```bash
+# 查看具体服务日志
+docker logs -f postgres-server
+docker logs -f nacos-server
+docker logs -f ai-service
+docker logs -f video-service
+
+# 查看所有服务状态
+docker ps -a
+```
+
+### 9.2 网络问题
+
+```bash
+# 检查 Docker 网络
+docker network ls | grep easyaiot
+docker network inspect easyaiot-network
+
+# 重建网络（宿主机 IP 变化后）
+docker network rm easyaiot-network
+docker network create easyaiot-network
+docker compose restart
+```
+
+### 9.3 PostgreSQL 连接问题
+
+```bash
+# 自动修复
+.scripts/docker/fix_postgresql.sh
+
+# 手动检查
+docker exec postgres-server pg_isready -U postgres
+docker exec postgres-server psql -U postgres -c "SELECT 1;"
+```
+
+### 9.4 Redis 连接问题
+
+```bash
+# 自动修复
+.scripts/docker/fix_redis.sh
+
+# 手动检查
+docker exec redis-server redis-cli -a basiclab@iot975248395 ping
+```
+
+### 9.5 Docker 服务问题
+
+```bash
+# 诊断 Docker systemd 问题
+sudo .scripts/docker/diagnose_docker_systemd.sh diagnose
+
+# 修复 systemd 超时
+sudo .scripts/docker/diagnose_docker_systemd.sh fix-all
+
+# 检查磁盘空间
+df -h
+docker system df
+
+# 清理 Docker 垃圾
+.scripts/docker/cleanup_docker_space.sh
+```
+
+### 9.6 Kafka 消费组问题
+
+```bash
+# 修复 Kafka 消费组
+cd VIDEO
+python fix_kafka_consumer_group.py
+```
+
+### 9.7 端口冲突
+
+```bash
+# 检查端口占用
+ss -tlnp | grep -E "8848|5432|6379|9092|5000|6000|8888"
+
+# 如有冲突，修改对应 docker-compose.yml 中的端口映射
+```
+
+---
+
+## 十、日志文件位置
+
+| 位置 | 说明 |
+|------|------|
+| `.scripts/docker/logs/` | 安装脚本日志 |
+| `DEVICE/logs/` | DEVICE 服务日志 |
+| `AI/data/logs/` | AI 服务日志 |
+| `VIDEO/data/logs/` | VIDEO 服务日志 |
+| `docker logs <容器名>` | 容器实时日志 |
+
+---
+
+## 十一、更新与升级
+
+### 11.1 更新代码
+
+```bash
+cd easyaiot
+git pull origin main
+```
+
+### 11.2 更新并重启所有服务
+
+```bash
+sudo .scripts/docker/install_linux.sh update
+```
+
+### 11.3 更新单个模块
+
+```bash
+# 例如只更新 AI 服务
+cd AI
+./install_linux.sh update
+```
+
+### 11.4 重新构建镜像
+
+```bash
+# 重新构建所有镜像
+sudo .scripts/docker/install_linux.sh build
+
+# 重新构建单个模块
+cd DEVICE
+./install_linux.sh build
+```
+
+---
+
+## 十二、卸载
+
+```bash
+# 停止并删除所有容器、镜像和网络
+sudo .scripts/docker/install_linux.sh clean
+
+# 手动清理数据卷（可选）
+rm -rf .scripts/docker/db_data
+rm -rf .scripts/docker/redis_data
+rm -rf .scripts/docker/minio_data
+rm -rf .scripts/docker/mq_data
+rm -rf .scripts/docker/taos_data
+rm -rf .scripts/docker/milvus_data
+rm -rf .scripts/docker/gpustack_data
+```
+
+---
+
+## 十三、架构参考
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    WEB 前端 (:8888)                              │
+│              Vue 3 + Ant Design Vue + Vite                       │
+├─────────────────────────────────────────────────────────────────┤
+│                 API Gateway (:48080)                              │
+│              Spring Cloud Gateway + Nacos                        │
+├───────────┬───────────┬───────────┬───────────┬─────────────────┤
+│ iot-system│ iot-infra │ iot-device│ iot-dataset│  iot-message   │
+│ iot-file  │ iot-sink  │ iot-gb28181                        │
+│           │           │           │           │                  │
+│    Java 21 + Spring Boot 2.7 + MyBatis-Plus                     │
+├───────────┴───────────┴───────────┴───────────┴─────────────────┤
+│  AI 服务 (:5000)         │  VIDEO 服务 (:6000)    │  TASK (C++)  │
+│  Flask + PyTorch + YOLO  │  Flask + OpenCV + FFmpeg│  ONNX Runtime│
+│  训练/推理/部署/OCR/LLM  │  流处理/告警/录像/人脸  │  边缘推理    │
+├──────────────────────────┴───────────────────────┴──────────────┤
+│                     中间件层                                     │
+│  Nacos │ PostgreSQL │ Redis │ Kafka │ MinIO │ TDengine          │
+│  Milvus │ SRS │ EMQX │ ZLMediaKit │ GPUStack │ Dify │ Node-RED  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+*文档生成时间：2026-05-31 | 项目地址：https://gitee.com/volara/easyaiot*
