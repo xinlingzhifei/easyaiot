@@ -476,6 +476,10 @@ EasyAIoT — это проект с открытым исходным кодом
   <img src=".image/banner/banner1108.png" alt="Screenshot 8" width="49%">
 </div>
 <div>
+  <img src=".image/banner/banner1111.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1112.png" alt="Screenshot 8" width="49%">
+</div>
+<div>
   <img src=".image/banner/banner1109.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1110.png" alt="Screenshot 8" width="49%">
 </div>

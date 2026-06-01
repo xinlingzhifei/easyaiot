@@ -476,6 +476,10 @@ EasyAIoT는 오픈소스 학습 프로젝트이며 상업적 행위와 무관합
   <img src=".image/banner/banner1108.png" alt="Screenshot 8" width="49%">
 </div>
 <div>
+  <img src=".image/banner/banner1111.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1112.png" alt="Screenshot 8" width="49%">
+</div>
+<div>
   <img src=".image/banner/banner1109.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1110.png" alt="Screenshot 8" width="49%">
 </div>
