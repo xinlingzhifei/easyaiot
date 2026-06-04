@@ -599,17 +599,39 @@ EasyAIoT — это проект с открытым исходным кодом
 </tbody>
 </table>
 
-## 📞 Контакты (после добавления в WeChat необходимо подписаться на официальный аккаунт для вступления в техническую группу)
+## 📞 Контакты
 
-<div>
-  <img src=".image/联系方式.jpg" alt="联系方式" width="30%" style="margin-right: 50px;">
-  <img src=".image/联系方式2.png" alt="联系方式" width="30%">
-</div>
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+Сначала подпишитесь на официальный аккаунт ниже, затем свяжитесь с нами через техническую группу или WeChat.
+</p>
 
 ## 👥 Официальный аккаунт
 
 <div>
-  <img src=".image/公众号.jpg" alt="公众号" width="30%">
+  <img src=".image/公众号.jpg" alt="Официальный аккаунт" width="30%">
+</div>
+
+## 💬 Техническая группа
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+После подписки на официальный аккаунт отсканируйте QR-коды ниже через WeChat, чтобы вступить в техническую группу EasyAIoT. Если группа заполнена, попробуйте следующую.
+</p>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0;">
+  <img src=".image/交流群2群.jpg" alt="Техническая группа EasyAIoT 2" width="24%">
+  <img src=".image/交流群3群.jpg" alt="Техническая группа EasyAIoT 3" width="24%">
+  <img src=".image/交流群4群.jpg" alt="Техническая группа EasyAIoT 4" width="24%">
+  <img src=".image/交流群5群.jpg" alt="Техническая группа EasyAIoT 5" width="24%">
+</div>
+
+## 💬 WeChat
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+После подписки на официальный аккаунт отсканируйте QR-код ниже, чтобы добавить нас в друзья WeChat для личного общения.
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="WeChat контакт" width="200">
 </div>
 
 ## 🪐 Знаниевая планета:
