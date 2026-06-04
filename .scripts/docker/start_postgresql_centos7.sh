@@ -57,6 +57,9 @@ RUN_INIT=true
 WAIT_READY=true
 SKIP_MIRROR=false
 SKIP_PULL=false
+SKIP_DOCKER_UPGRADE=false
+FORCE_DOCKER_UPGRADE=false
+MIN_DOCKER_MAJOR=20
 ACTION="start"
 
 print_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -87,8 +90,10 @@ CentOS 7.9 单独启动 PostgreSQL 容器
   --status        查看容器状态
   --no-init       跳过权限初始化容器 PostgresSQL-init
   --no-wait       启动后不等待数据库就绪
-  --skip-mirror   跳过配置 Docker 国内镜像源
-  --skip-pull     跳过拉取镜像
+  --skip-mirror       跳过配置 Docker 国内镜像源
+  --skip-pull         跳过拉取镜像
+  --no-upgrade-docker 检测到过旧 Docker 时不自动升级
+  --upgrade-docker    强制升级 Docker CE（需 root）
 
 示例:
   sudo ./start_postgresql_centos7.sh   # 推荐 root，可自动配置镜像源
@@ -135,6 +140,14 @@ parse_args() {
                 ;;
             --skip-pull)
                 SKIP_PULL=true
+                shift
+                ;;
+            --no-upgrade-docker)
+                SKIP_DOCKER_UPGRADE=true
+                shift
+                ;;
+            --upgrade-docker)
+                FORCE_DOCKER_UPGRADE=true
                 shift
                 ;;
             *)
@@ -238,6 +251,142 @@ check_docker() {
         exit 1
     fi
     print_success "Docker 已启动"
+}
+
+# 获取 Docker Server 版本号（兼容 1.13 无 --format）
+get_docker_server_version() {
+    local ver
+    ver=$(docker version 2>/dev/null | awk '
+        /^Server:/ { in_server=1; next }
+        in_server && /^Version:/ { print $2; exit }
+        in_server && /^[A-Z]/ && $1 !~ /^Version:/ { in_server=0 }
+    ')
+    if [ -n "$ver" ]; then
+        echo "$ver"
+        return 0
+    fi
+    docker -v 2>/dev/null | sed -n 's/.*[Vv]ersion \([^, ]*\).*/\1/p' | head -1
+}
+
+# Docker 1.13 等旧版本无法拉取 postgres:18（manifest 签名不兼容，报 missing signature key）
+is_docker_too_old() {
+    local ver="${1:-$(get_docker_server_version)}"
+    if [ -z "$ver" ]; then
+        return 0
+    fi
+    local major minor
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    major=${major:-0}
+    minor=${minor:-0}
+    # 1.x 且小于 1.20，或 major < MIN_DOCKER_MAJOR
+    if [ "$major" -le 1 ] 2>/dev/null && [ "$minor" -lt 20 ] 2>/dev/null; then
+        return 0
+    fi
+    if [ "$major" -lt "$MIN_DOCKER_MAJOR" ] 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# 升级 Docker CE（与 install_middleware_linux.sh 一致，华为云 yum 源）
+upgrade_docker_ce_centos7() {
+    print_section "升级 Docker CE（CentOS 7）"
+
+    if [ "$EUID" -ne 0 ]; then
+        print_error "升级 Docker 需要 root 权限"
+        print_info "请执行: sudo $0"
+        return 1
+    fi
+
+    print_info "卸载系统自带的 docker 1.13..."
+    yum remove -y docker \
+        docker-client docker-client-latest docker-common \
+        docker-latest docker-latest-logrotate docker-logrotate \
+        docker-selinux docker-engine-selinux docker-engine \
+        2>/dev/null || true
+
+    print_info "安装依赖..."
+    yum install -y yum-utils device-mapper-persistent-data lvm2
+
+    print_info "添加 Docker CE 仓库（华为云镜像）..."
+    if ! yum-config-manager --add-repo https://mirrors.huaweicloud.com/docker-ce/linux/centos/docker-ce.repo 2>/dev/null; then
+        print_warning "华为云仓库添加失败，尝试官方源..."
+        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    fi
+
+    print_info "安装 docker-ce（el7 最新稳定版）..."
+    set +e
+    yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    local yum_rc=$?
+    set -e
+    if [ "$yum_rc" -ne 0 ]; then
+        print_warning "带 compose-plugin 安装失败，尝试仅安装 docker-ce..."
+        yum install -y docker-ce docker-ce-cli containerd.io || {
+            print_error "Docker CE 安装失败"
+            return 1
+        }
+    fi
+
+    systemctl daemon-reload
+    systemctl enable docker
+    systemctl start docker
+    sleep 2
+
+    if ! docker info >/dev/null 2>&1; then
+        print_error "Docker CE 启动失败，请检查: journalctl -u docker -n 50"
+        return 1
+    fi
+
+    local new_ver
+    new_ver=$(get_docker_server_version)
+    print_success "Docker 已升级: ${new_ver:-$(docker -v)}"
+
+    if is_docker_too_old "$new_ver"; then
+        print_error "升级后版本仍过旧: ${new_ver}"
+        return 1
+    fi
+    return 0
+}
+
+# 确保 Docker 版本可拉取 postgres:18
+ensure_modern_docker() {
+    local ver
+    ver=$(get_docker_server_version)
+    print_info "Docker 版本: ${ver:-未知}"
+
+    if [ "$FORCE_DOCKER_UPGRADE" = true ]; then
+        if [ "$EUID" -ne 0 ]; then
+            print_error "--upgrade-docker 需要 root"
+            exit 1
+        fi
+        upgrade_docker_ce_centos7 || exit 1
+        return 0
+    fi
+
+    if ! is_docker_too_old "$ver"; then
+        print_success "Docker 版本可拉取 ${PG_IMAGE}"
+        return 0
+    fi
+
+    print_warning "Docker ${ver} 过旧，拉取 ${PG_IMAGE} 会报 missing signature key"
+    print_info "这是 CentOS7 自带 docker 1.13 的已知限制，需升级到 docker-ce ${MIN_DOCKER_MAJOR}+"
+
+    if [ "$SKIP_DOCKER_UPGRADE" = true ]; then
+        print_error "已指定 --no-upgrade-docker，无法继续"
+        print_info "请手动升级: sudo $0 --upgrade-docker"
+        exit 1
+    fi
+
+    if [ "$EUID" -ne 0 ]; then
+        print_error "自动升级需要 root"
+        print_info "请执行: sudo $0"
+        print_info "或仅升级 Docker: sudo $0 --upgrade-docker"
+        exit 1
+    fi
+
+    print_info "将以 root 自动升级 Docker CE（取消请用 --no-upgrade-docker）..."
+    upgrade_docker_ce_centos7 || exit 1
 }
 
 # 配置 Docker 国内镜像源（与 install_middleware_linux.sh 一致，使用 docker.1ms.run）
@@ -385,7 +534,7 @@ _pull_from_registry() {
     local source_image="$1"
     print_info "从国内镜像站直连拉取: ${source_image}"
     set +e
-    docker pull "$source_image"
+    DOCKER_CONTENT_TRUST=0 docker pull "$source_image"
     local pull_rc=$?
     set -e
     if [ "$pull_rc" -eq 0 ]; then
@@ -414,14 +563,18 @@ ensure_postgresql_image() {
         return 0
     fi
 
-    print_info "CentOS7 旧版 Docker 拉取 postgres:18 时界面仍可能显示 docker.io，"
-    print_info "这不代表未走镜像加速；本脚本优先从国内镜像站域名直连拉取。"
+    if is_docker_too_old "$(get_docker_server_version)"; then
+        print_error "Docker 版本过旧，请先升级: sudo $0 --upgrade-docker"
+        exit 1
+    fi
 
-    # 国内直连优先（显式域名，日志中应出现 docker.1ms.run 而非仅 docker.io）
+    export DOCKER_CONTENT_TRUST=0
+
+    # 国内直连优先（需 docker-ce 20+，1.13 会 missing signature key）
     local mirrors=(
         "docker.1ms.run/library/postgres:18"
+        "docker.m.daocloud.io/library/postgres:18"
         "docker.1ms.run/postgres:18"
-        "registry.cn-hangzhou.aliyuncs.com/library/postgres:18"
     )
 
     local pulled=false
@@ -437,7 +590,7 @@ ensure_postgresql_image() {
         print_warning "国内镜像站直连均失败，最后尝试 docker pull ${PG_IMAGE} ..."
         print_info "（若仍显示 docker.io/library/postgres，说明正在走 Docker Hub 或 registry-mirror 代理）"
         set +e
-        if docker pull "$PG_IMAGE"; then
+        if DOCKER_CONTENT_TRUST=0 docker pull "$PG_IMAGE"; then
             pulled=true
         fi
         set -e
@@ -445,13 +598,16 @@ ensure_postgresql_image() {
 
     if [ "$pulled" = true ] && docker image inspect "$PG_IMAGE" >/dev/null 2>&1; then
         print_success "PostgreSQL 镜像就绪: ${PG_IMAGE}"
-        docker images "$PG_IMAGE" --format '  {{.Repository}}:{{.Tag}}  {{.Size}}'
+        docker images "$PG_IMAGE" --format '  {{.Repository}}:{{.Tag}}  {{.Size}}' 2>/dev/null || \
+            docker images | grep -E 'postgres\s+18|postgres\s+latest' || true
         return 0
     fi
 
-    print_error "无法拉取 PostgreSQL 镜像，请检查网络或手动执行:"
-    print_info "  sudo ./start_postgresql_centos7.sh          # 自动配置 ${DOCKER_MIRROR}"
-    print_info "  docker pull docker.1ms.run/library/postgres:18 && docker tag docker.1ms.run/library/postgres:18 ${PG_IMAGE}"
+    print_error "无法拉取 PostgreSQL 镜像"
+    if is_docker_too_old "$(get_docker_server_version)"; then
+        print_info "若报 missing signature key，请升级 Docker: sudo $0 --upgrade-docker"
+    fi
+    print_info "或手动: docker pull ${PG_IMAGE}"
     exit 1
 }
 
@@ -644,6 +800,7 @@ main() {
     print_section "CentOS 7.9 PostgreSQL 独立启动"
     check_centos7
     check_docker
+    ensure_modern_docker
     configure_docker_mirror || print_warning "镜像源配置未完成，将尝试直连国内镜像拉取"
     resolve_compose_cmd
     check_compose_file
