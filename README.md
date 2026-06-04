@@ -709,11 +709,15 @@ The following are outstanding contributors who have made significant contributio
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>雨落流殇</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance EasyAIoT in ultra-large-scale streaming media delivery, contributed the deployment architecture and scheduling approach for heterogeneous SRS and ZLMediaKit streaming media server clusters, proposing scalable solutions including multi-node pool coordination, decoupling of the streaming media control plane from the business layer, storage and upload pipelines, and node registration scheduling—laying an important architectural foundation for the platform to support concurrent access of tens of thousands of camera streams with stable distribution and elastic scaling.</td>
 </tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>常康</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance EasyAIoT in intelligent transportation and vehicle management, independently contributed the license plate recognition algorithm and complete code implementation, covering ONNX-based plate detection, plate number and color recognition, double-layer plate merging and tilt/perspective correction, plate library management and multi-library sequential matching, one-click integration with algorithm tasks, and Kafka asynchronous matching—supporting mainstream plate types including blue, yellow, green, white, and new energy vehicle plates—bringing the platform's "license plate recognition and plate library management" capability from planning to production-ready, closed-loop application.</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Special Thanks</strong>: The work of the above contributors has advanced EasyAIoT in many ways, including cross-platform deployment documentation and scripts, delivery of national-standard video capabilities (including GB28181), AI integration testing, multi-vendor camera direct discovery and batch onboarding, production-ready Tianditu spatial visualization, heterogeneous streaming media cluster deployment and scheduling architecture, and EasyAIoT-Edge end-to-end integration linking camera access with AI. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
+<strong>Special Thanks</strong>: The work of the above contributors has advanced EasyAIoT in many ways, including cross-platform deployment documentation and scripts, delivery of national-standard video capabilities (including GB28181), AI integration testing, multi-vendor camera direct discovery and batch onboarding, production-ready Tianditu spatial visualization, heterogeneous streaming media cluster deployment and scheduling architecture, production-ready license plate recognition algorithm and complete implementation, and EasyAIoT-Edge end-to-end integration linking camera access with AI. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
 </p>
 
 ## 🏆 Best Practitioners
@@ -916,6 +920,9 @@ Thanks to the following contributors for code, feedback, donations, and support 
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/阿龙.jpg" width="80px;" alt="阿龙"/><br /><sub><b>阿龙</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/雨落流殇.jpg" width="80px;" alt="雨落流殇"/><br /><sub><b>雨落流殇</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/遗忘的星空.jpg" width="80px;" alt="遗忘的星空"/><br /><sub><b>遗忘的星空</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/常康.jpg" width="80px;" alt="常康"/><br /><sub><b>常康</b></sub></a></td>
     </tr>
   </tbody>
 </table>

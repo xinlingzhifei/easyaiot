@@ -743,11 +743,15 @@ Voici les contributeurs exceptionnels qui ont apporté une contribution signific
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>雨落流殇</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Pour faire progresser EasyAIoT dans la diffusion multimédia à très grande échelle, a contribué à l'architecture de déploiement et à l'approche d'ordonnancement des clusters de serveurs multimédia hétérogènes SRS et ZLMediaKit, proposant des solutions évolutives incluant la coordination multi-pools de nœuds, le découplage du plan de contrôle multimédia et de la couche métier, les pipelines de stockage et de téléchargement, ainsi que l'enregistrement et l'ordonnancement des nœuds — posant des bases architecturales importantes pour permettre à la plateforme de prendre en charge l'accès concurrent à des dizaines de milliers de flux caméra avec une diffusion stable et une montée en charge élastique.</td>
 </tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>常康</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Pour faire progresser EasyAIoT dans le transport intelligent et la gestion des véhicules, a contribué de manière indépendante à l'algorithme de reconnaissance de plaques d'immatriculation et à son implémentation complète, couvrant la détection et localisation ONNX, la reconnaissance du numéro et de la couleur, la fusion de plaques à double rangée et la correction d'inclinaison/perspective, la gestion de bases de plaques et le matching séquentiel multi-bases, l'intégration en un clic aux tâches algorithmiques et la comparaison asynchrone via Kafka — avec prise en charge des plaques bleues, jaunes, vertes, blanches et des véhicules à énergie nouvelle — faisant passer la capacité « reconnaissance de plaques et gestion de bases » de la planification à une application de production en boucle fermée.</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Remerciements spéciaux</strong> : Le travail des contributeurs ci-dessus a fait avancer EasyAIoT sur plusieurs fronts, notamment la documentation et les scripts de déploiement multiplateforme, la mise en œuvre des capacités vidéo selon la norme nationale (dont GB28181), les tests d'intégration IA, la découverte directe multi-marques et l'intégration en masse des caméras, la mise en production de la visualisation spatiale Tianditu, l'architecture de déploiement et d'ordonnancement des clusters multimédia hétérogènes, ainsi que l'intégration de bout en bout EasyAIoT-Edge reliant l'accès caméra et l'IA sur l'edge. Leur professionnalisme et leur dévouement méritent notre reconnaissance et notre respect. Encore une fois, nous exprimons notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏
+<strong>Remerciements spéciaux</strong> : Le travail des contributeurs ci-dessus a fait avancer EasyAIoT sur plusieurs fronts, notamment la documentation et les scripts de déploiement multiplateforme, la mise en œuvre des capacités vidéo selon la norme nationale (dont GB28181), les tests d'intégration IA, la découverte directe multi-marques et l'intégration en masse des caméras, la mise en production de la visualisation spatiale Tianditu, l'architecture de déploiement et d'ordonnancement des clusters multimédia hétérogènes, la mise en production de l'algorithme de reconnaissance de plaques et de son implémentation complète, ainsi que l'intégration de bout en bout EasyAIoT-Edge reliant l'accès caméra et l'IA sur l'edge. Leur professionnalisme et leur dévouement méritent notre reconnaissance et notre respect. Encore une fois, nous exprimons notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏
 </p>
 
 ## 🏆 Meilleurs praticiens
@@ -950,6 +954,9 @@ Nous remercions les personnes suivantes pour leur soutien à ce projet, sous for
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/阿龙.jpg" width="80px;" alt="阿龙"/><br /><sub><b>阿龙</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/雨落流殇.jpg" width="80px;" alt="雨落流殇"/><br /><sub><b>雨落流殇</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/遗忘的星空.jpg" width="80px;" alt="遗忘的星空"/><br /><sub><b>遗忘的星空</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/常康.jpg" width="80px;" alt="常康"/><br /><sub><b>常康</b></sub></a></td>
     </tr>
   </tbody>
 </table>

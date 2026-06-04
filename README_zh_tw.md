@@ -743,11 +743,15 @@ EasyAIoT是一個開源學習項目，與商業行為無關。用戶在使用該
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>雨落流殇</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">為推動 EasyAIoT 項目在超大規模串流媒體承載方向的發展，貢獻 SRS 與 ZLMediaKit 異構串流媒體伺服器叢集的部署架構與排程思路，提出多節點池協同、串流媒體控制面與業務層解耦、儲存與上傳流水線及節點註冊排程等可擴展方案，為平台支撐萬級路攝影機並發接入、穩定分發與彈性擴容奠定了重要的架構基礎。</td>
 </tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>常康</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">為推動 EasyAIoT 項目在智慧交通與車輛管控方向的發展，獨立貢獻車牌識別演算法與完整程式碼實作，涵蓋基於 ONNX 的車牌定位檢測、號碼與顏色識別、雙層牌拼接與傾斜透視校正、車牌庫管理與多庫順序匹配、演算法任務一鍵聯動及 Kafka 非同步比對等核心鏈路，全面支援藍/黃/綠/白牌及新能源車牌等主流類型，使平台「車牌識別與車牌庫管理能力」從能力規劃真正走向可落地、可閉環的生產應用。</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>特別致謝</strong>：以上貢獻者在跨平台部署文檔與腳本、國標視訊能力落地與 AI 聯調驗證、多品牌攝影機直連發現與批量接入、天地圖空間視覺化完整落地、異構串流媒體叢集部署與排程架構、EasyAIoT-Edge 邊緣側端到端串聯等不同方面推動了 EasyAIoT 的發展，他們的專業精神與無私奉獻值得我們學習與尊敬。再次向這些傑出的貢獻者表示最誠摯的感謝！🙏
+<strong>特別致謝</strong>：以上貢獻者在跨平台部署文檔與腳本、國標視訊能力落地與 AI 聯調驗證、多品牌攝影機直連發現與批量接入、天地圖空間視覺化完整落地、異構串流媒體叢集部署與排程架構、車牌識別演算法與完整程式碼落地、EasyAIoT-Edge 邊緣側端到端串聯等不同方面推動了 EasyAIoT 的發展，他們的專業精神與無私奉獻值得我們學習與尊敬。再次向這些傑出的貢獻者表示最誠摯的感謝！🙏
 </p>
 
 ## 🏆 最佳實踐者
@@ -950,6 +954,9 @@ EasyAIoT是一個開源學習項目，與商業行為無關。用戶在使用該
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/阿龙.jpg" width="80px;" alt="阿龙"/><br /><sub><b>阿龙</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/雨落流殇.jpg" width="80px;" alt="雨落流殇"/><br /><sub><b>雨落流殇</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/遗忘的星空.jpg" width="80px;" alt="遗忘的星空"/><br /><sub><b>遗忘的星空</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/常康.jpg" width="80px;" alt="常康"/><br /><sub><b>常康</b></sub></a></td>
     </tr>
   </tbody>
 </table>
