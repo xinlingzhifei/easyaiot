@@ -122,6 +122,47 @@ def _parse_channel_block(block: str) -> dict[str, Any]:
     }
 
 
+_OFFLINE_CONN_MARKERS = (
+    'netunreachable',
+    'offline',
+    'notconnected',
+    'disconnect',
+    'loginfailed',
+    'networkerror',
+    'streamlimit',
+    'userlocked',
+    'maxconnect',
+)
+
+
+def is_mounted_channel_row(row: dict[str, Any]) -> bool:
+    """判断通道是否已挂载且可用（过滤空槽位 / 离线通道）。"""
+    online = row.get('online')
+    if online is False:
+        return False
+
+    conn = (row.get('connection_status') or '').strip().lower()
+    if conn and any(marker in conn for marker in _OFFLINE_CONN_MARKERS):
+        return False
+
+    if online is True:
+        return True
+
+    # 无在线状态时（如部分大华接口）回退到配置字段判断
+    ip = (row.get('ip') or row.get('camera_ip') or '').strip()
+    if ip:
+        return True
+    device_id = (row.get('device_id') or '').strip()
+    if device_id:
+        return True
+    return False
+
+
+def filter_mounted_channel_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """仅保留已挂载摄像头的通道。"""
+    return [row for row in rows if is_mounted_channel_row(row)]
+
+
 def parse_input_proxy_channels(xml_text: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for block in _split_channel_blocks(xml_text):
@@ -470,6 +511,7 @@ async def inventory_nvr(
     probe_cameras: bool = True,
     camera_concurrency: int = 20,
     vendor: str | None = None,
+    only_mounted: bool = True,
 ) -> NvrInventory:
     """List cameras under a Hikvision or Dahua NVR."""
     scheme = _scheme_for_port(port)
@@ -536,6 +578,8 @@ async def inventory_nvr(
             inv.error = err
             if not rows:
                 return inv
+        if only_mounted:
+            rows = filter_mounted_channel_rows(rows)
         inv.channels = _rows_to_channels(rows)
 
         if probe_cameras and inv.channels:

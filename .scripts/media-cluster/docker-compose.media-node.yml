@@ -1,0 +1,26 @@
+# 单 SRS 媒体节点 Compose 模板（host 网络）
+# 用法:
+#   export MEDIA_NODE_ID=srs-live-01 MEDIA_SCHEDULER_HOST=10.10.40.10 SRS_CANDIDATE_IP=10.10.20.11
+#   envsubst < srs/cluster.conf.template > /opt/srs/conf/docker.conf
+#   docker compose -f docker-compose.media-node.yml up -d
+
+services:
+  srs:
+    image: ossrs/srs:5
+    container_name: "${MEDIA_NODE_ID:-srs-node}"
+    restart: always
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - /mnt/easyaiot-media/playbacks:/mnt/easyaiot-media/playbacks:rw
+      - /mnt/easyaiot-media/logs:/mnt/easyaiot-media/logs:rw
+      - ./srs/cluster.conf.template:/usr/local/srs/conf/docker.conf:ro
+    command: ["./objs/srs", "-c", "conf/docker.conf"]
+    working_dir: /usr/local/srs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:1985/api/v1/versions || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

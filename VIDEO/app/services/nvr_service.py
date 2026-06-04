@@ -246,10 +246,7 @@ def _resolve_channel_source(
     password: str,
     vendor: str | None,
 ) -> str | None:
-    """根据枚举结果或 NVR 模板生成经 NVR 取流的 RTSP，不探测单台 IPC。"""
-    source = (ch.get('rtsp_url') or ch.get('source') or '').strip()
-    if source:
-        return source
+    """按当前 NVR IP 生成经 NVR 取流的 RTSP，避免同步后仍残留旧 NVR 地址。"""
     try:
         channel_id = int(
             ch.get('channel_id') if ch.get('channel_id') is not None else ch.get('nvr_channel') or 0
@@ -271,6 +268,10 @@ def _resolve_channel_source(
         preferred=cred,
         channel_username=ch.get('username'),
     )
+
+
+def _rtsp_source_host(source: str | None) -> str:
+    return (urlparse(source or '').hostname or '').strip()
 
 
 def _upsert_nvr_channel_device(
@@ -423,16 +424,43 @@ def bulk_register_nvr_channels(
     registered = 0
     skipped = 0
     errors: list[str] = []
+    expected_channel_ids: set[int] = set()
 
     for ch in channels or []:
         try:
             ch_no = ch.get('channel_id', ch.get('nvr_channel', '?'))
+            try:
+                cid = int(
+                    ch.get('channel_id') if ch.get('channel_id') is not None else ch.get('nvr_channel') or 0
+                )
+            except (TypeError, ValueError):
+                cid = 0
+            if cid > 0:
+                expected_channel_ids.add(cid)
             if _upsert_nvr_channel_device(nvr_id, nvr, ch, username=user, password=pwd, vendor=v):
                 registered += 1
             else:
                 skipped += 1
         except Exception as e:
             errors.append(f'CH{ch_no}: {e}')
+
+    pruned = 0
+    if expected_channel_ids:
+        from models import DeviceDetectionRegion
+
+        nvr_ip = (nvr.ip or '').strip()
+        for cam in Device.query.filter_by(nvr_id=nvr_id).all():
+            ch_no = int(cam.nvr_channel or 0)
+            src_host = _rtsp_source_host(cam.source)
+            stale_host = bool(nvr_ip and src_host and src_host != nvr_ip)
+            if ch_no > 0 and ch_no in expected_channel_ids and not stale_host:
+                continue
+            for region in DeviceDetectionRegion.query.filter_by(device_id=cam.id).all():
+                db.session.delete(region)
+            db.session.delete(cam)
+            pruned += 1
+        if pruned:
+            logger.info(f'NVR {nvr_id} 同步移除 {pruned} 路未挂载/旧地址通道')
 
     try:
         linked = _link_channels_to_nvr(nvr_id, nvr.ip)
@@ -448,6 +476,7 @@ def bulk_register_nvr_channels(
     result['register_stats'] = {
         'registered': registered,
         'skipped': skipped,
+        'pruned': pruned,
         'errors': errors,
     }
     return result

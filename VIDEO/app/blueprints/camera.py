@@ -1538,6 +1538,7 @@ def scan_nvr_channels():
         timeout = float(data.get('timeout') or 5.0)
         vendor = (data.get('vendor') or '').strip() or None
         probe_cameras = bool(data.get('probe_cameras', False))
+        only_mounted = bool(data.get('only_mounted', True))
 
         inv = enumerate_nvr_channels(
             ip,
@@ -1548,6 +1549,7 @@ def scan_nvr_channels():
             timeout=timeout,
             vendor=vendor,
             probe_cameras=probe_cameras,
+            only_mounted=only_mounted,
         )
         return jsonify({'code': 0, 'msg': 'success', 'data': inv})
     except ValueError as e:
