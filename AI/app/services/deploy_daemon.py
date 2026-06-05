@@ -361,8 +361,19 @@ class DeployServiceDaemon:
         
         # 准备环境变量（使用传入的参数）
         env = os.environ.copy()
-        # 重要：设置 PYTHONUNBUFFERED，确保输出实时（与 test_service.py 保持一致）
         env['PYTHONUNBUFFERED'] = '1'
+        ai_env = os.getenv('AI_ENV', '').strip()
+        if ai_env:
+            env['AI_ENV'] = ai_env
+        for key in (
+            'DATABASE_URL', 'NACOS_SERVER', 'NACOS_NAMESPACE', 'NACOS_USERNAME', 'NACOS_PASSWORD',
+            'MINIO_ENDPOINT', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY', 'MINIO_SECURE',
+            'KAFKA_BOOTSTRAP_SERVERS', 'MODEL_AI_PUSH_URL', 'CUDA_VISIBLE_DEVICES',
+            'USE_GPU', 'NVIDIA_VISIBLE_DEVICES', 'ORT_EXECUTION_PROVIDERS',
+        ):
+            val = os.getenv(key)
+            if val is not None and val != '':
+                env[key] = val
         env['MODEL_ID'] = str(self._model_id)
         env['MODEL_PATH'] = self._model_path  # 已经是本地路径
         env['SERVICE_ID'] = str(self._service_id)

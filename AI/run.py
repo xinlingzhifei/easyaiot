@@ -14,11 +14,12 @@ import time
 
 import netifaces
 import pytz
-from dotenv import load_dotenv
 from flask import Flask
 from healthcheck import HealthCheck, EnvironmentDump
 from nacos import NacosClient
 from sqlalchemy import text
+
+from app.utils.ai_env import load_ai_env
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -54,39 +55,33 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-# 加载环境变量配置文件（参考VIDEO模块的实现）
+# 加载环境变量配置文件
+def _print_key_config():
+    db_url = os.environ.get('DATABASE_URL', '')
+    db_host = '未设置'
+    if db_url:
+        try:
+            from urllib.parse import urlparse
+            db_host = urlparse(db_url.replace('postgres://', 'postgresql://', 1)).hostname or '未知'
+        except Exception:
+            db_host = '解析失败'
+    print(f"📌 DATABASE_URL 主机: {db_host}")
+    print(f"📌 NACOS_SERVER: {os.environ.get('NACOS_SERVER', '未设置')}")
+    print(f"📌 FLASK_RUN_PORT: {os.environ.get('FLASK_RUN_PORT', '未设置')}")
+
+
 def load_env_file(env_name=''):
-    """
-    加载环境变量配置文件
-    使用 override=True 确保配置文件中的值能够覆盖系统环境变量
-    """
     if env_name:
-        env_file = f'.env.{env_name}'
-        if os.path.exists(env_file):
-            # 使用 override=True 确保配置文件中的值覆盖已存在的环境变量
-            load_dotenv(env_file, override=True)
-            print(f"✅ 已加载配置文件: {env_file} (覆盖模式)")
-            
-            # 显示关键配置信息（用于调试）
-            database_url = os.getenv('DATABASE_URL', '未设置')
-            nacos_server = os.getenv('NACOS_SERVER', '未设置')
-            flask_port = os.getenv('FLASK_RUN_PORT', '未设置')
-            print(f"   📊 DATABASE_URL: {database_url[:50]}..." if len(database_url) > 50 else f"   📊 DATABASE_URL: {database_url}")
-            print(f"   📊 NACOS_SERVER: {nacos_server}")
-            print(f"   📊 FLASK_RUN_PORT: {flask_port}")
-        else:
-            print(f"⚠️  配置文件 {env_file} 不存在，尝试加载默认 .env 文件")
-            if os.path.exists('.env'):
-                load_dotenv('.env', override=True)
-                print(f"✅ 已加载默认配置文件: .env (覆盖模式)")
-            else:
-                print(f"❌ 默认配置文件 .env 也不存在")
+        os.environ['AI_ENV'] = env_name
+    loaded = load_ai_env(override=True)
+    if loaded:
+        label = os.path.basename(loaded)
+        print(f"✅ 已加载配置文件: {label}（override=True，覆盖已有环境变量）")
+        _print_key_config()
+    elif env_name:
+        print(f"⚠️  配置文件 .env.{env_name} 不存在，且默认 .env 也不存在")
     else:
-        if os.path.exists('.env'):
-            load_dotenv('.env', override=True)
-            print(f"✅ 已加载默认配置文件: .env (覆盖模式)")
-        else:
-            print(f"⚠️  默认配置文件 .env 不存在")
+        print(f"⚠️  默认配置文件 .env 不存在")
 
 # 解析命令行参数并加载配置文件
 args = parse_args()

@@ -16,15 +16,35 @@ import atexit
 import signal
 import multiprocessing
 import uuid
+import importlib.util
 import requests
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from dotenv import load_dotenv
 
 # 添加当前目录到路径，以便导入模型相关代码
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_service_dir = os.path.dirname(os.path.abspath(__file__))
+_ai_root = os.path.dirname(os.path.dirname(_service_dir))
+sys.path.insert(0, _service_dir)
+
+
+def _load_ai_root_env(*, override: bool = True) -> str | None:
+    """从 AI 根目录加载 .env.{AI_ENV}，避免 ai_service 本地 .env 覆盖 prod 配置。"""
+    module_path = os.path.join(_ai_root, 'app', 'utils', 'ai_env.py')
+    spec = importlib.util.spec_from_file_location('_ai_env_loader', module_path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.load_ai_env(override=override)
+
+
+_loaded_env = _load_ai_root_env(override=True)
+if _loaded_env:
+    print(f"✅ 已加载 AI 根目录配置: {os.path.basename(_loaded_env)} (override=True)", file=sys.stderr)
+else:
+    print("⚠️  未找到 AI 根目录 .env / .env.prod，使用进程环境变量", file=sys.stderr)
 
 # ============================================
 # 全局异常处理器 - 确保所有异常都被记录
@@ -102,17 +122,7 @@ class DailyRotatingFileHandler(logging.FileHandler):
         
         super().emit(record)
 
-# ============================================
-# 环境变量和系统配置初始化
-# ============================================
-
-# 加载环境变量配置文件
-env_file = '.env'
-if os.path.exists(env_file):
-    load_dotenv(env_file, override=True)
-    print(f"✅ 已加载配置文件: {env_file} (覆盖模式)", file=sys.stderr)
-else:
-    print(f"⚠️  配置文件 {env_file} 不存在，使用系统环境变量", file=sys.stderr)
+# 环境变量已在文件顶部通过 _load_ai_root_env 从 AI 根目录加载
 
 # 设置multiprocessing启动方法为'spawn'以支持CUDA
 try:
