@@ -102,10 +102,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { getEventList } from '@/api/device/entity-views';
 import moment from 'moment';
-import { Button, Input, Select, SelectOption, Tag, DatePicker } from 'ant-design-vue';
+import { Input, Select, SelectOption, Tag, DatePicker } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
-
+import { Button } from '@/components/Button'
 const { RangePicker } = DatePicker;
 
 defineOptions({ name: 'DeviceEvent' });

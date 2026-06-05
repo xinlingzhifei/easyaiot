@@ -63,10 +63,10 @@
             :max-count="1"
             :before-upload="() => false"
           >
-            <a-button>
+            <Button>
               <upload-outlined />
               上传模型文件
-            </a-button>
+            </Button>
           </a-upload>
         </a-form-item>
 
@@ -114,23 +114,23 @@
             :max-count="1"
             :before-upload="() => false"
           >
-            <a-button>
+            <Button>
               <upload-outlined />
               上传视频文件
-            </a-button>
+            </Button>
           </a-upload>
         </a-form-item>
 
         <!-- 执行按钮 -->
         <a-form-item :wrapper-col="{ offset: 4, span: 16 }">
-          <a-button
+          <Button
             type="primary"
             html-type="submit"
             :loading="loading"
             :disabled="!formState.projectId"
           >
             执行推理
-          </a-button>
+          </Button>
         </a-form-item>
       </a-form>
     </a-card>
@@ -164,7 +164,7 @@ import { UploadOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 import { getModelPage } from '@/api/device/model';
 import { runInference } from '@/api/device/model';
-
+import { Button } from '@/components/Button'
 // 响应式状态
 const projects = ref([]);
 const loading = ref(false);

@@ -314,22 +314,22 @@ defineExpose({ refresh: loadData, resizeMap, applyFilters, init });
             >
               {{ chip.label }}
             </a-tag>
-            <a-button type="link" size="small" class="geo-loc-panel__chip-clear" @click="handleReset">
+            <Button type="link" size="small" class="geo-loc-panel__chip-clear" @click="handleReset">
               清空
-            </a-button>
+            </Button>
           </div>
           <div class="geo-loc-panel__actions">
-            <a-button class="geo-loc-panel__btn-reset" @click="handleReset">
+            <Button class="geo-loc-panel__btn-reset" @click="handleReset">
               重置
-            </a-button>
-            <a-button
+            </Button>
+            <Button
               type="primary"
               class="geo-loc-panel__btn-submit"
               :loading="alertData.loading.value"
               @click="handleSearch"
             >
               查询
-            </a-button>
+            </Button>
           </div>
         </section>
 
@@ -349,13 +349,13 @@ defineExpose({ refresh: loadData, resizeMap, applyFilters, init });
               {{ formatLocationSummary({ longitude: selectedCamera.lng, latitude: selectedCamera.lat }) }}
             </p>
             <div class="alert-map-detail-actions">
-              <Button size="small" type="primary" pre-icon="octicon:play-16" @click="handlePlay">播放</Button>
-              <Button size="small" pre-icon="ant-design:eye-filled" @click="handleView">详情</Button>
-              <Button size="small" pre-icon="ant-design:edit-filled" @click="handleEdit">编辑</Button>
+              <Button size="small" type="primary" preIcon="octicon:play-16" @click="handlePlay">播放</Button>
+              <Button size="small" preIcon="ant-design:eye-filled" @click="handleView">详情</Button>
+              <Button size="small" preIcon="ant-design:edit-filled" @click="handleEdit">编辑</Button>
               <Button
                 v-if="canSetSelectedCameraLocation"
                 size="small"
-                pre-icon="ant-design:environment-outlined"
+                preIcon="ant-design:environment-outlined"
                 @click="handleSetLocation()"
               >
                 设置坐标
@@ -373,7 +373,7 @@ defineExpose({ refresh: loadData, resizeMap, applyFilters, init });
               <Button
                 v-if="selectedAlert.image_url"
                 size="small"
-                pre-icon="ion:image-sharp"
+                preIcon="ion:image-sharp"
                 @click="handleAlertAction(selectedAlert as Record<string, unknown>, 'image')"
               >
                 图片
@@ -381,7 +381,7 @@ defineExpose({ refresh: loadData, resizeMap, applyFilters, init });
               <Button
                 v-if="selectedAlert.device_id && selectedAlert.time"
                 size="small"
-                pre-icon="icon-park-outline:video"
+                preIcon="icon-park-outline:video"
                 @click="handleAlertAction(selectedAlert as Record<string, unknown>, 'video')"
               >
                 录像
@@ -389,7 +389,7 @@ defineExpose({ refresh: loadData, resizeMap, applyFilters, init });
               <Button
                 v-if="canSetLinkedCameraLocation && linkedCamera"
                 size="small"
-                pre-icon="ant-design:environment-outlined"
+                preIcon="ant-design:environment-outlined"
                 @click="handleSetLocation(linkedCamera)"
               >
                 设置坐标

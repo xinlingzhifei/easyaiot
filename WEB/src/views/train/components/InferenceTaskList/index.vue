@@ -5,14 +5,14 @@
       :row-class-name="getRowClassName"
     >
       <template #toolbar>
-        <a-space>
-          <a-button type="primary" @click="openExecuteModal">
+        <Space>
+          <Button type="primary" @click="openExecuteModal">
             <template #icon>
               <PlayCircleOutlined/>
             </template>
             新增推理任务
-          </a-button>
-        </a-space>
+          </Button>
+        </Space>
       </template>
 
       <template #bodyCell="{ column, record }">
@@ -85,6 +85,8 @@ import ExecuteInferenceModal from "../ExecuteInferenceModal/index.vue";
 import InferenceDetailModal from "../InferenceDetailModal/index.vue";
 import InferenceResultViewer from "../InferenceResultViewer/index.vue";
 import {deleteInferenceRecord, getInferenceTasks, runInference} from "@/api/device/model";
+import { Button } from '@/components/Button'
+import { Space } from 'ant-design-vue'
 
 const params = {};
 

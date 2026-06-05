@@ -2,17 +2,17 @@
   <div class="device-wrapper" style="height: 100%">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary" @click="openAddModal(true, { type: 'add' })"
+        <Button type="primary" @click="openAddModal(true, { type: 'add' })"
                   preIcon="ant-design:plus-outlined">
           新增测试设备
-        </a-button>
-        <a-button type="default" @click="batchValidation"
+        </Button>
+        <Button type="default" @click="batchValidation"
                   preIcon="ant-design:partition-outlined">
           批量测试
-        </a-button>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        </Button>
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="handleDeleteAll"
@@ -61,9 +61,9 @@
         @cloud-record="handleCloudRecord"
       >
         <template #header>
-          <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+          <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
             切换视图
-          </a-button>
+          </Button>
         </template>
       </ChannelCardList>
     </div>
@@ -92,7 +92,6 @@ import {
   resolveGbChannelPlayIds,
 } from '@/views/camera/utils/gb28181Channel';
 import type { DeviceLocationDrawerRecord } from '@/views/camera/utils/deviceLocation';
-
 
 defineOptions({name: 'Channel'})
 

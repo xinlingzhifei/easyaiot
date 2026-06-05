@@ -2,9 +2,9 @@
   <div class="face-manage-page">
     <div class="page-header">
       <div class="header-left">
-        <a-button type="text" class="back-btn" @click="goBack">
+        <Button type="text" class="back-btn" @click="goBack">
           <ArrowLeftOutlined /> 返回人脸库
-        </a-button>
+        </Button>
         <div v-if="library" class="library-info">
           <h1 class="page-title">{{ library.name }}</h1>
           <div class="page-meta">
@@ -22,29 +22,29 @@
     <BasicTable v-if="viewMode === 'table'" @register="registerTable">
       <template #toolbar>
         <div class="toolbar-buttons">
-          <a-button type="primary" @click="handleAddPerson">
+          <Button type="primary" @click="handleAddPerson">
             <template #icon><PlusOutlined /></template>
             录入人脸
-          </a-button>
-          <a-button @click="handleNormalize">
+          </Button>
+          <Button @click="handleNormalize">
             <template #icon><MergeCellsOutlined /></template>
             人脸归一化
-          </a-button>
+          </Button>
           <PopConfirmButton
             placement="topRight"
             type="primary"
             color="error"
             :disabled="!checkedKeys.length"
             title="确定批量删除所选人员？其全部人脸照片将一并删除。"
-            pre-icon="ant-design:delete-outlined"
+            preIcon="ant-design:delete-outlined"
             @confirm="handleBatchDelete"
           >
             批量删除{{ checkedKeys.length ? ` (${checkedKeys.length})` : '' }}
           </PopConfirmButton>
-          <a-button @click="handleToggleViewMode">
+          <Button @click="handleToggleViewMode">
             <template #icon><SwapOutlined /></template>
             切换视图
-          </a-button>
+          </Button>
         </div>
       </template>
       <template #bodyCell="{ column, record }">
@@ -80,29 +80,29 @@
               <div class="list-header">
                 <span class="list-title">人员列表</span>
                 <div class="toolbar-buttons">
-                  <a-button type="primary" @click="handleAddPerson">
+                  <Button type="primary" @click="handleAddPerson">
                     <template #icon><PlusOutlined /></template>
                     录入人脸
-                  </a-button>
-                  <a-button @click="handleNormalize">
+                  </Button>
+                  <Button @click="handleNormalize">
                     <template #icon><MergeCellsOutlined /></template>
                     人脸归一化
-                  </a-button>
+                  </Button>
                   <PopConfirmButton
                     placement="topRight"
                     type="primary"
                     color="error"
                     :disabled="!checkedKeys.length"
                     title="确定批量删除所选人员？其全部人脸照片将一并删除。"
-                    pre-icon="ant-design:delete-outlined"
+                    preIcon="ant-design:delete-outlined"
                     @confirm="handleBatchDelete"
                   >
                     批量删除{{ checkedKeys.length ? ` (${checkedKeys.length})` : '' }}
                   </PopConfirmButton>
-                  <a-button @click="handleToggleViewMode">
+                  <Button @click="handleToggleViewMode">
                     <template #icon><SwapOutlined /></template>
                     切换视图
-                  </a-button>
+                  </Button>
                 </div>
               </div>
             </template>

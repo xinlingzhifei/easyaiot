@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <div class="table-wrapper">
     <Table :columns="columns" :data-source="dataSource" bordered :pagination="false">
@@ -49,7 +50,7 @@
 <script setup lang="ts">
   import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue';
   import { PropType, computed } from 'vue';
-  import { Table, Input, Button, DatePicker } from 'ant-design-vue';
+  import { Table, Input, DatePicker } from 'ant-design-vue';
 
   type Emits = {
     (e: 'update:list', data: any[]): void;

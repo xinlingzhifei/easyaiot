@@ -20,10 +20,10 @@
           </div>
         </div>
         <div class="header-actions">
-          <a-button type="primary" @click="handleAddPhoto">
+          <Button type="primary" @click="handleAddPhoto">
             <template #icon><PlusOutlined /></template>
             添加照片
-          </a-button>
+          </Button>
         </div>
       </div>
 
@@ -55,7 +55,7 @@
                   <div class="photo-time">{{ entry.created_at || '-' }}</div>
                 </div>
                 <div class="photo-actions">
-                  <a-button
+                  <Button
                     v-if="entry.id !== person.cover_entry_id"
                     size="small"
                     type="link"
@@ -63,10 +63,10 @@
                     @click="handleSetCover(entry.id)"
                   >
                     设为封面
-                  </a-button>
-                  <a-button size="small" type="link" @click="handleEdit(entry)">编辑</a-button>
+                  </Button>
+                  <Button size="small" type="link" @click="handleEdit(entry)">编辑</Button>
                   <a-popconfirm title="确认删除该照片？" @confirm="handleDelete(entry.id)">
-                    <a-button size="small" type="link" danger>删除</a-button>
+                    <Button size="small" type="link" danger>删除</Button>
                   </a-popconfirm>
                 </div>
               </div>
@@ -96,7 +96,7 @@ import {
 } from '@/api/device/face_library';
 import FaceEntryModal from '@/views/camera/components/FaceLibrary/FaceEntryModal.vue';
 import DEFAULT_FACE_IMAGE from '@/assets/images/video/snap-task.png';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'PersonDetailDrawer' });
 
 const emit = defineEmits(['success', 'register']);

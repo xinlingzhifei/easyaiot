@@ -57,7 +57,7 @@
                       :disabled="state.scanning"
                       class="cred-pass"
                     />
-                    <a-button
+                    <Button
                       type="link"
                       danger
                       size="small"
@@ -65,11 +65,11 @@
                       @click="removeCredential(idx)"
                     >
                       删除
-                    </a-button>
+                    </Button>
                   </div>
-                  <a-button type="dashed" block :disabled="state.scanning" @click="addCredential">
+                  <Button type="dashed" block :disabled="state.scanning" @click="addCredential">
                     添加凭证
-                  </a-button>
+                  </Button>
                   <div class="cred-hint">按列表顺序从上到下依次尝试，留空用户名的行将被忽略</div>
                 </div>
               </FormItem>
@@ -91,10 +91,10 @@
             </Col>
           </Row>
           <div class="scan-actions">
-            <a-button type="primary" :loading="state.scanning" @click="handleScan">
+            <Button type="primary" :loading="state.scanning" @click="handleScan">
               <template #icon><SearchOutlined /></template>
               开始扫描
-            </a-button>
+            </Button>
             <span v-if="state.scanProgress" class="progress-text">{{ state.scanProgress }}</span>
           </div>
         </Form>
@@ -107,7 +107,7 @@
           :message="resultHintText"
         >
           <template #action>
-            <a-button type="primary" size="small" @click="openResultModal(true)">查看扫描结果</a-button>
+            <Button type="primary" size="small" @click="openResultModal(true)">查看扫描结果</Button>
           </template>
         </Alert>
       </div>
@@ -127,14 +127,14 @@
     <Spin :spinning="state.registering">
       <div class="segment-scan-result-modal">
         <div v-if="state.devices.length" class="result-toolbar">
-          <a-button
+          <Button
             type="primary"
             :loading="state.batchRegistering"
             :disabled="registrableCount === 0"
             @click="handleBatchRegister"
           >
             {{ batchRegisterButtonText }}
-          </a-button>
+          </Button>
           <span v-if="state.batchProgress" class="batch-progress">{{ state.batchProgress }}</span>
           <span v-else-if="registrableCount > 0" class="batch-hint">
             共 {{ registrableCount }} 台可通过凭证访问{{ resultTableKind === 'camera' ? '，可批量或逐台注册' : '，可批量或逐台登记' }}
@@ -156,7 +156,7 @@
               <Tag :color="registerStatusColor(record.ip)">{{ registerStatusLabel(record.ip, record) }}</Tag>
             </template>
             <template v-else-if="column.dataIndex === 'action'">
-              <a-button
+              <Button
                 type="link"
                 size="small"
                 :disabled="!canRegisterRecord(record)"
@@ -164,7 +164,7 @@
                 @click="handleRegisterCamera(record)"
               >
                 注册
-              </a-button>
+              </Button>
             </template>
           </template>
         </Table>
@@ -184,7 +184,7 @@
               <Tag :color="registerStatusColor(record.ip)">{{ registerStatusLabel(record.ip, record) }}</Tag>
             </template>
             <template v-else-if="column.dataIndex === 'action'">
-              <a-button
+              <Button
                 type="link"
                 size="small"
                 :disabled="!canRegisterRecord(record)"
@@ -192,7 +192,7 @@
                 @click="handleRegisterNvrWithChannels(record)"
               >
                 登记NVR及通道
-              </a-button>
+              </Button>
             </template>
           </template>
         </Table>
@@ -243,8 +243,9 @@ import {
   type SegmentScanHistoryEntry,
 } from '@/views/camera/utils/segmentScanHistory';
 import SegmentScanTargetsField from '@/views/camera/components/DeviceCreate/SegmentScanTargetsField.vue';
+import { Button } from '@/components/Button'
 import {
-  computeSegmentScanWallSeconds,
+computeSegmentScanWallSeconds,
   segmentScanTargetsFormRule,
   validateSegmentScanTargets,
 } from '@/views/camera/utils/segmentScanTargetsValidate';

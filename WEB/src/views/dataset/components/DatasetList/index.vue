@@ -2,11 +2,11 @@
   <div>
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary" @click="openAddModal(true, { type: 'add' })">新增数据集
-        </a-button>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        <Button type="primary" @click="openAddModal(true, { type: 'add' })">新增数据集
+        </Button>
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">
@@ -50,12 +50,12 @@
                        @delete="handleDel"
                        @view="handleView" @edit="handleEdit">
         <template #header>
-          <a-button type="primary" @click="openAddModal(true, { isEdit: false, isView: false })">
+          <Button type="primary" @click="openAddModal(true, { isEdit: false, isView: false })">
             新增数据集
-          </a-button>
-          <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+          </Button>
+          <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
             切换视图
-          </a-button>
+          </Button>
         </template>
       </DatasetCardList>
     </div>
@@ -73,7 +73,7 @@ import {useRouter} from "vue-router";
 import {deleteDataset, getDatasetPage} from "@/api/device/dataset";
 
 import DatasetCardList from "@/views/dataset/components/DatasetCardList/index.vue";
-
+import { Button } from '@/components/Button'
 const [registerAddModel, {openModal: openAddModal}] = useModal();
 
 const router = useRouter();

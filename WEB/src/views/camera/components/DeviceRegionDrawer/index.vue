@@ -3,30 +3,30 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-buttons">
-        <a-button type="primary" @click="handleCapture" :loading="capturing">
+        <Button type="primary" @click="handleCapture" :loading="capturing">
           <template #icon>
             <CameraOutlined />
           </template>
           抓拍图片
-        </a-button>
-        <a-button @click="handleClear" :disabled="!currentImage">
+        </Button>
+        <Button @click="handleClear" :disabled="!currentImage">
           <template #icon>
             <ClearOutlined />
           </template>
           清空画布
-        </a-button>
-        <a-button type="primary" @click="handleSave" :disabled="!currentImage" :loading="saving">
+        </Button>
+        <Button type="primary" @click="handleSave" :disabled="!currentImage" :loading="saving">
           <template #icon>
             <SaveOutlined />
           </template>
           保存区域
-        </a-button>
-        <a-button @click="handleDeleteSelected" :disabled="selectedRegionId === null" danger>
+        </Button>
+        <Button @click="handleDeleteSelected" :disabled="selectedRegionId === null" danger>
           <template #icon>
             <DeleteOutlined />
           </template>
           Del 删除选中
-        </a-button>
+        </Button>
       </div>
       <!-- 快捷键提示 -->
       <div v-if="currentImage" class="shortcut-hint">
@@ -137,7 +137,7 @@
               <span v-else class="models-empty">未绑定</span>
             </div>
             <div class="region-actions">
-              <a-button
+              <Button
                 type="text"
                 size="small"
                 danger
@@ -146,7 +146,7 @@
                 <template #icon>
                   <DeleteOutlined />
                 </template>
-              </a-button>
+              </Button>
             </div>
           </div>
           <a-empty v-if="regions.length === 0" description="暂无区域" :image="false" />
@@ -189,7 +189,7 @@ import {
   type DeviceDetectionRegion,
 } from '@/api/device/device_detection_region';
 import { getModelPage } from '@/api/device/model';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'DeviceRegionDrawer' });
 
 const props = defineProps<{
@@ -1076,7 +1076,6 @@ const handleDeleteSelected = () => {
     deleteRegion(selectedRegionId.value);
   }
 };
-
 
 // 抓拍图片
 const handleCapture = async () => {

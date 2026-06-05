@@ -81,7 +81,7 @@
 
 <script lang="ts" setup>
 import { ref, reactive } from "vue";
-import { Button, ButtonGroup } from 'ant-design-vue';
+import { ButtonGroup } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import { BasicTable, TableAction, useTable } from '@/components/Table';
 import { BasicForm, useForm } from '@/components/Form';
@@ -92,7 +92,7 @@ import { useModal } from '@/components/Modal';
 import { useMessage } from '@/hooks/web/useMessage';
 import { useRoute } from "vue-router";
 import TingModelCardList from "./components/CardList/TingModelCardList.vue";
-
+import { Button } from '@/components/Button'
 const route = useRoute();
 const { createMessage } = useMessage();
 

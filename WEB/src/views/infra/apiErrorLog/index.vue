@@ -9,7 +9,7 @@ import { useMessage } from '@/hooks/web/useMessage'
 import type { ApiErrorLogExportReqVO } from '@/api/infra/apiErrorLog'
 import { exportApiErrorLog, getApiErrorLogPage, updateApiErrorLogProcess } from '@/api/infra/apiErrorLog'
 import { useModal } from '@/components/Modal'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraApiErrorLog' })
 
 const { t } = useI18n()
@@ -64,9 +64,9 @@ async function handleExport() {
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button v-auth="['infra:api-error-log:export']" :pre-icon="IconEnum.EXPORT" @click="handleExport">
+        <Button v-auth="['infra:api-error-log:export']" :preIcon="IconEnum.EXPORT" @click="handleExport">
           {{ t('action.export') }}
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">

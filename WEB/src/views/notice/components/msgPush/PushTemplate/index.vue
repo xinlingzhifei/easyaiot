@@ -1,8 +1,9 @@
+import { Button } from '@/components/Button'
 <template>
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button type="primary" @click="openConfigModal(true, { type: 'add', pushType })"
+        <Button type="primary" @click="openConfigModal(true, { type: 'add', pushType })"
           >新增推送</a-button
         >
       </template>

@@ -8,7 +8,7 @@ import { useI18n } from '@/hooks/web/useI18n'
 import { useTabs } from '@/hooks/web/useTabs'
 import { useMessage } from '@/hooks/web/useMessage'
 import { downloadCodegen, getCodegenTable } from '@/api/infra/codegen'
-
+import { Button } from '@/components/Button'
 const go = useGo()
 const { closeCurrent } = useTabs()
 const { query } = useRoute()
@@ -39,15 +39,15 @@ function handleGoList() {
   <div class="m-5 bg-white px-8 py-12 dark:bg-dark">
     <Result status="success" title="代码生成成功" sub-title="可点击下方按钮预览、下载，或返回列表页。">
       <template #extra>
-        <a-button key="console" type="primary" @click="handleGoList">
+        <Button key="console" type="primary" @click="handleGoList">
           返回列表
-        </a-button>
-        <a-button key="preview" @click="handlePreview">
+        </Button>
+        <Button key="preview" @click="handlePreview">
           预览
-        </a-button>
-        <a-button key="download" @click="handleGenTable">
+        </Button>
+        <Button key="download" @click="handleGenTable">
           生成
-        </a-button>
+        </Button>
       </template>
     </Result>
     <PreviewModal @register="registerPreviewModal" />

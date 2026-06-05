@@ -7,6 +7,7 @@ import { Button } from '@/components/Button';
 import { CollapseContainer, ScrollContainer } from '@/components/Container';
 import { Icon } from '@/components/Icon';
 import { formatLocationSummary } from '@/views/camera/utils/deviceLocation';
+import { Space } from 'ant-design-vue'
 
 defineOptions({ name: 'CameraMapView' });
 
@@ -167,30 +168,30 @@ defineExpose({ refresh: loadDevices, resizeMap });
             </a-list>
             <a-empty v-else description="暂无已定位设备" />
           </ScrollContainer>
-          <a-space
+          <Space
             v-if="selectedDeviceId"
             direction="vertical"
             :size="8"
             class="camera-map-view__actions"
           >
-            <Button block type="primary" size="small" pre-icon="octicon:play-16" @click="handlePlay">
+            <Button block type="primary" size="small" preIcon="octicon:play-16" @click="handlePlay">
               播放
             </Button>
-            <Button block size="small" pre-icon="ant-design:eye-filled" @click="handleView">
+            <Button block size="small" preIcon="ant-design:eye-filled" @click="handleView">
               详情
             </Button>
-            <Button block size="small" pre-icon="ant-design:edit-filled" @click="handleEdit">
+            <Button block size="small" preIcon="ant-design:edit-filled" @click="handleEdit">
               编辑
             </Button>
             <Button
               block
               size="small"
-              pre-icon="ant-design:environment-outlined"
+              preIcon="ant-design:environment-outlined"
               @click="handleSetLocation"
             >
               设置坐标
             </Button>
-          </a-space>
+          </Space>
         </a-spin>
       </CollapseContainer>
     </a-layout-sider>

@@ -2,7 +2,7 @@
   <Spin :spinning="state.scanning">
     <DeviceCreatePanelLayout result-title="扫描结果">
       <template #actions>
-        <Button type="primary" :loading="state.scanning" pre-icon="ant-design:search-outlined" @click="handleScan">
+        <Button type="primary" :loading="state.scanning" preIcon="ant-design:search-outlined" @click="handleScan">
           扫描局域网
         </Button>
         <span v-if="state.scanProgress" class="dc-action-tip">{{ state.scanProgress }}</span>

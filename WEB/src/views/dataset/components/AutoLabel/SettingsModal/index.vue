@@ -142,9 +142,9 @@
 import { ref, reactive } from 'vue';
 import { BasicModal, useModal } from '@/components/Modal';
 import { Icon } from '@/components/Icon';
-import { Collapse, CollapsePanel, Form, FormItem, Input, CheckboxGroup, Checkbox, Tag, Button, Space } from 'ant-design-vue';
+import { Collapse, CollapsePanel, Form, FormItem, Input, CheckboxGroup, Checkbox, Tag, Space } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'SettingsModal' });
 
 const { createMessage } = useMessage();

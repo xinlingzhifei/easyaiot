@@ -2,13 +2,13 @@
   <div class="device-wrapper">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary" @click="handleOpenProductMolal(true, { type: true })"
+        <Button type="primary" @click="handleOpenProductMolal(true, { type: true })"
                   preIcon="ant-design:plus-outlined">
           添加产品
-        </a-button>
-        <a-button type="default" @click="handleClickSwap"
+        </Button>
+        <Button type="default" @click="handleClickSwap"
                   preIcon="ant-design:swap-outlined">切换视图
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="handleDeleteAll"
@@ -63,13 +63,13 @@
       <ProductCardList :params="params" :api="getDeviceProfiles" @get-method="getMethod"
                        @delete="handleDel" @edit="handleEdit" @view="handleView">
         <template #header>
-          <a-button type="primary" @click="handleOpenProductMolal(true, { type: true })"
+          <Button type="primary" @click="handleOpenProductMolal(true, { type: true })"
                     preIcon="ant-design:plus-outlined">
             添加产品
-          </a-button>
-          <a-button type="default" @click="handleClickSwap"
+          </Button>
+          <Button type="default" @click="handleClickSwap"
                     preIcon="ant-design:swap-outlined">切换视图
-          </a-button>
+          </Button>
           <PopConfirmButton
             placement="topRight"
             @confirm="handleDeleteAll"

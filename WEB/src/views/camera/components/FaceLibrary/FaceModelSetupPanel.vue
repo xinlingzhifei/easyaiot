@@ -134,7 +134,7 @@
 
             <!-- CTA -->
             <div class="panel-actions">
-              <a-button
+              <Button
                 v-if="!showProgress"
                 type="primary"
                 size="large"
@@ -144,7 +144,7 @@
               >
                 <template #icon><CloudDownloadOutlined /></template>
                 {{ modelStatus?.stage === 'error' ? '重新下载模型' : '立即下载并安装' }}
-              </a-button>
+              </Button>
             </div>
           </div>
         </section>
@@ -166,7 +166,7 @@ import {
 import { Progress, Spin, Tag } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import type { FaceRecModelStatus } from '@/api/device/face_library';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'FaceModelSetupPanel' });
 
 const props = defineProps<{

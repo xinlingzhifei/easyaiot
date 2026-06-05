@@ -12,20 +12,20 @@
       <!-- 顶部操作栏 -->
       <div class="record-video-header">
         <div class="header-actions">
-          <a-button type="primary" @click="handleSelectAll">
+          <Button type="primary" @click="handleSelectAll">
             {{ isAllSelected ? '取消全选' : '全选' }}
-          </a-button>
-          <a-button type="primary" @click="handleRefresh">
+          </Button>
+          <Button type="primary" @click="handleRefresh">
             刷新
-          </a-button>
-          <a-button 
+          </Button>
+          <Button 
             type="primary" 
             danger 
             :disabled="selectedRowKeys.length === 0"
             @click="handleBatchDelete"
           >
             批量删除 ({{ selectedRowKeys.length }})
-          </a-button>
+          </Button>
         </div>
       </div>
 
@@ -92,15 +92,15 @@
                     
                     <!-- 操作按钮 -->
                     <div class="card-actions" @click.stop>
-                      <a-button type="link" size="small" @click="handlePlay(item)">
+                      <Button type="link" size="small" @click="handlePlay(item)">
                         播放
-                      </a-button>
-                      <a-button type="link" size="small" @click="handlePreview(item)">
+                      </Button>
+                      <Button type="link" size="small" @click="handlePreview(item)">
                         预览
-                      </a-button>
-                      <a-button type="link" size="small" danger @click="handleDelete(item)">
+                      </Button>
+                      <Button type="link" size="small" danger @click="handleDelete(item)">
                         删除
-                      </a-button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -124,7 +124,7 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { getRecordVideoList, deleteRecordVideos, type RecordVideo } from '@/api/device/record';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'RecordVideoModal' });
 
 const { createMessage } = useMessage();

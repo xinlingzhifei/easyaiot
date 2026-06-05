@@ -10,19 +10,19 @@
   >
     <template #footer>
       <div class="footer-buttons">
-        <a-button @click="closeDrawer">关闭</a-button>
-        <a-button v-if="!taskStatus?.is_running" :loading="saving" @click="handleSave">保存配置</a-button>
-        <a-button
+        <Button @click="closeDrawer">关闭</Button>
+        <Button v-if="!taskStatus?.is_running" :loading="saving" @click="handleSave">保存配置</Button>
+        <Button
           v-if="!taskStatus?.is_running"
           type="primary"
           :loading="starting"
           @click="handleStart"
         >
           开启摄像头自动录入
-        </a-button>
-        <a-button v-else danger type="primary" :loading="stopping" @click="handleStop">
+        </Button>
+        <Button v-else danger type="primary" :loading="stopping" @click="handleStop">
           关闭摄像头自动录入
-        </a-button>
+        </Button>
       </div>
     </template>
 
@@ -65,8 +65,9 @@ import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getDeviceList } from '@/api/device/camera';
+import { Button } from '@/components/Button'
 import {
-  getPlateAutoEnrollTask,
+getPlateAutoEnrollTask,
   isAutoEnrollConfigError,
   parsePlateApiError,
   savePlateAutoEnrollConfig,

@@ -41,9 +41,9 @@
               accept="*"
               :disabled="state.isView"
             >
-              <a-button type="primary">
+              <Button type="primary">
                 {{ t('component.upload.choose') }}
-              </a-button>
+              </Button>
             </Upload>
           </FormItem>
           <FormItem label="关键版本" name="type" v-bind=validateInfos.keyVersionFlag>
@@ -79,7 +79,7 @@ import {addOtaApp, fetchPkgList, updateOtaApp} from "@/api/device/ota";
 import {useI18n} from "@/hooks/web/useI18n";
 import {useUserStoreWithOut} from "@/store/modules/user";
 import {useGlobSetting} from "@/hooks/setting";
-
+import { Button } from '@/components/Button'
 const {t} = useI18n()
 
 defineOptions({name: 'OtaVersionModal'})

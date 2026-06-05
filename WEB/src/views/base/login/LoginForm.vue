@@ -18,7 +18,7 @@ import * as authUtil from '@/utils/auth'
 
 import { Verify } from '@/components/Verifition'
 import { getTenantByWebsite, getTenantIdByName } from '@/api/base/login'
-
+import { Button } from '@/components/Button'
 const FormItem = Form.Item
 const InputPassword = Input.Password
 
@@ -162,20 +162,20 @@ async function handleLogin(params) {
       <Col :span="12">
         <FormItem :style="{ 'text-align': 'right' }">
           <!-- No logic, you need to deal with it yourself -->
-          <a-button type="link" size="small" @click="setLoginState(LoginStateEnum.RESET_PASSWORD)">
+          <Button type="link" size="small" @click="setLoginState(LoginStateEnum.RESET_PASSWORD)">
             {{ t('sys.login.forgetPassword') }}
-          </a-button>
+          </Button>
         </FormItem>
       </Col>
     </Row>
 
     <FormItem class="enter-x">
-      <a-button type="primary" size="large" block :loading="loading" @click="getCode">
+      <Button type="primary" size="large" block :loading="loading" @click="getCode">
         {{ t('sys.login.loginButton') }}
-      </a-button>
-      <!-- <a-button size="large" class="mt-4 enter-x" block @click="handleRegister">
+      </Button>
+      <!-- <Button size="large" class="mt-4 enter-x" block @click="handleRegister">
         {{ t('sys.login.registerButton') }}
-      </a-button> -->
+      </Button> -->
     </FormItem>
   </Form>
   <Verify ref="verify" mode="pop" :captcha-type="captchaType" :img-size="{ width: '360px', height: '180px' }" @success="handleLogin" />

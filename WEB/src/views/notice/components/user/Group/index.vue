@@ -1,8 +1,9 @@
+import { Button } from '@/components/Button'
 <template>
   <div class="group-warpper">
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button type="primary" @click="openUserModal(true, { type: 'add' })">新增分组</a-button>
+        <Button type="primary" @click="openUserModal(true, { type: 'add' })">新增分组</Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">

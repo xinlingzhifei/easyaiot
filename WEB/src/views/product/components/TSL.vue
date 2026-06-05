@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <BasicModal @register="register" title="物理模型TSL">
     <Typography>
@@ -36,7 +37,7 @@
 <script lang="ts" setup name="TSL">
   import { BasicModal, useModalInner } from '@/components/Modal';
   import { CopyOutlined } from '@ant-design/icons-vue';
-  import { Typography, TypographyParagraph, Tabs, TabPane, Button } from 'ant-design-vue';
+  import { Typography, TypographyParagraph, Tabs, TabPane } from 'ant-design-vue';
   import { CodeEditor } from '@/components/CodeEditor';
   import { ref, computed } from 'vue';
   import { copyText } from '@/utils/copyText';

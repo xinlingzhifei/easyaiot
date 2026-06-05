@@ -28,7 +28,7 @@
               </div>
             </div>
             <div class="camera-actions">
-              <a-button 
+              <Button 
                 type="primary"
                 :loading="camera.loading"
                 @click="handleViewSnapSpace(camera)"
@@ -38,7 +38,7 @@
                   <FolderOutlined />
                 </template>
                 {{ camera.space ? '打开抓拍空间' : '暂无抓拍空间' }}
-              </a-button>
+              </Button>
             </div>
           </div>
         </div>
@@ -54,13 +54,13 @@
 import { ref, computed } from 'vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { useModal } from '@/components/Modal';
-import { Button, Empty, Spin } from 'ant-design-vue';
+import { Empty, Spin } from 'ant-design-vue';
 import { FolderOutlined } from '@ant-design/icons-vue';
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getSnapSpaceByDeviceId, type SnapSpace } from '@/api/device/snap';
 import SnapImageModal from '@/views/camera/components/SnapSpace/SnapImageModal.vue';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'SnapSpaceDrawer' });
 
 const { createMessage } = useMessage();

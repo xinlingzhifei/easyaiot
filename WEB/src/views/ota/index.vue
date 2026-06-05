@@ -3,11 +3,11 @@
     <BasicTable v-if="state.isTableMode" @register="registerTable">
       <template #toolbar>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <a-button type="primary" @click="openAddModal(true, { type: 'add' })">新增OTA升级包
-          </a-button>
-          <a-button type="default" @click="handleClickSwap"
+          <Button type="primary" @click="openAddModal(true, { type: 'add' })">新增OTA升级包
+          </Button>
+          <Button type="default" @click="handleClickSwap"
                     preIcon="ant-design:swap-outlined">切换视图
-          </a-button>
+          </Button>
         </div>
       </template>
       <template #bodyCell="{ column, record }">
@@ -67,11 +67,11 @@
       >
         <template #header>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <a-button type="primary" @click="openAddModal(true, { type: 'add' })">新增OTA升级包
-            </a-button>
-            <a-button type="default" @click="handleClickSwap"
+            <Button type="primary" @click="openAddModal(true, { type: 'add' })">新增OTA升级包
+            </Button>
+            <Button type="default" @click="handleClickSwap"
                       preIcon="ant-design:swap-outlined">切换视图
-            </a-button>
+            </Button>
           </div>
         </template>
       </OtaPackageCards>
@@ -90,7 +90,7 @@ import OtaPackageCards from "@/views/ota/components/OtaPackageCards/index.vue";
 import {useModal} from "@/components/Modal";
 import {downloadByUrl} from "@/utils/file/download";
 import ALERT from "@/assets/images/product/product_normal.png";
-
+import { Button } from '@/components/Button'
 const [registerAddModel, {openModal: openAddModal}] = useModal();
 
 defineOptions({name: 'OtaVersion'})

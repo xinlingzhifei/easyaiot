@@ -9,7 +9,7 @@ import { IconEnum } from '@/enums/appEnum'
 import { BasicTable, TableAction, useTable } from '@/components/Table'
 import type { JobLogExportReqVO } from '@/api/infra/jobLog'
 import { exportJobLog, getJobLogPage } from '@/api/infra/jobLog'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraJobLog' })
 
 const { t } = useI18n()
@@ -55,9 +55,9 @@ async function handleExport() {
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button v-auth="['infra:job:export']" :pre-icon="IconEnum.EXPORT" @click="handleExport">
+        <Button v-auth="['infra:job:export']" :preIcon="IconEnum.EXPORT" @click="handleExport">
           {{ t('action.export') }}
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">

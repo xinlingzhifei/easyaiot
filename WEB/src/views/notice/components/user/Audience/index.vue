@@ -1,11 +1,12 @@
+import { Button } from '@/components/Button'
 <template>
   <div class="user-warpper">
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button type="link" @click="handleDownloadTemplate">下载导入模版</a-button>
-        <a-button type="primary" @click="openUserModal(true, { type: 'add' })">新增用户</a-button>
+        <Button type="link" @click="handleDownloadTemplate">下载导入模版</Button>
+        <Button type="primary" @click="openUserModal(true, { type: 'add' })">新增用户</Button>
         <Upload :show-upload-list="false" @change="handleUploadFile">
-          <a-button type="primary">导入用户</a-button>
+          <Button type="primary">导入用户</Button>
         </Upload>
       </template>
       <template #bodyCell="{ column, record }">

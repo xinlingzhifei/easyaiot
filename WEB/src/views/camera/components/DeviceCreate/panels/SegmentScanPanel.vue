@@ -46,7 +46,7 @@
         </BasicForm>
       </template>
       <template #actions>
-        <Button type="primary" :loading="state.scanning" pre-icon="ant-design:search-outlined" @click="handleScan">
+        <Button type="primary" :loading="state.scanning" preIcon="ant-design:search-outlined" @click="handleScan">
           开始跨网段扫描
         </Button>
         <span v-if="state.scanProgress" class="dc-action-tip">{{ state.scanProgress }}</span>

@@ -9,7 +9,7 @@ import { previewCodegen } from '@/api/infra/codegen'
 import type { CodegenPreviewVO } from '@/api/infra/codegen/types'
 import { handleTree2 } from '@/utils/tree'
 import { useMessage } from '@/hooks/web/useMessage'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraPreviewModal' })
 
 const { createMessage } = useMessage()
@@ -132,9 +132,9 @@ async function copy(text: string) {
             v-for="item in previewCodes" :key="item.filePath"
             :tab="item.filePath.substring(item.filePath.lastIndexOf('/') + 1)"
           >
-            <a-button type="link" style="float: right; padding: 4px 60px;" @click="copy(item.code)">
+            <Button type="link" style="float: right; padding: 4px 60px;" @click="copy(item.code)">
               复制
-            </a-button>
+            </Button>
             <CodeEditor class="max-h-200" :value="item.code" :mode="modeValue" :readonly="true" />
           </Tabs.TabPane>
         </Tabs>

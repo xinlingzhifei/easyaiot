@@ -30,9 +30,9 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue';
-import { Button, Popconfirm, Progress, Typography } from 'ant-design-vue';
+import { Popconfirm, Progress, Typography } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'DatasetImportProgress' });
 
 const props = withDefaults(defineProps<{

@@ -58,12 +58,13 @@
 <script lang="ts" setup>
 import {computed, reactive, ref} from 'vue';
 import {BasicModal, useModalInner} from '@/components/Modal';
-import {Button, Checkbox, Form, FormItem, InputNumber, message, Spin, Upload} from 'ant-design-vue';
+import { Checkbox, Form, FormItem, InputNumber, message, Spin, Upload } from 'ant-design-vue';
 import {UploadOutlined} from '@ant-design/icons-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import DatasetImportProgress from '@/views/dataset/components/DatasetImportProgress.vue';
+import { Button } from '@/components/Button'
 import {
-  DATASET_MAX_FILE_SIZE,
+DATASET_MAX_FILE_SIZE,
   formatFileSize,
   resumableUploadDatasetFile,
 } from '@/utils/upload/resumableUpload';

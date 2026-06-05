@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <BasicDrawer @register="register" title="产品详情" width="60%">
     <Tabs v-model:activeKey="activeKey">
@@ -6,7 +7,7 @@
       </TabPane>
 
       <!-- <template #tabBarExtraContent>
-        <a-button>Extra Action</a-button>
+        <Button>Extra Action</Button>
       </template> -->
     </Tabs>
   </BasicDrawer>

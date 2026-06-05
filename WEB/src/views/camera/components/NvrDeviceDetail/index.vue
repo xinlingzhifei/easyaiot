@@ -10,7 +10,7 @@
       <div class="channel-section">
         <div class="section-header">
           <span class="section-title">挂载摄像头（{{ cameras.length }}）</span>
-          <a-button
+          <Button
             type="primary"
             size="small"
             :loading="syncing"
@@ -18,7 +18,7 @@
             @click="handleSyncChannels"
           >
             同步通道
-          </a-button>
+          </Button>
         </div>
         <Empty v-if="!cameras.length" description="暂无挂载摄像头，可通过网段扫描 NVR 登记并同步通道" />
         <List
@@ -52,7 +52,7 @@ import { Empty, List, PageHeader, Spin } from 'ant-design-vue';
 import { getNvrDetail, registerNvrWithChannels, type DeviceInfo, type NvrInfo } from '@/api/device/camera';
 import NvrChannelCard from '@/views/camera/components/NvrChannelCard/index.vue';
 import { useMessage } from '@/hooks/web/useMessage';
-
+import { Button } from '@/components/Button'
 const ListItem = List.Item;
 
 const props = defineProps<{

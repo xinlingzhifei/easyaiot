@@ -4,15 +4,15 @@
       <div class="ant-card">
         <BasicTable @register="registerTable">
           <template #toolbar>
-            <a-button type="primary"
+            <Button type="primary"
                       @click="openTaskMolal(true, { datasetId: route.params['id'], isEdit: false, isView: false })"
                       preIcon="ic:baseline-add">
               新建视频流帧捕获任务
-            </a-button>
-            <a-button @click="handleSearchCamera"
+            </Button>
+            <Button @click="handleSearchCamera"
                       preIcon="mingcute:search-ai-line">
               搜索局域网摄像头
-            </a-button>
+            </Button>
           </template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.dataIndex === 'action'">
@@ -68,7 +68,7 @@ import {useModal} from "@/components/Modal";
 import TaskModal from "./components/TaskModal.vue";
 import VideoSearchModal from "@/views/dataset/components/VideoSearchModal/index.vue";
 import {useRoute} from "vue-router";
-
+import { Button } from '@/components/Button'
 defineOptions({name: 'DatasetFrameTask'})
 
 const {createMessage} = useMessage();

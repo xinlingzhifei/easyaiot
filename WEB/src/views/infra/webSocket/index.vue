@@ -5,8 +5,7 @@ import { useWebSocket } from '@vueuse/core'
 import { PageWrapper } from '@/components/Page'
 import { formatToDateTime } from '@/utils/dateUtil'
 import { useUserStore } from '@/store/modules/user'
-
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraWebSocket' })
 
 const InputTextArea = Input.TextArea
@@ -75,9 +74,9 @@ function toggle() {
               服务地址
             </template>
           </Input>
-          <a-button :type="getIsOpen ? 'danger' : 'primary'" @click="toggle">
+          <Button :type="getIsOpen ? 'danger' : 'primary'" @click="toggle">
             {{ getIsOpen ? '关闭连接' : '开启连接' }}
-          </a-button>
+          </Button>
         </div>
         <p class="mt-4 text-lg font-medium">
           设置
@@ -86,9 +85,9 @@ function toggle() {
 
         <InputTextArea v-model:value="state.sendValue" placeholder="需要发送到服务器的内容" :disabled="!getIsOpen" allow-clear />
 
-        <a-button type="primary" block class="mt-4" :disabled="!getIsOpen" @click="handlerSend">
+        <Button type="primary" block class="mt-4" :disabled="!getIsOpen" @click="handlerSend">
           发送
-        </a-button>
+        </Button>
       </div>
 
       <div class="ml-4 w-2/3 p-4">

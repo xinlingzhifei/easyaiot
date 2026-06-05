@@ -3,11 +3,11 @@
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #form-custom></template>
       <template #toolbar>
-        <a-button type="primary" @click="openTargetModal('add')" preIcon="ant-design:plus-outlined">新增规则</a-button>
-         <a-button type="default" @click="openTargetModal('import')" preIcon="ant-design:plus-outlined">导入规则</a-button>
-        <a-button type="default" @click="handleClickSwap"
+        <Button type="primary" @click="openTargetModal('add')" preIcon="ant-design:plus-outlined">新增规则</Button>
+         <Button type="default" @click="openTargetModal('import')" preIcon="ant-design:plus-outlined">导入规则</Button>
+        <Button type="default" @click="handleClickSwap"
                   preIcon="ant-design:swap-outlined">切换视图
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="deleteAll"
@@ -85,17 +85,17 @@
       <RulechainCardList :params="params" :api="flowsList" @get-method="getMethod"
                          @delete="handleDel" @edit="handleEdit" @view="handleView" @go="rowClickTable">
         <template #header>
-          <a-button type="primary" @click="openTargetModal('add')"
+          <Button type="primary" @click="openTargetModal('add')"
                     preIcon="ant-design:plus-outlined">
             新增规则
-          </a-button>
-          <a-button type="default" @click="openTargetModal('import')"
+          </Button>
+          <Button type="default" @click="openTargetModal('import')"
                     preIcon="ant-design:plus-outlined">
             导入规则
-          </a-button>
-          <a-button type="default" @click="handleClickSwap"
+          </Button>
+          <Button type="default" @click="handleClickSwap"
                     preIcon="ant-design:swap-outlined">切换视图
-          </a-button>
+          </Button>
           <PopConfirmButton
             placement="topRight"
             @confirm="deleteAll"

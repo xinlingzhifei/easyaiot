@@ -2,21 +2,23 @@
   <div :class="['split-screen-container', { 'fullscreen-mode': state.isFull }]">
     <a-layout class="monitor-layout">
       <a-layout-sider :width="350" class="device-tree-sider" theme="light">
-        <CollapseContainer :can-expan="true" title="设备目录" class="tree-container">
+        <CollapseContainer :can-expan="true" class="tree-container">
           <template #title>
             <div class="tree-header-title">
-              <Icon icon="ant-design:folder-outlined" class="header-icon" />
-              <span>设备目录</span>
+              <span class="tree-header-title__icon">
+                <Icon icon="ant-design:folder-outlined" :size="16" />
+              </span>
+              <span class="tree-header-title__text">设备目录</span>
             </div>
           </template>
           <template #action="{ expand, onClick }">
             <div class="tree-header-actions">
-              <a-button :loading="treeLoading || treeRefreshing" @click.stop="handleRefresh">
+              <AButton :loading="treeLoading || treeRefreshing" @click.stop="handleRefresh">
                 <template #icon>
                   <Icon icon="ant-design:reload-outlined" />
                 </template>
                 刷新
-              </a-button>
+              </AButton>
               <BasicArrow up :expand="expand" @click="onClick" />
             </div>
           </template>
@@ -65,8 +67,8 @@
             <a-divider type="vertical" class="toolbar-divider" />
 
             <div class="toolbar-section">
-              <a-space size="small">
-                <a-button
+              <Space size="small">
+                <Button
                   type="default"
                   danger
                   size="middle"
@@ -74,12 +76,12 @@
                   @click="handleGridDelete"
                 >
                   删除选中
-                </a-button>
-                <a-button :type="state.isFull ? 'default' : 'primary'" size="middle" @click="handleGridFull">
+                </Button>
+                <Button :type="state.isFull ? 'default' : 'primary'" size="middle" @click="handleGridFull">
                   {{ state.isFull ? '退出全屏' : '全屏展示' }}
-                </a-button>
-                <a-button type="default" size="middle" @click="handleClearAll">清空全部</a-button>
-              </a-space>
+                </Button>
+                <Button type="default" size="middle" @click="handleClearAll">清空全部</Button>
+              </Space>
             </div>
 
             <div class="toolbar-section toolbar-status">
@@ -96,8 +98,7 @@
               :class="['video-cell', {
                 'cell-selected': state.playerIdx === i - 1,
                 'cell-empty': !state.playCells[i - 1],
-                'cell-loading': state.loadingCells.includes(i - 1),
-              }]"
+                'cell-loading': state.loadingCells.includes(i - 1)}]"
               @click="state.playerIdx = i - 1"
             >
               <div v-if="!state.playCells[i - 1]" class="empty-cell">
@@ -116,7 +117,7 @@
                 <span class="cell-name" :title="state.playCells[i - 1]!.name">
                   {{ state.playCells[i - 1]!.name }}
                 </span>
-                <a-button
+                <Button
                   type="text"
                   size="small"
                   danger
@@ -124,7 +125,7 @@
                   @click.stop="handleCellDelete(i - 1)"
                 >
                   <Icon icon="ant-design:close-outlined" />
-                </a-button>
+                </Button>
               </div>
             </div>
           </div>
@@ -142,53 +143,48 @@ import {
   LayoutSider as ALayoutSider,
   LayoutHeader as ALayoutHeader,
   LayoutContent as ALayoutContent,
-  Space as ASpace,
+  Button as AButton,
+  Space,
   Divider as ADivider,
   RadioGroup as ARadioGroup,
   RadioButton as ARadioButton,
-  Checkbox as ACheckbox,
-  Button as AButton,
-} from 'ant-design-vue';
+  Checkbox as ACheckbox} from 'ant-design-vue';
 import { BasicTree, type TreeItem } from '@/components/Tree';
 import { BasicArrow } from '@/components/Basic';
 import { Icon } from '@/components/Icon';
 import { CollapseContainer } from '@/components/Container';
 import {
   syncGb28181Devices,
-  type MonitorTreeDeviceNode,
-} from '@/api/device/camera';
+  type MonitorTreeDeviceNode} from '@/api/device/camera';
 import { formatCameraDeviceLabel, isGb28181Device } from '@/views/camera/utils/deviceLabel';
 import {
   AI_PLAY_FALLBACK_MS,
   pickDirectPlayUrls,
-  resolveGbChannelPlayUrls,
-} from '@/views/camera/utils/devicePlay';
+  resolveGbChannelPlayUrls} from '@/views/camera/utils/devicePlay';
 import {
   collectMonitorTreeExpandedKeys,
   findMonitorDeviceById,
   findMonitorGbDeviceByChannel,
-  findMonitorTreeNodeByKey,
-} from '@/views/camera/utils/monitorDeviceTree';
+  findMonitorTreeNodeByKey} from '@/views/camera/utils/monitorDeviceTree';
 import {
   buildWvpChannelTreeNodes,
   parseGbChannelKey,
-  type GbChannelRef,
-} from '@/views/camera/utils/gb28181Tree';
+  type GbChannelRef} from '@/views/camera/utils/gb28181Tree';
 import { getDeviceChannels } from '@/api/device/gb28181';
 import { collectWvpGbChannelsForSync } from '@/views/camera/utils/wvpGbSync';
 import {
   enrichWvpChannelTreeNodes,
-  resolveMonitorGbChannelDisplayName,
-} from '@/views/camera/utils/monitorGbDisplay';
+  resolveMonitorGbChannelDisplayName} from '@/views/camera/utils/monitorGbDisplay';
 import { getCachedMonitorDirectoryTreeBundle } from '@/views/camera/utils/monitorDirectoryTreeCache';
 import {
   invalidateMonitorDirectoryTreeCache,
   loadMonitorDirectoryTreeWithCache,
-  type MonitorDirectoryTreeBundle,
-} from '@/views/camera/utils/monitorDirectoryTreeLoad';
+  type MonitorDirectoryTreeBundle} from '@/views/camera/utils/monitorDirectoryTreeLoad';
 import type { TreeProps } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
+import { Button } from '@/components/Button'
+
 
 interface PlayCell {
   deviceId: string;
@@ -216,8 +212,7 @@ const state = reactive({
   splitMode: 4,
   playerIdx: 0,
   isFull: false,
-  loadingCells: [] as number[],
-});
+  loadingCells: [] as number[]});
 
 const loadedCount = computed(() => state.playCells.filter((c) => c).length);
 
@@ -229,8 +224,7 @@ const gridStyle = computed((): CSSProperties => {
     gap: '2px',
     width: '100%',
     height: '100%',
-    padding: '2px',
-  };
+    padding: '2px'};
   if (state.isFull) {
     return { ...base, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 };
   }
@@ -293,8 +287,7 @@ async function startPlayAtCell(
     deviceId: payload.deviceId,
     name: payload.name,
     url: payload.url,
-    fallbackUrl: hasFallback ? fallbackUrl : null,
-  };
+    fallbackUrl: hasFallback ? fallbackUrl : null};
 
   await nextTick();
   const player = playerRefs.value[cellIdx];
@@ -353,8 +346,7 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
           name: cell.name,
           url,
           fallbackUrl,
-          preferAi,
-        });
+          preferAi});
       }
     }
     return;
@@ -373,8 +365,7 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
     name: cell.name,
     url,
     fallbackUrl,
-    preferAi,
-  });
+    preferAi});
 }
 
 async function reloadAllPlayCellsForAiToggle() {
@@ -448,8 +439,7 @@ async function loadMonitorTree(options?: { force?: boolean }) {
         treeData.value = [];
       }
       treeLoading.value = false;
-    },
-  });
+    }});
   if (!hasCache) treeLoading.value = false;
 }
 
@@ -529,8 +519,7 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
       name: displayName,
       url,
       fallbackUrl,
-      preferAi,
-    });
+      preferAi});
   } catch (e) {
     console.error(e);
     createMessage.error('播放失败，请检查设备连接');
@@ -617,8 +606,7 @@ async function handleTreeSelect(keys: string[] | string) {
       name: formatCameraDeviceLabel(device),
       url,
       fallbackUrl,
-      preferAi,
-    });
+      preferAi});
   } catch (e) {
     console.error(e);
     createMessage.error('播放失败，请检查设备连接');
@@ -748,6 +736,30 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
     flex-direction: column;
     min-height: 0;
 
+    :deep(.xingyuv-collapse-container__header) {
+      height: auto;
+      min-height: 48px;
+      padding: 0 12px !important;
+      background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+      border-bottom: 1px solid #eef0f3;
+      border-radius: 0;
+    }
+
+    :deep(.xingyuv-basic-title) {
+      flex: 1;
+      min-width: 0;
+      padding-left: 0 !important;
+      font-size: inherit;
+      font-weight: inherit;
+      line-height: inherit;
+      cursor: default;
+      user-select: none;
+    }
+
+    :deep(.xingyuv-collapse-container__action) {
+      flex: none;
+    }
+
     /* 仅让折叠内容区占满剩余高度，不改变标题栏样式 */
     :deep(> .p-2) {
       flex: 1;
@@ -778,17 +790,34 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
 .tree-header-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
 
-  .header-icon {
+  &__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #eff6ff;
     color: #3b82f6;
+    flex-shrink: 0;
+  }
+
+  &__text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1;
+    letter-spacing: 0.01em;
   }
 }
 
 .tree-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .tree-scroll {

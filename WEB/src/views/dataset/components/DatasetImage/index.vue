@@ -29,16 +29,16 @@
     />
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary"
+        <Button type="primary"
                   preIcon="ant-design:picture-outlined"
                   @click="openAddModal(true, { datasetId: route.params['id'], isImage: true, isZip: false, isVideo: false, isStream: false })">
           上传图片
-        </a-button>
-        <a-button type="default"
+        </Button>
+        <Button type="default"
                   preIcon="ant-design:file-zip-outlined"
                   @click="openAddModal(true, { datasetId: route.params['id'], isImage: false, isZip: true, isVideo: false, isStream: false })">
           上传图片压缩包
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="handleSplitDataset"
@@ -67,9 +67,9 @@
         >
           一键同步到Minio
         </PopConfirmButton>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="handleDeleteAll"
@@ -136,16 +136,16 @@
                             @delete="handleDel"
                             @view="handleView" @edit="handleEdit">
         <template #header>
-          <a-button type="primary"
+          <Button type="primary"
                     preIcon="ant-design:picture-outlined"
                     @click="openAddModal(true, { datasetId: route.params['id'], isImage: true, isZip: false, isVideo: false, isStream: false })">
             上传图片
-          </a-button>
-          <a-button type="default"
+          </Button>
+          <Button type="default"
                     preIcon="ant-design:file-zip-outlined"
                     @click="openAddModal(true, { datasetId: route.params['id'], isImage: false, isZip: true, isVideo: false, isStream: false })">
             上传图片压缩包
-          </a-button>
+          </Button>
           <PopConfirmButton
             placement="topRight"
             @confirm="handleSplitDataset"
@@ -174,9 +174,9 @@
           >
             一键同步到Minio
           </PopConfirmButton>
-          <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+          <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
             切换视图
-          </a-button>
+          </Button>
         </template>
       </DatasetImageCardList>
     </div>

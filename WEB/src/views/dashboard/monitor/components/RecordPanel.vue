@@ -11,9 +11,9 @@
           class="time-picker"
           @change="handleTimeRangeChange"
         />
-        <a-button type="primary" @click="handleQuery" class="query-btn">
+        <Button type="primary" @click="handleQuery" class="query-btn">
           查询
-        </a-button>
+        </Button>
       </div>
     </div>
     
@@ -80,14 +80,14 @@
 
 <script lang="ts" setup>
 import { ref, computed, nextTick } from 'vue'
-import { DatePicker, Button } from 'ant-design-vue'
+import { DatePicker as AntButton } from 'ant-design-vue'
 import { Icon } from '@/components/Icon'
 import dayjs, { Dayjs } from 'dayjs'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
 import { useModal } from '@/components/Modal'
 import { useMessage } from '@/hooks/web/useMessage'
 import { resolveAlertRecordVideoUrl, resolveAlertVideoUrl } from '@/utils/alertRecord'
-
+import { Button } from '@/components/Button'
 const { RangePicker } = DatePicker
 const { createMessage } = useMessage()
 

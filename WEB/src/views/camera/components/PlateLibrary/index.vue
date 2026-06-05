@@ -12,14 +12,14 @@
       <BasicTable v-if="viewMode === 'table'" @register="registerTable">
         <template #toolbar>
           <div class="toolbar-buttons">
-            <a-button type="primary" @click="handleCreate">
+            <Button type="primary" @click="handleCreate">
               <template #icon><PlusOutlined /></template>
               新建车牌库
-            </a-button>
-            <a-button type="default" @click="handleToggleViewMode">
+            </Button>
+            <Button type="default" @click="handleToggleViewMode">
               <template #icon><SwapOutlined /></template>
               切换视图
-            </a-button>
+            </Button>
           </div>
         </template>
         <template #bodyCell="{ column, record }">
@@ -61,14 +61,14 @@
                 >
                   <span style="padding-left: 7px; font-size: 16px; font-weight: 500; line-height: 24px">车牌库列表</span>
                   <div style="display: flex; gap: 8px">
-                    <a-button type="primary" @click="handleCreate">
+                    <Button type="primary" @click="handleCreate">
                       <template #icon><PlusOutlined /></template>
                       新建车牌库
-                    </a-button>
-                    <a-button type="default" @click="handleToggleViewMode">
+                    </Button>
+                    <Button type="default" @click="handleToggleViewMode">
                       <template #icon><SwapOutlined /></template>
                       切换视图
-                    </a-button>
+                    </Button>
                   </div>
                 </div>
               </template>
@@ -182,7 +182,7 @@ import PlateLibraryModal from './PlateLibraryModal.vue';
 import PlateAutoEnrollDrawer from './PlateAutoEnrollDrawer.vue';
 import PlateModelSetupPanel from './PlateModelSetupPanel.vue';
 import PLATE_LIBRARY_IMAGE from '@/assets/images/video/snap-task.png';
-
+import { Button } from '@/components/Button'
 const ListItem = List.Item;
 
 defineOptions({ name: 'PlateLibrary' });

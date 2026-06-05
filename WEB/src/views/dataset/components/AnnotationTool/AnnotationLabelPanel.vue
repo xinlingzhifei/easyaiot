@@ -64,12 +64,12 @@
 
 <script setup lang="ts">
 import {ref, watch} from 'vue';
-import {Button, Input} from 'ant-design-vue';
+import { Input } from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {useMessage} from '@/hooks/web/useMessage';
 import {createDatasetTag} from '@/api/device/dataset';
 import {TAG_COLOR_PALETTE} from '@/views/dataset/components/AnnotationTool/datasetTagUtils';
-
+import { Button } from '@/components/Button'
 defineOptions({name: 'AnnotationLabelPanel'});
 
 export interface AnnotationLabel {

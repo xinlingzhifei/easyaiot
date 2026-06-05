@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <div class="snmpConfig">
     <Form :model="validateInfos" :colon="false">
@@ -50,7 +51,7 @@
 <script setup lang="ts">
   import { ref, reactive, defineExpose, defineProps } from 'vue';
   import { MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons-vue';
-  import { Form, FormItem, Row, Col, Button, Input } from 'ant-design-vue';
+  import { Form, FormItem, Row, Col, Input } from 'ant-design-vue';
   import CommConfig from './CommConfig.vue';
 
   const useForm = Form.useForm;

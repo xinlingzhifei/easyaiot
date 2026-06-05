@@ -12,8 +12,8 @@
   >
     <template #footer>
       <div class="footer-buttons">
-        <a-button v-if="!isViewMode" @click="handleReset" class="mr-2">重置</a-button>
-        <a-button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">提交</a-button>
+        <Button v-if="!isViewMode" @click="handleReset" class="mr-2">重置</Button>
+        <Button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">提交</Button>
       </div>
     </template>
     <div class="form-content">
@@ -33,7 +33,7 @@ import {
   type StreamForwardTask,
 } from '@/api/device/stream_forward';
 import { getDeviceList } from '@/api/device/camera';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'StreamForwardModal' });
 
 const { createMessage } = useMessage();

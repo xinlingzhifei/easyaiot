@@ -33,7 +33,7 @@
         </div>
 
         <div class="preset-row">
-          <a-button
+          <Button
             v-for="preset in THRESHOLD_PRESETS"
             :key="preset.key"
             size="small"
@@ -42,7 +42,7 @@
             @click="applyPreset(preset.value)"
           >
             {{ preset.label }}
-          </a-button>
+          </Button>
         </div>
 
         <BasicForm @register="registerForm" />
@@ -75,9 +75,9 @@
             <div class="result-desc">
               可尝试点击「标准」或「宽松」降低严格度；严格度为 1.00 时仅合并规范化后完全相同的车牌号。
             </div>
-            <a-button size="small" type="link" class="try-loose-btn" @click="applyPreset(0.88)">
+            <Button size="small" type="link" class="try-loose-btn" @click="applyPreset(0.88)">
               一键设为标准模式
-            </a-button>
+            </Button>
           </div>
         </template>
       </div>
@@ -93,8 +93,9 @@ import { useDebounceFn } from '@vueuse/core';
 import { BasicModal, useModalInner } from '@/components/Modal';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
+import { Button } from '@/components/Button'
 import {
-  getPlateLibrary,
+getPlateLibrary,
   mergeAllPlateNormalizeGroups,
   parsePlateApiError,
   previewPlateNormalizeGroups,

@@ -32,9 +32,9 @@
 </template>
 
 <script lang="ts" setup name="PhsyicalModalTitle">
-import {Button, Space, TabPane, Tabs} from 'ant-design-vue';
+import { Space, TabPane, Tabs } from 'ant-design-vue';
 import {reactive, withDefaults} from 'vue';
-
+import { Button } from '@/components/Button'
 // import { RedoOutlined } from '@ant-design/icons-vue';
 
   interface Props {

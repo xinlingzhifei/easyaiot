@@ -46,7 +46,7 @@
 </template>
 <script lang="ts" setup>
 import {onMounted, reactive} from 'vue'
-import {Button, DatePicker} from 'ant-design-vue';
+import { DatePicker } from 'ant-design-vue';
 import {useMessage} from "@/hooks/web/useMessage";
 import {getCloudRecordList, getCloudRecordPlayPath} from "@/api/device/gb28181";
 import {useRoute} from "vue-router";
@@ -54,7 +54,7 @@ import moment from 'moment'
 import {Icon} from "@/components/Icon";
 import {formatToDateTime} from '@/utils/dateUtil'
 import easyPlayer from "@/components/VideoPlayer/EasyPlayer.vue";
-
+import { Button } from '@/components/Button'
 const {createMessage} = useMessage()
 const route = useRoute()
 

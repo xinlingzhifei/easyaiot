@@ -8,9 +8,9 @@
       <div class="p-2 bg-white">
         <BasicTable @register="registerTable">
           <template #toolbar>
-            <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+            <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
               切换视图
-            </a-button>
+            </Button>
           </template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.dataIndex === 'thumbnail_path'">
@@ -51,9 +51,9 @@
       @view="handleView"
     >
       <template #header>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
       </template>
     </PlaybackCardList>
 
@@ -70,7 +70,7 @@ import { getPlaybackList, deletePlayback, type PlaybackInfo } from '@/api/device
 import PlaybackCardList from './PlaybackCardList.vue';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
 import { useModal } from '@/components/Modal';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'PLAYBACK_LIST' });
 
 const { createMessage } = useMessage();

@@ -144,7 +144,7 @@ import {
   ReloadOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons-vue';
-import {Tag, Button, Empty, Spin} from 'ant-design-vue';
+import { Tag, Empty, Spin } from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {useMessage} from '@/hooks/web/useMessage';
 import {
@@ -159,7 +159,7 @@ import {
 import StreamForwardLogsModal from './StreamForwardLogsModal.vue';
 import {useModal} from '@/components/Modal';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
-
+import { Button } from '@/components/Button'
 // 摄像头推流信息类型
 interface CameraStreamInfo {
   device_id: string;

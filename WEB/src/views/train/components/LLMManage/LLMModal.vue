@@ -28,9 +28,9 @@
               accept=".jpg,.jpeg,.png,.gif,.webp"
               @change="handleImageUpload"
             >
-              <a-button type="primary">
+              <Button type="primary">
                 上传模型图片
-              </a-button>
+              </Button>
             </Upload>
             <div v-if="llmRef.icon_url" style="margin-top: 8px">
               <img
@@ -130,7 +130,7 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { useUserStoreWithOut } from "@/store/modules/user";
 import { useGlobSetting } from "@/hooks/setting";
 import { createLLM, updateLLM, getLLMDetail, type LLMModel } from '@/api/device/llm';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'LLMModal' });
 
 const emit = defineEmits(['success', 'register']);

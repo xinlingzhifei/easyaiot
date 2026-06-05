@@ -44,14 +44,14 @@
 </template>
 <script lang="ts" setup>
 import {onBeforeUnmount, onMounted, reactive} from 'vue'
-import {Button, DatePicker} from 'ant-design-vue';
+import { DatePicker } from 'ant-design-vue';
 import {useMessage} from "@/hooks/web/useMessage";
 import {getDeviceRecordList, playBack} from "@/api/device/gb28181";
 import {useRoute} from "vue-router";
 import moment from 'moment'
 import {Icon} from "@/components/Icon";
 import Jessibuca from "@/components/Player/module/jessibuca.vue";
-
+import { Button } from '@/components/Button'
 const {createMessage} = useMessage()
 const route = useRoute()
 

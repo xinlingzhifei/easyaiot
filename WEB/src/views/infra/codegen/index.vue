@@ -9,7 +9,7 @@ import { useModal } from '@/components/Modal'
 import { IconEnum } from '@/enums/appEnum'
 import { BasicTable, TableAction, useTable } from '@/components/Table'
 import { deleteCodegenTable, downloadCodegen, getCodegenTablePage, syncCodegenFromDB } from '@/api/infra/codegen'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraCodegen' })
 
 const go = useGo()
@@ -66,9 +66,9 @@ async function handleDelete(record: Recordable) {
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button v-auth="['infra:codegen:create']" type="primary" :pre-icon="IconEnum.IMPORT" @click="openImportTableModal(true)">
+        <Button v-auth="['infra:codegen:create']" type="primary" :preIcon="IconEnum.IMPORT" @click="openImportTableModal(true)">
           {{ t('action.import') }}
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">

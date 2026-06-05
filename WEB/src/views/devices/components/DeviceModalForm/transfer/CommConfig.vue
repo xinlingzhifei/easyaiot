@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <div class="commConfig">
     <Form ref="formRef" name="dynamic_form_nest_item" :model="formData">
@@ -84,7 +85,7 @@
 
 <script setup lang="ts">
   import { ref, reactive, defineExpose, defineProps, defineEmits, watch } from 'vue';
-  import { Form, Space, FormItem, Select, Input, Button } from 'ant-design-vue';
+  import { Form, Space, FormItem, Select, Input } from 'ant-design-vue';
   import { MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons-vue';
   import type { FormInstance } from 'ant-design-vue';
 

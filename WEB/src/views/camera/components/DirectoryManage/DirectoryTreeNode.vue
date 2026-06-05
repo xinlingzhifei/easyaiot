@@ -31,7 +31,7 @@
       
       <!-- 操作按钮（默认分组不可编辑/删除） -->
       <div v-if="!directory.is_default" class="node-actions" @click.stop>
-        <a-button
+        <Button
           type="text"
           size="small"
           @click="handleEdit"
@@ -40,12 +40,12 @@
           <template #icon>
             <Icon icon="ant-design:edit-filled" :style="{ color: '#1890ff' }" />
           </template>
-        </a-button>
+        </Button>
         <a-popconfirm
           title="确定删除此目录？"
           @confirm="handleDelete"
         >
-          <a-button
+          <Button
             type="text"
             size="small"
             danger
@@ -54,7 +54,7 @@
             <template #icon>
               <Icon icon="material-symbols:delete-outline-rounded" />
             </template>
-          </a-button>
+          </Button>
         </a-popconfirm>
       </div>
     </div>
@@ -83,8 +83,10 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
 import { Icon } from '@/components/Icon';
-import { Button as AButton, Popconfirm as APopconfirm } from 'ant-design-vue';
+import { Popconfirm as APopconfirm } from 'ant-design-vue';
 import type { DeviceDirectory } from '@/api/device/camera';
+import { Button } from '@/components/Button'
+
 
 interface Props {
   directory: DeviceDirectory;

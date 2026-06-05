@@ -11,9 +11,9 @@
   >
     <template #footer>
       <div class="footer-buttons">
-        <a-button @click="closeDrawer">{{ isViewMode ? '关闭' : '取消' }}</a-button>
-        <a-button v-if="!isViewMode" @click="handleReset">重置</a-button>
-        <a-button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">保存</a-button>
+        <Button @click="closeDrawer">{{ isViewMode ? '关闭' : '取消' }}</Button>
+        <Button v-if="!isViewMode" @click="handleReset">重置</Button>
+        <Button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">保存</Button>
       </div>
     </template>
 
@@ -37,8 +37,9 @@ import { computed, ref } from 'vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
+import { Button } from '@/components/Button'
 import {
-  createFaceLibrary,
+createFaceLibrary,
   updateFaceLibrary,
   type FaceLibrary,
 } from '@/api/device/face_library';

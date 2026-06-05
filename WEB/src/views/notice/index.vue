@@ -10,11 +10,11 @@
         <TabPane key="1" tab="消息配置">
           <BasicTable @register="registerTable" v-if="state.isTableMode">
             <template #toolbar>
-              <a-button type="primary" @click="openConfigModal(true, { type: 'add' })">新增设置
-              </a-button>
-              <a-button type="default" @click="handleClickSwap"
+              <Button type="primary" @click="openConfigModal(true, { type: 'add' })">新增设置
+              </Button>
+              <Button type="default" @click="handleClickSwap"
                         preIcon="ant-design:swap-outlined">切换视图
-              </a-button>
+              </Button>
             </template>
             <template #bodyCell="{ column, record }">
               <template v-if="column.dataIndex === 'action'">
@@ -57,11 +57,11 @@
             <NoficeCardList :params="params" :api="messageConfigQuery" @get-method="getMethod"
                             @delete="handleDel" @edit="handleEdit" @view="handleView">
               <template #header>
-                <a-button type="primary" @click="openConfigModal(true, { type: 'add' })">新增设置
-                </a-button>
-                <a-button type="default" @click="handleClickSwap"
+                <Button type="primary" @click="openConfigModal(true, { type: 'add' })">新增设置
+                </Button>
+                <Button type="default" @click="handleClickSwap"
                           preIcon="ant-design:swap-outlined">切换视图
-                </a-button>
+                </Button>
               </template>
             </NoficeCardList>
           </div>
@@ -161,7 +161,7 @@ import History from '@/views/notice/components/task/History/index.vue';
 import Group from '@/views/notice/components/user/Group/index.vue';
 import Audience from '@/views/notice/components/user/Audience/index.vue';
 import NoficeCardList from "@/views/notice/components/CardList/NoficeCardList.vue";
-
+import { Button } from '@/components/Button'
 defineOptions({name: 'Notice'})
 
 const [registerConfigModal, {openModal: openConfigModal}] = useModal();

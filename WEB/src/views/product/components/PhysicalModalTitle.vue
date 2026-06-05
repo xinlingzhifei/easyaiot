@@ -38,9 +38,9 @@
 </template>
 
 <script lang="ts" setup name="PhysicalModalTitle">
-import {Alert, Button, Space, TabPane, Tabs} from 'ant-design-vue';
+import { Alert, Space, TabPane, Tabs } from 'ant-design-vue';
 import {reactive, withDefaults} from 'vue';
-
+import { Button } from '@/components/Button'
 // import { RedoOutlined } from '@ant-design/icons-vue';
 
   interface Props {
@@ -66,7 +66,6 @@ import {reactive, withDefaults} from 'vue';
     };
     return typeMap[type] || '属性';
   };
-
 
   const handleTabClick = (activeKey) => {
     state.activeKey = activeKey;

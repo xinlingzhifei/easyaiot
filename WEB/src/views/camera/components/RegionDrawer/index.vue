@@ -2,24 +2,24 @@
   <div ref="container" class="region-drawer-container">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <a-button type="primary" @click="handleCapture" :loading="capturing">
+      <Button type="primary" @click="handleCapture" :loading="capturing">
         <template #icon>
           <CameraOutlined />
         </template>
         抓拍图片
-      </a-button>
-      <a-button @click="handleClear" :disabled="!currentImage">
+      </Button>
+      <Button @click="handleClear" :disabled="!currentImage">
         <template #icon>
           <ClearOutlined />
         </template>
         清空画布
-      </a-button>
-      <a-button @click="handleSave" :disabled="regions.length === 0 || !currentImage">
+      </Button>
+      <Button @click="handleSave" :disabled="regions.length === 0 || !currentImage">
         <template #icon>
           <SaveOutlined />
         </template>
         保存区域
-      </a-button>
+      </Button>
     </div>
 
     <!-- 主内容区 -->
@@ -40,7 +40,7 @@
             <div class="region-color" :style="{ backgroundColor: region.color }"></div>
             <div class="region-name">{{ region.region_name || `区域 ${index + 1}` }}</div>
             <div class="region-actions">
-              <a-button
+              <Button
                 type="text"
                 size="small"
                 danger
@@ -49,7 +49,7 @@
                 <template #icon>
                   <DeleteOutlined />
                 </template>
-              </a-button>
+              </Button>
             </div>
           </div>
           <a-empty v-if="regions.length === 0" description="暂无区域" :image="false" />
@@ -150,7 +150,7 @@ import { CameraOutlined, ClearOutlined, SaveOutlined, DeleteOutlined } from '@an
 import { useMessage } from '@/hooks/web/useMessage';
 import { captureSnapshot } from '@/api/device/camera';
 import type { DetectionRegion } from '@/api/device/snap';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'RegionDrawer' });
 
 const props = defineProps<{

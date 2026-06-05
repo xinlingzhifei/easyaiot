@@ -4,18 +4,18 @@
     <BasicTable v-if="viewMode === 'table'" @register="registerTable">
       <template #toolbar>
         <div class="toolbar-buttons">
-          <a-button type="primary" @click="handleCreate">
+          <Button type="primary" @click="handleCreate">
             <template #icon>
               <PlusOutlined />
             </template>
             新建大模型
-          </a-button>
-          <a-button @click="handleToggleViewMode" type="default">
+          </Button>
+          <Button @click="handleToggleViewMode" type="default">
             <template #icon>
               <SwapOutlined />
             </template>
             切换视图
-          </a-button>
+          </Button>
         </div>
       </template>
       <template #bodyCell="{ column, record }">
@@ -49,18 +49,18 @@
         @field-value-change="handleFieldValueChange"
       >
         <template #header>
-          <a-button type="primary" @click="handleCreate">
+          <Button type="primary" @click="handleCreate">
             <template #icon>
               <PlusOutlined />
             </template>
             新建大模型
-          </a-button>
-          <a-button @click="handleToggleViewMode" type="default">
+          </Button>
+          <Button @click="handleToggleViewMode" type="default">
             <template #icon>
               <SwapOutlined />
             </template>
             切换视图
-          </a-button>
+          </Button>
         </template>
       </LLMManageCardList>
     </div>
@@ -82,7 +82,7 @@ import { getBasicColumns, getFormConfig } from './Data';
 import { getLLMList, deleteLLM, activateLLM, deactivateLLM, testLLM, type LLMModel } from '@/api/device/llm';
 import LLMModal from './LLMModal.vue';
 import LLMManageCardList from './LLMManageCardList.vue';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'LLMManage' });
 
 const { createMessage } = useMessage();

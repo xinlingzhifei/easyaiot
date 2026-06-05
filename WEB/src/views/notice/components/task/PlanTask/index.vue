@@ -1,8 +1,9 @@
+import { Button } from '@/components/Button'
 <template>
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button type="primary" @click="openConfigModal(true, { type: 'add' })">新增任务</a-button>
+        <Button type="primary" @click="openConfigModal(true, { type: 'add' })">新增任务</Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">

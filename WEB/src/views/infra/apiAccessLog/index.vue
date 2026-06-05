@@ -8,7 +8,7 @@ import { IconEnum } from '@/enums/appEnum'
 import type { ApiAccessLogExportReqVO } from '@/api/infra/apiAccessLog'
 import { exportApiAccessLog, getApiAccessLogPage } from '@/api/infra/apiAccessLog'
 import { useModal } from '@/components/Modal'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraApiErrorLog' })
 
 const { t } = useI18n()
@@ -51,9 +51,9 @@ async function handleExport() {
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button v-auth="['infra:api-access-log:export']" :pre-icon="IconEnum.EXPORT" @click="handleExport">
+        <Button v-auth="['infra:api-access-log:export']" :preIcon="IconEnum.EXPORT" @click="handleExport">
           {{ t('action.export') }}
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">

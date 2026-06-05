@@ -4,7 +4,7 @@ import { columns } from './data'
 import type { EditRecordRow } from '@/components/Table'
 import { BasicTable, useTable } from '@/components/Table'
 import type { CodegenColumnVO } from '@/api/infra/codegen/types'
-
+import { Button } from '@/components/Button'
 defineProps({
   columnsInfo: {
     type: Array as PropType<CodegenColumnVO[]>,
@@ -44,12 +44,12 @@ function handleEdit(record: EditRecordRow) {
     </div>
     <Divider />
     <div class="flex justify-center">
-      <a-button @click="customResetFunc">
+      <Button @click="customResetFunc">
         上一步
-      </a-button>
-      <a-button type="primary" @click="customSubmitFunc">
+      </Button>
+      <Button type="primary" @click="customSubmitFunc">
         提交
-      </a-button>
+      </Button>
     </div>
     <h3 class="mb-3 text-base">
       说明

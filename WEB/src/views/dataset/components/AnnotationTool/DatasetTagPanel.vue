@@ -59,14 +59,15 @@
 
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue';
-import {Button, Input, Popconfirm, Spin} from 'ant-design-vue';
+import { Input, Popconfirm, Spin } from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {useMessage} from '@/hooks/web/useMessage';
 import {useModal} from '@/components/Modal';
 import {createDatasetTag, deleteDatasetTag} from '@/api/device/dataset';
 import DatasetTagModal from '@/views/dataset/components/DatasetTagModal/index.vue';
+import { Button } from '@/components/Button'
 import {
-  fetchDatasetTags,
+fetchDatasetTags,
   TAG_COLOR_PALETTE,
   type DatasetTagItem,
 } from '@/views/dataset/components/AnnotationTool/datasetTagUtils';

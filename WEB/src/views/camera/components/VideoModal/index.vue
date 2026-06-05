@@ -15,7 +15,7 @@
           <BasicTable @register="registerOnvifTable">
             <template #bodyCell="{ column, record }">
               <template v-if="column.dataIndex === 'action'">
-                <a-button type="link" size="small" @click="openRegisterModal(record)">注册</a-button>
+                <Button type="link" size="small" @click="openRegisterModal(record)">注册</Button>
               </template>
             </template>
           </BasicTable>

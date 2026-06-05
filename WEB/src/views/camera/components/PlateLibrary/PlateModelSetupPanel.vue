@@ -9,8 +9,8 @@
         <strong>plate_detect.onnx</strong> 与 <strong>plate_rec.onnx</strong>。
       </template>
       <template #extra>
-        <a-button type="primary" :loading="downloading" @click="handleDownload">下载/检查模型</a-button>
-        <a-button @click="refresh">刷新状态</a-button>
+        <Button type="primary" :loading="downloading" @click="handleDownload">下载/检查模型</Button>
+        <Button @click="refresh">刷新状态</Button>
       </template>
     </a-result>
     <p v-if="modelStatus?.error" class="text-red-500 mt-4">{{ modelStatus.error }}</p>
@@ -21,8 +21,9 @@
 import { onMounted, ref, watch } from 'vue';
 import { Spin } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
+import { Button } from '@/components/Button'
 import {
-  downloadPlateModel,
+downloadPlateModel,
   getPlateModelStatus,
   parsePlateApiError,
   type PlateModelStatus,

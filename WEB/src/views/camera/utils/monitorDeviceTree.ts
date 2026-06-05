@@ -152,6 +152,20 @@ export function buildMonitorDirectoryTreeNodes(
   return (directories || []).map(mapDirectory);
 }
 
+/** 设备目录管理页：目录节点可选中（分屏监控侧目录仍为 selectable: false） */
+export function withDirectoryTreeSelectable(items: TreeItem[]): TreeItem[] {
+  return (items || []).map((item) => {
+    const next: TreeItem = { ...item };
+    if ((item as TreeItem & { isDirectory?: boolean }).isDirectory) {
+      next.selectable = true;
+    }
+    if (item.children?.length) {
+      next.children = withDirectoryTreeSelectable(item.children as TreeItem[]);
+    }
+    return next;
+  });
+}
+
 export function buildMonitorTreeOptionsFromNvrList(nvrs: NvrInfo[]): {
   nvrNameMap: Map<number, string>;
   nvrs: NvrInfo[];

@@ -43,18 +43,18 @@
         @search="loadEntries"
       />
       <div class="toolbar-actions">
-        <a-button type="primary" @click="handleAdd">
+        <Button type="primary" @click="handleAdd">
           <template #icon><PlusOutlined /></template>
           录入人脸
-        </a-button>
-        <a-button @click="handleToggleViewMode">
+        </Button>
+        <Button @click="handleToggleViewMode">
           <template #icon><SwapOutlined /></template>
           {{ viewMode === 'card' ? '表格视图' : '卡片视图' }}
-        </a-button>
-        <a-button @click="handleNormalize">
+        </Button>
+        <Button @click="handleNormalize">
           <template #icon><MergeCellsOutlined /></template>
           人脸归一化
-        </a-button>
+        </Button>
       </div>
     </div>
 
@@ -106,15 +106,15 @@
               </div>
               <div class="entry-actions">
                 <a-tooltip title="编辑">
-                  <a-button type="text" size="small" @click="handleEdit(item)">
+                  <Button type="text" size="small" @click="handleEdit(item)">
                     <EditOutlined />
-                  </a-button>
+                  </Button>
                 </a-tooltip>
                 <a-popconfirm title="确认删除该人脸？" @confirm="handleDelete(item.id)">
                   <a-tooltip title="删除">
-                    <a-button type="text" size="small" danger>
+                    <Button type="text" size="small" danger>
                       <DeleteOutlined />
-                    </a-button>
+                    </Button>
                   </a-tooltip>
                 </a-popconfirm>
               </div>
@@ -156,7 +156,7 @@ import {
 import { getEntryColumns } from './Data';
 import FaceEntryModal from './FaceEntryModal.vue';
 import FaceNormalizeModal from './FaceNormalizeModal.vue';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'FaceEntryDrawer' });
 
 const emit = defineEmits(['success', 'register']);

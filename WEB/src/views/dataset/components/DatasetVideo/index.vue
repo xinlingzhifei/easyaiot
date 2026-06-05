@@ -4,13 +4,13 @@
               status="active"/>
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary"
+        <Button type="primary"
                   @click="openAddModal(true, { datasetId: route.params['id'], isImage: true, isZip: false, isVideo: false, isStream: false })">
           上传视频
-        </a-button>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        </Button>
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="handleDeleteAll"
@@ -66,12 +66,12 @@
                             @view="handleView" @edit="handleEdit" @load-video="handleLoadVideo"
                             @frame="handleFrame">
         <template #header>
-          <a-button type="primary" @click="openAddModal(true, { datasetId: route.params['id'] })">
+          <Button type="primary" @click="openAddModal(true, { datasetId: route.params['id'] })">
             新增视频数据集
-          </a-button>
-          <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+          </Button>
+          <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
             切换视图
-          </a-button>
+          </Button>
         </template>
       </DatasetVideoCardList>
     </div>

@@ -166,22 +166,22 @@
             </div>
 
             <footer class="geo-loc-panel__footer">
-              <a-button
+              <Button
                 class="geo-loc-action geo-loc-action--clear"
                 :disabled="saving"
                 @click="handleClearLocation"
               >
                 清除坐标
-              </a-button>
+              </Button>
               <div class="geo-loc-panel__footer-group">
-                <a-button
+                <Button
                   class="geo-loc-action geo-loc-action--cancel"
                   :disabled="saving"
                   @click="handleCancel"
                 >
                   取消
-                </a-button>
-                <a-button
+                </Button>
+                <Button
                   type="primary"
                   class="geo-loc-action geo-loc-action--save"
                   :loading="saving"
@@ -189,7 +189,7 @@
                   @click="handleSave"
                 >
                   保存坐标
-                </a-button>
+                </Button>
               </div>
             </footer>
           </aside>
@@ -211,8 +211,9 @@ import {
   updateDeviceLocation,
   type DeviceLocationInfo,
 } from '@/api/device/camera';
+import { Button } from '@/components/Button'
 import {
-  formatHeadingSummary,
+formatHeadingSummary,
   hasDeviceLocation,
   LOCATION_SOURCE_LABEL,
   type DeviceLocationDrawerRecord,

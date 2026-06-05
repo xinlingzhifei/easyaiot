@@ -61,10 +61,10 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { defHttp } from '@/utils/http/axios';
 import moment from 'moment';
-import { Button } from 'ant-design-vue';
+;
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'DeviceShadow' });
 
 const route = useRoute();

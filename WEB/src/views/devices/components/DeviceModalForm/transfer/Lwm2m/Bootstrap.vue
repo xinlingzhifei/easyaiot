@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <Form :colon="false">
     <FormItem label=" ">
@@ -46,17 +47,14 @@
 
 <script setup lang="ts">
   import { DeleteOutlined } from '@ant-design/icons-vue';
-  import {
-    Form,
+  import { Form,
     FormItem,
-    Button,
     Popconfirm,
     Modal,
     Select,
     Checkbox,
     Collapse,
-    CollapsePanel,
-  } from 'ant-design-vue';
+    CollapsePanel, } from 'ant-design-vue';
   import { ref, reactive } from 'vue';
   import CollapseForm from './CollapseForm.vue';
 

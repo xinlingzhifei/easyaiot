@@ -14,7 +14,7 @@ import * as authUtil from '@/utils/auth'
 
 import { Verify } from '@/components/Verifition'
 import { getTenantIdByName, sendSmsCode } from '@/api/base/login'
-
+import { Button } from '@/components/Button'
 const FormItem = Form.Item
 
 const { t } = useI18n()
@@ -143,12 +143,12 @@ async function getSmsCode() {
       </FormItem>
 
       <FormItem class="enter-x">
-        <a-button type="primary" size="large" block :loading="loading" @click="getCode">
+        <Button type="primary" size="large" block :loading="loading" @click="getCode">
           {{ t('sys.login.loginButton') }}
-        </a-button>
-        <a-button size="large" block class="mt-4" @click="handleBackLogin">
+        </Button>
+        <Button size="large" block class="mt-4" @click="handleBackLogin">
           {{ t('sys.login.backSignIn') }}
-        </a-button>
+        </Button>
       </FormItem>
     </Form>
     <Verify ref="verify" mode="pop" :captcha-type="captchaType" :img-size="{ width: '400px', height: '200px' }" @success="handleLogin" />

@@ -4,18 +4,18 @@
     <BasicTable v-if="viewMode === 'table'" @register="registerTable">
       <template #toolbar>
         <div class="toolbar-buttons">
-          <a-button type="primary" @click="handleCreate">
+          <Button type="primary" @click="handleCreate">
             <template #icon>
               <PlusOutlined />
             </template>
             新建算法任务
-          </a-button>
-          <a-button @click="handleToggleViewMode" type="default">
+          </Button>
+          <Button @click="handleToggleViewMode" type="default">
             <template #icon>
               <SwapOutlined />
             </template>
             切换视图
-          </a-button>
+          </Button>
         </div>
       </template>
       <template #bodyCell="{ column, record }">
@@ -42,18 +42,18 @@
                 style="display: flex;align-items: center;justify-content: space-between;flex-direction: row;">
                 <span style="padding-left: 7px;font-size: 16px;font-weight: 500;line-height: 24px;">算法任务列表</span>
                 <div style="display: flex; gap: 8px;">
-                  <a-button type="primary" @click="handleCreate">
+                  <Button type="primary" @click="handleCreate">
                     <template #icon>
                       <PlusOutlined />
                     </template>
                     新建算法任务
-                  </a-button>
-                  <a-button @click="handleToggleViewMode" type="default">
+                  </Button>
+                  <Button @click="handleToggleViewMode" type="default">
                     <template #icon>
                       <SwapOutlined />
                     </template>
                     切换视图
-                  </a-button>
+                  </Button>
                 </div>
               </div>
             </template>
@@ -260,7 +260,7 @@ import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
 import { getBasicColumns, getFormConfig } from './Data';
 import AI_TASK_IMAGE from '@/assets/images/video/ai-task.png';
 import SNAP_TASK_IMAGE from '@/assets/images/video/snap-task.png';
-
+import { Button } from '@/components/Button'
 const ListItem = List.Item;
 
 defineOptions({ name: 'AlgorithmTask' });
@@ -887,7 +887,6 @@ const playCameraStream = (stream: CameraStreamInfo) => {
     http_stream: httpStream,
   });
 };
-
 
 // 暴露刷新方法给父组件
 defineExpose({

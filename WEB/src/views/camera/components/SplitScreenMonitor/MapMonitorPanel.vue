@@ -2,18 +2,23 @@
   <div class="map-monitor-panel">
     <a-layout class="map-monitor-panel__layout">
       <a-layout-sider :width="350" theme="light" class="device-tree-sider">
-        <CollapseContainer :can-expan="true" title="设备目录" class="tree-container">
+        <CollapseContainer :can-expan="true" class="tree-container">
           <template #title>
             <div class="tree-header-title">
-              <Icon icon="ant-design:folder-outlined" class="header-icon" />
-              <span>设备目录</span>
+              <span class="tree-header-title__icon">
+                <Icon icon="ant-design:folder-outlined" :size="16" />
+              </span>
+              <span class="tree-header-title__text">设备目录</span>
             </div>
           </template>
           <template #action="{ expand, onClick }">
             <div class="tree-header-actions">
-              <Button :loading="treeLoading || treeRefreshing" pre-icon="ant-design:reload-outlined" @click.stop="handleRefreshTree">
+              <AButton :loading="treeLoading || treeRefreshing" @click.stop="handleRefreshTree">
+                <template #icon>
+                  <Icon icon="ant-design:reload-outlined" />
+                </template>
                 刷新
-              </Button>
+              </AButton>
               <BasicArrow up :expand="expand" @click="onClick" />
             </div>
           </template>
@@ -54,7 +59,7 @@ import { nextTick, onMounted, ref } from 'vue';
 import { triggerWindowResize } from '@/utils/event';
 import { BasicTree, type TreeItem } from '@/components/Tree';
 import { BasicArrow } from '@/components/Basic';
-import { Button } from '@/components/Button';
+import { Button as AButton } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import { CollapseContainer } from '@/components/Container';
 import { DeviceMonitorMap } from '@/components/TiandituMap';
@@ -316,6 +321,30 @@ defineExpose({
     flex-direction: column;
     min-height: 0;
 
+    :deep(.xingyuv-collapse-container__header) {
+      height: auto;
+      min-height: 48px;
+      padding: 0 12px !important;
+      background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+      border-bottom: 1px solid #eef0f3;
+      border-radius: 0;
+    }
+
+    :deep(.xingyuv-basic-title) {
+      flex: 1;
+      min-width: 0;
+      padding-left: 0 !important;
+      font-size: inherit;
+      font-weight: inherit;
+      line-height: inherit;
+      cursor: default;
+      user-select: none;
+    }
+
+    :deep(.xingyuv-collapse-container__action) {
+      flex: none;
+    }
+
     :deep(> .p-2) {
       flex: 1;
       min-height: 0;
@@ -345,17 +374,34 @@ defineExpose({
 .tree-header-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
 
-  .header-icon {
+  &__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #eff6ff;
     color: #3b82f6;
+    flex-shrink: 0;
+  }
+
+  &__text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1;
+    letter-spacing: 0.01em;
   }
 }
 
 .tree-header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .tree-scroll {

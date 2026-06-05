@@ -8,16 +8,16 @@
     >
       <template #toolbar>
         <div class="toolbar-buttons">
-          <a-button type="primary" @click="openAddModal(true, {isEdit: false, isView: false})">
+          <Button type="primary" @click="openAddModal(true, {isEdit: false, isView: false})">
             <Icon icon="ant-design:plus-circle-outlined"/>
             启动新训练
-          </a-button>
-          <a-button type="default" @click="handleToggleViewMode">
+          </Button>
+          <Button type="default" @click="handleToggleViewMode">
             <template #icon>
               <SwapOutlined />
             </template>
             切换视图
-          </a-button>
+          </Button>
         </div>
       </template>
       <template #bodyCell="{ column, record }">
@@ -48,16 +48,16 @@
         @delete="handleCardDelete"
       >
         <template #header>
-          <a-button type="primary" @click="openAddModal(true, {isEdit: false, isView: false})">
+          <Button type="primary" @click="openAddModal(true, {isEdit: false, isView: false})">
             <Icon icon="ant-design:plus-circle-outlined"/>
             启动新训练
-          </a-button>
-          <a-button type="default" @click="handleToggleViewMode">
+          </Button>
+          <Button type="default" @click="handleToggleViewMode">
             <template #icon>
               <SwapOutlined />
             </template>
             切换视图
-          </a-button>
+          </Button>
         </template>
       </TrainTaskCardList>
     </div>
@@ -106,7 +106,7 @@ import {getBasicColumns, getFormConfig} from './Data';
 import {Empty as AEmpty, Modal as AModal} from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {resolveTrainResultsDisplayUrl} from '@/utils/alertMinioImage';
-
+import { Button } from '@/components/Button'
 defineOptions({name: 'TrainTaskList'});
 
 const {createMessage} = useMessage();

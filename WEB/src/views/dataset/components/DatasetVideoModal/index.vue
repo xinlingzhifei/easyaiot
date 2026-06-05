@@ -28,9 +28,9 @@
               accept="*"
               :disabled="state.isView"
             >
-              <a-button type="primary">
+              <Button type="primary">
                 {{ t('component.upload.choose') }}
-              </a-button>
+              </Button>
             </Upload>
           </FormItem>
           <FormItem label="封面地址" name="coverPath" v-bind=validateInfos.coverPath>
@@ -44,9 +44,9 @@
               accept="*"
               :disabled="state.isView"
             >
-              <a-button type="primary">
+              <Button type="primary">
                 {{ t('component.upload.choose') }}
-              </a-button>
+              </Button>
             </Upload>
           </FormItem>
           <FormItem label="描述" name="description" v-bind=validateInfos.description>
@@ -67,7 +67,7 @@ import {createDatasetVideo, updateDatasetVideo} from "@/api/device/dataset";
 import {useUserStoreWithOut} from "@/store/modules/user";
 import {useGlobSetting} from "@/hooks/setting";
 import {useI18n} from "@/hooks/web/useI18n";
-
+import { Button } from '@/components/Button'
 const {t} = useI18n()
 
 defineOptions({name: 'DatasetVideoModal'})

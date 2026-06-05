@@ -113,9 +113,9 @@
                 :before-upload="beforeLocalDatasetUpload"
                 @remove="handleLocalFileRemove"
               >
-                <a-button type="primary">
+                <Button type="primary">
                   {{ localFileList?.length ? '重新选择压缩包' : '上传数据集压缩包' }}
-                </a-button>
+                </Button>
               </Upload>
               <span class="dataset-upload-tip">仅支持 .zip 格式，单文件最大 5GB</span>
             </div>
@@ -154,8 +154,8 @@
     </div>
     <template #footer>
       <div class="modal-footer">
-        <a-button @click="handleCancel">取消</a-button>
-        <a-button type="primary" :loading="uploading" @click="startTrain">开始训练</a-button>
+        <Button @click="handleCancel">取消</Button>
+        <Button type="primary" :loading="uploading" @click="startTrain">开始训练</Button>
       </div>
     </template>
   </BasicModal>
@@ -169,7 +169,7 @@ import {BasicModal, useModalInner} from '@/components/Modal';
 import {getDatasetPage} from '@/api/device/dataset';
 import {getTrainGpuStatus, uploadTrainDataset} from '@/api/device/train';
 import {useMessage} from '@/hooks/web/useMessage';
-
+import { Button } from '@/components/Button'
 interface GpuDeviceInfo {
   index: number;
   name: string;

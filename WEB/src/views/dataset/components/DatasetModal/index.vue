@@ -45,9 +45,9 @@
               accept="*"
               :disabled="state.isView"
             >
-              <a-button type="primary">
+              <Button type="primary">
                 {{ t('component.upload.choose') }}
-              </a-button>
+              </Button>
             </Upload>
           </FormItem>
         </Form>
@@ -65,7 +65,7 @@ import {useI18n} from "@/hooks/web/useI18n";
 import {useUserStoreWithOut} from "@/store/modules/user";
 import {useGlobSetting} from "@/hooks/setting";
 import {createDataset, updateDataset} from "@/api/device/dataset";
-
+import { Button } from '@/components/Button'
 const {t} = useI18n()
 
 defineOptions({name: 'DatasetModal'})
@@ -123,7 +123,6 @@ const [register, {closeModal}] = useModalInner((data) => {
     modelRef.version = 'v1.0.0';
   }
 });
-
 
 const emits = defineEmits(['success']);
 

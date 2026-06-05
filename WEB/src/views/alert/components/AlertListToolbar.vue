@@ -12,11 +12,11 @@ const emit = defineEmits<{
 
 <template>
   <div class="alert-list-toolbar">
-    <a-button type="default" @click="emit('toggleView')">
+    <Button type="default" @click="emit('toggleView')">
       <template #icon><SwapOutlined /></template>
       切换视图
-    </a-button>
-    <Button type="primary" danger pre-icon="ant-design:delete-outlined" @click="emit('clearAll')">
+    </Button>
+    <Button type="primary" danger preIcon="ant-design:delete-outlined" @click="emit('clearAll')">
       一键清空告警
     </Button>
   </div>

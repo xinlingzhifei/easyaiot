@@ -11,11 +11,11 @@
   >
     <template #footer>
       <div class="footer-buttons">
-        <a-button @click="closeDrawer">{{ isViewMode ? '关闭' : '取消' }}</a-button>
-        <a-button v-if="!isViewMode" @click="handleReset">重置</a-button>
-        <a-button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">
+        <Button @click="closeDrawer">{{ isViewMode ? '关闭' : '取消' }}</Button>
+        <Button v-if="!isViewMode" @click="handleReset">重置</Button>
+        <Button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">
           {{ isEditMode ? '保存修改' : '确认录入' }}
-        </a-button>
+        </Button>
       </div>
     </template>
 
@@ -175,8 +175,9 @@ import type { UploadProps } from 'ant-design-vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
+import { Button } from '@/components/Button'
 import {
-  addFaceEntriesBatch,
+addFaceEntriesBatch,
   addFaceEntry,
   updateFaceEntry,
   type FaceEntry,

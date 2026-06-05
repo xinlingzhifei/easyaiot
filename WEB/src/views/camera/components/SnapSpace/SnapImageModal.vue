@@ -12,20 +12,20 @@
       <!-- 顶部操作栏 -->
       <div class="snap-image-header">
         <div class="header-actions">
-          <a-button type="primary" @click="handleSelectAll">
+          <Button type="primary" @click="handleSelectAll">
             {{ isAllSelected ? '取消全选' : '全选' }}
-          </a-button>
-          <a-button type="primary" @click="handleRefresh">
+          </Button>
+          <Button type="primary" @click="handleRefresh">
             刷新
-          </a-button>
-          <a-button 
+          </Button>
+          <Button 
             type="primary" 
             danger 
             :disabled="selectedRowKeys.length === 0"
             @click="handleBatchDelete"
           >
             批量删除 ({{ selectedRowKeys.length }})
-          </a-button>
+          </Button>
         </div>
       </div>
 
@@ -77,12 +77,12 @@
                     
                     <!-- 操作按钮 -->
                     <div class="card-actions" @click.stop>
-                      <a-button type="link" size="small" @click="handleDownload(item)">
+                      <Button type="link" size="small" @click="handleDownload(item)">
                         下载
-                      </a-button>
-                      <a-button type="link" size="small" danger @click="handleDelete(item)">
+                      </Button>
+                      <Button type="link" size="small" danger @click="handleDelete(item)">
                         删除
-                      </a-button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -102,7 +102,7 @@ import { List, Spin } from 'ant-design-vue';
 import { BasicModal, useModalInner } from '@/components/Modal';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getSnapImageList, deleteSnapImages, type SnapImage } from '@/api/device/snap';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'SnapImageModal' });
 
 const { createMessage } = useMessage();

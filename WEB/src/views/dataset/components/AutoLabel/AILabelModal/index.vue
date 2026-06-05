@@ -93,10 +93,10 @@
 import { ref, reactive } from 'vue';
 import { BasicModal, useModal } from '@/components/Modal';
 import { Icon } from '@/components/Icon';
-import { Form, FormItem, Select, SelectOption, Slider, Checkbox, Button } from 'ant-design-vue';
+import { Form, FormItem, Select, SelectOption, Slider, Checkbox } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import { startAutoLabel, getAIServiceList } from '@/api/device/auto-label';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'AILabelModal' });
 
 const props = defineProps<{

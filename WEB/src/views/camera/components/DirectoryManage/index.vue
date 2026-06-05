@@ -185,6 +185,7 @@ import { enrichWvpChannelTreeNodes } from '@/views/camera/utils/monitorGbDisplay
 import {
   collectMonitorTreeExpandedKeys,
   parseMonitorDirectoryId,
+  withDirectoryTreeSelectable,
 } from '@/views/camera/utils/monitorDeviceTree';
 import { getCachedMonitorDirectoryTreeBundle } from '@/views/camera/utils/monitorDirectoryTreeCache';
 import {
@@ -280,12 +281,16 @@ const onLoadGbDeviceChannels: TreeProps['loadData'] = (treeNode) => {
   });
 };
 
-function selectDirectoryById(directoryId: number, directoryName: string) {
+function applyDirectorySelection(
+  directoryId: number,
+  directoryName: string,
+  options?: { highlightInTree?: boolean },
+) {
   selectedDirectoryId.value = directoryId;
   selectedDirectoryName.value = directoryName;
-  treeSelectedKeys.value = [`dir_${directoryId}`];
   checkedKeys.value = [];
   checkedRows.value = [];
+  treeSelectedKeys.value = options?.highlightInTree === false ? [] : [`dir_${directoryId}`];
   reloadDeviceTable();
 }
 
@@ -296,32 +301,36 @@ function handleMonitorTreeSelect(keys: string[]) {
   if (dirId == null) return;
   const dir = findMonitorDirectoryNode(monitorTreeRaw.value, dirId);
   if (!dir) return;
-  selectDirectoryById(dir.id, dir.name);
+  applyDirectorySelection(dir.id, dir.name, { highlightInTree: true });
 }
 
 function applyMonitorBundle(bundle: MonitorDirectoryTreeBundle) {
   cachedMonitorBundle = bundle;
   monitorTreeRaw.value = bundle.rawTree;
-  monitorTreeItems.value = bundle.treeItems;
+  monitorTreeItems.value = withDirectoryTreeSelectable(bundle.treeItems);
   monitorWvpDevices.value = bundle.wvpDevices;
   directoryTree.value = mapMonitorTreeToDeviceDirectories(bundle.rawTree);
-  treeExpandedKeys.value = collectMonitorTreeExpandedKeys(bundle.treeItems);
+  treeExpandedKeys.value = collectMonitorTreeExpandedKeys(monitorTreeItems.value);
 }
 
 function afterMonitorBundleLoaded(bundle: MonitorDirectoryTreeBundle) {
-  const isInitialLoad = !selectedDirectoryId.value;
   const defaultDir = findDefaultDirectory(directoryTree.value);
-  if (isInitialLoad && defaultDir) {
-    selectDirectoryById(defaultDir.id, defaultDir.name);
-  } else if (selectedDirectoryId.value) {
-    const still = findMonitorDirectoryNode(bundle.rawTree, selectedDirectoryId.value);
-    if (still) {
-      selectedDirectoryName.value = still.name;
-      treeSelectedKeys.value = [`dir_${still.id}`];
-    } else if (defaultDir) {
-      selectDirectoryById(defaultDir.id, defaultDir.name);
+  const hadTreeHighlight = treeSelectedKeys.value.some((k) => k.startsWith('dir_'));
+
+  if (!selectedDirectoryId.value) {
+    if (defaultDir) {
+      applyDirectorySelection(defaultDir.id, defaultDir.name, { highlightInTree: false });
     }
+    return;
+  }
+
+  const still = findMonitorDirectoryNode(bundle.rawTree, selectedDirectoryId.value);
+  if (still) {
+    selectedDirectoryName.value = still.name;
+    treeSelectedKeys.value = hadTreeHighlight ? [`dir_${still.id}`] : [];
     reloadDeviceTable();
+  } else if (defaultDir) {
+    applyDirectorySelection(defaultDir.id, defaultDir.name, { highlightInTree: false });
   }
 }
 
@@ -408,6 +417,7 @@ const handleDeleteDirectory = async (directory: DeviceDirectory) => {
       if (selectedDirectoryId.value === directory.id) {
         selectedDirectoryId.value = null;
         selectedDirectoryName.value = '';
+        treeSelectedKeys.value = [];
         reloadDeviceTable();
       }
     } else {
@@ -983,11 +993,13 @@ onMounted(() => {
     
     .tree-content {
       flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
+      overflow: hidden;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
 
       .tree-dir-actions {
+        flex-shrink: 0;
         display: flex;
         gap: 4px;
         margin-bottom: 8px;
@@ -996,7 +1008,48 @@ onMounted(() => {
       }
 
       :deep(.directory-monitor-tree) {
-        min-height: 200px;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+
+        .ant-spin-nested-loading,
+        .ant-spin-container {
+          flex: 1;
+          min-height: 0;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .scroll-container {
+          flex: 1;
+          min-height: 0;
+        }
+
+        .ant-tree-switcher {
+          width: 16px;
+          margin-inline-end: 2px;
+        }
+
+        .ant-tree-switcher-noop {
+          width: 8px;
+        }
+
+        .ant-tree-node-content-wrapper {
+          padding-inline: 2px 6px;
+          min-height: 26px;
+          line-height: 26px;
+        }
+
+        .ant-tree-title,
+        [class*='-tree__title'] {
+          padding-left: 0 !important;
+          padding-right: 8px;
+        }
       }
     }
   }

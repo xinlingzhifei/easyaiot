@@ -115,11 +115,11 @@
 <script lang="ts" setup>
 import {reactive, ref, unref} from 'vue';
 import {BasicModal, useModalInner} from '@/components/Modal';
-import {Button, Col, Form, FormItem, Input, Row, Spin,} from 'ant-design-vue';
+import { Col, Form, FormItem, Input, Row, Spin } from 'ant-design-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import {useRoute} from "vue-router";
 import {checkMediaServer, saveOrUpdateMediaServer} from "@/api/device/gb28181";
-
+import { Button } from '@/components/Button'
 defineOptions({name: 'PullProxyModal'})
 
 const {createMessage} = useMessage();

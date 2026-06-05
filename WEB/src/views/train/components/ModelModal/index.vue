@@ -47,9 +47,9 @@
               :disabled="state.isView"
               @change="handleImageUpload"
             >
-              <a-button type="primary" :disabled="state.isView">
+              <Button type="primary" :disabled="state.isView">
                 {{ state.isView ? '已上传' : '上传模型图片' }}
-              </a-button>
+              </Button>
             </Upload>
             <div v-if="modelRef.imageUrl" style="margin-top: 8px">
               <img
@@ -71,9 +71,9 @@
               :disabled="state.isView"
               @change="handleFileUpload"
             >
-              <a-button type="primary" :disabled="state.isView">
+              <Button type="primary" :disabled="state.isView">
                 {{ state.isView ? '已上传' : '上传模型文件' }}
-              </a-button>
+              </Button>
             </Upload>
             <div v-if="modelRef.filePath" style="margin-top: 8px">
               已上传文件: {{ modelRef.filePath }}
@@ -93,7 +93,7 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { useUserStoreWithOut } from "@/store/modules/user";
 import { useGlobSetting } from "@/hooks/setting";
 import { createModel, updateModel } from "@/api/device/model";
-
+import { Button } from '@/components/Button'
 const { createMessage } = useMessage();
 const TextArea = Input.TextArea;
 

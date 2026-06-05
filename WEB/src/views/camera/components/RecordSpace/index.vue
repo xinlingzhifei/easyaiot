@@ -11,12 +11,12 @@
               <div class="p-2 bg-white">
                 <div class="list-header">
                   <span class="list-title">录像空间列表</span>
-                  <a-button type="primary" @click="handleSyncMinio" :loading="syncing">
+                  <Button type="primary" @click="handleSyncMinio" :loading="syncing">
                     <template #icon>
                       <SyncOutlined />
                     </template>
                     同步Minio数据仓
-                  </a-button>
+                  </Button>
                 </div>
                 <Spin :spinning="loading">
                   <List
@@ -79,7 +79,7 @@
 
 <script lang="ts" setup>
 import {computed, onMounted, onUnmounted, ref} from 'vue';
-import {Empty, List, Spin, Button as AButton} from 'ant-design-vue';
+import {Empty, List, Spin} from 'ant-design-vue';
 import {SyncOutlined} from '@ant-design/icons-vue';
 import {BasicForm, useForm} from '@/components/Form';
 import {useModal} from '@/components/Modal';
@@ -87,7 +87,7 @@ import {useMessage} from '@/hooks/web/useMessage';
 import {deleteRecordSpace, getRecordSpaceList, getRecordVideoList, syncRecordSpacesToMinio, type RecordSpace} from '@/api/device/record';
 import RecordVideoModal from './RecordVideoModal.vue';
 import recordSpaceIcon from '@/assets/images/video/snap-space-icon.png';
-
+import { Button } from '@/components/Button'
 const ListItem = List.Item;
 
 defineOptions({name: 'RecordSpace'});
@@ -114,8 +114,7 @@ const paginationProp = computed(() => ({
   total: total.value,
   showTotal: (total: number) => `总 ${total} 条`,
   onChange: pageChange,
-  onShowSizeChange: pageSizeChange,
-}));
+  onShowSizeChange: pageSizeChange}));
 
 function pageChange(p: number, pz: number) {
   page.value = p;
@@ -183,7 +182,6 @@ const loadSpaceList = async () => {
   }
 };
 
-
 // 查看录像
 const handleViewVideos = (record: RecordSpace) => {
   openVideoModal(true, {space_id: record.id, space_name: record.space_name});
@@ -201,8 +199,7 @@ const handleDelete = async (record: RecordSpace) => {
     // 先检查空间下是否有录像
     const videoResponse = await getRecordVideoList(record.id, {
       pageNo: 1,
-      pageSize: 1,
-    });
+      pageSize: 1});
     
     if (videoResponse.code === 0 && videoResponse.total > 0) {
       createMessage.warning('该空间下还有录像，无法删除。请先删除所有录像后再删除空间。');
@@ -300,16 +297,13 @@ const [registerForm, {validate}] = useForm({
       label: '空间名称',
       component: 'Input',
       componentProps: {
-        placeholder: '请输入空间名称',
-      },
-    },
+        placeholder: '请输入空间名称'}},
   ],
   labelWidth: 80,
   baseColProps: {span: 6},
   actionColOptions: {span: 6, offset: 12, style: { textAlign: 'right' }},
   autoSubmitOnEnter: true,
-  submitFunc: handleSubmit,
-});
+  submitFunc: handleSubmit});
 
 // 暴露刷新方法给父组件
 defineExpose({

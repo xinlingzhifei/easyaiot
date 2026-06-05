@@ -221,7 +221,7 @@ import {
   VideoCameraOutlined,
   FolderOutlined,
 } from '@ant-design/icons-vue';
-import {Tag, Button, Empty, Spin, RadioGroup, Radio} from 'ant-design-vue';
+import { Tag, Empty, Spin, RadioGroup, Radio } from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {useMessage} from '@/hooks/web/useMessage';
 import {
@@ -247,7 +247,7 @@ import {BasicModal} from '@/components/Modal';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
 import SnapImageModal from '@/views/camera/components/SnapSpace/SnapImageModal.vue';
 import {getSnapSpaceByDeviceId, type SnapSpace} from '@/api/device/snap';
-
+import { Button } from '@/components/Button'
 defineOptions({name: 'ServiceManageDrawer'});
 
 const emit = defineEmits(['close', 'success']);

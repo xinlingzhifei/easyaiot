@@ -2,10 +2,10 @@
   <div class="subDevice-wrapper">
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button type="primary"
+        <Button type="primary"
                   @click="openAddModal(true, { datasetId: route.params['id'], isEdit: false, isView: false })">
           新增数据集标签
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">
@@ -56,7 +56,7 @@ import {useRoute} from "vue-router";
 import {useModal} from "@/components/Modal";
 import {deleteDatasetTag, getDatasetTagPage} from "@/api/device/dataset";
 import DatasetTagModal from "@/views/dataset/components/DatasetTagModal/index.vue";
-
+import { Button } from '@/components/Button'
 const {createMessage} = useMessage();
 
 const [registerAddModel, {openModal: openAddModal}] = useModal();

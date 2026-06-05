@@ -8,7 +8,7 @@ import { IconEnum } from '@/enums/appEnum'
 import { BasicTable, TableAction, useTable } from '@/components/Table'
 import type { ConfigExportReqVO } from '@/api/infra/config'
 import { deleteConfig, exportConfig, getConfigPage } from '@/api/infra/config'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraConfig' })
 
 const { t } = useI18n()
@@ -62,12 +62,12 @@ async function handleDelete(record: Recordable) {
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button v-auth="['infra:config:create']" type="primary" :pre-icon="IconEnum.ADD" @click="handleCreate">
+        <Button v-auth="['infra:config:create']" type="primary" :preIcon="IconEnum.ADD" @click="handleCreate">
           {{ t('action.create') }}
-        </a-button>
-        <a-button v-auth="['infra:config:export']" :pre-icon="IconEnum.EXPORT" @click="handleExport">
+        </Button>
+        <Button v-auth="['infra:config:export']" :preIcon="IconEnum.EXPORT" @click="handleExport">
           {{ t('action.export') }}
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">

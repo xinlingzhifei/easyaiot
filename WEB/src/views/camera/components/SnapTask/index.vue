@@ -2,18 +2,18 @@
   <div class="snap-task-container">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <a-button type="primary" @click="handleCreate">
+      <Button type="primary" @click="handleCreate">
         <template #icon>
           <PlusOutlined />
         </template>
         新建算法任务
-      </a-button>
-      <a-button @click="handleClickSwap" type="default">
+      </Button>
+      <Button @click="handleClickSwap" type="default">
         <template #icon>
           <SwapOutlined />
         </template>
         切换视图
-      </a-button>
+      </Button>
     </div>
 
     <!-- 表格模式 -->
@@ -115,7 +115,7 @@ import { useDrawer } from '@/components/Drawer';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getSnapTaskList, deleteSnapTask, startSnapTask, stopSnapTask, type SnapTask } from '@/api/device/snap';
 import SnapTaskModal from './SnapTaskModal.vue';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'SnapTask' });
 
 const { createMessage } = useMessage();

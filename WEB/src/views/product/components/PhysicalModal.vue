@@ -134,9 +134,9 @@ import {
   updatePhsyicalService,
 } from '@/api/device/phsyicalModal';
 import {useMessage} from '@/hooks/web/useMessage';
-import {Button, ButtonGroup, Card, Tag, Empty, Pagination} from 'ant-design-vue';
+import { ButtonGroup, Card, Tag, Empty, Pagination } from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
-
+import { Button } from '@/components/Button'
 interface Props {
     productIdentification: string;
     deviceProfileName: string;

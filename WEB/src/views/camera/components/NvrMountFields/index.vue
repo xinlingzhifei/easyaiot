@@ -17,7 +17,7 @@
           :filter-option="filterNvr"
           @change="onSelectChange"
         />
-        <a-button type="link" size="small" :disabled="disabled" @click="loadNvrs">刷新列表</a-button>
+        <Button type="link" size="small" :disabled="disabled" @click="loadNvrs">刷新列表</Button>
       </FormItem>
       <template v-if="selectValue === NEW_NVR_KEY">
         <Row :gutter="12">
@@ -76,7 +76,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Col, Divider, FormItem, Input, InputNumber, Row, Select, Switch } from 'ant-design-vue';
 import { getNvrList, type NvrInfo } from '@/api/device/camera';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'NvrMountFields' });
 
 const NEW_NVR_KEY = '__new_nvr__';

@@ -6,7 +6,7 @@
           <Button type="primary" :loading="regenLoading" class="mr-2" @click="handleRegenerate">
             生成配置
           </Button>
-          <Button v-if="content" pre-icon="ant-design:copy-outlined" @click="copyContent">复制全部</Button>
+          <Button v-if="content" preIcon="ant-design:copy-outlined" @click="copyContent">复制全部</Button>
         </template>
       </BasicForm>
     </template>

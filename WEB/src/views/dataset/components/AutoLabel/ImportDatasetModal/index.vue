@@ -236,7 +236,7 @@ uploads/
 import { ref, watch, computed } from 'vue';
 import { BasicModal, useModal } from '@/components/Modal';
 import { Icon } from '@/components/Icon';
-import { Tabs, TabPane, InputNumber, Button, Input, Select } from 'ant-design-vue';
+import { Tabs, TabPane, InputNumber, Input, Select } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import DatasetImportProgress from '@/views/dataset/components/DatasetImportProgress.vue';
 import {
@@ -248,8 +248,9 @@ import {
   extractAnnotationFrames,
   type DatasetAnnotationImportResult,
 } from '@/api/device/dataset';
+import { Button } from '@/components/Button'
 import {
-  formatFileSize,
+formatFileSize,
   resumableUploadDatasetFiles,
 } from '@/utils/upload/resumableUpload';
 defineOptions({ name: 'ImportDatasetModal' });

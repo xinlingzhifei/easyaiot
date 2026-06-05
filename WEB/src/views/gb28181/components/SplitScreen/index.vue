@@ -75,8 +75,8 @@
                 <Icon icon="ant-design:tool-outlined" class="label-icon" />
                 <span>操作</span>
               </div>
-              <a-space size="small" class="action-buttons">
-                <a-button
+              <Space size="small" class="action-buttons">
+                <Button
                   type="default"
                   danger
                   size="middle"
@@ -88,8 +88,8 @@
                     <Icon icon="ant-design:delete-outlined" />
                   </template>
                   删除选中
-                </a-button>
-                <a-button
+                </Button>
+                <Button
                   :type="state.isFull ? 'default' : 'primary'"
                   size="middle"
                   @click="handleGridFull"
@@ -99,8 +99,8 @@
                     <Icon :icon="state.isFull ? 'ant-design:fullscreen-exit-outlined' : 'ant-design:fullscreen-outlined'" />
                   </template>
                   {{ state.isFull ? '退出全屏' : '全屏展示' }}
-                </a-button>
-                <a-button
+                </Button>
+                <Button
                   type="default"
                   size="middle"
                   @click="handleClearAll"
@@ -110,8 +110,8 @@
                     <Icon icon="ant-design:clear-outlined" />
                   </template>
                   清空全部
-                </a-button>
-              </a-space>
+                </Button>
+              </Space>
             </div>
 
             <!-- 状态信息 -->
@@ -154,7 +154,7 @@
                     通道 {{ i }}
                   </a-tag>
                   <div class="cell-actions">
-                    <a-button
+                    <Button
                       type="text"
                       size="small"
                       danger
@@ -162,7 +162,7 @@
                       @click.stop="handleCellDelete(i - 1)"
                     >
                       <Icon icon="ant-design:close-outlined" />
-                    </a-button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -181,8 +181,7 @@ import {
   LayoutSider as ALayoutSider, 
   LayoutHeader as ALayoutHeader, 
   LayoutContent as ALayoutContent, 
-  Space as ASpace, 
-  Button as AButton, 
+  Space, 
   Divider as ADivider, 
   Tag as ATag,
   RadioGroup as ARadioGroup,
@@ -199,7 +198,7 @@ import { pickWvpPlayUrl } from '@/views/camera/utils/devicePlay';
 import type { TreeProps } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
-
+import { Button } from '@/components/Button'
 const { createMessage } = useMessage();
 
 const selectedKeys = ref<string[]>([]);
@@ -213,8 +212,7 @@ const state = reactive({
   splitMode: 1,
   playerIdx: 0,
   isFull: false,
-  loadingCells: [] as number[],
-});
+  loadingCells: [] as number[]});
 
 const loadedCount = computed(() => {
   return state.playUrls.filter(url => url).length;
@@ -229,8 +227,7 @@ const gridStyle = computed((): CSSProperties => {
     backgroundColor: '#ffffff',
     width: '100%',
     height: '100%',
-    padding: '2px',
-  };
+    padding: '2px'};
 
   if (state.isFull) {
     return {
@@ -240,8 +237,7 @@ const gridStyle = computed((): CSSProperties => {
       left: 0,
       right: 0,
       bottom: 0,
-      zIndex: 9999,
-    };
+      zIndex: 9999};
   }
 
   return baseStyle;
@@ -418,8 +414,7 @@ async function fetchTree() {
   try {
     const res = await queryVideoList({
       pageNum: 1,
-      pageSize: 10000,
-    });
+      pageSize: 10000});
     const raw = Array.isArray(res.data) ? res.data : [];
     /** 补齐国标编号与标题，过滤无效行，避免 handleTree 因 undefined key 导致整棵树为空 */
     const list = raw
@@ -434,8 +429,7 @@ async function fetchTree() {
             item.name
             || item.deviceName
             || deviceIdentification
-            || '未命名设备',
-        };
+            || '未命名设备'};
       })
       .filter((item: any) => item.deviceIdentification);
 
@@ -445,8 +439,7 @@ async function fetchTree() {
       tree = list.map((node: any) => ({
         ...node,
         deviceId: node.deviceIdentification,
-        isLeaf: false,
-      }));
+        isLeaf: false}));
     }
     else {
       for (let i = 0; i < tree.length; i++) {
@@ -753,7 +746,6 @@ onUnmounted(() => {
             width: 100%;
             height: 100%;
             min-height: 100%;
-
 
             &.cell-selected {
               border-color: #3b82f6;

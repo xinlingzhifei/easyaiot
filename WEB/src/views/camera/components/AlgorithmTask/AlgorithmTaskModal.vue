@@ -3,8 +3,8 @@
     placement="right" :showFooter="true" :showCancelBtn="false" :showOkBtn="false">
     <template #footer>
       <div class="footer-buttons">
-        <a-button v-if="!isViewMode" @click="handleReset" class="mr-2">重置</a-button>
-        <a-button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">提交</a-button>
+        <Button v-if="!isViewMode" @click="handleReset" class="mr-2">重置</Button>
+        <Button v-if="!isViewMode" type="primary" :loading="confirmLoading" @click="handleSubmit">提交</Button>
       </div>
     </template>
     <a-tabs v-model:activeKey="activeTab">
@@ -31,7 +31,7 @@ import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
 import { QuestionCircleOutlined } from '@ant-design/icons-vue';
-import { Switch, Popover, Button, Select } from 'ant-design-vue';
+import { Switch, Popover as AntButton, Select } from 'ant-design-vue';
 import {
   createAlgorithmTask,
   updateAlgorithmTask,
@@ -51,8 +51,9 @@ import {
   getSnapCronHelpLines,
   validateSnapCronMinInterval,
 } from '@/views/camera/utils/cronExpression';
+import { Button } from '@/components/Button'
 import {
-  collectMatchingTagsFromLibraries,
+collectMatchingTagsFromLibraries,
   type LibraryWithTags,
 } from '@/views/camera/utils/libraryMatching';
 
@@ -304,8 +305,6 @@ const loadDevices = async () => {
     console.error('加载设备列表失败', error);
   }
 };
-
-
 
 // 初始化默认模型到映射中
 const initDefaultModels = () => {
@@ -1309,7 +1308,6 @@ const handleSubmit = async () => {
       values.alert_notification_config = null;
     }
 
-
     // 人脸/车牌匹配：检测开关与匹配一致；业务标签从所选库透传
     values.face_detection_enabled = !!values.face_matching_enabled;
     values.plate_detection_enabled = !!values.plate_matching_enabled;
@@ -1419,7 +1417,6 @@ const handleSubmit = async () => {
     setDrawerProps({ confirmLoading: false });
   }
 };
-
 
 // 重置表单
 const handleReset = () => {

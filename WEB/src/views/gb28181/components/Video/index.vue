@@ -2,12 +2,12 @@
   <div class="video-wrapper">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary" @click="openAccessInfoModal" preIcon="ant-design:export-outlined">
+        <Button type="primary" @click="openAccessInfoModal" preIcon="ant-design:export-outlined">
           导出接入配置
-        </a-button>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        </Button>
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">
@@ -30,12 +30,12 @@
       <VideoCardList :params="params" :api="queryVideoList" @get-method="getMethod"
                      @edit="handleEdit" @refresh="handleRefresh">
         <template #header>
-          <a-button type="primary" @click="openAccessInfoModal" preIcon="ant-design:export-outlined">
+          <Button type="primary" @click="openAccessInfoModal" preIcon="ant-design:export-outlined">
             导出接入配置
-          </a-button>
-          <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+          </Button>
+          <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
             切换视图
-          </a-button>
+          </Button>
         </template>
       </VideoCardList>
     </div>
@@ -51,7 +51,7 @@ import { getBasicColumns, getFormConfig } from './Data';
 import VideoCardList from '@/views/gb28181/components/VideoCardList/index.vue';
 import AccessInfoModal from './AccessInfoModal.vue';
 import { queryVideoList, refreshChannelList, generateDeviceAccessInfo } from '@/api/device/gb28181';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'Video' });
 
 const state = reactive({

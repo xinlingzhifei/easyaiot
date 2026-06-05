@@ -2,10 +2,10 @@
   <div>
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary" @click="openAddModal(true, { type: 'add' })">新增模型</a-button>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        <Button type="primary" @click="openAddModal(true, { type: 'add' })">新增模型</Button>
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">
@@ -63,12 +63,12 @@
         @download="handleDownload"
       >
       <template #header>
-        <a-button type="primary" @click="openAddModal(true, { isEdit: false, isView: false })">
+        <Button type="primary" @click="openAddModal(true, { isEdit: false, isView: false })">
           新增模型
-        </a-button>
-        <a-button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
+        </Button>
+        <Button type="default" @click="handleClickSwap" preIcon="ant-design:swap-outlined">
           切换视图
-        </a-button>
+        </Button>
       </template>
       </ModelCardList>
     </div>
@@ -85,7 +85,7 @@ import ModelModal from "../ModelModal/index.vue";
 import { useModal } from "@/components/Modal";
 import { deleteModel, getModelPage, downloadModel } from "@/api/device/model";
 import ModelCardList from "../ModelCardList/index.vue";
-
+import { Button } from '@/components/Button'
 const { createMessage, createConfirm } = useMessage();
 
 const [registerAddModel, { openModal: openAddModal }] = useModal();

@@ -1,3 +1,4 @@
+import { Button } from '@/components/Button'
 <template>
   <div class="upload-attachment-warpper">
     <div class="uaw-list">
@@ -17,7 +18,7 @@
   </div>
 </template>
 <script lang="ts" setup>
-  import { Upload, Input, Button } from 'ant-design-vue';
+  import { Upload, Input } from 'ant-design-vue';
   import { UploadOutlined } from '@ant-design/icons-vue';
   import { PropType, computed, ref } from 'vue';
   import Icon from '@/components/Icon/index';

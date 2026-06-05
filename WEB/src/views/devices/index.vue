@@ -2,12 +2,12 @@
   <div class="device-wrapper">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <a-button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
+        <Button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
           添加设备
-        </a-button>
-        <a-button type="default" @click="handleClickSwap"
+        </Button>
+        <Button type="default" @click="handleClickSwap"
                   preIcon="ant-design:swap-outlined">切换视图
-        </a-button>
+        </Button>
         <PopConfirmButton
           placement="topRight"
           @confirm="handleClickDeleteAll"
@@ -73,12 +73,12 @@
       <DeviceCardList :params="params" :api="getDevicesList" @get-method="getMethod"
                       @delete="handleDel" @edit="handleEdit" @view="handleView">
         <template #header>
-          <a-button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
+          <Button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
             添加设备
-          </a-button>
-          <a-button type="default" @click="handleClickSwap"
+          </Button>
+          <Button type="default" @click="handleClickSwap"
                     preIcon="ant-design:swap-outlined">切换视图
-          </a-button>
+          </Button>
           <PopConfirmButton
             placement="topRight"
             @confirm="handleClickDeleteAll"
@@ -322,5 +322,4 @@ onMounted(() => {
   }
 }
 </style>
-
 

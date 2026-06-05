@@ -10,7 +10,7 @@ import { BasicTable, TableAction, useTable } from '@/components/Table'
 import type { JobExportReqVO } from '@/api/infra/job'
 import { deleteJob, exportJob, getJobPage, runJob, updateJobStatus } from '@/api/infra/job'
 import { InfraJobStatusEnum } from '@/enums/systemEnum'
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'InfraJob' })
 
 const go = useGo()
@@ -103,12 +103,12 @@ async function handleDelete(record: Recordable) {
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <a-button v-auth="['infra:job:create']" type="primary" :pre-icon="IconEnum.ADD" @click="handleCreate">
+        <Button v-auth="['infra:job:create']" type="primary" :preIcon="IconEnum.ADD" @click="handleCreate">
           {{ t('action.create') }}
-        </a-button>
-        <a-button v-auth="['infra:job:export']" :pre-icon="IconEnum.EXPORT" @click="handleExport">
+        </Button>
+        <Button v-auth="['infra:job:export']" :preIcon="IconEnum.EXPORT" @click="handleExport">
           {{ t('action.export') }}
-        </a-button>
+        </Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'action'">

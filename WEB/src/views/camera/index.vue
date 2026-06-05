@@ -55,16 +55,16 @@
             <BasicTable @register="registerTable">
               <template #toolbar>
                 <div class="device-list-toolbar">
-                  <Button type="primary" pre-icon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
+                  <Button type="primary" preIcon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
                     添加设备
                   </Button>
-                  <Button pre-icon="ant-design:import-outlined" @click="openBatchLocationModal(true)">
+                  <Button preIcon="ant-design:import-outlined" @click="openBatchLocationModal(true)">
                     导入坐标
                   </Button>
-                  <a-button type="default" @click="handleToggleViewMode">
+                  <Button type="default" @click="handleToggleViewMode">
                     <template #icon><SwapOutlined /></template>
                     切换视图
-                  </a-button>
+                  </Button>
                 </div>
               </template>
               <template #bodyCell="{ column, record }">
@@ -127,16 +127,16 @@
                 >
                   <template #header>
                     <div class="device-list-toolbar device-list-toolbar--card">
-                      <Button type="primary" pre-icon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
+                      <Button type="primary" preIcon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
                         添加设备
                       </Button>
-                      <Button pre-icon="ant-design:import-outlined" @click="openBatchLocationModal(true)">
+                      <Button preIcon="ant-design:import-outlined" @click="openBatchLocationModal(true)">
                         导入坐标
                       </Button>
-                      <a-button type="default" @click="handleToggleViewMode">
+                      <Button type="default" @click="handleToggleViewMode">
                         <template #icon><SwapOutlined /></template>
                         切换视图
-                      </a-button>
+                      </Button>
                     </div>
                   </template>
             </DeviceMixedCardList>

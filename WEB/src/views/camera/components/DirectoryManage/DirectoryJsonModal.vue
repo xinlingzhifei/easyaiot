@@ -44,7 +44,7 @@
       </div>
 
       <div class="toolbar">
-        <a-space wrap :size="8">
+        <Space wrap :size="8">
           <Button preIcon="ant-design:undo-outlined" :disabled="loading" @click="handleReset">
             重置
           </Button>
@@ -94,7 +94,7 @@
           <Button preIcon="ant-design:plus-outlined" :disabled="loading" @click="openSaveTemplateModal">
             添加为模板
           </Button>
-        </a-space>
+        </Space>
       </div>
 
       <p v-if="activeSampleHint" class="sample-hint">{{ activeSampleHint }}</p>
@@ -147,7 +147,7 @@ import {
   MenuItemGroup as AMenuItemGroup,
   Modal as AModal,
   Select as ASelect,
-  Space as ASpace,
+  Space,
   Spin as ASpin,
   Textarea as ATextarea,
   TypographyLink as ATypographyLink,

@@ -55,22 +55,22 @@
           </div>
         </div>
         <div class="access-info-actions">
-          <a-button
+          <Button
             type="primary"
             @click="copyContent"
             preIcon="ant-design:copy-outlined"
             size="middle"
           >
             复制全部配置
-          </a-button>
-          <a-button
+          </Button>
+          <Button
             @click="handleRegenerate"
             :loading="regenLoading"
             preIcon="ant-design:reload-outlined"
             size="middle"
           >
             重新生成
-          </a-button>
+          </Button>
         </div>
       </template>
 
@@ -79,22 +79,22 @@
           <pre class="access-info-text">{{ content }}</pre>
         </div>
         <div class="access-info-actions">
-          <a-button
+          <Button
             type="primary"
             @click="copyContent"
             preIcon="ant-design:copy-outlined"
             size="middle"
           >
             复制
-          </a-button>
-          <a-button
+          </Button>
+          <Button
             @click="handleRegenerate"
             :loading="regenLoading"
             preIcon="ant-design:reload-outlined"
             size="middle"
           >
             重新生成
-          </a-button>
+          </Button>
         </div>
       </template>
 
@@ -102,7 +102,7 @@
         <Icon icon="ant-design:inbox-outlined" class="empty-icon" />
         <p>未获取到内容</p>
         <p class="empty-hint">请重试「导出接入配置」或检查服务端脚本是否可用。</p>
-        <a-button
+        <Button
           type="primary"
           @click="handleRegenerate"
           :loading="regenLoading"
@@ -111,7 +111,7 @@
           class="empty-regen-btn"
         >
           重新生成
-        </a-button>
+        </Button>
       </div>
     </div>
   </BasicModal>
@@ -124,7 +124,7 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { Icon } from '@/components/Icon';
 import { InputNumber } from 'ant-design-vue';
 import { generateDeviceAccessInfo } from '@/api/device/gb28181';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'AccessInfoModal' });
 
 const { createMessage } = useMessage();

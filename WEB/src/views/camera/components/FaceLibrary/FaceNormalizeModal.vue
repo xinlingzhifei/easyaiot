@@ -39,7 +39,7 @@
         </div>
 
         <div class="preset-row">
-          <a-button
+          <Button
             v-for="preset in THRESHOLD_PRESETS"
             :key="preset.key"
             size="small"
@@ -48,7 +48,7 @@
             @click="applyPreset(preset.value)"
           >
             {{ preset.label }}
-          </a-button>
+          </Button>
         </div>
 
         <BasicForm @register="registerForm" />
@@ -81,9 +81,9 @@
             <div class="result-desc">
               可尝试点击上方「宽松」降低严格度；若仍无结果，说明人员档案可能已整理完毕。
             </div>
-            <a-button size="small" type="link" class="try-loose-btn" @click="applyPreset(0.45)">
+            <Button size="small" type="link" class="try-loose-btn" @click="applyPreset(0.45)">
               一键设为宽松模式
-            </a-button>
+            </Button>
           </div>
         </template>
       </div>
@@ -99,8 +99,9 @@ import { useDebounceFn } from '@vueuse/core';
 import { BasicModal, useModalInner } from '@/components/Modal';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
+import { Button } from '@/components/Button'
 import {
-  getFaceLibrary,
+getFaceLibrary,
   mergeAllFaceNormalizeGroups,
   previewFaceNormalizeGroups,
   type FaceLibrary,

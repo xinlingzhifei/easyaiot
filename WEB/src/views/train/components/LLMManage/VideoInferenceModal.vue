@@ -20,12 +20,12 @@
                 accept="video/*"
                 @remove="handleRemove"
               >
-                <a-button>
+                <Button>
                   <template #icon>
                     <UploadOutlined />
                   </template>
                   选择视频文件
-                </a-button>
+                </Button>
               </a-upload>
               <div class="upload-tip">
                 支持 MP4、AVI、MOV 等格式，文件大小不超过 100MB
@@ -99,8 +99,7 @@ import { ref, computed } from 'vue';
 import { BasicModal, useModalInner } from '@/components/Modal';
 import { useMessage } from '@/hooks/web/useMessage';
 import { UploadOutlined } from '@ant-design/icons-vue';
-import {
-  Upload,
+import { Upload,
   Modal,
   Form,
   FormItem,
@@ -111,12 +110,10 @@ import {
   Divider,
   Spin,
   Tabs,
-  TabPane,
-  Button,
-} from 'ant-design-vue';
+  TabPane as AntButton, } from 'ant-design-vue';
 import type { UploadFile, UploadProps } from 'ant-design-vue';
 import { videoInference, videoUnderstanding } from '@/api/device/llm';
-
+import { Button } from '@/components/Button'
 defineOptions({ name: 'VideoInferenceModal' });
 
 const emit = defineEmits(['success', 'register']);
