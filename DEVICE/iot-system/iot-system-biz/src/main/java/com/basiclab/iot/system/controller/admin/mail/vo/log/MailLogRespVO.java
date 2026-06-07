@@ -11,7 +11,6 @@ import java.util.Map;
  *
  * @author 翱翔的雄库鲁
  * @email andywebjava@163.com
- * @wechat EasyAIoT2025
  */
 @Schema(description = "管理后台 - 邮件日志 Response VO")
 @Data

@@ -322,8 +322,10 @@ onClickOutside(wrap, () => {
     padding-left: 0 !important;
 
     img {
-      width: @logo-width;
-      height: @logo-width;
+      width: 44px;
+      height: 36px;
+      object-fit: contain;
+      border-radius: 6px;
     }
   }
 

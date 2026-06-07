@@ -1,0 +1,1 @@
+import{x as t}from"./index-67156d11.js";const{createMessage:n}=t();function d(c,o){const e=document.createElement("input");e.value=c,document.body.appendChild(e),e.select(),document.execCommand("copy"),document.body.removeChild(e),n.success(`${o}复制成功`)}export{d as c};

@@ -1,0 +1,1 @@
+import t from"./index-ae751445.js";import{d as n,o,h as a,n as r}from"./index-67156d11.js";const l=n({__name:"index",setup(s){const e=[{title:"请求方法",dataIndex:"method"},{title:"URL",dataIndex:"url"}];return(p,c)=>(o(),a("div",null,[r(t,{pushType:"http",columns:e})]))}});export{l as _};

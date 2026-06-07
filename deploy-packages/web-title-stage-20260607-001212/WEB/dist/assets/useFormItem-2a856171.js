@@ -1,0 +1,1 @@
+import{E as i,ah as l,f,bo as m,ai as v,a8 as g,k as d,am as h,cg as E}from"./index-67156d11.js";function I(a,n="value",c="change",u){const r=h()?.emit,t=i({value:a[n]}),s=E(t),o=e=>{t.value=e};return l(()=>{t.value=a[n]}),[f({get(){return t.value},set(e){m(e,s.value)||(t.value=e,v(()=>{r?.(c,e,...g(d(u))||[])}))}}),o,s]}export{I as u};

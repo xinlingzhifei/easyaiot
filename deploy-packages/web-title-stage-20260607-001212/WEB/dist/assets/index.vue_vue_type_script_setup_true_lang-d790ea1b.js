@@ -1,0 +1,1 @@
+import t from"./index-ae751445.js";import{d as n,o,h as a,n as s}from"./index-67156d11.js";const m=n({__name:"index",setup(p){const e=[{title:"通知方式",dataIndex:"radioType"},{title:"消息类型",dataIndex:"dingMsgType"}];return(r,d)=>(o(),a("div",null,[s(t,{pushType:"ding",columns:e})]))}});export{m as _};

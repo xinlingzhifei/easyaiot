@@ -1,0 +1,24 @@
+import b from"./Header-fd25c1b3.js";import k from"./Sidebar-d187b42a.js";import x from"./VideoMonitor-6cb207cf.js";import A from"./AlarmPanel-001a42c0.js";import{d as L,z as P,b5 as V,o as w,h as I,n as c,i as y,s as r,x as T}from"./index-67156d11.js";import{q as B,g as S}from"./calculate-e5237a38.js";import{r as E}from"./alertMinioImage-3b6c51b5.js";import"./index-cd400a0b.js";import"./fromPairs-69eb008a.js";import"./index-2e2624a1.js";import"./difference-8227a123.js";import"./index-edbef99a.js";import"./List-d5b6736e.js";import"./eagerComputed-6a711143.js";import"./index-90369cca.js";import"./debounce-c7537a9d.js";import"./toNumber-9eb94563.js";import"./FolderOutlined-43899782.js";import"./get-2ec060e6.js";import"./isBoolean-59441065.js";import"./deviceLabel-16cd1cc3.js";import"./monitorDirectoryTreeLoad-1e915c3e.js";import"./camera-6b37c505.js";import"./gb28181-fb5e3189.js";import"./gb28181Channel-38c7f0b2.js";import"./gb28181DeviceGroup-970ed57f.js";import"./gb28181DeviceLabel-bf4288f2.js";import"./gb28181Tree-9e59115b.js";import"./tree-fcaacae1.js";import"./camera-icon-915baedd.js";import"./alertRecord-d0b1d2b2.js";import"./jessibuca-24ad19c0.js";import"./DialogPlayer.vue_vue_type_style_index_0_lang-e0dbdcdf.js";import"./index-e439d235.js";import"./useWindowSizeFn-b320d7dd.js";import"./FullscreenOutlined-22696190.js";import"./copyTextToClipboard-1f666280.js";import"./devicePlay-e273767b.js";import"./index-c06d931c.js";import"./useRefs-752437b8.js";import"./isMobile-174ba801.js";import"./PlusOutlined-dfb547a0.js";import"./index-2c9f0760.js";import"./useMemo-4efbf1d9.js";import"./DownOutlined-94fbac88.js";import"./CheckOutlined-52d063dd.js";import"./index-1189a530.js";import"./Checkbox-ceec73d7.js";const N={class:"monitor-dashboard"},R={class:"monitor-content"},U={class:"monitor-center"},Se=L({name:"MonitorDashboard",__name:"index",setup(q){const{createMessage:h}=T(),m=r(null),u=r({id:"1",name:"华南小区西四路23号",location:""}),_=r([{id:"1",url:"",name:"主视频"},{id:"2",url:"",name:"视频1"},{id:"3",url:"",name:"视频2"},{id:"4",url:"",name:"视频3"},{id:"5",url:"",name:"视频4"},{id:"6",url:"",name:"视频5"},{id:"7",url:"",name:"视频6"}]),f=r([]),i=r([]),n=r(0),p=async()=>{try{const t=await B({pageNo:1,pageSize:7});t&&t.alert_list?i.value=t.alert_list.map(e=>{let D=E(e.image_url)||null,s=e.level||"告警";e.level||(e.event&&(e.event.includes("火")||e.event.includes("fire"))?s="一级":e.event&&(e.event.includes("烟")||e.event.includes("smoke"))?s="二级":s="三级");let d="default";return e.event&&(e.event.includes("火")||e.event.includes("fire")?d="fire":e.event.includes("烟")||e.event.includes("smoke")?d="smoke":(e.event.includes("入侵")||e.event.includes("intrusion"))&&(d="intrusion")),{id:e.id||e.alert_id,type:d,title:e.event||e.title||"未知事件",level:s,location:e.device_name||e.location||"未知设备",time:e.time||e.alert_time||e.created_at||"",image:D,device_name:e.device_name,device_id:e.device_id,task_type:e.task_type,information:e.information}}):i.value=[]}catch(t){console.error("加载告警列表失败",t),h.error("加载告警列表失败"),i.value=[]}},v=async()=>{try{const t=await S();t?n.value=t.today_alarm_count||0:n.value=0}catch(t){console.error("加载今日告警次数失败",t),n.value=0}};let o=null,l=null,a=!1;P(()=>{a=!0;const t=document.createElement("style");t.id="monitor-dashboard-style",t.textContent=`
+    .ant-layout-header,
+    .layout-multiple-header,
+    .layout-tabs,
+    .layout-footer {
+      display: none !important;
+    }
+    .ant-layout-sider,
+    .layout-sider-wrapper {
+      display: none !important;
+    }
+    .ant-layout-content,
+    .layout-content {
+      padding: 0 !important;
+      margin: 0 !important;
+      height: 100vh !important;
+      overflow: hidden !important;
+    }
+    .ant-layout-main {
+      height: 100vh !important;
+      overflow: hidden !important;
+      margin-left: 0 !important;
+    }
+  `,document.head.appendChild(t),Promise.all([p(),v()]).catch(e=>{console.error("初始加载失败",e)}),l=setTimeout(()=>{a&&(Promise.all([p(),v()]).catch(e=>{console.error("刷新数据失败",e)}),a&&(o=setInterval(()=>{if(!a){o&&(clearInterval(o),o=null);return}Promise.all([p(),v()]).catch(e=>{console.error("定时刷新失败",e)})},5e3)))},3e3)}),V(()=>{a=!1;const t=document.getElementById("monitor-dashboard-style");t&&document.head.removeChild(t),l&&(clearTimeout(l),l=null),o&&(clearInterval(o),o=null)});const g=t=>{u.value=t},C=t=>{m.value&&m.value.playDeviceStream(t)},M=t=>{f.value=t};return(t,e)=>(w(),I("div",N,[c(b,{"active-videos":f.value},null,8,["active-videos"]),y("div",R,[c(k,{"selected-device":u.value,onDeviceChange:g,onDevicePlay:C},null,8,["selected-device"]),y("div",U,[c(x,{ref_key:"videoMonitorRef",ref:m,device:u.value,"video-list":_.value,onVideoListChange:M},null,8,["device","video-list"])]),c(A,{"alarm-list":i.value,"today-alarm-count":n.value},null,8,["alarm-list","today-alarm-count"])])]))}});export{Se as default};

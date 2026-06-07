@@ -1,0 +1,1 @@
+import t from"./index-ae751445.js";import{d as n,o as a,h as o,n as s}from"./index-67156d11.js";const l=n({__name:"index",setup(p){const e=[{title:"标题",dataIndex:"title"},{title:"应用",dataIndex:"agentId"},{title:"消息类型",dataIndex:"cpMsgType"}];return(c,d)=>(a(),o("div",null,[s(t,{pushType:"weixin",columns:e})]))}});export{l as _};

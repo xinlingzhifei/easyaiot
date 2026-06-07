@@ -107,12 +107,12 @@ html[data-theme='dark'] {
   .@{prefix-cls} {
     padding: 0;
     /* 背景图不重复 */
-    background: url('@/assets/images/dark-bg.png') no-repeat ;
-    background-size: 100% 100%; /* 拉伸图片，适应容器 */
+    background: url('@/assets/svg/login-yfeiEye.svg') center center / cover no-repeat;
+    background-size: cover;
 
 
     &::before {
-      background-image: url('@/assets/svg/login-bg-dark.svg');
+      background-image: none;
     }
 
     .ant-input,
@@ -144,8 +144,8 @@ html[data-theme='dark'] {
 .@{prefix-cls} {
   padding: 0;
   //background-color: @dark-bg;
-  background: url("@/assets/images/light-bg.png") no-repeat;
-  background-size: 100% 100%; /* 拉伸图片，适应容器 */
+  background: url('@/assets/svg/login-yfeiEye.svg') center center / cover no-repeat;
+  background-size: cover;
 
   .@{prefix-cls}-form {
     padding: 1.5rem 2.1rem .8rem 2.1rem;
@@ -168,7 +168,7 @@ html[data-theme='dark'] {
     height: 100%;
     margin-left: -48%;
     content: '';
-    //background-image: url('@/assets/svg/login-bg.svg');
+    //background-image: url('@/assets/svg/login-yfeiEye.svg');
     background-repeat: no-repeat;
     background-position: 100%;
     background-size: auto 100%;
@@ -180,32 +180,54 @@ html[data-theme='dark'] {
 
   .@{logo-prefix-cls} {
     position: absolute;
-    top: 12px;
-    height: 30px;
+    top: 16px;
+    height: 42px;
+
+    .logo-icon {
+      flex: 0 0 72px;
+      width: 72px;
+      height: 42px;
+    }
 
     &__title {
       font-size: 16px;
+      line-height: 1.2;
       color: #fff;
     }
 
     img {
-      width: 32px;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
   }
 
   .container {
     .@{logo-prefix-cls} {
       display: flex;
-      width: 60%;
-      height: 80px;
+      position: relative;
+      top: 0;
+      width: 70%;
+      max-width: 420px;
+      height: 120px;
+
+      .logo-icon {
+        flex: 0 0 154px;
+        width: 154px;
+        height: 110px;
+        border-radius: 10px;
+      }
 
       &__title {
         font-size: 24px;
+        line-height: 1.25;
         color: #fff;
       }
 
       img {
-        width: 48px;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
       }
     }
   }

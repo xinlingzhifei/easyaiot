@@ -4,7 +4,6 @@ ONNX推理模块
 
 @author 翱翔的雄库鲁
 @email andywebjava@163.com
-@wechat EasyAIoT2025
 """
 import os
 # 在导入onnxruntime之前设置环境变量，强制使用CPU执行提供者

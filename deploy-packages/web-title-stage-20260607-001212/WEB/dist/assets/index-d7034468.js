@@ -1,0 +1,1 @@
+import{I as a}from"./index-f42b71aa.js";import{d as r,o as s,h as n,n as o,k as t,s as c}from"./index-67156d11.js";const _=r({name:"InfraSwagger",__name:"index",setup(l){const e=c("http://localhost:48080/swagger-ui");return(m,p)=>(s(),n("div",null,[o(t(a),{src:e.value},null,8,["src"])]))}});export{_ as default};

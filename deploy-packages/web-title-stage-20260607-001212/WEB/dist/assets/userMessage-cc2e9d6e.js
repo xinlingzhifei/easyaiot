@@ -1,0 +1,1 @@
+import{eW as t}from"./index-67156d11.js";import{b as n}from"./message-7b86a347.js";const o=t("userMessage",{state:()=>({unreadCount:0}),getters:{getUnreadCount(e){return e.unreadCount}},actions:{async updateUnreadCount(){const e=await n();this.unreadCount=e}}});export{o as u};
