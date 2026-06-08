@@ -53,6 +53,7 @@ yolo11n/
 cache_resources*.sh
 install_linux*.sh
 install_mac.sh
+!docker-entrypoint.sh
 
 # Docker 构建文件
 docker-compose.yaml
