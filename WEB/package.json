@@ -1,9 +1,9 @@
 {
-  "name": "云边端一体化智能算法应用平台",
+  "name": "yfeieye-web",
   "version": "2.1.0-snapshot",
   "packageManager": "pnpm@11.3.0",
   "author": {
-    "name": "basiclab",
+    "name": "yfeieye-web",
     "email": "basiclab@qq.com",
     "url": "https://gitee.com/vegetable-chicken-blog/basiclab-iot"
   },

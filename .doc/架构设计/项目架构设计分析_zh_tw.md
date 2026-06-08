@@ -6,7 +6,7 @@
 
 ## 一、專案概覽
 
-**yFeiEye**（Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform）是一個**雲邊端一體化智慧 IoT 平台**，專注於 AI 與 IoT 的深度融合。專案願景是「讓 AI 零門檻觸達全球」。
+**yFeiEye**（yFei AI Vision Control Platform）是一個**雲邊端一體化智慧 IoT 平台**，專注於 AI 與 IoT 的深度融合。專案願景是「讓 AI 零門檻觸達全球」。
 
 | 指標 | 資料 |
 |------|------|

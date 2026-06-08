@@ -1,4 +1,4 @@
-# yFeiEye (Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform)
+# yFeiEye (yFei AI Vision Control Platform)
 
 [![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
 [![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
@@ -30,7 +30,7 @@ My vision is for this system to be accessible worldwide, achieving truly zero ba
 ### 📍 Project Positioning
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses on the deep integration of AI and IoT. Through core capabilities such as algorithm task management, real-time stream analysis, and model service cluster inference, the platform achieves a complete closed-loop from device access to data collection, AI analysis, and intelligent decision-making, truly realizing interconnected everything and intelligent control of everything.
+yFeiEye is a AI vision intelligent IoT platform that focuses on the deep integration of AI and IoT. Through core capabilities such as algorithm task management, real-time stream analysis, and model service cluster inference, the platform achieves a complete closed-loop from device access to data collection, AI analysis, and intelligent decision-making, truly realizing interconnected everything and intelligent control of everything.
 </p>
 
 #### 🧠 AI Capabilities
@@ -44,7 +44,7 @@ yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses 
   <li><strong>Full-Stack Compute and Resource Monitoring</strong>: Integrated with GPUStack for unified resource governance, collecting and visualizing key server metrics including GPU, CPU, memory, and storage. Provides real-time visibility into compute utilization, VRAM headroom, and disk/memory usage, offering an observable and alert-ready operations foundation for model deployment, training tasks, and video analytics pipelines</li>
   <li><strong>Vision Large Model Intelligent Understanding</strong>: Integrated with QwenVL3 vision large model, supports deep visual reasoning and semantic understanding of real-time video frames, enabling intelligent analysis and scene comprehension of frame content, providing richer visual cognitive capabilities, achieving a leap from pixel-level perception to semantic-level understanding</li>
   <li><strong>Real-Time Camera AI Analysis</strong>: Supports AI intelligent analysis of real-time camera feeds. Performs AI algorithm processing such as object detection, behavior analysis, and anomaly recognition on real-time video streams, providing millisecond-level response real-time analysis results, supporting concurrent analysis of multiple video streams</li>
-  <li><strong>Cloud-Edge-Device Integrated Algorithm Alert Monitoring Dashboard</strong>: Provides a unified cloud-edge-device integrated algorithm alert monitoring dashboard that displays key information in real-time, including device status, algorithm task operations, alarm event statistics, and video stream analysis results. Supports multi-dimensional data visualization, achieving unified monitoring and management of cloud, edge, and device layers, providing decision-makers with a global perspective intelligent monitoring command center</li>
+  <li><strong>AI Vision Algorithm Alert Monitoring Dashboard</strong>: Provides a unified AI vision algorithm alert monitoring dashboard that displays key information in real-time, including device status, algorithm task operations, alarm event statistics, and video stream analysis results. Supports multi-dimensional data visualization, achieving unified monitoring and management of cloud, edge, and device layers, providing decision-makers with a global perspective intelligent monitoring command center</li>
   <li><strong>Face Recognition and Face Library Management</strong>: Supports flexibly enabling face recognition in camera tasks. Built on Milvus for face library and facial feature vector management, it provides create/query/update/delete capabilities for face samples and feature vectors, as well as high-performance vector retrieval. It supports efficient face comparison and identity retrieval on captured frames, while fully recording match results, snapshots, camera location information, and device context for personnel trajectory tracing, security forensics, and multidimensional statistical analysis.</li>
   <li><strong>License Plate Recognition and Plate Library Management</strong>: Enable license plate recognition in monitoring tasks with one click. Automatically reads plate information from passing vehicles and compares against your own plate libraries in real time. Flexibly maintain whitelists, blacklists, and business tags; trigger instant alerts when vehicles match rules—supporting access control at entrances and exits, targeted vehicle watchlists, and visitor vs. registered vehicle management. Automatically registers newly seen plates and keeps complete capture and match records for post-incident lookups, trace verification, and evidence retention. Recognition runs in parallel with existing video analytics without affecting monitoring and alert stability or real-time performance</li>
   <li><strong>Device Detection Region Drawing</strong>: Provides a visual device detection region drawing tool that supports drawing rectangular and polygonal detection regions on device snapshot images, supports flexible association configuration between regions and algorithm models, supports visual management, editing, and deletion of regions, supports keyboard shortcuts to improve drawing efficiency, enabling precise region detection configuration and providing accurate detection range definitions for algorithm tasks</li>
@@ -304,7 +304,7 @@ yFeiEye supports deployment on Linux, Mac, and Windows, providing flexible and c
 <strong>Unified Experience</strong>: Regardless of the operating system chosen, yFeiEye provides consistent installation scripts and deployment documentation, ensuring a uniform cross-platform deployment experience.
 </p>
 
-## ☁️ yFeiEye = AI + IoT = Cloud-Edge Integrated Solution
+## ☁️ yFeiEye = AI + IoT = AI Vision Solution
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
 Supports thousands of vertical scenarios with customizable AI models and algorithm development.

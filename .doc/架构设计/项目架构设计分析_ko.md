@@ -6,7 +6,7 @@
 
 ## 一、프로젝트 개요
 
-**yFeiEye**（Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform）는 **클라우드-엣지-디바이스 일체형 지능형 IoT 플랫폼**으로, AI와 IoT의 심층 융합에 집중합니다. 프로젝트 비전은 "AI를 전 세계 누구나 쉽게 접할 수 있게 한다"입니다.
+**yFeiEye**（yFei AI Vision Control Platform）는 **클라우드-엣지-디바이스 일체형 지능형 IoT 플랫폼**으로, AI와 IoT의 심층 융합에 집중합니다. 프로젝트 비전은 "AI를 전 세계 누구나 쉽게 접할 수 있게 한다"입니다.
 
 | 지표 | 데이터 |
 |------|------|

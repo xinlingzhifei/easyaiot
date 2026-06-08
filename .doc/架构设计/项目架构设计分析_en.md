@@ -6,7 +6,7 @@
 
 ## I. Project Overview
 
-**yFeiEye** (Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform) is a **cloud-edge-device integrated intelligent IoT platform** focused on deep integration of AI and IoT. The project vision is "Making AI accessible to the world with zero barriers."
+**yFeiEye** (yFei AI Vision Control Platform) is a **AI vision intelligent IoT platform** focused on deep integration of AI and IoT. The project vision is "Making AI accessible to the world with zero barriers."
 
 | Metric | Data |
 |------|------|
@@ -341,7 +341,7 @@ main.cpp → Manage (Server) → Config → ConfigParser
 - **C++**: Edge real-time inference (maximum performance)
 - **TypeScript/Vue**: Frontend presentation (user experience)
 
-### 6.2 Cloud-Edge-Device Integration
+### 6.2 AI Vision Integration
 - **Cloud**: Java microservice cluster + Python AI services
 - **Edge**: C++ TASK inference engine (deployable on edge devices)
 - **Device**: Cameras, sensors, and other IoT devices

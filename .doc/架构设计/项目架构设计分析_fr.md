@@ -6,7 +6,7 @@
 
 ## I. Vue d'ensemble du projet
 
-**yFeiEye** (Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform) est une **plateforme IoT intelligente intégrée cloud-edge-device**, axée sur l'intégration profonde de l'IA et de l'IoT. La vision du projet est « Rendre l'IA accessible au monde entier sans barrière ».
+**yFeiEye** (yFei AI Vision Control Platform) est une **plateforme IoT intelligente intégrée cloud-edge-device**, axée sur l'intégration profonde de l'IA et de l'IoT. La vision du projet est « Rendre l'IA accessible au monde entier sans barrière ».
 
 | Indicateur | Données |
 |------|------|
