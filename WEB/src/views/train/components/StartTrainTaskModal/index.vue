@@ -1,7 +1,7 @@
 <template>
   <BasicModal
     @register="registerModal"
-    title="训练参数配置"
+    :title="modalTitle"
     @cancel="handleCancel"
     :width="700"
     :canFullscreen="false"
@@ -14,6 +14,15 @@
     :footerOffset="0"
   >
     <div class="modal-content">
+      <Alert
+        v-if="isResumeMode"
+        type="info"
+        show-icon
+        banner
+        class="resume-alert"
+        :message="resumeHint"
+      />
+
       <div class="param-section">
         <h4 class="section-title">任务信息</h4>
         <div class="param-group">
@@ -22,6 +31,7 @@
             type="text"
             v-model="taskName"
             class="param-input"
+            :disabled="isResumeMode"
             placeholder="请输入训练任务名称"
           />
         </div>
@@ -32,8 +42,8 @@
         <div class="basic-params-row">
           <div class="basic-param-item">
             <label>迭代次数 (epochs)</label>
-            <input type="number" v-model="params.epochs" min="10" max="1000" class="param-input"/>
-            <span class="hint">推荐 100-300</span>
+            <input type="number" v-model="params.epochs" :min="minEpochs" max="1000" class="param-input"/>
+            <span class="hint">{{ isResumeMode ? `需大于已完成 ${completedEpochs} epoch` : '推荐 100-300' }}</span>
           </div>
           <div class="basic-param-item">
             <label>批量大小 (batch_size)</label>
@@ -77,7 +87,7 @@
 
         <div class="param-group">
           <label>预训练权重</label>
-          <select v-model="selectedModel" class="resource-select">
+          <select v-model="selectedModel" class="resource-select" :disabled="isResumeMode">
             <option v-for="preset in presetModels" :key="preset" :value="preset">
               {{ preset }}
             </option>
@@ -94,6 +104,7 @@
           type="card"
           class="dataset-tabs"
           :destroyInactiveTabPane="false"
+          :class="{ 'dataset-tabs--readonly': isResumeMode }"
           @change="onDatasetTabChange"
         >
           <TabPane key="local" tab="本地上传">
@@ -155,7 +166,9 @@
     <template #footer>
       <div class="modal-footer">
         <Button @click="handleCancel">取消</Button>
-        <Button type="primary" :loading="uploading" @click="startTrain">开始训练</Button>
+        <Button type="primary" :loading="uploading" @click="startTrain">
+          {{ submitButtonText }}
+        </Button>
       </div>
     </template>
   </BasicModal>
@@ -170,6 +183,12 @@ import {getDatasetPage} from '@/api/device/dataset';
 import {getTrainGpuStatus, uploadTrainDataset} from '@/api/device/train';
 import {useMessage} from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button'
+import {
+  getCompletedEpochs,
+  isCloudDatasetPath,
+  parseTrainHyperparameters,
+  resolveTaskBaseNameFromRecord,
+} from '../TrainTaskList/trainTaskUtils';
 interface GpuDeviceInfo {
   index: number;
   name: string;
@@ -266,6 +285,7 @@ const resetDatasetSelection = () => {
 };
 
 const onDatasetTabChange = (key: string | number) => {
+  if (isResumeMode.value) return;
   resetDatasetSelection();
   if (key === 'cloud' && !cloudDatasetsLoaded.value) {
     loadDatasets().finally(() => {
@@ -277,16 +297,109 @@ const onDatasetTabChange = (key: string | number) => {
   nextTick(() => redoModalHeight());
 };
 
-const [registerModal, {closeModal, redoModalHeight}] = useModalInner(() => {
+const isRetrainMode = ref(false);
+const isResumeMode = ref(false);
+const retrainTaskId = ref<number | undefined>();
+const completedEpochs = ref(0);
+const resumeDatasetPath = ref('');
+const resumeDatasetName = ref('');
+const resumeDatasetVersion = ref('');
+
+const modalTitle = computed(() => {
+  if (isResumeMode.value) return '继续训练';
+  if (isRetrainMode.value) return '重新训练';
+  return '训练参数配置';
+});
+
+const submitButtonText = computed(() => {
+  if (isResumeMode.value) return '继续训练';
+  if (isRetrainMode.value) return '重新训练';
+  return '开始训练';
+});
+
+const minEpochs = computed(() => (isResumeMode.value ? completedEpochs.value + 1 : 10));
+
+const resumeHint = computed(() =>
+  `将从第 ${completedEpochs.value} epoch 断点继续，请设置大于 ${completedEpochs.value} 的总迭代次数。`,
+);
+
+const resetTrainForm = () => {
+  isRetrainMode.value = false;
+  isResumeMode.value = false;
+  retrainTaskId.value = undefined;
+  completedEpochs.value = 0;
+  resumeDatasetPath.value = '';
+  resumeDatasetName.value = '';
+  resumeDatasetVersion.value = '';
   taskName.value = '';
   selectedModel.value = presetModels[0];
   datasetSourceTab.value = 'local';
   cloudDatasetsLoaded.value = false;
   datasetList.value = [];
+  params.epochs = 100;
+  params.batch_size = 16;
+  params.imgsz = 640;
   resetDatasetSelection();
-  loadGpuStatus().finally(() => {
-    nextTick(() => redoModalHeight());
-  });
+};
+
+const [registerModal, {closeModal, redoModalHeight}] = useModalInner(async (data) => {
+  resetTrainForm();
+
+  const fillFromRecord = async (record: Record<string, unknown>) => {
+    retrainTaskId.value = record.id as number;
+
+    const hp = parseTrainHyperparameters(record.hyperparameters);
+    completedEpochs.value = getCompletedEpochs(record);
+    taskName.value = hp.taskName || resolveTaskBaseNameFromRecord(record);
+    params.epochs = hp.epochs ?? 100;
+    params.batch_size = hp.batch_size ?? 16;
+    params.imgsz = hp.imgsz ?? 640;
+    selectedModel.value = hp.modelPath || presetModels[0];
+
+    const datasetPath = String(record.dataset_path || '');
+    resumeDatasetPath.value = datasetPath;
+    resumeDatasetName.value = String(record.dataset_name || '');
+    resumeDatasetVersion.value = String(record.dataset_version || '');
+    const datasetSource = hp.datasetSource || (isCloudDatasetPath(datasetPath) ? 'cloud' : 'local');
+    datasetSourceTab.value = datasetSource as DatasetSourceTab;
+
+    if (datasetSource === 'local' && datasetPath) {
+      localDatasetPath.value = datasetPath;
+      const fileName = datasetPath.split('/').pop() || String(record.dataset_name || '本地数据集');
+      localDatasetDisplayName.value = fileName;
+      localFileList.value = [{uid: '-1', name: fileName, status: 'done'}];
+    } else if (datasetSource === 'cloud') {
+      await loadDatasets();
+      cloudDatasetsLoaded.value = true;
+      const matched = datasetList.value.find((item) => item.zipUrl === datasetPath)
+        || datasetList.value.find(
+          (item) => item.name === record.dataset_name && item.version === record.dataset_version,
+        );
+      if (matched) {
+        selectedDatasetId.value = matched.id;
+      }
+    }
+  };
+
+  if (data?.isResume && data?.record) {
+    isResumeMode.value = true;
+    await fillFromRecord(data.record as Record<string, unknown>);
+    if (params.epochs <= completedEpochs.value) {
+      params.epochs = completedEpochs.value + 1;
+    }
+  } else if (data?.isRetrain && data?.record) {
+    isRetrainMode.value = true;
+    await fillFromRecord(data.record as Record<string, unknown>);
+  }
+
+  await loadGpuStatus();
+  if ((data?.isRetrain || data?.isResume) && data?.record) {
+    const hp = parseTrainHyperparameters(data.record.hyperparameters);
+    if (hp.use_gpu !== undefined) {
+      useGpu.value = hp.use_gpu && gpuStatus.value.visible_gpu_ids.length > 0;
+    }
+  }
+  nextTick(() => redoModalHeight());
 });
 
 const params = reactive({
@@ -395,12 +508,25 @@ const startTrain = async () => {
     return;
   }
 
+  if (isResumeMode.value && Number(params.epochs) <= completedEpochs.value) {
+    createMessage.warn(`总 epochs 必须大于已完成 epoch(${completedEpochs.value})`);
+    return;
+  }
+
   let datasetPath = '';
   let datasetName = '';
   let datasetVersion = '';
   const datasetSource = datasetSourceTab.value;
 
-  if (datasetSource === 'local') {
+  if (isResumeMode.value) {
+    datasetPath = resumeDatasetPath.value || localDatasetPath.value;
+    datasetName = resumeDatasetName.value || (localDatasetDisplayName.value || '本地数据集').replace(/\.zip$/i, '');
+    datasetVersion = resumeDatasetVersion.value || '';
+    if (!datasetPath) {
+      createMessage.warn('续训任务缺少数据集信息，请使用重新训练');
+      return;
+    }
+  } else if (datasetSource === 'local') {
     if (!localDatasetFile.value && !localDatasetPath.value) {
       createMessage.warn('请选择本地数据集 ZIP 压缩包');
       return;
@@ -458,6 +584,8 @@ const startTrain = async () => {
     gpu_ids: useGpu.value && gpuStatus.value.visible_gpu_ids.length
       ? gpuStatus.value.visible_gpu_ids
       : undefined,
+    ...(retrainTaskId.value ? {taskId: retrainTaskId.value} : {}),
+    ...(isResumeMode.value ? {resume: true} : {}),
   });
   closeModal();
 };
@@ -527,6 +655,15 @@ const handleCancel = () => closeModal();
     color: #8a9aaa;
     line-height: 1.3;
   }
+}
+
+.resume-alert {
+  margin: 0 0 16px;
+}
+
+.dataset-tabs--readonly {
+  pointer-events: none;
+  opacity: 0.72;
 }
 
 .dataset-section .section-title {

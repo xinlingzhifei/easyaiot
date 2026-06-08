@@ -199,7 +199,8 @@ def preprocess(img, input_width, input_height):
 def postprocess(input_image, output, input_width, input_height, img_width, img_height, 
                 conf_threshold: float = None, iou_threshold: float = None, 
                 draw: bool = True, classes_dict: Dict[int, str] = None,
-                color_palette_array: np.ndarray = None) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+                color_palette_array: np.ndarray = None,
+                allowed_class_ids: Optional[List[int]] = None) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
     """
     对模型输出进行后处理，提取边界框、得分和类别ID。
 
@@ -251,6 +252,8 @@ def postprocess(input_image, output, input_width, input_height, img_width, img_h
         if max_score >= conf_thresh:
             # 获取得分最高的类别ID
             class_id = np.argmax(classes_scores)
+            if allowed_class_ids is not None and int(class_id) not in allowed_class_ids:
+                continue
             # 从当前行提取边界框坐标
             x, y, w, h = outputs[i][0], outputs[i][1], outputs[i][2], outputs[i][3]
             # 计算边界框的缩放坐标
@@ -479,7 +482,7 @@ class ONNXInference:
         return session, model_inputs, input_width, input_height
     
     def detect(self, image, conf_threshold: float = None, iou_threshold: float = None, 
-               draw: bool = True) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+               draw: bool = True, class_ids: Optional[List[int]] = None) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """
         执行目标检测
         
@@ -518,7 +521,8 @@ class ONNXInference:
             iou_threshold=iou_threshold or self.iou_threshold,
             draw=draw,
             classes_dict=self.classes_dict,
-            color_palette_array=self.color_palette
+            color_palette_array=self.color_palette,
+            allowed_class_ids=class_ids,
         )
         # 返回处理后的图像和检测结果
         return output_image, detections

@@ -7,6 +7,7 @@ import os
 import shutil
 import uuid
 import tempfile
+import json
 from datetime import datetime
 from operator import or_
 from urllib.parse import urlparse, parse_qs
@@ -15,11 +16,45 @@ from flask import redirect, url_for, flash, render_template
 from app.services.minio_service import ModelService
 from app.utils.yolo_validator import validate_yolo_model
 from app.utils.image_utils import download_default_model_image
+from app.utils.model_class_utils import (
+    dump_class_names_json,
+    extract_class_names_from_model,
+    parse_class_names_json,
+)
 from db_models import db, Model, InferenceTask
 from sqlalchemy.exc import IntegrityError
 
 model_bp = Blueprint('model', __name__)
 logger = logging.getLogger(__name__)
+
+
+def _serialize_model_class_fields(model: Model) -> dict:
+    class_names = parse_class_names_json(model.class_names)
+    selected_class_names = parse_class_names_json(model.selected_class_names)
+    if not selected_class_names and class_names:
+        selected_class_names = list(class_names)
+    return {
+        'class_names': class_names,
+        'classNames': class_names,
+        'selected_class_names': selected_class_names,
+        'selectedClassNames': selected_class_names,
+    }
+
+
+def _apply_model_class_fields(model: Model, data: dict):
+    class_names = data.get('classNames')
+    if class_names is None:
+        class_names = data.get('class_names')
+    selected_class_names = data.get('selectedClassNames')
+    if selected_class_names is None:
+        selected_class_names = data.get('selected_class_names')
+
+    if class_names is not None:
+        parsed = parse_class_names_json(class_names)
+        model.class_names = dump_class_names_json(parsed)
+    if selected_class_names is not None:
+        parsed_selected = parse_class_names_json(selected_class_names)
+        model.selected_class_names = dump_class_names_json(parsed_selected)
 
 @model_bp.route('/list', methods=['GET'])
 def models():
@@ -62,7 +97,8 @@ def models():
             'updated_at': p.updated_at.isoformat() if p.updated_at else None,
             'imageUrl': p.image_url,
             'model_path': p.model_path,
-            'onnx_model_path': p.onnx_model_path
+            'onnx_model_path': p.onnx_model_path,
+            **_serialize_model_class_fields(p),
         } for p in pagination.items]
 
         return jsonify({
@@ -266,6 +302,18 @@ def upload_custom_model():
         download_url = f"/api/v1/buckets/{bucket_name}/objects/download?prefix={object_key}"
         minio_path = f"{bucket_name}/{object_key}"
 
+        # 提取模型类别标签
+        class_names = extract_class_names_from_model(temp_path)
+        selected_class_names = request.form.get('selectedClassNames') or request.form.get('selected_class_names')
+        if selected_class_names:
+            parsed_selected = parse_class_names_json(selected_class_names)
+            if parsed_selected:
+                selected_class_names_list = parsed_selected
+            else:
+                selected_class_names_list = class_names
+        else:
+            selected_class_names_list = class_names
+
         response_data = {
             'code': 0,
             'msg': '模型上传成功',
@@ -275,7 +323,11 @@ def upload_custom_model():
                 'fileName': file.filename,
                 'yolo_version': yolo_version,
                 'detection_method': detection_method,
-                'model_format': 'onnx' if ext == '.onnx' else 'pt'
+                'model_format': 'onnx' if ext == '.onnx' else 'pt',
+                'class_names': class_names,
+                'classNames': class_names,
+                'selected_class_names': selected_class_names_list,
+                'selectedClassNames': selected_class_names_list,
             }
         }
 
@@ -355,7 +407,9 @@ def upload_custom_model():
                     model_path=download_url if ext != '.onnx' else None,  # PT模型保存到model_path
                     onnx_model_path=download_url if ext == '.onnx' else None,  # ONNX模型保存到onnx_model_path
                     version=version,
-                    image_url=image_url if image_url else None
+                    image_url=image_url if image_url else None,
+                    class_names=dump_class_names_json(class_names),
+                    selected_class_names=dump_class_names_json(selected_class_names_list),
                 )
                 db.session.add(model)
                 db.session.commit()
@@ -438,6 +492,7 @@ def create_model():
             version=version,
             status=status
         )
+        _apply_model_class_fields(model, data)
         db.session.add(model)
         db.session.commit()
 
@@ -450,7 +505,8 @@ def create_model():
                 'version': model.version,
                 'status': getattr(model, 'status', 0) or 0,
                 'filePath': model.model_path,
-                'imageUrl': model.image_url
+                'imageUrl': model.image_url,
+                **_serialize_model_class_fields(model),
             }
         })
 
@@ -515,6 +571,8 @@ def update_model(model_id):
             except (TypeError, ValueError):
                 pass
 
+        _apply_model_class_fields(model, data)
+
         db.session.commit()
 
         return jsonify({
@@ -526,7 +584,8 @@ def update_model(model_id):
                 'version': model.version,
                 'status': getattr(model, 'status', 0) or 0,
                 'filePath': model.model_path,
-                'imageUrl': model.image_url
+                'imageUrl': model.image_url,
+                **_serialize_model_class_fields(model),
             }
         })
 
@@ -750,6 +809,70 @@ def download_model(model_id):
             'msg': f'服务器内部错误: {str(e)}'
         }), 500
 
+# 解析并返回模型识别标签（已有模型可补全 class_names）
+@model_bp.route('/<int:model_id>/classes', methods=['GET'])
+def get_model_classes(model_id):
+    temp_path = None
+    try:
+        model = Model.query.get_or_404(model_id)
+        stored_names = parse_class_names_json(model.class_names)
+        if stored_names:
+            selected = parse_class_names_json(model.selected_class_names) or stored_names
+            return jsonify({
+                'code': 0,
+                'msg': 'success',
+                'data': {
+                    'class_names': stored_names,
+                    'classNames': stored_names,
+                    'selected_class_names': selected,
+                    'selectedClassNames': selected,
+                }
+            })
+
+        model_path = model.onnx_model_path or model.model_path
+        if not model_path:
+            return jsonify({'code': 404, 'msg': '该模型没有可解析的模型文件'}), 404
+
+        bucket_name, object_key = parse_minio_url(model_path)
+        if not bucket_name or not object_key:
+            return jsonify({'code': 400, 'msg': '无法解析模型文件路径'}), 400
+
+        ext = os.path.splitext(object_key)[1] or '.pt'
+        temp_fd, temp_path = tempfile.mkstemp(suffix=ext)
+        os.close(temp_fd)
+        success, error_msg = ModelService.download_from_minio(bucket_name, object_key, temp_path)
+        if not success:
+            return jsonify({'code': 500, 'msg': error_msg or '下载模型文件失败'}), 500
+
+        class_names = extract_class_names_from_model(temp_path)
+        selected = parse_class_names_json(model.selected_class_names) or class_names
+        if class_names:
+            model.class_names = dump_class_names_json(class_names)
+            if not model.selected_class_names:
+                model.selected_class_names = dump_class_names_json(class_names)
+            db.session.commit()
+
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': {
+                'class_names': class_names,
+                'classNames': class_names,
+                'selected_class_names': selected if selected else class_names,
+                'selectedClassNames': selected if selected else class_names,
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取模型标签失败: {str(e)}", exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
 # 根据模型id 获取模型信息
 @model_bp.route('/<int:model_id>', methods=['GET'])
 def get_model(model_id):
@@ -760,11 +883,13 @@ def get_model(model_id):
             'code': 0,
             'msg': '获取模型成功:'+model_name,
             'data': {
+                'id': model.id,
                 'name': model_name,
                 'version': model.version,
                 'status': getattr(model, 'status', 0) or 0,
                 'model_path': model.model_path,
-                'onnx_model_path': model.onnx_model_path
+                'onnx_model_path': model.onnx_model_path,
+                **_serialize_model_class_fields(model),
             },
             'has_update': False
         })

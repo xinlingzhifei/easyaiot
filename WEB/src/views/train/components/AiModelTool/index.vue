@@ -26,6 +26,40 @@
           </div>
         </div>
 
+        <!-- 识别标签选择（自定义模型） -->
+        <div
+          class="config-section"
+          v-if="isCustomModelSelected && state.availableClassNames.length > 0"
+        >
+          <div class="section-title">
+            <SettingOutlined class="icon" />
+            <span>识别标签</span>
+          </div>
+          <div class="config-options">
+            <div class="class-tags-toolbar">
+              <button type="button" class="link-btn" @click="selectAllInferenceClasses">全选</button>
+              <button type="button" class="link-btn" @click="clearInferenceClasses">清空</button>
+              <span class="class-tags-hint">
+                已选 {{ state.selectedClassNames.length }} / {{ state.availableClassNames.length }}
+              </span>
+            </div>
+            <div class="class-checkbox-list">
+              <label
+                v-for="name in state.availableClassNames"
+                :key="name"
+                class="class-checkbox-item"
+              >
+                <input
+                  type="checkbox"
+                  :value="name"
+                  v-model="state.selectedClassNames"
+                />
+                <span>{{ name }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
         <!-- 模型服务选择（仅在图片推理时显示） -->
         <div class="config-section" v-if="state.activeSource === 'image'">
           <div class="section-title">
@@ -364,7 +398,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getModelPage, runInference, runClusterInference, uploadInputFile, getInferenceTaskDetail, getInferenceTasks, getDeployServicePage } from "@/api/device/model";
+import { getModelPage, runInference, runClusterInference, uploadInputFile, getInferenceTaskDetail, getInferenceTasks, getDeployServicePage, getModelClasses } from "@/api/device/model";
 import { getLLMList, visionInference, activateLLM, type LLMModel } from "@/api/device/llm";
 import { useMessage } from '@/hooks/web/useMessage';
 import { Tooltip } from 'ant-design-vue';
@@ -400,6 +434,10 @@ interface Model {
   name: string;
   version: string;
   status: number;
+  class_names?: string[];
+  classNames?: string[];
+  selected_class_names?: string[];
+  selectedClassNames?: string[];
 }
 
 interface InferenceHistoryRecord {
@@ -461,6 +499,8 @@ interface AppState {
   llms: LLMModel[]; // 大模型列表
   selectedLLMId: number | null; // 选中的大模型ID
   llmsLoading: boolean; // 大模型加载状态
+  availableClassNames: string[];
+  selectedClassNames: string[];
 }
 
 // 状态管理
@@ -499,7 +539,9 @@ const state = reactive<AppState>({
   deployServicesLoading: false,
   llms: [],
   selectedLLMId: null,
-  llmsLoading: false
+  llmsLoading: false,
+  availableClassNames: [],
+  selectedClassNames: [],
 });
 
 // 轮询超时时间（30分钟）
@@ -521,6 +563,48 @@ const resultVideoRef = ref<HTMLVideoElement | null>(null);
 const selectedSource = computed(() => {
   return sourceOptions.find(option => option.value === state.activeSource);
 });
+
+const isCustomModelSelected = computed(() => {
+  const modelId = state.selectedModelId;
+  return modelId !== null && modelId !== '' && !['yolov8', 'yolov11', 'yolov26'].includes(String(modelId));
+});
+
+const applyModelClassSelection = async (model?: Model | null) => {
+  if (!model) {
+    state.availableClassNames = [];
+    state.selectedClassNames = [];
+    return;
+  }
+  let classNames = model.classNames ?? model.class_names ?? [];
+  let selected = model.selectedClassNames ?? model.selected_class_names ?? classNames;
+
+  if ((!classNames || classNames.length === 0) && model.id) {
+    try {
+      const classResp = await getModelClasses(model.id);
+      if (classResp?.code === 0 && classResp.data) {
+        classNames = classResp.data.classNames ?? classResp.data.class_names ?? [];
+        selected = classResp.data.selectedClassNames ?? classResp.data.selected_class_names ?? classNames;
+        model.classNames = classNames;
+        model.selectedClassNames = selected;
+      }
+    } catch (error) {
+      console.warn('加载模型标签失败', error);
+    }
+  }
+
+  state.availableClassNames = Array.isArray(classNames) ? [...classNames] : [];
+  state.selectedClassNames = Array.isArray(selected) && selected.length > 0
+    ? [...selected]
+    : [...state.availableClassNames];
+};
+
+const selectAllInferenceClasses = () => {
+  state.selectedClassNames = [...state.availableClassNames];
+};
+
+const clearInferenceClasses = () => {
+  state.selectedClassNames = [];
+};
 
 const setActiveSource = (source: string) => {
   state.activeSource = source;
@@ -698,10 +782,27 @@ const startDetection = async () => {
     formData.append('inference_type', state.activeSource);
     
     // 设置推理参数
-    const parameters = {
+    const parameters: Record<string, any> = {
       conf_thres: state.confidenceThreshold / 100,
       iou_thres: 0.45
     };
+    if (
+      isCustomModelSelected.value &&
+      state.availableClassNames.length > 0 &&
+      state.selectedClassNames.length > 0
+    ) {
+      parameters.selected_classes = [...state.selectedClassNames];
+    } else if (
+      isCustomModelSelected.value &&
+      state.availableClassNames.length > 0 &&
+      state.selectedClassNames.length === 0
+    ) {
+      createMessage.warning('请至少选择一个识别标签');
+      state.inferenceLoading = false;
+      state.detectionStatus = 'idle';
+      state.statusText = '就绪 - 等待输入源';
+      return;
+    }
     formData.append('parameters', JSON.stringify(parameters));
 
     // 如果是默认模型，添加模型文件路径参数
@@ -1127,6 +1228,10 @@ const loadModels = async () => {
       if (state.models.length > 0 && !state.selectedModelId) {
         state.selectedModelId = state.models[0].id;
       }
+      if (isCustomModelSelected.value) {
+        const model = state.models.find((item) => String(item.id) === String(state.selectedModelId));
+        await applyModelClassSelection(model);
+      }
     }
   } catch (error: any) {
     console.error('加载模型列表失败:', error);
@@ -1213,11 +1318,17 @@ const handleDeployServiceChange = () => {
   stopPollingInferenceResult();
 };
 
-const handleModelChange = () => {
+const handleModelChange = async () => {
   // 如果选择了模型，清空大模型选择和模型服务选择
   if (state.selectedModelId) {
     state.selectedLLMId = null; // 恢复大模型下拉框为默认：请选择大模型
     state.selectedDeployServiceId = null;
+  }
+  if (isCustomModelSelected.value) {
+    const model = state.models.find((item) => String(item.id) === String(state.selectedModelId));
+    await applyModelClassSelection(model);
+  } else {
+    applyModelClassSelection(null);
   }
   state.detectionResult = null;
   state.llmTextResult = null; // 清空大模型文本结果，恢复初始样式
@@ -1939,6 +2050,49 @@ body {
       overflow: hidden;
       flex: 1;
       min-height: 0;
+
+      .class-tags-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .link-btn {
+        border: none;
+        background: transparent;
+        color: @primary-color;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 0;
+      }
+
+      .class-tags-hint {
+        margin-left: auto;
+        color: @text-muted;
+        font-size: 12px;
+      }
+
+      .class-checkbox-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        max-height: 140px;
+        overflow-y: auto;
+        padding: 10px 12px;
+        border: 1px solid @border-color;
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .class-checkbox-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: @light-text;
+        cursor: pointer;
+        user-select: none;
+      }
 
       .source-content {
         display: flex;

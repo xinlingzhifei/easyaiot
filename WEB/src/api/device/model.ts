@@ -47,6 +47,10 @@ export const getModelDetail = (modelId) => {
   return commonApi('get', `${Api.Model}/${modelId}`);
 };
 
+export const getModelClasses = (modelId) => {
+  return commonApi('get', `${Api.Model}/${modelId}/classes`);
+};
+
 export const getModelInferenceTasks = (modelId, params) => {
   return commonApi('get', `${Api.Model}/${modelId}/inference_tasks`, {params});
 };

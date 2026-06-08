@@ -65,6 +65,33 @@
                   <div class="btn" @click="handleViewResults(item)" title="查看训练结果">
                     <Icon icon="mdi:image-outline" :size="15" color="#3B82F6" />
                   </div>
+                  <Popconfirm
+                    v-if="isTrainTaskActive(String(item.status))"
+                    title="确定停止此训练任务? 停止后可从断点继续训练。"
+                    ok-text="是"
+                    cancel-text="否"
+                    @confirm="handleStop(item)"
+                  >
+                    <div class="btn" title="停止训练">
+                      <Icon icon="ant-design:pause-circle-outlined" :size="15" color="#FAAD14" />
+                    </div>
+                  </Popconfirm>
+                  <div
+                    v-if="canResumeTrainTask(item)"
+                    class="btn"
+                    title="继续训练"
+                    @click="handleResume(item)"
+                  >
+                    <Icon icon="mdi:play-circle-outline" :size="15" color="#52C41A" />
+                  </div>
+                  <div
+                    v-if="canRetrainTrainTask(String(item.status))"
+                    class="btn"
+                    title="重新训练"
+                    @click="handleRetrain(item)"
+                  >
+                    <Icon icon="mdi:restart" :size="15" color="#3B82F6" />
+                  </div>
                   <div
                     v-if="item.minio_model_path"
                     class="btn"
@@ -109,6 +136,7 @@ import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
 import {Icon} from '@/components/Icon';
 import {getFormConfig} from '../TrainTaskList/Data';
+import {canResumeTrainTask, canRetrainTrainTask, isTrainTaskActive} from '../TrainTaskList/trainTaskUtils';
 
 defineOptions({name: 'TrainTaskCardList'});
 
@@ -119,7 +147,7 @@ const props = defineProps({
   api: propTypes.func,
 });
 
-const emit = defineEmits(['getMethod', 'viewLogs', 'viewResults', 'download', 'delete']);
+const emit = defineEmits(['getMethod', 'viewLogs', 'viewResults', 'download', 'stop', 'resume', 'retrain', 'delete']);
 
 const data = ref<Record<string, unknown>[]>([]);
 const state = reactive({
@@ -134,6 +162,7 @@ const statusConfig: Record<string, string> = {
   running: '训练中',
   completed: '已完成',
   stopped: '已停止',
+  stopping: '停止中',
   error: '失败',
   failed: '失败',
 };
@@ -221,6 +250,7 @@ const statusVariantMap: Record<string, StatusVariant> = {
   running: 'training',
   completed: 'completed',
   stopped: 'stopped',
+  stopping: 'stopped',
   error: 'error',
   failed: 'error',
 };
@@ -255,7 +285,10 @@ function getStatusBadgeStyle(item: Record<string, unknown>) {
 
 function getStatusText(item: Record<string, unknown>) {
   const status = String(item.status || '');
-  const base = statusConfig[status] || status || '未知';
+  let base = statusConfig[status] || status || '未知';
+  if (status === 'stopped' && canResumeTrainTask(item as { status?: string; can_resume?: boolean; checkpoint_dir?: string })) {
+    base = '已停止(可续训)';
+  }
   if (['Train', 'train', 'running'].includes(status)) {
     return `${base} (${item.progress ?? 0}%)`;
   }
@@ -330,6 +363,18 @@ function handleViewResults(record: Record<string, unknown>) {
 
 function handleDownload(record: Record<string, unknown>) {
   emit('download', record);
+}
+
+function handleStop(record: Record<string, unknown>) {
+  emit('stop', record);
+}
+
+function handleRetrain(record: Record<string, unknown>) {
+  emit('retrain', record);
+}
+
+function handleResume(record: Record<string, unknown>) {
+  emit('resume', record);
 }
 
 function handleDelete(record: Record<string, unknown>) {
@@ -485,7 +530,7 @@ function handleDelete(record: Record<string, unknown>) {
         left: 16px;
         bottom: 16px;
         margin-top: 20px;
-        min-width: 180px;
+        min-width: 220px;
         max-width: calc(100% - 32px);
         height: 28px;
         border-radius: 45px;

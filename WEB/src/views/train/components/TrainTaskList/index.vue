@@ -45,6 +45,9 @@
         @view-logs="handleOpenTrainLogsModal"
         @view-results="handleViewTrainResults"
         @download="handleDownloadWeights"
+        @stop="handleStopTrain"
+        @resume="handleResume"
+        @retrain="handleRetrain"
         @delete="handleCardDelete"
       >
         <template #header>
@@ -97,12 +100,13 @@ import {SwapOutlined} from '@ant-design/icons-vue';
 import {BasicTable, TableAction, useTable} from '@/components/Table';
 import {useMessage} from '@/hooks/web/useMessage';
 import {useModal} from '@/components/Modal';
-import {deleteTrainTask, getTrainTaskPage, startTrain} from '@/api/device/train';
+import {deleteTrainTask, getTrainTaskPage, startTrain, stopTrain} from '@/api/device/train';
 import {getDatasetPage} from '@/api/device/dataset';
 import StartTrainModal from '@/views/train/components/StartTrainTaskModal/index.vue';
 import TrainLogsModal from '@/views/train/components/TrainTaskLogsModal/index.vue';
 import TrainTaskCardList from '@/views/train/components/TrainTaskCardList/index.vue';
 import {getBasicColumns, getFormConfig} from './Data';
+import {canResumeTrainTask, canRetrainTrainTask, isTrainTaskActive} from './trainTaskUtils';
 import {Empty as AEmpty, Modal as AModal} from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {resolveTrainResultsDisplayUrl} from '@/utils/alertMinioImage';
@@ -305,6 +309,37 @@ const getTableActions = (record: Record<string, unknown>) => {
     },
   ];
 
+  if (isTrainTaskActive(String(record.status))) {
+    actions.push({
+      icon: 'ant-design:pause-circle-outlined',
+      tooltip: {title: '停止训练', placement: 'top'},
+      popConfirm: {
+        placement: 'topRight',
+        title: '确定停止此训练任务? 停止后可从断点继续训练。',
+        confirm: () => handleStopTrain(record),
+      },
+      style: 'color: #faad14; padding: 0 8px; font-size: 16px;',
+    });
+  }
+
+  if (canResumeTrainTask(record as { status?: string; can_resume?: boolean; checkpoint_dir?: string })) {
+    actions.push({
+      icon: 'mdi:play-circle-outline',
+      tooltip: {title: '继续训练', placement: 'top'},
+      onClick: () => handleResume(record),
+      style: 'color: #52c41a; padding: 0 8px; font-size: 16px;',
+    });
+  }
+
+  if (canRetrainTrainTask(String(record.status))) {
+    actions.push({
+      icon: 'mdi:restart',
+      tooltip: {title: '重新训练', placement: 'top'},
+      onClick: () => handleRetrain(record),
+      style: 'color: #1890ff; padding: 0 8px; font-size: 16px;',
+    });
+  }
+
   if (record.minio_model_path) {
     actions.push({
       icon: 'ant-design:download-outlined',
@@ -331,16 +366,50 @@ const getTableActions = (record: Record<string, unknown>) => {
 const handleStartTrain = async (config) => {
   try {
     const response = await startTrain(config);
+    const isResume = !!config.resume;
+    const isRetrain = !!config.taskId && !isResume;
     if (response && (response.code === 0 || response.success === true)) {
-      createMessage.success(response.msg || '训练已启动');
+      createMessage.success(
+        response.msg || (isResume ? '训练已继续' : isRetrain ? '重新训练已启动' : '训练已启动'),
+      );
       handleSuccess();
     } else {
-      createMessage.error(response?.msg || '启动训练失败');
+      createMessage.error(
+        response?.msg || (isResume ? '继续训练失败' : isRetrain ? '重新训练失败' : '启动训练失败'),
+      );
     }
   } catch (error) {
-    const errorMsg = error?.response?.data?.msg || error?.message || '启动训练失败';
+    const isResume = !!config.resume;
+    const isRetrain = !!config.taskId && !isResume;
+    const errorMsg =
+      error?.response?.data?.msg
+      || error?.message
+      || (isResume ? '继续训练失败' : isRetrain ? '重新训练失败' : '启动训练失败');
     createMessage.error(errorMsg);
   }
+};
+
+const handleStopTrain = async (record) => {
+  try {
+    const response = await stopTrain(record.id);
+    if (response && (response.code === 0 || response.success === true)) {
+      createMessage.success(response.msg || '已发送停止请求，将在当前 epoch 结束后保存断点');
+      handleSuccess();
+    } else {
+      createMessage.error(response?.msg || '暂停训练失败');
+    }
+  } catch (error) {
+    const errorMsg = error?.response?.data?.msg || error?.message || '暂停训练失败';
+    createMessage.error(errorMsg);
+  }
+};
+
+const handleRetrain = (record) => {
+  openAddModal(true, {isRetrain: true, record});
+};
+
+const handleResume = (record) => {
+  openAddModal(true, {isResume: true, record});
 };
 
 function revokeResultsBlobUrl() {

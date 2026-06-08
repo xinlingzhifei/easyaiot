@@ -70,8 +70,14 @@ export function getBasicColumns(): BasicColumn[] {
           train: { color: '#52c41a', text: `训练中 (${record.progress || 0}%)`, icon: 'sync' },
           running: { color: '#52c41a', text: `训练中 (${record.progress || 0}%)`, icon: 'sync' },
           completed: { color: '#1890ff', text: '已完成', icon: 'check-circle' },
-          stopped: { color: '#faad14', text: '已停止', icon: 'pause-circle' },
+          stopped: {
+            color: '#faad14',
+            text: record.can_resume ? '已停止(可续训)' : '已停止',
+            icon: 'pause-circle',
+          },
+          stopping: { color: '#faad14', text: '停止中', icon: 'pause-circle' },
           error: { color: '#f5222d', text: '失败', icon: 'close-circle' },
+          failed: { color: '#f5222d', text: '失败', icon: 'close-circle' },
         };
 
         const config = statusConfig[record.status] || {
@@ -93,7 +99,7 @@ export function getBasicColumns(): BasicColumn[] {
     {
       title: '操作',
       dataIndex: 'action',
-      width: 120,
+      width: 180,
     },
   ];
 }

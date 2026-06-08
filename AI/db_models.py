@@ -27,6 +27,10 @@ class Model(db.Model):
     version = db.Column(db.String(20), default="V1.0.0")
     # 0=未部署 1=已部署 2=训练中 3=已下线（与前端模型管理一致）
     status = db.Column(db.Integer, default=0, nullable=False)
+    # 模型支持的全部识别标签（JSON 数组）；推理时可从中选择子集
+    class_names = db.Column(db.Text, nullable=True)
+    # 默认启用的识别标签（JSON 数组，为空时表示启用全部 class_names）
+    selected_class_names = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -532,6 +536,28 @@ def ensure_train_task_dataset_columns(engine):
                 log.info('已为 train_task 表添加 dataset_version 列')
     except Exception as e:
         log.warning('ensure_train_task_dataset_columns: %s', e)
+
+
+def ensure_model_class_columns(engine):
+    """老库 model 表无 class_names / selected_class_names 列时补列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'model' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('model')}
+        with engine.begin() as conn:
+            if 'class_names' not in col_names:
+                conn.execute(text('ALTER TABLE model ADD COLUMN class_names TEXT'))
+                log.info('已为 model 表添加 class_names 列')
+            if 'selected_class_names' not in col_names:
+                conn.execute(text('ALTER TABLE model ADD COLUMN selected_class_names TEXT'))
+                log.info('已为 model 表添加 selected_class_names 列')
+    except Exception as e:
+        log.warning('ensure_model_class_columns: %s', e)
 
 
 def ensure_model_table_status_column(engine):

@@ -225,7 +225,54 @@ def _apply_progress_filter(query, progress_filter: str):
     return query
 
 
+def _get_project_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+
+
+def _parse_train_hyperparameters(hp_text: str) -> dict:
+    if not hp_text:
+        return {}
+    try:
+        return json.loads(hp_text)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _get_completed_epochs(hp_text: str) -> int:
+    return int(_parse_train_hyperparameters(hp_text).get('completed_epochs') or 0)
+
+
+def _resolve_train_checkpoint_path(model_dir: str) -> str | None:
+    if not model_dir or not os.path.isdir(model_dir):
+        return None
+    candidates = []
+    for name in os.listdir(model_dir):
+        if not name.startswith('train_results'):
+            continue
+        path = os.path.join(model_dir, name)
+        if os.path.isdir(path):
+            candidates.append(name)
+    for name in sorted(candidates, reverse=True):
+        results_dir = os.path.join(model_dir, name)
+        last_pt = os.path.join(results_dir, 'weights', 'last.pt')
+        if os.path.isfile(last_pt):
+            return os.path.abspath(last_pt)
+    return None
+
+
+def _task_can_resume(task: TrainTask) -> bool:
+    if task.status != 'stopped':
+        return False
+    checkpoint = (task.checkpoint_dir or '').strip()
+    if checkpoint and os.path.isfile(checkpoint):
+        return True
+    model_dir = os.path.join(_get_project_root(), 'data', 'datasets', f'train_{task.id}')
+    return _resolve_train_checkpoint_path(model_dir) is not None
+
+
 def _serialize_task(task: TrainTask) -> dict:
+    completed_epochs = _get_completed_epochs(task.hyperparameters)
+    can_resume = _task_can_resume(task)
     return {
         'id': task.id,
         'name': _task_display_name(task),
@@ -241,6 +288,9 @@ def _serialize_task(task: TrainTask) -> dict:
         'metrics_path': task.metrics_path,
         'train_results_path': task.train_results_path,
         'minio_model_path': task.minio_model_path,
+        'checkpoint_dir': task.checkpoint_dir,
+        'completed_epochs': completed_epochs,
+        'can_resume': can_resume,
     }
 
 

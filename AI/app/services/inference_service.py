@@ -26,6 +26,7 @@ from app.services.minio_service import ModelService
 from db_models import Model, InferenceTask, db
 from app.utils.onnx_inference import ONNXInference
 from app.utils.yolo_chinese_font import ensure_ultralytics_chinese_plot_font
+from app.utils.model_class_utils import parse_class_names_json, resolve_class_ids_from_names
 
 
 def _save_yolo_annotated_image(result, out_path: str) -> None:
@@ -179,6 +180,62 @@ class InferenceService:
         else:
             logging.warning(f"指定的模型文件不存在: {model_path}")
             self.specified_model_path = None
+
+    def _get_model_names_dict(self, model) -> Dict[int, str]:
+        if isinstance(model, ONNXInference):
+            return {int(k): str(v) for k, v in (model.classes_dict or {}).items()}
+        if hasattr(model, 'names') and model.names:
+            names = model.names
+            if isinstance(names, dict):
+                return {int(k): str(v) for k, v in names.items()}
+        return {}
+
+    def _resolve_selected_class_names(self, parameters: Optional[Dict[str, Any]]) -> Optional[list]:
+        if not parameters:
+            return None
+        selected = parameters.get('selected_classes')
+        if selected is None:
+            selected = parameters.get('selectedClasses')
+        if selected is not None:
+            parsed = parse_class_names_json(selected)
+            return parsed if parsed else None
+
+        if self.model_id and self.model_id > 0:
+            model_record = Model.query.get(self.model_id)
+            if model_record:
+                selected = parse_class_names_json(model_record.selected_class_names)
+                if selected:
+                    return selected
+                all_names = parse_class_names_json(model_record.class_names)
+                if all_names:
+                    return all_names
+        return None
+
+    def _resolve_class_ids(self, model, parameters: Optional[Dict[str, Any]]) -> Optional[list]:
+        selected_names = self._resolve_selected_class_names(parameters)
+        if not selected_names:
+            return None
+        names_dict = self._get_model_names_dict(model)
+        if not names_dict:
+            return None
+        return resolve_class_ids_from_names(names_dict, selected_names)
+
+    def _build_inference_kwargs(
+        self,
+        model,
+        parameters: Optional[Dict[str, Any]],
+        conf_thres: float,
+        iou_thres: float,
+    ) -> Dict[str, Any]:
+        inference_kwargs = {
+            'conf': conf_thres,
+            'iou': iou_thres,
+            'verbose': False,
+        }
+        class_ids = self._resolve_class_ids(model, parameters)
+        if class_ids:
+            inference_kwargs['classes'] = class_ids
+        return inference_kwargs
 
     def _find_default_models(self) -> list:
         """查找AI目录下的默认模型文件（yolo11n.pt、yolov8n.pt 或 yolo26n.pt）
@@ -492,6 +549,7 @@ class InferenceService:
             # 执行推理
             conf_thres = parameters.get('conf_thres', 0.25)
             iou_thres = parameters.get('iou_thres', 0.45)
+            class_ids = self._resolve_class_ids(model, parameters)
             
             if is_onnx:
                 # 使用新的ONNX推理模块
@@ -499,7 +557,8 @@ class InferenceService:
                     temp_path,
                     conf_threshold=conf_thres,
                     iou_threshold=iou_thres,
-                    draw=True
+                    draw=True,
+                    class_ids=class_ids,
                 )
                 # 将ONNX结果转换为与YOLO结果兼容的格式
                 # 创建一个模拟的Results对象
@@ -511,11 +570,7 @@ class InferenceService:
                 results = [ONNXResults(output_image, detections)]
             else:
                 # 使用YOLO模型推理
-                inference_kwargs = {
-                    'conf': conf_thres,
-                    'iou': iou_thres,
-                    'verbose': False
-                }
+                inference_kwargs = self._build_inference_kwargs(model, parameters, conf_thres, iou_thres)
                 results = model(temp_path, **inference_kwargs)
 
             # 获取原始图片URL（从record的input_source获取）
@@ -798,15 +853,12 @@ class InferenceService:
                 # 构建推理参数
                 conf_thres = parameters.get('conf_thres', 0.25) if parameters else 0.25
                 iou_thres = parameters.get('iou_thres', 0.45) if parameters else 0.45
+                class_ids = self._resolve_class_ids(model, parameters)
                 
                 if is_onnx:
                     logging.info(f"视频推理：使用ONNX模型")
                 else:
-                    inference_kwargs = {
-                        'conf': conf_thres,
-                        'iou': iou_thres,
-                        'verbose': False
-                    }
+                    inference_kwargs = self._build_inference_kwargs(model, parameters, conf_thres, iou_thres)
                 
                 start_time = time.time()
 
@@ -885,7 +937,8 @@ class InferenceService:
                                 frame,
                                 conf_threshold=conf_thres,
                                 iou_threshold=iou_thres,
-                                draw=True
+                                draw=True,
+                                class_ids=class_ids,
                             )
                             # 将标注后的帧调整回原始尺寸
                             annotated_frame = cv2.resize(annotated_frame, frame_size, interpolation=cv2.INTER_LINEAR)

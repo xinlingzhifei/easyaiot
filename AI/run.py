@@ -288,11 +288,13 @@ def create_app():
                 AutoLabelTask,
                 AutoLabelResult,
                 ensure_model_table_status_column,
+                ensure_model_class_columns,
                 ensure_train_task_name_column,
                 ensure_train_task_dataset_columns,
             )
             db.create_all()
             ensure_model_table_status_column(db.engine)
+            ensure_model_class_columns(db.engine)
             ensure_train_task_name_column(db.engine)
             ensure_train_task_dataset_columns(db.engine)
             print(f"✅ 数据库连接成功，表结构已创建/验证")
