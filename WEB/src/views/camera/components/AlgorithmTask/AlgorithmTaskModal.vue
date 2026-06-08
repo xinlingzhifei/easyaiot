@@ -31,7 +31,7 @@ import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
 import { QuestionCircleOutlined } from '@ant-design/icons-vue';
-import { Switch, Popover, Select } from 'ant-design-vue';
+import { Popover, Select, Button as AntButton } from 'ant-design-vue';
 import {
   createAlgorithmTask,
   updateAlgorithmTask,
@@ -593,58 +593,36 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
     {
       field: 'alert_event_enabled',
       label: '启用告警事件',
-      component: 'Input',
-      render: ({ model }) => {
-        return h('div', { class: 'alert-event-enabled-wrapper' }, [
-          h(Switch, {
-            checked: model.alert_event_enabled,
-            checkedChildren: '是',
-            unCheckedChildren: '否',
-            disabled: isViewMode.value,
-            onChange: async (checked: boolean) => {
-              model.alert_event_enabled = checked;
-              const patch: Record<string, any> = { alert_event_enabled: checked };
-              if (!checked) {
-                patch.alert_notification_enabled = false;
-                alertNotificationEnabled.value = false;
-                alertNotificationConfig.value = {
-                  enabled: false,
-                  channels: [],
-                  suppress_time: 300,
-                };
-                notificationChannels.value = [];
-                channelTemplates.value = {};
-              }
-              await setFieldsValue(patch);
-              const currentValues = await getFieldsValue();
-              formValues.value = { ...currentValues, ...patch };
-            },
-          }),
-          h(Popover, {
-            title: '算法任务占位符',
-            trigger: 'hover',
-            placement: 'rightTop',
-            getPopupContainer: (triggerNode) => triggerNode.parentElement || document.body,
-          }, {
-            content: () => h('div', { class: 'placeholder-box-small' },
-              placeholders.map((item) =>
-                h('div', { class: 'placeholder-item-small' }, [
-                  h('span', { class: 'placeholder-text' }, item.placeholder),
-                  h('span', { class: 'placeholder-separator' }, ': '),
-                  h('span', { class: 'placeholder-desc' }, item.description),
-                ])
-              )
-            ),
-            default: () => h(Button, {
-              type: 'text',
-              size: 'small',
-              class: 'placeholder-trigger-btn',
-            }, {
-              icon: () => h(QuestionCircleOutlined),
-            }),
-          }),
-        ]);
+      component: 'Switch',
+      defaultValue: false,
+      componentProps: {
+        checkedChildren: '是',
+        unCheckedChildren: '否',
       },
+      suffix: () =>
+        h(Popover, {
+          title: '算法任务占位符',
+          trigger: 'hover',
+          placement: 'rightTop',
+          getPopupContainer: (triggerNode) => triggerNode.parentElement || document.body,
+        }, {
+          content: () => h('div', { class: 'placeholder-box-small' },
+            placeholders.map((item) =>
+              h('div', { class: 'placeholder-item-small' }, [
+                h('span', { class: 'placeholder-text' }, item.placeholder),
+                h('span', { class: 'placeholder-separator' }, ': '),
+                h('span', { class: 'placeholder-desc' }, item.description),
+              ])
+            )
+          ),
+          default: () => h(AntButton, {
+            type: 'text',
+            size: 'small',
+            class: 'placeholder-trigger-btn',
+          }, {
+            icon: () => h(QuestionCircleOutlined),
+          }),
+        }),
       helpMessage: '是否启用告警事件，启用后会记录告警信息',
       ifShow: ({ values }) => values.task_type === 'realtime' || values.task_type === 'snap',
     },
@@ -739,34 +717,13 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
     {
       field: 'alert_notification_enabled',
       label: '启用告警通知',
-      component: 'Input',
-      render: ({ model }) => {
-        return h('div', { class: 'alert-notification-enabled-wrapper' }, [
-          h(Switch, {
-            checked: model.alert_notification_enabled,
-            checkedChildren: '是',
-            unCheckedChildren: '否',
-            disabled: isViewMode.value || !model.alert_event_enabled,
-            onChange: async (checked: boolean) => {
-              model.alert_notification_enabled = checked;
-              alertNotificationEnabled.value = checked;
-              // 立即同步更新 formValues，确保响应式更新
-              formValues.value = {
-                ...formValues.value,
-                alert_notification_enabled: checked
-              };
-              // 异步更新完整表单值（用于提交）
-              const currentValues = await getFieldsValue();
-              formValues.value = { ...currentValues, alert_notification_enabled: checked };
-              // 如果关闭告警通知，清空配置
-              if (!checked) {
-                notificationChannels.value = [];
-                channelTemplates.value = {};
-              }
-            },
-          }),
-        ]);
+      component: 'Switch',
+      defaultValue: false,
+      componentProps: {
+        checkedChildren: '是',
+        unCheckedChildren: '否',
       },
+      dynamicDisabled: ({ values }) => isViewMode.value || !values.alert_event_enabled,
       helpMessage: '是否启用告警通知，启用后会在告警事件发生时发送通知',
       ifShow: ({ values }) => (values.task_type === 'realtime' || values.task_type === 'snap') && values.alert_event_enabled,
     },
@@ -861,41 +818,30 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
     {
       field: 'is_full_day_defense',
       label: '是否全天布防',
-      component: 'Input',
-      render: ({ model }) => {
-        return h('div', { class: 'full-day-defense-wrapper' }, [
-          h(Switch, {
-            checked: model.is_full_day_defense,
-            checkedChildren: '是',
-            unCheckedChildren: '否',
-            disabled: isViewMode.value,
-            onChange: async (checked: boolean) => {
-              model.is_full_day_defense = checked;
-              // 使用 setFieldsValue 更新表单值，这会触发 field-value-change 事件
-              await setFieldsValue({ is_full_day_defense: checked });
-              // 手动触发 handleFieldValueChange 以确保 isFullDayDefense 状态立即更新
-              handleFieldValueChange('is_full_day_defense', checked);
-            },
-          }),
-          h(Popover, {
-            trigger: 'hover',
-            placement: 'rightTop',
-            getPopupContainer: (triggerNode) => triggerNode.parentElement || document.body,
-          }, {
-            content: () => h('div', { class: 'defense-tip-content' }, [
-              h('div', { class: 'tip-item' }, '全天布防模式下，系统将在24小时内持续监控并执行算法检测任务，不受时间限制。'),
-              h('div', { class: 'tip-item' }, '关闭全天布防后，可配置自定义布防时段，仅在指定时间段内执行监控任务，有效节省系统资源。'),
-            ]),
-            default: () => h(Button, {
-              type: 'text',
-              size: 'small',
-              class: 'placeholder-trigger-btn',
-            }, {
-              icon: () => h(QuestionCircleOutlined),
-            }),
-          }),
-        ]);
+      component: 'Switch',
+      defaultValue: true,
+      componentProps: {
+        checkedChildren: '是',
+        unCheckedChildren: '否',
       },
+      suffix: () =>
+        h(Popover, {
+          trigger: 'hover',
+          placement: 'rightTop',
+          getPopupContainer: (triggerNode) => triggerNode.parentElement || document.body,
+        }, {
+          content: () => h('div', { class: 'defense-tip-content' }, [
+            h('div', { class: 'tip-item' }, '全天布防模式下，系统将在24小时内持续监控并执行算法检测任务，不受时间限制。'),
+            h('div', { class: 'tip-item' }, '关闭全天布防后，可配置自定义布防时段，仅在指定时间段内执行监控任务，有效节省系统资源。'),
+          ]),
+          default: () => h(AntButton, {
+            type: 'text',
+            size: 'small',
+            class: 'placeholder-trigger-btn',
+          }, {
+            icon: () => h(QuestionCircleOutlined),
+          }),
+        }),
       helpMessage: '开启后将在全天24小时执行监控任务，关闭后可配置自定义布防时段',
     },
   ],
@@ -1186,6 +1132,7 @@ const handleFieldValueChange = async (key: string, value: any) => {
       };
       notificationChannels.value = [];
       channelTemplates.value = {};
+      await setFieldsValue({ alert_notification_enabled: false });
     }
     // 立即更新 formValues，确保告警通知配置能够及时响应
     const currentValues = await getFieldsValue();
