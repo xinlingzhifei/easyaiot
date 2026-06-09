@@ -112,13 +112,13 @@
               <TabPane key="4" tab="微信">
                 <History :msgType="state.historyActiveKey"/>
               </TabPane>
-              <TabPane key="5" tab="钉钉">
+              <TabPane key="6" tab="钉钉">
                 <History :msgType="state.historyActiveKey"/>
               </TabPane>
               <TabPane key="7" tab="飞书">
                 <History :msgType="state.historyActiveKey"/>
               </TabPane>
-              <TabPane key="6" tab="Webhook">
+              <TabPane key="5" tab="Webhook">
                 <History :msgType="state.historyActiveKey"/>
               </TabPane>
             </Tabs>

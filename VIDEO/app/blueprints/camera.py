@@ -2279,6 +2279,30 @@ def on_dvr_callback():
                 db.session.rollback()
                 # 记录创建失败不影响主流程，继续执行
 
+            # 写入录像空间元数据表（列表查询走 DB 分页）
+            try:
+                from app.services.space_file_metadata_service import upsert_record_file
+                _duration = duration if ('duration' in locals() and duration > 0) else 1
+                _record_time = record_time if 'record_time' in locals() else datetime.utcnow()
+                event_time_naive = _record_time.replace(tzinfo=None) if hasattr(_record_time, 'tzinfo') and _record_time.tzinfo else _record_time
+                upsert_record_file(
+                    space_id=record_space.id,
+                    device_id=device_id,
+                    object_name=object_name,
+                    bucket_name=bucket_name,
+                    filename=filename,
+                    file_size=file_size,
+                    content_type=content_type,
+                    url=file_path_url,
+                    thumbnail_url=thumbnail_path,
+                    duration=_duration,
+                    event_time=event_time_naive,
+                    source='dvr',
+                )
+            except Exception as meta_err:
+                logger.error(f"on_dvr回调：写入录像元数据失败 device_id={device_id}, error={meta_err}", exc_info=True)
+                db.session.rollback()
+
             # 关联告警 record_path（与 door-god 一致：仅 MinIO 下载 URL）
             try:
                 from app.services.alert_service import patch_alerts_record

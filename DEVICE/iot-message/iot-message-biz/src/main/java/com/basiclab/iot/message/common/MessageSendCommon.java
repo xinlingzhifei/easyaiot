@@ -88,7 +88,16 @@ public class MessageSendCommon {
      * 发送邮件消息
      */
     public SendResult messageMailSend(int msgType, String msgId, String content) {
-        SendResult sendResult = mailMsgSender.send(msgId, content);
+        SendResult sendResult;
+        try {
+            sendResult = mailMsgSender.send(msgId, content);
+        } catch (Exception e) {
+            log.error("邮件发送异常, msgId={}, error={}", msgId, e.getMessage(), e);
+            sendResult = new SendResult();
+            sendResult.setSuccess(false);
+            sendResult.setInfo(e.getMessage());
+        }
+        // 无论成功、失败还是异常都记录推送历史，避免推送历史为空
         addPushHistory(msgType, msgId, sendResult);
         return sendResult;
     }
@@ -98,13 +107,22 @@ public class MessageSendCommon {
      */
     public SendResult messageSend(int msgType, String msgId) {
         initSenderMap();
-        
+
         Function<String, SendResult> sender = senderMap.get(msgType);
         if (sender == null) {
             return new SendResult();
         }
-        
-        SendResult sendResult = sender.apply(msgId);
+
+        SendResult sendResult;
+        try {
+            sendResult = sender.apply(msgId);
+        } catch (Exception e) {
+            log.error("消息发送异常, msgType={}, msgId={}, error={}", msgType, msgId, e.getMessage(), e);
+            sendResult = new SendResult();
+            sendResult.setSuccess(false);
+            sendResult.setInfo(e.getMessage());
+        }
+        // 无论成功、失败还是异常都记录推送历史，避免推送历史为空
         addPushHistory(msgType, msgId, sendResult);
         return sendResult;
     }

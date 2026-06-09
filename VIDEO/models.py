@@ -284,6 +284,7 @@ class SnapSpace(db.Model):
     snap_tasks = db.relationship('SnapTask', backref='snap_space', lazy=True, cascade='all, delete-orphan')
     # 关联的设备
     device = db.relationship('Device', backref='snap_space', uselist=False)
+    snap_images = db.relationship('SnapImage', backref='snap_space', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         """转换为字典"""
@@ -319,6 +320,7 @@ class RecordSpace(db.Model):
     
     # 关联的设备
     device = db.relationship('Device', backref='record_space', uselist=False)
+    record_files = db.relationship('RecordFile', backref='record_space', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         """转换为字典"""
@@ -333,6 +335,84 @@ class RecordSpace(db.Model):
             'device_id': self.device_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class RecordFile(db.Model):
+    """录像空间文件元数据表（MinIO 实体 + DB 索引，列表查询走数据库分页）"""
+    __tablename__ = 'record_file'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    space_id = db.Column(db.Integer, db.ForeignKey('record_space.id', ondelete='CASCADE'), nullable=False, index=True)
+    device_id = db.Column(db.String(100), nullable=False, index=True, comment='设备ID')
+    object_name = db.Column(db.String(500), nullable=False, comment='MinIO 对象路径')
+    bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket')
+    filename = db.Column(db.String(255), nullable=False, comment='文件名')
+    file_size = db.Column(db.BigInteger, nullable=True, comment='文件大小（字节）')
+    content_type = db.Column(db.String(100), default='video/mp4', comment='MIME 类型')
+    etag = db.Column(db.String(128), nullable=True, comment='MinIO ETag')
+    url = db.Column(db.String(500), nullable=False, comment='MinIO 下载地址')
+    thumbnail_url = db.Column(db.String(500), nullable=True, comment='封面下载地址')
+    duration = db.Column(db.SmallInteger, nullable=True, comment='时长（秒）')
+    event_time = db.Column(db.DateTime, nullable=False, index=True, comment='录像时间（排序字段）')
+    source = db.Column(db.String(50), default='dvr', nullable=False, comment='来源[dvr|manual]')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+    __table_args__ = (
+        db.UniqueConstraint('bucket_name', 'object_name', name='uq_record_file_bucket_object'),
+        db.Index('ix_record_file_space_event_time', 'space_id', 'event_time'),
+    )
+
+    def to_list_item(self):
+        return {
+            'id': self.id,
+            'object_name': self.object_name,
+            'filename': self.filename,
+            'size': self.file_size or 0,
+            'last_modified': self.event_time.isoformat() if self.event_time else None,
+            'etag': self.etag or '',
+            'content_type': self.content_type or 'video/mp4',
+            'url': self.url,
+            'duration': self.duration,
+            'thumbnail_url': self.thumbnail_url,
+        }
+
+
+class SnapImage(db.Model):
+    """抓拍空间图片元数据表（MinIO 实体 + DB 索引，列表查询走数据库分页）"""
+    __tablename__ = 'snap_image'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    space_id = db.Column(db.Integer, db.ForeignKey('snap_space.id', ondelete='CASCADE'), nullable=False, index=True)
+    device_id = db.Column(db.String(100), nullable=False, index=True, comment='设备ID')
+    object_name = db.Column(db.String(500), nullable=False, comment='MinIO 对象路径')
+    bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket')
+    filename = db.Column(db.String(255), nullable=False, comment='文件名')
+    file_size = db.Column(db.BigInteger, nullable=True, comment='文件大小（字节）')
+    content_type = db.Column(db.String(100), default='image/jpeg', comment='MIME 类型')
+    etag = db.Column(db.String(128), nullable=True, comment='MinIO ETag')
+    url = db.Column(db.String(500), nullable=False, comment='MinIO 下载地址')
+    captured_at = db.Column(db.DateTime, nullable=False, index=True, comment='抓拍时间（排序字段）')
+    task_id = db.Column(db.Integer, nullable=True, comment='关联抓拍任务ID')
+    source = db.Column(db.String(50), default='snap', nullable=False, comment='来源[snap|frame|algorithm]')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+
+    __table_args__ = (
+        db.UniqueConstraint('bucket_name', 'object_name', name='uq_snap_image_bucket_object'),
+        db.Index('ix_snap_image_space_captured_at', 'space_id', 'captured_at'),
+    )
+
+    def to_list_item(self):
+        return {
+            'id': self.id,
+            'object_name': self.object_name,
+            'filename': self.filename,
+            'size': self.file_size or 0,
+            'last_modified': self.captured_at.isoformat() if self.captured_at else None,
+            'etag': self.etag or '',
+            'content_type': self.content_type or 'image/jpeg',
+            'url': self.url,
         }
 
 

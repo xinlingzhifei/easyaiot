@@ -82,6 +82,18 @@ export const getAlertCount = (params) => {
   return commonApi('get', Api.Alarm + '/count', {device_id: params['id']});
 };
 
+/** 按日期分组统计告警数量 */
+export const queryAlertCountByDate = async (params: {
+  device_id?: string;
+  begin_datetime?: string;
+  end_datetime?: string;
+}) => {
+  const res = await commonApi('get', Api.Alarm + '/count', { ...params, group: 'date' }, {}, false);
+  if (res?.data?.data) return res.data.data;
+  if (res?.data) return res.data;
+  return res;
+};
+
 export const getAlertImage = (path) => {
   return commonApi('get', Api.Alarm + '/image?path=' + path, {}, {}, false, 'blob');
 };

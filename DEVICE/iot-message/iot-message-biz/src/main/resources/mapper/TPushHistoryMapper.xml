@@ -135,7 +135,7 @@
                 and msg_type = #{msgType,jdbcType=INTEGER}
             </if>
             <if test="msgName != null and msgName != ''">
-                and msg_name like concat('%', #{msgName,jdbcType=VARCHAR}, '%')
+                and msg_name like concat('%', #{msgName,jdbcType=VARCHAR}::varchar, '%')
             </if>
         </where>
         order by create_time desc

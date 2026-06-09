@@ -119,6 +119,58 @@ export const PLATE_MANAGE_ROUTE: AppRouteRecordRaw = {
   ],
 }
 
+/** 录像空间回放独立页（从录像空间列表跳转） */
+export const RECORD_SPACE_MANAGE_ROUTE: AppRouteRecordRaw = {
+  path: '/record-space-manage',
+  component: LAYOUT,
+  name: 'RecordSpaceManageLayout',
+  meta: {
+    title: '录像回放',
+    hideMenu: true,
+    hideBreadcrumb: true,
+  },
+  children: [
+    {
+      path: ':spaceId',
+      name: 'RecordSpaceManage',
+      component: () => import('@/views/record-space-manage/index.vue'),
+      meta: {
+        title: '录像回放',
+        hideMenu: true,
+        canTo: true,
+        ignoreKeepAlive: true,
+        activeMenu: 'camera/index',
+      },
+    },
+  ],
+}
+
+/** 抓拍空间告警独立页（从抓拍空间列表跳转） */
+export const SNAP_SPACE_MANAGE_ROUTE: AppRouteRecordRaw = {
+  path: '/snap-space-manage',
+  component: LAYOUT,
+  name: 'SnapSpaceManageLayout',
+  meta: {
+    title: '抓拍空间',
+    hideMenu: true,
+    hideBreadcrumb: true,
+  },
+  children: [
+    {
+      path: ':spaceId',
+      name: 'SnapSpaceManage',
+      component: () => import('@/views/snap-space-manage/index.vue'),
+      meta: {
+        title: '抓拍空间',
+        hideMenu: true,
+        canTo: true,
+        ignoreKeepAlive: true,
+        activeMenu: 'camera/index',
+      },
+    },
+  ],
+}
+
 export const REDIRECT_ROUTE: AppRouteRecordRaw = {
   path: '/redirect',
   component: LAYOUT,

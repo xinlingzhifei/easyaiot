@@ -164,6 +164,18 @@ def extract_frame_from_rtsp(device, snap_space):
                 length=len(image_bytes),
                 content_type='image/jpeg'
             )
+            try:
+                from app.services.space_file_metadata_service import upsert_snap_image
+                upsert_snap_image(
+                    space_id=snap_space.id,
+                    device_id=device.id,
+                    object_name=object_name,
+                    bucket_name=bucket_name,
+                    file_size=len(image_bytes),
+                    source='frame',
+                )
+            except Exception as meta_err:
+                logger.error(f"设备 {device.id} 写入抓拍元数据失败: {meta_err}")
             logger.info(f"设备 {device.id} 抽帧成功，已保存到: {bucket_name}/{object_name}")
             return True
         except Exception as minio_error:

@@ -177,9 +177,6 @@
       </div>
     </BasicModal>
     
-    <!-- 抓拍图片查看模态框 -->
-    <SnapImageModal @register="registerSnapImageModal"/>
-    
     <!-- 摄像头选择模态框 -->
     <BasicModal
       v-model:open="cameraSelectVisible"
@@ -211,6 +208,7 @@
 
 <script lang="ts" setup>
 import {computed, ref, nextTick} from 'vue';
+import {useRouter} from 'vue-router';
 import {BasicDrawer, useDrawerInner} from '@/components/Drawer';
 import {BasicTable, useTable} from '@/components/Table';
 import {
@@ -245,17 +243,16 @@ import ServiceLogsModal from './ServiceLogsModal.vue';
 import {useModal} from '@/components/Modal';
 import {BasicModal} from '@/components/Modal';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
-import SnapImageModal from '@/views/camera/components/SnapSpace/SnapImageModal.vue';
 import {getSnapSpaceByDeviceId, type SnapSpace} from '@/api/device/snap';
 import { Button } from '@/components/Button'
 defineOptions({name: 'ServiceManageDrawer'});
 
+const router = useRouter();
 const emit = defineEmits(['close', 'success']);
 
 const {createMessage} = useMessage();
 const [registerLogsModal, {openModal: openLogsModal}] = useModal();
 const [registerPlayerModal, {openModal: openPlayerModal}] = useModal();
-const [registerSnapImageModal, {openModal: openSnapImageModal}] = useModal();
 
 // 摄像头选择和播放相关
 const cameraSelectVisible = ref(false);
@@ -846,14 +843,9 @@ const handleViewSnapSpaces = async (record: any) => {
 };
 
 // 查看抓拍图片
-const handleViewSnapImages = (spaceId: number, deviceId: string, deviceName?: string) => {
-  // 关闭抓拍空间列表模态框
+const handleViewSnapImages = (spaceId: number, _deviceId: string, _deviceName?: string) => {
   snapSpacesVisible.value = false;
-  // 直接打开抓拍图片模态框
-  openSnapImageModal(true, {
-    space_id: spaceId,
-    space_name: deviceName || `设备 ${deviceId} 的抓拍空间`,
-  });
+  router.push({ path: `/snap-space-manage/${spaceId}` });
 };
 
 // 启动服务（通过启动算法任务来启动服务）

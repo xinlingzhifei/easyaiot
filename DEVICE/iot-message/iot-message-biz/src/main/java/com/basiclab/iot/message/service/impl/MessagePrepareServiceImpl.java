@@ -4,6 +4,7 @@ import com.basiclab.iot.message.domain.entity.*;
 import com.basiclab.iot.message.domain.model.vo.MessagePrepareVO;
 import com.basiclab.iot.message.mapper.*;
 import com.basiclab.iot.message.service.MessagePrepareService;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ import java.util.UUID;
  * @email andywebjava@163.com
  * @since 2024-07-18
  */
+@Slf4j
 @Component
 public class MessagePrepareServiceImpl implements MessagePrepareService {
 
@@ -261,6 +263,42 @@ public class MessagePrepareServiceImpl implements MessagePrepareService {
         }
         
         return id;
+    }
+
+    @Override
+    public void deleteMessageInstance(int msgType, String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
+        // 尽力清理临时实例行，失败不影响告警发送主流程
+        try {
+            switch (msgType) {
+                case 1:
+                case 2:
+                    templateDataMapper.deleteByMsgTypeAndMsgId(msgType, id);
+                    tMsgSmsMapper.deleteByPrimaryKey(id);
+                    break;
+                case 3:
+                    tMsgMailMapper.deleteByPrimaryKey(id);
+                    break;
+                case 4:
+                    tMsgWxCpMapper.deleteByPrimaryKey(id);
+                    break;
+                case 5:
+                    tMsgHttpMapper.deleteByPrimaryKey(id);
+                    break;
+                case 6:
+                    tMsgDingMapper.deleteByPrimaryKey(id);
+                    break;
+                case 7:
+                    tMsgFeishuMapper.deleteByPrimaryKey(id);
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            log.warn("清理临时消息实例失败, msgType={}, id={}, error={}", msgType, id, e.getMessage());
+        }
     }
 
     @Override

@@ -528,6 +528,7 @@ export const cleanupDeviceStorage = (device_id: string) => {
 
 // ====================== 抓拍图片管理接口 ======================
 export interface SnapImage {
+  id?: number;
   object_name: string;
   filename: string;
   size: number;
@@ -551,6 +552,9 @@ export const getSnapImageList = (space_id: number, params: {
   device_id?: string;
   pageNo?: number;
   pageSize?: number;
+  search?: string;
+  startTime?: string;
+  endTime?: string;
 }) => {
   return commonApi('get', `${SNAP_PREFIX}/space/${space_id}/images`, params);
 };
@@ -567,12 +571,5 @@ export const deleteSnapImages = (space_id: number, object_names: string[]) => {
  */
 export const cleanupSnapImages = (space_id: number, days: number) => {
   return commonApi('post', `${SNAP_PREFIX}/space/${space_id}/images/cleanup`, { days });
-};
-
-/**
- * 同步所有抓拍空间到Minio
- */
-export const syncSnapSpacesToMinio = () => {
-  return commonApi('post', `${SNAP_PREFIX}/space/sync/minio`);
 };
 

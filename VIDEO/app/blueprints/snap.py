@@ -25,7 +25,8 @@ from app.services.storage_service import (
     get_device_storage_info, check_and_cleanup_storage
 )
 from app.services.snap_image_service import (
-    list_snap_images, delete_snap_images, get_snap_image, cleanup_old_images_by_days
+    list_snap_images, delete_snap_images, get_snap_image, cleanup_old_images_by_days,
+    sync_snap_images_metadata,
 )
 
 snap_bp = Blueprint('snap', __name__)
@@ -860,8 +861,15 @@ def list_space_images(space_id):
         device_id = request.args.get('device_id', '').strip() or None
         page_no = int(request.args.get('pageNo', 1))
         page_size = int(request.args.get('pageSize', 20))
-        
-        result = list_snap_images(space_id, device_id, page_no, page_size)
+        search = request.args.get('search', '').strip() or None
+        start_time = request.args.get('startTime')
+        end_time = request.args.get('endTime')
+
+        from datetime import datetime
+        start_dt = datetime.fromisoformat(start_time) if start_time else None
+        end_dt = datetime.fromisoformat(end_time) if end_time else None
+
+        result = list_snap_images(space_id, device_id, page_no, page_size, search, start_dt, end_dt)
         return jsonify({
             'code': 0,
             'msg': 'success',
@@ -915,6 +923,23 @@ def delete_space_images(space_id):
         return jsonify({'code': 400, 'msg': str(e)}), 400
     except Exception as e:
         logger.error(f'批量删除抓拍图片失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@snap_bp.route('/space/<int:space_id>/images/sync', methods=['POST'])
+def sync_images_metadata(space_id):
+    """从 MinIO 同步抓拍元数据到数据库（历史数据回填）"""
+    try:
+        result = sync_snap_images_metadata(space_id)
+        return jsonify({
+            'code': 0,
+            'msg': '同步完成',
+            'data': result
+        })
+    except RuntimeError as e:
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+    except Exception as e:
+        logger.error(f'同步抓拍元数据失败: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 
 

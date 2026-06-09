@@ -2,6 +2,12 @@ import {defHttp} from '@/utils/http/axios';
 
 const RECORD_PREFIX = '/video/record';
 
+function assertValidSpaceId(space_id: number, label = 'space_id'): void {
+  if (!Number.isFinite(space_id) || space_id <= 0) {
+    throw new Error(`invalid ${label}`);
+  }
+}
+
 // 通用请求封装
 const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url: string, params = {}, headers = {}, isTransformResponse = true) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
@@ -49,7 +55,22 @@ export const getRecordSpaceList = (params: {
  * 获取监控录像空间详情
  */
 export const getRecordSpace = (space_id: number) => {
+  assertValidSpaceId(space_id);
   return commonApi('get', `${RECORD_PREFIX}/space/${space_id}`);
+};
+
+/**
+ * 根据设备 ID 获取监控录像空间
+ */
+export const getRecordSpaceByDeviceId = (device_id: string) => {
+  return commonApi('get', `${RECORD_PREFIX}/space/device/${device_id}`);
+};
+
+/**
+ * 根据告警 ID 定位录像片段
+ */
+export const resolveAlertRecordSegment = (device_id: string, alert_id: number | string) => {
+  return commonApi('get', `${RECORD_PREFIX}/space/device/${device_id}/resolve-alert`, { alert_id });
 };
 
 /**
@@ -85,6 +106,7 @@ export const deleteRecordSpace = (space_id: number) => {
 
 // ====================== 监控录像管理接口 ======================
 export interface RecordVideo {
+  id?: number;
   object_name: string;
   filename: string;
   size: number;
@@ -110,6 +132,9 @@ export const getRecordVideoList = (space_id: number, params: {
   device_id?: string;
   pageNo?: number;
   pageSize?: number;
+  search?: string;
+  startTime?: string;
+  endTime?: string;
 }) => {
   return commonApi('get', `${RECORD_PREFIX}/space/${space_id}/videos`, params);
 };
@@ -128,10 +153,76 @@ export const cleanupRecordVideos = (space_id: number, days: number) => {
   return commonApi('post', `${RECORD_PREFIX}/space/${space_id}/videos/cleanup`, { days });
 };
 
+// ====================== 按日录像回放接口 ======================
+export interface RecordVideoDate {
+  date: string;
+  segment_count: number;
+}
+
+export interface RecordDaySegment extends RecordVideo {
+  start_time?: string;
+  end_time?: string;
+  has_alert?: boolean;
+  alert_count?: number;
+  alerts?: Record<string, unknown>[];
+  start_offset_sec?: number;
+  end_offset_sec?: number;
+}
+
+export interface RecordTimelineItem {
+  start_offset_sec: number;
+  end_offset_sec: number;
+  has_recording: boolean;
+  has_alert: boolean;
+  segment_id?: number;
+  segment_ids?: number[];
+  alert_count?: number;
+}
+
+export interface RecordSessionGroup {
+  group_id: number;
+  start_time?: string;
+  end_time?: string;
+  start_offset_sec: number;
+  end_offset_sec: number;
+  segment_count: number;
+  has_alert: boolean;
+  alert_count: number;
+  segments: RecordDaySegment[];
+}
+
+export interface RecordDayDetail {
+  date: string;
+  device_id?: string;
+  space_id: number;
+  segments: RecordDaySegment[];
+  timeline: RecordTimelineItem[];
+  timeline_merged?: RecordTimelineItem[];
+  session_groups?: RecordSessionGroup[];
+  total_segments: number;
+  total_sessions?: number;
+  total_duration_sec: number;
+  alert_segment_count: number;
+  total_alert_count: number;
+  alerts: Record<string, unknown>[];
+}
+
 /**
- * 同步所有监控录像空间到Minio
+ * 获取有录像的日期列表
  */
-export const syncRecordSpacesToMinio = () => {
-  return commonApi('post', `${RECORD_PREFIX}/space/sync/minio`);
+export const getRecordVideoDates = (space_id: number, params?: { device_id?: string }) => {
+  assertValidSpaceId(space_id);
+  return commonApi('get', `${RECORD_PREFIX}/space/${space_id}/videos/dates`, params || {});
+};
+
+/**
+ * 获取指定日期的录像片段详情（含时间轴与告警关联）
+ */
+export const getRecordVideosByDay = (space_id: number, params: {
+  date: string;
+  device_id?: string;
+}) => {
+  assertValidSpaceId(space_id);
+  return commonApi('get', `${RECORD_PREFIX}/space/${space_id}/videos/day`, params);
 };
 

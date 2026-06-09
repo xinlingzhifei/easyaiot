@@ -287,11 +287,16 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localho
 VIDEO_SERVICE_PORT = os.getenv('VIDEO_SERVICE_PORT', '6000')
 # 网关地址（用于构建完整的告警hook URL）
 GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://localhost:48080')
-# 告警hook URL：优先使用 GATEWAY_URL，否则回退 VIDEO_SERVICE_PORT
-if GATEWAY_URL and GATEWAY_URL != 'http://localhost:48080':
-    ALERT_HOOK_URL = f"{GATEWAY_URL}/video/alert/hook"
-    FACE_MATCHING_PUBLISH_URL = f"{GATEWAY_URL}/video/face/matching/publish"
-    PLATE_MATCHING_PUBLISH_URL = f"{GATEWAY_URL}/video/plate/matching/publish"
+# 告警 hook URL：经网关须带 /admin-api 前缀（见 iot-gateway application.yaml video-admin-api 路由）
+_GATEWAY_BASE = (GATEWAY_URL or '').rstrip('/')
+_USE_GATEWAY = bool(_GATEWAY_BASE) and _GATEWAY_BASE not in (
+    'http://localhost:48080',
+    'http://127.0.0.1:48080',
+)
+if _USE_GATEWAY:
+    ALERT_HOOK_URL = f"{_GATEWAY_BASE}/admin-api/video/alert/hook"
+    FACE_MATCHING_PUBLISH_URL = f"{_GATEWAY_BASE}/admin-api/video/face/matching/publish"
+    PLATE_MATCHING_PUBLISH_URL = f"{_GATEWAY_BASE}/admin-api/video/plate/matching/publish"
 else:
     ALERT_HOOK_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/alert/hook"
     FACE_MATCHING_PUBLISH_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/face/matching/publish"
@@ -523,6 +528,23 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
             length=len(data),
             content_type='image/jpeg',
         )
+        try:
+            from app.services.space_file_metadata_service import upsert_snap_image
+            _app = get_flask_app()
+            with _app.app_context():
+                from models import SnapSpace
+                snap_space = SnapSpace.query.filter_by(device_id=device_id).first()
+                if snap_space:
+                    upsert_snap_image(
+                        space_id=snap_space.id,
+                        device_id=device_id,
+                        object_name=object_name,
+                        bucket_name=bucket_name,
+                        file_size=len(data),
+                        source='algorithm',
+                    )
+        except Exception as meta_err:
+            logger.debug(f"设备 {device_id} 写入抓拍元数据失败: {meta_err}")
         logger.info(f"📷 设备 {device_id} 已上传抓拍图: {bucket_name}/{object_name}")
         return True
     except Exception as e:

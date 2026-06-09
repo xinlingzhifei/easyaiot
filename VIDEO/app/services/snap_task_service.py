@@ -696,7 +696,21 @@ def capture_image(task, device, space):
             len(image_bytes),
             content_type="image/jpeg"
         )
-        
+
+        try:
+            from app.services.space_file_metadata_service import upsert_snap_image
+            upsert_snap_image(
+                space_id=space.id,
+                device_id=device.id,
+                object_name=object_name,
+                bucket_name=bucket_name,
+                file_size=len(image_bytes),
+                task_id=task.id,
+                source='snap',
+            )
+        except Exception as meta_err:
+            logger.error(f"写入抓拍元数据失败: device_id={device.id}, error={meta_err}")
+
         logger.info(f"抓拍成功: {bucket_name}/{object_name}")
         return True
         

@@ -95,7 +95,6 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { getBasicColumns, getFormConfig } from './Data';
 import { useRouter } from 'vue-router';
 import { queryAlarmList, clearAllAlerts } from '@/api/device/calculate';
-import { resolveAlertRecordVideoUrl } from '@/utils/alertRecord';
 import { Icon } from '@/components/Icon';
 import AlertCards from '@/views/alert/components/AlertCards/index.vue';
 import AlertMapView from '@/views/alert/components/AlertMapView/index.vue';
@@ -112,6 +111,7 @@ import DeviceLocationDrawer from '@/views/camera/components/DeviceLocationDrawer
 import { canSetDeviceLocation } from '@/views/camera/utils/deviceLocation';
 import { getDeviceInfo } from '@/api/device/camera';
 import { openDeviceInDialogPlayer } from '@/views/camera/utils/devicePlay';
+import { navigateToAlertRecord } from '@/views/camera/utils/alertRecordNavigate';
 
 const router = useRouter();
 const [registerImageModal, { openModal: openImageModal }] = useModal();
@@ -309,27 +309,22 @@ const handleViewVideo = async (record) => {
   }
 
   try {
-    const videoUrl = await resolveAlertRecordVideoUrl({
+    const ok = await navigateToAlertRecord(router, {
       id: record['id'],
       device_id: record['device_id'],
       time: record['time'],
       record_path: record['record_path'],
     });
-
-    if (videoUrl) {
-      openVideoModal(true, {
-        id: record['device_id'],
-        http_stream: videoUrl,
-      });
+    if (ok) {
       lastVideoErrorTime = 0;
       lastVideoErrorMsg = '';
-    } else {
-      showVideoErrorOnce('暂未找到该时间段的录像文件，请稍后再试');
+      return;
     }
+    showVideoErrorOnce('未找到该设备关联的录像空间，请确认设备已创建录像空间');
   } catch (error: any) {
-    console.error('查询录像失败:', error);
+    console.error('跳转录像回放失败:', error);
     const errorData = error?.response?.data || error?.data;
-    const errorMsg = errorData?.message || error?.message || '查询录像失败，请稍后重试';
+    const errorMsg = errorData?.message || error?.message || '跳转录像回放失败，请稍后重试';
     showVideoErrorOnce(errorMsg);
   }
 };

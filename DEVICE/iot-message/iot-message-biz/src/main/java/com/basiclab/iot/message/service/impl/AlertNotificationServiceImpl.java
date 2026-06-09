@@ -5,6 +5,7 @@ import com.basiclab.iot.message.common.MessageSendCommon;
 import com.basiclab.iot.message.domain.entity.*;
 import com.basiclab.iot.message.domain.model.AlertNotificationMessage;
 import com.basiclab.iot.message.domain.model.SendResult;
+import com.basiclab.iot.message.domain.model.dto.MessageMailSendDto;
 import com.basiclab.iot.message.domain.model.vo.MessagePrepareVO;
 import com.basiclab.iot.message.mapper.TMsgHttpMapper;
 import com.basiclab.iot.message.sendlogic.MessageTypeEnum;
@@ -222,41 +223,31 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
         String url = replacePlaceholders(template.getUrl(), templateParams);
 
         try {
-            MessagePrepareVO messagePrepareVO = new MessagePrepareVO();
-            messagePrepareVO.setMsgType(MessageTypeEnum.HTTP_CODE);
-            messagePrepareVO.setMsgName("告警通知-" + notificationMessage.getAlertId());
-            prepareHttpMessageFromTemplate(messagePrepareVO, template, url, content, bodyType, msgId);
+            // 直接以参数方式发送，不再向 t_msg_http 模板表插入新记录。
+            // 旧实现每次告警都 messagePrepareService.add() 一条 t_msg_http，
+            // 导致“消息推送”列表与算法任务的通知模板下拉被大量同名重复项污染，
+            // 且发送异常时 messageSend 会抛出、跳过推送历史记录，造成推送历史为空。
+            // messageSendWithParams 内部捕获异常并始终写入推送历史。
+            MessageMailSendDto dto = new MessageMailSendDto();
+            dto.setMsgId(msgId);
+            dto.setMsgType(MessageTypeEnum.HTTP_CODE);
+            dto.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
+            dto.setMethod(template.getMethod() != null && !template.getMethod().trim().isEmpty()
+                    ? template.getMethod() : "POST");
+            dto.setUrl(url);
+            dto.setBody(content);
+            dto.setBodyType(bodyType);
+            dto.setHeaders(template.getHeaders());
+            dto.setParams(template.getParams());
+            dto.setCookies(template.getCookies());
 
-            messagePrepareVO = messagePrepareService.add(messagePrepareVO);
-            SendResult result = messageSendCommon.messageSend(MessageTypeEnum.HTTP_CODE, msgId);
+            SendResult result = messageSendCommon.messageSendWithParams(dto);
             log.info("HTTP/Webhook 告警通知发送结果: msgId={}, templateId={}, url={}, success={}, info={}",
                     msgId, templateId, url, result.isSuccess(), result.getInfo());
         } catch (Exception e) {
             log.error("HTTP/Webhook 告警通知发送失败: templateId={}, alertId={}, error={}",
                     templateId, notificationMessage.getAlertId(), e.getMessage(), e);
         }
-    }
-
-    private void prepareHttpMessageFromTemplate(
-            MessagePrepareVO messagePrepareVO,
-            TMsgHttp template,
-            String url,
-            String body,
-            String bodyType,
-            String msgId) {
-        TMsgHttp tMsgHttp = new TMsgHttp();
-        tMsgHttp.setId(msgId);
-        tMsgHttp.setMsgType(MessageTypeEnum.HTTP_CODE);
-        tMsgHttp.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
-        tMsgHttp.setUrl(url);
-        tMsgHttp.setMethod(template.getMethod() != null && !template.getMethod().trim().isEmpty()
-                ? template.getMethod() : "POST");
-        tMsgHttp.setBody(body);
-        tMsgHttp.setBodyType(bodyType);
-        tMsgHttp.setHeaders(template.getHeaders());
-        tMsgHttp.setParams(template.getParams());
-        tMsgHttp.setCookies(template.getCookies());
-        messagePrepareVO.setT_Msg_Http(tMsgHttp);
     }
 
     private static boolean isUserlessNotifyMethod(String method) {
@@ -473,15 +464,21 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
             // 根据消息类型准备消息（优化：使用策略模式）
             prepareMessageByType(messagePrepareVO, msgType, user, title, content, msgId);
 
-            // 准备消息（保存到数据库）
+            // 准备消息（临时保存到数据库，供发送器按 msgId 读取）
             messagePrepareVO = messagePrepareService.add(messagePrepareVO);
 
             // 发送消息
             SendResult result;
-            if (msgType == MessageTypeEnum.EMAIL_CODE) {
-                result = messageSendCommon.messageMailSend(msgType, msgId, content);
-            } else {
-                result = messageSendCommon.messageSend(msgType, msgId);
+            try {
+                if (msgType == MessageTypeEnum.EMAIL_CODE) {
+                    result = messageSendCommon.messageMailSend(msgType, msgId, content);
+                } else {
+                    result = messageSendCommon.messageSend(msgType, msgId);
+                }
+            } finally {
+                // 发送完成后删除临时实例行，避免每条告警都在“消息推送”列表中堆积一条记录。
+                // 推送历史由 messageSend/messageMailSend 内部记录，不在此处删除。
+                messagePrepareService.deleteMessageInstance(msgType, msgId);
             }
 
             log.info("告警通知发送结果: msgId={}, method={}, success={}, info={}",

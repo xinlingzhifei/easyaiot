@@ -11,7 +11,17 @@
     <div class="snap-image-container">
       <!-- 顶部操作栏 -->
       <div class="snap-image-header">
+        <div class="header-search">
+          <Input
+            v-model:value="searchKeyword"
+            placeholder="搜索文件名"
+            allow-clear
+            style="width: 220px"
+            @pressEnter="handleSearch"
+          />
+        </div>
         <div class="header-actions">
+          <Button @click="handleSearch">搜索</Button>
           <Button type="primary" @click="handleSelectAll">
             {{ isAllSelected ? '取消全选' : '全选' }}
           </Button>
@@ -97,8 +107,8 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, computed } from 'vue';
-import { List, Spin } from 'ant-design-vue';
+import { ref, computed } from 'vue';
+import { List, Spin, Input } from 'ant-design-vue';
 import { BasicModal, useModalInner } from '@/components/Modal';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getSnapImageList, deleteSnapImages, type SnapImage } from '@/api/device/snap';
@@ -113,6 +123,7 @@ const ListItem = List.Item;
 const modalData = ref<{ space_id?: number; space_name?: string }>({});
 const imageList = ref<SnapImage[]>([]);
 const loading = ref(false);
+const searchKeyword = ref('');
 const selectedRowKeys = ref<string[]>([]);
 
 // 分页相关
@@ -183,37 +194,14 @@ const loadImageList = async () => {
     const response = await getSnapImageList(modalData.value.space_id, {
       pageNo: page.value,
       pageSize: pageSize.value,
+      search: searchKeyword.value.trim() || undefined,
     });
     
-    // 响应拦截器处理后的数据结构：{ code, data, msg, total }
-    // 或者直接是数组（如果响应拦截器返回了 data.data）
-    if (Array.isArray(response)) {
-      // 如果直接返回数组
-      imageList.value = response;
-      total.value = response.length;
-    } else if (response && typeof response === 'object') {
-      // 如果返回对象
-      if (response.code === 0) {
-        // 成功响应
-        if (Array.isArray(response.data)) {
-          // data是数组
-          imageList.value = response.data;
-          total.value = response.total || response.data.length;
-        } else if (response.data && Array.isArray(response.data.items)) {
-          // data.items是数组（某些接口可能这样返回）
-          imageList.value = response.data.items;
-          total.value = response.total || response.data.total || response.data.items.length;
-        } else {
-          imageList.value = [];
-          total.value = 0;
-        }
-      } else {
-        // 错误响应
-        createMessage.error(response.msg || '加载图片列表失败');
-        imageList.value = [];
-        total.value = 0;
-      }
+    if (response?.code === 0 && Array.isArray(response.data)) {
+      imageList.value = response.data;
+      total.value = response.total ?? 0;
     } else {
+      createMessage.error(response?.msg || '加载图片列表失败');
       imageList.value = [];
       total.value = 0;
     }
@@ -227,9 +215,14 @@ const loadImageList = async () => {
   }
 };
 
+const handleSearch = () => {
+  page.value = 1;
+  selectedRowKeys.value = [];
+  loadImageList();
+};
+
 const handleRefresh = () => {
   selectedRowKeys.value = [];
-  page.value = 1;
   loadImageList();
 };
 
@@ -385,7 +378,7 @@ const [register, { setModalProps, closeModal }] = useModalInner(async (data) => 
   .snap-image-header {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     padding: 16px 0;
     margin-bottom: 16px;
     border-bottom: 1px solid #e8e8e8;
