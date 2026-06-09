@@ -373,7 +373,7 @@ async function handleDelete(record: object) {
     .product-img {
       position: absolute;
       right: 20px;
-      top: 50px;
+      bottom: 20px;
 
       img {
         cursor: pointer;
