@@ -397,14 +397,12 @@ onUnmounted(() => {
 
 <style lang="less" scoped>
 .monitor-sidebar {
-  width: clamp(280px, 18.5vw, 350px);
-  max-width: 100%;
+  width: 350px;
   height: 100%;
-  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 0.85vw, 16px);
+  gap: 16px;
   overflow: hidden;
 }
 
