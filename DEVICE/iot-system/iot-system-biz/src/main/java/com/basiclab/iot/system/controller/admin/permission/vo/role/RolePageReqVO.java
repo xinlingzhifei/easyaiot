@@ -21,7 +21,7 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 @EqualsAndHashCode(callSuper = true)
 public class RolePageReqVO extends PageParam {
 
-    @Schema(description = "角色名称，模糊匹配", example = "BasicLab")
+    @Schema(description = "角色名称，模糊匹配", example = "yFeiEye")
     private String name;
 
     @Schema(description = "角色标识，模糊匹配", example = "Yudao")

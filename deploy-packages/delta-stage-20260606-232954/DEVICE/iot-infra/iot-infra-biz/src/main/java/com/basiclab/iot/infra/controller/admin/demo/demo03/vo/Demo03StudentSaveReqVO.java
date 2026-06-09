@@ -26,7 +26,7 @@ public class Demo03StudentSaveReqVO {
     @Schema(description = "编号", example = "8525")
     private Long id;
 
-    @Schema(description = "名字", example = "BasicLab")
+    @Schema(description = "名字", example = "yFeiEye")
     @NotEmpty(message = "名字不能为空")
     private String name;
 

@@ -159,7 +159,7 @@ knife4j:
         service-name: iot-gb28181
         url: /admin-api/gb28181/v3/api-docs
 
---- #################### BasicLab相关配置 ####################
+--- #################### yFeiEye相关配置 ####################
 
 iot:
   info:

@@ -25,11 +25,11 @@ public class TenantSaveReqVO {
     @Schema(description = "租户编号", example = "1024")
     private Long id;
 
-    @Schema(description = "租户名", example = "BasicLab")
+    @Schema(description = "租户名", example = "yFeiEye")
     @NotNull(message = "租户名不能为空")
     private String name;
 
-    @Schema(description = "联系人", example = "BasicLab")
+    @Schema(description = "联系人", example = "yFeiEye")
     @NotNull(message = "联系人不能为空")
     private String contactName;
 

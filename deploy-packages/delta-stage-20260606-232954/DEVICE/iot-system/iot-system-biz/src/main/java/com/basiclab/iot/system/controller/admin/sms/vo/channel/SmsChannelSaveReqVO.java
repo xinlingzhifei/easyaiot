@@ -21,7 +21,7 @@ public class SmsChannelSaveReqVO {
     @Schema(description = "编号", example = "1024")
     private Long id;
 
-    @Schema(description = "短信签名", example = "BasicLab源码")
+    @Schema(description = "短信签名", example = "yFeiEye")
     @NotNull(message = "短信签名不能为空")
     private String signature;
 

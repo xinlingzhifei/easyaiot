@@ -21,13 +21,13 @@ import java.util.List;
 @Builder
 public class AuthMenuRespVO {
 
-    @Schema(description = "菜单名称", example = "BasicLab")
+    @Schema(description = "菜单名称", example = "yFeiEye")
     private Long id;
 
     @Schema(description = "父菜单 ID", example = "1024")
     private Long parentId;
 
-    @Schema(description = "菜单名称", example = "BasicLab")
+    @Schema(description = "菜单名称", example = "yFeiEye")
     private String name;
 
     @Schema(description = "路由地址,仅菜单类型为菜单或者目录时，才需要传", example = "post")

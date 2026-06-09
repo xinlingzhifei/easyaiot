@@ -24,10 +24,10 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 @ToString(callSuper = true)
 public class TenantPageReqVO extends PageParam {
 
-    @Schema(description = "租户名", example = "BasicLab")
+    @Schema(description = "租户名", example = "yFeiEye")
     private String name;
 
-    @Schema(description = "联系人", example = "BasicLab")
+    @Schema(description = "联系人", example = "yFeiEye")
     private String contactName;
 
     @Schema(description = "联系手机", example = "15601691300")

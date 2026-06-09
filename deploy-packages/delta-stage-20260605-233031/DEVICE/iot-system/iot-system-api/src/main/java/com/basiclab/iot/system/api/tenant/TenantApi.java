@@ -17,7 +17,7 @@ import java.util.List;
  * @author 翱翔的雄库鲁
  * @email andywebjava@163.com
  */
-@FeignClient(name = ApiConstants.NAME) // TODO BasicLab：fallbackFactory=
+@FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory=
 @Tag(name = "RPC 服务 - 多租户")
 public interface TenantApi {
 

@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
  * @author 翱翔的雄库鲁
  * @email andywebjava@163.com
  */
-@FeignClient(name = ApiConstants.NAME) // TODO BasicLab：fallbackFactory =
+@FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory =
 @Tag(name = "RPC 服务 - 社交应用")
 public interface SocialClientApi {
 

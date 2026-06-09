@@ -19,7 +19,7 @@ public class DatabaseTableRespVO {
 (description = "表名称", example = "yuanma")
     private String name;
 
-    @Schema(description = "表描述", example = "BasicLab源码")
+    @Schema(description = "表描述", example = "yFeiEye")
     private String comment;
 
 }

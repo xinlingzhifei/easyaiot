@@ -19,7 +19,7 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 @Data
 public class OperateLogPageReqVO extends PageParam {
 
-    @Schema(description = "用户编号", example = "BasicLab")
+    @Schema(description = "用户编号", example = "yFeiEye")
     private Long userId;
 
     @Schema(description = "操作模块业务编号", example = "1")

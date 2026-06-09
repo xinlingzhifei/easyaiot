@@ -35,7 +35,7 @@ public class OperateLogCreateReqDTO {
     @NotNull(message = "操作模块业务编号不能为空")
     private Long bizId;
     @Schema(description = "操作内容",
-            example = "修改编号为 1 的用户信息，将性别从男改成女，将姓名从BasicLab改成源码")
+            example = "修改编号为 1 的用户信息，将性别从男改成女，将姓名从yFeiEye改成源码")
     @NotEmpty(message = "操作内容不能为空")
     private String action;
     @Schema(description = "拓展字段", example = "{\"orderId\": \"1\"}")

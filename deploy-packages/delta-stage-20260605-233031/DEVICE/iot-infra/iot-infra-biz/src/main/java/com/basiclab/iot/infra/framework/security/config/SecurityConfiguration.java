@@ -40,7 +40,7 @@ public class SecurityConfiguration {
                 // 文件读取
                 registry.antMatchers(buildAdminApi("/infra/file/*/get/**")).permitAll();
 
-                // TODO BasicLab：这个每个项目都需要重复配置，得捉摸有没通用的方案
+                // TODO yFeiEye：这个每个项目都需要重复配置，得捉摸有没通用的方案
                 // RPC 服务的安全配置
                 registry.antMatchers(ApiConstants.PREFIX + "/**").permitAll();
             }

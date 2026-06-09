@@ -16,7 +16,7 @@ public class TenantSimpleRespVO {
     @Schema(description = "租户编号", example = "1024")
     private Long id;
 
-    @Schema(description = "租户名", example = "BasicLab")
+    @Schema(description = "租户名", example = "yFeiEye")
     private String name;
 
 }

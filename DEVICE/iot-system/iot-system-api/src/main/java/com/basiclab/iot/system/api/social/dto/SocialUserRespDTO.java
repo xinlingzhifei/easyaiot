@@ -20,7 +20,7 @@ public class SocialUserRespDTO {
     @Schema(description = "社交用户 openid", example = "zsw")
     private String openid;
 
-    @Schema(description = "社交用户的昵称", example = "BasicLab源码")
+    @Schema(description = "社交用户的昵称", example = "yFeiEye")
     private String nickname;
 
     @Schema(description = "社交用户的头像", example = "https://www.iocoder.cn/1.jpg")

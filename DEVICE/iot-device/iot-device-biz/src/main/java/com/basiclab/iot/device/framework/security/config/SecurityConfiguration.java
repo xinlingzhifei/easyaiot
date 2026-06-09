@@ -22,7 +22,7 @@ public class SecurityConfiguration {
 
             @Override
             public void customize(ExpressionUrlAuthorizationConfigurer<HttpSecurity>.ExpressionInterceptUrlRegistry registry) {
-                // TODO BasicLab：这个每个项目都需要重复配置，得捉摸有没通用的方案
+                // TODO yFeiEye：这个每个项目都需要重复配置，得捉摸有没通用的方案
                 // Swagger 接口文档
                 registry.antMatchers("/v3/api-docs/**").permitAll() // 元数据
                         .antMatchers("/swagger-ui.html").permitAll() // Swagger UI

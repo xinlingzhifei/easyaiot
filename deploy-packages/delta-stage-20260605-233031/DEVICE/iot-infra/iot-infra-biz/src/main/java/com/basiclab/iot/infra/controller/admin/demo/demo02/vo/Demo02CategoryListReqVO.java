@@ -19,7 +19,7 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 @Data
 public class Demo02CategoryListReqVO {
 
-    @Schema(description = "名字", example = "BasicLab")
+    @Schema(description = "名字", example = "yFeiEye")
     private String name;
 
     @Schema(description = "父级编号", example = "6080")

@@ -16,7 +16,7 @@ public class DictDataRespDTO {
  * @email andywebjava@163.com
  */
 
-(description = "字典标签", example = "BasicLab")
+(description = "字典标签", example = "yFeiEye")
     private String label;
 
     @Schema(description = "字典值", example = "iocoder")

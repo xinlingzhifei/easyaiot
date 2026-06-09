@@ -167,9 +167,9 @@ feign:
     response:
       enabled: true
 
---- #################### BasicLab相关配置 ####################
+--- #################### yFeiEye相关配置 ####################
 
-# BasicLab配置项，设置当前项目所有自定义的配置
+# yFeiEye配置项，设置当前项目所有自定义的配置
 Yudao:
   xss:
     enable: false

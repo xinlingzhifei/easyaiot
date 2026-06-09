@@ -22,7 +22,7 @@ public class DeptSaveReqVO {
     @Schema(description = "部门编号", example = "1024")
     private Long id;
 
-    @Schema(description = "部门名称", example = "BasicLab")
+    @Schema(description = "部门名称", example = "yFeiEye")
     @NotBlank(message = "部门名称不能为空")
     @Size(max = 30, message = "部门名称长度不能超过 30 个字符")
     private String name;

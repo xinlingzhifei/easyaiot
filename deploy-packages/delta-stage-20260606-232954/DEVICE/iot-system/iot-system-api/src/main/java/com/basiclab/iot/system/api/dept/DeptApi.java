@@ -15,7 +15,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-@FeignClient(name = ApiConstants.NAME) // TODO BasicLab：fallbackFactory =
+@FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory =
 @Tag(name = "RPC 服务 - 部门")
 public interface DeptApi {
 

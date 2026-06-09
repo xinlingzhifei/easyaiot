@@ -55,7 +55,7 @@ public class GrayReactiveLoadBalancerClientFilter implements GlobalFilter, Order
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         URI url = exchange.getAttribute(GATEWAY_REQUEST_URL_ATTR);
         String schemePrefix = exchange.getAttribute(GATEWAY_SCHEME_PREFIX_ATTR);
-        // 修改 by BasicLab源码：将 lb 替换成 grayLb，表示灰度负载均衡
+        // 修改 by yFeiEye：将 lb 替换成 grayLb，表示灰度负载均衡
         if (url == null || (!"grayLb".equals(url.getScheme()) && !"grayLb".equals(schemePrefix))) {
             return chain.filter(exchange);
         }
@@ -121,7 +121,7 @@ public class GrayReactiveLoadBalancerClientFilter implements GlobalFilter, Order
 
     private Mono<Response<ServiceInstance>> choose(Request<RequestDataContext> lbRequest, String serviceId,
                                                    Set<LoadBalancerLifecycle> supportedLifecycleProcessors) {
-        // 修改 by BasicLab源码：直接创建 GrayLoadBalancer 对象
+        // 修改 by yFeiEye：直接创建 GrayLoadBalancer 对象
         GrayLoadBalancer loadBalancer = new GrayLoadBalancer(
                 clientFactory.getLazyProvider(serviceId, ServiceInstanceListSupplier.class), serviceId);
         supportedLifecycleProcessors.forEach(lifecycle -> lifecycle.onStart(lbRequest));

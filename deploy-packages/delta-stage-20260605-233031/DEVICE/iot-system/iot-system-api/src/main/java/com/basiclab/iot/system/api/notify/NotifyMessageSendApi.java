@@ -20,7 +20,7 @@ import javax.validation.Valid;
  * @author 翱翔的雄库鲁
  * @email andywebjava@163.com
  */
-name = ApiConstants.NAME) // TODO BasicLab：fallbackFactory =
+name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory =
 @Tag(name = "RPC 服务 - 站内信发送")
 public interface NotifyMessageSendApi {
 

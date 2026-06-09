@@ -19,7 +19,7 @@ public class UserProfileRespVO {
     @Schema(description = "用户账号", example = "Yudao")
     private String username;
 
-    @Schema(description = "用户昵称", example = "BasicLab")
+    @Schema(description = "用户昵称", example = "yFeiEye")
     private String nickname;
 
     @Schema(description = "用户邮箱", example = "Yudao@iocoder.cn")

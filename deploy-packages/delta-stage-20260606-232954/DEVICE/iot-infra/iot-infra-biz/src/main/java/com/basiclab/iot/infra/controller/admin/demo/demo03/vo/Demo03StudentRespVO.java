@@ -24,7 +24,7 @@ public class Demo03StudentRespVO {
     @ExcelProperty("编号")
     private Long id;
 
-    @Schema(description = "名字", example = "BasicLab")
+    @Schema(description = "名字", example = "yFeiEye")
     @ExcelProperty("名字")
     private String name;
 

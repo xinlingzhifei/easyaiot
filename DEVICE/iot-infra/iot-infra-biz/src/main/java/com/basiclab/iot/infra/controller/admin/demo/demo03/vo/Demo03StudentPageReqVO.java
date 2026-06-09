@@ -23,7 +23,7 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 @ToString(callSuper = true)
 public class Demo03StudentPageReqVO extends PageParam {
 
-    @Schema(description = "名字", example = "BasicLab")
+    @Schema(description = "名字", example = "yFeiEye")
     private String name;
 
     @Schema(description = "性别")

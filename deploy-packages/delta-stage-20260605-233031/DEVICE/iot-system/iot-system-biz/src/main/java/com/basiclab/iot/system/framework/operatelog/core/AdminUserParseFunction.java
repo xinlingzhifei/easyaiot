@@ -42,7 +42,7 @@ public class AdminUserParseFunction implements IParseFunction {
             log.warn("[apply][获取用户{{}}为空", value);
             return "";
         }
-        // 返回格式 BasicLab源码(13888888888)
+        // 返回格式 yFeiEye(13888888888)
         String nickname = user.getNickname();
         if (StrUtil.isEmpty(user.getMobile())) {
             return nickname;

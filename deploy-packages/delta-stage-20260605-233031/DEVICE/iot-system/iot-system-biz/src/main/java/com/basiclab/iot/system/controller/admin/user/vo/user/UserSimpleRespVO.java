@@ -23,7 +23,7 @@ class UserSimpleRespVO {
     @Schema(description = "用户编号", example = "1024")
     private Long id;
 
-    @Schema(description = "用户昵称", example = "BasicLab")
+    @Schema(description = "用户昵称", example = "yFeiEye")
     private String nickname;
 
     @Schema(description = "部门ID", example = "我是一个用户")

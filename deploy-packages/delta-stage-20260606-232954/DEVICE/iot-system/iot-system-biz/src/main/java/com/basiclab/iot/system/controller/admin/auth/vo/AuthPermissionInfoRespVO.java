@@ -44,7 +44,7 @@ public class AuthPermissionInfoRespVO {
         @Schema(description = "用户编号", example = "1024")
         private Long id;
 
-        @Schema(description = "用户昵称", example = "BasicLab源码")
+        @Schema(description = "用户昵称", example = "yFeiEye")
         private String nickname;
 
         @Schema(description = "用户头像", example = "https://www.iocoder.cn/xx.jpg")
@@ -62,13 +62,13 @@ public class AuthPermissionInfoRespVO {
     @Builder
     public static class MenuVO {
 
-        @Schema(description = "菜单名称", example = "BasicLab")
+        @Schema(description = "菜单名称", example = "yFeiEye")
         private Long id;
 
         @Schema(description = "父菜单 ID", example = "1024")
         private Long parentId;
 
-        @Schema(description = "菜单名称", example = "BasicLab")
+        @Schema(description = "菜单名称", example = "yFeiEye")
         private String name;
 
         @Schema(description = "路由地址,仅菜单类型为菜单或者目录时，才需要传", example = "post")

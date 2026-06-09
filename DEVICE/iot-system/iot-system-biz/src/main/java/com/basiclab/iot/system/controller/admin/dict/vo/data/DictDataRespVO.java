@@ -29,7 +29,7 @@ public class DictDataRespVO {
     @ExcelProperty("字典排序")
     private Integer sort;
 
-    @Schema(description = "字典标签", example = "BasicLab")
+    @Schema(description = "字典标签", example = "yFeiEye")
     @ExcelProperty("字典标签")
     private String label;
 

@@ -20,7 +20,7 @@ public class AppDictDataRespVO {
     @Schema(description = "字典数据编号", example = "1024")
     private Long id;
 
-    @Schema(description = "字典标签", example = "BasicLab")
+    @Schema(description = "字典标签", example = "yFeiEye")
     private String label;
 
     @Schema(description = "字典值", example = "iocoder")

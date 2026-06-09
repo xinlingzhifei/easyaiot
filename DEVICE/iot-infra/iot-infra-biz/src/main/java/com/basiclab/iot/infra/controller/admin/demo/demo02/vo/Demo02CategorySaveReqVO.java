@@ -19,7 +19,7 @@ public class Demo02CategorySaveReqVO {
     @Schema(description = "编号", example = "10304")
     private Long id;
 
-    @Schema(description = "名字", example = "BasicLab")
+    @Schema(description = "名字", example = "yFeiEye")
     @NotEmpty(message = "名字不能为空")
     private String name;
 

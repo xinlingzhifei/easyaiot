@@ -187,9 +187,9 @@ wx:
       key-prefix: wa # Redis Key 的前缀
       http-client-type: HttpClient # 采用 HttpClient 请求微信公众号平台
 
---- #################### BasicLab相关配置 ####################
+--- #################### yFeiEye相关配置 ####################
 
-# BasicLab配置项，设置当前项目所有自定义的配置
+# yFeiEye配置项，设置当前项目所有自定义的配置
 Yudao:
   xss:
     enable: false

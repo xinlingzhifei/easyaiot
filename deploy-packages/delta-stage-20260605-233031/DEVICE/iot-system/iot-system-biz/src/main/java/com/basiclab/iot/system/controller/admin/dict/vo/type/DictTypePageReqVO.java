@@ -22,7 +22,7 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 @EqualsAndHashCode(callSuper = true)
 public class DictTypePageReqVO extends PageParam {
 
-    @Schema(description = "字典类型名称，模糊匹配", example = "BasicLab")
+    @Schema(description = "字典类型名称，模糊匹配", example = "yFeiEye")
     private String name;
 
     @Schema(description = "字典类型，模糊匹配", example = "sys_common_sex")

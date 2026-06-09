@@ -16,7 +16,7 @@ public class DictTypeSimpleRespVO {
     @Schema(description = "字典类型编号", example = "1024")
     private Long id;
 
-    @Schema(description = "字典类型名称", example = "BasicLab")
+    @Schema(description = "字典类型名称", example = "yFeiEye")
     private String name;
 
     @Schema(description = "字典类型", example = "sys_common_sex")

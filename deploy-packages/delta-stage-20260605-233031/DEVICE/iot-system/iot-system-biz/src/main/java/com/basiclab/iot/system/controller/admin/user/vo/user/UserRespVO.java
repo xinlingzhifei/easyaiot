@@ -30,7 +30,7 @@ public class UserRespVO{
     @ExcelProperty("用户名称")
     private String username;
 
-    @Schema(description = "用户昵称", example = "BasicLab")
+    @Schema(description = "用户昵称", example = "yFeiEye")
     @ExcelProperty("用户昵称")
     private String nickname;
 

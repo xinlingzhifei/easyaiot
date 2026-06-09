@@ -19,9 +19,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-@FeignClient(name = ApiConstants.NAME) // TODO BasicLab：fallbackFactory =
+@FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory =
 @Tag(name = "RPC 服务 - 管理员用户")
-//@AutoTrans(namespace = PREFIX, fields = {"nickname"}) // TODO @BasicLab：需要 easy-trans 做个 bugfix
+//@AutoTrans(namespace = PREFIX, fields = {"nickname"}) // TODO @yFeiEye：需要 easy-trans 做个 bugfix
 public interface AdminUserApi extends AutoTransable<AdminUserRespDTO> {
 
     String PREFIX = ApiConstants.PREFIX + "/user";

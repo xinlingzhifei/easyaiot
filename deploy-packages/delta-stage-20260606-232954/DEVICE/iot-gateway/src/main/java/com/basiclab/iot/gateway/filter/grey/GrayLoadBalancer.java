@@ -80,7 +80,7 @@ public class GrayLoadBalancer implements ReactorServiceInstanceLoadBalancer {
         // 基于 tag 过滤实例列表
         chooseInstances = filterTagServiceInstances(chooseInstances, headers);
 
-        // 随机 + 权重获取实例列表 TODO BasicLab：目前直接使用 Nacos 提供的方法，如果替换注册中心，需要重新失败该方法
+        // 随机 + 权重获取实例列表 TODO yFeiEye：目前直接使用 Nacos 提供的方法，如果替换注册中心，需要重新失败该方法
         return new DefaultResponse(NacosBalancer.getHostByRandomWeight3(chooseInstances));
     }
 

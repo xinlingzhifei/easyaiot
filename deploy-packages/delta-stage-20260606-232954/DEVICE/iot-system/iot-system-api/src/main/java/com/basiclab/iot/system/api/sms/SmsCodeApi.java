@@ -21,7 +21,7 @@ import javax.validation.Valid;
  * @author 翱翔的雄库鲁
  * @email andywebjava@163.com
  */
-@FeignClient(name = ApiConstants.NAME) // TODO BasicLab：fallbackFactory =
+@FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory =
 @Tag(name = "RPC 服务 - 短信验证码")
 public interface SmsCodeApi {
 

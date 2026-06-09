@@ -16,7 +16,7 @@ public class RoleSimpleRespVO {
     @Schema(description = "角色编号", example = "1024")
     private Long id;
 
-    @Schema(description = "角色名称", example = "BasicLab")
+    @Schema(description = "角色名称", example = "yFeiEye")
     private String name;
 
 }

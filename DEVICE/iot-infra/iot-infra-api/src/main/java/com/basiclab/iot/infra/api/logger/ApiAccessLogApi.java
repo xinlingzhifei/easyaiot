@@ -17,7 +17,7 @@ import javax.validation.Valid;
  * @author 翱翔的雄库鲁
  * @email andywebjava@163.com
  */
-@FeignClient(name = ApiConstants.NAME) // TODO BasicLab：fallbackFacto
+@FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFacto
 @Tag(name = "RPC 服务 - API 访问日志")
 public interface ApiAccessLogApi {
 

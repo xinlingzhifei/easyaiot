@@ -31,7 +31,7 @@ public class NotifyMessageRespVO {
     @Schema(description = "模板编码", example = "test_01")
     private String templateCode;
 
-    @Schema(description = "模版发送人名称", example = "BasicLab")
+    @Schema(description = "模版发送人名称", example = "yFeiEye")
     private String templateNickname;
 
     @Schema(description = "模版内容", example = "测试内容")
