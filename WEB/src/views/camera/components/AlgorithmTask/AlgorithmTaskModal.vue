@@ -604,7 +604,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
           title: '算法任务占位符',
           trigger: 'hover',
           placement: 'rightTop',
-          getPopupContainer: (triggerNode) => triggerNode.parentElement || document.body,
+          getPopupContainer: () => document.body,
         }, {
           content: () => h('div', { class: 'placeholder-box-small' },
             placeholders.map((item) =>
@@ -828,7 +828,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         h(Popover, {
           trigger: 'hover',
           placement: 'rightTop',
-          getPopupContainer: (triggerNode) => triggerNode.parentElement || document.body,
+          getPopupContainer: () => document.body,
         }, {
           content: () => h('div', { class: 'defense-tip-content' }, [
             h('div', { class: 'tip-item' }, '全天布防模式下，系统将在24小时内持续监控并执行算法检测任务，不受时间限制。'),
