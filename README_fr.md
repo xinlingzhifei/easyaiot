@@ -427,6 +427,10 @@ EasyAIoT est un projet d'apprentissage open source, sans lien avec des activité
   <img src=".image/banner/banner1118.png" alt="Capture d'écran 1" width="49%">
 </div>
 <div>
+  <img src=".image/banner/banner1119.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1120.png" alt="Capture d'écran 1" width="49%">
+</div>
+<div>
   <img src=".image/banner/banner1057.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1058.jpg" alt="Capture d'écran 7" width="49%">
 </div>

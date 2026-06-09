@@ -2,8 +2,13 @@
   <div class="record-replay-page">
     <div class="page-header">
       <div class="header-left">
-        <Button type="text" class="back-btn" @click="goBack">
-          <ArrowLeftOutlined /> 返回录像空间
+        <Button
+          type="text"
+          class="back-btn"
+          preIcon="ant-design:arrow-left-outlined"
+          @click="goBack"
+        >
+          返回录像空间
         </Button>
         <div v-if="spaceInfo" class="space-info">
           <h1 class="page-title">{{ spaceInfo.space_name }}</h1>
@@ -156,8 +161,9 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { Button, DatePicker, Empty, Spin, Switch } from 'ant-design-vue';
-import { ArrowLeftOutlined, VideoCameraOutlined, WarningOutlined, CaretRightOutlined } from '@ant-design/icons-vue';
+import { DatePicker, Empty, Spin, Switch } from 'ant-design-vue';
+import { VideoCameraOutlined, WarningOutlined, CaretRightOutlined } from '@ant-design/icons-vue';
+import { Button } from '@/components/Button';
 import dayjs, { type Dayjs } from 'dayjs';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
 import { useMessage } from '@/hooks/web/useMessage';
