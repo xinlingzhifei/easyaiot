@@ -301,19 +301,57 @@ const handleVideoListChange = (videos: any[]) => {
 .monitor-content {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: clamp(280px, 18.5vw, 350px) minmax(0, 1fr) clamp(280px, 17vw, 320px);
   overflow: hidden;
-  padding: 0 16px 16px 16px;
-  gap: 16px;
+  padding: 0 clamp(10px, 0.85vw, 16px) clamp(10px, 0.85vw, 16px);
+  gap: clamp(10px, 0.85vw, 16px);
   box-sizing: border-box;
   margin-top: 8px;
 }
 
 .monitor-center {
-  flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+@media (max-width: 1280px) {
+  .monitor-dashboard {
+    overflow-y: auto;
+  }
+
+  .monitor-content {
+    grid-template-columns: minmax(240px, 30vw) minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .alarm-panel {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 960px) {
+  .monitor-dashboard {
+    position: relative;
+    height: auto;
+    min-height: 100vh;
+    max-height: none;
+  }
+
+  .monitor-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .monitor-sidebar,
+  .monitor-center,
+  .alarm-panel {
+    width: 100%;
+    min-height: 240px;
+  }
 }
 </style>

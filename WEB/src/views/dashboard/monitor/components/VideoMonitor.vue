@@ -963,37 +963,56 @@ watch(() => alertRecordList.value, () => {
 
 .monitor-header {
   flex-shrink: 0;
-  height: 50px;
-  min-height: 50px;
+  height: auto;
+  min-height: 52px;
   background: rgba(52, 134, 218, 0.08);
   border-bottom: 1px solid rgba(52, 134, 218, 0.3);
   color: #fff;
   font-size: 14px;
-  padding: 0 20px;
+  padding: 8px clamp(12px, 1.2vw, 20px);
   display: flex;
   align-items: center;
-  gap: 20px;
+  align-content: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
   position: relative;
   z-index: 1;
+  overflow: visible;
 
   .header-title {
+    flex: 0 0 auto;
+    min-width: 72px;
     font-size: 14px;
+    line-height: 32px;
     font-weight: 600;
     color: #ffffff;
+    white-space: nowrap;
   }
 
   .header-time {
+    flex: 0 0 auto;
+    min-width: 152px;
     font-size: 14px;
+    line-height: 32px;
     color: rgba(255, 255, 255, 0.8);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .header-location {
+    flex: 0 1 140px;
+    min-width: 88px;
+    max-width: 180px;
     font-size: 14px;
+    line-height: 32px;
     color: rgba(255, 255, 255, 0.6);
-    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .enable-ai-wrap {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     height: 32px;
@@ -1001,7 +1020,6 @@ watch(() => alertRecordList.value, () => {
     background: rgba(52, 134, 218, 0.15);
     border: 1px solid rgba(52, 134, 218, 0.3);
     border-radius: 4px;
-    flex-shrink: 0;
 
     :deep(.ant-checkbox-wrapper) {
       color: rgba(200, 220, 255, 0.95) !important;
@@ -1037,9 +1055,13 @@ watch(() => alertRecordList.value, () => {
   }
 
   .split-toolbar {
+    flex: 1 1 340px;
+    min-width: 300px;
     display: flex;
     gap: 8px;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     margin-left: auto;
 
     .split-btn {
@@ -1070,6 +1092,45 @@ watch(() => alertRecordList.value, () => {
         border-color: #3486da;
         color: #ffffff;
         box-shadow: 0 0 12px rgba(52, 134, 218, 0.5);
+      }
+    }
+  }
+}
+
+@media (max-width: 1440px) {
+  .monitor-header {
+    padding: 8px 12px;
+    gap: 8px;
+
+    .split-toolbar {
+      flex-basis: 100%;
+      min-width: 0;
+      justify-content: flex-start;
+      margin-left: 0;
+    }
+  }
+}
+
+@media (max-width: 960px) {
+  .monitor-header {
+    align-items: flex-start;
+
+    .header-time {
+      min-width: 132px;
+      font-size: 13px;
+    }
+
+    .header-location {
+      max-width: 140px;
+      font-size: 13px;
+    }
+
+    .split-toolbar {
+      gap: 6px;
+
+      .split-btn {
+        min-width: 52px;
+        padding: 0 6px;
       }
     }
   }

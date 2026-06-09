@@ -178,8 +178,10 @@ const handleImageLoad = (alarm: any) => {
 
 <style lang="less" scoped>
 .alarm-panel {
-  width: 320px;
+  width: clamp(280px, 17vw, 320px);
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
   padding: 0;
   background: linear-gradient(135deg, rgba(15, 34, 73, 0.8), rgba(24, 46, 90, 0.6));
   display: flex;
