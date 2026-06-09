@@ -46,7 +46,7 @@ services:
       - FLASK_RUN_PORT=${FLASK_RUN_PORT:-5000}
       - FLASK_RUN_HOST=${FLASK_RUN_HOST:-0.0.0.0}
       # 数据库配置（使用localhost，因为使用host网络模式，中间件端口已映射到宿主机）
-      - DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-ai20
+      - DATABASE_URL=postgresql://postgres:iot45722414822@localhost:15432/iot-ai20
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-please-change-this-to-a-random-string}
       # Nacos配置（使用localhost，因为使用host网络模式）
       - NACOS_SERVER=${NACOS_SERVER:-localhost:8848}
@@ -57,7 +57,7 @@ services:
       # Pod IP配置（容器内会自动获取，也可手动指定）
       - POD_IP=${POD_IP:-}
       # MinIO对象存储配置（使用localhost，因为使用host网络模式）
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-localhost:9000}
+      - MINIO_ENDPOINT=${AI_DOCKER_MINIO_ENDPOINT:-localhost:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-basiclab@iot975248395}
       - MINIO_SECURE=${MINIO_SECURE:-false}
@@ -130,4 +130,3 @@ services:
 # 1. 使用macvlan网络（需要root权限）
 # 2. 使用host网络 + 通过IP访问中间件容器
 # 3. 使用sidecar容器模式
-

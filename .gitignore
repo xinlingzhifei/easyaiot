@@ -3,6 +3,10 @@
 
 # Log file
 *.log
+
+# Python cache
+__pycache__/
+*.py[cod]
 # WEB 日志目录（与 WEB/.gitignore 中 logs/*、!logs/.gitkeep 一致）
 /WEB/logs/*
 !/WEB/logs/.gitkeep

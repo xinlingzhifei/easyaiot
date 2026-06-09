@@ -39,8 +39,8 @@ def _normalize_model_version(version) -> str:
 
 
 def _serialize_model_class_fields(model: Model) -> dict:
-    class_names = parse_class_names_json(model.class_names)
-    selected_class_names = parse_class_names_json(model.selected_class_names)
+    class_names = parse_class_names_json(getattr(model, 'class_names', None))
+    selected_class_names = parse_class_names_json(getattr(model, 'selected_class_names', None))
     if not selected_class_names and class_names:
         selected_class_names = list(class_names)
     return {
