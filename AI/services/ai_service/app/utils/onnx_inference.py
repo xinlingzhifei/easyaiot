@@ -184,6 +184,53 @@ def preprocess(img, input_width, input_height):
     return image_data, img_height, img_width
 
 
+def _is_end2end_yolo_output(output) -> bool:
+    arr = np.squeeze(output[0])
+    return arr.ndim >= 2 and int(arr.shape[-1]) == 6
+
+
+def postprocess_end2end(
+    input_image,
+    output,
+    input_width,
+    input_height,
+    img_width,
+    img_height,
+    conf_threshold: float = None,
+    classes_dict: Dict[int, str] = None,
+) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+    conf_thresh = conf_threshold if conf_threshold is not None else confidence_thres
+    if classes_dict is None:
+        classes_dict = classes
+
+    arr = np.squeeze(output[0])
+    if arr.ndim == 3:
+        arr = arr[0]
+
+    x_factor = img_width / input_width
+    y_factor = img_height / input_height
+    detections = []
+    for row in arr:
+        x1, y1, x2, y2, score, cls_id = row[:6]
+        score = float(score)
+        if score < conf_thresh:
+            continue
+        class_id = int(cls_id)
+        class_name = classes_dict.get(class_id, f'class_{class_id}')
+        detections.append({
+            'class': class_id,
+            'class_name': class_name,
+            'confidence': score,
+            'bbox': [
+                int(float(x1) * x_factor),
+                int(float(y1) * y_factor),
+                int(float(x2) * x_factor),
+                int(float(y2) * y_factor),
+            ],
+        })
+    return input_image, detections
+
+
 def postprocess(input_image, output, input_width, input_height, img_width, img_height, 
                 conf_threshold: float = None, iou_threshold: float = None, 
                 draw: bool = True, classes_dict: Dict[int, str] = None,
@@ -217,6 +264,18 @@ def postprocess(input_image, output, input_width, input_height, img_width, img_h
         classes_dict = classes
     if color_palette_array is None:
         color_palette_array = color_palette
+
+    if _is_end2end_yolo_output(output):
+        return postprocess_end2end(
+            input_image,
+            output,
+            input_width,
+            input_height,
+            img_width,
+            img_height,
+            conf_threshold=conf_thresh,
+            classes_dict=classes_dict,
+        )
 
     # 转置和压缩输出以匹配预期的形状
     outputs = np.transpose(np.squeeze(output[0]))

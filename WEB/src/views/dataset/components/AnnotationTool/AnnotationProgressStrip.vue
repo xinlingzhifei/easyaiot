@@ -30,7 +30,7 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 
-export type TipAction = 'import' | 'nextPending' | 'split' | 'sync' | 'filterPending';
+export type TipAction = 'import' | 'nextPending' | 'split' | 'sync' | 'filterPending' | 'aiLabel';
 
 export interface WorkflowTip {
   text: string;

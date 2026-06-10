@@ -1,160 +1,67 @@
 # 自动化标注功能说明
 
+> **详细设计文档**：[docs/AUTO_LABEL_DESIGN.md](docs/AUTO_LABEL_DESIGN.md)（架构、API、数据模型、部署、故障排查、前端易用性）  
+> 本文档为快速上手指南。
+
 ## 功能概述
 
 已实现完整的自动化标注功能，包括：
-1. 数据库表结构设计
-2. 后端 Python Flask API
-3. 前端 Vue 组件
-4. 导出 ZIP 功能
 
-## 数据库表结构
+1. 数据库表结构设计（`auto_label_task` / `auto_label_result`）
+2. 后端 Python Flask API（`app/blueprints/auto_label.py`）
+3. 前端统一标注平台（`AnnotationTool` + `AILabelModal`）
+4. 导入/导出（iot-dataset `/annotation/*`）
 
-### auto_label_task（自动化标注任务表）
-- `id`: 主键
-- `dataset_id`: 数据集ID
-- `model_service_id`: AI服务ID（外键关联ai_service表）
-- `status`: 状态（PENDING/PROCESSING/COMPLETED/FAILED）
-- `total_images`: 总图片数
-- `processed_images`: 已处理图片数
-- `success_count`: 成功标注数
-- `failed_count`: 失败数
-- `confidence_threshold`: 置信度阈值
-- `created_at`: 创建时间
-- `updated_at`: 更新时间
-- `started_at`: 开始时间
-- `completed_at`: 完成时间
-- `error_message`: 错误信息
+## 快速使用
 
-### auto_label_result（自动化标注结果表）
-- `id`: 主键
-- `task_id`: 任务ID（外键关联auto_label_task表）
-- `dataset_image_id`: 数据集图片ID
-- `annotations`: 标注结果JSON
-- `status`: 状态（SUCCESS/FAILED）
-- `error_message`: 错误信息
-- `created_at`: 创建时间
+1. **导入图片**：数据集详情 → 标注工具 →「添加」→ 导入/上传
+2. **部署模型**：训练中心 → 模型部署（`/train?tab=4`）→ 部署并**启动**推理服务
+3. **批量标注**：标注工具顶栏 →「AI 标注」→ 选择服务 → 开启
+4. **查看进度**：顶栏与进度条显示 `已处理/总数`
+5. **验收修正**：抽查误检 → 划分用途 → 同步 Minio → 导出/训练
 
-## 后端 API
+## 后端 API 摘要
 
-### 1. 启动自动化标注任务
-```
-POST /dataset/{dataset_id}/auto-label/start
-请求体:
-{
-  "model_service_id": 1,
-  "confidence_threshold": 0.5
-}
-```
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/model/dataset/dataset/{id}/auto-label/start` | 启动批量任务 |
+| GET | `/model/dataset/dataset/{id}/auto-label/task/{task_id}` | 查询进度 |
+| GET | `/model/dataset/dataset/{id}/auto-label/tasks` | 任务列表 |
+| POST | `/model/dataset/dataset/{id}/auto-label/image/{image_id}` | 单张标注（前端待接入） |
+| GET | `/model/deploy_service/list?status=running` | 可选推理服务 |
 
-### 2. 获取任务状态
-```
-GET /dataset/{dataset_id}/auto-label/task/{task_id}
-```
+网关完整路径前缀：`/admin-api/model/...`
 
-### 3. 获取任务列表
-```
-GET /dataset/{dataset_id}/auto-label/tasks?page=1&page_size=10
-```
+## 前端组件
 
-### 4. 导出标注数据集
-```
-POST /dataset/{dataset_id}/auto-label/export
-请求体:
-{
-  "task_id": 1,  // 可选，不提供则导出所有已标注的图片
-  "train_ratio": 0.7,
-  "val_ratio": 0.2,
-  "test_ratio": 0.1,
-  "format": "yolo"
-}
-```
+| 组件 | 路径 |
+|------|------|
+| 标注主界面 | `WEB/src/views/dataset/components/AnnotationTool/index.vue` |
+| AI 弹窗 | `WEB/src/views/dataset/components/AutoLabel/AILabelModal/index.vue` |
+| 导入 | `AutoLabel/ImportDatasetModal/index.vue` |
+| 导出 | `AutoLabel/ExportDatasetModal/index.vue` |
+| API | `WEB/src/api/device/auto-label.ts` |
 
-## 前端组件（已合并至统一标注平台）
+> 独立服务 `AI/services/auto-labeling`（端口 8000）已弃用。
 
-### 位置
-- 主界面: `/WEB/src/views/dataset/components/AnnotationTool/index.vue`（数据集详情 → 图像数据集标注）
-- AI 弹窗: `/WEB/src/views/dataset/components/AutoLabel/AILabelModal/index.vue`
-- 导入/导出: `ImportDatasetModal`、`ExportDatasetModal`
-- API: `/WEB/src/api/device/auto-label.ts`（网关前缀 `/admin-api/model/dataset/...`）
+## 配置
 
-### 功能
-1. 左侧竖向图片列表 + 画布手工标注
-2. 单张 / 批量 AI 自动标注（集群推理）
-3. 导入图片、视频抽帧、LabelMe 数据集
-4. 导出 YOLO 等格式 ZIP
-
-> 独立服务 `AI/services/auto-labeling`（端口 8000）已弃用，请勿再部署。
-
-## 配置说明
-
-### 环境变量
-需要在 `.env` 文件中配置：
 ```bash
-# Java后端地址（用于获取数据集图片列表）
-JAVA_BACKEND_URL=http://localhost:8080
+# AI model-server .env
+JAVA_BACKEND_URL=http://iot-gateway:48080   # 或 Java 网关地址
 ```
 
-### 数据库迁移
-运行应用时，数据库表会自动创建（通过 `db.create_all()`）。
-
-如果需要手动创建表，可以执行：
-```python
-from db_models import db, AutoLabelTask, AutoLabelResult
-db.create_all()
-```
-
-## 使用流程
-
-1. **准备AI服务**
-   - 确保有运行中的AI服务（通过模型部署功能部署）
-   - AI服务状态必须为 `running`
-
-2. **创建标注任务**
-   - 进入数据集详情页面
-   - 点击"自动化标注" tab
-   - 点击"新建标注任务"
-   - 选择AI服务和置信度阈值
-   - 点击确定启动任务
-
-3. **查看任务进度**
-   - 在任务列表中查看任务状态
-   - 点击"查看详情"查看详细进度
-   - 处理中的任务会自动刷新状态
-
-4. **导出数据集**
-   - 任务完成后，点击"导出数据集"
-   - 设置训练集/验证集/测试集比例
-   - 选择导出格式（目前支持YOLO格式）
-   - 点击确定下载ZIP文件
+数据库表见 `.scripts/postgresql/iot-ai10.sql`，或由 `db.create_all()` 自动创建。
 
 ## 注意事项
 
-1. **Java后端集成**
-   - 后端代码中通过HTTP调用Java后端API获取图片列表
-   - 需要确保 `JAVA_BACKEND_URL` 环境变量配置正确
-   - Java后端API路径：`/dataset/image/page` 和 `/dataset/image/get`
+1. **必须先有 running 状态的部署服务**，否则 AI 标注无法启动
+2. **Nacos** 需能发现模型推理实例（`ClusterInferenceService`）
+3. **标注格式** 与手工标注一致（归一化矩形 + `label` 类别名）
+4. **任务完成后** 前端会自动同步数据集标签（从标注扫描创建）
+5. Java `POST /dataset/{id}/auto-label` 为空桩，**请勿使用**；请走 model-server 接口
 
-2. **MinIO路径解析**
-   - 图片路径格式：`/api/v1/buckets/{bucket}/objects/download?prefix={object_key}`
-   - 代码中已实现路径解析功能
+## 相关文档
 
-3. **推理服务调用**
-   - 使用 `ClusterInferenceService.inference_via_cluster` 调用推理服务
-   - 需要确保AI服务正常运行且可访问
-
-4. **异步任务处理**
-   - 标注任务在后台异步执行
-   - 使用线程池处理，不会阻塞主线程
-
-5. **错误处理**
-   - 任务失败会记录错误信息
-   - 单个图片处理失败不会影响整个任务
-
-## 待优化项
-
-1. 支持更多导出格式（COCO、Pascal VOC等）
-2. 支持批量任务管理
-3. 支持任务暂停/恢复
-4. 优化大数据集的处理性能
-5. 添加任务通知功能
+- [详细设计文档](docs/AUTO_LABEL_DESIGN.md)
+- [AI 模块 README](README.md)

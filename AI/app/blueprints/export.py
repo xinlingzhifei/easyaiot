@@ -283,6 +283,8 @@ def process_export_async(model_id, format, export_config, export_id, task_id):
                     export_params['half'] = False
                 elif format == 'onnx':
                     export_params['opset'] = export_config.get('opset', 12)
+                    # YOLO26 默认 end2end 输出 (1,N,6)，与现有 ONNX NMS 后处理不兼容
+                    export_params['end2end'] = False
 
                 model.export(**export_params)
                 logger.info(f"模型导出完成，查找导出文件")
