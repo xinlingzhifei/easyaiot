@@ -1,0 +1,115 @@
+package com.basiclab.iot.system.supervision;
+
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionTaskDO;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService.EventRecheckStore;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SupervisionTaskRecheckServiceTest {
+
+    @Test
+    void approveSubmittedTaskMarksTaskApprovedAndEventRechecked() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
+        CapturingEventRecheckStore eventRecheckStore = new CapturingEventRecheckStore();
+        SupervisionTaskRecheckService service = new SupervisionTaskRecheckService(
+                mapperHandler.createProxy(),
+                eventRecheckStore
+        );
+
+        boolean approved = service.approveSubmittedTask(2001L);
+
+        assertTrue(approved);
+        assertEquals(List.of(2001L), mapperHandler.selectedTaskIds());
+        assertEquals(List.of(2001L), mapperHandler.approvedTaskIds());
+        assertEquals(List.of(1001L), eventRecheckStore.recheckedEventIds());
+    }
+
+    @Test
+    void approveSubmittedTaskReturnsFalseWhenTaskIsNotSubmitted() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(0);
+        CapturingEventRecheckStore eventRecheckStore = new CapturingEventRecheckStore();
+        SupervisionTaskRecheckService service = new SupervisionTaskRecheckService(
+                mapperHandler.createProxy(),
+                eventRecheckStore
+        );
+
+        boolean approved = service.approveSubmittedTask(2001L);
+
+        assertFalse(approved);
+        assertEquals(List.of(2001L), mapperHandler.approvedTaskIds());
+        assertEquals(List.of(), eventRecheckStore.recheckedEventIds());
+    }
+
+    private static final class CapturingTaskMapperHandler implements InvocationHandler {
+
+        private final int updateResult;
+        private final List<Long> selectedTaskIds = new ArrayList<>();
+        private final List<Long> approvedTaskIds = new ArrayList<>();
+
+        private CapturingTaskMapperHandler(int updateResult) {
+            this.updateResult = updateResult;
+        }
+
+        private SupervisionTaskMapper createProxy() {
+            return (SupervisionTaskMapper) Proxy.newProxyInstance(
+                    SupervisionTaskMapper.class.getClassLoader(),
+                    new Class[]{SupervisionTaskMapper.class},
+                    this
+            );
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            if ("selectById".equals(method.getName()) && args != null && args.length == 1) {
+                selectedTaskIds.add((Long) args[0]);
+                return new SupervisionTaskDO()
+                        .setId((Long) args[0])
+                        .setEventId(1001L);
+            }
+            if ("updateStatusToApproved".equals(method.getName()) && args != null && args.length == 1) {
+                approvedTaskIds.add((Long) args[0]);
+                return updateResult;
+            }
+            if (method.getDeclaringClass() == Object.class) {
+                return method.invoke(this, args);
+            }
+            throw new UnsupportedOperationException(method.toString());
+        }
+
+        private List<Long> selectedTaskIds() {
+            return selectedTaskIds;
+        }
+
+        private List<Long> approvedTaskIds() {
+            return approvedTaskIds;
+        }
+
+    }
+
+    private static final class CapturingEventRecheckStore implements EventRecheckStore {
+
+        private final List<Long> recheckedEventIds = new ArrayList<>();
+
+        @Override
+        public void markRechecked(Long eventId) {
+            recheckedEventIds.add(eventId);
+        }
+
+        private List<Long> recheckedEventIds() {
+            return recheckedEventIds;
+        }
+
+    }
+
+}

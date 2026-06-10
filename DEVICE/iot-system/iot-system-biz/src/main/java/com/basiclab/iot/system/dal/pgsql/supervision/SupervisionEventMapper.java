@@ -45,4 +45,13 @@ public interface SupervisionEventMapper extends BaseMapperX<SupervisionEventDO> 
                         .eq(SupervisionEventDO::getEventStatus, SupervisionEventStatusEnum.ACCEPTED.getCode()));
     }
 
+    default int updateStatusToPendingCloseCheck(Long eventId, LocalDateTime recheckedAt) {
+        return update(new SupervisionEventDO()
+                        .setEventStatus(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode())
+                        .setRecheckedAt(recheckedAt),
+                new LambdaQueryWrapperX<SupervisionEventDO>()
+                        .eq(SupervisionEventDO::getId, eventId)
+                        .eq(SupervisionEventDO::getEventStatus, SupervisionEventStatusEnum.PENDING_RECHECK.getCode()));
+    }
+
 }

@@ -32,4 +32,12 @@ public interface SupervisionTaskMapper extends BaseMapperX<SupervisionTaskDO> {
                         .eq(SupervisionTaskDO::getTaskStatus, SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode()));
     }
 
+    default int updateStatusToApproved(Long taskId) {
+        return update(new SupervisionTaskDO()
+                        .setTaskStatus(SupervisionTaskStatusEnum.APPROVED.getCode()),
+                new LambdaQueryWrapperX<SupervisionTaskDO>()
+                        .eq(SupervisionTaskDO::getId, taskId)
+                        .eq(SupervisionTaskDO::getTaskStatus, SupervisionTaskStatusEnum.SUBMITTED.getCode()));
+    }
+
 }

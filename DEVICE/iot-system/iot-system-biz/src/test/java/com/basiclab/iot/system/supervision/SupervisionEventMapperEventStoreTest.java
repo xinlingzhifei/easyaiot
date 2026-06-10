@@ -101,6 +101,20 @@ class SupervisionEventMapperEventStoreTest {
         assertNotNull(handledUpdate.getHandledAt());
     }
 
+    @Test
+    void markRecheckedUpdatesEventThroughMapper() {
+        CapturingMapperHandler mapperHandler = new CapturingMapperHandler();
+        SupervisionEventMapperEventStore eventStore = new SupervisionEventMapperEventStore(mapperHandler.createProxy());
+
+        eventStore.markRechecked(1001L);
+
+        assertEquals(1, mapperHandler.recheckedUpdates().size());
+        SupervisionEventDO recheckedUpdate = mapperHandler.recheckedUpdates().get(0);
+        assertEquals(1001L, recheckedUpdate.getId());
+        assertEquals(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode(), recheckedUpdate.getEventStatus());
+        assertNotNull(recheckedUpdate.getRecheckedAt());
+    }
+
     private static final class CapturingMapperHandler implements InvocationHandler {
 
         private long nextEventId = 1000L;
@@ -110,6 +124,7 @@ class SupervisionEventMapperEventStoreTest {
         private final List<SupervisionEventDO> dispatchedUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> acceptedUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> handledUpdates = new ArrayList<>();
+        private final List<SupervisionEventDO> recheckedUpdates = new ArrayList<>();
 
         private SupervisionEventMapper createProxy() {
             return (SupervisionEventMapper) Proxy.newProxyInstance(
@@ -169,6 +184,16 @@ class SupervisionEventMapperEventStoreTest {
                 handledUpdates.add(update);
                 return 1;
             }
+            if ("updateStatusToPendingCloseCheck".equals(method.getName()) && args != null && args.length == 2) {
+                Long eventId = (Long) args[0];
+                LocalDateTime recheckedAt = (LocalDateTime) args[1];
+                SupervisionEventDO update = new SupervisionEventDO()
+                        .setId(eventId)
+                        .setEventStatus(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode())
+                        .setRecheckedAt(recheckedAt);
+                recheckedUpdates.add(update);
+                return 1;
+            }
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(this, args);
             }
@@ -193,6 +218,10 @@ class SupervisionEventMapperEventStoreTest {
 
         private List<SupervisionEventDO> handledUpdates() {
             return handledUpdates;
+        }
+
+        private List<SupervisionEventDO> recheckedUpdates() {
+            return recheckedUpdates;
         }
 
         private String key(String sourceSystem, String sourceAlertId) {

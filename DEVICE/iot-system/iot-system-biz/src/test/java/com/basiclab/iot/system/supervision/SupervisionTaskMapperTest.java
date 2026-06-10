@@ -68,6 +68,26 @@ class SupervisionTaskMapperTest {
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode()));
     }
 
+    @Test
+    void updateStatusToApprovedUpdatesOnlySubmittedTaskById() {
+        initTableInfo();
+        CapturingMapperHandler handler = new CapturingMapperHandler();
+        SupervisionTaskMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToApproved(2001L);
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionTaskStatusEnum.APPROVED.getCode(), handler.updateObject().getTaskStatus());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionTaskDO> queryWrapper = (LambdaQueryWrapperX<SupervisionTaskDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("task_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(2001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionTaskStatusEnum.SUBMITTED.getCode()));
+    }
+
     private static void initTableInfo() {
         if (TableInfoHelper.getTableInfo(SupervisionTaskDO.class) != null) {
             return;

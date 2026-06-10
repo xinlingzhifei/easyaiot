@@ -7,6 +7,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Alert
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService.EventAcceptanceStore;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService.EventRecheckStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService.EventHandlingStore;
 import org.springframework.stereotype.Service;
 
@@ -16,7 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-public class SupervisionEventMapperEventStore implements EventStore, EventAcceptanceStore, EventHandlingStore {
+public class SupervisionEventMapperEventStore implements EventStore, EventAcceptanceStore, EventHandlingStore, EventRecheckStore {
 
     private static final String EVENT_NO_PREFIX = "SE-";
 
@@ -74,6 +75,12 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
     public void markHandled(Long eventId) {
         Objects.requireNonNull(eventId, "eventId");
         supervisionEventMapper.updateStatusToPendingRecheck(eventId, LocalDateTime.now());
+    }
+
+    @Override
+    public void markRechecked(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        supervisionEventMapper.updateStatusToPendingCloseCheck(eventId, LocalDateTime.now());
     }
 
     private AlertToEventResult toResult(SupervisionEventDO eventDO) {
