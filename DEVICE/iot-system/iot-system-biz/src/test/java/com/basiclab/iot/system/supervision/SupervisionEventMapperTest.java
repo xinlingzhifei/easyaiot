@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionEventDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEventMapper;
+import com.basiclab.iot.system.enums.supervision.SupervisionCloseResultEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.Test;
@@ -132,6 +133,33 @@ class SupervisionEventMapperTest {
         assertTrue(sqlSegment.contains("event_status"));
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(1001L));
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.PENDING_RECHECK.getCode()));
+    }
+
+    @Test
+    void updateStatusToClosedUpdatesPendingCloseCheckEventById() {
+        initTableInfo();
+        LocalDateTime closedAt = LocalDateTime.of(2026, 6, 10, 16, 30);
+        CapturingMapperHandler handler = new CapturingMapperHandler(null);
+        SupervisionEventMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToClosed(
+                1001L,
+                SupervisionCloseResultEnum.CONFIRMED_HANDLED.getCode(),
+                closedAt
+        );
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionEventStatusEnum.CLOSED.getCode(), handler.updateObject().getEventStatus());
+        assertEquals(SupervisionCloseResultEnum.CONFIRMED_HANDLED.getCode(), handler.updateObject().getCloseResult());
+        assertEquals(closedAt, handler.updateObject().getClosedAt());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionEventDO> queryWrapper = (LambdaQueryWrapperX<SupervisionEventDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("event_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(1001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode()));
     }
 
     private static void initTableInfo() {

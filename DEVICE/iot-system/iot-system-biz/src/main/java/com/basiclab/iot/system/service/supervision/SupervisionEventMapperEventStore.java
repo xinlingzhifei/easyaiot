@@ -6,6 +6,7 @@ import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
+import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService.EventCloseStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService.EventAcceptanceStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService.EventRecheckStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService.EventHandlingStore;
@@ -17,7 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-public class SupervisionEventMapperEventStore implements EventStore, EventAcceptanceStore, EventHandlingStore, EventRecheckStore {
+public class SupervisionEventMapperEventStore implements EventStore, EventAcceptanceStore, EventHandlingStore, EventRecheckStore, EventCloseStore {
 
     private static final String EVENT_NO_PREFIX = "SE-";
 
@@ -81,6 +82,13 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
     public void markRechecked(Long eventId) {
         Objects.requireNonNull(eventId, "eventId");
         supervisionEventMapper.updateStatusToPendingCloseCheck(eventId, LocalDateTime.now());
+    }
+
+    @Override
+    public boolean markClosed(Long eventId, String closeResult) {
+        Objects.requireNonNull(eventId, "eventId");
+        Objects.requireNonNull(closeResult, "closeResult");
+        return supervisionEventMapper.updateStatusToClosed(eventId, closeResult, LocalDateTime.now()) == 1;
     }
 
     private AlertToEventResult toResult(SupervisionEventDO eventDO) {

@@ -2,6 +2,7 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionEventDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEventMapper;
+import com.basiclab.iot.system.enums.supervision.SupervisionCloseResultEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventMapperEventStore;
@@ -115,6 +116,22 @@ class SupervisionEventMapperEventStoreTest {
         assertNotNull(recheckedUpdate.getRecheckedAt());
     }
 
+    @Test
+    void markClosedUpdatesEventThroughMapper() {
+        CapturingMapperHandler mapperHandler = new CapturingMapperHandler();
+        SupervisionEventMapperEventStore eventStore = new SupervisionEventMapperEventStore(mapperHandler.createProxy());
+
+        boolean closed = eventStore.markClosed(1001L, SupervisionCloseResultEnum.CONFIRMED_HANDLED.getCode());
+
+        assertTrue(closed);
+        assertEquals(1, mapperHandler.closedUpdates().size());
+        SupervisionEventDO closedUpdate = mapperHandler.closedUpdates().get(0);
+        assertEquals(1001L, closedUpdate.getId());
+        assertEquals(SupervisionEventStatusEnum.CLOSED.getCode(), closedUpdate.getEventStatus());
+        assertEquals(SupervisionCloseResultEnum.CONFIRMED_HANDLED.getCode(), closedUpdate.getCloseResult());
+        assertNotNull(closedUpdate.getClosedAt());
+    }
+
     private static final class CapturingMapperHandler implements InvocationHandler {
 
         private long nextEventId = 1000L;
@@ -125,6 +142,7 @@ class SupervisionEventMapperEventStoreTest {
         private final List<SupervisionEventDO> acceptedUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> handledUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> recheckedUpdates = new ArrayList<>();
+        private final List<SupervisionEventDO> closedUpdates = new ArrayList<>();
 
         private SupervisionEventMapper createProxy() {
             return (SupervisionEventMapper) Proxy.newProxyInstance(
@@ -194,6 +212,18 @@ class SupervisionEventMapperEventStoreTest {
                 recheckedUpdates.add(update);
                 return 1;
             }
+            if ("updateStatusToClosed".equals(method.getName()) && args != null && args.length == 3) {
+                Long eventId = (Long) args[0];
+                String closeResult = (String) args[1];
+                LocalDateTime closedAt = (LocalDateTime) args[2];
+                SupervisionEventDO update = new SupervisionEventDO()
+                        .setId(eventId)
+                        .setEventStatus(SupervisionEventStatusEnum.CLOSED.getCode())
+                        .setCloseResult(closeResult)
+                        .setClosedAt(closedAt);
+                closedUpdates.add(update);
+                return 1;
+            }
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(this, args);
             }
@@ -222,6 +252,10 @@ class SupervisionEventMapperEventStoreTest {
 
         private List<SupervisionEventDO> recheckedUpdates() {
             return recheckedUpdates;
+        }
+
+        private List<SupervisionEventDO> closedUpdates() {
+            return closedUpdates;
         }
 
         private String key(String sourceSystem, String sourceAlertId) {
