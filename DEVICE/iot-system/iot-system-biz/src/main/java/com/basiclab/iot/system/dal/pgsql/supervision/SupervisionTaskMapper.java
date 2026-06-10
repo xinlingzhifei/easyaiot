@@ -21,4 +21,15 @@ public interface SupervisionTaskMapper extends BaseMapperX<SupervisionTaskDO> {
                         .eq(SupervisionTaskDO::getTaskStatus, SupervisionTaskStatusEnum.SENT.getCode()));
     }
 
+    default int updateStatusToSubmitted(Long taskId, String resultCategory, String handlingNote, LocalDateTime submittedAt) {
+        return update(new SupervisionTaskDO()
+                        .setTaskStatus(SupervisionTaskStatusEnum.SUBMITTED.getCode())
+                        .setResultCategory(resultCategory)
+                        .setHandlingNote(handlingNote)
+                        .setSubmittedAt(submittedAt),
+                new LambdaQueryWrapperX<SupervisionTaskDO>()
+                        .eq(SupervisionTaskDO::getId, taskId)
+                        .eq(SupervisionTaskDO::getTaskStatus, SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode()));
+    }
+
 }
