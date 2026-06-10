@@ -73,6 +73,20 @@ class SupervisionEventMapperEventStoreTest {
         assertNotNull(dispatchedUpdate.getDispatchedAt());
     }
 
+    @Test
+    void markAcceptedUpdatesEventThroughMapper() {
+        CapturingMapperHandler mapperHandler = new CapturingMapperHandler();
+        SupervisionEventMapperEventStore eventStore = new SupervisionEventMapperEventStore(mapperHandler.createProxy());
+
+        eventStore.markAccepted(1001L);
+
+        assertEquals(1, mapperHandler.acceptedUpdates().size());
+        SupervisionEventDO acceptedUpdate = mapperHandler.acceptedUpdates().get(0);
+        assertEquals(1001L, acceptedUpdate.getId());
+        assertEquals(SupervisionEventStatusEnum.ACCEPTED.getCode(), acceptedUpdate.getEventStatus());
+        assertNotNull(acceptedUpdate.getAcceptedAt());
+    }
+
     private static final class CapturingMapperHandler implements InvocationHandler {
 
         private long nextEventId = 1000L;
@@ -80,6 +94,7 @@ class SupervisionEventMapperEventStoreTest {
         private final List<String> lookupKeys = new ArrayList<>();
         private final List<SupervisionEventDO> insertedEvents = new ArrayList<>();
         private final List<SupervisionEventDO> dispatchedUpdates = new ArrayList<>();
+        private final List<SupervisionEventDO> acceptedUpdates = new ArrayList<>();
 
         private SupervisionEventMapper createProxy() {
             return (SupervisionEventMapper) Proxy.newProxyInstance(
@@ -119,6 +134,16 @@ class SupervisionEventMapperEventStoreTest {
                                 .setDispatchedAt(dispatchedAt));
                 return 1;
             }
+            if ("updateStatusToAccepted".equals(method.getName()) && args != null && args.length == 2) {
+                Long eventId = (Long) args[0];
+                LocalDateTime acceptedAt = (LocalDateTime) args[1];
+                SupervisionEventDO update = new SupervisionEventDO()
+                        .setId(eventId)
+                        .setEventStatus(SupervisionEventStatusEnum.ACCEPTED.getCode())
+                        .setAcceptedAt(acceptedAt);
+                acceptedUpdates.add(update);
+                return 1;
+            }
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(this, args);
             }
@@ -135,6 +160,10 @@ class SupervisionEventMapperEventStoreTest {
 
         private List<SupervisionEventDO> dispatchedUpdates() {
             return dispatchedUpdates;
+        }
+
+        private List<SupervisionEventDO> acceptedUpdates() {
+            return acceptedUpdates;
         }
 
         private String key(String sourceSystem, String sourceAlertId) {

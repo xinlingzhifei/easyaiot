@@ -27,4 +27,13 @@ public interface SupervisionEventMapper extends BaseMapperX<SupervisionEventDO> 
                         .eq(SupervisionEventDO::getEventStatus, SupervisionEventStatusEnum.CREATED.getCode()));
     }
 
+    default int updateStatusToAccepted(Long eventId, LocalDateTime acceptedAt) {
+        return update(new SupervisionEventDO()
+                        .setEventStatus(SupervisionEventStatusEnum.ACCEPTED.getCode())
+                        .setAcceptedAt(acceptedAt),
+                new LambdaQueryWrapperX<SupervisionEventDO>()
+                        .eq(SupervisionEventDO::getId, eventId)
+                        .eq(SupervisionEventDO::getEventStatus, SupervisionEventStatusEnum.DISPATCHED.getCode()));
+    }
+
 }
