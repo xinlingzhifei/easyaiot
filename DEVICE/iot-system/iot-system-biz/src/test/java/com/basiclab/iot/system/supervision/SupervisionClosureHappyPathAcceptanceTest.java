@@ -21,6 +21,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceServ
 import com.basiclab.iot.system.service.supervision.SupervisionTaskDispatcher;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService.EventRecheckStore;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskReworkService;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskReworkService.EventReworkStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService.EventHandlingStore;
 import org.junit.jupiter.api.Test;
@@ -106,8 +108,120 @@ class SupervisionClosureHappyPathAcceptanceTest {
         assertNotNull(task.getSubmittedAt());
     }
 
+    @Test
+    void recheckReworkRestartsExistingTaskAndReturnsEventToPendingRecheck() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        InMemoryTaskMapper taskMapper = new InMemoryTaskMapper();
+        SupervisionTaskMapper taskMapperProxy = taskMapper.createProxy();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(
+                eventStore,
+                new SupervisionTaskDispatcher(taskMapperProxy)
+        );
+        SupervisionTaskAcceptanceService acceptanceService = new SupervisionTaskAcceptanceService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskSubmissionService submissionService = new SupervisionTaskSubmissionService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskRecheckService recheckService = new SupervisionTaskRecheckService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskReworkService reworkService = new SupervisionTaskReworkService(
+                taskMapperProxy,
+                eventStore
+        );
+
+        AlertToEventResult result = eventService.createFromAlert(new AlertToEventCommand(
+                "video",
+                "alert-recheck-rework-001",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 10, 19, 10),
+                "payload-hash-recheck-rework-001"
+        ));
+        Long taskId = taskMapper.onlyTaskId();
+
+        assertTrue(acceptanceService.acceptTask(taskId, 3001L));
+        assertTrue(submissionService.submitTask(taskId, "abnormal", "needs rework"));
+        assertTrue(recheckService.rejectSubmittedTask(taskId));
+        assertTrue(reworkService.restartReworkTask(taskId, 3002L));
+        assertTrue(submissionService.submitTask(taskId, "normal", "rework handled"));
+
+        SupervisionEventDO event = eventStore.event(result.eventId());
+        assertEquals(SupervisionEventStatusEnum.PENDING_RECHECK.getCode(), event.getEventStatus());
+        assertNotNull(event.getAcceptedAt());
+        assertNotNull(event.getHandledAt());
+
+        SupervisionTaskDO task = taskMapper.task(taskId);
+        assertEquals(SupervisionTaskStatusEnum.SUBMITTED.getCode(), task.getTaskStatus());
+        assertEquals(3002L, task.getAssignedUserId());
+        assertEquals(1, task.getReworkCount());
+        assertEquals("normal", task.getResultCategory());
+        assertEquals("rework handled", task.getHandlingNote());
+    }
+
+    @Test
+    void closeCheckReworkRestartsApprovedTaskAndReturnsEventToPendingRecheck() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        InMemoryTaskMapper taskMapper = new InMemoryTaskMapper();
+        SupervisionTaskMapper taskMapperProxy = taskMapper.createProxy();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(
+                eventStore,
+                new SupervisionTaskDispatcher(taskMapperProxy)
+        );
+        SupervisionTaskAcceptanceService acceptanceService = new SupervisionTaskAcceptanceService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskSubmissionService submissionService = new SupervisionTaskSubmissionService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskRecheckService recheckService = new SupervisionTaskRecheckService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionEventCloseCheckService closeCheckService = new SupervisionEventCloseCheckService(eventStore);
+        SupervisionTaskReworkService reworkService = new SupervisionTaskReworkService(
+                taskMapperProxy,
+                eventStore
+        );
+
+        AlertToEventResult result = eventService.createFromAlert(new AlertToEventCommand(
+                "video",
+                "alert-close-check-rework-001",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 10, 19, 45),
+                "payload-hash-close-check-rework-001"
+        ));
+        Long taskId = taskMapper.onlyTaskId();
+
+        assertTrue(acceptanceService.acceptTask(taskId, 3001L));
+        assertTrue(submissionService.submitTask(taskId, "normal", "handled before close check"));
+        assertTrue(recheckService.approveSubmittedTask(taskId));
+        assertTrue(closeCheckService.rejectCloseCheck(result.eventId()));
+        assertTrue(reworkService.restartReworkTask(taskId, 3003L));
+        assertTrue(submissionService.submitTask(taskId, "normal", "close-check rework handled"));
+
+        SupervisionEventDO event = eventStore.event(result.eventId());
+        assertEquals(SupervisionEventStatusEnum.PENDING_RECHECK.getCode(), event.getEventStatus());
+        assertNotNull(event.getAcceptedAt());
+        assertNotNull(event.getHandledAt());
+
+        SupervisionTaskDO task = taskMapper.task(taskId);
+        assertEquals(SupervisionTaskStatusEnum.SUBMITTED.getCode(), task.getTaskStatus());
+        assertEquals(3003L, task.getAssignedUserId());
+        assertEquals(1, task.getReworkCount());
+        assertEquals("normal", task.getResultCategory());
+        assertEquals("close-check rework handled", task.getHandlingNote());
+    }
+
     private static final class InMemoryEventStore implements EventStore, EventAcceptanceStore,
-            EventHandlingStore, EventRecheckStore, EventCloseStore {
+            EventHandlingStore, EventRecheckStore, EventCloseStore, EventReworkStore {
 
         private long nextEventId = 1000L;
         private final Map<Long, SupervisionEventDO> eventsById = new LinkedHashMap<>();
@@ -211,6 +325,15 @@ class SupervisionClosureHappyPathAcceptanceTest {
             return true;
         }
 
+        @Override
+        public void markReworkAccepted(Long eventId) {
+            SupervisionEventDO event = event(eventId);
+            if (SupervisionEventStatusEnum.REWORK_REQUIRED.getCode().equals(event.getEventStatus())) {
+                event.setEventStatus(SupervisionEventStatusEnum.ACCEPTED.getCode())
+                        .setAcceptedAt(LocalDateTime.now());
+            }
+        }
+
         private SupervisionEventDO event(Long eventId) {
             SupervisionEventDO event = eventsById.get(eventId);
             if (event == null) {
@@ -289,6 +412,26 @@ class SupervisionClosureHappyPathAcceptanceTest {
                     return 0;
                 }
                 task.setTaskStatus(SupervisionTaskStatusEnum.APPROVED.getCode());
+                return 1;
+            }
+            if ("updateStatusToRejected".equals(method.getName()) && args != null && args.length == 1) {
+                SupervisionTaskDO task = task((Long) args[0]);
+                if (!SupervisionTaskStatusEnum.SUBMITTED.getCode().equals(task.getTaskStatus())) {
+                    return 0;
+                }
+                task.setTaskStatus(SupervisionTaskStatusEnum.REJECTED.getCode());
+                return 1;
+            }
+            if ("updateStatusToAcknowledgedForRework".equals(method.getName()) && args != null && args.length == 4) {
+                SupervisionTaskDO task = task((Long) args[0]);
+                if (!SupervisionTaskStatusEnum.REJECTED.getCode().equals(task.getTaskStatus())
+                        && !SupervisionTaskStatusEnum.APPROVED.getCode().equals(task.getTaskStatus())) {
+                    return 0;
+                }
+                task.setTaskStatus(SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode())
+                        .setAssignedUserId((Long) args[1])
+                        .setAcceptedAt((LocalDateTime) args[2])
+                        .setReworkCount((Integer) args[3]);
                 return 1;
             }
             if (method.getDeclaringClass() == Object.class) {
