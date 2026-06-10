@@ -6,9 +6,11 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Alert
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
 import com.basiclab.iot.system.service.supervision.SupervisionRuleSeeds.RuleSeed;
+import org.springframework.stereotype.Service;
 
 import java.util.Objects;
 
+@Service
 public class SupervisionEventServiceImpl implements SupervisionEventService {
 
     private final EventStore eventStore;
