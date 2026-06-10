@@ -51,11 +51,29 @@ class SupervisionTaskRecheckServiceTest {
         assertEquals(List.of(), eventRecheckStore.recheckedEventIds());
     }
 
+    @Test
+    void rejectSubmittedTaskMarksTaskRejectedAndEventReworkRequired() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
+        CapturingEventRecheckStore eventRecheckStore = new CapturingEventRecheckStore();
+        SupervisionTaskRecheckService service = new SupervisionTaskRecheckService(
+                mapperHandler.createProxy(),
+                eventRecheckStore
+        );
+
+        boolean rejected = service.rejectSubmittedTask(2001L);
+
+        assertTrue(rejected);
+        assertEquals(List.of(2001L), mapperHandler.selectedTaskIds());
+        assertEquals(List.of(2001L), mapperHandler.rejectedTaskIds());
+        assertEquals(List.of(1001L), eventRecheckStore.reworkEventIds());
+    }
+
     private static final class CapturingTaskMapperHandler implements InvocationHandler {
 
         private final int updateResult;
         private final List<Long> selectedTaskIds = new ArrayList<>();
         private final List<Long> approvedTaskIds = new ArrayList<>();
+        private final List<Long> rejectedTaskIds = new ArrayList<>();
 
         private CapturingTaskMapperHandler(int updateResult) {
             this.updateResult = updateResult;
@@ -81,6 +99,10 @@ class SupervisionTaskRecheckServiceTest {
                 approvedTaskIds.add((Long) args[0]);
                 return updateResult;
             }
+            if ("updateStatusToRejected".equals(method.getName()) && args != null && args.length == 1) {
+                rejectedTaskIds.add((Long) args[0]);
+                return updateResult;
+            }
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(this, args);
             }
@@ -95,19 +117,33 @@ class SupervisionTaskRecheckServiceTest {
             return approvedTaskIds;
         }
 
+        private List<Long> rejectedTaskIds() {
+            return rejectedTaskIds;
+        }
+
     }
 
     private static final class CapturingEventRecheckStore implements EventRecheckStore {
 
         private final List<Long> recheckedEventIds = new ArrayList<>();
+        private final List<Long> reworkEventIds = new ArrayList<>();
 
         @Override
         public void markRechecked(Long eventId) {
             recheckedEventIds.add(eventId);
         }
 
+        @Override
+        public void markReworkRequired(Long eventId) {
+            reworkEventIds.add(eventId);
+        }
+
         private List<Long> recheckedEventIds() {
             return recheckedEventIds;
+        }
+
+        private List<Long> reworkEventIds() {
+            return reworkEventIds;
         }
 
     }

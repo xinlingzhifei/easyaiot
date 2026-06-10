@@ -136,6 +136,28 @@ class SupervisionEventMapperTest {
     }
 
     @Test
+    void updateStatusToReworkRequiredUpdatesPendingRecheckEventById() {
+        initTableInfo();
+        LocalDateTime recheckedAt = LocalDateTime.of(2026, 6, 10, 15, 45);
+        CapturingMapperHandler handler = new CapturingMapperHandler(null);
+        SupervisionEventMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToReworkRequired(1001L, recheckedAt);
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode(), handler.updateObject().getEventStatus());
+        assertEquals(recheckedAt, handler.updateObject().getRecheckedAt());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionEventDO> queryWrapper = (LambdaQueryWrapperX<SupervisionEventDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("event_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(1001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.PENDING_RECHECK.getCode()));
+    }
+
+    @Test
     void updateStatusToClosedUpdatesPendingCloseCheckEventById() {
         initTableInfo();
         LocalDateTime closedAt = LocalDateTime.of(2026, 6, 10, 16, 30);

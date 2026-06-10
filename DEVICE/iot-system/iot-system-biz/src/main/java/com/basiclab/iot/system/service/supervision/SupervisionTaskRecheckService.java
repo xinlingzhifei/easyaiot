@@ -32,9 +32,25 @@ public class SupervisionTaskRecheckService {
         return approved;
     }
 
+    public boolean rejectSubmittedTask(Long taskId) {
+        Objects.requireNonNull(taskId, "taskId");
+        SupervisionTaskDO task = supervisionTaskMapper.selectById(taskId);
+        if (task == null) {
+            return false;
+        }
+        Long eventId = Objects.requireNonNull(task.getEventId(), "eventId");
+        boolean rejected = supervisionTaskMapper.updateStatusToRejected(taskId) == 1;
+        if (rejected) {
+            eventRecheckStore.markReworkRequired(eventId);
+        }
+        return rejected;
+    }
+
     public interface EventRecheckStore {
 
         void markRechecked(Long eventId);
+
+        void markReworkRequired(Long eventId);
 
     }
 

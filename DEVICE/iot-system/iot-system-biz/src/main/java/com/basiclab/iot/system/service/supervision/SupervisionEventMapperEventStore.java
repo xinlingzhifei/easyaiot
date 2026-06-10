@@ -85,6 +85,12 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
     }
 
     @Override
+    public void markReworkRequired(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        supervisionEventMapper.updateStatusToReworkRequired(eventId, LocalDateTime.now());
+    }
+
+    @Override
     public boolean markClosed(Long eventId, String closeResult) {
         Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(closeResult, "closeResult");
