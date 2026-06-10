@@ -378,6 +378,63 @@ def create_app():
                         db.create_all()
                         print(f"✅ {track_table} 表创建成功")
 
+                # NVR / GB28181 分组存储策略表
+                group_policy_table = 'space_group_save_policy'
+                r = db.session.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = :tbl
+                    );
+                """), {'tbl': group_policy_table})
+                if not r.scalar():
+                    print(f"⚠️  {group_policy_table} 表不存在，正在创建...")
+                    db.create_all()
+                    print(f"✅ {group_policy_table} 表创建成功")
+
+                # 目录/空间保存时间字段
+                for table_name, col_name, col_def in (
+                    ('device_directory', 'snap_save_time', 'INTEGER NOT NULL DEFAULT 7'),
+                    ('device_directory', 'record_save_time', 'INTEGER NOT NULL DEFAULT 7'),
+                    ('snap_space', 'save_time_custom', 'BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('record_space', 'save_time_custom', 'BOOLEAN NOT NULL DEFAULT FALSE'),
+                ):
+                    r = db.session.execute(text("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                            AND table_name = :tbl AND column_name = :col
+                        );
+                    """), {'tbl': table_name, 'col': col_name})
+                    if not r.scalar():
+                        print(f"⚠️  {table_name}.{col_name} 列不存在，正在添加...")
+                        db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def};'))
+                        db.session.commit()
+                        print(f"✅ {table_name}.{col_name} 列添加成功")
+
+                # 将历史非自定义空间的永久保存(0)迁移为目录默认 7 天
+                try:
+                    db.session.execute(text("""
+                        UPDATE snap_space SET save_time = 7
+                        WHERE save_time = 0 AND (save_time_custom IS NULL OR save_time_custom = FALSE);
+                    """))
+                    db.session.execute(text("""
+                        UPDATE record_space SET save_time = 7
+                        WHERE save_time = 0 AND (save_time_custom IS NULL OR save_time_custom = FALSE);
+                    """))
+                    db.session.execute(text("""
+                        UPDATE device_directory SET snap_save_time = 7
+                        WHERE snap_save_time IS NULL OR snap_save_time = 0;
+                    """))
+                    db.session.execute(text("""
+                        UPDATE device_directory SET record_save_time = 7
+                        WHERE record_save_time IS NULL OR record_save_time = 0;
+                    """))
+                    db.session.commit()
+                except Exception as migrate_save_err:
+                    db.session.rollback()
+                    print(f"⚠️  空间保存时间数据迁移跳过: {migrate_save_err}")
+
                 if directory_id_exists and auto_snap_enabled_exists and cover_image_path_exists and device_detection_region_exists:
                     print("✅ 数据库迁移检查完成，所有列和表已存在")
 
@@ -927,8 +984,23 @@ def create_app():
                 replace_existing=True
             )
             print('✅ 抓拍空间自动清理任务已启动（每天凌晨2点执行）')
+
+            from app.services.record_space_service import auto_cleanup_all_record_spaces
+
+            def record_cleanup_wrapper():
+                return auto_cleanup_all_record_spaces(app=app)
+
+            scheduler.add_job(
+                record_cleanup_wrapper,
+                'cron',
+                hour=2,
+                minute=30,
+                id='auto_cleanup_record_spaces',
+                replace_existing=True,
+            )
+            print('✅ 录像空间自动清理任务已启动（每天凌晨2点30分执行）')
         except Exception as e:
-            print(f"❌ 启动抓拍空间自动清理任务失败: {str(e)}")
+            print(f"❌ 启动空间自动清理任务失败: {str(e)}")
             import traceback
             traceback.print_exc()
 

@@ -73,11 +73,13 @@ const pusherOptions = ref<Array<{ label: string; value: number }>>([]);
 // 加载空间列表
 const loadSpaces = async () => {
   try {
-    const response = await getSnapSpaceList({ pageNo: 1, pageSize: 1000 });
-    spaceOptions.value = (response.data || []).map((item) => ({
-      label: item.space_name,
-      value: item.id,
-    }));
+    const response = await getSnapSpaceList({ pageNo: 1, pageSize: 1000, scope: 'leaves' });
+    spaceOptions.value = (response.data || [])
+      .filter((item) => item.id != null)
+      .map((item) => ({
+        label: item.space_name,
+        value: item.id!,
+      }));
   } catch (error) {
     console.error('加载空间列表失败', error);
   }
@@ -403,7 +405,14 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
     // 加载检测区域
     await loadRegions(data.record.id);
   } else {
-    await setFieldsValue({ cron_expression: DEFAULT_SNAP_CRON });
+    const defaults: Record<string, unknown> = { cron_expression: DEFAULT_SNAP_CRON };
+    if (data?.space_id != null) {
+      defaults.space_id = data.space_id;
+    }
+    if (data?.device_id) {
+      defaults.device_id = data.device_id;
+    }
+    await setFieldsValue(defaults);
   }
 });
 

@@ -123,7 +123,7 @@ const handleViewSnapSpace = async (camera: typeof cameraList.value[0]) => {
   // 直接打开对应摄像头的抓拍空间，不需要再次选择
   camera.loading = true;
   try {
-    router.push({ path: `/snap-space-manage/${camera.space.id}` });
+    router.push({ path: `/snap-space-manage/${camera.space.id}`, query: { view: 'alerts' } });
   } catch (error) {
     console.error('打开抓拍空间失败:', error);
     createMessage.error('打开抓拍空间失败');

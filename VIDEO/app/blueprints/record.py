@@ -30,13 +30,19 @@ def list_spaces():
         page_no = int(request.args.get('pageNo', 1))
         page_size = int(request.args.get('pageSize', 10))
         search = request.args.get('search', '').strip() or None
-        
-        result = list_record_spaces(page_no, page_size, search)
+        parent_key = request.args.get('parentKey', 'root').strip() or 'root'
+        scope = request.args.get('scope', '').strip() or None
+
+        result = list_record_spaces(page_no, page_size, search, parent_key, scope)
         return jsonify({
             'code': 0,
             'msg': 'success',
             'data': result['items'],
-            'total': result['total']
+            'total': result['total'],
+            'parent_key': result.get('parent_key', 'root'),
+            'breadcrumbs': result.get('breadcrumbs', []),
+            'is_search': result.get('is_search', False),
+            'scope': result.get('scope'),
         })
     except ValueError as e:
         return jsonify({'code': 400, 'msg': str(e)}), 400
@@ -102,9 +108,15 @@ def update_space(space_id):
         space_name = data.get('space_name', '').strip() if 'space_name' in data else None
         save_mode = data.get('save_mode') if 'save_mode' in data else None
         save_time = data.get('save_time') if 'save_time' in data else None
+        save_time_custom = data.get('save_time_custom') if 'save_time_custom' in data else None
         description = data.get('description', '').strip() if 'description' in data else None
         
-        space = update_record_space(space_id, space_name, save_mode, save_time, description)
+        try:
+            space = update_record_space(
+                space_id, space_name, save_mode, save_time, description, save_time_custom,
+            )
+        except ValueError as ve:
+            return jsonify({'code': 400, 'msg': str(ve)}), 400
         return jsonify({
             'code': 0,
             'msg': '监控录像空间更新成功',
@@ -114,6 +126,39 @@ def update_space(space_id):
         return jsonify({'code': 500, 'msg': str(e)}), 500
     except Exception as e:
         logger.error(f'更新监控录像空间失败: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@record_bp.route('/space/group-policy', methods=['PUT'])
+def update_group_policy():
+    """更新 NVR / GB28181 分组默认录像保存时间，联动非自定义子设备。"""
+    try:
+        data = request.get_json() or {}
+        group_type = (data.get('group_type') or '').strip().lower()
+        group_key = str(data.get('group_key') or '').strip()
+        save_time = data.get('save_time')
+        if save_time is None:
+            return jsonify({'code': 400, 'msg': 'save_time 不能为空'}), 400
+
+        from app.services.space_group_save_time_service import update_group_save_time
+        from app.services.space_save_time_service import SPACE_KIND_RECORD
+
+        policy, updated = update_group_save_time(group_type, group_key, SPACE_KIND_RECORD, save_time)
+        return jsonify({
+            'code': 0,
+            'msg': f'分组存储策略已更新，已同步 {updated} 个非自定义设备空间',
+            'data': {
+                'group_type': policy.group_type,
+                'group_key': policy.group_key,
+                'save_time': policy.record_save_time,
+                'updated_count': updated,
+            },
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'更新分组录像存储策略失败: {str(e)}', exc_info=True)
         db.session.rollback()
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 

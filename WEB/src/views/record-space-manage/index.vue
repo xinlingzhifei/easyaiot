@@ -8,12 +8,12 @@
           preIcon="ant-design:arrow-left-outlined"
           @click="goBack"
         >
-          返回录像空间
+          返回上一级
         </Button>
         <div v-if="spaceInfo" class="space-info">
           <h1 class="page-title">{{ spaceInfo.space_name }}</h1>
           <div class="page-meta">
-            <a-tag color="blue">录像回放</a-tag>
+            <a-tag color="blue">录像空间</a-tag>
             <span v-if="spaceInfo.device_id">设备 {{ spaceInfo.device_id }}</span>
             <span v-if="dayDetail">{{ dayDetail.total_segments }} 个片段 · {{ formatDuration(dayDetail.total_duration_sec) }}</span>
             <span v-if="dayDetail?.alert_segment_count" class="alert-stat">
@@ -24,7 +24,49 @@
       </div>
     </div>
 
-    <div class="replay-body">
+    <div class="mode-toolbar">
+      <RadioGroup
+        v-model:value="contentTab"
+        button-style="solid"
+        size="middle"
+        class="mode-radio-group"
+        @change="handleContentTabChange"
+      >
+        <RadioButton value="alerts">
+          <span class="mode-radio-item">
+            <Icon icon="ant-design:alert-outlined" />
+            算法告警
+          </span>
+        </RadioButton>
+        <RadioButton value="replay">
+          <span class="mode-radio-item">
+            <Icon icon="ant-design:video-camera-outlined" />
+            录像回放
+          </span>
+        </RadioButton>
+      </RadioGroup>
+      <span v-if="contentTab === 'alerts'" class="mode-hint">按日期查看设备算法告警，可跳转至对应录像片段</span>
+      <span v-else class="mode-hint">从左侧选择录像片段开始播放，支持连续播放与时间轴定位</span>
+    </div>
+
+    <div class="content-body">
+      <div
+        v-if="alertsMounted"
+        v-show="contentTab === 'alerts'"
+        class="panel-shell"
+      >
+        <SpaceAlgorithmAlertPanel
+          ref="alertPanelRef"
+          :device-id="spaceInfo?.device_id"
+          @view-record="handleViewRecordFromAlert"
+        />
+      </div>
+
+      <div
+        v-if="replayMounted"
+        v-show="contentTab === 'replay'"
+        class="replay-body"
+      >
       <!-- 左侧：日期 + 片段树 -->
       <aside class="left-panel">
         <div class="panel-section">
@@ -154,6 +196,7 @@
           <a-tag v-if="continuousPlay" color="blue">连续播放中</a-tag>
         </div>
       </main>
+      </div>
     </div>
   </div>
 </template>
@@ -161,9 +204,13 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { DatePicker, Empty, Spin, Switch } from 'ant-design-vue';
+import { DatePicker, Empty, Spin, Switch, RadioButton, RadioGroup } from 'ant-design-vue';
 import { VideoCameraOutlined, WarningOutlined, CaretRightOutlined } from '@ant-design/icons-vue';
 import { Button } from '@/components/Button';
+import { Icon } from '@/components/Icon';
+import SpaceAlgorithmAlertPanel, {
+  type SpaceAlertItem,
+} from '@/views/camera/components/SpaceAlgorithmAlertPanel.vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
 import { useMessage } from '@/hooks/web/useMessage';
@@ -171,6 +218,7 @@ import {
   getRecordSpace,
   getRecordVideoDates,
   getRecordVideosByDay,
+  resolveAlertRecordSegment,
   type RecordDayDetail,
   type RecordDaySegment,
   type RecordTimelineItem,
@@ -178,6 +226,10 @@ import {
   type RecordSessionGroup,
 } from '@/api/device/record';
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage';
+import {
+  buildCameraStorageQuery,
+  parseSpaceFolderQuery,
+} from '@/views/camera/utils/spaceSaveTime';
 
 defineOptions({ name: 'RecordSpaceManage' });
 
@@ -241,6 +293,37 @@ const expandedGroups = ref(new Set<number>());
 let segmentEndTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingAlertId = ref<string | null>(null);
 const pendingSegmentId = ref<string | null>(null);
+const alertPanelRef = ref<InstanceType<typeof SpaceAlgorithmAlertPanel> | null>(null);
+
+type ContentTab = 'alerts' | 'replay';
+const contentTab = ref<ContentTab>('alerts');
+const alertsMounted = ref(contentTab.value === 'alerts');
+const replayMounted = ref(contentTab.value === 'replay');
+
+function normalizeContentTab(value: unknown): ContentTab {
+  if (value === 'replay') return 'replay';
+  if (value === 'alerts') return 'alerts';
+  if (route.query.date || route.query.alertId || route.query.segmentId) return 'replay';
+  return 'alerts';
+}
+
+function syncContentTabFromRoute() {
+  contentTab.value = normalizeContentTab(route.query.view);
+  if (contentTab.value === 'alerts') alertsMounted.value = true;
+  else replayMounted.value = true;
+}
+
+async function handleContentTabChange() {
+  const view = contentTab.value;
+  if (view === 'alerts') alertsMounted.value = true;
+  else replayMounted.value = true;
+  // 与分屏监控一致：仅本地 v-show 切换，不写 URL（fullPath 变化会导致整页 remount）
+  if (view === 'replay' && activeSpaceId.value != null && !availableDates.value.length) {
+    const token = loadToken;
+    await loadAvailableDates(token);
+    if (!isLoadStale(token)) await loadDayDetail();
+  }
+}
 
 const segments = computed(() => dayDetail.value?.segments || []);
 const sessionGroups = computed(() => dayDetail.value?.session_groups || []);
@@ -248,7 +331,10 @@ const timeline = computed(() => dayDetail.value?.timeline_merged || dayDetail.va
 
 function goBack() {
   teardownPage();
-  router.push({ path: '/camera/index', query: { tab: '5' } });
+  router.push({
+    path: '/camera/index',
+    query: buildCameraStorageQuery('record', parseSpaceFolderQuery(route.query.folder)),
+  });
 }
 
 function disabledDate(current: Dayjs) {
@@ -484,6 +570,7 @@ async function loadDayDetail() {
 
 async function initPage() {
   if (!isOnRecordPage()) return;
+  syncContentTabFromRoute();
   const id = parseRouteSpaceId(route.params.spaceId);
   if (id == null) return;
   activeSpaceId.value = id;
@@ -491,9 +578,11 @@ async function initPage() {
   applyRouteQuery();
   await loadSpaceInfo(token);
   if (isLoadStale(token)) return;
-  await loadAvailableDates(token);
-  if (isLoadStale(token)) return;
-  await loadDayDetail();
+  if (contentTab.value === 'replay') {
+    await loadAvailableDates(token);
+    if (isLoadStale(token)) return;
+    await loadDayDetail();
+  }
 }
 
 function applyRouteQuery() {
@@ -503,6 +592,39 @@ function applyRouteQuery() {
   if (qDate) selectedDate.value = dayjs(qDate);
   pendingAlertId.value = qAlertId || null;
   pendingSegmentId.value = qSegmentId || null;
+  if (qDate || qAlertId || qSegmentId) {
+    contentTab.value = 'replay';
+    replayMounted.value = true;
+  }
+}
+
+async function handleViewRecordFromAlert(alert: SpaceAlertItem) {
+  if (!alert.device_id || !alert.time) {
+    createMessage.warning('缺少设备或告警时间');
+    return;
+  }
+  contentTab.value = 'replay';
+  replayMounted.value = true;
+  selectedDate.value = dayjs(alert.time);
+  pendingAlertId.value = alert.id ? String(alert.id) : null;
+  pendingSegmentId.value = null;
+
+  if (alert.id) {
+    try {
+      const res = await resolveAlertRecordSegment(alert.device_id, alert.id);
+      const data = (res as { data?: Record<string, unknown> })?.data ?? res;
+      if (data && typeof data === 'object') {
+        const date = String((data as { date?: string }).date || '');
+        const segment = (data as { segment?: { id?: number } }).segment;
+        if (date) selectedDate.value = dayjs(date);
+        if (segment?.id) pendingSegmentId.value = String(segment.id);
+      }
+    } catch {
+      // 回退到按告警日期加载
+    }
+  }
+
+  await loadDayDetail();
 }
 
 onMounted(() => {
@@ -521,12 +643,26 @@ watch(
   },
 );
 
+watch(contentTab, (tab) => {
+  if (tab === 'alerts') alertsMounted.value = true;
+  else replayMounted.value = true;
+});
+
+watch(
+  () => route.query.view,
+  () => {
+    syncContentTabFromRoute();
+  },
+);
+
 watch(
   () => (isOnRecordPage() ? [route.query.date, route.query.alertId, route.query.segmentId] : null),
   () => {
     if (!isOnRecordPage() || activeSpaceId.value == null) return;
     applyRouteQuery();
-    void loadDayDetail();
+    if (contentTab.value === 'replay') {
+      void loadAvailableDates(loadToken).then(() => loadDayDetail());
+    }
   },
 );
 
@@ -548,8 +684,60 @@ onBeforeUnmount(() => {
   background: #f0f2f5;
 }
 
+.mode-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+
+  .mode-radio-group {
+    :deep(.ant-radio-button-wrapper) {
+      height: auto;
+      line-height: 1;
+      padding: 6px 14px;
+    }
+  }
+
+  .mode-radio-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mode-hint {
+    color: #6b7280;
+    font-size: 13px;
+  }
+}
+
+.content-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  > .panel-shell,
+  > .replay-body {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.panel-shell {
+  margin: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
 .page-header {
-  padding: 12px 20px;
+  padding: 12px 20px 0;
   background: #fff;
   border-bottom: 1px solid #f0f0f0;
 
@@ -586,7 +774,6 @@ onBeforeUnmount(() => {
 }
 
 .replay-body {
-  flex: 1;
   display: flex;
   gap: 0;
   overflow: hidden;

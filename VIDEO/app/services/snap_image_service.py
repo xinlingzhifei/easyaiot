@@ -30,6 +30,7 @@ def list_snap_images(
     search: Optional[str] = None,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
+    source: Optional[str] = None,
 ) -> Dict:
     """获取抓拍图片列表（数据库分页）"""
     try:
@@ -49,6 +50,8 @@ def list_snap_images(
             query = query.filter(SnapImage.captured_at >= start_time)
         if end_time:
             query = query.filter(SnapImage.captured_at <= end_time)
+        if source:
+            query = query.filter(SnapImage.source == source)
 
         query = query.order_by(SnapImage.captured_at.desc())
         pagination = query.paginate(page=page_no, per_page=page_size, error_out=False)

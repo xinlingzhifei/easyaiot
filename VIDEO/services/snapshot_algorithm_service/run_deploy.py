@@ -367,6 +367,21 @@ YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', '1'))
 SNAPSHOT_RESULT_MAX_WAIT_SEC = float(os.getenv('SNAPSHOT_RESULT_MAX_WAIT_SEC', '5.0'))
 SNAPSHOT_CRON_WINDOW_SEC = float(os.getenv('SNAPSHOT_CRON_WINDOW_SEC', '5.0'))
 SNAP_SAVE_CRON_FRAME = (os.getenv('SNAP_SAVE_CRON_FRAME', '1').strip().lower() not in ('0', 'false', 'no', 'off'))
+
+
+def _env_gray_float(name: str, default: float) -> float:
+    try:
+        return float((os.getenv(name, str(default)).strip() or str(default)))
+    except ValueError:
+        return default
+
+
+def _gray_frame_thresholds():
+    return (
+        _env_gray_float('AI_RTSP_GRAY_STD_MAX', 4.0),
+        _env_gray_float('AI_RTSP_GRAY_MEAN_LO', 80.0),
+        _env_gray_float('AI_RTSP_GRAY_MEAN_HI', 180.0),
+    )
 # 画质分档（算法链路）：优先 AI_VIDEO_QUALITY_PROFILE
 VIDEO_QUALITY_PROFILE = os.getenv(
     'AI_VIDEO_QUALITY_PROFILE',
@@ -633,15 +648,27 @@ def _untrack_pending_snapshot(device_id: str, frame_number: int):
         pending_snapshots.get(device_id, {}).pop(frame_number, None)
 
 
-def _save_cron_snapshot_frame(device_id: str, frame_image, fn: int, frame_timestamp: float):
-    """定时抓拍：仅写入抓拍空间，不走告警/Kafka（无检测时不应产生告警记录）。"""
+def _save_cron_snapshot_frame(
+    device_id: str,
+    frame_image,
+    fn: int,
+    frame_timestamp: float,
+    *,
+    has_detections: bool = False,
+):
+    """定时抓拍：写入抓拍空间（有/无检测目标均入库，告警另行发送）。"""
     if not (task_config and SNAP_SAVE_CRON_FRAME):
+        return
+    if frame_image is None or getattr(frame_image, 'size', 0) == 0:
+        logger.warning(f"设备 {device_id} 定时抓拍跳过空帧: 帧 {fn}")
+        return
+    if is_likely_rtsp_flat_corrupt_frame(frame_image, *_gray_frame_thresholds()):
+        logger.warning(f"设备 {device_id} 定时抓拍跳过疑似灰屏帧: 帧 {fn}")
         return
     try:
         if upload_frame_to_snap_space(device_id, frame_image):
-            logger.info(
-                f"📷 设备 {device_id} 定时抓拍已入库（无检测目标，不产生告警）: 帧 {fn}"
-            )
+            suffix = '含检测目标' if has_detections else '无检测目标'
+            logger.info(f"📷 设备 {device_id} 定时抓拍已入库（{suffix}）: 帧 {fn}")
         else:
             save_alert_image(
                 frame_image, device_id, fn, {'class_name': 'snapshot', 'track_id': 0}
@@ -660,10 +687,11 @@ def _finish_snapshot_detection(
     detections: list,
     processed_frame,
 ):
-    """检测完成后直接发告警或入库，不再经 push_queue 回写。"""
+    """检测完成后发告警（若有目标）并写入抓拍图库，不再经 push_queue 回写。"""
     _untrack_pending_snapshot(device_id, frame_number)
     device_name = _get_device_name(device_id)
-    if detections:
+    has_detections = bool(detections)
+    if has_detections:
         try_send_snapshot_detection_alert(
             device_id,
             device_name,
@@ -672,8 +700,13 @@ def _finish_snapshot_detection(
             processed_frame,
             timestamp,
         )
-    else:
-        _save_cron_snapshot_frame(device_id, processed_frame, frame_number, timestamp)
+    _save_cron_snapshot_frame(
+        device_id,
+        processed_frame,
+        frame_number,
+        timestamp,
+        has_detections=has_detections,
+    )
     logger.info(f"✅ 设备 {device_id} cron 帧 {frame_number} 处理完成")
 
 

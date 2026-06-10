@@ -150,6 +150,8 @@ export function mapMonitorTreeToDeviceDirectories(
     parent_id: dir.parent_id ?? null,
     sort_order: dir.sort_order ?? 0,
     is_default: dir.is_default,
+    snap_save_time: dir.snap_save_time,
+    record_save_time: dir.record_save_time,
     device_count: dir.device_count ?? dir.devices?.length ?? 0,
     children: mapMonitorTreeToDeviceDirectories(dir.children || []),
   }));
@@ -209,4 +211,21 @@ export function buildDirectoryDevicesForTable(
     devices.push(wvpDeviceToTableRow(wvp));
   }
   return devices;
+}
+
+/** 查找默认目录；若无标记则回退首个根目录 */
+export function findDefaultMonitorDirectory(
+  nodes: MonitorTreeDirectoryNode[],
+): MonitorTreeDirectoryNode | null {
+  for (const node of nodes) {
+    if (node.is_default) return node;
+    if (node.children?.length) {
+      const found = findDefaultMonitorDirectory(node.children);
+      if (found) return found;
+    }
+  }
+  if (nodes.length) {
+    return nodes.find((n) => n.name === '默认分组') ?? nodes[0];
+  }
+  return null;
 }

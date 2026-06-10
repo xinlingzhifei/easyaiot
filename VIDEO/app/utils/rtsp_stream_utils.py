@@ -133,3 +133,34 @@ def is_likely_rtsp_flat_corrupt_frame(
         return bool(mean_lo <= m <= mean_hi and s < std_max)
     except Exception:
         return False
+
+
+def capture_rtsp_frame(
+    source: str,
+    *,
+    max_attempts: int = 5,
+    skip_gray: bool = True,
+    std_max: float = 4.0,
+    mean_lo: float = 80.0,
+    mean_hi: float = 180.0,
+):
+    """从 RTSP 读取可用帧：减小缓冲并多次读取，跳过疑似灰屏/花屏帧。"""
+    cap = cv2.VideoCapture(source)
+    if not cap.isOpened():
+        cap.release()
+        return False, None
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    frame = None
+    for _ in range(max(1, max_attempts)):
+        ret, candidate = cap.read()
+        if not ret or candidate is None:
+            continue
+        if skip_gray and is_likely_rtsp_flat_corrupt_frame(
+            candidate, std_max, mean_lo, mean_hi
+        ):
+            continue
+        frame = candidate
+        break
+    cap.release()
+    return frame is not None, frame

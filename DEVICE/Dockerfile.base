@@ -1,3 +1,7 @@
+# ⚠️ 已弃用（保留作参考）：第一阶段编译已改为 install_linux.sh 内的 docker run 卷挂载
+#    （源码与 m2 直接挂载进 maven 镜像跑 mvn install，产物/缓存直接持久到宿主机），不再用本 Dockerfile.base 构建。
+#    默认构建路径不再引用本文件；如需回退到旧的 docker build 两阶段方式，可参考此文件历史版本。
+#
 # BuildKit 内置前端，支持 RUN --mount
 # 第一阶段：Maven 只执行一次 package（勿拆成 go-offline + clean package，否则会编译两遍）
 # 依赖缓存：宿主机目录挂载到 /m2/host-cache（读写）；mvn 结束后 cp 到 /m2/repository 写入镜像层，供 install_linux.sh docker cp 回宿主机
@@ -46,10 +50,17 @@ COPY iot-gb28181/pom.xml ./iot-gb28181/
 
 COPY . .
 
+# 由 install_linux.sh 传入 Maven 范围参数：
+#   空              → 全量构建（首跑 / FORCE_REBUILD / 全局输入变更）
+#   "-pl <模块> -amd" → 选择性构建：只编改动模块及其依赖方，未变上游从持久化 m2 解析
+ARG MAVEN_BUILD_ARGS=""
+
 # maven-repo 由 install_linux.sh 传入：docker build --build-context maven-repo=<项目根>/.build-cache/device/m2/repository
 # bind mount 内容不会进入镜像层，须在同一个 RUN 内 cp 到 /m2/repository
+# -T 1C：每个 CPU 核 1 个线程并行构建多模块 reactor（依赖图允许的模块并行编译），显著缩短编译耗时
+# install（非 package）：将各模块产物装入持久化 m2，使后续 -pl 子集构建能解析项目自身上游模块
 RUN --mount=type=bind,from=maven-repo,source=.,target=/m2/host-cache,rw \
-    mvn -s /m2/settings.xml -B package \
+    mvn -s /m2/settings.xml -B -T 1C install ${MAVEN_BUILD_ARGS} \
     -Dmaven.repo.local=/m2/host-cache \
     -DskipTests \
     -Dmaven.test.skip=true \

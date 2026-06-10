@@ -335,6 +335,8 @@ services:
       - "./srs_data/conf:/opt/srs/trunk/conf:rw"
       # 宿主机根目录 /data 映射为容器内录像与日志目录（安装脚本会在启动前创建 /data）
       - "/data:/data:rw"
+      - "./srs-entrypoint.sh:/usr/local/bin/srs-entrypoint.sh:ro"
+    entrypoint: ["/bin/bash", "/usr/local/bin/srs-entrypoint.sh"]
     command: ["./objs/srs", "-c", "conf/docker.conf"]
     working_dir: /usr/local/srs
     healthcheck:

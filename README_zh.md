@@ -419,8 +419,16 @@ yFeiEye是一个开源学习项目，与商业行为无关。用户在使用该�
   <img src=".image/banner/banner1084.jpg" alt="Screenshot 7" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1055.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1056.jpg" alt="Screenshot 7" width="49%">
+  <img src=".image/banner/banner1121.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1122.png" alt="Screenshot 7" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1123.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1124.png" alt="Screenshot 7" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1125.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1126.png" alt="Screenshot 7" width="49%">
 </div>
 <div>
   <img src=".image/banner/banner1117.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">

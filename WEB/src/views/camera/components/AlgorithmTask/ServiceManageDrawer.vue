@@ -845,7 +845,7 @@ const handleViewSnapSpaces = async (record: any) => {
 // 查看抓拍图片
 const handleViewSnapImages = (spaceId: number, _deviceId: string, _deviceName?: string) => {
   snapSpacesVisible.value = false;
-  router.push({ path: `/snap-space-manage/${spaceId}` });
+  router.push({ path: `/snap-space-manage/${spaceId}`, query: { view: 'alerts' } });
 };
 
 // 启动服务（通过启动算法任务来启动服务）

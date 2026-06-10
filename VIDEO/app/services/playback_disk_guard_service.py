@@ -9,9 +9,11 @@ SRS 本地回放录像磁盘守护服务。
 """
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import shutil
+import subprocess
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -49,6 +51,84 @@ def _env_float(name: str, default: float) -> float:
 
 def get_srs_record_dir() -> str:
     return (os.getenv('SRS_RECORD_DIR') or '/data/playbacks').rstrip('/\\')
+
+
+def _playback_dir_mode() -> int:
+    raw = os.getenv('PLAYBACK_DIR_MODE', '777')
+    try:
+        return int(str(raw).strip(), 8)
+    except ValueError:
+        return 0o777
+
+
+def _playback_file_mode() -> int:
+    raw = os.getenv('PLAYBACK_FILE_MODE', '666')
+    try:
+        return int(str(raw).strip(), 8)
+    except ValueError:
+        return 0o666
+
+
+def _use_sudo_for_playback_fix() -> bool:
+    return _env_bool('PLAYBACK_FIX_USE_SUDO', False)
+
+
+def _sudo_run(args: List[str], timeout: int = 15) -> bool:
+    cmd = ['sudo', '-n', *args]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0:
+            logger.debug('sudo 命令失败: %s, stderr=%s', cmd, (result.stderr or '').strip())
+            return False
+        return True
+    except (subprocess.TimeoutExpired, OSError, FileNotFoundError) as exc:
+        logger.debug('sudo 命令异常: %s, %s', cmd, exc)
+        return False
+
+
+def ensure_playback_path_deletable(file_path: str) -> None:
+    """修复 SRS root 属主录像路径权限，使当前进程可删除。
+
+    删除文件需要父目录写权限；SRS 以 root 创建 755 目录时普通用户无法 unlink。
+    从文件向上至 SRS_RECORD_DIR，对目录 chmod（默认 777）、对文件 chmod（默认 666）。
+    当前用户无权限时可通过 PLAYBACK_FIX_USE_SUDO=true 调用 sudo chmod。
+    """
+    if not file_path:
+        return
+
+    record_dir = os.path.normpath(get_srs_record_dir())
+    normalized = os.path.normpath(file_path)
+    if not (normalized == record_dir or normalized.startswith(record_dir + os.sep)):
+        return
+
+    dir_mode = _playback_dir_mode()
+    file_mode = _playback_file_mode()
+    targets: List[Tuple[str, str]] = []
+    if os.path.isfile(normalized):
+        targets.append(('file', normalized))
+
+    current = os.path.dirname(normalized)
+    while current.startswith(record_dir):
+        targets.append(('dir', current))
+        if current == record_dir:
+            break
+        current = os.path.dirname(current)
+
+    failed: List[Tuple[str, str]] = []
+    for kind, path in targets:
+        mode = file_mode if kind == 'file' else dir_mode
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            failed.append((kind, path))
+
+    if not failed or not _use_sudo_for_playback_fix():
+        return
+
+    for kind, path in failed:
+        mode_str = oct(file_mode if kind == 'file' else dir_mode)[2:]
+        if not _sudo_run(['chmod', mode_str, path]):
+            logger.warning('sudo 修复回放路径权限失败: %s', path)
 
 
 def is_cleanup_enabled() -> bool:
@@ -99,13 +179,22 @@ def iter_flv_files(root: str, relative_subdir: Optional[str] = None) -> List[Flv
 def remove_playback_file(file_path: str, reason: str = '') -> bool:
     if not file_path or not os.path.isfile(file_path):
         return False
+    ensure_playback_path_deletable(file_path)
+    suffix = f' ({reason})' if reason else ''
     try:
         os.remove(file_path)
-        suffix = f' ({reason})' if reason else ''
         logger.info('已删除本地回放录像: %s%s', file_path, suffix)
         _prune_empty_parents(file_path, stop_at=get_srs_record_dir())
         return True
     except OSError as exc:
+        if (
+            _use_sudo_for_playback_fix()
+            and getattr(exc, 'errno', None) in (errno.EACCES, errno.EPERM)
+            and _sudo_run(['rm', '-f', file_path])
+        ):
+            logger.info('已删除本地回放录像(sudo): %s%s', file_path, suffix)
+            _prune_empty_parents(file_path, stop_at=get_srs_record_dir())
+            return True
         logger.warning('删除本地回放录像失败: %s, %s', file_path, exc)
         return False
 
@@ -123,6 +212,9 @@ def _prune_empty_parents(file_path: str, stop_at: str) -> None:
             os.rmdir(current)
             current = os.path.dirname(current)
         except OSError:
+            if _use_sudo_for_playback_fix() and _sudo_run(['rmdir', current]):
+                current = os.path.dirname(current)
+                continue
             break
 
 

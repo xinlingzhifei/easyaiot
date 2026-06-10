@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # DEVICE模块 Docker Compose 管理脚本
-# 两阶段构建：Dockerfile.base（Maven 一次）→ target/jars → 各模块运行时 Dockerfile
+# 两阶段构建：docker run 卷挂载 Maven 编译（增量）→ target/jars → 各模块运行时 Dockerfile
 
 set -e
 
@@ -95,6 +95,24 @@ check_docker_daemon() {
 
 JARS_DIR="${SCRIPT_DIR}/target/jars"
 MAVEN_CACHE_DIR="$(maven_repository_dir "$YFEIEYE_ROOT")"
+# 构建输入哈希戳（纯文件内容哈希，不依赖 git）：update/build 时输入未变则跳过 Maven 编译
+BUILD_STAMP_FILE="$(module_cache_root "$YFEIEYE_ROOT" device)/.build-stamp"
+# 各运行时镜像产物哈希戳目录：按「Jar 内容 + 该模块 Dockerfile」判断单个镜像是否需要重建（依赖可复现构建）
+RUNTIME_STAMP_DIR="$(module_cache_root "$YFEIEYE_ROOT" device)/runtime-stamps"
+# 各 Maven 模块源码哈希戳目录：按「模块 pom.xml + src/」判断改了哪些模块，供选择性 reactor 构建（-pl）
+MODULE_HASH_DIR="$(module_cache_root "$YFEIEYE_ROOT" device)/module-hashes"
+# 宿主机 Maven settings.xml（docker run 卷挂载编译用，aliyun mirror）；首次自动生成
+MAVEN_SETTINGS_FILE="$(module_cache_root "$YFEIEYE_ROOT" device)/settings.xml"
+# C2（常驻 mvnd 容器，守护进程复用）：默认关闭走 C1 一次性 docker run；USE_MVND=1 启用，不可用时自动回退 C1
+USE_MVND="${USE_MVND:-0}"
+MVND_IMAGE="${MVND_IMAGE:-device-mvnd:latest}"
+MVND_CONTAINER="${MVND_CONTAINER:-device-mvnd-builder}"
+MVND_VERSION="${MVND_VERSION:-1.0.6}"
+# mvnd 镜像的 glibc 基础镜像：默认复用运行时已在用、服务器必可拉取的 liberica（避免 docker.io 拉取失败）
+MVND_BASE_IMAGE="${MVND_BASE_IMAGE:-bellsoft/liberica-openjdk-debian:21.0.8}"
+# mvnd daemon 空闲多久自动退出（释放约 1–2GB 内存，容器仍保留，下次用自动重生）。
+# 活跃连续构建时 daemon 一直热；停手超过该时长则自动回收内存。值须每次一致（否则起新 daemon）。
+MVND_IDLE_TIMEOUT="${MVND_IDLE_TIMEOUT:-30m}"
 
 # 运行时镜像：dockerfile 路径 | 镜像 tag
 RUNTIME_IMAGE_SPECS=(
@@ -147,18 +165,281 @@ verify_runtime_jars() {
     fi
 }
 
-# 第一阶段：Maven 只编译一次，依赖写入 .build-cache/device/m2/repository，Jar 提取到 target/jars
+# 选择可用的内容哈希命令（优先 sha256sum，其次 shasum，最后 md5sum）
+build_hasher() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        echo "sha256sum"
+    elif command -v shasum >/dev/null 2>&1; then
+        echo "shasum -a 256"
+    else
+        echo "md5sum"
+    fi
+}
+
+# 解析一次哈希命令并缓存，供各哈希函数复用（避免每次 command -v + 子进程）
+HASHER="$(build_hasher)"
+
+# 计算影响 Jar 产物的构建输入哈希：各模块 src + 各级 pom.xml + lombok.config + Dockerfile(.base)。
+# 纯文件内容哈希（不依赖 git）：update/build 时若哈希与上次成功构建一致，则整段 Maven 编译可跳过。
+hash_build_inputs() {
+    {
+        find "$SCRIPT_DIR" \
+            -type d \( -name target -o -name .git \) -prune -o \
+            -type f \( -path "*/src/*" -o -name "pom.xml" -o -name "lombok.config" \
+                       -o -name "Dockerfile" -o -name "Dockerfile.base" \) -print0 2>/dev/null \
+        | LC_ALL=C sort -z \
+        | xargs -0 $HASHER 2>/dev/null
+    } | $HASHER | awk '{print $1}'
+}
+
+# 单个运行时镜像的产物哈希：该模块 Jar 内容 + 其 Dockerfile 内容。
+# 依赖可复现构建（根 pom.xml project.build.outputTimestamp）：源码未变 → Jar 字节一致 → 哈希一致 → 跳过重建。
+hash_runtime_image() {
+    local jar="$1" dockerfile="$2"
+    { $HASHER "$jar" "$dockerfile" 2>/dev/null; } | $HASHER | awk '{print $1}'
+}
+
+# 某运行时镜像 tag 对应的哈希戳文件路径（tag 中的 / 与 : 替换为 _）
+runtime_stamp_file() {
+    mkdir -p "$RUNTIME_STAMP_DIR" 2>/dev/null || true
+    echo "${RUNTIME_STAMP_DIR}/$(echo "$1" | tr '/:' '__')"
+}
+
+# ===== 模块级变更检测（供选择性 reactor 构建 -pl 使用）=====
+
+# 列出所有含 pom.xml 的 Maven 模块目录（相对 SCRIPT_DIR，可直接用于 mvn -pl），排除 target；根模块输出为 "."
+enumerate_maven_modules() {
+    local pom dir rel
+    find "$SCRIPT_DIR" -type d -name target -prune -o -name pom.xml -type f -print 2>/dev/null \
+    | while IFS= read -r pom; do
+        dir="$(dirname "$pom")"
+        rel="${dir#"$SCRIPT_DIR"}"
+        rel="${rel#/}"
+        [ -z "$rel" ] && rel="."
+        printf '%s\n' "$rel"
+    done
+}
+
+# 计算单个模块的源码哈希：该模块自身 pom.xml + src/ 下所有文件（仅内容，路径无关；子模块各自独立目录不重复计入）
+hash_one_module() {
+    local rel="$1" base
+    if [ "$rel" = "." ]; then base="$SCRIPT_DIR"; else base="$SCRIPT_DIR/$rel"; fi
+    {
+        [ -f "$base/pom.xml" ] && $HASHER "$base/pom.xml" 2>/dev/null
+        if [ -d "$base/src" ]; then
+            find "$base/src" -type f -print0 2>/dev/null | LC_ALL=C sort -z | xargs -0 $HASHER 2>/dev/null
+        fi
+    } | awk '{print $1}' | $HASHER | awk '{print $1}'
+}
+
+# 某模块哈希戳文件路径（相对路径中的 / . : 替换为 _）
+module_hash_stamp_file() {
+    mkdir -p "$MODULE_HASH_DIR" 2>/dev/null || true
+    echo "${MODULE_HASH_DIR}/$(echo "$1" | tr '/.:' '___')"
+}
+
+# 本轮模块哈希暂存路径（#5：compute 写入、store 复用，避免构建后重复遍历源码树）
+module_stage_file() {
+    echo "${MODULE_HASH_DIR}/.staging/$(echo "$1" | tr '/.:' '___')"
+}
+
+# 全局构建输入哈希：根 pom.xml + iot-parent/pom.xml + lombok.config（任一变化影响所有模块编译 → 触发全量）
+hash_global_inputs() {
+    {
+        [ -f "$SCRIPT_DIR/pom.xml" ] && $HASHER "$SCRIPT_DIR/pom.xml" 2>/dev/null
+        [ -f "$SCRIPT_DIR/iot-parent/pom.xml" ] && $HASHER "$SCRIPT_DIR/iot-parent/pom.xml" 2>/dev/null
+        [ -f "$SCRIPT_DIR/lombok.config" ] && $HASHER "$SCRIPT_DIR/lombok.config" 2>/dev/null
+    } | awk '{print $1}' | $HASHER | awk '{print $1}'
+}
+
+# 输出哈希变化（或无戳）的模块相对路径列表；根 "." 由全局文件判定单独处理，此处跳过。
+# 同时把本轮每个模块（含 "."）的哈希写入暂存区，供构建成功后 store_module_hashes 直接复用（#5）。
+compute_changed_modules() {
+    local rel cur stored stampf stagef
+    mkdir -p "${MODULE_HASH_DIR}/.staging" 2>/dev/null || true
+    while IFS= read -r rel; do
+        cur="$(hash_one_module "$rel")"
+        stagef="$(module_stage_file "$rel")"
+        printf '%s\n' "$cur" > "$stagef" 2>/dev/null || true
+        [ "$rel" = "." ] && continue
+        stampf="$(module_hash_stamp_file "$rel")"
+        stored=""
+        [ -f "$stampf" ] && stored="$(cat "$stampf" 2>/dev/null || true)"
+        if [ -z "$cur" ] || [ "$cur" != "$stored" ]; then
+            printf '%s\n' "$rel"
+        fi
+    done < <(enumerate_maven_modules)
+}
+
+# 构建成功后写回所有模块当前哈希，使下次比对准确。
+# #5：若本轮 compute_changed_modules 已把哈希写入暂存区（选择性构建路径），直接复用，避免再遍历源码树；
+#     全量构建路径未经 compute（无暂存）→ 现算。
+store_module_hashes() {
+    local rel cur stampf stagef
+    mkdir -p "$MODULE_HASH_DIR" 2>/dev/null || true
+    while IFS= read -r rel; do
+        stagef="$(module_stage_file "$rel")"
+        if [ -f "$stagef" ]; then
+            cur="$(cat "$stagef" 2>/dev/null || true)"
+        else
+            cur="$(hash_one_module "$rel")"
+        fi
+        stampf="$(module_hash_stamp_file "$rel")"
+        [ -n "$cur" ] && printf '%s\n' "$cur" > "$stampf" 2>/dev/null || true
+    done < <(enumerate_maven_modules)
+    # 同时记录全局输入哈希（根/父 pom + lombok.config），供决策块判定是否需全量构建
+    printf '%s\n' "$(hash_global_inputs)" > "${MODULE_HASH_DIR}/.global-inputs" 2>/dev/null || true
+}
+
+# 确保宿主机 Maven settings.xml 存在（aliyun mirror）；docker run 卷挂载编译时以 -s 引用
+ensure_maven_settings() {
+    local s="$1"
+    [ -f "$s" ] && return 0
+    mkdir -p "$(dirname "$s")" 2>/dev/null || true
+    cat > "$s" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>aliyun-all</id>
+      <mirrorOf>central,huaweicloud,aliyunmaven,aliyun-plugin</mirrorOf>
+      <name>Aliyun Maven</name>
+      <url>https://maven.aliyun.com/repository/public</url>
+    </mirror>
+  </mirrors>
+  <interactiveMode>false</interactiveMode>
+</settings>
+EOF
+}
+
+# 从宿主机各模块 target/ 收集运行时 Jar 到 JARS_DIR（复刻原 Dockerfile.base 容器内提取逻辑）。
+# cp -u 仅在「源更新或目标缺失」时复制：选择性构建只有变化的 Jar 被重写、其余沿用既有（省 GB 级无谓拷贝）。
+collect_runtime_jars() {
+    mkdir -p "$JARS_DIR"
+    [ -f "$SCRIPT_DIR/iot-gateway/target/iot-gateway.jar" ] && \
+        cp -u "$SCRIPT_DIR/iot-gateway/target/iot-gateway.jar" "$JARS_DIR/iot-gateway.jar"
+    local biz jar
+    while IFS= read -r biz; do
+        jar=$(find "$biz/target" -maxdepth 1 -name "*-biz.jar" \
+            ! -name "*-sources.jar" ! -name "*-javadoc.jar" ! -name "*.original" -type f 2>/dev/null | head -1)
+        [ -n "$jar" ] && [ -f "$jar" ] && cp -u "$jar" "$JARS_DIR/$(basename "$jar")"
+    done < <(find "$SCRIPT_DIR"/iot-* -type d -name "*-biz" 2>/dev/null)
+}
+
+# ===== C2：常驻 mvnd builder 容器（守护进程复用）=====
+
+# 确保 mvnd 镜像存在（不存在则自建，从清华源下载 mvnd）。失败返回非 0 → 调用方回退 C1。
+ensure_mvnd_image() {
+    if docker image inspect "$MVND_IMAGE" >/dev/null 2>&1; then
+        return 0
+    fi
+    print_info "首次构建 mvnd 镜像 $MVND_IMAGE（mvnd $MVND_VERSION，清华源）..."
+    docker build -f "${SCRIPT_DIR}/Dockerfile.mvnd" \
+        --build-arg "MVND_BASE_IMAGE=${MVND_BASE_IMAGE}" \
+        --build-arg "MVND_VERSION=${MVND_VERSION}" \
+        -t "$MVND_IMAGE" "$SCRIPT_DIR"
+}
+
+# 确保常驻 builder 容器在运行（卷挂载源码 + m2 + settings）。失败返回非 0 → 调用方回退 C1。
+ensure_mvnd_builder() {
+    ensure_mvnd_image || return 1
+    # 已在运行
+    if [ "$(docker inspect -f '{{.State.Running}}' "$MVND_CONTAINER" 2>/dev/null)" = "true" ]; then
+        return 0
+    fi
+    # 存在但已停止 → 启动
+    if docker inspect "$MVND_CONTAINER" >/dev/null 2>&1; then
+        docker start "$MVND_CONTAINER" >/dev/null 2>&1 && return 0
+        # 启动失败（卷/配置可能变化）→ 删除重建
+        docker rm -f "$MVND_CONTAINER" >/dev/null 2>&1 || true
+    fi
+    print_info "启动常驻 mvnd builder 容器 $MVND_CONTAINER ..."
+    docker run -d --name "$MVND_CONTAINER" \
+        --user "$(id -u):$(id -g)" \
+        -e HOME=/tmp \
+        -v "${SCRIPT_DIR}:/build" \
+        -v "${MAVEN_CACHE_DIR}:/m2/repository" \
+        -v "${MAVEN_SETTINGS_FILE}:/m2/settings.xml:ro" \
+        -w /build \
+        "$MVND_IMAGE" >/dev/null 2>&1
+}
+
+# 停止并删除常驻 builder 容器（回收 daemon 内存）
+stop_mvnd_builder() {
+    if docker inspect "$MVND_CONTAINER" >/dev/null 2>&1; then
+        print_info "停止 mvnd builder 容器 $MVND_CONTAINER ..."
+        docker rm -f "$MVND_CONTAINER" >/dev/null 2>&1 || true
+    fi
+}
+
+# 第一阶段：Maven 编译（C2 常驻 mvnd 容器，或 C1 一次性 docker run 卷挂载），Jar 收集到 target/jars
 build_base_jars() {
     local force="${1:-0}"
+    local _t0=$SECONDS
 
-    print_info "========== 第一阶段：Maven 编译（Dockerfile.base）=========="
+    print_info "========== 第一阶段：Maven 编译（docker run 卷挂载）=========="
 
-    if [ "$force" != "1" ] && check_jars_exist; then
+    local current_hash stored_hash
+    current_hash="$(hash_build_inputs)"
+    stored_hash=""
+    [ -f "$BUILD_STAMP_FILE" ] && stored_hash="$(cat "$BUILD_STAMP_FILE" 2>/dev/null || true)"
+
+    # 非强制（force≠1 且 FORCE_REBUILD≠1）且 Jar 已存在、输入哈希一致 → 跳过编译
+    if [ "$force" != "1" ] && [ "${FORCE_REBUILD:-0}" != "1" ] \
+        && check_jars_exist && [ -n "$current_hash" ] && [ "$current_hash" = "$stored_hash" ]; then
         local jar_count
         jar_count=$(find "$JARS_DIR" -maxdepth 1 -name "*.jar" -type f 2>/dev/null | wc -l)
-        print_success "Jar 已存在于 $JARS_DIR（$jar_count 个），跳过 Maven 编译"
+        print_success "构建输入未变（源码/pom 哈希一致），跳过 Maven 编译（$JARS_DIR 现有 $jar_count 个 Jar，耗时 $((SECONDS - _t0))s）"
         echo
         return 0
+    fi
+
+    # 清空本轮哈希暂存区：compute 写入、store 复用；陈旧暂存（上轮残留）不得复用（#5）
+    rm -rf "${MODULE_HASH_DIR}/.staging" 2>/dev/null || true
+
+    # ===== Maven 构建范围决策（选择性 reactor 构建）=====
+    # maven_build_args：空=全量；"-pl A,B -amd"=只编变更模块及其依赖方
+    local maven_build_args=""
+    local force_full=0
+    local cur_global stored_global
+    cur_global="$(hash_global_inputs)"
+    stored_global=""
+    [ -f "${MODULE_HASH_DIR}/.global-inputs" ] && stored_global="$(cat "${MODULE_HASH_DIR}/.global-inputs" 2>/dev/null || true)"
+
+    if [ "$force" = "1" ] || [ "${FORCE_REBUILD:-0}" = "1" ]; then
+        force_full=1
+        print_info "强制全量构建（force / FORCE_REBUILD=1）"
+    elif [ ! -d "$MODULE_HASH_DIR" ] || [ -z "$(ls -A "$MODULE_HASH_DIR" 2>/dev/null)" ]; then
+        force_full=1
+        print_info "无模块哈希基线（首跑），执行全量构建"
+    elif [ ! -d "${MAVEN_CACHE_DIR}/com/basiclab/iot" ]; then
+        force_full=1
+        print_info "宿主机 m2 缺项目产物，执行全量构建以建立基线"
+    elif [ "$cur_global" != "$stored_global" ]; then
+        force_full=1
+        print_info "全局构建输入变化（根/父 pom 或 lombok.config），执行全量构建"
+    fi
+
+    if [ "$force_full" != "1" ]; then
+        local changed_list changed_csv
+        changed_list="$(compute_changed_modules)"
+        if [ -z "$changed_list" ]; then
+            # 仅非 Maven 输入变化（如运行时 Dockerfile）：Jar 不受影响，跳过第一阶段，交由第二阶段(D)处理
+            print_success "无 Maven 模块源码变化，跳过第一阶段编译（沿用现有 Jar，耗时 $((SECONDS - _t0))s）"
+            if [ -n "$current_hash" ]; then
+                printf '%s\n' "$current_hash" > "$BUILD_STAMP_FILE" 2>/dev/null \
+                    || print_warning "无法写入构建哈希戳: $BUILD_STAMP_FILE"
+            fi
+            echo
+            return 0
+        fi
+        changed_csv="$(printf '%s' "$changed_list" | paste -sd, -)"
+        maven_build_args="-pl ${changed_csv} -amd"
+        print_info "选择性构建变更模块及其依赖方: -pl ${changed_csv} -amd"
+    else
+        print_info "本次为全量构建"
     fi
 
     check_compose_file
@@ -167,60 +448,86 @@ build_base_jars() {
     init_yfeieye_build_cache_dirs "$YFEIEYE_ROOT"
     enable_docker_buildkit
 
-    mkdir -p "$JARS_DIR"
-    print_info "Maven 本地仓库: $MAVEN_CACHE_DIR"
+    ensure_maven_settings "$MAVEN_SETTINGS_FILE"
+    mkdir -p "$JARS_DIR" "$MAVEN_CACHE_DIR"
+    print_info "Maven 本地仓库（卷挂载，直接持久）: $MAVEN_CACHE_DIR"
 
-    mkdir -p "$MAVEN_CACHE_DIR"
-    print_info "构建 device-base-builder（mvn 仅执行一次）..."
-    # --target builder：mvn 结束后 Dockerfile.base 已将 host-cache 拷入镜像层 /m2/repository，再 docker cp 到宿主机
-    local docker_nocache=()
-    if [ ! -d "${MAVEN_CACHE_DIR}/com" ]; then
-        print_info "宿主机 Maven 缓存为空，本次禁用 Docker 层缓存（确保使用最新 Dockerfile.base）"
-        docker_nocache=(--no-cache)
-    fi
-    if ! docker build \
-        "${docker_nocache[@]}" \
-        -f Dockerfile.base \
-        --target builder \
-        -t device-base-builder:latest \
-        --build-context "maven-repo=${MAVEN_CACHE_DIR}" \
-        .; then
-        print_error "Dockerfile.base 构建失败"
-        exit 1
+    # 选择性构建用更快启动的短命 JVM（StopAtLevel=1）；全量构建保持默认（长编译需完整 JIT 吞吐）
+    local build_maven_opts=""
+    [ -n "$maven_build_args" ] && build_maven_opts="-XX:+TieredCompilation -XX:TieredStopAtLevel=1"
+
+    # 卷挂载编译入口：$1=1 离线(+--network none)，$1=0 联网。
+    # 源码 RW（target 写回宿主机 → 增量）、m2 RW（直接持久，无 cp/导出）、settings RO。
+    # --user：以宿主机用户身份写产物，避免 root 属主污染。HOME/MAVEN_CONFIG 指向容器内 /tmp（非 root 可写）。
+    # -ntp 静默传输进度；bf 收集器加速依赖图；artifact.threads 并行解析/下载。
+    _run_build_container() {
+        local offline="$1"
+        local net=() off=""
+        [ "$offline" = "1" ] && { net=(--network none); off="-o"; }
+        docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e MAVEN_CONFIG=/tmp/.m2 \
+            -e MAVEN_OPTS="$build_maven_opts" \
+            "${net[@]}" \
+            -v "${SCRIPT_DIR}:/build" \
+            -v "${MAVEN_CACHE_DIR}:/m2/repository" \
+            -v "${MAVEN_SETTINGS_FILE}:/m2/settings.xml:ro" \
+            -w /build \
+            maven:3.9.11-eclipse-temurin-21-alpine \
+            mvn -s /m2/settings.xml -B -ntp -T 1C \
+                -Daether.dependencyCollector.impl=bf -Dmaven.artifact.threads=8 \
+                install ${maven_build_args} ${off} \
+                -Dmaven.repo.local=/m2/repository \
+                -DskipTests -Dmaven.test.skip=true -Dcheckstyle.skip=true -Drevision=1.0.0
+    }
+
+    # 解析第一阶段执行器：USE_MVND=1 且常驻 mvnd 容器就绪 → C2（守护进程复用）；否则 C1（一次性 docker run）
+    local stage1_mode="c1"
+    if [ "${USE_MVND:-0}" = "1" ]; then
+        if ensure_mvnd_builder; then
+            stage1_mode="c2"
+        else
+            print_warning "mvnd 常驻容器不可用，本次回退 C1 一次性编译"
+        fi
     fi
 
-    print_info "提取 Jar 与 Maven 缓存到宿主机 ..."
-    local temp_container="device-base-builder-temp-$(date +%s)"
-    if ! docker create --name "$temp_container" device-base-builder:latest >/dev/null 2>&1; then
-        print_error "创建临时容器失败"
-        exit 1
-    fi
-    if ! docker cp "${temp_container}:/target/jars/." "$JARS_DIR/"; then
-        docker rm -f "$temp_container" >/dev/null 2>&1 || true
-        print_error "复制 Jar 失败"
-        exit 1
-    fi
-    # 优先 /m2/repository；旧镜像误配置时依赖在 /root/.m2/repository
-    if docker cp "${temp_container}:/m2/repository/." "$MAVEN_CACHE_DIR/" 2>/dev/null; then
-        :
-    elif docker cp "${temp_container}:/root/.m2/repository/." "$MAVEN_CACHE_DIR/" 2>/dev/null; then
-        print_warning "已从 /root/.m2/repository 回退导出 Maven 缓存（请用最新 Dockerfile.base 重建）"
+    # 统一编译入口：$1=1 离线，$1=0 联网。C2 走 docker exec mvnd（daemon 复用）；C1 委托 _run_build_container。
+    compile_stage1() {
+        local offline="$1" off=""
+        [ "$offline" = "1" ] && off="-o"
+        if [ "$stage1_mode" = "c2" ]; then
+            docker exec "$MVND_CONTAINER" \
+                mvnd -s /m2/settings.xml -B -ntp -Daether.dependencyCollector.impl=bf \
+                    -Dmvnd.idleTimeout="${MVND_IDLE_TIMEOUT}" \
+                    install ${maven_build_args} ${off} \
+                    -Dmaven.repo.local=/m2/repository \
+                    -DskipTests -Dmaven.test.skip=true -Dcheckstyle.skip=true -Drevision=1.0.0
+        else
+            _run_build_container "$offline"
+        fi
+    }
+
+    if [ -n "$maven_build_args" ]; then
+        # 选择性：依赖基线已在 m2 → 优先离线；失败（新增依赖，或 mvnd 内嵌 Maven 与 C1 的插件版本差异）再联网重试，自愈
+        print_info "第一阶段编译（${stage1_mode}·选择性·优先离线）: install ${maven_build_args}"
+        print_info "（先试离线；若下方出现 BUILD FAILURE/插件未缓存属正常，将自动转联网重试，无需理会）"
+        if ! compile_stage1 1; then
+            print_warning "离线未命中（新增依赖或插件版本差异），转联网构建..."
+            if ! compile_stage1 0; then
+                print_error "Maven 编译失败（${stage1_mode}）"
+                exit 1
+            fi
+        fi
     else
-        docker rm -f "$temp_container" >/dev/null 2>&1 || true
-        print_error "复制 Maven 缓存失败"
-        exit 1
+        print_info "第一阶段编译（${stage1_mode}·全量·联网）: install"
+        if ! compile_stage1 0; then
+            print_error "Maven 编译失败（${stage1_mode}）"
+            exit 1
+        fi
     fi
-    docker rm -f "$temp_container" >/dev/null 2>&1 || true
 
-    local m2_kb m2_sample
-    m2_kb=$(du -sk "$MAVEN_CACHE_DIR" 2>/dev/null | awk '{print $1}')
-    m2_sample=$(find "$MAVEN_CACHE_DIR" -mindepth 2 -maxdepth 3 -type d 2>/dev/null | head -1)
-    if [ -z "$m2_kb" ] || [ "$m2_kb" -lt 10240 ] || [ -z "$m2_sample" ]; then
-        print_warning "Maven 缓存偏小（${m2_kb:-0}KB）: $MAVEN_CACHE_DIR"
-        print_info "请无缓存重编: ./install_linux.sh build-base（需 BuildKit）"
-    else
-        print_success "Maven 依赖已缓存: $MAVEN_CACHE_DIR（约 $((m2_kb / 1024))MB）"
-    fi
+    print_info "从宿主机各模块 target/ 收集 Jar 到 $JARS_DIR ..."
+    collect_runtime_jars
 
     local jar_count=0
     while IFS= read -r jar_file; do
@@ -230,25 +537,28 @@ build_base_jars() {
     done < <(find "$JARS_DIR" -maxdepth 1 -name "*.jar" -type f 2>/dev/null | sort)
 
     if [ "$jar_count" -eq 0 ]; then
-        print_error "未找到任何 Jar，请检查 Dockerfile.base 编译日志"
+        print_error "未找到任何 Jar，请检查 Maven 编译日志（docker run 卷挂载）"
         exit 1
     fi
 
-    print_success "========== 第一阶段完成（共 $jar_count 个 Jar）=========="
+    # 记录本次成功构建的输入哈希，供下次 update/build 判断是否可跳过
+    if [ -n "$current_hash" ]; then
+        printf '%s\n' "$current_hash" > "$BUILD_STAMP_FILE" 2>/dev/null \
+            || print_warning "无法写入构建哈希戳: $BUILD_STAMP_FILE"
+    fi
+    # 记录所有模块当前源码哈希 + 全局输入哈希，供下次选择性构建比对
+    store_module_hashes
+
+    print_success "========== 第一阶段完成（共 $jar_count 个 Jar，耗时 $((SECONDS - _t0))s）=========="
     echo
 }
 
 # 第二阶段：仅打包运行时镜像（COPY target/jars，不再执行 Maven）
 build_runtime_images() {
     local force="${1:-0}"
+    local _t0=$SECONDS
 
     print_info "========== 第二阶段：构建运行时镜像 ==========="
-
-    if [ "$force" != "1" ] && check_images_exist; then
-        print_success "所有运行时镜像已存在，跳过第二阶段"
-        echo
-        return 0
-    fi
 
     if ! check_jars_exist; then
         print_warning "未找到 Jar，先执行第一阶段..."
@@ -260,82 +570,103 @@ build_runtime_images() {
     cd "$SCRIPT_DIR"
     verify_runtime_jars
 
-    local spec dockerfile tag
-    for spec in "${RUNTIME_IMAGE_SPECS[@]}"; do
+    # 逐镜像判断是否需要重建（D）：哈希 = 该模块 Jar 内容 + 其 Dockerfile。
+    # 命中（镜像已存在且哈希与上次一致）则跳过；否则加入待构建列表。
+    # 依赖可复现构建：源码未变 → Jar 字节一致 → 仅真正变化的模块才重建镜像。
+    local idx spec dockerfile tag jar img_hash stored_hash stamp
+    local build_idx=() img_hashes=()
+    for idx in "${!RUNTIME_IMAGE_SPECS[@]}"; do
+        spec="${RUNTIME_IMAGE_SPECS[$idx]}"
         dockerfile="${spec%%|*}"
         tag="${spec##*|}"
-        print_info "构建运行时镜像: $tag ($dockerfile)"
-        if ! docker build -f "$dockerfile" -t "$tag" .; then
-            print_error "构建失败: $tag"
-            exit 1
+        jar="${JARS_DIR}/${REQUIRED_RUNTIME_JARS[$idx]}"
+        img_hash="$(hash_runtime_image "$jar" "$dockerfile")"
+        img_hashes[$idx]="$img_hash"
+        stamp="$(runtime_stamp_file "$tag")"
+        stored_hash=""
+        [ -f "$stamp" ] && stored_hash="$(cat "$stamp" 2>/dev/null || true)"
+        if [ "$force" != "1" ] && [ "${FORCE_REBUILD:-0}" != "1" ] \
+            && docker image inspect "$tag" >/dev/null 2>&1 \
+            && [ -n "$img_hash" ] && [ "$img_hash" = "$stored_hash" ]; then
+            print_success "  ⤳ 跳过未变镜像: $tag"
+        else
+            build_idx+=("$idx")
         fi
     done
 
-    print_success "========== 第二阶段完成 ==========="
-    echo
-}
-
-# 检查所有运行时镜像是否已存在
-check_images_exist() {
-    local images=(
-        "iot-gateway:latest"
-        "iot-module-system-biz:latest"
-        "iot-module-infra-biz:latest"
-        "iot-module-device-biz:latest"
-        "iot-module-dataset-biz:latest"
-        "iot-module-tdengine-biz:latest"
-        "iot-module-file-biz:latest"
-        "iot-module-message-biz:latest"
-        "iot-sink-biz:latest"
-        "iot-gb28181-biz:latest"
-    )
-    
-    local missing_count=0
-    
-    for image in "${images[@]}"; do
-        if ! docker image inspect "$image" > /dev/null 2>&1; then
-            missing_count=$((missing_count + 1))
-        fi
-    done
-    
-    if [ "$missing_count" -eq 0 ]; then
-        return 0  # 所有镜像都存在
-    else
-        return 1  # 有镜像缺失
-    fi
-}
-
-# 构建所有镜像（检查镜像是否存在，如果存在则跳过）
-build_images() {
-    print_info "========== 构建所有运行时镜像 =========="
-    
-    # 检查镜像是否已存在
-    if check_images_exist; then
-        print_success "所有运行时镜像已存在，跳过构建阶段"
-        print_success "========== 构建完成（跳过）=========="
+    if [ "${#build_idx[@]}" -eq 0 ]; then
+        print_success "所有运行时镜像均为最新，跳过第二阶段（耗时 $((SECONDS - _t0))s）"
         echo
         return 0
     fi
-    
-    # 确保权限正确
+
+    # 并行构建待更新镜像（E）：各镜像仅 COPY 一个 Jar + chown，互相独立，
+    # 并行可把「串行累加」缩短为「最慢的一个」。成功后写哈希戳，失败时打印末尾日志。
+    local tmp_log_dir ctx_base
+    tmp_log_dir="$(mktemp -d 2>/dev/null || echo "/tmp/device-runtime-$$")"
+    mkdir -p "$tmp_log_dir"
+    # #6：每个镜像用「仅含自己那 1 个 Jar」的最小上下文构建，避免把 target/jars 全部 Jar(GB级)
+    # 发给 daemon。上下文目录与 JARS_DIR 同盘，用硬链接(ln)即时构造、零拷贝；跨盘则回退 cp。
+    # Dockerfile 经 -f 引用(可在上下文之外)，其 COPY target/jars/<jar> 相对上下文根解析。
+    ctx_base="${SCRIPT_DIR}/target/.runtime-ctx"
+    rm -rf "$ctx_base" 2>/dev/null || true
+
+    local log jarname ctx
+    local pids=() tags=() logs=() dfs=() hashes=()
+    for idx in "${build_idx[@]}"; do
+        spec="${RUNTIME_IMAGE_SPECS[$idx]}"
+        dockerfile="${spec%%|*}"
+        tag="${spec##*|}"
+        jarname="${REQUIRED_RUNTIME_JARS[$idx]}"
+        ctx="${ctx_base}/$(echo "$tag" | tr '/:' '__')"
+        mkdir -p "$ctx/target/jars"
+        ln "${JARS_DIR}/${jarname}" "${ctx}/target/jars/${jarname}" 2>/dev/null \
+            || cp -f "${JARS_DIR}/${jarname}" "${ctx}/target/jars/${jarname}"
+        log="${tmp_log_dir}/$(echo "$tag" | tr '/:' '__').log"
+        print_info "并行构建运行时镜像: $tag ($dockerfile)"
+        ( docker build -f "$dockerfile" -t "$tag" "$ctx" ) >"$log" 2>&1 &
+        pids+=("$!"); tags+=("$tag"); logs+=("$log"); dfs+=("$dockerfile")
+        hashes+=("${img_hashes[$idx]}")
+    done
+
+    local fail=0 i
+    for i in "${!pids[@]}"; do
+        if wait "${pids[$i]}"; then
+            print_success "  ✓ ${tags[$i]}"
+            if [ -n "${hashes[$i]}" ]; then
+                printf '%s\n' "${hashes[$i]}" > "$(runtime_stamp_file "${tags[$i]}")" 2>/dev/null || true
+            fi
+        else
+            fail=1
+            print_error "构建失败: ${tags[$i]} (${dfs[$i]})"
+            print_info "----- ${tags[$i]} 构建日志（末尾 30 行）-----"
+            tail -n 30 "${logs[$i]}" 2>/dev/null | sed 's/^/    /'
+        fi
+    done
+    rm -rf "$tmp_log_dir" "$ctx_base" 2>/dev/null || true
+
+    if [ "$fail" -ne 0 ]; then
+        print_error "存在运行时镜像构建失败，请检查上面的日志"
+        exit 1
+    fi
+
+    print_success "========== 第二阶段完成（更新 ${#build_idx[@]} 个镜像，耗时 $((SECONDS - _t0))s）==========="
+    echo
+}
+
+# 按需构建（install / update / build）：基于源码/依赖哈希增量，输入未变则整段跳过。
+# 需强制全量重建时设置环境变量 FORCE_REBUILD=1。
+build_images_incremental() {
+    print_info "========== 构建（按需，输入未变则跳过）=========="
     check_compose_file
     check_docker_daemon
-    
     build_base_jars 0
     build_runtime_images 0
 }
 
-# 强制重新构建（install / update）
-build_images_force() {
-    print_info "========== 强制重新构建（两阶段）=========="
-    check_compose_file
-    check_docker_daemon
-    build_base_jars 1
-    build_runtime_images 1
-}
-
 # 构建并启动所有服务
 build_and_start() {
+    local _t_all=$SECONDS
     print_info "========== 开始构建并启动所有服务 =========="
     echo
     
@@ -370,8 +701,8 @@ build_and_start() {
     
     echo
     
-    # 强制重新构建所有镜像（install 时总是根据代码重新构建）
-    build_images_force
+    # 按需构建镜像（源码/依赖哈希未变则跳过，首次安装会全量构建）
+    build_images_incremental
     
     # 启动所有服务
     print_info "========== 启动所有服务 =========="
@@ -406,7 +737,7 @@ build_and_start() {
     fi
     
     print_success "========== 服务构建并启动完成 =========="
-    print_success "服务构建并启动完成（共 $container_count 个容器）"
+    print_success "服务构建并启动完成（共 $container_count 个容器，总耗时 $((SECONDS - _t_all))s）"
     echo
     print_info "Jar 包: $JARS_DIR"
     print_info "Maven 缓存: $MAVEN_CACHE_DIR"
@@ -581,6 +912,7 @@ clean() {
         print_info "未找到需要清理的 .jar 文件"
     fi
 
+    stop_mvnd_builder
     print_success "清理完成"
 }
 
@@ -603,27 +935,31 @@ clean_all() {
     fi
     cd "$SCRIPT_DIR"
     $DOCKER_COMPOSE down --rmi all
+    stop_mvnd_builder
     print_success "完全清理完成"
 }
 
 # 更新服务（重新构建并重启）
 update_services() {
+    local _t_all=$SECONDS
     print_info "========== 更新所有服务 =========="
-    
+
     # 确保权限正确
     check_compose_file
     check_docker_daemon
-    
-    build_images_force
+
+    build_images_incremental
 
     # 重启所有服务
     print_info "重启所有服务..."
     local exit_code
-    
-    # 强制重新创建并启动所有服务
-    compose_up_detached --force-recreate
+
+    # 仅重建镜像/配置发生变化的服务（去掉 --force-recreate，避免无谓重启全部容器，最小化停机）
+    set +e  # 暂时关闭错误退出，以便捕获退出码（否则 set -e 会在失败时直接 abort，下方友好报错不可达）
+    compose_up_detached
     exit_code=$?
-    
+    set -e  # 重新开启错误退出
+
     # 检查命令是否成功
     if [ $exit_code -ne 0 ]; then
         print_error "服务更新失败（退出码: $exit_code）"
@@ -641,7 +977,7 @@ update_services() {
         exit 1
     fi
     
-    print_success "========== 服务更新完成（共 $container_count 个容器）=========="
+    print_success "========== 服务更新完成（共 $container_count 个容器，总耗时 $((SECONDS - _t_all))s）=========="
 }
 
 # 显示帮助信息
@@ -651,12 +987,13 @@ DEVICE模块 Docker Compose 管理脚本
 
 用法: $0 [命令] [选项]
 
-构建流程（两阶段，与最初设计一致）:
-    1) Dockerfile.base：Maven 只编译一次，依赖缓存到 .build-cache/device/m2/repository，Jar 落到 target/jars
+构建流程（两阶段）:
+    1) docker run 卷挂载编译：源码与 m2 直接挂载进 maven 镜像跑 mvn install，产物落到各模块 target/ → 收集到 target/jars
+       （增量：仅改动模块及其依赖方参与编译 -pl … -amd；m2 与 target 持久在宿主机，无需 docker cp 搬运）
     2) 各模块 Dockerfile：仅从 target/jars 打运行时镜像，不再执行 Maven
 
 命令:
-    build-base          仅第一阶段（Maven 编译 + 提取 Jar）
+    build-base          仅第一阶段（Maven 编译 + 收集 Jar）
     build               两阶段（Jar 已存在则跳过第一阶段）
     start               启动所有服务
     stop                停止所有服务
@@ -667,18 +1004,27 @@ DEVICE模块 Docker Compose 管理脚本
     restart-service     重启指定服务
     stop-service        停止指定服务
     start-service       启动指定服务
-    clean               清理（停止并删除容器，保留镜像）
-    clean-all           完全清理（停止并删除容器和镜像）
+    clean               清理（停止并删除容器，保留镜像；并停止 mvnd builder）
+    clean-all           完全清理（停止并删除容器和镜像；并停止 mvnd builder）
+    builder-stop        停止常驻 mvnd builder 容器（回收 daemon 内存）
     update              更新服务（重新构建并重启）
     install             安装（构建并启动所有服务）
     help                显示此帮助信息
 
+环境变量:
+    USE_MVND=1          启用 C2 常驻 mvnd 容器编译（守护进程跨次复用，更快）；不可用时自动回退 C1。
+                        默认 0 走 C1（一次性 docker run 卷挂载，无常驻进程）。
+                        注意：C2 会常驻一个 mvnd 容器（约 1–2GB 内存），用 builder-stop / clean 回收。
+    MVND_VERSION        mvnd 版本（默认 1.0.6）；MVND_IMAGE/MVND_CONTAINER 可覆盖镜像/容器名。
+    MVND_IDLE_TIMEOUT   mvnd daemon 空闲多久自动退出释放内存（默认 30m，容器保留，下次自动重生）。
+    FORCE_REBUILD=1     强制全量重建（绕过增量与哈希跳过）。
+
 示例:
     $0 install                    # 构建并启动所有服务
     $0 build                      # 仅构建运行时镜像
-    $0 start                      # 启动所有服务
+    USE_MVND=1 $0 update          # 用常驻 mvnd 守护进程编译并更新（C2）
+    $0 builder-stop               # 停止 mvnd 常驻容器
     $0 logs iot-gateway           # 查看iot-gateway的日志
-    $0 restart-service iot-system # 重启iot-system服务
     $0 status                     # 查看所有服务状态
 
 可用服务:
@@ -705,7 +1051,7 @@ main() {
             build_base_jars 1
             ;;
         build)
-            build_images
+            build_images_incremental
             ;;
         start)
             start_services
@@ -739,6 +1085,10 @@ main() {
             ;;
         clean-all)
             clean_all
+            ;;
+        builder-stop)
+            stop_mvnd_builder
+            print_success "mvnd 常驻 builder 容器已停止（如存在）"
             ;;
         update)
             update_services
@@ -783,16 +1133,17 @@ show_interactive_menu() {
         echo "12) 更新服务（重新构建并重启）"
         echo "13) 清理（删除容器，保留镜像）"
         echo "14) 完全清理（删除容器和镜像）"
+        echo "15) 停止 mvnd 常驻 builder 容器"
         echo "0) 退出"
         echo
-        read -p "请选择操作 [0-14]: " choice
+        read -p "请选择操作 [0-15]: " choice
         
         case $choice in
             1)
                 build_and_start
                 ;;
             2)
-                build_images
+                build_images_incremental
                 ;;
             3)
                 start_services
@@ -845,6 +1196,10 @@ show_interactive_menu() {
                 ;;
             14)
                 clean_all
+                ;;
+            15)
+                stop_mvnd_builder
+                print_success "mvnd 常驻 builder 容器已停止（如存在）"
                 ;;
             0)
                 print_info "退出"

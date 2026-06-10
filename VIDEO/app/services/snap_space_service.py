@@ -38,7 +38,7 @@ def _find_snap_space_by_device_id(device_id):
     return SnapSpace.query.filter_by(device_id=device_id).first()
 
 
-def create_snap_space(space_name, save_mode=0, save_time=0, description=None, device_id=None):
+def create_snap_space(space_name, save_mode=0, save_time=7, description=None, device_id=None, save_time_custom=False):
     """创建抓拍空间
     
     Args:
@@ -96,6 +96,7 @@ def create_snap_space(space_name, save_mode=0, save_time=0, description=None, de
             bucket_name=bucket_name,
             save_mode=save_mode,
             save_time=save_time,
+            save_time_custom=save_time_custom,
             description=description,
             device_id=device_id
         )
@@ -171,11 +172,13 @@ def create_snap_space_for_device(device_id, device_name=None):
         # 生成空间名称：直接使用设备名称（允许同名，因为通过space_code唯一）
         space_name = device_name or device.name or device_id
         
-        # 使用默认配置创建抓拍空间
+        from app.services.space_save_time_service import resolve_save_time_for_device, SPACE_KIND_SNAP
+        directory_save_time = resolve_save_time_for_device(device_id, SPACE_KIND_SNAP)
         return create_snap_space(
             space_name=space_name,
-            save_mode=0,  # 默认标准存储
-            save_time=0,  # 默认永久保存
+            save_mode=0,
+            save_time=directory_save_time,
+            save_time_custom=False,
             description=f"设备 {device_id} 的自动创建抓拍空间",
             device_id=device_id
         )
@@ -202,9 +205,10 @@ def get_snap_space_by_device_id(device_id):
         return None
 
 
-def update_snap_space(space_id, space_name=None, save_mode=None, save_time=None, description=None):
+def update_snap_space(space_id, space_name=None, save_mode=None, save_time=None, description=None, save_time_custom=None):
     """更新抓拍空间"""
     try:
+        from app.services.space_save_time_service import apply_space_save_time_update, SPACE_KIND_SNAP
         snap_space = SnapSpace.query.get_or_404(space_id)
         
         # 允许同名空间，因为通过space_code来保证唯一性
@@ -212,14 +216,20 @@ def update_snap_space(space_id, space_name=None, save_mode=None, save_time=None,
             snap_space.space_name = space_name
         if save_mode is not None:
             snap_space.save_mode = save_mode
-        if save_time is not None:
-            snap_space.save_time = save_time
+        if save_time is not None or save_time_custom is not None:
+            apply_space_save_time_update(
+                snap_space, SPACE_KIND_SNAP,
+                save_time=save_time, save_time_custom=save_time_custom,
+            )
         if description is not None:
             snap_space.description = description
         
         db.session.commit()
         logger.info(f"抓拍空间更新成功: ID={space_id}")
         return snap_space
+    except ValueError:
+        db.session.rollback()
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"更新抓拍空间失败: {str(e)}", exc_info=True)
@@ -320,28 +330,20 @@ def get_snap_space(space_id):
         raise ValueError(f"抓拍空间不存在: ID={space_id}")
 
 
-def list_snap_spaces(page_no=1, page_size=10, search=None):
-    """查询抓拍空间列表"""
+def list_snap_spaces(page_no=1, page_size=10, search=None, parent_key=None, scope=None):
+    """查询抓拍空间列表（支持 NVR / GB28181 文件夹层级）。"""
     try:
-        query = SnapSpace.query
-        
-        if search:
-            query = query.filter(SnapSpace.space_name.ilike(f'%{search}%'))
-        
-        query = query.order_by(SnapSpace.created_at.desc())
-        
-        pagination = query.paginate(
-            page=page_no,
-            per_page=page_size,
-            error_out=False
+        from app.services.space_folder_tree_service import list_space_folder_nodes, SPACE_KIND_SNAP
+        return list_space_folder_nodes(
+            SPACE_KIND_SNAP,
+            page_no=page_no,
+            page_size=page_size,
+            search=search,
+            parent_key=parent_key,
+            scope=scope,
         )
-        
-        return {
-            'items': [space.to_dict() for space in pagination.items],
-            'total': pagination.total,
-            'page_no': page_no,
-            'page_size': page_size
-        }
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"查询抓拍空间列表失败: {str(e)}", exc_info=True)
         raise RuntimeError(f"查询抓拍空间列表失败: {str(e)}")
@@ -473,15 +475,21 @@ def auto_cleanup_all_spaces(app=None):
             # 延迟导入，避免循环依赖
             from app.services.snap_image_service import cleanup_old_images_by_days
             
-            spaces = SnapSpace.query.filter(SnapSpace.save_time > 0).all()
+            from app.services.space_save_time_service import enrich_snap_space_dict
+
+            spaces = SnapSpace.query.all()
             total_processed = 0
             total_deleted = 0
             total_archived = 0
             total_errors = 0
             
             for space in spaces:
+                info = enrich_snap_space_dict({'save_time': space.save_time}, space)
+                days = info.get('effective_save_time') or 0
+                if days <= 0:
+                    continue
                 try:
-                    result = cleanup_old_images_by_days(space.id, space.save_time)
+                    result = cleanup_old_images_by_days(space.id, days)
                     total_processed += result['processed_count']
                     total_deleted += result['deleted_count']
                     total_archived += result['archived_count']

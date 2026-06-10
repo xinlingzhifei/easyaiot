@@ -150,11 +150,8 @@
           <Gb28181DeviceModal @register="registerGbDeviceModal" @success="handleSuccess"/>
           <NvrDeviceModal @register="registerNvrDeviceModal" @success="handleSuccess"/>
         </TabPane>
-        <TabPane key="4" tab="抓拍空间">
-          <SnapSpace ref="snapSpaceRef"/>
-        </TabPane>
-        <TabPane key="5" tab="录像空间">
-          <RecordSpace ref="recordSpaceRef"/>
+        <TabPane key="4" tab="存储空间">
+          <StorageSpace ref="storageSpaceRef"/>
         </TabPane>
         <TabPane key="6" tab="推流转发">
           <StreamForward ref="streamForwardRef"/>
@@ -203,11 +200,10 @@ import DialogPlayer from "@/components/VideoPlayer/DialogPlayer.vue";
 import { Button } from '@/components/Button';
 import SplitScreenMonitor from "./components/SplitScreenMonitor/index.vue";
 import CameraMapDistribution from './components/CameraMapDistribution/index.vue';
-import SnapSpace from "./components/SnapSpace/index.vue";
+import StorageSpace from "./components/StorageSpace/index.vue";
 import AlgorithmTask from "./components/AlgorithmTask/index.vue";
 import FaceLibrary from "./components/FaceLibrary/index.vue";
 import PlateLibrary from "./components/PlateLibrary/index.vue";
-import RecordSpace from "./components/RecordSpace/index.vue";
 import DeviceMixedCardList from './components/DeviceMixedCardList/index.vue';
 import Gb28181DeviceDetail from './components/Gb28181DeviceDetail/index.vue';
 import NvrDeviceDetail from './components/NvrDeviceDetail/index.vue';
@@ -305,11 +301,8 @@ const deviceCreateInitial = reactive<{
   brand: 'custom',
 });
 
-// 抓拍空间组件引用
-const snapSpaceRef = ref();
-
-// 录像空间组件引用
-const recordSpaceRef = ref();
+// 存储空间组件引用
+const storageSpaceRef = ref();
 
 // 算法任务组件引用
 const algorithmTaskRef = ref();
@@ -328,8 +321,7 @@ const CAMERA_TAB_KEYS = {
   CAMERA_MAP: '1',
   SPLIT_MONITOR: '2',
   DEVICE_LIST: '3',
-  SNAP: '4',
-  RECORD: '5',
+  STORAGE: '4',
   STREAM_FORWARD: '6',
   ALGORITHM: '7',
   GB_PULL_PROXY: '8',
@@ -342,6 +334,7 @@ const CAMERA_TAB_ID_SET = new Set<string>(Object.values(CAMERA_TAB_KEYS));
 
 /** 旧版 tab 编号兼容（仅处理当前 1～11 以外的历史编号） */
 const LEGACY_CAMERA_TAB_MAP: Record<string, string> = {
+  '5': CAMERA_TAB_KEYS.STORAGE,
   '12': CAMERA_TAB_KEYS.DEVICE_LIST,
 };
 
@@ -359,13 +352,11 @@ const handleTabClick = (activeKey: string) => {
   if (activeKey === CAMERA_TAB_KEYS.DEVICE_LIST) {
     handleSuccess();
   }
-  // 切换到抓拍空间标签页时，刷新数据
-  if (activeKey === CAMERA_TAB_KEYS.SNAP && snapSpaceRef.value) {
-    snapSpaceRef.value.refresh();
-  }
-  // 切换到录像空间标签页时，刷新数据
-  if (activeKey === CAMERA_TAB_KEYS.RECORD && recordSpaceRef.value) {
-    recordSpaceRef.value.refresh();
+  // 切换到存储空间标签页时，刷新数据（TabPane destroyInactiveTabPane 下需 nextTick 等待挂载）
+  if (activeKey === CAMERA_TAB_KEYS.STORAGE) {
+    void nextTick(() => {
+      storageSpaceRef.value?.refresh?.();
+    });
   }
   // 切换到算法任务标签页时，刷新数据
   if (activeKey === CAMERA_TAB_KEYS.ALGORITHM && algorithmTaskRef.value) {
@@ -935,11 +926,9 @@ const handleCardPlayAI = (record) => {
   handlePlayAIStream(record);
 };
 
-// 组件挂载时启动状态检查定时器
-onMounted(() => {
-  // 已禁用自动状态检查定时器
-  // startStatusCheckTimer();
-  // 处理路由参数，自动切换到指定tab
+/** 根据路由 query 切换 Camera 一级 Tab（子 Tab 如 storage 由 StorageSpace 自行同步，不触发整页刷新） */
+function applyCameraRouteQuery() {
+  const prevActiveKey = state.activeKey;
   const rawTab = route.query.tab as string;
   if (rawTab === '3' || route.query.mode === 'config') {
     splitScreenInitialMode.value = 'config';
@@ -948,6 +937,12 @@ onMounted(() => {
     state.activeKey = CAMERA_TAB_KEYS.CAMERA_MAP;
   } else if (rawTab) {
     state.activeKey = normalizeCameraRouteTab(rawTab);
+    if (rawTab === '5' && !route.query.storage) {
+      router.replace({
+        path: route.path,
+        query: { ...route.query, tab: CAMERA_TAB_KEYS.STORAGE, storage: 'record' },
+      });
+    }
   } else if (route.query.mode === 'config') {
     state.activeKey = CAMERA_TAB_KEYS.SPLIT_MONITOR;
   }
@@ -955,11 +950,33 @@ onMounted(() => {
     const parsed = parseDeviceCreateQuery(route.query as Record<string, unknown>);
     openDeviceCreate(parsed);
   }
-  if (state.activeKey === CAMERA_TAB_KEYS.CAMERA_MAP) {
+  // 仅首次进入「存储空间」一级 Tab 时刷新；子 Tab（storage=）切换保持已挂载状态，避免重复拉树
+  if (
+    state.activeKey === CAMERA_TAB_KEYS.STORAGE &&
+    prevActiveKey !== CAMERA_TAB_KEYS.STORAGE
+  ) {
+    void nextTick(() => {
+      storageSpaceRef.value?.refresh?.();
+    });
+  }
+  if (
+    state.activeKey === CAMERA_TAB_KEYS.CAMERA_MAP &&
+    prevActiveKey !== CAMERA_TAB_KEYS.CAMERA_MAP
+  ) {
     void nextTick(() => {
       cameraMapDistributionRef.value?.refresh?.();
     });
   }
+}
+
+watch(
+  () => route.query.tab,
+  () => applyCameraRouteQuery(),
+);
+
+// 组件挂载时启动状态检查定时器
+onMounted(() => {
+  applyCameraRouteQuery();
 });
 
 // 组件卸载时清除定时器

@@ -94,25 +94,12 @@ def extract_frame_from_rtsp(device, snap_space):
                 logger.error(f"设备 {device.id} RTMP流抽帧异常: {str(e)}", exc_info=True)
                 return False
         else:
-            # 从RTSP流中抽帧（使用OpenCV）
+            # 从RTSP流中抽帧（跳过缓冲旧帧与灰屏）
             logger.debug(f"设备 {device.id} 开始连接RTSP流: {source}")
-            cap = cv2.VideoCapture(source)
-            if not cap.isOpened():
-                logger.error(f"设备 {device.id} 无法打开RTSP流: {source}")
-                return False
-            
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 减少缓冲区，获取最新帧
-            
-            # 设置超时时间（5秒）
-            ret, frame = cap.read()
-            cap.release()
-            
-            if not ret:
-                logger.error(f"设备 {device.id} RTSP流读取失败（ret=False），源地址: {source}")
-                return False
-            
-            if frame is None:
-                logger.error(f"设备 {device.id} RTSP流读取失败（frame=None），源地址: {source}")
+            from app.utils.rtsp_stream_utils import capture_rtsp_frame
+            ret, frame = capture_rtsp_frame(source)
+            if not ret or frame is None:
+                logger.error(f"设备 {device.id} RTSP流读取失败，源地址: {source}")
                 return False
             
             logger.debug(f"设备 {device.id} RTSP流读取成功，帧大小: {frame.shape if frame is not None else 'None'}")

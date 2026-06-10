@@ -50,7 +50,7 @@ export async function navigateToAlertRecord(
 
   if (!spaceId) return false;
 
-  const query: Record<string, string> = { date };
+  const query: Record<string, string> = { view: 'replay', date };
   if (alert.id) query.alertId = String(alert.id);
   if (segmentId) query.segmentId = String(segmentId);
 

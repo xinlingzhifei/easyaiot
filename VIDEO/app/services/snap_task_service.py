@@ -550,12 +550,10 @@ def capture_image(task, device, space):
                     logger.error(f"设备 {device.id} RTMP流抽帧异常: {str(e)}", exc_info=True)
                     return False
             else:
-                # 从RTSP流中抽帧（使用OpenCV）
-                cap = cv2.VideoCapture(source)
-                ret, frame = cap.read()
-                cap.release()
-                
-                if not ret:
+                # 从RTSP流中抽帧（跳过缓冲旧帧与灰屏）
+                from app.utils.rtsp_stream_utils import capture_rtsp_frame
+                ret, frame = capture_rtsp_frame(source)
+                if not ret or frame is None:
                     logger.error(f"设备 {device.id} RTSP流读取失败")
                     return False
         else:  # 抓拍（使用ONVIF快照）

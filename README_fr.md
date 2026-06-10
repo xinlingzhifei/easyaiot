@@ -419,8 +419,16 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
   <img src=".image/banner/banner1084.jpg" alt="Capture d'écran 7" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1055.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1056.jpg" alt="Capture d'écran 7" width="49%">
+  <img src=".image/banner/banner1121.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1122.png" alt="Capture d'écran 7" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1123.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1124.png" alt="Capture d'écran 7" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1125.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1126.png" alt="Capture d'écran 7" width="49%">
 </div>
 <div>
   <img src=".image/banner/banner1117.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
