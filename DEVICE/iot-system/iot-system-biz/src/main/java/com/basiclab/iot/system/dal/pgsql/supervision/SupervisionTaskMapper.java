@@ -1,9 +1,24 @@
 package com.basiclab.iot.system.dal.pgsql.supervision;
 
 import com.basiclab.iot.common.core.mapper.BaseMapperX;
+import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionTaskDO;
+import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import org.apache.ibatis.annotations.Mapper;
+
+import java.time.LocalDateTime;
 
 @Mapper
 public interface SupervisionTaskMapper extends BaseMapperX<SupervisionTaskDO> {
+
+    default int updateStatusToAcknowledged(Long taskId, Long acceptedUserId, LocalDateTime acceptedAt) {
+        return update(new SupervisionTaskDO()
+                        .setTaskStatus(SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode())
+                        .setAssignedUserId(acceptedUserId)
+                        .setAcceptedAt(acceptedAt),
+                new LambdaQueryWrapperX<SupervisionTaskDO>()
+                        .eq(SupervisionTaskDO::getId, taskId)
+                        .eq(SupervisionTaskDO::getTaskStatus, SupervisionTaskStatusEnum.SENT.getCode()));
+    }
+
 }
