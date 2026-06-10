@@ -23,6 +23,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionEventServiceImplTest {
@@ -51,11 +52,11 @@ class SupervisionEventServiceImplTest {
         assertEquals(List.of("video:alert-001", "video:alert-001"), eventStore.lookupKeys());
         assertEquals(ruleSeed.getEventType(), first.eventType());
         assertEquals(SupervisionEventLevelEnum.L4, first.eventLevel());
-        assertEquals(SupervisionEventStatusEnum.CREATED.getCode(), first.eventStatus());
+        assertEquals(SupervisionEventStatusEnum.DISPATCHED.getCode(), first.eventStatus());
     }
 
     @Test
-    void createFromAlertDispatchesTasksOnlyForNewEvent() {
+    void createFromAlertMarksEventDispatchedOnlyAfterTasksAreDispatched() {
         InMemoryEventStore eventStore = new InMemoryEventStore();
         CapturingTaskDispatcher taskDispatcher = new CapturingTaskDispatcher();
         SupervisionEventService eventService = new SupervisionEventServiceImpl(eventStore, taskDispatcher);
@@ -74,6 +75,8 @@ class SupervisionEventServiceImplTest {
 
         assertFalse(first.reused());
         assertTrue(second.reused());
+        assertEquals(SupervisionEventStatusEnum.DISPATCHED.getCode(), first.eventStatus());
+        assertEquals(List.of(first.eventId()), eventStore.dispatchedEventIds());
         assertEquals(1, taskDispatcher.commands().size());
         TaskDispatchCommand dispatchCommand = taskDispatcher.commands().get(0);
         assertEquals(first.eventId(), dispatchCommand.eventId());
@@ -83,11 +86,36 @@ class SupervisionEventServiceImplTest {
         assertEquals(ruleSeed.getDefaultResponsibilityChain(), dispatchCommand.responsibilityChain());
     }
 
+    @Test
+    void createFromAlertKeepsEventCreatedWhenTaskDispatchFails() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(
+                eventStore,
+                command -> {
+                    throw new IllegalStateException("dispatch failed");
+                }
+        );
+        AlertToEventCommand command = new AlertToEventCommand(
+                "video",
+                "alert-001",
+                SupervisionRuleSeeds.RULE_FALL_DOWN,
+                "fall_down",
+                LocalDateTime.of(2026, 6, 10, 10, 30),
+                "payload-hash-001"
+        );
+
+        assertThrows(IllegalStateException.class, () -> eventService.createFromAlert(command));
+
+        assertEquals(1, eventStore.createdCount());
+        assertEquals(List.of(), eventStore.dispatchedEventIds());
+    }
+
     private static final class InMemoryEventStore implements EventStore {
 
         private long nextEventId = 1000L;
         private final Map<String, AlertToEventResult> openEvents = new LinkedHashMap<>();
         private final List<String> lookupKeys = new ArrayList<>();
+        private final List<Long> dispatchedEventIds = new ArrayList<>();
         private int createdCount;
 
         @Override
@@ -113,12 +141,22 @@ class SupervisionEventServiceImplTest {
             return result;
         }
 
+        @Override
+        public void markDispatched(Long eventId) {
+            dispatchedEventIds.add(eventId);
+            openEvents.replaceAll((key, event) -> event.eventId().equals(eventId) ? event.asDispatched() : event);
+        }
+
         int createdCount() {
             return createdCount;
         }
 
         List<String> lookupKeys() {
             return lookupKeys;
+        }
+
+        List<Long> dispatchedEventIds() {
+            return dispatchedEventIds;
         }
 
         private String key(String sourceSystem, String sourceAlertId) {

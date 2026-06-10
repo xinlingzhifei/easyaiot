@@ -8,6 +8,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Event
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +54,12 @@ public class SupervisionEventMapperEventStore implements EventStore {
                 draft.eventStatus(),
                 false
         );
+    }
+
+    @Override
+    public void markDispatched(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        supervisionEventMapper.updateStatusToDispatched(eventId, LocalDateTime.now());
     }
 
     private AlertToEventResult toResult(SupervisionEventDO eventDO) {

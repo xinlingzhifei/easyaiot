@@ -66,7 +66,8 @@ public class SupervisionEventServiceImpl implements SupervisionEventService {
                 ruleSeed.getDefaultLevel(),
                 ruleSeed.getDefaultResponsibilityChain()
         ));
-        return result;
+        eventStore.markDispatched(result.eventId());
+        return result.asDispatched();
     }
 
     private static String resolveSourceAlertType(String sourceAlertType, RuleSeed ruleSeed) {

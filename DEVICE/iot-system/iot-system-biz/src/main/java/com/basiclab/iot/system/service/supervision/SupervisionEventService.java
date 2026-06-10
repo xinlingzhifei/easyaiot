@@ -1,6 +1,7 @@
 package com.basiclab.iot.system.service.supervision;
 
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
+import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,6 +37,14 @@ public interface SupervisionEventService {
                     eventType, eventLevel, eventStatus, true);
         }
 
+        public AlertToEventResult asDispatched() {
+            if (SupervisionEventStatusEnum.DISPATCHED.getCode().equals(eventStatus)) {
+                return this;
+            }
+            return new AlertToEventResult(eventId, sourceSystem, sourceAlertId, ruleCode,
+                    eventType, eventLevel, SupervisionEventStatusEnum.DISPATCHED.getCode(), reused);
+        }
+
     }
 
     record EventCreateDraft(String sourceSystem,
@@ -66,6 +75,8 @@ public interface SupervisionEventService {
         Optional<AlertToEventResult> findOpenBySourceAlert(String sourceSystem, String sourceAlertId);
 
         AlertToEventResult create(EventCreateDraft draft);
+
+        void markDispatched(Long eventId);
 
     }
 

@@ -51,7 +51,8 @@ class SupervisionEventMapperEventStoreTest {
         assertFalse(first.reused());
         assertTrue(second.reused());
         assertEquals(first.eventId(), second.eventId());
-        assertEquals(SupervisionEventStatusEnum.CREATED.getCode(), first.eventStatus());
+        assertEquals(SupervisionEventStatusEnum.DISPATCHED.getCode(), first.eventStatus());
+        assertEquals(SupervisionEventStatusEnum.DISPATCHED.getCode(), second.eventStatus());
         assertEquals(SupervisionEventLevelEnum.L4, first.eventLevel());
 
         SupervisionEventDO insertedEvent = mapperHandler.insertedEvents().get(0);
@@ -64,6 +65,12 @@ class SupervisionEventMapperEventStoreTest {
         assertEquals("生命健康", insertedEvent.getEventType());
         assertEquals(SupervisionEventLevelEnum.L4.getCode(), insertedEvent.getEventLevel());
         assertEquals(SupervisionEventStatusEnum.CREATED.getCode(), insertedEvent.getEventStatus());
+
+        assertEquals(1, mapperHandler.dispatchedUpdates().size());
+        SupervisionEventDO dispatchedUpdate = mapperHandler.dispatchedUpdates().get(0);
+        assertEquals(first.eventId(), dispatchedUpdate.getId());
+        assertEquals(SupervisionEventStatusEnum.DISPATCHED.getCode(), dispatchedUpdate.getEventStatus());
+        assertNotNull(dispatchedUpdate.getDispatchedAt());
     }
 
     private static final class CapturingMapperHandler implements InvocationHandler {
@@ -72,6 +79,7 @@ class SupervisionEventMapperEventStoreTest {
         private final Map<String, SupervisionEventDO> openEvents = new LinkedHashMap<>();
         private final List<String> lookupKeys = new ArrayList<>();
         private final List<SupervisionEventDO> insertedEvents = new ArrayList<>();
+        private final List<SupervisionEventDO> dispatchedUpdates = new ArrayList<>();
 
         private SupervisionEventMapper createProxy() {
             return (SupervisionEventMapper) Proxy.newProxyInstance(
@@ -91,8 +99,24 @@ class SupervisionEventMapperEventStoreTest {
             if ("insert".equals(method.getName()) && args != null && args.length == 1
                     && args[0] instanceof SupervisionEventDO eventDO) {
                 eventDO.setId(++nextEventId);
-                insertedEvents.add(eventDO);
+                insertedEvents.add(copy(eventDO));
                 openEvents.put(key(eventDO.getSourceSystem(), eventDO.getSourceAlertId()), eventDO);
+                return 1;
+            }
+            if ("updateStatusToDispatched".equals(method.getName()) && args != null && args.length == 2) {
+                Long eventId = (Long) args[0];
+                LocalDateTime dispatchedAt = (LocalDateTime) args[1];
+                SupervisionEventDO update = new SupervisionEventDO()
+                        .setId(eventId)
+                        .setEventStatus(SupervisionEventStatusEnum.DISPATCHED.getCode())
+                        .setDispatchedAt(dispatchedAt);
+                dispatchedUpdates.add(update);
+                openEvents.values().stream()
+                        .filter(eventDO -> eventId.equals(eventDO.getId()))
+                        .findFirst()
+                        .ifPresent(eventDO -> eventDO
+                                .setEventStatus(SupervisionEventStatusEnum.DISPATCHED.getCode())
+                                .setDispatchedAt(dispatchedAt));
                 return 1;
             }
             if (method.getDeclaringClass() == Object.class) {
@@ -109,8 +133,27 @@ class SupervisionEventMapperEventStoreTest {
             return insertedEvents;
         }
 
+        private List<SupervisionEventDO> dispatchedUpdates() {
+            return dispatchedUpdates;
+        }
+
         private String key(String sourceSystem, String sourceAlertId) {
             return sourceSystem + ":" + sourceAlertId;
+        }
+
+        private SupervisionEventDO copy(SupervisionEventDO source) {
+            return new SupervisionEventDO()
+                    .setId(source.getId())
+                    .setEventNo(source.getEventNo())
+                    .setSourceSystem(source.getSourceSystem())
+                    .setSourceAlertId(source.getSourceAlertId())
+                    .setSourceAlertType(source.getSourceAlertType())
+                    .setSourceAlertTime(source.getSourceAlertTime())
+                    .setSourcePayloadHash(source.getSourcePayloadHash())
+                    .setEventType(source.getEventType())
+                    .setEventLevel(source.getEventLevel())
+                    .setEventStatus(source.getEventStatus())
+                    .setDispatchedAt(source.getDispatchedAt());
         }
 
     }

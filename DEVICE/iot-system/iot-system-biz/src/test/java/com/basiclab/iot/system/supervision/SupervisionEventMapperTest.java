@@ -13,7 +13,10 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.time.LocalDateTime;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,6 +46,28 @@ class SupervisionEventMapperTest {
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.CLOSED.getCode()));
     }
 
+    @Test
+    void updateStatusToDispatchedUpdatesCreatedEventById() {
+        initTableInfo();
+        LocalDateTime dispatchedAt = LocalDateTime.of(2026, 6, 10, 11, 20);
+        CapturingMapperHandler handler = new CapturingMapperHandler(null);
+        SupervisionEventMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToDispatched(1001L, dispatchedAt);
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionEventStatusEnum.DISPATCHED.getCode(), handler.updateObject().getEventStatus());
+        assertEquals(dispatchedAt, handler.updateObject().getDispatchedAt());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionEventDO> queryWrapper = (LambdaQueryWrapperX<SupervisionEventDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("event_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(1001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.CREATED.getCode()));
+    }
+
     private static void initTableInfo() {
         if (TableInfoHelper.getTableInfo(SupervisionEventDO.class) != null) {
             return;
@@ -55,6 +80,7 @@ class SupervisionEventMapperTest {
 
         private final SupervisionEventDO result;
         private Wrapper<SupervisionEventDO> queryWrapper;
+        private SupervisionEventDO updateObject;
 
         private CapturingMapperHandler(SupervisionEventDO result) {
             this.result = result;
@@ -75,6 +101,12 @@ class SupervisionEventMapperTest {
                 queryWrapper = (Wrapper<SupervisionEventDO>) args[0];
                 return result;
             }
+            if ("update".equals(method.getName()) && args != null && args.length == 2
+                    && args[0] instanceof SupervisionEventDO eventDO && args[1] instanceof Wrapper) {
+                updateObject = eventDO;
+                queryWrapper = (Wrapper<SupervisionEventDO>) args[1];
+                return 1;
+            }
             if (method.isDefault()) {
                 return InvocationHandler.invokeDefault(proxy, method, args);
             }
@@ -86,6 +118,10 @@ class SupervisionEventMapperTest {
 
         private Wrapper<SupervisionEventDO> queryWrapper() {
             return queryWrapper;
+        }
+
+        private SupervisionEventDO updateObject() {
+            return updateObject;
         }
 
     }
