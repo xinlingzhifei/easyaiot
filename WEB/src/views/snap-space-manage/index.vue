@@ -2,8 +2,13 @@
   <div class="snap-space-page">
     <div class="page-header">
       <div class="header-left">
-        <Button type="text" class="back-btn" @click="goBack">
-          <ArrowLeftOutlined /> 返回抓拍空间
+        <Button
+          type="text"
+          class="back-btn"
+          preIcon="ant-design:arrow-left-outlined"
+          @click="goBack"
+        >
+          返回抓拍空间
         </Button>
         <div v-if="spaceInfo" class="space-info">
           <h1 class="page-title">{{ spaceInfo.space_name }}</h1>
@@ -80,8 +85,19 @@
       <main class="right-panel">
         <div v-if="selectedAlert" class="preview-section">
           <div class="preview-header">
-            <span class="preview-title">{{ formatAlertEvent(selectedAlert.event) }}</span>
-            <span class="preview-time">{{ formatTime(selectedAlert.time) }}</span>
+            <div class="preview-header-main">
+              <span class="preview-title">{{ formatAlertEvent(selectedAlert.event) }}</span>
+              <span class="preview-time">{{ formatTime(selectedAlert.time) }}</span>
+            </div>
+            <Button
+              v-if="selectedAlert.device_id && selectedAlert.time"
+              type="primary"
+              size="middle"
+              @click="handleViewRecord(selectedAlert)"
+            >
+              <Icon icon="ant-design:video-camera-outlined" />
+              查看告警录像
+            </Button>
           </div>
           <div class="preview-image-wrap">
             <img
@@ -105,50 +121,7 @@
               <span class="label">区域</span>
               <span>{{ selectedAlert.region }}</span>
             </div>
-            <Button
-              v-if="selectedAlert.device_id && selectedAlert.time"
-              type="primary"
-              size="small"
-              class="view-record-btn"
-              @click="handleViewRecord(selectedAlert)"
-            >
-              <VideoCameraOutlined /> 查看告警录像
-            </Button>
           </div>
-        </div>
-
-        <div class="album-section">
-          <div class="album-header">
-            <span>告警相册</span>
-            <span class="album-count">{{ alertList.length }} 张</span>
-          </div>
-          <Spin :spinning="loading">
-            <div v-if="!alertList.length && !loading" class="album-empty">
-              <Empty description="选择日期查看告警图片" />
-            </div>
-            <div v-else class="album-grid">
-              <div
-                v-for="alert in alertList"
-                :key="'album-' + alert.id"
-                class="album-item"
-                :class="{ active: selectedAlert?.id === alert.id }"
-                @click="selectAlert(alert)"
-              >
-                <img
-                  v-if="alert.image_url"
-                  :src="thumbUrl(alert.image_url)"
-                  alt=""
-                  loading="lazy"
-                />
-                <div v-else class="album-no-img">
-                  <PictureOutlined />
-                </div>
-                <div class="album-overlay">
-                  <span>{{ formatTime(alert.time, 'HH:mm:ss') }}</span>
-                </div>
-              </div>
-            </div>
-          </Spin>
         </div>
       </main>
     </div>
@@ -158,8 +131,10 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { Button, DatePicker, Empty, Spin } from 'ant-design-vue';
-import { ArrowLeftOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons-vue';
+import { DatePicker, Empty, Spin } from 'ant-design-vue';
+import { PictureOutlined } from '@ant-design/icons-vue';
+import { Button } from '@/components/Button';
+import { Icon } from '@/components/Icon';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getSnapSpace } from '@/api/device/snap';
@@ -573,14 +548,23 @@ onBeforeUnmount(() => {
 }
 
 .preview-section {
+  flex: 1;
   padding: 20px 24px;
-  border-bottom: 1px solid #f0f0f0;
+  overflow-y: auto;
 
   .preview-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
     margin-bottom: 16px;
+
+    .preview-header-main {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
 
     .preview-title {
       font-size: 16px;
@@ -597,15 +581,15 @@ onBeforeUnmount(() => {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 200px;
-    max-height: 360px;
+    min-height: 280px;
+    max-height: calc(100vh - 320px);
     background: #fafafa;
     border-radius: 8px;
     overflow: hidden;
 
     .preview-image {
       max-width: 100%;
-      max-height: 360px;
+      max-height: calc(100vh - 320px);
       object-fit: contain;
     }
   }
@@ -624,95 +608,6 @@ onBeforeUnmount(() => {
         margin-right: 6px;
       }
     }
-
-    .view-record-btn {
-      margin-left: auto;
-    }
   }
-}
-
-.album-section {
-  flex: 1;
-  padding: 16px 24px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-
-  .album-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-    font-size: 14px;
-    font-weight: 500;
-
-    .album-count {
-      font-size: 12px;
-      color: #8c8c8c;
-      font-weight: normal;
-    }
-  }
-}
-
-.album-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
-  overflow-y: auto;
-  flex: 1;
-  padding-bottom: 16px;
-}
-
-.album-item {
-  position: relative;
-  aspect-ratio: 4/3;
-  border-radius: 6px;
-  overflow: hidden;
-  cursor: pointer;
-  border: 2px solid transparent;
-  background: #f5f5f5;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.2s;
-  }
-
-  &:hover img {
-    transform: scale(1.05);
-  }
-
-  &.active {
-    border-color: #52c41a;
-    box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.2);
-  }
-
-  .album-no-img {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    color: #d9d9d9;
-  }
-
-  .album-overlay {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 4px 8px;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
-    color: #fff;
-    font-size: 11px;
-  }
-}
-
-.album-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 </style>

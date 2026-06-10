@@ -351,10 +351,6 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
   <img src=".image/banner/banner-video1001.gif" alt="Capture d'écran 1" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1117.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1118.png" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
   <img src=".image/banner/banner1001.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1076.jpg" alt="Capture d'écran 1" width="49%">
 </div>
@@ -425,6 +421,14 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
 <div>
   <img src=".image/banner/banner1055.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1056.jpg" alt="Capture d'écran 7" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1117.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1118.png" alt="Capture d'écran 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1119.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1120.png" alt="Capture d'écran 1" width="49%">
 </div>
 <div>
   <img src=".image/banner/banner1057.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
