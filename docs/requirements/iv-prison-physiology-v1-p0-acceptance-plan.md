@@ -2,7 +2,9 @@
 
 状态：草案  
 适用范围：监狱/看守所单所试点的 V1-P0 红色生理急症闭环  
-上游依据：`docs/requirements/iv-physiology-v1-requirements-draft.md`、`CONTEXT.md`、`docs/adr/0001-0005`
+上游依据：`docs/requirements/supervision-event-closure-v1-requirements.md`、`docs/requirements/iv-physiology-v1-requirements-draft.md`、`CONTEXT.md`、`docs/adr/`
+
+前置条件：监管事件处置闭环 V1 的 P0 能力已具备，即告警可进入监管事件、处置任务可派发/接收/处理/复核/关闭、关闭校验和证据链可审计。生理监测 P0 验收只验证红色生理急症如何接入该公共闭环。
 
 ## 1. 验收目标
 

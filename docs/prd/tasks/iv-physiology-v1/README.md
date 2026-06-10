@@ -2,11 +2,14 @@
 
 来源：`docs/prd/iv-prison-physiology-v1-prd.md`
 开发列表：`docs/prd/iv-prison-physiology-v1-development-list.md`
+上游底座：`docs/prd/tasks/supervision-event-closure-v1/README.md`
 使用方式：每个文件是一张可领取开发任务。AFK 任务可以直接实现；HITL 任务先完成决策产物，再解锁后续开发。
+
+生理监测任务包默认复用监管事件处置闭环 V1 的事件中心、处置任务、关闭校验、证据链、职责隔离和 P0 验收口径。这里的任务只补齐生理专项能力。
 
 ## 任务索引
 
-1. `01-event-center-boundary.md` - 确认事件中心技术归属与数据边界 - HITL
+1. `01-event-center-boundary.md` - 确认生理专项接入监管事件闭环的数据边界 - HITL
 2. `02-physiology-point-readiness.md` - 生理点位台账与 readiness 基线 - AFK
 3. `03-physiology-sample-ingestion.md` - 上游生理输入归一化为 Physiology Sample - AFK
 4. `04-trusted-person-id-binding.md` - 可信 person_id 绑定与身份不可信降级 - AFK
@@ -27,6 +30,7 @@
 
 ## 推荐执行批次
 
+第零批：完成 `docs/prd/tasks/supervision-event-closure-v1/README.md` 的 P0 闭环任务。
 第一批：1 -> 2 -> 3。
 第二批：4、5 可并行，完成后进入 6。
 第三批：7、8、9、10 形成主闭环。

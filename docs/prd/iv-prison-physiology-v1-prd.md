@@ -1,19 +1,21 @@
 # 司法监管生理监测 V1 PRD
 
 状态：草案
-输入依据：`docs/requirements/iv-physiology-v1-requirements-draft.md`、`docs/requirements/iv-prison-physiology-v1-p0-acceptance-plan.md`、`CONTEXT.md`、`docs/adr/0001-0005`
+输入依据：`docs/requirements/supervision-event-closure-v1-requirements.md`、`docs/requirements/iv-physiology-v1-requirements-draft.md`、`docs/requirements/iv-prison-physiology-v1-p0-acceptance-plan.md`、`CONTEXT.md`、`docs/adr/`
 目标项目：yFeiEye
 优先级：V1-P0 必须先交付，V1-P1/P2 预留和分阶段扩展
 
 ## Problem Statement
 
-司法监管场景需要一条可运行、可解释、可审计的生理急症闭环，而不是在现有告警列表里增加心率、呼吸率等字段。当前 yFeiEye 已具备设备接入、视频流、算法任务、告警、通知、图片/录像证据、权限和审计底座，但现有告警记录无法独立承载监管级事件生命周期、可信身份、医务复测、动作责任链、证据链、readiness 和关闭校验。
+司法监管场景需要一条可运行、可解释、可审计的生理急症闭环，而不是在现有告警列表里增加心率、呼吸率等字段。当前 yFeiEye 已具备设备接入、视频流、算法任务、告警、通知、图片/录像证据、权限和审计底座；`docs/prd/supervision-event-closure-v1-prd.md` 已将这些能力收敛为公共监管事件处置闭环。生理监测 V1 应作为 L4 生命安全专项接入该公共闭环。
 
 在监狱/看守所单所试点中，红色生理急症属于高风险监管事件。系统必须保证高危生理信号能够从上游输入进入统一事件中心，触达医务、监区干警和值班领导，并通过复测、处置、证据和审计完成闭环。系统还必须避免把身份不可信、低质量窗口、模拟接口、人工替代或客户阻断误记为真实成功。
 
 ## Solution
 
-V1 以“司法监管生理监测闭环”为产品边界，优先交付 V1-P0 红色生理急症闭环。系统通过统一事件中心接收行为告警、生理样本和融合线索，将 `Alert` 保持为算法或设备告警输入，把 `Event` 作为监管事件的权威载体。
+V1 以“司法监管生理监测闭环”为产品边界，优先交付 V1-P0 红色生理急症闭环。系统通过监管事件处置闭环接收行为告警、生理样本和融合线索，将 `Alert` 保持为算法或设备告警输入，把 `Supervision Event` 作为监管事件的权威载体。
+
+生理监测 V1 不重复实现事件中心、处置任务、关闭校验、职责隔离和证据链框架；这些能力由 `docs/prd/supervision-event-closure-v1-prd.md` 定义。生理专项负责补齐生理点位、样本、质量、可信身份、红色规则、医务复测和生理治理口径。
 
 V1-P0 的核心链路为：
 
@@ -56,7 +58,7 @@ V1-P0 的核心链路为：
 
 ## Implementation Decisions
 
-- Build or introduce a unified event center as the authoritative lifecycle for behavior, physiology, fusion, and manual supervision events.
+- Reuse the supervision event closure foundation as the authoritative lifecycle for behavior, physiology, fusion, and manual supervision events.
 - Keep existing algorithm/device alerts as inputs and evidence sources; do not expand alert delivery into event closure semantics.
 - Model `Physiology Sample` as a normalized measurement window with source, point, time, metrics, quality labels, confidence, and model or device version.
 - Create personal `Physiology Event` only when physiology quality and trusted `person_id` conditions pass.
