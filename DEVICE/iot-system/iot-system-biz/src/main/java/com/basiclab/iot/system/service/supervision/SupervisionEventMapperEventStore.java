@@ -9,6 +9,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Event
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService.EventCloseStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService.EventAcceptanceStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService.EventRecheckStore;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskReworkService.EventReworkStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService.EventHandlingStore;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-public class SupervisionEventMapperEventStore implements EventStore, EventAcceptanceStore, EventHandlingStore, EventRecheckStore, EventCloseStore {
+public class SupervisionEventMapperEventStore implements EventStore, EventAcceptanceStore, EventHandlingStore, EventRecheckStore, EventCloseStore, EventReworkStore {
 
     private static final String EVENT_NO_PREFIX = "SE-";
 
@@ -101,6 +102,12 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
     public boolean markCloseCheckReworkRequired(Long eventId) {
         Objects.requireNonNull(eventId, "eventId");
         return supervisionEventMapper.updateStatusToCloseCheckReworkRequired(eventId) == 1;
+    }
+
+    @Override
+    public void markReworkAccepted(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        supervisionEventMapper.updateStatusToAcceptedFromRework(eventId, LocalDateTime.now());
     }
 
     private AlertToEventResult toResult(SupervisionEventDO eventDO) {

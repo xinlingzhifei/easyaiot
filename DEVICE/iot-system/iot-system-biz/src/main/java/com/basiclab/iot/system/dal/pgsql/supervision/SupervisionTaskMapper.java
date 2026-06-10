@@ -7,6 +7,7 @@ import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Mapper
 public interface SupervisionTaskMapper extends BaseMapperX<SupervisionTaskDO> {
@@ -46,6 +47,20 @@ public interface SupervisionTaskMapper extends BaseMapperX<SupervisionTaskDO> {
                 new LambdaQueryWrapperX<SupervisionTaskDO>()
                         .eq(SupervisionTaskDO::getId, taskId)
                         .eq(SupervisionTaskDO::getTaskStatus, SupervisionTaskStatusEnum.SUBMITTED.getCode()));
+    }
+
+    default int updateStatusToAcknowledgedForRework(Long taskId, Long acceptedUserId, LocalDateTime acceptedAt, Integer reworkCount) {
+        return update(new SupervisionTaskDO()
+                        .setTaskStatus(SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode())
+                        .setAssignedUserId(acceptedUserId)
+                        .setAcceptedAt(acceptedAt)
+                        .setReworkCount(reworkCount),
+                new LambdaQueryWrapperX<SupervisionTaskDO>()
+                        .eq(SupervisionTaskDO::getId, taskId)
+                        .in(SupervisionTaskDO::getTaskStatus, List.of(
+                                SupervisionTaskStatusEnum.REJECTED.getCode(),
+                                SupervisionTaskStatusEnum.APPROVED.getCode()
+                        )));
     }
 
 }
