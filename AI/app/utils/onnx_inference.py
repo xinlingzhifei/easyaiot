@@ -5,6 +5,8 @@ ONNX推理模块
 @author 翱翔的雄库鲁
 @email andywebjava@163.com
 """
+import ast
+import json
 import os
 import logging
 from typing import Tuple, List, Dict, Any, Optional
@@ -196,6 +198,58 @@ def preprocess(img, input_width, input_height):
     return image_data, img_height, img_width
 
 
+def _is_end2end_yolo_output(output) -> bool:
+    """YOLO26 等 end2end 模型 ONNX 输出为 (1, N, 6): [x1,y1,x2,y2,conf,class_id]。"""
+    arr = np.squeeze(output[0])
+    return arr.ndim >= 2 and int(arr.shape[-1]) == 6
+
+
+def postprocess_end2end(
+    input_image,
+    output,
+    input_width,
+    input_height,
+    img_width,
+    img_height,
+    conf_threshold: float = None,
+    classes_dict: Dict[int, str] = None,
+    allowed_class_ids: Optional[List[int]] = None,
+) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+    """YOLO26 end2end ONNX 后处理（内置 NMS，无需再执行 custom_NMSBoxes）。"""
+    conf_thresh = conf_threshold if conf_threshold is not None else confidence_thres
+    if classes_dict is None:
+        classes_dict = classes
+
+    arr = np.squeeze(output[0])
+    if arr.ndim == 3:
+        arr = arr[0]
+
+    x_factor = img_width / input_width
+    y_factor = img_height / input_height
+    detections = []
+    for row in arr:
+        x1, y1, x2, y2, score, cls_id = row[:6]
+        score = float(score)
+        if score < conf_thresh:
+            continue
+        class_id = int(cls_id)
+        if allowed_class_ids is not None and class_id not in allowed_class_ids:
+            continue
+        class_name = classes_dict.get(class_id, f'class_{class_id}')
+        detections.append({
+            'class': class_id,
+            'class_name': class_name,
+            'confidence': score,
+            'bbox': [
+                int(float(x1) * x_factor),
+                int(float(y1) * y_factor),
+                int(float(x2) * x_factor),
+                int(float(y2) * y_factor),
+            ],
+        })
+    return input_image, detections
+
+
 def postprocess(input_image, output, input_width, input_height, img_width, img_height, 
                 conf_threshold: float = None, iou_threshold: float = None, 
                 draw: bool = True, classes_dict: Dict[int, str] = None,
@@ -230,6 +284,19 @@ def postprocess(input_image, output, input_width, input_height, img_width, img_h
         classes_dict = classes
     if color_palette_array is None:
         color_palette_array = color_palette
+
+    if _is_end2end_yolo_output(output):
+        return postprocess_end2end(
+            input_image,
+            output,
+            input_width,
+            input_height,
+            img_width,
+            img_height,
+            conf_threshold=conf_thresh,
+            classes_dict=classes_dict,
+            allowed_class_ids=allowed_class_ids,
+        )
 
     # 转置和压缩输出以匹配预期的形状
     outputs = np.transpose(np.squeeze(output[0]))
@@ -297,80 +364,141 @@ def postprocess(input_image, output, input_width, input_height, img_width, img_h
     return input_image, detections
 
 
+def _parse_names_metadata(raw: str) -> Optional[Dict[int, str]]:
+    """解析 Ultralytics ONNX 元数据 names（支持 JSON 与 Python dict 字面量）。"""
+    if not raw or not str(raw).strip():
+        return None
+    text = str(raw).strip()
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            obj = parser(text)
+            if isinstance(obj, dict) and obj:
+                return {int(k): str(v) for k, v in obj.items()}
+            if isinstance(obj, list) and obj:
+                return {i: str(v) for i, v in enumerate(obj)}
+        except Exception:
+            continue
+    return None
+
+
+def _get_classes_from_pt_files(onnx_model_path: str) -> Optional[Dict[int, str]]:
+    try:
+        model_dir = os.path.dirname(onnx_model_path)
+        model_basename = os.path.splitext(os.path.basename(onnx_model_path))[0]
+        pt_file = os.path.join(model_dir, f"{model_basename}.pt")
+        if os.path.exists(pt_file):
+            from ultralytics import YOLO
+            yolo_model = YOLO(pt_file)
+            if hasattr(yolo_model, 'names') and yolo_model.names:
+                return {int(k): str(v) for k, v in yolo_model.names.items()}
+        if os.path.isdir(model_dir):
+            for file in os.listdir(model_dir):
+                if file.endswith('.pt'):
+                    try:
+                        from ultralytics import YOLO
+                        pt_path = os.path.join(model_dir, file)
+                        yolo_model = YOLO(pt_path)
+                        if hasattr(yolo_model, 'names') and yolo_model.names:
+                            return {int(k): str(v) for k, v in yolo_model.names.items()}
+                    except Exception:
+                        continue
+    except Exception as e:
+        logging.debug(f"无法从YOLO模型文件获取类别信息: {str(e)}")
+    return None
+
+
+def _infer_yolo_num_classes(session: Any) -> Optional[int]:
+    try:
+        outputs = session.get_outputs()
+        if not outputs:
+            return None
+        shape = outputs[0].shape
+        if len(shape) < 2 or not isinstance(shape[1], int):
+            return None
+        channels = int(shape[1])
+        if len(shape) == 3 and channels > 4 and channels <= 1000:
+            return channels - 4
+    except Exception:
+        pass
+    return None
+
+
+def classes_dict_from_api_names(names: Optional[List[str]]) -> Optional[Dict[int, str]]:
+    if not names:
+        return None
+    result = {i: str(name).strip() for i, name in enumerate(names) if str(name).strip()}
+    return result or None
+
+
 def get_classes_from_onnx_model(onnx_model_path: str) -> Optional[Dict[int, str]]:
     """
     尝试从ONNX模型或对应的YOLO模型中获取类别信息
-    
-    Args:
-        onnx_model_path: ONNX模型文件路径
-        
-    Returns:
-        类别字典，如果无法获取则返回None
     """
-    # 方法1: 尝试从ONNX模型的元数据中获取类别信息
     try:
         if ort is not None:
             session = ort.InferenceSession(onnx_model_path, providers=['CPUExecutionProvider'])
             metadata = session.get_modelmeta()
-            # 检查元数据中是否有类别信息
             if hasattr(metadata, 'custom_metadata_map') and metadata.custom_metadata_map:
-                # 尝试从元数据中获取类别
                 if 'names' in metadata.custom_metadata_map:
-                    import json
-                    names_json = metadata.custom_metadata_map['names']
-                    names_dict = json.loads(names_json)
-                    # 将字符串键转换为整数键
-                    classes_dict = {int(k): v for k, v in names_dict.items()}
-                    logging.info(f"从ONNX模型元数据中获取到 {len(classes_dict)} 个类别")
-                    return classes_dict
+                    parsed = _parse_names_metadata(metadata.custom_metadata_map['names'])
+                    if parsed:
+                        logging.info(f"从ONNX模型元数据中获取到 {len(parsed)} 个类别")
+                        return parsed
     except Exception as e:
         logging.debug(f"无法从ONNX模型元数据获取类别信息: {str(e)}")
-    
-    # 方法2: 尝试从对应的YOLO模型文件中获取类别信息
+
+    parsed = _get_classes_from_pt_files(onnx_model_path)
+    if parsed:
+        logging.info(f"从YOLO模型文件获取到 {len(parsed)} 个类别")
+    return parsed
+
+
+def resolve_onnx_classes_dict(
+    onnx_model_path: str,
+    session: Any,
+    api_class_names: Optional[List[str]] = None,
+) -> Dict[int, str]:
     try:
-        # 查找同目录下的.pt文件（可能是对应的PyTorch模型）
-        import os
-        model_dir = os.path.dirname(onnx_model_path)
-        model_basename = os.path.splitext(os.path.basename(onnx_model_path))[0]
-        
-        # 尝试查找同名的.pt文件
-        pt_file = os.path.join(model_dir, f"{model_basename}.pt")
-        if os.path.exists(pt_file):
-            try:
-                from ultralytics import YOLO
-                yolo_model = YOLO(pt_file)
-                if hasattr(yolo_model, 'names') and yolo_model.names:
-                    # 将YOLO的names字典转换为我们的格式
-                    classes_dict = {int(k): str(v) for k, v in yolo_model.names.items()}
-                    logging.info(f"从对应的YOLO模型文件中获取到 {len(classes_dict)} 个类别")
-                    return classes_dict
-            except Exception as e:
-                logging.debug(f"无法从YOLO模型文件获取类别信息: {str(e)}")
-        
-        # 尝试查找同目录下的其他.pt文件
-        for file in os.listdir(model_dir):
-            if file.endswith('.pt'):
-                try:
-                    from ultralytics import YOLO
-                    pt_path = os.path.join(model_dir, file)
-                    yolo_model = YOLO(pt_path)
-                    if hasattr(yolo_model, 'names') and yolo_model.names:
-                        classes_dict = {int(k): str(v) for k, v in yolo_model.names.items()}
-                        logging.info(f"从同目录下的YOLO模型文件 {file} 中获取到 {len(classes_dict)} 个类别")
-                        return classes_dict
-                except Exception:
-                    continue
+        metadata = session.get_modelmeta()
+        if hasattr(metadata, 'custom_metadata_map') and metadata.custom_metadata_map:
+            if 'names' in metadata.custom_metadata_map:
+                parsed = _parse_names_metadata(metadata.custom_metadata_map['names'])
+                if parsed:
+                    logging.info(f"从ONNX模型元数据中获取到 {len(parsed)} 个类别")
+                    return parsed
     except Exception as e:
-        logging.debug(f"无法从YOLO模型文件获取类别信息: {str(e)}")
-    
-    return None
+        logging.debug(f"读取ONNX元数据类别失败: {str(e)}")
+
+    from_api = classes_dict_from_api_names(api_class_names)
+    if from_api:
+        logging.info(f"使用 AI 模块返回的类别信息（{len(from_api)} 个类别）")
+        return from_api
+
+    from_pt = _get_classes_from_pt_files(onnx_model_path)
+    if from_pt:
+        logging.info(f"从YOLO模型文件获取到 {len(from_pt)} 个类别")
+        return from_pt
+
+    num_classes = _infer_yolo_num_classes(session)
+    if num_classes == len(classes):
+        logging.info(f"使用默认 COCO 类别（{len(classes)} 个类别）")
+        return classes
+    if num_classes:
+        logging.warning(
+            f"无法获取 ONNX 类别名，模型含 {num_classes} 类，使用 class_N 占位（避免误用 COCO 名称）"
+        )
+        return {i: f'class_{i}' for i in range(num_classes)}
+
+    logging.warning('无法获取 ONNX 类别名，回退默认 COCO 类别')
+    return classes
 
 
 class ONNXInference:
     """ONNX推理类"""
     
     def __init__(self, onnx_model_path: str, conf_threshold: float = 0.35, iou_threshold: float = 0.5,
-                 classes_dict: Optional[Dict[int, str]] = None):
+                 classes_dict: Optional[Dict[int, str]] = None,
+                 api_class_names: Optional[List[str]] = None):
         """
         初始化ONNX推理模型
         
@@ -378,7 +506,8 @@ class ONNXInference:
             onnx_model_path: ONNX模型文件路径
             conf_threshold: 置信度阈值
             iou_threshold: IOU阈值
-            classes_dict: 类别ID到类别名称的字典，如果为None则尝试从模型获取，否则使用默认COCO类别
+            classes_dict: 类别ID到类别名称的字典，如果为None则尝试从模型获取
+            api_class_names: AI 模块返回的类别名列表（元数据缺失时的兜底）
         """
         if ort is None:
             raise ImportError("onnxruntime未安装，请先安装: pip install onnxruntime")
@@ -392,14 +521,11 @@ class ONNXInference:
         
         # 获取类别信息
         if classes_dict is None:
-            # 尝试从模型获取类别信息
-            self.classes_dict = get_classes_from_onnx_model(onnx_model_path)
-            if self.classes_dict is None:
-                # 如果无法获取，使用默认COCO类别
-                self.classes_dict = classes
-                logging.info(f"使用默认COCO类别（{len(self.classes_dict)}个类别）")
-            else:
-                logging.info(f"使用从模型获取的类别信息（{len(self.classes_dict)}个类别）")
+            self.classes_dict = resolve_onnx_classes_dict(
+                onnx_model_path,
+                self.session,
+                api_class_names=api_class_names,
+            )
         else:
             self.classes_dict = classes_dict
             logging.info(f"使用传入的类别信息（{len(self.classes_dict)}个类别）")

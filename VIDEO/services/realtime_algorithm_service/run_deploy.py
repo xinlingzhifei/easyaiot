@@ -1084,6 +1084,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
 
         for model_id in model_ids:
             try:
+                model_api_class_names = None
                 # 默认模型映射
                 default_model_map = {
                     -1: 'yolo11n.pt',
@@ -1122,6 +1123,9 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                             if model_data.get('code') == 0:
                                 model_info = model_data.get('data', {})
                                 model_path = model_info.get('model_path') or model_info.get('onnx_model_path')
+                                model_api_class_names = (
+                                    model_info.get('classNames') or model_info.get('class_names')
+                                )
 
                                 if not model_path:
                                     logger.warning(f"模型 {model_id} 没有模型路径，跳过")
@@ -1181,13 +1185,15 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                         conf_threshold=0.25,
                         iou_threshold=0.45,
                         device_id=gpu_id,
+                        api_class_names=model_api_class_names,
                     )
                     models[model_id] = onnx_model
                     yolo_model_devices[model_id] = (
                         f'onnx:cuda:{gpu_id}' if gpu_id is not None else 'onnx:cpu'
                     )
                     logger.info(
-                        f"✅ ONNX模型加载成功: model_id={model_id}, providers={onnx_model.providers}"
+                        f"✅ ONNX模型加载成功: model_id={model_id}, classes={onnx_model.classes_dict}, "
+                        f"providers={onnx_model.providers}"
                     )
                 else:
                     logger.info(f"正在加载YOLO模型: model_id={model_id}, path={model_path}")

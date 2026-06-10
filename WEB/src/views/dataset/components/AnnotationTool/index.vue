@@ -19,6 +19,10 @@
         <span v-if="batchTaskRunning" class="batch-task-hint">
           <Icon icon="ant-design:loading-outlined" spin/>
           AI 标注中
+          <template v-if="batchTaskProgress.total > 0">
+            {{ batchTaskProgress.processed }}/{{ batchTaskProgress.total }}
+            <span v-if="batchTaskProgress.failed > 0" class="batch-failed">（失败 {{ batchTaskProgress.failed }}）</span>
+          </template>
         </span>
       </div>
 
@@ -63,7 +67,13 @@
             保存
           </button>
         </div>
-        <button type="button" class="action-btn ai-batch-btn" @click="openAiBatchModal">
+        <button
+          type="button"
+          class="action-btn ai-batch-btn"
+          :disabled="batchTaskRunning || totalImages === 0"
+          :title="aiBatchBtnTitle"
+          @click="openAiBatchModal"
+        >
           <Icon icon="ant-design:robot-outlined"/>
           AI 标注
         </button>
@@ -360,6 +370,7 @@
     <AILabelModal
       ref="aiLabelModalRef"
       :dataset-id="datasetId"
+      :total-images="totalImages"
       :get-container="getModalContainer"
       @success="onBatchAiSuccess"
     />
@@ -514,6 +525,12 @@ const listScrollTop = ref(0);
 const saving = ref(false);
 
 const batchTaskRunning = ref(false);
+const batchTaskProgress = reactive({
+  total: 0,
+  processed: 0,
+  success: 0,
+  failed: 0,
+});
 let batchTaskPollTimer: ReturnType<typeof setInterval> | null = null;
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalImages.value / LIST_CHUNK_SIZE)));
@@ -542,13 +559,35 @@ const syncDisabledReason = computed(() => {
   return '';
 });
 
+const aiBatchBtnTitle = computed(() => {
+  if (totalImages.value === 0) return '请先导入图片后再使用 AI 批量标注';
+  if (batchTaskRunning.value) return 'AI 批量标注进行中，请等待完成';
+  return '使用已部署的推理模型对本数据集全部图片批量自动标注';
+});
+
 const workflowTip = computed((): WorkflowTip | null => {
+  if (batchTaskRunning.value) {
+    const p = batchTaskProgress;
+    if (p.total > 0) {
+      return {
+        text: `AI 批量标注进行中：${p.processed}/${p.total} 张（成功 ${p.success}，失败 ${p.failed}）`,
+      };
+    }
+    return {text: 'AI 批量标注已启动，正在处理…'};
+  }
   if (totalImages.value === 0) {
     return {text: '数据集为空，请先导入或上传图片', action: 'import', actionLabel: '去导入'};
   }
   if (!syncCheck.annotationCompleted) {
+    if (pendingCount.value >= 5) {
+      return {
+        text: `还有 ${pendingCount.value} 张待标注，推荐使用 AI 批量标注加速`,
+        action: 'aiLabel',
+        actionLabel: '开启 AI 标注',
+      };
+    }
     return {
-      text: `还有 ${pendingCount.value} 张待完成标注`,
+      text: `还有 ${pendingCount.value} 张待标注，可手动标注或使用顶栏「AI 标注」`,
       action: 'nextPending',
       actionLabel: '跳到下一张待标注',
     };
@@ -1885,6 +1924,9 @@ function onTipAction(action: TipAction): void {
     case 'import':
       openImportModal();
       break;
+    case 'aiLabel':
+      openAiBatchModal();
+      break;
     case 'nextPending':
       jumpToNextPending();
       break;
@@ -2023,30 +2065,59 @@ async function onImportSuccess(importResult?: DatasetAnnotationImportResult): Pr
   await refreshSyncCheck();
 }
 
-function stopBatchTaskPoll(): void {
+function resetBatchTaskProgress(): void {
+  batchTaskProgress.total = 0;
+  batchTaskProgress.processed = 0;
+  batchTaskProgress.success = 0;
+  batchTaskProgress.failed = 0;
+}
+
+function applyBatchTaskProgress(task: Record<string, unknown>): void {
+  batchTaskProgress.total = Number(task.total_images ?? 0);
+  batchTaskProgress.processed = Number(task.processed_images ?? 0);
+  batchTaskProgress.success = Number(task.success_count ?? 0);
+  batchTaskProgress.failed = Number(task.failed_count ?? 0);
+}
+
+function clearBatchTaskPollTimer(): void {
   if (batchTaskPollTimer) {
     clearInterval(batchTaskPollTimer);
     batchTaskPollTimer = null;
   }
+}
+
+function stopBatchTaskPoll(): void {
+  clearBatchTaskPollTimer();
   batchTaskRunning.value = false;
+  resetBatchTaskProgress();
 }
 
 async function pollBatchTask(taskId: number): Promise<void> {
-  stopBatchTaskPoll();
+  clearBatchTaskPollTimer();
+  resetBatchTaskProgress();
   batchTaskRunning.value = true;
 
   const check = async () => {
     try {
       const res = await getAutoLabelTask(datasetId.value, taskId);
-      const task = res?.data ?? res;
-      const status = task?.status;
+      const task = (res?.data ?? res) as Record<string, unknown>;
+      applyBatchTaskProgress(task);
+      const status = task?.status as string | undefined;
       if (status === 'COMPLETED') {
         stopBatchTaskPoll();
-        createMessage.success(`批量 AI 标注完成，共处理 ${task.processed_count ?? ''} 张`);
-        await fetchImages(listChunkPage.value);
+        const processed = Number(task.processed_images ?? 0);
+        const success = Number(task.success_count ?? 0);
+        const failed = Number(task.failed_count ?? 0);
+        createMessage.success(
+          `AI 批量标注完成：处理 ${processed} 张，成功 ${success} 张${failed > 0 ? `，失败 ${failed} 张` : ''}`,
+        );
+        listChunkPage.value = 1;
+        await fetchImages(1);
+        await syncTagsAfterImport();
+        await refreshSyncCheck();
       } else if (status === 'FAILED') {
         stopBatchTaskPoll();
-        createMessage.error(task?.error_message || '批量 AI 标注失败');
+        createMessage.error(String(task?.error_message || 'AI 批量标注失败'));
       }
     } catch {
       stopBatchTaskPoll();
@@ -2147,6 +2218,13 @@ onUnmounted(() => {
       font-size: 12px;
       color: @warning-color;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+
+      .batch-failed {
+        color: @error-color;
+      }
     }
 
     .toolbar-center.tool-group {

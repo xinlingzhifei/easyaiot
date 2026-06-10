@@ -37,12 +37,12 @@
           <FormItem label="数据集封面" name="coverPath" v-bind=validateInfos.coverPath>
             <Upload
               name="file"
-              multiple
+              :max-count="1"
               @change="handleFileChange"
-              :action="state.updateUrl"
+              :action="state.coverUploadUrl"
               :headers="headers"
               :showUploadList="true"
-              accept="*"
+              accept="image/*"
               :disabled="state.isView"
             >
               <Button type="primary">
@@ -57,14 +57,14 @@
 </template>
 
 <script lang="ts" setup>
-import {computed, reactive, ref} from 'vue';
+import {computed, reactive} from 'vue';
 import {BasicModal, useModalInner} from '@/components/Modal';
 import {Form, FormItem, Input, Select, Spin, Upload,} from 'ant-design-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import {useI18n} from "@/hooks/web/useI18n";
-import {useUserStoreWithOut} from "@/store/modules/user";
 import {useGlobSetting} from "@/hooks/setting";
 import {createDataset, updateDataset} from "@/api/device/dataset";
+import {getAccessToken, getTenantId} from '@/utils/auth';
 import { Button } from '@/components/Button'
 const {t} = useI18n()
 
@@ -72,13 +72,14 @@ defineOptions({name: 'DatasetModal'})
 
 const {createMessage} = useMessage();
 
-const userStore = useUserStoreWithOut();
-const token = userStore.getAccessToken;
-const headers = ref({'Authorization': `Bearer ${token}`});
+const headers = reactive({
+  Authorization: `Bearer ${getAccessToken()}`,
+  'tenant-id': getTenantId(),
+});
 const {uploadUrl} = useGlobSetting();
 
 const state = reactive({
-  updateUrl: `${uploadUrl}/dataset/image/upload-file`,
+  coverUploadUrl: `${uploadUrl}/dataset/upload-cover`,
   record: null,
   isEdit: false,
   isView: false,
@@ -107,8 +108,27 @@ function handleFileChange(info: Record<string, any>) {
   const status = file?.status;
   const response = file?.response;
   if (status === 'done') {
-    createMessage.success('上传成功');
-    modelRef.coverPath = response.data;
+    if (response && (response.code === 0 || response.code === 200)) {
+      const path = response.data?.url || response.data || response.url || '';
+      if (path) {
+        modelRef.coverPath = path;
+        createMessage.success('封面上传成功');
+      } else {
+        modelRef.coverPath = '';
+        createMessage.error('上传成功但未获取到封面地址');
+        console.error('上传响应:', response);
+      }
+    } else {
+      modelRef.coverPath = '';
+      createMessage.error(response?.msg || '封面上传失败');
+      console.error('上传失败:', response);
+    }
+  } else if (status === 'error') {
+    modelRef.coverPath = '';
+    createMessage.error(response?.msg || file?.error?.message || '封面上传失败');
+    console.error('上传错误:', file?.error);
+  } else if (status === 'removed') {
+    modelRef.coverPath = '';
   }
 }
 
@@ -131,7 +151,7 @@ const rulesRef = reactive({
   version: [{required: true, message: '请输入数据集版本号', trigger: ['change']}],
   description: [],
   datasetType: [{required: true, message: '请输入数据集类型', trigger: ['change']}],
-  coverPath: [{required: true, message: '请输入封面地址', trigger: ['change']}],
+  coverPath: [{required: true, message: '请上传数据集封面', trigger: ['change']}],
 });
 
 const useForm = Form.useForm;
@@ -181,7 +201,9 @@ function handleOk() {
         state.editLoading = false;
       });
   }).catch((err) => {
-    createMessage.error('操作失败');
+    if (!err?.errorFields?.length) {
+      createMessage.error('操作失败');
+    }
     console.error(err);
   });
 }
