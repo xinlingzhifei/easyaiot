@@ -7,6 +7,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Alert
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.TaskDispatchCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.TaskDispatcher;
 import com.basiclab.iot.system.service.supervision.SupervisionEventServiceImpl;
 import com.basiclab.iot.system.service.supervision.SupervisionRuleSeeds;
 import com.basiclab.iot.system.service.supervision.SupervisionRuleSeeds.RuleSeed;
@@ -52,6 +54,35 @@ class SupervisionEventServiceImplTest {
         assertEquals(SupervisionEventStatusEnum.CREATED.getCode(), first.eventStatus());
     }
 
+    @Test
+    void createFromAlertDispatchesTasksOnlyForNewEvent() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        CapturingTaskDispatcher taskDispatcher = new CapturingTaskDispatcher();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(eventStore, taskDispatcher);
+        AlertToEventCommand command = new AlertToEventCommand(
+                "video",
+                "alert-001",
+                SupervisionRuleSeeds.RULE_FALL_DOWN,
+                "fall_down",
+                LocalDateTime.of(2026, 6, 10, 10, 30),
+                "payload-hash-001"
+        );
+        RuleSeed ruleSeed = SupervisionRuleSeeds.findByCode(command.ruleCode()).orElseThrow();
+
+        AlertToEventResult first = eventService.createFromAlert(command);
+        AlertToEventResult second = eventService.createFromAlert(command);
+
+        assertFalse(first.reused());
+        assertTrue(second.reused());
+        assertEquals(1, taskDispatcher.commands().size());
+        TaskDispatchCommand dispatchCommand = taskDispatcher.commands().get(0);
+        assertEquals(first.eventId(), dispatchCommand.eventId());
+        assertEquals(command.ruleCode(), dispatchCommand.ruleCode());
+        assertEquals(ruleSeed.getEventType(), dispatchCommand.eventType());
+        assertEquals(ruleSeed.getDefaultLevel(), dispatchCommand.eventLevel());
+        assertEquals(ruleSeed.getDefaultResponsibilityChain(), dispatchCommand.responsibilityChain());
+    }
+
     private static final class InMemoryEventStore implements EventStore {
 
         private long nextEventId = 1000L;
@@ -92,6 +123,21 @@ class SupervisionEventServiceImplTest {
 
         private String key(String sourceSystem, String sourceAlertId) {
             return sourceSystem + ":" + sourceAlertId;
+        }
+
+    }
+
+    private static final class CapturingTaskDispatcher implements TaskDispatcher {
+
+        private final List<TaskDispatchCommand> commands = new ArrayList<>();
+
+        @Override
+        public void dispatchForNewEvent(TaskDispatchCommand command) {
+            commands.add(command);
+        }
+
+        List<TaskDispatchCommand> commands() {
+            return commands;
         }
 
     }

@@ -3,6 +3,8 @@ package com.basiclab.iot.system.service.supervision;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public interface SupervisionEventService {
@@ -47,11 +49,29 @@ public interface SupervisionEventService {
                             String eventStatus) {
     }
 
+    record TaskDispatchCommand(Long eventId,
+                               String ruleCode,
+                               String eventType,
+                               SupervisionEventLevelEnum eventLevel,
+                               List<String> responsibilityChain) {
+
+        public TaskDispatchCommand {
+            responsibilityChain = List.copyOf(Objects.requireNonNull(responsibilityChain, "responsibilityChain"));
+        }
+
+    }
+
     interface EventStore {
 
         Optional<AlertToEventResult> findOpenBySourceAlert(String sourceSystem, String sourceAlertId);
 
         AlertToEventResult create(EventCreateDraft draft);
+
+    }
+
+    interface TaskDispatcher {
+
+        void dispatchForNewEvent(TaskDispatchCommand command);
 
     }
 

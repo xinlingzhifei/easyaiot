@@ -5,7 +5,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Alert
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.TaskDispatchCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.TaskDispatcher;
 import com.basiclab.iot.system.service.supervision.SupervisionRuleSeeds.RuleSeed;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -14,9 +17,16 @@ import java.util.Objects;
 public class SupervisionEventServiceImpl implements SupervisionEventService {
 
     private final EventStore eventStore;
+    private final TaskDispatcher taskDispatcher;
 
     public SupervisionEventServiceImpl(EventStore eventStore) {
+        this(eventStore, new NoopTaskDispatcher());
+    }
+
+    @Autowired
+    public SupervisionEventServiceImpl(EventStore eventStore, TaskDispatcher taskDispatcher) {
         this.eventStore = Objects.requireNonNull(eventStore, "eventStore");
+        this.taskDispatcher = Objects.requireNonNull(taskDispatcher, "taskDispatcher");
     }
 
     @Override
@@ -48,7 +58,15 @@ public class SupervisionEventServiceImpl implements SupervisionEventService {
                 ruleSeed.getDefaultLevel(),
                 SupervisionEventStatusEnum.CREATED.getCode()
         );
-        return eventStore.create(draft);
+        AlertToEventResult result = eventStore.create(draft);
+        taskDispatcher.dispatchForNewEvent(new TaskDispatchCommand(
+                result.eventId(),
+                ruleCode,
+                ruleSeed.getEventType(),
+                ruleSeed.getDefaultLevel(),
+                ruleSeed.getDefaultResponsibilityChain()
+        ));
+        return result;
     }
 
     private static String resolveSourceAlertType(String sourceAlertType, RuleSeed ruleSeed) {
@@ -63,6 +81,14 @@ public class SupervisionEventServiceImpl implements SupervisionEventService {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value;
+    }
+
+    private static final class NoopTaskDispatcher implements TaskDispatcher {
+
+        @Override
+        public void dispatchForNewEvent(TaskDispatchCommand command) {
+        }
+
     }
 
 }
