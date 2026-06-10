@@ -201,6 +201,16 @@ class SupervisionClosureHappyPathAcceptanceTest {
             return true;
         }
 
+        @Override
+        public boolean markCloseCheckReworkRequired(Long eventId) {
+            SupervisionEventDO event = event(eventId);
+            if (!SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode().equals(event.getEventStatus())) {
+                return false;
+            }
+            event.setEventStatus(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode());
+            return true;
+        }
+
         private SupervisionEventDO event(Long eventId) {
             SupervisionEventDO event = eventsById.get(eventId);
             if (event == null) {

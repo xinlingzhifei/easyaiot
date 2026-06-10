@@ -146,6 +146,20 @@ class SupervisionEventMapperEventStoreTest {
         assertNotNull(closedUpdate.getClosedAt());
     }
 
+    @Test
+    void markCloseCheckReworkRequiredUpdatesEventThroughMapper() {
+        CapturingMapperHandler mapperHandler = new CapturingMapperHandler();
+        SupervisionEventMapperEventStore eventStore = new SupervisionEventMapperEventStore(mapperHandler.createProxy());
+
+        boolean reworkRequired = eventStore.markCloseCheckReworkRequired(1001L);
+
+        assertTrue(reworkRequired);
+        assertEquals(1, mapperHandler.closeCheckReworkUpdates().size());
+        SupervisionEventDO reworkUpdate = mapperHandler.closeCheckReworkUpdates().get(0);
+        assertEquals(1001L, reworkUpdate.getId());
+        assertEquals(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode(), reworkUpdate.getEventStatus());
+    }
+
     private static final class CapturingMapperHandler implements InvocationHandler {
 
         private long nextEventId = 1000L;
@@ -158,6 +172,7 @@ class SupervisionEventMapperEventStoreTest {
         private final List<SupervisionEventDO> recheckedUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> reworkUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> closedUpdates = new ArrayList<>();
+        private final List<SupervisionEventDO> closeCheckReworkUpdates = new ArrayList<>();
 
         private SupervisionEventMapper createProxy() {
             return (SupervisionEventMapper) Proxy.newProxyInstance(
@@ -249,6 +264,14 @@ class SupervisionEventMapperEventStoreTest {
                 closedUpdates.add(update);
                 return 1;
             }
+            if ("updateStatusToCloseCheckReworkRequired".equals(method.getName()) && args != null && args.length == 1) {
+                Long eventId = (Long) args[0];
+                SupervisionEventDO update = new SupervisionEventDO()
+                        .setId(eventId)
+                        .setEventStatus(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode());
+                closeCheckReworkUpdates.add(update);
+                return 1;
+            }
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(this, args);
             }
@@ -285,6 +308,10 @@ class SupervisionEventMapperEventStoreTest {
 
         private List<SupervisionEventDO> closedUpdates() {
             return closedUpdates;
+        }
+
+        private List<SupervisionEventDO> closeCheckReworkUpdates() {
+            return closeCheckReworkUpdates;
         }
 
         private String key(String sourceSystem, String sourceAlertId) {

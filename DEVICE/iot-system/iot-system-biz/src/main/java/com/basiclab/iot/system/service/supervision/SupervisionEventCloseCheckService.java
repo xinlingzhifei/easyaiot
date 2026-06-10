@@ -19,9 +19,16 @@ public class SupervisionEventCloseCheckService {
         return eventCloseStore.markClosed(eventId, SupervisionCloseResultEnum.CONFIRMED_HANDLED.getCode());
     }
 
+    public boolean rejectCloseCheck(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        return eventCloseStore.markCloseCheckReworkRequired(eventId);
+    }
+
     public interface EventCloseStore {
 
         boolean markClosed(Long eventId, String closeResult);
+
+        boolean markCloseCheckReworkRequired(Long eventId);
 
     }
 

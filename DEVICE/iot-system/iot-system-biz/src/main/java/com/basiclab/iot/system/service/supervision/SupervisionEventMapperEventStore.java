@@ -97,6 +97,12 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
         return supervisionEventMapper.updateStatusToClosed(eventId, closeResult, LocalDateTime.now()) == 1;
     }
 
+    @Override
+    public boolean markCloseCheckReworkRequired(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        return supervisionEventMapper.updateStatusToCloseCheckReworkRequired(eventId) == 1;
+    }
+
     private AlertToEventResult toResult(SupervisionEventDO eventDO) {
         return new AlertToEventResult(
                 eventDO.getId(),

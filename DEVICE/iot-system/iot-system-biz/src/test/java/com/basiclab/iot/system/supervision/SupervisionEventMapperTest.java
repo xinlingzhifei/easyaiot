@@ -184,6 +184,26 @@ class SupervisionEventMapperTest {
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode()));
     }
 
+    @Test
+    void updateStatusToCloseCheckReworkRequiredUpdatesPendingCloseCheckEventById() {
+        initTableInfo();
+        CapturingMapperHandler handler = new CapturingMapperHandler(null);
+        SupervisionEventMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToCloseCheckReworkRequired(1001L);
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode(), handler.updateObject().getEventStatus());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionEventDO> queryWrapper = (LambdaQueryWrapperX<SupervisionEventDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("event_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(1001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode()));
+    }
+
     private static void initTableInfo() {
         if (TableInfoHelper.getTableInfo(SupervisionEventDO.class) != null) {
             return;
