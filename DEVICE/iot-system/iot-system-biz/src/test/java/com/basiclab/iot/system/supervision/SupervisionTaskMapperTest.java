@@ -108,6 +108,31 @@ class SupervisionTaskMapperTest {
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionTaskStatusEnum.SUBMITTED.getCode()));
     }
 
+    @Test
+    void updateStatusToAcknowledgedForReworkUpdatesOnlyRejectedOrApprovedTaskById() {
+        initTableInfo();
+        LocalDateTime acceptedAt = LocalDateTime.of(2026, 6, 10, 17, 25);
+        CapturingMapperHandler handler = new CapturingMapperHandler();
+        SupervisionTaskMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToAcknowledgedForRework(2001L, 3001L, acceptedAt, 2);
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode(), handler.updateObject().getTaskStatus());
+        assertEquals(3001L, handler.updateObject().getAssignedUserId());
+        assertEquals(acceptedAt, handler.updateObject().getAcceptedAt());
+        assertEquals(2, handler.updateObject().getReworkCount());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionTaskDO> queryWrapper = (LambdaQueryWrapperX<SupervisionTaskDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("task_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(2001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionTaskStatusEnum.REJECTED.getCode()));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionTaskStatusEnum.APPROVED.getCode()));
+    }
+
     private static void initTableInfo() {
         if (TableInfoHelper.getTableInfo(SupervisionTaskDO.class) != null) {
             return;

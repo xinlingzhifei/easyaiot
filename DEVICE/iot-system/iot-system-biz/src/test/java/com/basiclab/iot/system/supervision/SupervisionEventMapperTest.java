@@ -204,6 +204,28 @@ class SupervisionEventMapperTest {
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode()));
     }
 
+    @Test
+    void updateStatusToAcceptedFromReworkUpdatesOnlyReworkRequiredEventById() {
+        initTableInfo();
+        LocalDateTime acceptedAt = LocalDateTime.of(2026, 6, 10, 17, 40);
+        CapturingMapperHandler handler = new CapturingMapperHandler(null);
+        SupervisionEventMapper mapper = handler.createProxy();
+
+        int updated = mapper.updateStatusToAcceptedFromRework(1001L, acceptedAt);
+
+        assertEquals(1, updated);
+        assertNotNull(handler.updateObject());
+        assertEquals(SupervisionEventStatusEnum.ACCEPTED.getCode(), handler.updateObject().getEventStatus());
+        assertEquals(acceptedAt, handler.updateObject().getAcceptedAt());
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionEventDO> queryWrapper = (LambdaQueryWrapperX<SupervisionEventDO>) handler.queryWrapper();
+        String sqlSegment = queryWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("id"));
+        assertTrue(sqlSegment.contains("event_status"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(1001L));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode()));
+    }
+
     private static void initTableInfo() {
         if (TableInfoHelper.getTableInfo(SupervisionEventDO.class) != null) {
             return;
