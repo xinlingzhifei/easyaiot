@@ -33,6 +33,9 @@ public class SupervisionWorkflowApplicationService {
 
     public AlertEventResponse createEventFromAlert(AlertEventRequest request) {
         Objects.requireNonNull(request, "request");
+        requireNonBlank(request.sourceSystem(), "sourceSystem");
+        requireNonBlank(request.sourceAlertId(), "sourceAlertId");
+        requireNonBlank(request.ruleCode(), "ruleCode");
         AlertToEventResult result = supervisionEventService.createFromAlert(new AlertToEventCommand(
                 request.sourceSystem(),
                 request.sourceAlertId(),
@@ -46,6 +49,8 @@ public class SupervisionWorkflowApplicationService {
 
     public OperationResponse acceptTask(TaskAcceptRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.taskId(), "taskId");
+        requirePositive(request.acceptedUserId(), "acceptedUserId");
         return new OperationResponse(supervisionTaskAcceptanceService.acceptTask(
                 request.taskId(),
                 request.acceptedUserId()
@@ -54,6 +59,9 @@ public class SupervisionWorkflowApplicationService {
 
     public OperationResponse submitTask(TaskSubmitRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.taskId(), "taskId");
+        requireNonBlank(request.resultCategory(), "resultCategory");
+        requireNonBlank(request.handlingNote(), "handlingNote");
         return new OperationResponse(supervisionTaskSubmissionService.submitTask(
                 request.taskId(),
                 request.resultCategory(),
@@ -63,30 +71,48 @@ public class SupervisionWorkflowApplicationService {
 
     public OperationResponse approveRecheck(TaskRecheckRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.taskId(), "taskId");
         return new OperationResponse(supervisionTaskRecheckService.approveSubmittedTask(request.taskId()));
     }
 
     public OperationResponse rejectRecheck(TaskRecheckRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.taskId(), "taskId");
         return new OperationResponse(supervisionTaskRecheckService.rejectSubmittedTask(request.taskId()));
     }
 
     public OperationResponse approveCloseCheck(CloseCheckRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
         return new OperationResponse(supervisionEventCloseCheckService.approveCloseCheck(request.eventId()));
     }
 
     public OperationResponse rejectCloseCheck(CloseCheckRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
         return new OperationResponse(supervisionEventCloseCheckService.rejectCloseCheck(request.eventId()));
     }
 
     public OperationResponse restartRework(TaskAcceptRequest request) {
         Objects.requireNonNull(request, "request");
+        requirePositive(request.taskId(), "taskId");
+        requirePositive(request.acceptedUserId(), "acceptedUserId");
         return new OperationResponse(supervisionTaskReworkService.restartReworkTask(
                 request.taskId(),
                 request.acceptedUserId()
         ));
+    }
+
+    private static void requireNonBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+    }
+
+    private static void requirePositive(Long value, String fieldName) {
+        if (value == null || value <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be positive");
+        }
     }
 
     private AlertEventResponse toResponse(AlertToEventResult result) {

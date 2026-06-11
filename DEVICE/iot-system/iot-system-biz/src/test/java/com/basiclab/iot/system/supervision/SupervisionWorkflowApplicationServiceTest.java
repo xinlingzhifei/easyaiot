@@ -27,6 +27,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionWorkflowApplicationServiceTest {
@@ -109,6 +110,76 @@ class SupervisionWorkflowApplicationServiceTest {
         ), calls);
     }
 
+    @Test
+    void createEventFromAlertRejectsBlankRequiredFieldsBeforeDomainCall() {
+        SupervisionWorkflowApplicationService service = newApplicationService(command -> {
+            throw new AssertionError("event service should not be called for invalid request");
+        });
+
+        assertInvalidAlertRequest(service, new AlertEventRequest(
+                " ",
+                "alert-001",
+                "abnormal_gathering",
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 11, 9, 30),
+                "payload-hash-001"
+        ));
+        assertInvalidAlertRequest(service, new AlertEventRequest(
+                "video",
+                "",
+                "abnormal_gathering",
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 11, 9, 30),
+                "payload-hash-001"
+        ));
+        assertInvalidAlertRequest(service, new AlertEventRequest(
+                "video",
+                "alert-001",
+                " ",
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 11, 9, 30),
+                "payload-hash-001"
+        ));
+    }
+
+    @Test
+    void taskActionsRejectInvalidRequiredFieldsBeforeDomainCall() {
+        SupervisionWorkflowApplicationService service = applicationServiceThatFailsIfCalled();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.acceptTask(new TaskAcceptRequest(null, 3001L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.acceptTask(new TaskAcceptRequest(0L, 3001L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.acceptTask(new TaskAcceptRequest(2001L, null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.submitTask(new TaskSubmitRequest(null, "normal", "handled on site")));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.submitTask(new TaskSubmitRequest(0L, "normal", "handled on site")));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.submitTask(new TaskSubmitRequest(2002L, " ", "handled on site")));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.submitTask(new TaskSubmitRequest(2002L, "normal", " ")));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.approveRecheck(new TaskRecheckRequest(null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.approveRecheck(new TaskRecheckRequest(0L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.rejectRecheck(new TaskRecheckRequest(null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.approveCloseCheck(new CloseCheckRequest(null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.approveCloseCheck(new CloseCheckRequest(0L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.rejectCloseCheck(new CloseCheckRequest(null)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.restartRework(new TaskAcceptRequest(null, 3005L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.restartRework(new TaskAcceptRequest(0L, 3005L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.restartRework(new TaskAcceptRequest(2005L, null)));
+    }
+
     private static SupervisionWorkflowApplicationService newApplicationService(SupervisionEventService eventService) {
         List<String> calls = new ArrayList<>();
         return new SupervisionWorkflowApplicationService(
@@ -119,6 +190,25 @@ class SupervisionWorkflowApplicationServiceTest {
                 closeCheckService(calls, true, true),
                 reworkService(calls, true)
         );
+    }
+
+    private static SupervisionWorkflowApplicationService applicationServiceThatFailsIfCalled() {
+        List<String> calls = new ArrayList<>();
+        return new SupervisionWorkflowApplicationService(
+                command -> {
+                    throw new AssertionError("event service should not be called for invalid request");
+                },
+                acceptanceService(calls, true),
+                submissionService(calls, true),
+                recheckService(calls, true, true),
+                closeCheckService(calls, true, true),
+                reworkService(calls, true)
+        );
+    }
+
+    private static void assertInvalidAlertRequest(SupervisionWorkflowApplicationService service,
+                                                  AlertEventRequest request) {
+        assertThrows(IllegalArgumentException.class, () -> service.createEventFromAlert(request));
     }
 
     private static SupervisionTaskAcceptanceService acceptanceService(List<String> calls, boolean result) {
