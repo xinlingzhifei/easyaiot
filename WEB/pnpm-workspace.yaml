@@ -1,6 +1,8 @@
 # pnpm 11+：构建脚本需显式放行（见 https://pnpm.io/settings#allowbuilds）
 nodeLinker: hoisted
 shamefullyHoist: true
+overrides:
+  micromark: 2.11.4
 allowBuilds:
   '@parcel/watcher': true
   core-js: true

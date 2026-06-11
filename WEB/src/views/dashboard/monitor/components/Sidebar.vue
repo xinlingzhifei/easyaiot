@@ -1,5 +1,5 @@
 <template>
-  <div class="monitor-sidebar">
+  <div class="monitor-sidebar" data-testid="monitor-sidebar">
     <!-- 全局总览 -->
     <div class="sidebar-section overview-section">
       <div class="section-header">

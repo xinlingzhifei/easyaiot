@@ -63,16 +63,19 @@ const normalizeGbDeviceList = (res: any) => {
 };
 
 /** 通道列表：统一返回 { data, list, total }，并补齐页面依赖字段 */
-const normalizeGbChannelList = (res: any) => {
+const normalizeGbChannelList = (res: any, sipDeviceId?: string) => {
   const { data, total } = normalizePageResponse(res);
-  const list = (data || []).map((item: any) => ({
-    ...item,
-    deviceIdentification: item.deviceIdentification ?? item.deviceId ?? item.parentId,
-    manufacturer: item.manufacturer ?? item.manufacture ?? '',
-    manufacture: item.manufacture ?? item.manufacturer ?? '',
-    createdTime: item.createdTime ?? item.createTime,
-    updatedTime: item.updatedTime ?? item.updateTime,
-  }));
+  const list = (data || []).map((item: any) => {
+    const normalized = normalizeWvpChannelItem(item, sipDeviceId);
+    return {
+      ...normalized,
+      deviceIdentification: normalized.deviceIdentification ?? normalized.deviceId ?? normalized.parentId,
+      manufacturer: normalized.manufacturer ?? normalized.manufacture ?? '',
+      manufacture: normalized.manufacture ?? normalized.manufacturer ?? '',
+      createdTime: normalized.createdTime ?? normalized.createTime,
+      updatedTime: normalized.updatedTime ?? normalized.updateTime,
+    };
+  });
   return { data: list, list, total };
 };
 
@@ -108,8 +111,7 @@ export const queryVideoList = async (params: {
     requestParams.status = params.status;
   }
   const res = await commonApi('get', `${GB28181_PREFIX}/devices`, requestParams, false);
-  const { data, total } = normalizePageResponse(res);
-  return { data: normalizeDeviceList(data), total };
+  return normalizeGbDeviceList(res);
 };
 
 /** 拉取全部国标 SIP 设备（自动分页，避免单页遗漏） */
@@ -244,11 +246,7 @@ export const queryChannelList = async (params: {
     ? `${GB28181_PREFIX}/devices/${sipDeviceId}/channels`
     : `${CHANNEL_PREFIX}/list`;
   const res = await commonApi('get', url, requestParams, false);
-  const { data, total } = normalizePageResponse(res);
-  const list = (data || []).map((item: any) =>
-    normalizeWvpChannelItem(item, sipDeviceId ? String(sipDeviceId) : undefined),
-  );
-  return { data: list, total };
+  return normalizeGbChannelList(res, sipDeviceId ? String(sipDeviceId) : undefined);
 };
 
 /**
@@ -906,4 +904,3 @@ export const generateDeviceAccessInfo = (count?: number) => {
   const params = count != null && count >= 1 && count <= 100 ? { count } : {};
   return commonApi('get', `${GB28181_PREFIX}/device-access-info/generate`, params, false);
 };
-

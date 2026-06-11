@@ -82,7 +82,7 @@ public final class MediaStackDeployUtil {
                 + "export ZLM_RTMP_PORT=" + zlmRtmp + "\n"
                 + "export ZLM_RTP_PORT_MIN=" + zlmRtpMin + "\n"
                 + "export ZLM_RTP_PORT_MAX=" + zlmRtpMax + "\n"
-                + "export ZLM_SECRET=\"EasyAIoT_Media_Secret\"\n";
+                + "export ZLM_SECRET=\"yFeiEye_Media_Secret\"\n";
     }
 
 }

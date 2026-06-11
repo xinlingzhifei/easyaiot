@@ -7,12 +7,22 @@
     </div>
     
     <div class="header-center">
-      <h1 class="platform-title">逸飞 AI 智眼管控平台</h1>
+      <h1 class="platform-title" data-testid="monitor-platform-title">
+        逸飞 AI 智眼管控平台
+      </h1>
     </div>
     
     <div class="header-right">
       <div class="user-info">
-        <span class="user-role" @click="handleGoToAdmin">管理后台</span>
+        <button
+          type="button"
+          class="user-role"
+          data-testid="monitor-admin-entry"
+          :aria-label="adminEntryLabel"
+          @click="handleGoToAdmin"
+        >
+          {{ adminEntryLabel }}
+        </button>
       </div>
     </div>
   </div>
@@ -30,9 +40,15 @@ const props = defineProps<{
   activeVideos?: any[]
 }>()
 
+const emit = defineEmits<{
+  (e: 'admin-entry'): void
+}>()
+
 const router = useRouter()
+const adminEntryLabel = '管理后台'
 
 const handleGoToAdmin = () => {
+  emit('admin-entry')
   router.push('/node/index')
 }
 
@@ -118,7 +134,7 @@ onUnmounted(() => {
   text-align: center;
   font-size: 32px;
   line-height: 1.2;
-  letter-spacing: .06rem;
+  letter-spacing: 0;
   font-weight: bold;
   margin: 0;
   text-shadow: 0 0 8px rgba(52, 134, 218, 0.5);
@@ -144,6 +160,8 @@ onUnmounted(() => {
 }
 
 .user-role {
+  appearance: none;
+  font-family: inherit;
   font-size: 16px;
   color: rgba(200, 220, 255, 0.95);
   padding: 6px 16px;

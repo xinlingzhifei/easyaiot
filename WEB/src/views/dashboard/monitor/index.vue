@@ -1,7 +1,11 @@
 <template>
-  <div class="monitor-dashboard">
+  <div
+    class="monitor-dashboard"
+    :class="{ 'monitor-dashboard--embedded': dashboardOverlayReleased }"
+    data-testid="monitor-dashboard"
+  >
     <!-- 顶部头部 -->
-    <MonitorHeader :active-videos="activeVideos" />
+    <MonitorHeader :active-videos="activeVideos" @admin-entry="releaseDashboardOverlay" />
     
     <!-- 主体内容 -->
     <div class="monitor-content">
@@ -47,6 +51,17 @@ defineOptions({
 
 const { createMessage } = useMessage()
 const videoMonitorRef = ref<InstanceType<typeof VideoMonitor> | null>(null)
+const dashboardOverlayReleased = ref(false)
+
+function releaseDashboardOverlay() {
+  dashboardOverlayReleased.value = true
+  const style = document.getElementById('monitor-dashboard-style')
+  if (style) {
+    document.head.removeChild(style)
+  }
+}
+
+defineExpose({ releaseDashboardOverlay })
 
 // 选中的设备
 const selectedDevice = ref<any>({
@@ -161,33 +176,35 @@ let isMounted = false
 onMounted(() => {
   isMounted = true
   
-  const style = document.createElement('style')
-  style.id = 'monitor-dashboard-style'
-  style.textContent = `
-    .ant-layout-header,
-    .layout-multiple-header,
-    .layout-tabs,
-    .layout-footer {
-      display: none !important;
-    }
-    .ant-layout-sider,
-    .layout-sider-wrapper {
-      display: none !important;
-    }
-    .ant-layout-content,
-    .layout-content {
-      padding: 0 !important;
-      margin: 0 !important;
-      height: 100vh !important;
-      overflow: hidden !important;
-    }
-    .ant-layout-main {
-      height: 100vh !important;
-      overflow: hidden !important;
-      margin-left: 0 !important;
-    }
-  `
-  document.head.appendChild(style)
+  if (!document.getElementById('monitor-dashboard-style')) {
+    const style = document.createElement('style')
+    style.id = 'monitor-dashboard-style'
+    style.textContent = `
+      .ant-layout-header,
+      .layout-multiple-header,
+      .layout-tabs,
+      .layout-footer {
+        display: none !important;
+      }
+      .ant-layout-sider,
+      .layout-sider-wrapper {
+        display: none !important;
+      }
+      .ant-layout-content,
+      .layout-content {
+        padding: 0 !important;
+        margin: 0 !important;
+        height: 100vh !important;
+        overflow: hidden !important;
+      }
+      .ant-layout-main {
+        height: 100vh !important;
+        overflow: hidden !important;
+        margin-left: 0 !important;
+      }
+    `
+    document.head.appendChild(style)
+  }
   
   // 初始加载告警列表和今日告警次数（使用 Promise.all 确保同时发起，但去重机制会确保只发送一次请求）
   Promise.all([
@@ -290,12 +307,19 @@ const handleVideoListChange = (videos: any[]) => {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  z-index: 9999;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 
   a {
     text-decoration: none;
     color: #399bff;
   }
+}
+
+.monitor-dashboard--embedded {
+  pointer-events: none;
+  opacity: 0;
 }
 
 .monitor-content {

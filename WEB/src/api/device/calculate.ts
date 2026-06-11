@@ -1,4 +1,5 @@
 import {defHttp} from '@/utils/http/axios';
+import type { ResponseType } from 'axios';
 import { dedupeRequest } from '@/utils/requestDedupe';
 import { getDeviceList } from '@/api/device/camera';
 
@@ -6,7 +7,7 @@ enum Api {
   Alarm = '/video/alert',
 }
 
-const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params = {}, headers = {}, isTransformResponse = true, responseType = 'json') => {
+const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params = {}, headers = {}, isTransformResponse = true, responseType: ResponseType = 'json') => {
   defHttp.setHeader({'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')});
 
   return defHttp[method](

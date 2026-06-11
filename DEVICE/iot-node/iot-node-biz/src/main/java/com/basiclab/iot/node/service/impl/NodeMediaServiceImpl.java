@@ -76,7 +76,7 @@ public class NodeMediaServiceImpl implements NodeMediaService {
             "srs/cluster.conf.template",
             "zlm/config.ini.template",
     };
-    private static final String DEFAULT_ZLM_SECRET = "EasyAIoT_Media_Secret";
+    private static final String DEFAULT_ZLM_SECRET = "yFeiEye_Media_Secret";
     private static final Pattern MEDIA_API_SUCCESS_CODE = Pattern.compile("\"code\"\\s*:\\s*0\\b");
     private static final String REMOTE_COMPOSE_BIN = "/usr/local/bin/docker-compose";
     private static final String[] LOCAL_COMPOSE_CANDIDATES = {
@@ -1268,7 +1268,7 @@ public class NodeMediaServiceImpl implements NodeMediaService {
             step.setStatus("failed");
             step.setOutput("目标机未安装 Docker Compose，且控制面未找到可同步的 docker-compose 二进制。"
                     + "请在本机安装 docker-compose-plugin 或 docker-compose，"
-                    + "或通过 easyaiot.media.docker-compose-path 指定路径后重试");
+                    + "或通过媒体 docker-compose 路径配置指定路径后重试");
             return step;
         }
 

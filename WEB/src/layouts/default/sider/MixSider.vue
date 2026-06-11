@@ -130,6 +130,10 @@ function getWrapCommonStyle(width: string): CSSProperties {
   }
 }
 
+function normalizeMenuTestId(path: string) {
+  return path.replace(/^\/+/, '').replace(/[^a-zA-Z0-9_-]+/g, '-') || 'root'
+}
+
 // Process module menu click
 async function handleModuleClick(path: string, hover = false) {
   const children = await getChildrenMenus(path)
@@ -252,7 +256,7 @@ onClickOutside(wrap, () => {
             {
               [`${prefixCls}-module__item--active`]: item.path === activePath,
             },
-          ]"
+          ]" :data-testid="`main-nav-${normalizeMenuTestId(item.path)}`"
         >
           <SimpleMenuTag :item="item" collapse-parent dot />
           <img
@@ -265,7 +269,7 @@ onClickOutside(wrap, () => {
             :class="`${prefixCls}-module__icon`" :size="getCollapsed ? 16 : 20"
             :icon="item.icon || (item.meta && item.meta.icon)"
           />
-          <p :class="`${prefixCls}-module__name`">
+          <p :class="`${prefixCls}-module__name`" :data-testid="`main-nav-label-${normalizeMenuTestId(item.path)}`">
             {{ t(item.name) }}
           </p>
         </li>

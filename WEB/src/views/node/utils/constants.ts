@@ -615,7 +615,7 @@ export ZLM_HTTP_PORT=${zlmHttp}
 export ZLM_RTMP_PORT=${zlmRtmp}
 export ZLM_RTP_PORT_MIN=${zlmRtpMin}
 export ZLM_RTP_PORT_MAX=${zlmRtpMax}
-export ZLM_SECRET="EasyAIoT_Media_Secret"
+export ZLM_SECRET="yFeiEye_Media_Secret"
 
 # ---------- 2. 前置检查 ----------
 if ! command -v docker >/dev/null 2>&1; then

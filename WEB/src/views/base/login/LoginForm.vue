@@ -19,6 +19,7 @@ import * as authUtil from '@/utils/auth'
 import { Verify } from '@/components/Verifition'
 import { getTenantByWebsite, getTenantIdByName } from '@/api/base/login'
 import { Button } from '@/components/Button'
+import { runLoginSubmitFlow } from './loginSubmit'
 const FormItem = Form.Item
 const InputPassword = Input.Password
 
@@ -55,15 +56,12 @@ const getShow = computed(() => unref(getLoginState) === LoginStateEnum.LOGIN)
 
 // 获取验证码
 async function getCode() {
-  // 情况一，未开启：则直接登录
-  if (captchaEnable === 'false') {
-    await handleLogin({})
-  }
-  else {
-    // 情况二，已开启：则展示验证码；只有完成验证码的情况，才进行登录
-    // 弹出验证码
-    verify.value.show()
-  }
+  await runLoginSubmitFlow({
+    captchaEnable,
+    validateForm: validForm,
+    login: () => handleLogin({}),
+    showCaptcha: () => verify.value.show(),
+  })
 }
 
 // 根据域名，获得租户信息 && 获取租户ID

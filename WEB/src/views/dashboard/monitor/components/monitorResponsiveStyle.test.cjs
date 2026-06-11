@@ -34,3 +34,46 @@ test('dashboard frame keeps the original big-screen layout outside the red-box t
   assert.match(topHeader, /\.platform-title\s*\{[\s\S]*font-size:\s*32px;/)
   assert.doesNotMatch(topHeader, /grid-template-columns:\s*minmax\(/)
 })
+
+test('big-screen admin entry releases the overlay so normal navigation can be clicked', () => {
+  const dashboard = read('../index.vue')
+  const topHeader = read('Header.vue')
+
+  assert.match(dashboard, /function\s+releaseDashboardOverlay\(\)/)
+  assert.match(dashboard, /defineExpose\(\{\s*releaseDashboardOverlay\s*\}\)/)
+  assert.match(dashboard, /\.monitor-dashboard--embedded/)
+  assert.doesNotMatch(dashboard, /z-index:\s*9999;/)
+
+  assert.match(topHeader, /<button[\s\S]*data-testid="monitor-admin-entry"/)
+  assert.match(topHeader, /@click="handleGoToAdmin"/)
+  assert.match(topHeader, /adminEntryLabel/)
+  assert.match(topHeader, /emit\('admin-entry'\)/)
+  assert.match(topHeader, /router\.push\('\/device'\)/)
+})
+
+test('dashboard controls expose stable selectors and keep text rendering crisp', () => {
+  const dashboard = read('../index.vue')
+  const topHeader = read('Header.vue')
+  const videoMonitor = read('VideoMonitor.vue')
+  const sidebar = read('Sidebar.vue')
+
+  assert.match(dashboard, /data-testid="monitor-dashboard"/)
+  assert.match(topHeader, /data-testid="monitor-platform-title"/)
+  assert.match(sidebar, /data-testid="monitor-sidebar"/)
+  assert.match(videoMonitor, /data-testid="monitor-split-toolbar"/)
+  assert.match(videoMonitor, /:data-testid="`monitor-split-\$\{layout\.value\}`"/)
+  assert.match(videoMonitor, /data-testid="monitor-ai-toggle"/)
+
+  assert.match(dashboard, /text-rendering:\s*geometricPrecision;/)
+  assert.match(dashboard, /-webkit-font-smoothing:\s*antialiased;/)
+  assert.doesNotMatch(dashboard, /filter:\s*blur\(/)
+  assert.doesNotMatch(topHeader, /letter-spacing:\s*\.06rem;/)
+})
+
+test('default main nav items expose route-based test ids for smoke clicks', () => {
+  const mixSider = read('../../../../layouts/default/sider/MixSider.vue')
+
+  assert.match(mixSider, /function\s+normalizeMenuTestId\(path:\s*string\)/)
+  assert.match(mixSider, /:data-testid="`main-nav-\$\{normalizeMenuTestId\(item\.path\)\}`"/)
+  assert.match(mixSider, /:data-testid="`main-nav-label-\$\{normalizeMenuTestId\(item\.path\)\}`"/)
+})

@@ -1,18 +1,19 @@
 <template>
-  <div class="video-monitor">
+  <div class="video-monitor" data-testid="monitor-video">
     <div class="monitor-header">
       <div class="header-title">实时监控</div>
-      <div class="enable-ai-wrap">
+      <div class="enable-ai-wrap" data-testid="monitor-ai-toggle">
         <a-checkbox v-model:checked="enableAi">启用 AI</a-checkbox>
       </div>
       <div class="header-time">{{ currentTime }}</div>
       <div class="header-location">{{ currentLocation }}</div>
       <!-- 分屏切换工具栏 -->
-      <div class="split-toolbar">
+      <div class="split-toolbar" data-testid="monitor-split-toolbar">
         <div
           v-for="layout in splitLayouts"
           :key="layout.value"
           :class="['split-btn', { active: currentLayout === layout.value }]"
+          :data-testid="`monitor-split-${layout.value}`"
           :title="layout.label"
           @click="switchLayout(layout.value)"
         >
@@ -27,6 +28,7 @@
         v-for="(video, index) in displayVideos"
         :key="video.id || index"
         :class="['video-window', getVideoClass(index)]"
+        :data-testid="`monitor-video-window-${index}`"
         :style="getVideoStyle(index)"
         @click="handleVideoClick(index)"
         @contextmenu.prevent="handleVideoRightClick(index, $event)"
@@ -81,6 +83,7 @@
             v-for="(record, index) in alertRecordList"
             :key="record.id || index"
             class="alert-record-item"
+            :data-testid="`monitor-alert-record-${index}`"
             @click="handleRecordClick(record)"
           >
             <div class="record-info">

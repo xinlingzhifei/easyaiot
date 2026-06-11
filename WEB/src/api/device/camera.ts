@@ -4,14 +4,14 @@ import { computeSegmentScanHttpTimeoutMs } from '@/views/camera/utils/segmentSca
 const CAMERA_PREFIX = '/video/camera';
 
 // 通用请求封装
-const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url: string, params = {}, headers = {}, isTransformResponse = true) => {
+const commonApi = <T = any>(method: 'get' | 'post' | 'delete' | 'put', url: string, params = {}, headers = {}, isTransformResponse = true): Promise<T> => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
 
   return defHttp[method]({
     url,
     headers: { ...headers },
     ...(method === 'get' ? { params } : { data: params })
-  }, { isTransformResponse: isTransformResponse });
+  }, { isTransformResponse: isTransformResponse }) as Promise<T>;
 };
 
 // ====================== 流地址 secure_link 签名票据 ======================

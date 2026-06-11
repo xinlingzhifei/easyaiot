@@ -572,7 +572,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         return "#!/usr/bin/env bash\n"
                 + "set -euo pipefail\n"
                 + "if systemctl list-unit-files easyaiot-node-agent.service >/dev/null 2>&1; then\n"
-                + "  echo '>>> 停止 easyaiot-node-agent'\n"
+                + "  echo '>>> 停止 yFeiEye Node Agent 服务'\n"
                 + "  systemctl stop easyaiot-node-agent 2>&1 || true\n"
                 + "  echo '[OK] 服务已停止'\n"
                 + "else\n"
@@ -586,7 +586,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         return "#!/usr/bin/env bash\n"
                 + "set -euo pipefail\n"
                 + "if systemctl list-unit-files easyaiot-node-agent.service >/dev/null 2>&1; then\n"
-                + "  echo '>>> 停止并禁用 easyaiot-node-agent'\n"
+                + "  echo '>>> 停止并禁用 yFeiEye Node Agent 服务'\n"
                 + "  systemctl stop easyaiot-node-agent 2>&1 || true\n"
                 + "  systemctl disable easyaiot-node-agent 2>&1 || true\n"
                 + "fi\n"
@@ -706,8 +706,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         }
         String fallback = "http://" + mediaHookHost + ":" + mediaHookPort + "/admin-api/node/agent";
         if ("127.0.0.1".equals(mediaHookHost) || "localhost".equalsIgnoreCase(mediaHookHost)) {
-            log.warn("未配置 easyaiot.agent.control-plane-url，远程 Agent 将无法访问 {}，"
-                    + "请设置 EASYAIOT_AGENT_CONTROL_PLANE_URL 或在部署时传入平台接入地址", fallback);
+            log.warn("未配置 yFeiEye Agent 控制面地址，远程 Agent 将无法访问 {}，"
+                    + "请设置 Agent 控制面地址环境变量或在部署时传入平台接入地址", fallback);
         }
         return fallback;
     }
@@ -794,11 +794,11 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         }
         if (out.contains("SERVICE_INACTIVE")) {
             step.setStatus("failed");
-            step.setOutput("已注册 easyaiot-node-agent 服务但未运行");
+            step.setOutput("已注册 yFeiEye Node Agent 服务但未运行");
             return step;
         }
         step.setStatus("failed");
-        step.setOutput("未注册 easyaiot-node-agent 服务");
+        step.setOutput("未注册 yFeiEye Node Agent 服务");
         return step;
     }
 
