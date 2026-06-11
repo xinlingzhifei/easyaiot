@@ -59,6 +59,7 @@ services:
       - FLASK_RUN_HOST=${FLASK_RUN_HOST:-0.0.0.0}
       # 数据库配置（使用localhost，因为使用host网络模式，中间件端口已映射到宿主机）
       - DATABASE_URL=postgresql://postgres:iot45722414822@localhost:15432/iot-ai20
+      - JAVA_BACKEND_URL=${JAVA_BACKEND_URL:-http://127.0.0.1:48080}
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-please-change-this-to-a-random-string}
       # Nacos配置（使用localhost，因为使用host网络模式）
       - NACOS_SERVER=${NACOS_SERVER:-localhost:8848}
