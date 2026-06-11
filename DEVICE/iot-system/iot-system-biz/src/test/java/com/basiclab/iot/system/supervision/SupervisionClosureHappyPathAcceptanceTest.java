@@ -220,6 +220,76 @@ class SupervisionClosureHappyPathAcceptanceTest {
         assertEquals("close-check rework handled", task.getHandlingNote());
     }
 
+    @Test
+    void repeatedReworkIncrementsCountAndRequiresSubmitAndRecheckBeforeClose() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        InMemoryTaskMapper taskMapper = new InMemoryTaskMapper();
+        SupervisionTaskMapper taskMapperProxy = taskMapper.createProxy();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(
+                eventStore,
+                new SupervisionTaskDispatcher(taskMapperProxy)
+        );
+        SupervisionTaskAcceptanceService acceptanceService = new SupervisionTaskAcceptanceService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskSubmissionService submissionService = new SupervisionTaskSubmissionService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskRecheckService recheckService = new SupervisionTaskRecheckService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionEventCloseCheckService closeCheckService = new SupervisionEventCloseCheckService(eventStore);
+        SupervisionTaskReworkService reworkService = new SupervisionTaskReworkService(
+                taskMapperProxy,
+                eventStore
+        );
+
+        AlertToEventResult result = eventService.createFromAlert(new AlertToEventCommand(
+                "video",
+                "alert-rework-count-001",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 11, 9, 15),
+                "payload-hash-rework-count-001"
+        ));
+        Long taskId = taskMapper.onlyTaskId();
+
+        assertTrue(acceptanceService.acceptTask(taskId, 3001L));
+        assertTrue(submissionService.submitTask(taskId, "abnormal", "first handling"));
+        assertTrue(recheckService.rejectSubmittedTask(taskId));
+        assertFalse(closeCheckService.approveCloseCheck(result.eventId()));
+
+        assertTrue(reworkService.restartReworkTask(taskId, 3002L));
+        assertEquals(1, taskMapper.task(taskId).getReworkCount());
+        assertFalse(closeCheckService.approveCloseCheck(result.eventId()));
+        assertTrue(submissionService.submitTask(taskId, "normal", "first rework handling"));
+        assertFalse(closeCheckService.approveCloseCheck(result.eventId()));
+
+        assertTrue(recheckService.approveSubmittedTask(taskId));
+        assertTrue(closeCheckService.rejectCloseCheck(result.eventId()));
+        assertTrue(reworkService.restartReworkTask(taskId, 3003L));
+        assertEquals(2, taskMapper.task(taskId).getReworkCount());
+        assertFalse(closeCheckService.approveCloseCheck(result.eventId()));
+        assertTrue(submissionService.submitTask(taskId, "normal", "second rework handling"));
+        assertFalse(closeCheckService.approveCloseCheck(result.eventId()));
+
+        assertTrue(recheckService.approveSubmittedTask(taskId));
+        assertTrue(closeCheckService.approveCloseCheck(result.eventId()));
+
+        SupervisionEventDO event = eventStore.event(result.eventId());
+        assertEquals(SupervisionEventStatusEnum.CLOSED.getCode(), event.getEventStatus());
+        assertEquals(SupervisionCloseResultEnum.CONFIRMED_HANDLED.getCode(), event.getCloseResult());
+
+        SupervisionTaskDO task = taskMapper.task(taskId);
+        assertEquals(SupervisionTaskStatusEnum.APPROVED.getCode(), task.getTaskStatus());
+        assertEquals(3003L, task.getAssignedUserId());
+        assertEquals(2, task.getReworkCount());
+        assertEquals("second rework handling", task.getHandlingNote());
+    }
+
     private static final class InMemoryEventStore implements EventStore, EventAcceptanceStore,
             EventHandlingStore, EventRecheckStore, EventCloseStore, EventReworkStore {
 
