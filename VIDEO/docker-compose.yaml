@@ -63,7 +63,7 @@ services:
       - DEBUG=${DEBUG:-False}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-[*]}
       # 数据库配置（使用localhost，因为使用host网络模式，中间件端口已映射到宿主机）
-      - DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20
+      - DATABASE_URL=postgresql://postgres:iot45722414822@localhost:15432/iot-video20
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-please-change-this-to-a-random-string}
       # Nacos配置（使用localhost，因为使用host网络模式）
       - NACOS_SERVER=${NACOS_SERVER:-localhost:8848}
