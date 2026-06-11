@@ -30,3 +30,14 @@ export async function runLoginSubmitFlow({
   showCaptcha()
   return 'captcha'
 }
+
+export function extractLoginErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (!error || typeof error !== 'object')
+    return fallbackMessage
+
+  const record = error as Record<string, any>
+  return record.response?.data?.message
+    || record.data?.message
+    || record.message
+    || fallbackMessage
+}

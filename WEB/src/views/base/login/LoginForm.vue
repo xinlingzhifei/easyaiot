@@ -19,7 +19,7 @@ import * as authUtil from '@/utils/auth'
 import { Verify } from '@/components/Verifition'
 import { getTenantByWebsite, getTenantIdByName } from '@/api/base/login'
 import { Button } from '@/components/Button'
-import { runLoginSubmitFlow } from './loginSubmit'
+import { extractLoginErrorMessage, runLoginSubmitFlow } from './loginSubmit'
 const FormItem = Form.Item
 const InputPassword = Input.Password
 
@@ -80,7 +80,7 @@ async function getTenantId() {
   }
 }
 
-async function handleLogin(params) {
+async function handleLogin(params = {}) {
   await getTenantId()
   const data = await validForm()
   if (!data)
@@ -94,7 +94,7 @@ async function handleLogin(params) {
       mode: 'none', // 不要默认的错误提示
     })
     if (userInfo) {
-      console.log(JSON.stringify(userInfo));
+      console.log(JSON.stringify(userInfo))
       await permissionStore.changePermissionCode(userInfo.permissions)
       notification.success({
         message: t('sys.login.loginSuccessTitle'),
@@ -107,7 +107,7 @@ async function handleLogin(params) {
     console.error(error)
     createErrorModal({
       title: t('sys.api.errorTip'),
-      content: (error as unknown as Error).message || t('sys.api.networkExceptionMsg'),
+      content: extractLoginErrorMessage(error, t('sys.api.networkExceptionMsg')),
       getContainer: () => document.body.querySelector(`.${prefixCls}`) || document.body,
     })
   }
@@ -121,7 +121,7 @@ async function handleLogin(params) {
   <LoginFormTitle v-show="getShow" class="enter-x" />
   <Form
     v-show="getShow" ref="formRef" class="enter-x p-4" :model="formData" :rules="getFormRules"
-    @keypress.enter="handleLogin"
+    @keypress.enter="getCode"
   >
     <FormItem name="tenantName" class="enter-x">
       <Input
