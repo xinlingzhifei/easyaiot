@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionTaskRecheckServiceTest {
@@ -68,15 +69,54 @@ class SupervisionTaskRecheckServiceTest {
         assertEquals(List.of(1001L), eventRecheckStore.reworkEventIds());
     }
 
+    @Test
+    void approveAndRejectSubmittedTaskReturnFalseWhenTaskDoesNotExist() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1, false);
+        CapturingEventRecheckStore eventRecheckStore = new CapturingEventRecheckStore();
+        SupervisionTaskRecheckService service = new SupervisionTaskRecheckService(
+                mapperHandler.createProxy(),
+                eventRecheckStore
+        );
+
+        boolean approved = service.approveSubmittedTask(2001L);
+        boolean rejected = service.rejectSubmittedTask(2002L);
+
+        assertFalse(approved);
+        assertFalse(rejected);
+        assertEquals(List.of(2001L, 2002L), mapperHandler.selectedTaskIds());
+        assertEquals(List.of(), mapperHandler.approvedTaskIds());
+        assertEquals(List.of(), mapperHandler.rejectedTaskIds());
+        assertEquals(List.of(), eventRecheckStore.recheckedEventIds());
+        assertEquals(List.of(), eventRecheckStore.reworkEventIds());
+    }
+
+    @Test
+    void recheckRequiresTaskId() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
+        SupervisionTaskRecheckService service = new SupervisionTaskRecheckService(
+                mapperHandler.createProxy(),
+                new CapturingEventRecheckStore()
+        );
+
+        assertThrows(NullPointerException.class, () -> service.approveSubmittedTask(null));
+        assertThrows(NullPointerException.class, () -> service.rejectSubmittedTask(null));
+    }
+
     private static final class CapturingTaskMapperHandler implements InvocationHandler {
 
         private final int updateResult;
+        private final boolean taskExists;
         private final List<Long> selectedTaskIds = new ArrayList<>();
         private final List<Long> approvedTaskIds = new ArrayList<>();
         private final List<Long> rejectedTaskIds = new ArrayList<>();
 
         private CapturingTaskMapperHandler(int updateResult) {
+            this(updateResult, true);
+        }
+
+        private CapturingTaskMapperHandler(int updateResult, boolean taskExists) {
             this.updateResult = updateResult;
+            this.taskExists = taskExists;
         }
 
         private SupervisionTaskMapper createProxy() {
@@ -91,6 +131,9 @@ class SupervisionTaskRecheckServiceTest {
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if ("selectById".equals(method.getName()) && args != null && args.length == 1) {
                 selectedTaskIds.add((Long) args[0]);
+                if (!taskExists) {
+                    return null;
+                }
                 return new SupervisionTaskDO()
                         .setId((Long) args[0])
                         .setEventId(1001L);

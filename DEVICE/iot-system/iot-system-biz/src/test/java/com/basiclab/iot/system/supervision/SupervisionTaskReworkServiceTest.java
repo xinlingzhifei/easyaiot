@@ -14,7 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionTaskReworkServiceTest {
@@ -41,17 +43,52 @@ class SupervisionTaskReworkServiceTest {
         assertEquals(List.of(1001L), eventReworkStore.acceptedEventIds());
     }
 
+    @Test
+    void restartReworkTaskReturnsFalseWhenTaskDoesNotExist() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1, false);
+        CapturingEventReworkStore eventReworkStore = new CapturingEventReworkStore();
+        SupervisionTaskReworkService service = new SupervisionTaskReworkService(
+                mapperHandler.createProxy(),
+                eventReworkStore
+        );
+
+        boolean restarted = service.restartReworkTask(2001L, 3001L);
+
+        assertFalse(restarted);
+        assertEquals(List.of(2001L), mapperHandler.selectedTaskIds());
+        assertEquals(List.of(), mapperHandler.reworkCommands());
+        assertEquals(List.of(), eventReworkStore.acceptedEventIds());
+    }
+
+    @Test
+    void restartReworkTaskRequiresTaskIdAndAcceptedUser() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
+        SupervisionTaskReworkService service = new SupervisionTaskReworkService(
+                mapperHandler.createProxy(),
+                new CapturingEventReworkStore()
+        );
+
+        assertThrows(NullPointerException.class, () -> service.restartReworkTask(null, 3001L));
+        assertThrows(NullPointerException.class, () -> service.restartReworkTask(2001L, null));
+    }
+
     private record ReworkCommand(Long taskId, Long acceptedUserId, LocalDateTime acceptedAt, Integer reworkCount) {
     }
 
     private static final class CapturingTaskMapperHandler implements InvocationHandler {
 
         private final int updateResult;
+        private final boolean taskExists;
         private final List<Long> selectedTaskIds = new ArrayList<>();
         private final List<ReworkCommand> reworkCommands = new ArrayList<>();
 
         private CapturingTaskMapperHandler(int updateResult) {
+            this(updateResult, true);
+        }
+
+        private CapturingTaskMapperHandler(int updateResult, boolean taskExists) {
             this.updateResult = updateResult;
+            this.taskExists = taskExists;
         }
 
         private SupervisionTaskMapper createProxy() {
@@ -66,6 +103,9 @@ class SupervisionTaskReworkServiceTest {
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if ("selectById".equals(method.getName()) && args != null && args.length == 1) {
                 selectedTaskIds.add((Long) args[0]);
+                if (!taskExists) {
+                    return null;
+                }
                 return new SupervisionTaskDO()
                         .setId((Long) args[0])
                         .setEventId(1001L)

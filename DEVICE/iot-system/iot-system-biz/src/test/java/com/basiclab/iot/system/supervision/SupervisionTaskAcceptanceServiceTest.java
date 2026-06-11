@@ -16,6 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionTaskAcceptanceServiceTest {
@@ -57,17 +58,52 @@ class SupervisionTaskAcceptanceServiceTest {
         assertEquals(List.of(), eventAcceptanceStore.acceptedEventIds());
     }
 
+    @Test
+    void acceptTaskReturnsFalseWhenTaskDoesNotExist() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1, false);
+        CapturingEventAcceptanceStore eventAcceptanceStore = new CapturingEventAcceptanceStore();
+        SupervisionTaskAcceptanceService service = new SupervisionTaskAcceptanceService(
+                mapperHandler.createProxy(),
+                eventAcceptanceStore
+        );
+
+        boolean accepted = service.acceptTask(2001L, 3001L);
+
+        assertFalse(accepted);
+        assertEquals(List.of(2001L), mapperHandler.selectedTaskIds());
+        assertEquals(List.of(), mapperHandler.acceptCommands());
+        assertEquals(List.of(), eventAcceptanceStore.acceptedEventIds());
+    }
+
+    @Test
+    void acceptTaskRequiresTaskIdAndAcceptedUser() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
+        SupervisionTaskAcceptanceService service = new SupervisionTaskAcceptanceService(
+                mapperHandler.createProxy(),
+                new CapturingEventAcceptanceStore()
+        );
+
+        assertThrows(NullPointerException.class, () -> service.acceptTask(null, 3001L));
+        assertThrows(NullPointerException.class, () -> service.acceptTask(2001L, null));
+    }
+
     private record AcceptCommand(Long taskId, Long acceptedUserId, LocalDateTime acceptedAt) {
     }
 
     private static final class CapturingTaskMapperHandler implements InvocationHandler {
 
         private final int updateResult;
+        private final boolean taskExists;
         private final List<AcceptCommand> acceptCommands = new ArrayList<>();
         private final List<Long> selectedTaskIds = new ArrayList<>();
 
         private CapturingTaskMapperHandler(int updateResult) {
+            this(updateResult, true);
+        }
+
+        private CapturingTaskMapperHandler(int updateResult, boolean taskExists) {
             this.updateResult = updateResult;
+            this.taskExists = taskExists;
         }
 
         private SupervisionTaskMapper createProxy() {
@@ -82,6 +118,9 @@ class SupervisionTaskAcceptanceServiceTest {
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if ("selectById".equals(method.getName()) && args != null && args.length == 1) {
                 selectedTaskIds.add((Long) args[0]);
+                if (!taskExists) {
+                    return null;
+                }
                 return new SupervisionTaskDO()
                         .setId((Long) args[0])
                         .setEventId(1001L);

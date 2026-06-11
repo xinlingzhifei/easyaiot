@@ -16,6 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionTaskSubmissionServiceTest {
@@ -58,17 +59,53 @@ class SupervisionTaskSubmissionServiceTest {
         assertEquals(List.of(), eventHandlingStore.handledEventIds());
     }
 
+    @Test
+    void submitTaskReturnsFalseWhenTaskDoesNotExist() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1, false);
+        CapturingEventHandlingStore eventHandlingStore = new CapturingEventHandlingStore();
+        SupervisionTaskSubmissionService service = new SupervisionTaskSubmissionService(
+                mapperHandler.createProxy(),
+                eventHandlingStore
+        );
+
+        boolean submitted = service.submitTask(2001L, "normal", "handled on site");
+
+        assertFalse(submitted);
+        assertEquals(List.of(2001L), mapperHandler.selectedTaskIds());
+        assertEquals(List.of(), mapperHandler.submitCommands());
+        assertEquals(List.of(), eventHandlingStore.handledEventIds());
+    }
+
+    @Test
+    void submitTaskRequiresTaskIdResultCategoryAndHandlingNote() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
+        SupervisionTaskSubmissionService service = new SupervisionTaskSubmissionService(
+                mapperHandler.createProxy(),
+                new CapturingEventHandlingStore()
+        );
+
+        assertThrows(NullPointerException.class, () -> service.submitTask(null, "normal", "handled on site"));
+        assertThrows(NullPointerException.class, () -> service.submitTask(2001L, null, "handled on site"));
+        assertThrows(NullPointerException.class, () -> service.submitTask(2001L, "normal", null));
+    }
+
     private record SubmitCommand(Long taskId, String resultCategory, String handlingNote, LocalDateTime submittedAt) {
     }
 
     private static final class CapturingTaskMapperHandler implements InvocationHandler {
 
         private final int updateResult;
+        private final boolean taskExists;
         private final List<SubmitCommand> submitCommands = new ArrayList<>();
         private final List<Long> selectedTaskIds = new ArrayList<>();
 
         private CapturingTaskMapperHandler(int updateResult) {
+            this(updateResult, true);
+        }
+
+        private CapturingTaskMapperHandler(int updateResult, boolean taskExists) {
             this.updateResult = updateResult;
+            this.taskExists = taskExists;
         }
 
         private SupervisionTaskMapper createProxy() {
@@ -83,6 +120,9 @@ class SupervisionTaskSubmissionServiceTest {
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if ("selectById".equals(method.getName()) && args != null && args.length == 1) {
                 selectedTaskIds.add((Long) args[0]);
+                if (!taskExists) {
+                    return null;
+                }
                 return new SupervisionTaskDO()
                         .setId((Long) args[0])
                         .setEventId(1001L);
