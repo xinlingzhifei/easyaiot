@@ -47,7 +47,7 @@ services:
       - ${HOME}/docker/iot-device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:48099/favicon.ico"]
+      test: ["CMD", "curl", "-f", "http://localhost:48080/favicon.ico"]
       interval: 30s
       timeout: 10s
       retries: 5
