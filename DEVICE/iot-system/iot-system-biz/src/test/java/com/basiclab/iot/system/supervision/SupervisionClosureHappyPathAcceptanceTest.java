@@ -40,6 +40,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionClosureHappyPathAcceptanceTest {
@@ -290,6 +291,80 @@ class SupervisionClosureHappyPathAcceptanceTest {
         assertEquals("second rework handling", task.getHandlingNote());
     }
 
+    @Test
+    void invalidServiceTransitionsReturnFalseWithoutChangingWorkflowState() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        InMemoryTaskMapper taskMapper = new InMemoryTaskMapper();
+        SupervisionTaskMapper taskMapperProxy = taskMapper.createProxy();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(
+                eventStore,
+                new SupervisionTaskDispatcher(taskMapperProxy)
+        );
+        SupervisionTaskAcceptanceService acceptanceService = new SupervisionTaskAcceptanceService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskSubmissionService submissionService = new SupervisionTaskSubmissionService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionTaskRecheckService recheckService = new SupervisionTaskRecheckService(
+                taskMapperProxy,
+                eventStore
+        );
+        SupervisionEventCloseCheckService closeCheckService = new SupervisionEventCloseCheckService(eventStore);
+        SupervisionTaskReworkService reworkService = new SupervisionTaskReworkService(
+                taskMapperProxy,
+                eventStore
+        );
+
+        AlertToEventResult result = eventService.createFromAlert(new AlertToEventCommand(
+                "video",
+                "alert-invalid-transition-001",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 11, 10, 30),
+                "payload-hash-invalid-transition-001"
+        ));
+        Long taskId = taskMapper.onlyTaskId();
+
+        assertFalse(submissionService.submitTask(taskId, "normal", "too early submit"));
+        assertWorkflowState(
+                eventStore,
+                taskMapper,
+                result.eventId(),
+                taskId,
+                SupervisionEventStatusEnum.DISPATCHED,
+                SupervisionTaskStatusEnum.SENT
+        );
+
+        assertTrue(acceptanceService.acceptTask(taskId, 3001L));
+        assertFalse(recheckService.approveSubmittedTask(taskId));
+        assertFalse(recheckService.rejectSubmittedTask(taskId));
+        assertFalse(reworkService.restartReworkTask(taskId, 3002L));
+        assertWorkflowState(
+                eventStore,
+                taskMapper,
+                result.eventId(),
+                taskId,
+                SupervisionEventStatusEnum.ACCEPTED,
+                SupervisionTaskStatusEnum.ACKNOWLEDGED
+        );
+
+        assertTrue(submissionService.submitTask(taskId, "normal", "ready for recheck"));
+        assertFalse(closeCheckService.approveCloseCheck(result.eventId()));
+        assertFalse(closeCheckService.rejectCloseCheck(result.eventId()));
+        assertWorkflowState(
+                eventStore,
+                taskMapper,
+                result.eventId(),
+                taskId,
+                SupervisionEventStatusEnum.PENDING_RECHECK,
+                SupervisionTaskStatusEnum.SUBMITTED
+        );
+        assertNull(eventStore.event(result.eventId()).getCloseResult());
+    }
+
     private static final class InMemoryEventStore implements EventStore, EventAcceptanceStore,
             EventHandlingStore, EventRecheckStore, EventCloseStore, EventReworkStore {
 
@@ -523,6 +598,14 @@ class SupervisionClosureHappyPathAcceptanceTest {
             return task;
         }
 
+    }
+
+    private static void assertWorkflowState(InMemoryEventStore eventStore, InMemoryTaskMapper taskMapper,
+                                            Long eventId, Long taskId,
+                                            SupervisionEventStatusEnum eventStatus,
+                                            SupervisionTaskStatusEnum taskStatus) {
+        assertEquals(eventStatus.getCode(), eventStore.event(eventId).getEventStatus());
+        assertEquals(taskStatus.getCode(), taskMapper.task(taskId).getTaskStatus());
     }
 
 }
