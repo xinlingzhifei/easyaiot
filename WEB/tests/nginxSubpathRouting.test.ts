@@ -6,8 +6,14 @@ const nginxConf = readFileSync(resolve('conf/nginx.conf'), 'utf8')
 
 assert.match(
   nginxConf,
-  /location\s+=\s+\/[\s\S]*?return\s+302\s+\/yfeieye\/;/,
-  'The root URL should redirect to the deployed /yfeieye/ subpath.',
+  /location\s+=\s+\/[\s\S]*?return\s+302\s+\$scheme:\/\/\$http_host\/yfeieye\/;/,
+  'The root URL should redirect to the deployed /yfeieye/ subpath without dropping the external host or port.',
+)
+
+assert.match(
+  nginxConf,
+  /location\s+=\s+\/yfeieye[\s\S]*?return\s+301\s+\$scheme:\/\/\$http_host\/yfeieye\/;/,
+  'The /yfeieye URL should add the trailing slash without dropping the external host or port.',
 )
 
 for (const dir of ['assets', 'static', 'resource']) {
