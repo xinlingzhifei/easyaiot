@@ -44,6 +44,22 @@ class SupervisionTaskReworkServiceTest {
     }
 
     @Test
+    void restartReworkTaskReturnsFalseWhenTaskIsNotRejectedOrApproved() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(0);
+        CapturingEventReworkStore eventReworkStore = new CapturingEventReworkStore();
+        SupervisionTaskReworkService service = new SupervisionTaskReworkService(
+                mapperHandler.createProxy(),
+                eventReworkStore
+        );
+
+        boolean restarted = service.restartReworkTask(2001L, 3001L);
+
+        assertFalse(restarted);
+        assertEquals(1, mapperHandler.reworkCommands().size());
+        assertEquals(List.of(), eventReworkStore.acceptedEventIds());
+    }
+
+    @Test
     void restartReworkTaskReturnsFalseWhenTaskDoesNotExist() {
         CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1, false);
         CapturingEventReworkStore eventReworkStore = new CapturingEventReworkStore();

@@ -53,6 +53,22 @@ class SupervisionTaskRecheckServiceTest {
     }
 
     @Test
+    void rejectSubmittedTaskReturnsFalseWhenTaskIsNotSubmitted() {
+        CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(0);
+        CapturingEventRecheckStore eventRecheckStore = new CapturingEventRecheckStore();
+        SupervisionTaskRecheckService service = new SupervisionTaskRecheckService(
+                mapperHandler.createProxy(),
+                eventRecheckStore
+        );
+
+        boolean rejected = service.rejectSubmittedTask(2001L);
+
+        assertFalse(rejected);
+        assertEquals(List.of(2001L), mapperHandler.rejectedTaskIds());
+        assertEquals(List.of(), eventRecheckStore.reworkEventIds());
+    }
+
+    @Test
     void rejectSubmittedTaskMarksTaskRejectedAndEventReworkRequired() {
         CapturingTaskMapperHandler mapperHandler = new CapturingTaskMapperHandler(1);
         CapturingEventRecheckStore eventRecheckStore = new CapturingEventRecheckStore();

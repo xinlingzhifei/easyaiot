@@ -6,6 +6,7 @@ import com.basiclab.iot.system.enums.supervision.SupervisionCloseResultEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventMapperEventStore;
+import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
@@ -161,6 +162,24 @@ class SupervisionEventMapperEventStoreTest {
     }
 
     @Test
+    void closeCheckServiceReturnsFalseWhenMapperStoreUpdatesZeroRows() {
+        CapturingMapperHandler mapperHandler = new CapturingMapperHandler(0);
+        SupervisionEventCloseCheckService closeCheckService = new SupervisionEventCloseCheckService(
+                new SupervisionEventMapperEventStore(mapperHandler.createProxy())
+        );
+
+        boolean closed = closeCheckService.approveCloseCheck(1001L);
+        boolean reworkRequired = closeCheckService.rejectCloseCheck(1002L);
+
+        assertFalse(closed);
+        assertFalse(reworkRequired);
+        assertEquals(1, mapperHandler.closedUpdates().size());
+        assertEquals(1001L, mapperHandler.closedUpdates().get(0).getId());
+        assertEquals(1, mapperHandler.closeCheckReworkUpdates().size());
+        assertEquals(1002L, mapperHandler.closeCheckReworkUpdates().get(0).getId());
+    }
+
+    @Test
     void markReworkAcceptedUpdatesEventThroughMapper() {
         CapturingMapperHandler mapperHandler = new CapturingMapperHandler();
         SupervisionEventMapperEventStore eventStore = new SupervisionEventMapperEventStore(mapperHandler.createProxy());
@@ -176,6 +195,7 @@ class SupervisionEventMapperEventStoreTest {
 
     private static final class CapturingMapperHandler implements InvocationHandler {
 
+        private final int updateResult;
         private long nextEventId = 1000L;
         private final Map<String, SupervisionEventDO> openEvents = new LinkedHashMap<>();
         private final List<String> lookupKeys = new ArrayList<>();
@@ -188,6 +208,14 @@ class SupervisionEventMapperEventStoreTest {
         private final List<SupervisionEventDO> closedUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> closeCheckReworkUpdates = new ArrayList<>();
         private final List<SupervisionEventDO> reworkAcceptedUpdates = new ArrayList<>();
+
+        private CapturingMapperHandler() {
+            this(1);
+        }
+
+        private CapturingMapperHandler(int updateResult) {
+            this.updateResult = updateResult;
+        }
 
         private SupervisionEventMapper createProxy() {
             return (SupervisionEventMapper) Proxy.newProxyInstance(
@@ -225,7 +253,7 @@ class SupervisionEventMapperEventStoreTest {
                         .ifPresent(eventDO -> eventDO
                                 .setEventStatus(SupervisionEventStatusEnum.DISPATCHED.getCode())
                                 .setDispatchedAt(dispatchedAt));
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToAccepted".equals(method.getName()) && args != null && args.length == 2) {
                 Long eventId = (Long) args[0];
@@ -235,7 +263,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setEventStatus(SupervisionEventStatusEnum.ACCEPTED.getCode())
                         .setAcceptedAt(acceptedAt);
                 acceptedUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToPendingRecheck".equals(method.getName()) && args != null && args.length == 2) {
                 Long eventId = (Long) args[0];
@@ -245,7 +273,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setEventStatus(SupervisionEventStatusEnum.PENDING_RECHECK.getCode())
                         .setHandledAt(handledAt);
                 handledUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToPendingCloseCheck".equals(method.getName()) && args != null && args.length == 2) {
                 Long eventId = (Long) args[0];
@@ -255,7 +283,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setEventStatus(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode())
                         .setRecheckedAt(recheckedAt);
                 recheckedUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToReworkRequired".equals(method.getName()) && args != null && args.length == 2) {
                 Long eventId = (Long) args[0];
@@ -265,7 +293,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setEventStatus(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode())
                         .setRecheckedAt(recheckedAt);
                 reworkUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToClosed".equals(method.getName()) && args != null && args.length == 3) {
                 Long eventId = (Long) args[0];
@@ -277,7 +305,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setCloseResult(closeResult)
                         .setClosedAt(closedAt);
                 closedUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToCloseCheckReworkRequired".equals(method.getName()) && args != null && args.length == 1) {
                 Long eventId = (Long) args[0];
@@ -285,7 +313,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setId(eventId)
                         .setEventStatus(SupervisionEventStatusEnum.REWORK_REQUIRED.getCode());
                 closeCheckReworkUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if ("updateStatusToAcceptedFromRework".equals(method.getName()) && args != null && args.length == 2) {
                 Long eventId = (Long) args[0];
@@ -295,7 +323,7 @@ class SupervisionEventMapperEventStoreTest {
                         .setEventStatus(SupervisionEventStatusEnum.ACCEPTED.getCode())
                         .setAcceptedAt(acceptedAt);
                 reworkAcceptedUpdates.add(update);
-                return 1;
+                return updateResult;
             }
             if (method.getDeclaringClass() == Object.class) {
                 return method.invoke(this, args);
