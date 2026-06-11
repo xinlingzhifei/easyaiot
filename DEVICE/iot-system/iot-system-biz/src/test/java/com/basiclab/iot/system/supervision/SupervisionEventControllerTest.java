@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.supervision;
 
+import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionEventController;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
@@ -23,6 +24,7 @@ import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,9 +34,7 @@ class SupervisionEventControllerTest {
     @Test
     void createEventFromAlertMapsHttpRequestToApplicationFacade() throws Exception {
         CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
-        MockMvc mockMvc = MockMvcBuilders
-                .standaloneSetup(new SupervisionEventController(applicationService))
-                .build();
+        MockMvc mockMvc = mockMvc(applicationService);
 
         mockMvc.perform(post("/system/supervision/events/from-alert")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -67,6 +67,69 @@ class SupervisionEventControllerTest {
                 LocalDateTime.of(2026, 6, 11, 9, 30),
                 "payload-hash-001"
         ), applicationService.request());
+    }
+
+    @Test
+    void createEventFromAlertRejectsBlankRequiredFieldsBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        assertBlankRequiredFieldRejected(
+                mockMvc,
+                applicationService,
+                " ",
+                "alert-001",
+                "abnormal_gathering",
+                "请求参数不正确:sourceSystem must not be blank"
+        );
+        assertBlankRequiredFieldRejected(
+                mockMvc,
+                applicationService,
+                "video",
+                " ",
+                "abnormal_gathering",
+                "请求参数不正确:sourceAlertId must not be blank"
+        );
+        assertBlankRequiredFieldRejected(
+                mockMvc,
+                applicationService,
+                "video",
+                "alert-001",
+                " ",
+                "请求参数不正确:ruleCode must not be blank"
+        );
+    }
+
+    private static void assertBlankRequiredFieldRejected(MockMvc mockMvc,
+                                                         CapturingWorkflowApplicationService applicationService,
+                                                         String sourceSystem,
+                                                         String sourceAlertId,
+                                                         String ruleCode,
+                                                         String expectedMessage) throws Exception {
+        mockMvc.perform(post("/system/supervision/events/from-alert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceSystem": "%s",
+                                  "sourceAlertId": "%s",
+                                  "ruleCode": "%s",
+                                  "sourceAlertType": "abnormal_gathering",
+                                  "sourceAlertTime": "2026-06-11T09:30:00",
+                                  "sourcePayloadHash": "payload-hash-001"
+                                }
+                                """.formatted(sourceSystem, sourceAlertId, ruleCode)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(expectedMessage));
+
+        assertNull(applicationService.request());
+    }
+
+    private static MockMvc mockMvc(SupervisionWorkflowApplicationService applicationService) {
+        return MockMvcBuilders
+                .standaloneSetup(new SupervisionEventController(applicationService))
+                .setControllerAdvice(new GlobalExceptionHandler("iot-system-biz"))
+                .build();
     }
 
     private static final class CapturingWorkflowApplicationService extends SupervisionWorkflowApplicationService {
