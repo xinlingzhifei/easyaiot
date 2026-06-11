@@ -8,7 +8,7 @@ import {defHttp} from '@/utils/http/axios';
 const ALGORITHM_PREFIX = '/video/algorithm';
 
 // 通用请求封装
-const commonApi = <T = any>(method: 'get' | 'post' | 'delete' | 'put', url: string, options: { params?: any; data?: any; errorMessageMode?: 'none' | 'message' | 'modal' } = {}) => {
+const commonApi = <T = any>(method: 'get' | 'post' | 'delete' | 'put', url: string, options: { params?: any; data?: any; errorMessageMode?: 'none' | 'message' | 'modal'; timeout?: number } = {}) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
 
   return defHttp[method]({
@@ -17,6 +17,8 @@ const commonApi = <T = any>(method: 'get' | 'post' | 'delete' | 'put', url: stri
       // @ts-ignore
       ignoreCancelToken: true,
     },
+    // 单接口超时覆盖（默认全局 10s）：停止/启动/重启需要等待进程清理，耗时较长
+    ...(options.timeout ? { timeout: options.timeout } : {}),
     ...(method === 'get' ? { params: options.params } : { data: options.data || options.params }),
   }, {
     isTransformResponse: true,
@@ -84,6 +86,12 @@ export interface AlgorithmTask {
   service_names?: string; // 关联的算法服务名称列表（逗号分隔，冗余字段，用于快速显示）
   defense_mode?: string; // 布防模式: full(全防), half(半防), day(白天), night(夜间)
   defense_schedule?: string | number[][]; // 布防时段: JSON字符串或二维数组，7天×24小时
+  /** 调度策略: local(本机) | auto(自动调度) | node(指定节点) */
+  schedule_policy?: 'local' | 'auto' | 'node';
+  /** 指定部署节点 ID（schedule_policy=node 时） */
+  target_node_id?: number | null;
+  /** 实际运行节点 ID（只读，启动后由控制面写入） */
+  node_id?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -177,21 +185,24 @@ export const deleteAlgorithmTask = (task_id: number) => {
 export const startAlgorithmTask = (task_id: number) => {
   return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
     'post',
-    `${ALGORITHM_PREFIX}/task/${task_id}/start`
+    `${ALGORITHM_PREFIX}/task/${task_id}/start`,
+    { timeout: 30000 }
   );
 };
 
 export const stopAlgorithmTask = (task_id: number) => {
   return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
     'post',
-    `${ALGORITHM_PREFIX}/task/${task_id}/stop`
+    `${ALGORITHM_PREFIX}/task/${task_id}/stop`,
+    { timeout: 30000 }
   );
 };
 
 export const restartAlgorithmTask = (task_id: number) => {
   return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
     'post',
-    `${ALGORITHM_PREFIX}/task/${task_id}/restart`
+    `${ALGORITHM_PREFIX}/task/${task_id}/restart`,
+    { timeout: 30000 }
   );
 };
 

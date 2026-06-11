@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict Y2MuX56f7lMViaIkhhBG6pgLoCBy2FYXVaWoJnn1sKWBegXQKbq0qmfxjYGXjjI
+\restrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
 
--- Dumped from database version 18.1 (Debian 18.1-1.pgdg13+2)
--- Dumped by pg_dump version 18.1 (Debian 18.1-1.pgdg13+2)
+-- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
+-- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "ruoyi-vue-pro20";
 CREATE DATABASE "ruoyi-vue-pro20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict Y2MuX56f7lMViaIkhhBG6pgLoCBy2FYXVaWoJnn1sKWBegXQKbq0qmfxjYGXjjI
+\unrestrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='ruoyi-vue-pro20'"
-\restrict Y2MuX56f7lMViaIkhhBG6pgLoCBy2FYXVaWoJnn1sKWBegXQKbq0qmfxjYGXjjI
+\restrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -16613,8 +16613,8 @@ COPY public.qrtz_paused_trigger_grps (sched_name, trigger_group) FROM stdin;
 --
 
 COPY public.qrtz_scheduler_state (sched_name, instance_name, last_checkin_time, checkin_interval) FROM stdin;
-schedulerName	master1772778584577	1772785640408	15000
-schedulerName	master1772778584794	1772785644474	15000
+schedulerName	ubuntu1781145770907	1781201294148	15000
+schedulerName	ubuntu1781145805360	1781201294822	15000
 \.
 
 
@@ -20189,6 +20189,27 @@ COPY public.system_login_log (id, log_type, trace_id, user_id, user_type, userna
 3055	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36	\N	2026-03-06 14:30:04.497335	\N	2026-03-06 14:30:04.497335	0	1
 3056	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36	\N	2026-03-06 15:00:16.651609	\N	2026-03-06 15:00:16.651609	0	1
 3057	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36	\N	2026-03-06 15:47:06.318408	\N	2026-03-06 15:47:06.318408	0	1
+3058	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 10:43:53.390125	\N	2026-06-11 10:43:53.390125	0	1
+3059	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 11:15:39.131924	\N	2026-06-11 11:15:39.131924	0	1
+3060	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 11:48:11.025962	\N	2026-06-11 11:48:11.025962	0	1
+3061	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 12:24:19.852132	\N	2026-06-11 12:24:19.852132	0	1
+3062	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 14:12:21.991414	\N	2026-06-11 14:12:21.991414	0	1
+3063	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 14:43:57.35817	\N	2026-06-11 14:43:57.35817	0	1
+3064	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 15:14:25.564579	\N	2026-06-11 15:14:25.564579	0	1
+3065	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 15:45:33.16294	\N	2026-06-11 15:45:33.16294	0	1
+3066	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 17:29:24.045012	\N	2026-06-11 17:29:24.045012	0	1
+3067	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 18:03:33.116477	\N	2026-06-11 18:03:33.116477	0	1
+3068	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 18:35:25.837309	\N	2026-06-11 18:35:25.837309	0	1
+3069	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 21:44:23.931395	\N	2026-06-11 21:44:23.931395	0	1
+3070	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 22:20:08.884458	\N	2026-06-11 22:20:08.884458	0	1
+3071	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 22:57:36.924309	\N	2026-06-11 22:57:36.924309	0	1
+3072	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-11 23:29:13.941809	\N	2026-06-11 23:29:13.941809	0	1
+3073	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 00:00:55.583201	\N	2026-06-12 00:00:55.583201	0	1
+3074	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 00:36:35.790846	\N	2026-06-12 00:36:35.790846	0	1
+3075	200		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	1	2026-06-12 00:36:49.00187	1	2026-06-12 00:36:49.00187	0	1
+3076	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 00:36:56.41513	\N	2026-06-12 00:36:56.41513	0	1
+3077	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 01:12:21.251442	\N	2026-06-12 01:12:21.251442	0	1
+3078	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 01:44:18.833648	\N	2026-06-12 01:44:18.833648	0	1
 \.
 
 
@@ -21055,7 +21076,6 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2802	设备分组删除	device:device-group:delete	3	4	2798				\N	0	t	t	t		2024-07-11 05:21:49.127724		2024-07-11 05:21:49.127724	0
 2801	设备分组更新	device:device-group:update	3	3	2798				\N	0	t	t	t		2024-07-11 05:21:49.127724		2024-07-11 05:21:49.127724	0
 2800	设备分组创建	device:device-group:create	3	2	2798				\N	0	t	t	t		2024-07-11 05:21:49.127724		2024-07-11 05:21:49.127724	0
-2762	设备管理	device:device:query	2	2	0	device	ant-design:laptop-outlined	devices/index	Devices	0	t	f	t	1	2024-07-10 22:42:17.76	1	2025-06-15 07:19:47.649	0
 2760	代码生成		2	21	1	code/codegen	ant-design:dribbble-outlined	infra/codegen/index	InfraCodegen	0	t	t	t	1	2024-07-09 11:31:13.541	1	2024-12-26 14:41:13.815	0
 115	敏捷管理	infra:codegen:query	1	15	1	code	ep:document-copy	infra/codegen/index	InfraCodegen	0	t	t	t	admin	2021-01-05 17:03:48	1	2024-12-26 14:36:06.646	1
 1070	生成案例		2	22	1	code/demo	ep:aim	infra/testDemo/index	\N	0	t	t	t		2021-02-06 12:42:49	1	2024-12-26 14:41:21.235	0
@@ -21181,7 +21201,6 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2739	通知管理	notice:config:query	2	17	0	/notice/index	ant-design:sound-outlined	notice/index	Notice	0	t	f	t	1	2024-04-22 23:54:30	1	2025-04-29 18:35:41.919	1
 2962	模型计算	calculate:calculate:list	2	13	0	calculate/index	ant-design:crown-outlined	calculate/index	Calculate	0	t	t	t	1	2025-03-17 13:28:38.556	1	2025-06-15 07:15:37.646	1
 2943	协议管理	protocol:protocol:query	2	4	0	/protocol	ant-design:trophy-outlined	protocol/index	Protocol	0	f	t	f	1	2024-07-25 15:34:33.197	1	2024-09-24 15:40:28.686	1
-2931	产品管理	product:product:query	2	3	0	product	ant-design:apartment-outlined	product/index	Product	0	t	f	t	1	2024-07-11 05:42:44.432	1	2025-06-15 07:20:19.434	0
 2950	云端录像	cloud:record:list	2	99	0	cloud-record/:deviceId/:channelId	ant-design:aliwangwang-outlined	video/components/CloudRecord/index	CloudRecord	0	f	t	f	1	2024-08-21 17:01:01.904	1	2024-08-29 15:57:25.4	1
 2949	设备录像	device:record:list	2	99	0	device-record/:deviceId/:channelId	ant-design:account-book-twotone	video/components/DeviceRecord/index	DeviceRecord	0	f	t	f	1	2024-08-20 17:10:25.898	1	2024-08-29 15:57:30.631	1
 2948	Demo	demo:list	2	99	0	demo	ant-design:align-center-outlined	video/components/Demo/JessibucaDemo	JessibucaDemo	0	f	t	f	1	2024-08-12 18:13:05.872	1	2024-08-29 15:57:36.404	1
@@ -21190,7 +21209,6 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2960	抓拍空间	space:detail:list	2	99	0	space/:dirPath	ant-design:folder-open-outlined	video/components/SnapSpaceDetail/index	SpaceDetail	0	f	f	f	1	2024-12-17 13:20:01.385	1	2024-12-27 14:12:59.486	1
 2954	行人识别	person:person:query	2	28	0	/person/index	ant-design:deployment-unit-outlined	person/index	Person	1	f	f	f	1	2024-09-19 11:27:30.438	1	2024-09-29 09:59:55.906	1
 2964	数据集详情	dataset:detail:list	2	99	0	detail/:id	ant-design:line-chart-outlined	dataset/components/DatasetDetail/index	DatasetDetail	0	f	t	f	1	2025-08-11 15:38:39.025	1	2025-08-11 15:39:22.203	0
-2965	流媒体	camera:camera:query	2	1	0	camera/index	gala:video	camera/index	Camera	0	t	t	t	1	2025-08-31 18:38:53.702	1	2025-08-31 18:38:53.702	0
 2967	训练详情	train:train:detail	2	99	0	TrainTaskDetail/:modelId	hugeicons:ai-brain-03	train/components/TrainTaskDetail/index	TrainTaskDetail	0	f	t	f	1	2025-08-31 18:45:27.291	1	2025-08-31 18:45:27.291	0
 1243	文件管理		1	20	0	/file	ep:files	\N		1	t	t	t	1	2022-03-16 23:47:40	1	2025-08-11 15:29:22.768	1
 2955	算法商城	store:store:query	2	35	0	store	ant-design:shop-twotone	store/index	Store	0	t	f	t	1	2024-09-19 11:53:03.112	1	2025-04-29 18:36:07.501	1
@@ -21198,10 +21216,14 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 1238	文件配置查询	infra:file-config:query	3	1	1237				\N	0	t	t	t		2022-03-15 14:35:28		2022-04-20 17:03:10	1
 1091	文件查询	infra:file:query	3	1	1090				\N	0	t	t	t		2021-03-12 20:16:20		2022-04-20 17:03:10	1
 2969	告警事件	alert:alert:query	2	35	0	alert	ant-design:alert-outlined	alert/index	Alarm	0	t	t	t	1	2025-11-20 12:41:30.270882	1	2025-11-20 12:41:30.270882	0
-2968	OTA升级	ota:ota:query	2	5	0	ota	ant-design:hourglass-outlined	ota/index	OtaVersion	0	t	t	t	1	2025-11-20 12:40:20.867024	1	2025-11-20 12:43:07.342901	0
 2970	通知管理	notice:notice:query	2	36	0	notice	ant-design:sound-outlined	notice/index	Notice	0	t	t	t	1	2025-11-20 12:42:17.013623	1	2025-11-20 12:43:51.584973	0
+2931	产品管理	product:product:query	2	6	0	product	ant-design:apartment-outlined	product/index	Product	0	t	f	t	1	2024-07-11 05:42:44.432	1	2026-06-11 10:47:23.351937	0
+2965	流媒体	camera:camera:query	2	1	0	camera/index	gala:video	camera/index	Camera	0	t	t	t	1	2025-08-31 18:38:53.702	1	2026-06-11 10:47:38.052375	0
 2966	模型管理	train:train:query	2	9	0	train/index	hugeicons:ai-brain-03	train/index	Train	0	t	t	t	1	2025-08-31 18:41:46.818	1	2025-12-06 14:51:36.602328	0
 2971	通道管理	channel:channel:query	2	99	0	Channel/:deviceIdentification	ant-design:borderless-table-outlined	gb28181/components/Channel/index	Channel	0	f	t	f	1	2026-03-06 14:32:31.248172	1	2026-03-06 14:36:39.101955	0
+2968	OTA升级	ota:ota:query	2	7	0	ota	ant-design:hourglass-outlined	ota/index	OtaVersion	0	t	t	t	1	2025-11-20 12:40:20.867024	1	2026-06-11 10:47:19.091584	0
+2762	设备管理	device:device:query	2	4	0	device	ant-design:laptop-outlined	devices/index	Devices	0	t	f	t	1	2024-07-10 22:42:17.76	1	2026-06-11 10:47:27.631261	0
+2972	集群管理	node:node:query	2	0	0	node/index	ant-design:ungroup-outlined	node/index	ComputeNodeManage	0	t	t	t	1	2026-06-11 10:46:06.011163	1	2026-06-11 11:13:26.93809	0
 \.
 
 
@@ -24497,6 +24519,26 @@ COPY public.system_oauth2_access_token (id, user_id, user_type, user_info, acces
 6008	1	2	{"nickname":"IoT","deptId":"103"}	7b8687207d384f129d0aafd9171b0b05	465ecfed7f584051acf3050749ed178d	default	\N	2026-03-06 15:00:04.569738	\N	2026-03-06 14:30:04.573297	\N	2026-03-06 14:30:04.573297	0	1
 6010	1	2	{"nickname":"IoT","deptId":"103"}	c2d192b6ee104bfbb0907b405fe76cf2	abb2b304c5f84cdb96a5a116b5a326e1	default	\N	2026-03-06 15:30:16.677741	\N	2026-03-06 15:00:16.679376	\N	2026-03-06 15:00:16.679376	0	1
 6012	1	2	{"nickname":"IoT","deptId":"103"}	5c6bf8923c5e4a10b782eb1d27b19171	d2c703112a5b496995a59599736e35db	default	\N	2026-03-06 16:17:06.346627	\N	2026-03-06 15:47:06.3478	\N	2026-03-06 15:47:06.3478	0	1
+6014	1	2	{"nickname":"IoT","deptId":"103"}	b557c3dc717c4c59b411609f881182b4	b370ac0d509348fd978db3ec045f9b35	default	\N	2026-06-11 11:13:53.458946	\N	2026-06-11 10:43:53.464721	\N	2026-06-11 10:43:53.464721	0	1
+6016	1	2	{"nickname":"IoT","deptId":"103"}	66d7192b934b4e508ce687fad92b3c2e	e4de9f7c1c7441689ef9691b18d97517	default	\N	2026-06-11 11:45:39.184147	\N	2026-06-11 11:15:39.185745	\N	2026-06-11 11:15:39.185745	0	1
+6018	1	2	{"nickname":"IoT","deptId":"103"}	1232be332a0f442789cea850e9672898	a5a7585747a54c7689efbc2dd67a02bb	default	\N	2026-06-11 12:18:11.05361	\N	2026-06-11 11:48:11.054636	\N	2026-06-11 11:48:11.054636	0	1
+6020	1	2	{"nickname":"IoT","deptId":"103"}	e60030e2cfbf4ae3b32ad7f9946ca74c	2a98ce4a2ad04e8dbce685739e9ce55b	default	\N	2026-06-11 12:54:19.872661	\N	2026-06-11 12:24:19.873384	\N	2026-06-11 12:24:19.873384	0	1
+6022	1	2	{"nickname":"IoT","deptId":"103"}	8728bc6e63154fe1a50e3d83ea4ad086	ed38e171939643d582aae871d8c517ac	default	\N	2026-06-11 14:42:22.028349	\N	2026-06-11 14:12:22.030658	\N	2026-06-11 14:12:22.030658	0	1
+6024	1	2	{"nickname":"IoT","deptId":"103"}	db2c7501483e4f42a326512fa7f95399	8c55b40267964ae3abe6843998902c5c	default	\N	2026-06-11 15:13:57.379528	\N	2026-06-11 14:43:57.380825	\N	2026-06-11 14:43:57.380825	0	1
+6026	1	2	{"nickname":"IoT","deptId":"103"}	8793744f3a9045c5afbe733bb9c5e2b7	b83a551863ab4be1b3b2f68bbb421f25	default	\N	2026-06-11 15:44:25.606901	\N	2026-06-11 15:14:25.608656	\N	2026-06-11 15:14:25.608656	0	1
+6028	1	2	{"nickname":"IoT","deptId":"103"}	a87d14120e8e4cc5ad7e7dc7cd66d83e	12464eedbff244358445a4360d8abc87	default	\N	2026-06-11 16:15:33.182148	\N	2026-06-11 15:45:33.183014	\N	2026-06-11 15:45:33.183014	0	1
+6030	1	2	{"nickname":"IoT","deptId":"103"}	90875b1760904686a3dd72307f2dc42c	44f06b5e7395461ab2a66709ded3b5af	default	\N	2026-06-11 17:59:24.073231	\N	2026-06-11 17:29:24.074732	\N	2026-06-11 17:29:24.074732	0	1
+6032	1	2	{"nickname":"IoT","deptId":"103"}	4c48887e98de494ab84e552341aa421d	a1591707ada94dd9a3ace9988407b0d8	default	\N	2026-06-11 18:33:33.134304	\N	2026-06-11 18:03:33.135338	\N	2026-06-11 18:03:33.135338	0	1
+6034	1	2	{"nickname":"IoT","deptId":"103"}	3506cbe9cc274aa5b86938ace37d5a14	92276789bd5e4f63b1c4b6c1d6a1b56d	default	\N	2026-06-11 19:05:25.865624	\N	2026-06-11 18:35:25.867002	\N	2026-06-11 18:35:25.867002	0	1
+6036	1	2	{"nickname":"IoT","deptId":"103"}	38b3ccb2b3694f1dbf2ffa302ed134a0	8bb1151d700d46e8af53be0fcb7044dc	default	\N	2026-06-11 22:14:23.95979	\N	2026-06-11 21:44:23.961097	\N	2026-06-11 21:44:23.961097	0	1
+6038	1	2	{"nickname":"IoT","deptId":"103"}	9aca88f501ea46e4a5cd19f593c38d6f	596e320b559b4a439e37954835559e9c	default	\N	2026-06-11 22:50:08.90583	\N	2026-06-11 22:20:08.906676	\N	2026-06-11 22:20:08.906676	0	1
+6040	1	2	{"nickname":"IoT","deptId":"103"}	c357bc87b0a54f96b688b94e83a68f4e	0ce9a47b5dc34701a9a352fe99e985cc	default	\N	2026-06-11 23:27:36.962356	\N	2026-06-11 22:57:36.965809	\N	2026-06-11 22:57:36.965809	0	1
+6042	1	2	{"nickname":"IoT","deptId":"103"}	f3769c211f8a4b85b346ce89e58a3563	5743a23c467f4cde8bf324e402fa8f51	default	\N	2026-06-11 23:59:13.960523	\N	2026-06-11 23:29:13.961601	\N	2026-06-11 23:29:13.961601	0	1
+6044	1	2	{"nickname":"IoT","deptId":"103"}	226cd867b54d420b870362749d549f9a	8e26338d1291498db1b284165fb3d88e	default	\N	2026-06-12 00:30:55.613177	\N	2026-06-12 00:00:55.614134	\N	2026-06-12 00:00:55.614134	0	1
+6046	1	2	{"nickname":"IoT","deptId":"103"}	62f74e41783a493d881e761cbca315f8	dba48ee0d52d4cc888f67938a9a06630	default	\N	2026-06-12 01:06:35.813865	\N	2026-06-12 00:36:35.815114	\N	2026-06-12 00:36:35.815114	1	1
+6048	1	2	{"nickname":"IoT","deptId":"103"}	492bb95954a444fd98d0797dae78c4cf	a08a27b638ac4a9db942bde3a41f8071	default	\N	2026-06-12 01:06:56.435435	\N	2026-06-12 00:36:56.436195	\N	2026-06-12 00:36:56.436195	0	1
+6050	1	2	{"nickname":"IoT","deptId":"103"}	46e7a7bdd5cc434abd8c55a4b45495e6	70b1ddbd3fd64062b04ef666434c9237	default	\N	2026-06-12 01:42:21.279666	\N	2026-06-12 01:12:21.280658	\N	2026-06-12 01:12:21.280658	0	1
+6052	1	2	{"nickname":"IoT","deptId":"103"}	eecb183e009d43cbbdbe32b670297953	b1145064fb044c8491ddf988d6b70885	default	\N	2026-06-12 02:14:18.853727	\N	2026-06-12 01:44:18.855158	\N	2026-06-12 01:44:18.855158	0	1
 \.
 
 
@@ -27294,6 +27336,26 @@ COPY public.system_oauth2_refresh_token (id, user_id, refresh_token, user_type, 
 6007	1	465ecfed7f584051acf3050749ed178d	2	default	\N	2026-04-05 14:30:04.548878	\N	2026-03-06 14:30:04.552957	\N	2026-03-06 14:30:04.552957	0	1
 6009	1	abb2b304c5f84cdb96a5a116b5a326e1	2	default	\N	2026-04-05 15:00:16.662269	\N	2026-03-06 15:00:16.664057	\N	2026-03-06 15:00:16.664057	0	1
 6011	1	d2c703112a5b496995a59599736e35db	2	default	\N	2026-04-05 15:47:06.332401	\N	2026-03-06 15:47:06.33388	\N	2026-03-06 15:47:06.33388	0	1
+6013	1	b370ac0d509348fd978db3ec045f9b35	2	default	\N	2026-07-11 10:43:53.432493	\N	2026-06-11 10:43:53.435809	\N	2026-06-11 10:43:53.435809	0	1
+6015	1	e4de9f7c1c7441689ef9691b18d97517	2	default	\N	2026-07-11 11:15:39.146252	\N	2026-06-11 11:15:39.148901	\N	2026-06-11 11:15:39.148901	0	1
+6017	1	a5a7585747a54c7689efbc2dd67a02bb	2	default	\N	2026-07-11 11:48:11.039014	\N	2026-06-11 11:48:11.039732	\N	2026-06-11 11:48:11.039732	0	1
+6019	1	2a98ce4a2ad04e8dbce685739e9ce55b	2	default	\N	2026-07-11 12:24:19.859678	\N	2026-06-11 12:24:19.860431	\N	2026-06-11 12:24:19.860431	0	1
+6021	1	ed38e171939643d582aae871d8c517ac	2	default	\N	2026-07-11 14:12:22.006174	\N	2026-06-11 14:12:22.006911	\N	2026-06-11 14:12:22.006911	0	1
+6023	1	8c55b40267964ae3abe6843998902c5c	2	default	\N	2026-07-11 14:43:57.365664	\N	2026-06-11 14:43:57.366784	\N	2026-06-11 14:43:57.366784	0	1
+6025	1	b83a551863ab4be1b3b2f68bbb421f25	2	default	\N	2026-07-11 15:14:25.57945	\N	2026-06-11 15:14:25.580688	\N	2026-06-11 15:14:25.580688	0	1
+6027	1	12464eedbff244358445a4360d8abc87	2	default	\N	2026-07-11 15:45:33.167599	\N	2026-06-11 15:45:33.168286	\N	2026-06-11 15:45:33.168286	0	1
+6029	1	44f06b5e7395461ab2a66709ded3b5af	2	default	\N	2026-07-11 17:29:24.057306	\N	2026-06-11 17:29:24.05798	\N	2026-06-11 17:29:24.05798	0	1
+6031	1	a1591707ada94dd9a3ace9988407b0d8	2	default	\N	2026-07-11 18:03:33.124773	\N	2026-06-11 18:03:33.125565	\N	2026-06-11 18:03:33.125565	0	1
+6033	1	92276789bd5e4f63b1c4b6c1d6a1b56d	2	default	\N	2026-07-11 18:35:25.849928	\N	2026-06-11 18:35:25.850649	\N	2026-06-11 18:35:25.850649	0	1
+6035	1	8bb1151d700d46e8af53be0fcb7044dc	2	default	\N	2026-07-11 21:44:23.944806	\N	2026-06-11 21:44:23.945526	\N	2026-06-11 21:44:23.945526	0	1
+6037	1	596e320b559b4a439e37954835559e9c	2	default	\N	2026-07-11 22:20:08.890956	\N	2026-06-11 22:20:08.892073	\N	2026-06-11 22:20:08.892073	0	1
+6039	1	0ce9a47b5dc34701a9a352fe99e985cc	2	default	\N	2026-07-11 22:57:36.939424	\N	2026-06-11 22:57:36.940366	\N	2026-06-11 22:57:36.940366	0	1
+6041	1	5743a23c467f4cde8bf324e402fa8f51	2	default	\N	2026-07-11 23:29:13.94823	\N	2026-06-11 23:29:13.949093	\N	2026-06-11 23:29:13.949093	0	1
+6043	1	8e26338d1291498db1b284165fb3d88e	2	default	\N	2026-07-12 00:00:55.597564	\N	2026-06-12 00:00:55.598301	\N	2026-06-12 00:00:55.598301	0	1
+6045	1	dba48ee0d52d4cc888f67938a9a06630	2	default	\N	2026-07-12 00:36:35.799118	\N	2026-06-12 00:36:35.799831	\N	2026-06-12 00:36:35.799831	1	1
+6047	1	a08a27b638ac4a9db942bde3a41f8071	2	default	\N	2026-07-12 00:36:56.426239	\N	2026-06-12 00:36:56.426958	\N	2026-06-12 00:36:56.426958	0	1
+6049	1	70b1ddbd3fd64062b04ef666434c9237	2	default	\N	2026-07-12 01:12:21.264302	\N	2026-06-12 01:12:21.265497	\N	2026-06-12 01:12:21.265497	0	1
+6051	1	b1145064fb044c8491ddf988d6b70885	2	default	\N	2026-07-12 01:44:18.841163	\N	2026-06-12 01:44:18.841962	\N	2026-06-12 01:44:18.841962	0	1
 \.
 
 
@@ -28508,7 +28570,7 @@ COPY public.system_users (id, username, password, nickname, remark, dept_id, pos
 131	hh	$2a$04$jyH9h6.gaw8mpOjPfHIpx.8as2Rzfcmdlj5rlJFwgCw4rsv/MTb2K	呵呵	\N	100	[]	777@qq.com	15601882312	1		0		\N	1	2024-04-27 08:45:56	1	2024-04-27 08:45:56	1	1	0	0
 100	yudao	$2a$10$11U48RhyJ5pSBYWSn12AD./ld671.ycSzJHbyrtpeoMeYiw31eo8a	王总	不要吓我	104	[1]	yudao@iocoder.cn	15601691300	1		1	127.0.0.1	2022-07-09 23:03:33		2021-01-07 09:07:17	1	2025-08-14 09:39:37.486	0	1	0	0
 118	goudan	$2a$04$A7vqK6hfgoPeOGDgZoC1BOnVwTpDyBtQnlsOWBIqM8Wj9A6NTr0Tq	狗蛋	\N	103	[1]		15601691239	1		0	0:0:0:0:0:0:0:1	2024-07-24 11:23:40.932	1	2022-07-09 17:44:43	1	2025-08-14 11:34:37.076	0	1	0	0
-1	admin	$2a$10$mRMIYLDtRHlf6.9ipiqH1.Z.bh/R9dO9d5iHiGYPigi6r5KOoR2Wm	IoT	管理员	103	[1]	aoteman@126.com	18818260277	1	http://test.yudao.iocoder.cn/113dcbab48d22fc988151b98be2b8b4f262effdb5305c171cf1fe9a71801377a.png	0	127.0.0.1	2026-03-06 15:47:06.321107	admin	2021-01-05 17:03:47	\N	2026-03-06 15:47:06.321321	0	1	0	0
+1	admin	$2a$10$mRMIYLDtRHlf6.9ipiqH1.Z.bh/R9dO9d5iHiGYPigi6r5KOoR2Wm	IoT	管理员	103	[1]	aoteman@126.com	18818260277	1	http://test.yudao.iocoder.cn/113dcbab48d22fc988151b98be2b8b4f262effdb5305c171cf1fe9a71801377a.png	0	127.0.0.1	2026-06-12 01:44:18.836547	admin	2021-01-05 17:03:47	\N	2026-06-12 01:44:18.836731	0	1	0	0
 \.
 
 
@@ -28719,7 +28781,7 @@ SELECT pg_catalog.setval('public.system_dict_type_seq', 620, false);
 -- Name: system_login_log_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_login_log_seq', 3057, true);
+SELECT pg_catalog.setval('public.system_login_log_seq', 3078, true);
 
 
 --
@@ -28747,7 +28809,7 @@ SELECT pg_catalog.setval('public.system_mail_template_seq', 16, false);
 -- Name: system_menu_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_menu_seq', 2971, true);
+SELECT pg_catalog.setval('public.system_menu_seq', 2972, true);
 
 
 --
@@ -28775,7 +28837,7 @@ SELECT pg_catalog.setval('public.system_notify_template_seq', 1, false);
 -- Name: system_oauth2_access_token_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_oauth2_access_token_seq', 6012, true);
+SELECT pg_catalog.setval('public.system_oauth2_access_token_seq', 6052, true);
 
 
 --
@@ -29618,5 +29680,5 @@ ALTER TABLE ONLY public.qrtz_triggers
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Y2MuX56f7lMViaIkhhBG6pgLoCBy2FYXVaWoJnn1sKWBegXQKbq0qmfxjYGXjjI
+\unrestrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
 

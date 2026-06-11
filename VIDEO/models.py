@@ -86,6 +86,14 @@ class Device(db.Model):
     location_source = db.Column(db.String(20), nullable=True, comment='位置来源: manual/gb28181/import')
     location_updated_at = db.Column(db.DateTime, nullable=True, comment='位置信息最后更新时间')
     heading = db.Column(db.Float, nullable=True, comment='安装朝向(度)，0=正北，顺时针')
+    # GB28181 通道目录属性（由国标同步写入，供地图区分相机结构/朝向/业务分类）
+    ptz_type = db.Column(db.SmallInteger, nullable=True, comment='摄像机结构: 1球机 2半球 3固定枪机 4遥控枪机 5遥控半球 6/7多目')
+    direction_type = db.Column(db.SmallInteger, nullable=True, comment='监视方位(光轴): 1东2西3南4北5东南6东北7西南8西北')
+    position_type = db.Column(db.SmallInteger, nullable=True, comment='位置类型: 1检查站2党政3车站码头4中心广场5体育场馆6商业中心7宗教8校园周边9治安复杂10交通干线')
+    room_type = db.Column(db.SmallInteger, nullable=True, comment='安装位置: 1室外 2室内')
+    use_type = db.Column(db.SmallInteger, nullable=True, comment='用途: 1治安 2交通 3重点')
+    supply_light_type = db.Column(db.SmallInteger, nullable=True, comment='补光: 1无 2红外 3白光 4激光 9其他')
+    resolution = db.Column(db.String(100), nullable=True, comment='支持的分辨率(可多值)')
     images = db.relationship('Image', backref='project', lazy=True, cascade='all, delete-orphan')
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
@@ -911,6 +919,12 @@ class AlgorithmTask(db.Model):
     run_status = db.Column(db.String(20), default='stopped', nullable=False, comment='运行状态[running:运行中,stopped:已停止,restarting:重启中]')
     exception_reason = db.Column(db.String(500), nullable=True, comment='异常原因')
     
+    # 节点调度（跨节点部署）
+    schedule_policy = db.Column(db.String(20), default='local', nullable=False,
+                                comment='调度策略[local:本机,auto:自动节点,node:指定节点]')
+    target_node_id = db.Column(db.BigInteger, nullable=True, comment='指定部署节点ID')
+    node_id = db.Column(db.BigInteger, nullable=True, comment='实际运行节点ID')
+
     # 服务状态信息（仅实时算法任务使用）
     service_server_ip = db.Column(db.String(45), nullable=True, comment='服务运行服务器IP')
     service_port = db.Column(db.Integer, nullable=True, comment='服务端口')
@@ -1052,6 +1066,9 @@ class AlgorithmTask(db.Model):
             'last_capture_time': utc_isoformat_z(self.last_capture_time),
             'defense_mode': self.defense_mode,
             'defense_schedule': self.defense_schedule,
+            'schedule_policy': self.schedule_policy,
+            'target_node_id': self.target_node_id,
+            'node_id': self.node_id,
             'service_server_ip': self.service_server_ip,
             'service_port': self.service_port,
             'service_process_id': self.service_process_id,
