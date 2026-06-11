@@ -315,16 +315,18 @@ EOF
 }
 
 # 从宿主机各模块 target/ 收集运行时 Jar 到 JARS_DIR（复刻原 Dockerfile.base 容器内提取逻辑）。
-# cp -u 仅在「源更新或目标缺失」时复制：选择性构建只有变化的 Jar 被重写、其余沿用既有（省 GB 级无谓拷贝）。
+# 必须强制覆盖（cp -f，绝不能用 cp -u）：可复现构建把 Jar 文件 mtime 钉死为
+# outputTimestamp(2026-01-01)，而目标副本 mtime 为复制时刻（较新）；cp -u 会判定"源更旧"
+# 而永久跳过，导致重编的新 Jar 进不来、运行时镜像一直用旧 Jar（陈旧 → 容器行为不更新）。
 collect_runtime_jars() {
     mkdir -p "$JARS_DIR"
     [ -f "$SCRIPT_DIR/iot-gateway/target/iot-gateway.jar" ] && \
-        cp -u "$SCRIPT_DIR/iot-gateway/target/iot-gateway.jar" "$JARS_DIR/iot-gateway.jar"
+        cp -f "$SCRIPT_DIR/iot-gateway/target/iot-gateway.jar" "$JARS_DIR/iot-gateway.jar"
     local biz jar
     while IFS= read -r biz; do
         jar=$(find "$biz/target" -maxdepth 1 -name "*-biz.jar" \
             ! -name "*-sources.jar" ! -name "*-javadoc.jar" ! -name "*.original" -type f 2>/dev/null | head -1)
-        [ -n "$jar" ] && [ -f "$jar" ] && cp -u "$jar" "$JARS_DIR/$(basename "$jar")"
+        [ -n "$jar" ] && [ -f "$jar" ] && cp -f "$jar" "$JARS_DIR/$(basename "$jar")"
     done < <(find "$SCRIPT_DIR"/iot-* -type d -name "*-biz" 2>/dev/null)
 }
 
@@ -475,7 +477,7 @@ build_base_jars() {
             -w /build \
             maven:3.9.11-eclipse-temurin-21-alpine \
             mvn -s /m2/settings.xml -B -ntp -T 1C \
-                -Daether.dependencyCollector.impl=bf -Dmaven.artifact.threads=8 \
+                -Dmaven.artifact.threads=8 \
                 install ${maven_build_args} ${off} \
                 -Dmaven.repo.local=/m2/repository \
                 -DskipTests -Dmaven.test.skip=true -Dcheckstyle.skip=true -Drevision=1.0.0
@@ -497,7 +499,7 @@ build_base_jars() {
         [ "$offline" = "1" ] && off="-o"
         if [ "$stage1_mode" = "c2" ]; then
             docker exec "$MVND_CONTAINER" \
-                mvnd -s /m2/settings.xml -B -ntp -Daether.dependencyCollector.impl=bf \
+                mvnd -s /m2/settings.xml -B -ntp \
                     -Dmvnd.idleTimeout="${MVND_IDLE_TIMEOUT}" \
                     install ${maven_build_args} ${off} \
                     -Dmaven.repo.local=/m2/repository \

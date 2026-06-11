@@ -46,12 +46,6 @@
         <dependency>
             <groupId>com.basiclab.iot</groupId>
             <artifactId>iot-common-web</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-logging</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <!-- DB -->
@@ -94,12 +88,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-logging</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <!-- Log4j2 日志框架 -->
@@ -276,6 +264,25 @@
                 <version>${spring.boot.version}</version>
                 <configuration>
                     <includeSystemScope>true</includeSystemScope>
+                    <!-- 本模块用 log4j2(spring-boot-starter-log4j2)。多个依赖(iot-common-env 等)
+                         会传递 logback 与 log4j-to-slf4j，与 log4j-slf4j-impl 互斥，启动会崩：
+                         "log4j-slf4j-impl cannot be present with log4j-to-slf4j"。
+                         在打包阶段按 artifact 统一剔除，无论它们从哪条依赖路径进来都生效，
+                         也无需在每个依赖上逐一排除(新增依赖自动覆盖)。 -->
+                    <excludes>
+                        <exclude>
+                            <groupId>ch.qos.logback</groupId>
+                            <artifactId>logback-classic</artifactId>
+                        </exclude>
+                        <exclude>
+                            <groupId>ch.qos.logback</groupId>
+                            <artifactId>logback-core</artifactId>
+                        </exclude>
+                        <exclude>
+                            <groupId>org.apache.logging.log4j</groupId>
+                            <artifactId>log4j-to-slf4j</artifactId>
+                        </exclude>
+                    </excludes>
                 </configuration>
                 <executions>
                     <execution>
