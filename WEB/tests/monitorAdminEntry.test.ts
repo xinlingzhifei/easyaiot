@@ -28,6 +28,7 @@ assert.deepEqual(
 )
 
 const monitorHeader = readFileSync(resolve('src/views/dashboard/monitor/components/Header.vue'), 'utf8')
+const permissionStore = readFileSync(resolve('src/store/modules/permission.ts'), 'utf8')
 
 assert.doesNotMatch(
   monitorHeader,
@@ -39,4 +40,22 @@ assert.match(
   monitorHeader,
   /resolveAdminEntryTarget\(router\)/,
   'The dashboard admin entry should resolve a safe target before navigating.',
+)
+
+assert.match(
+  permissionStore,
+  /import\s+node\s+from\s+['"]@\/router\/routes\/modules\/node['"]/,
+  'Back-end permission mode should import the local cluster-management route.',
+)
+
+assert.match(
+  permissionStore,
+  /transformRouteToMenu\(\[dashboard,\s+\.\.\.requiredLocalBackRoutes,\s+\.\.\.routeList\]\)/,
+  'Back-end permission mode should include the local cluster-management route in the visible menu list.',
+)
+
+assert.match(
+  permissionStore,
+  /routes\s+=\s+\[PAGE_NOT_FOUND_ROUTE,\s+dashboard,\s+\.\.\.requiredLocalBackRoutes,\s+\.\.\.routeList\]/,
+  'Back-end permission mode should register the local cluster-management route so the admin entry can navigate to it.',
 )
