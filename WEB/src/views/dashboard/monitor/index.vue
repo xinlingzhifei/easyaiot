@@ -183,11 +183,16 @@ onMounted(() => {
       .ant-layout-header,
       .layout-multiple-header,
       .layout-tabs,
-      .layout-footer {
+      .layout-footer,
+      [class*="layout-header"],
+      [class*="layout-multiple-header"],
+      [class*="multiple-tabs"],
+      [class*="layout-footer"] {
         display: none !important;
       }
       .ant-layout-sider,
-      .layout-sider-wrapper {
+      .layout-sider-wrapper,
+      [class*="layout-sider"] {
         display: none !important;
       }
       .ant-layout-content,

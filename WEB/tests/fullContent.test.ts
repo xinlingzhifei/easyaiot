@@ -8,6 +8,12 @@ assert.equal(
 )
 
 assert.equal(
+  resolveFullContent({ query: { __full__: 'false' }, meta: { fullContent: true } }, false),
+  false,
+  'The __full__=false query flag should allow leaving full-content mode from a full-content route.',
+)
+
+assert.equal(
   resolveFullContent({ query: {}, meta: { fullContent: true } }, false),
   true,
   'Routes should be able to opt into full-content mode through route meta.',
