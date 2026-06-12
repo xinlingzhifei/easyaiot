@@ -31,6 +31,20 @@ assert.deepEqual(
   resolveRequiredLocalBackRoutes(
     [
       {
+        path: '/system/node',
+        name: clusterTitle,
+      },
+    ],
+    [localClusterRoute],
+  ),
+  [],
+  'Back-end permission mode should dedupe cluster-management menus even when the server only provides the Chinese route name.',
+)
+
+assert.deepEqual(
+  resolveRequiredLocalBackRoutes(
+    [
+      {
         path: '/camera/index',
         name: 'Camera',
         meta: { title: 'Camera' },

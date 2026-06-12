@@ -87,6 +87,7 @@ const normalizeGbChannelList = (res: any, sipDeviceId?: string) => {
  */
 export const queryVideoList = async (params: {
   page?: number;
+  pageNo?: number;
   pageNum?: number;
   count?: number;
   pageSize?: number;
@@ -96,6 +97,8 @@ export const queryVideoList = async (params: {
   const requestParams: any = {};
   if (params.pageNum !== undefined) {
     requestParams.page = params.pageNum;
+  } else if (params.pageNo !== undefined) {
+    requestParams.page = params.pageNo;
   } else if (params.page !== undefined) {
     requestParams.page = params.page;
   }
