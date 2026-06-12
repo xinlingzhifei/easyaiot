@@ -45,9 +45,7 @@ public final class AgentDeployUtil {
                 + envContent
                 + "EOF\n"
                 + "sudo chmod +x install.sh\n"
-                + "sudo bash install.sh\n"
-                + "sudo systemctl enable easyaiot-node-agent\n"
-                + "sudo systemctl restart easyaiot-node-agent\n";
+                + "sudo bash install.sh install\n";
     }
 
 }

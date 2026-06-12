@@ -14,6 +14,9 @@
         <TabPane key="2" :tab="NODE_PAGE.nodeManage">
           <NodeManage />
         </TabPane>
+        <TabPane key="3" :tab="NODE_PAGE.workloadBundleDistribute">
+          <WorkloadBundleBatch />
+        </TabPane>
       </Tabs>
     </div>
   </div>
@@ -24,6 +27,7 @@ import { reactive } from 'vue';
 import { TabPane, Tabs } from 'ant-design-vue';
 import ClusterDashboard from './components/ClusterDashboard/index.vue';
 import NodeManage from './components/NodeManage/index.vue';
+import WorkloadBundleBatch from './components/WorkloadBundleBatch/index.vue';
 import { NODE_PAGE } from './utils/constants';
 
 defineOptions({ name: 'ComputeNodeIndex' });

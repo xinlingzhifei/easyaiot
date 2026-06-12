@@ -1,4 +1,4 @@
-import { NODE_ROLE_MAP } from './constants';
+import { NODE_ROLE_MAP, MEDIA_PORT_DEFAULTS } from './constants';
 
 export interface NodeFormHistoryEntry {
   id: string;
@@ -17,9 +17,11 @@ export interface NodeFormHistoryEntry {
   srsRtmpPort?: number;
   srsHttpPort?: number;
   srsApiPort?: number;
+  srsRtcPort?: number;
   zlmHttpPort?: number;
   zlmRtmpPort?: number;
   zlmRtspPort?: number;
+  zlmRtcPort?: number;
   zlmRtpPortMin?: number;
   zlmRtpPortMax?: number;
 }
@@ -113,14 +115,16 @@ export function nodeFormHistoryToFields(entry: NodeFormHistoryEntry): Record<str
     sshAuthType: entry.sshAuthType ?? 'password',
     sshPassword: entry.sshPassword,
     sshPrivateKey: entry.sshPrivateKey,
-    srsRtmpPort: entry.srsRtmpPort ?? 1935,
-    srsHttpPort: entry.srsHttpPort ?? 8080,
-    srsApiPort: entry.srsApiPort ?? 1985,
-    zlmHttpPort: entry.zlmHttpPort ?? 6080,
-    zlmRtmpPort: entry.zlmRtmpPort ?? 10935,
-    zlmRtspPort: entry.zlmRtspPort ?? 8554,
-    zlmRtpPortMin: entry.zlmRtpPortMin ?? 30000,
-    zlmRtpPortMax: entry.zlmRtpPortMax ?? 30500,
+    srsRtmpPort: entry.srsRtmpPort ?? MEDIA_PORT_DEFAULTS.srsRtmpPort,
+    srsHttpPort: entry.srsHttpPort ?? MEDIA_PORT_DEFAULTS.srsHttpPort,
+    srsApiPort: entry.srsApiPort ?? MEDIA_PORT_DEFAULTS.srsApiPort,
+    srsRtcPort: entry.srsRtcPort ?? MEDIA_PORT_DEFAULTS.srsRtcPort,
+    zlmHttpPort: entry.zlmHttpPort ?? MEDIA_PORT_DEFAULTS.zlmHttpPort,
+    zlmRtmpPort: entry.zlmRtmpPort ?? MEDIA_PORT_DEFAULTS.zlmRtmpPort,
+    zlmRtspPort: entry.zlmRtspPort ?? MEDIA_PORT_DEFAULTS.zlmRtspPort,
+    zlmRtcPort: entry.zlmRtcPort ?? MEDIA_PORT_DEFAULTS.zlmRtcPort,
+    zlmRtpPortMin: entry.zlmRtpPortMin ?? MEDIA_PORT_DEFAULTS.zlmRtpPortMin,
+    zlmRtpPortMax: entry.zlmRtpPortMax ?? MEDIA_PORT_DEFAULTS.zlmRtpPortMax,
   };
 }
 
@@ -140,9 +144,11 @@ export function valuesToNodeFormHistoryEntry(values: Record<string, unknown>): O
     srsRtmpPort: values.srsRtmpPort != null ? Number(values.srsRtmpPort) : undefined,
     srsHttpPort: values.srsHttpPort != null ? Number(values.srsHttpPort) : undefined,
     srsApiPort: values.srsApiPort != null ? Number(values.srsApiPort) : undefined,
+    srsRtcPort: values.srsRtcPort != null ? Number(values.srsRtcPort) : undefined,
     zlmHttpPort: values.zlmHttpPort != null ? Number(values.zlmHttpPort) : undefined,
     zlmRtmpPort: values.zlmRtmpPort != null ? Number(values.zlmRtmpPort) : undefined,
     zlmRtspPort: values.zlmRtspPort != null ? Number(values.zlmRtspPort) : undefined,
+    zlmRtcPort: values.zlmRtcPort != null ? Number(values.zlmRtcPort) : undefined,
     zlmRtpPortMin: values.zlmRtpPortMin != null ? Number(values.zlmRtpPortMin) : undefined,
     zlmRtpPortMax: values.zlmRtpPortMax != null ? Number(values.zlmRtpPortMax) : undefined,
   };

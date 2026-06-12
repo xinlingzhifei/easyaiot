@@ -18,6 +18,7 @@ export interface ClusterWsNodePayload {
   activeTasks?: number;
   gpuInfo?: string;
   lastHeartbeatAt?: string;
+  isPlatform?: boolean;
 }
 
 export interface ClusterWsMessage {
@@ -54,6 +55,7 @@ export function wsPayloadToComputeNode(payload: ClusterWsNodePayload): ComputeNo
     activeTasks: payload.activeTasks,
     gpuInfo: payload.gpuInfo,
     lastHeartbeatAt: payload.lastHeartbeatAt,
+    isPlatform: payload.isPlatform,
   };
 }
 

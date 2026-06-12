@@ -1,7 +1,7 @@
-# yFeiEye (yFei AI Vision Control Platform)
+# yFeiEye (Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform)
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
+[![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 My vision is for this system to be accessible worldwide, achieving truly zero barriers to AI. Everyone should experience the benefits of AI, not just a privileged few.
@@ -30,7 +30,7 @@ My vision is for this system to be accessible worldwide, achieving truly zero ba
 ### 📍 Project Positioning
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye is a AI vision intelligent IoT platform that focuses on the deep integration of AI and IoT. Through core capabilities such as algorithm task management, real-time stream analysis, and model service cluster inference, the platform achieves a complete closed-loop from device access to data collection, AI analysis, and intelligent decision-making, truly realizing interconnected everything and intelligent control of everything.
+yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses on the deep integration of AI and IoT. Through core capabilities such as algorithm task management, real-time stream analysis, and model service cluster inference, the platform achieves a complete closed-loop from device access to data collection, AI analysis, and intelligent decision-making, truly realizing interconnected everything and intelligent control of everything.
 </p>
 
 #### 🧠 AI Capabilities
@@ -45,7 +45,7 @@ yFeiEye is a AI vision intelligent IoT platform that focuses on the deep integra
   <li><strong>Full-Stack Compute and Resource Monitoring</strong>: Integrated with GPUStack for unified resource governance, collecting and visualizing key server metrics including GPU, CPU, memory, and storage. Provides real-time visibility into compute utilization, VRAM headroom, and disk/memory usage, offering an observable and alert-ready operations foundation for model deployment, training tasks, and video analytics pipelines</li>
   <li><strong>Vision Large Model Intelligent Understanding</strong>: Integrated with QwenVL3 vision large model, supports deep visual reasoning and semantic understanding of real-time video frames, enabling intelligent analysis and scene comprehension of frame content, providing richer visual cognitive capabilities, achieving a leap from pixel-level perception to semantic-level understanding</li>
   <li><strong>Real-Time Camera AI Analysis</strong>: Supports AI intelligent analysis of real-time camera feeds. Performs AI algorithm processing such as object detection, behavior analysis, and anomaly recognition on real-time video streams, providing millisecond-level response real-time analysis results, supporting concurrent analysis of multiple video streams</li>
-  <li><strong>AI Vision Algorithm Alert Monitoring Dashboard</strong>: Provides a unified AI vision algorithm alert monitoring dashboard that displays key information in real-time, including device status, algorithm task operations, alarm event statistics, and video stream analysis results. Supports multi-dimensional data visualization, achieving unified monitoring and management of cloud, edge, and device layers, providing decision-makers with a global perspective intelligent monitoring command center</li>
+  <li><strong>Cloud-Edge-Device Integrated Algorithm Alert Monitoring Dashboard</strong>: Provides a unified cloud-edge-device integrated algorithm alert monitoring dashboard that displays key information in real-time, including device status, algorithm task operations, alarm event statistics, and video stream analysis results. Supports multi-dimensional data visualization, achieving unified monitoring and management of cloud, edge, and device layers, providing decision-makers with a global perspective intelligent monitoring command center</li>
   <li><strong>Face Recognition and Face Library Management</strong>: Supports flexibly enabling face recognition in camera tasks. Built on Milvus for face library and facial feature vector management, it provides create/query/update/delete capabilities for face samples and feature vectors, as well as high-performance vector retrieval. It supports efficient face comparison and identity retrieval on captured frames, while fully recording match results, snapshots, camera location information, and device context for personnel trajectory tracing, security forensics, and multidimensional statistical analysis.</li>
   <li><strong>License Plate Recognition and Plate Library Management</strong>: Enable license plate recognition in monitoring tasks with one click. Automatically reads plate information from passing vehicles and compares against your own plate libraries in real time. Flexibly maintain whitelists, blacklists, and business tags; trigger instant alerts when vehicles match rules—supporting access control at entrances and exits, targeted vehicle watchlists, and visitor vs. registered vehicle management. Automatically registers newly seen plates and keeps complete capture and match records for post-incident lookups, trace verification, and evidence retention. Recognition runs in parallel with existing video analytics without affecting monitoring and alert stability or real-time performance</li>
   <li><strong>Device Detection Region Drawing</strong>: Provides a visual device detection region drawing tool that supports drawing rectangular and polygonal detection regions on device snapshot images, supports flexible association configuration between regions and algorithm models, supports visual management, editing, and deletion of regions, supports keyboard shortcuts to improve drawing efficiency, enabling precise region detection configuration and providing accurate detection range definitions for algorithm tasks</li>
@@ -140,7 +140,7 @@ Innovatively leveraging large models to construct a zero-shot labeling technical
 ### 🏗️ Project Architecture Features
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye is not actually one project; it is seven distinct projects.
+yFeiEye is not actually one project; it is six distinct projects.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -203,7 +203,7 @@ yFeiEye actively responds to localization strategies, providing comprehensive su
 ## 🧩 Project Structure
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye consists of five core projects:
+yFeiEye consists of six core projects:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -226,6 +226,20 @@ yFeiEye consists of five core projects:
     <li><strong>Device Authentication</strong>: Device dynamic registration, identity authentication, secure access</li>
     <li><strong>Rule Engine</strong>: Data flow rules, message routing, data transformation</li>
     <li><strong>Data Collection</strong>: Device data collection, storage, query, and analysis</li>
+    <li><strong>Node Control Plane</strong>: Built-in <code>iot-node</code> microservice providing unified control plane for compute/media node CRUD, SSH connectivity testing, Agent registration and heartbeat, workload scheduling, and media node pool allocation</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>NODE Module</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Node Agent</strong>: Python-based edge/remote node Agent; one-click install via <code>install.sh</code> as a systemd service, automatically joining the platform when deployed on target servers</li>
+    <li><strong>Control Plane Communication</strong>: Registers with the <code>iot-node</code> control plane and sends periodic heartbeats, reporting CPU, memory, disk, GPU utilization, and active workload status in real time</li>
+    <li><strong>Remote Workloads</strong>: Receives deploy/stop commands from the control plane via HTTP API (default port 9100), launching AI model services, algorithm tasks, FFmpeg transcoding, and other workloads locally on the node</li>
+    <li><strong>Media Node Pool</strong>: Supports remote <code>docker compose</code> deployment of SRS/ZLM streaming stacks on nodes, working with the control plane for sticky device-to-media-node binding and stream URL generation</li>
+    <li><strong>Node Roles</strong>: Supports compute, media, and hybrid roles, enabling cross-node scheduling and elastic scaling for AI inference, algorithm tasks, and streaming services</li>
+    <li><strong>Offline-Friendly</strong>: Provides pip wheels offline dependency bundling and Agent hot-update capabilities, suitable for batch node onboarding in air-gapped or restricted network environments</li>
   </ul>
 </td>
 </tr>
@@ -305,7 +319,7 @@ yFeiEye supports deployment on Linux, Mac, and Windows, providing flexible and c
 <strong>Unified Experience</strong>: Regardless of the operating system chosen, yFeiEye provides consistent installation scripts and deployment documentation, ensuring a uniform cross-platform deployment experience.
 </p>
 
-## ☁️ yFeiEye = AI + IoT = AI Vision Solution
+## ☁️ yFeiEye = AI + IoT = Cloud-Edge Integrated Solution
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
 Supports thousands of vertical scenarios with customizable AI models and algorithm development.
@@ -346,8 +360,8 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 
 ## ⚙️ Project Repositories
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
+- Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 Screenshots
 <div>
@@ -595,6 +609,38 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
 </div>
 
+## 📞 Contact Information
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+Please follow our official account below first, then reach us via the technical exchange group or WeChat.
+</p>
+
+## 👥 Official Account
+
+<div>
+  <img src=".image/公众号.jpg" alt="Official Account" width="30%">
+</div>
+
+## 💬 Technical Exchange Group
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+After following the official account, scan the QR code below with WeChat to join the yFeiEye technical exchange group.
+</p>
+
+<div>
+  <img src=".image/交流群3群.jpg" alt="yFeiEye Technical Exchange Group" width="30%">
+</div>
+
+## 💬 WeChat Contact
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+After following the official account, scan the QR code below to add us as a WeChat friend for one-on-one communication.
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="WeChat Contact" width="200">
+</div>
+
 ## 🪐 Knowledge Planet:
 
 <p>
@@ -604,6 +650,7 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 ## 💰 Sponsorship
 
 <div>
+    <img src=".image/微信支付.jpg" alt="WeChat Pay" width="30%" height="30%">
     <img src=".image/支付宝支付.jpg" alt="Alipay" width="30%" height="10%">
 </div>
 
@@ -923,13 +970,13 @@ Thanks to the following contributors for code, feedback, donations, and support 
 ## 💡 Expectations
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-We welcome suggestions for improvement to help refine yfeieye.
+We welcome suggestions for improvement to help refine easyaiot.
 </p>
 
 ## 📄 Copyright
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Soaring Xiongkulu / yfeieye is licensed under the <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. We are committed to promoting the popularization and development of AI technology, enabling more people to freely use and benefit from this technology.
+Soaring Xiongkulu / easyaiot is licensed under the <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. We are committed to promoting the popularization and development of AI technology, enabling more people to freely use and benefit from this technology.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -938,4 +985,4 @@ Soaring Xiongkulu / yfeieye is licensed under the <a href="https://gitee.com/soa
 
 ## 🌟 Star Growth Trend Chart
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)

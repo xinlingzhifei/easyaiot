@@ -20,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -60,9 +61,10 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
             pageReqVO.setRegion(reqVO.getRequirements().getRegion());
         }
         PageResult<ComputeNodeDO> page = computeNodeMapper.selectPage(pageReqVO);
+        final String workloadType = reqVO.getWorkloadType();
         List<ComputeNodeDO> candidates = page.getList().stream()
                 .filter(node -> matchRequirements(node, reqVO))
-                .sorted(Comparator.comparingDouble(this::scoreNode).reversed())
+                .sorted(Comparator.comparingDouble((ComputeNodeDO node) -> scoreNode(node, workloadType)).reversed())
                 .toList();
 
         if (candidates.isEmpty()) {
@@ -108,16 +110,42 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
         if (CollUtil.isNotEmpty(req.getExcludeNodeIds()) && req.getExcludeNodeIds().contains(node.getId())) {
             return false;
         }
-        if (req.getCapabilities() != null) {
+        List<String> requiredCapabilities = resolveRequiredCapabilities(reqVO);
+        if (!requiredCapabilities.isEmpty()) {
             Map<String, Boolean> caps = node.getCapabilities();
-            for (String capability : req.getCapabilities()) {
+            for (String capability : requiredCapabilities) {
                 if (caps == null || !Boolean.TRUE.equals(caps.get(capability))) {
                     return false;
                 }
             }
         }
+        if (!isNodeResourceHealthy(node, reqVO.getWorkloadType())) {
+            return false;
+        }
         long running = nodeWorkloadBindingMapper.countRunningByNodeId(node.getId());
         return running < node.getMaxTaskCount();
+    }
+
+    /**
+     * 推流转发：过滤资源明显不足的节点（CPU 为整机平均利用率 0–100%）。
+     */
+    private boolean isNodeResourceHealthy(ComputeNodeDO node, String workloadType) {
+        if (!"stream_forward".equals(workloadType)) {
+            return true;
+        }
+        NodeMetricSnapshotDO metric = nodeMetricSnapshotMapper.selectLatestByNodeId(node.getId());
+        if (metric == null) {
+            return true;
+        }
+        double cpu = metric.getCpuPercent() != null ? metric.getCpuPercent().doubleValue() : 0;
+        double mem = metric.getMemPercent() != null ? metric.getMemPercent().doubleValue() : 0;
+        if (mem >= 95) {
+            return false;
+        }
+        if (cpu >= 85) {
+            return false;
+        }
+        return !(cpu >= 60 && mem >= 85);
     }
 
     private boolean matchNodeRole(ComputeNodeDO node, String workloadType) {
@@ -140,14 +168,49 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
                 || "stream_forward".equals(workloadType);
     }
 
-    private double scoreNode(ComputeNodeDO node) {
+    private List<String> resolveRequiredCapabilities(NodeSchedulerAllocateReqVO reqVO) {
+        List<String> capabilities = new ArrayList<>();
+        NodeSchedulerAllocateReqVO.Requirements req = reqVO.getRequirements();
+        if (req != null && CollUtil.isNotEmpty(req.getCapabilities())) {
+            capabilities.addAll(req.getCapabilities());
+        }
+        // 推流转发需在节点本机 SRS 收流，必须同时具备 srs_live 能力
+        if ("stream_forward".equals(reqVO.getWorkloadType()) && !capabilities.contains("srs_live")) {
+            capabilities.add("srs_live");
+        }
+        return capabilities;
+    }
+
+    private double scoreNode(ComputeNodeDO node, String workloadType) {
         double weight = node.getWeight() != null ? node.getWeight() : 100;
         NodeMetricSnapshotDO metric = nodeMetricSnapshotMapper.selectLatestByNodeId(node.getId());
         double cpu = metric != null && metric.getCpuPercent() != null
                 ? metric.getCpuPercent().doubleValue() / 100.0 : 0.3;
+        double mem = metric != null && metric.getMemPercent() != null
+                ? metric.getMemPercent().doubleValue() / 100.0 : 0.3;
         long running = nodeWorkloadBindingMapper.countRunningByNodeId(node.getId());
         double taskLoad = node.getMaxTaskCount() > 0 ? (double) running / node.getMaxTaskCount() : 0;
-        return weight * (1 - cpu) * (1 - taskLoad);
+
+        double score;
+        if ("stream_forward".equals(workloadType)) {
+            // 空闲槽位优先，兼顾内存/CPU，避免所有分片堆到单一低负载节点
+            double capacity = Math.max(1, node.getMaxTaskCount());
+            double freeRatio = Math.max(0, (capacity - running) / capacity);
+            double cpuNorm = Math.min(cpu, 2.0);
+            double resourceHealth = 0.55 * freeRatio + 0.25 * (1 - mem) + 0.20 * Math.max(0, 1 - cpuNorm);
+            score = weight * resourceHealth;
+        } else {
+            score = weight * (1 - cpu) * (1 - taskLoad);
+        }
+        // 控制面节点仅作兜底：推流转发大幅降权，其它计算负载适度降权
+        if (ComputeNodeServiceImpl.isPlatformNode(node)) {
+            if ("stream_forward".equals(workloadType)) {
+                score *= 0.02;
+            } else if (isComputeWorkload(workloadType)) {
+                score *= 0.1;
+            }
+        }
+        return score;
     }
 
     private String pickGpuIds(ComputeNodeDO node) {

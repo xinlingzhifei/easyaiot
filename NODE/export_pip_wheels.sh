@@ -4,11 +4,21 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EASYAIOT_ROOT="$(cd "${ROOT}/.." && pwd)"
-WHEELS_DIR="${ROOT}/pip-wheels"
+# 支持 iot-node 在 install 目录不可写时指定缓存路径（AGENT_PIP_WHEELS_DIR）
+WHEELS_DIR="${AGENT_PIP_WHEELS_DIR:-${ROOT}/pip-wheels}"
 REQ_FILE="${ROOT}/requirements.txt"
 REQ_PY39_EXTRAS="${ROOT}/requirements-py39-extras.txt"
 PYPI_INDEX="${PYPI_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
-TARGET_PYTHON="${AGENT_TARGET_PYTHON:-3.10}"
+detect_default_target_python() {
+  local py="${PYTHON:-python3}"
+  if command -v "${py}" >/dev/null 2>&1; then
+    "${py}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "3.10"
+  else
+    echo "3.10"
+  fi
+}
+
+TARGET_PYTHON="${AGENT_TARGET_PYTHON:-$(detect_default_target_python)}"
 TARGET_PLATFORM="${AGENT_TARGET_PLATFORM:-manylinux2014_x86_64}"
 GET_PIP_URL="${GET_PIP_URL:-https://bootstrap.pypa.io/get-pip.py}"
 GET_PIP_LOCAL="${ROOT}/get-pip.py"

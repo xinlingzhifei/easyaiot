@@ -26,20 +26,24 @@
                 tooltip: { title: NODE_TERM.viewDetail, placement: 'top' },
                 onClick: handleView.bind(null, record),
               },
-              {
-                icon: IconEnum.EDIT,
-                tooltip: { title: NODE_TERM.editNode, placement: 'top' },
-                onClick: handleEdit.bind(null, record),
-              },
-              {
-                icon: IconEnum.DELETE,
-                tooltip: { title: '删除', placement: 'top' },
-                popConfirm: {
-                  placement: 'topRight',
-                  title: '确认删除该节点？',
-                  confirm: handleDelete.bind(null, record),
-                },
-              },
+              ...(isPlatformNode(record)
+                ? []
+                : [{
+                    icon: IconEnum.EDIT,
+                    tooltip: { title: NODE_TERM.editNode, placement: 'top' },
+                    onClick: handleEdit.bind(null, record),
+                  }]),
+              ...(isPlatformNode(record)
+                ? []
+                : [{
+                    icon: IconEnum.DELETE,
+                    tooltip: { title: '删除', placement: 'top' },
+                    popConfirm: {
+                      placement: 'topRight',
+                      title: '确认删除该节点？',
+                      confirm: handleDelete.bind(null, record),
+                    },
+                  }]),
             ]"
           />
         </template>
@@ -117,6 +121,7 @@ import {
   type ComputeNodeVO,
 } from '@/api/device/node';
 import { NODE_STATUS_MAP, NODE_TERM } from '../../utils/constants';
+import { isPlatformNode } from '../../utils/platformNode';
 
 defineOptions({ name: 'ComputeNodeManage' });
 
@@ -157,6 +162,10 @@ function handleCreate() {
 }
 
 function handleEdit(record: Recordable) {
+  if (isPlatformNode(record)) {
+    createMessage.warning(NODE_TERM.controlPlaneNodeReadonly);
+    return;
+  }
   openNodeDrawer(true, { record, isUpdate: true });
 }
 
@@ -228,6 +237,10 @@ async function handleHostExists(host: string) {
 }
 
 async function handleDelete(record: Recordable) {
+  if (isPlatformNode(record)) {
+    createMessage.warning(`${NODE_TERM.controlPlaneNode}不可删除`);
+    return;
+  }
   await deleteNode(record.id);
   createMessage.success('删除成功');
   handleSuccess();
@@ -244,6 +257,10 @@ async function handleTestSsh(record: Recordable) {
 }
 
 async function handleResetToken(record: Recordable) {
+  if (isPlatformNode(record)) {
+    createMessage.warning(NODE_TERM.controlPlaneNodeReadonly);
+    return;
+  }
   createConfirm({
     title: `重置${NODE_TERM.agentToken}`,
     content: `重置后需在目标服务器更新 agent.env 中的 AGENT_TOKEN，并重启${NODE_TERM.agent}`,
@@ -257,6 +274,10 @@ async function handleResetToken(record: Recordable) {
 }
 
 async function handleMaintenance(record: Recordable, enabled: boolean) {
+  if (isPlatformNode(record)) {
+    createMessage.warning(NODE_TERM.controlPlaneNodeReadonly);
+    return;
+  }
   await setNodeMaintenance(record.id, enabled);
   createMessage.success(enabled ? '已进入维护模式' : '已退出维护模式');
   await handleSuccess();

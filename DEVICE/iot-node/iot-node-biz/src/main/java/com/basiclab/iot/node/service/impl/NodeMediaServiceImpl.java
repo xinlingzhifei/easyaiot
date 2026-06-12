@@ -21,6 +21,7 @@ import com.basiclab.iot.node.domain.vo.NodeSchedulerAllocateReqVO;
 import com.basiclab.iot.node.domain.vo.NodeSchedulerAllocateRespVO;
 import com.basiclab.iot.node.enums.NodeRoleEnum;
 import com.basiclab.iot.node.enums.NodeStatusEnum;
+import com.basiclab.iot.node.service.ControlPlaneEndpointResolver;
 import com.basiclab.iot.node.service.NodeMediaService;
 import com.basiclab.iot.node.service.NodeSchedulerService;
 import com.basiclab.iot.node.util.CredentialEncryptUtil;
@@ -29,6 +30,7 @@ import com.basiclab.iot.node.util.MediaStackDeployUtil.DeployPhase;
 import com.basiclab.iot.node.util.MediaUrlBuilder;
 import com.basiclab.iot.node.util.RemotePortCheckUtil;
 import com.basiclab.iot.node.util.SshSessionHelper;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -101,15 +103,13 @@ public class NodeMediaServiceImpl implements NodeMediaService {
     private NodeSchedulerService nodeSchedulerService;
     @Resource
     private NodeSshCredentialMapper nodeSshCredentialMapper;
+    @Resource
+    private ControlPlaneEndpointResolver controlPlaneEndpointResolver;
 
     @Value("${easyaiot.media.cluster-source-path:}")
     private String mediaClusterSourcePath;
     @Value("${easyaiot.media.docker-compose-path:}")
     private String mediaDockerComposePath;
-    @Value("${easyaiot.media.hook-host:127.0.0.1}")
-    private String mediaHookHost;
-    @Value("${easyaiot.media.hook-port:48080}")
-    private int mediaHookPort;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -193,10 +193,18 @@ public class NodeMediaServiceImpl implements NodeMediaService {
         if (!NodeStatusEnum.ONLINE.getStatus().equals(node.getStatus())) {
             throw exception(COMPUTE_NODE_OFFLINE);
         }
+        Map<String, String> env = MediaStackDeployUtil.buildDeployEnvMap(
+                node,
+                controlPlaneEndpointResolver.resolveHookHost(),
+                controlPlaneEndpointResolver.resolveHookPort(),
+                controlPlaneEndpointResolver.resolveHookPathPrefix());
+        if (reqVO.getEnv() != null && !reqVO.getEnv().isEmpty()) {
+            env.putAll(reqVO.getEnv());
+        }
         Map<String, Object> body = new HashMap<>();
         body.put("stackType", reqVO.getStackType());
         body.put("nodeId", String.valueOf(node.getId()));
-        body.put("env", reqVO.getEnv());
+        body.put("env", env);
         JSONObject result = callAgent(node, "/media/deploy", body);
         Map<String, Object> resp = new HashMap<>();
         resp.put("nodeId", node.getId());
@@ -1029,7 +1037,12 @@ public class NodeMediaServiceImpl implements NodeMediaService {
     private NodeMediaRemoteDeployRespVO.DeployStep runRemoteDeployPhase(
             SshSessionHelper ssh, ComputeNodeDO node, DeployPhase phase, String stepName, int timeoutMs)
             throws Exception {
-        String remoteScript = MediaStackDeployUtil.buildDeployScript(node, mediaHookHost, mediaHookPort, phase);
+        String remoteScript = MediaStackDeployUtil.buildDeployScript(
+                node,
+                controlPlaneEndpointResolver.resolveHookHost(),
+                controlPlaneEndpointResolver.resolveHookPort(),
+                controlPlaneEndpointResolver.resolveHookPathPrefix(),
+                phase);
         String encoded = Base64.getEncoder().encodeToString(remoteScript.getBytes(StandardCharsets.UTF_8));
         String tmpScript = "/tmp/easyaiot-media-" + phase.name().toLowerCase(Locale.ROOT) + ".sh";
         SshSessionHelper.SshExecResult result = ssh.exec(

@@ -59,6 +59,39 @@ const filteredNodeSeries = computed(() => {
   return withPoints.filter((series) => idSet.has(series.nodeId));
 });
 
+const CLUSTER_METRICS_PER_NODE = 4;
+
+/** 节点增多时图例会分页，仅抬高 grid.top 至不重叠 */
+function resolveTrendChartLayout(nodeCount: number, viewMode: TrendViewMode) {
+  const legendItemCount = viewMode === 'cluster' ? nodeCount * CLUSTER_METRICS_PER_NODE : nodeCount;
+  const needsLegendPager = legendItemCount > 6;
+
+  let gridTop = 40;
+  if (needsLegendPager) gridTop += 16;
+  else if (viewMode === 'node' && nodeCount > 3) gridTop += 8;
+
+  return {
+    gridTop,
+    legend: {
+      top: 2,
+      left: 'center' as const,
+      type: 'scroll' as const,
+      textStyle: { color: '#595959', fontSize: 12, lineHeight: 16 },
+      itemWidth: 14,
+      itemHeight: 8,
+      itemGap: 12,
+      padding: [2, 8, needsLegendPager ? 6 : 4, 8] as [number, number, number, number],
+      pageIconSize: 10,
+      pageTextStyle: { color: '#8c8c8c', fontSize: 11 },
+      pageButtonItemGap: 4,
+    },
+  };
+}
+
+const chartLayout = computed(() =>
+  resolveTrendChartLayout(filteredNodeSeries.value.length, props.viewMode),
+);
+
 const isVolumeMetric = computed(() => isTrendVolumeMetric(props.metricKey));
 const isCpuMetric = computed(() => props.metricKey === 'cpu');
 
@@ -70,7 +103,7 @@ const metricHint = computed(() => {
     return `${NODE_DASHBOARD.trendNodeVolumeHint}${metricLabels[props.metricKey]}`;
   }
   if (isCpuMetric.value) {
-    return `${NODE_DASHBOARD.trendNodeVolumeHint}${metricLabels[props.metricKey]}（%，多核可超过 100%）`;
+    return `${NODE_DASHBOARD.trendNodeVolumeHint}${metricLabels[props.metricKey]}（%）`;
   }
   return `${NODE_DASHBOARD.trendNodePercentHint}${metricLabels[props.metricKey]}`;
 });
@@ -115,6 +148,7 @@ function buildNodeChartOptions() {
   const times = formatTrendTimestamps(timestamps);
   const volumeMetric = isVolumeMetric.value;
   const cpuMetric = isCpuMetric.value;
+  const layout = chartLayout.value;
 
   return {
     ...chartAnimation,
@@ -124,15 +158,8 @@ function buildNodeChartOptions() {
       axisPointer: { type: 'cross' },
       formatter: buildTooltipFormatter('node'),
     },
-    legend: {
-      top: 0,
-      left: 'center',
-      type: 'scroll',
-      textStyle: { color: '#595959', fontSize: 12 },
-      itemWidth: 14,
-      itemHeight: 8,
-    },
-    grid: { left: 56, right: 16, top: 40, bottom: 28 },
+    legend: layout.legend,
+    grid: { left: 56, right: 16, top: layout.gridTop, bottom: 28 },
     xAxis: {
       type: 'category',
       boundaryGap: false,
@@ -180,6 +207,7 @@ function buildClusterChartOptions(_points: ClusterTrendPoint[], nodeSeries: Node
   const timestamps = collectTrendTimestamps([], nodeSeries);
   const times = formatTrendTimestamps(timestamps);
   const nodeTrendSeries = buildClusterNodeTrendSeries(nodeSeries, timestamps);
+  const layout = chartLayout.value;
 
   return {
     ...chartAnimation,
@@ -189,15 +217,8 @@ function buildClusterChartOptions(_points: ClusterTrendPoint[], nodeSeries: Node
       axisPointer: { type: 'cross' },
       formatter: buildTooltipFormatter('cluster'),
     },
-    legend: {
-      top: 0,
-      left: 'center',
-      type: 'scroll',
-      textStyle: { color: '#595959', fontSize: 12 },
-      itemWidth: 14,
-      itemHeight: 8,
-    },
-    grid: { left: 56, right: 56, top: 40, bottom: 28 },
+    legend: layout.legend,
+    grid: { left: 56, right: 56, top: layout.gridTop, bottom: 28 },
     xAxis: {
       type: 'category',
       boundaryGap: false,
@@ -274,8 +295,9 @@ watch(
 }
 
 .trend-chart__metric-hint {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-size: 12px;
+  line-height: 1.4;
   color: #8c8c8c;
 }
 

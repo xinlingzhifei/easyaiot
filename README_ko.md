@@ -1,7 +1,7 @@
 # yFeiEye (클라우드-엣지-디바이스 통합 지능형 알고리즘 응용 플랫폼)
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
+[![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 전 세계 사람들이 이 시스템을 사용하여 AI의 진정한 무장벽화를 실현하고, AI가 가져다주는 혜택을 누리길 바랍니다. 이는 소수의 사람들만이 접근할 수 있는 것이 아닙니다.
@@ -140,7 +140,7 @@ Java는 안정적이고 신뢰할 수 있는 플랫폼 아키텍처 구축에 �
 ### 🏗️ 프로젝트 아키텍처 특징
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye는 사실 하나의 프로젝트가 아닌, 다섯 개의 프로젝트입니다.
+yFeiEye는 사실 하나의 프로젝트가 아닌, 여섯 개의 프로젝트입니다.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -203,7 +203,7 @@ yFeiEye는 현지화 전략에 적극적으로 대응하며, 현지화 하드웨
 ## 🧩 프로젝트 구조
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye는 다섯 개의 핵심 프로젝트로 구성됩니다:
+yFeiEye는 여섯 개의 핵심 프로젝트로 구성됩니다:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -226,6 +226,20 @@ yFeiEye는 다섯 개의 핵심 프로젝트로 구성됩니다:
     <li><strong>디바이스 인증</strong>: 디바이스 동적 등록, 신원 인증, 안전한 접속</li>
     <li><strong>규칙 엔진</strong>: 데이터 흐름 규칙, 메시지 라우팅, 데이터 변환</li>
     <li><strong>데이터 수집</strong>: 디바이스 데이터 수집, 저장, 조회 및 분석</li>
+    <li><strong>노드 제어 평면</strong>: 내장 <code>iot-node</code> 마이크로서비스로, 컴퓨트/미디어 노드 CRUD, SSH 연결 테스트, Agent 등록 및 하트비트, 워크로드 스케줄링, 미디어 노드 풀 할당 등 통합 제어 평면 기능 제공</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>NODE 모듈</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>노드 에이전트</strong>: Python 기반 엣지/원격 노드 Agent로, <code>install.sh</code>를 통해 systemd 서비스로 원클릭 설치 후 대상 서버에 배포하면 플랫폼에 자동 접속</li>
+    <li><strong>제어 평면 통신</strong>: <code>iot-node</code> 제어 평면에 등록하고 주기적 하트비트를 전송하며, CPU·메모리·디스크·GPU 사용률 및 실행 중인 워크로드 상태를 실시간 보고</li>
+    <li><strong>원격 워크로드</strong>: HTTP API(기본 포트 9100)로 제어 평면의 배포/중지 명령을 수신하여, 노드 로컬에서 AI 모델 서비스, 알고리즘 태스크, FFmpeg 트랜스코딩 등 워크로드 실행</li>
+    <li><strong>미디어 노드 풀</strong>: 노드에서 SRS/ZLM 스트리밍 스택을 원격 <code>docker compose</code> 배포 지원, 제어 평면과 연동하여 디바이스-미디어 노드 Sticky 바인딩 및 스트림 URL 생성</li>
+    <li><strong>노드 역할</strong>: compute(연산), media(미디어), hybrid(혼합) 세 가지 역할 지원, AI 추론·알고리즘 태스크·스트리밍 업무의 크로스 노드 스케줄링 및 탄력적 확장 지원</li>
+    <li><strong>오프라인 친화</strong>: pip wheels 오프라인 의존성 패키징 및 Agent 핫 업데이트 제공, 외부망 없음 또는 제한된 네트워크 환경에서의 대량 노드 통합에 적합</li>
   </ul>
 </td>
 </tr>
@@ -343,8 +357,8 @@ yFeiEye는 오픈소스 학습 프로젝트이며 상업적 행위와 무관합�
 
 ## ⚙️ 프로젝트 주소
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
+- Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 스크린샷
 <div>
@@ -633,6 +647,38 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 </tbody>
 </table>
 
+## 📞 연락처
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+먼저 아래 공식 계정을 팔로우한 후, 기술 교류 그룹 또는 WeChat으로 문의해 주세요.
+</p>
+
+## 👥 공식 계정
+
+<div>
+  <img src=".image/公众号.jpg" alt="공식 계정" width="30%">
+</div>
+
+## 💬 기술 교류 그룹
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+공식 계정을 팔로우한 후, WeChat으로 아래 QR 코드를 스캔하여 yFeiEye 기술 교류 그룹에 가입하세요.
+</p>
+
+<div>
+  <img src=".image/交流群3群.jpg" alt="yFeiEye 기술 교류 그룹" width="30%">
+</div>
+
+## 💬 WeChat 연락처
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+공식 계정을 팔로우한 후, 1:1 문의가 필요하시면 아래 QR 코드를 스캔하여 WeChat 친구를 추가해 주세요.
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="WeChat 연락처" width="200">
+</div>
+
 ## 🪐 지식 스타 (Knowledge Planet):
 
 <p>
@@ -642,6 +688,7 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 ## 💰 후원하기
 
 <div>
+    <img src=".image/微信支付.jpg" alt="위챗페이" width="30%" height="30%">
     <img src=".image/支付宝支付.jpg" alt="알리페이" width="30%" height="10%">
 </div>
 
@@ -961,13 +1008,13 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 ## 💡 기대
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-좋은 의견을 제안하여 yfeieye을 완성하는 데 도움을 주세요.
+좋은 의견을 제안하여 easyaiot을 완성하는 데 도움을 주세요.
 </p>
 
 ## 📄 저작권
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye는 <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 오픈소스 라이선스를 채택합니다. 우리는 AI 기술의 대중화와 발전을 촉진하여 더 많은 사람들이 이 기술을 자유롭게 사용하고 혜택을 받을 수 있도록 노력하고 있습니다.
+翱翔的雄库鲁/easyaiot는 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 오픈소스 라이선스를 채택합니다. 우리는 AI 기술의 대중화와 발전을 촉진하여 더 많은 사람들이 이 기술을 자유롭게 사용하고 혜택을 받을 수 있도록 노력하고 있습니다.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -976,4 +1023,4 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 
 ## 🌟 Star 증가 추세도
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)

@@ -78,6 +78,18 @@ export function rewriteStreamHostToPageHost(url: string): string {
     const pageHost = window.location.host;
     if (!pageHost) return trimmed;
 
+    // 集群模式：流在远端 SRS 节点，nginx 仅代理本机 srs-host，不应改写为页面 host
+    const streamHost = parsed.hostname;
+    const pageHostname = window.location.hostname;
+    if (
+      streamHost &&
+      pageHostname &&
+      !LOCAL_STREAM_HOSTS.has(streamHost) &&
+      streamHost !== pageHostname
+    ) {
+      return trimmed;
+    }
+
     parsed.host = pageHost;
     return parsed.toString();
   } catch {

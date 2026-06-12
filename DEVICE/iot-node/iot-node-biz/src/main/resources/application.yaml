@@ -73,6 +73,7 @@ iot:
     ignore-urls:
       - /node/agent/**
       - /node/ws/**
+      - /node/platform-agent-bootstrap
     ignore-tables:
       - compute_node
       - node_ssh_credential
@@ -83,10 +84,24 @@ iot:
 easyaiot:
   media:
     cluster-source-path: ${EASYAIOT_MEDIA_CLUSTER_PATH:}
+    # Hook 回调目标（SRS/ZLM on_publish 等）；默认自动探测，无需手动配置
+    # 优先级：EASYAIOT_AGENT_CONTROL_PLANE_URL → 非回环 EASYAIOT_MEDIA_HOOK_HOST → 平台节点 IP → 宿主机 IP 探测
     hook-host: ${EASYAIOT_MEDIA_HOOK_HOST:127.0.0.1}
     hook-port: ${EASYAIOT_MEDIA_HOOK_PORT:48080}
+  video:
+    # VIDEO 源码目录（推流/算法远程部署 SSH 同步源）；未设置时自动探测
+    source-path: ${EASYAIOT_VIDEO_SOURCE_PATH:}
+    remote-root: ${EASYAIOT_VIDEO_REMOTE_ROOT:/opt/easyaiot/VIDEO}
+    auto-sync-before-deploy: ${EASYAIOT_VIDEO_AUTO_SYNC:true}
+  ai:
+    # AI 源码目录（模型服务远程部署 SSH 同步源）；未设置时自动探测
+    source-path: ${EASYAIOT_AI_SOURCE_PATH:}
+    remote-root: ${EASYAIOT_AI_REMOTE_ROOT:/opt/easyaiot/AI}
+    auto-sync-before-deploy: ${EASYAIOT_AI_AUTO_SYNC:true}
   agent:
+    # Agent 源码目录（含 export_pip_wheels.sh）；未设置时自动探测 repo/NODE，优于 /opt/easyaiot/node-agent 运行时目录
     source-path: ${EASYAIOT_AGENT_SOURCE_PATH:}
+    # 可选：显式指定控制面 URL；留空则与 media.hook-host 同样自动探测
     control-plane-url: ${EASYAIOT_AGENT_CONTROL_PLANE_URL:}
 
 debug: false

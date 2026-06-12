@@ -10,6 +10,7 @@ import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
 import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendRespVO;
+import com.basiclab.iot.node.domain.vo.PlatformAgentBootstrapRespVO;
 
 public interface ComputeNodeService {
 
@@ -22,6 +23,10 @@ public interface ComputeNodeService {
     ComputeNodeRespVO getNode(Long id);
 
     PageResult<ComputeNodeRespVO> getNodePage(ComputeNodePageReqVO pageReqVO);
+
+    void ensurePlatformNode();
+
+    PlatformAgentBootstrapRespVO getPlatformAgentBootstrap();
 
     boolean testSsh(Long id);
 

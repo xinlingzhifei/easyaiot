@@ -174,29 +174,71 @@
       <!-- 左侧图片列表（虚拟滚动，单次最多加载 1000 条） -->
       <div ref="imagePanelRef" class="image-panel">
         <div class="image-list-header">
-          <div class="image-list-stats">
+          <div v-if="!batchSelectMode" class="image-list-stats">
             <span class="stat-done">已完成 {{ completedCount }}</span>
             <span class="stat-sep">/</span>
             <span class="stat-total">{{ totalImages }}</span>
             <span v-if="listFilterStatus !== 'all'" class="stat-filtered">· {{ displayImages.length }}</span>
           </div>
-          <button
-            v-if="pendingCount > 0"
-            type="button"
-            class="jump-pending-btn"
-            title="跳到下一张待标注 (N)"
-            @click="jumpToNextPending"
-          >
-            <Icon icon="ant-design:forward-outlined"/>
-          </button>
-          <Select
-            v-model:value="listFilterStatus"
-            size="small"
-            class="filter-select"
-            :options="listFilterOptions"
-            popup-class-name="image-panel-dropdown"
-            :get-popup-container="getSidePanelPopupContainer"
-          />
+          <div class="image-list-header-actions">
+            <div v-if="batchSelectMode" class="batch-action-group">
+              <Popconfirm
+                placement="topRight"
+                title="是否确认删除选中的图片？"
+                ok-text="确认"
+                cancel-text="取消"
+                :get-popup-container="getSidePanelPopupContainer"
+                @confirm="handleBatchDeleteSelected"
+              >
+                <Button
+                  class="image-panel-toolbar-btn image-panel-toolbar-btn--danger"
+                  size="small"
+                  type="primary"
+                  danger
+                  :disabled="selectedImageCount === 0"
+                  preIcon="ant-design:delete-outlined"
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+              <Button
+                class="image-panel-toolbar-btn"
+                size="small"
+                type="default"
+                @click="toggleBatchSelectMode"
+              >
+                取消
+              </Button>
+            </div>
+            <template v-else>
+              <Button
+                v-if="totalImages > 0"
+                class="image-panel-toolbar-btn image-panel-toolbar-btn--icon"
+                size="small"
+                type="default"
+                preIcon="ant-design:delete-outlined"
+                title="批量删除"
+                @click="toggleBatchSelectMode"
+              />
+              <Button
+                v-if="pendingCount > 0"
+                class="image-panel-toolbar-btn image-panel-toolbar-btn--icon"
+                size="small"
+                type="default"
+                preIcon="ant-design:forward-outlined"
+                title="跳到下一张待标注 (N)"
+                @click="jumpToNextPending"
+              />
+            </template>
+            <Select
+              v-model:value="listFilterStatus"
+              size="small"
+              class="filter-select"
+              :options="listFilterOptions"
+              popup-class-name="image-panel-dropdown"
+              :get-popup-container="getSidePanelPopupContainer"
+            />
+          </div>
         </div>
         <div
           ref="listScrollRef"
@@ -215,13 +257,21 @@
               :class="{
                 active: currentImage.id === img.id,
                 annotated: hasAnnotations(img),
-                completed: img.completed === 1
+                completed: img.completed === 1,
+                selected: batchSelectMode && isImageSelected(img.id)
               }"
-              @click="selectImageInList(img)"
+              @click="onImageListItemClick(img)"
             >
-              <span class="image-index">{{ index + 1 }}</span>
+              <Checkbox
+                v-if="batchSelectMode"
+                :checked="isImageSelected(img.id)"
+                class="image-select-checkbox"
+                @click.stop
+                @change="(e) => toggleImageSelection(img.id, e.target.checked)"
+              />
+              <span v-else class="image-index">{{ index + 1 }}</span>
               <span class="image-name" :title="img.name">{{ img.name }}</span>
-              <span class="image-status-badge" :class="getImageStatusClass(img)">
+              <span v-if="!batchSelectMode" class="image-status-badge" :class="getImageStatusClass(img)">
                 {{ getImageStatusText(img) }}
               </span>
             </li>
@@ -276,6 +326,15 @@
             @click="nextImage"
           >
             <Icon icon="ant-design:right-outlined"/>
+          </button>
+          <span class="nav-divider"/>
+          <button
+            type="button"
+            class="nav-btn nav-btn-danger"
+            title="删除当前图片 (Shift+Delete)"
+            @click="confirmDeleteCurrentImage"
+          >
+            <Icon icon="ant-design:delete-outlined"/>
           </button>
         </div>
         <div class="canvas-wrapper">
@@ -399,13 +458,16 @@
 
 <script setup lang="ts">
 import {computed, nextTick, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
-import {ConfigProvider, Dropdown, Menu, MenuDivider, MenuItem, Pagination, Select} from 'ant-design-vue';
+import {Checkbox, ConfigProvider, Dropdown, Menu, MenuDivider, MenuItem, Pagination, Popconfirm, Select} from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
+import {Button} from '@/components/Button';
 import {useMessage} from "@/hooks/web/useMessage";
 import {useRoute} from "vue-router";
 import {useModal} from '@/components/Modal';
 import {
   checkSyncCondition,
+  deleteDatasetImage,
+  deleteDatasetImages,
   type DatasetAnnotationImportResult,
   type DatasetSyncCheckResult,
   getDataset,
@@ -513,6 +575,9 @@ const listFilterOptions: { label: string; value: ListFilterStatus }[] = [
 ];
 
 const listFilterStatus = ref<ListFilterStatus>('all');
+const batchSelectMode = ref(false);
+const selectedImageIds = ref<Set<number>>(new Set());
+const selectedImageCount = computed(() => selectedImageIds.value.size);
 const imagePanelRef = ref<HTMLElement | null>(null);
 const listLoading = ref(false);
 const listChunkPage = ref(1);
@@ -678,7 +743,8 @@ const onListChunkPageChange = async (page: number) => {
 
 // 快捷键提示
 const shortcutHints = ref<{ key: string, text: string }[]>([
-  {key: 'Del', text: '删除'},
+  {key: 'Del', text: '删除标注'},
+  {key: 'Shift+Del', text: '删图片'},
   {key: 'Ctrl+S', text: '保存'},
   {key: 'Ctrl+Shift+S', text: '保存并下一张'},
   {key: 'Space', text: '下一张'},
@@ -954,6 +1020,134 @@ const selectImageInList = async (img: Image): Promise<void> => {
     currentImageIndex.value = idx;
     scrollListToActive();
   }
+};
+
+const isImageSelected = (id: number): boolean => selectedImageIds.value.has(id);
+
+const toggleImageSelection = (id: number, checked: boolean): void => {
+  const next = new Set(selectedImageIds.value);
+  if (checked) {
+    next.add(id);
+  } else {
+    next.delete(id);
+  }
+  selectedImageIds.value = next;
+};
+
+const toggleBatchSelectMode = (): void => {
+  batchSelectMode.value = !batchSelectMode.value;
+  if (!batchSelectMode.value) {
+    selectedImageIds.value = new Set();
+  }
+};
+
+const onImageListItemClick = async (img: Image): Promise<void> => {
+  if (batchSelectMode.value) {
+    toggleImageSelection(img.id, !isImageSelected(img.id));
+    return;
+  }
+  await selectImageInList(img);
+};
+
+const buildDeleteConfirmContent = (ids: number[]): string => {
+  const deletingCurrent = ids.includes(currentImage.value.id);
+  let content = '删除后图片及标注数据将无法恢复，且会同时删除存储中的原图。';
+  if (deletingCurrent && !isSaved.value) {
+    content += ' 当前图片有未保存的标注，也将一并删除。';
+  }
+  if (ids.length === 1) {
+    const name = images.value.find((i) => i.id === ids[0])?.name;
+    if (name) {
+      content = `「${name}」\n\n${content}`;
+    }
+  }
+  return content;
+};
+
+const resolveIndexAfterDelete = (deletedIds: number[], prevGlobalIndex: number): number => {
+  const deletedSet = new Set(deletedIds);
+  const newTotal = Math.max(0, totalImages.value - deletedIds.length);
+  if (newTotal <= 0) {
+    return 0;
+  }
+  if (deletedSet.has(currentImage.value.id)) {
+    return Math.min(prevGlobalIndex, newTotal - 1);
+  }
+  let deletedBefore = 0;
+  for (let i = 0; i < images.value.length; i++) {
+    const globalIdx = (listChunkPage.value - 1) * LIST_CHUNK_SIZE + i;
+    if (globalIdx >= prevGlobalIndex) {
+      break;
+    }
+    if (deletedSet.has(images.value[i].id)) {
+      deletedBefore += 1;
+    }
+  }
+  return Math.max(0, prevGlobalIndex - deletedBefore);
+};
+
+const deleteImagesByIds = async (ids: number[]): Promise<void> => {
+  if (ids.length === 0 || listLoading.value) return;
+
+  const uniqueIds = [...new Set(ids)];
+  const prevGlobalIndex = globalImageIndex.value;
+
+  try {
+    listLoading.value = true;
+    if (uniqueIds.length === 1) {
+      await deleteDatasetImage(uniqueIds[0]);
+    } else {
+      await deleteDatasetImages(uniqueIds);
+    }
+
+    selectedImageIds.value = new Set();
+    batchSelectMode.value = false;
+    isSaved.value = true;
+
+    const nextGlobalIndex = resolveIndexAfterDelete(uniqueIds, prevGlobalIndex);
+    const nextPage = Math.floor(nextGlobalIndex / LIST_CHUNK_SIZE) + 1;
+    const nextIndex = nextGlobalIndex % LIST_CHUNK_SIZE;
+
+    listChunkPage.value = nextPage;
+    await fetchImages(nextPage);
+
+    if (images.value.length > 0) {
+      currentImageIndex.value = Math.min(nextIndex, images.value.length - 1);
+    } else if (totalImages.value > 0) {
+      const lastPage = Math.max(1, Math.ceil(totalImages.value / LIST_CHUNK_SIZE));
+      listChunkPage.value = lastPage;
+      await fetchImages(lastPage);
+      currentImageIndex.value = Math.max(0, images.value.length - 1);
+    } else {
+      currentImageIndex.value = 0;
+      annotations.value = [];
+    }
+
+    await refreshSyncCheck();
+    createMessage.success(uniqueIds.length === 1 ? '图片已删除' : `已删除 ${uniqueIds.length} 张图片`);
+  } catch {
+    createMessage.error('删除失败');
+  } finally {
+    listLoading.value = false;
+  }
+};
+
+const confirmDeleteCurrentImage = (): void => {
+  if (totalImages.value === 0 || !currentImage.value.id) return;
+  createConfirm({
+    iconType: 'warning',
+    title: '删除当前图片？',
+    content: buildDeleteConfirmContent([currentImage.value.id]),
+    okText: '删除',
+    okType: 'danger',
+    onOk: () => deleteImagesByIds([currentImage.value.id]),
+  });
+};
+
+const handleBatchDeleteSelected = (): void => {
+  const ids = [...selectedImageIds.value];
+  if (ids.length === 0) return;
+  deleteImagesByIds(ids);
 };
 
 const getImageStatusText = (img: Image): string => {
@@ -1855,7 +2049,10 @@ const handleKeyDown = (e: KeyboardEvent): void => {
       prevImage();
       break;
     case 'Delete':
-      if (selectedAnnotationId.value !== null) {
+      if (e.shiftKey && totalImages.value > 0) {
+        e.preventDefault();
+        confirmDeleteCurrentImage();
+      } else if (selectedAnnotationId.value !== null) {
         deleteAnnotation(selectedAnnotationId.value);
       }
       break;
@@ -2423,28 +2620,108 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
+      gap: 8px;
       padding: 10px 10px 8px;
       flex-shrink: 0;
     }
 
-    .jump-pending-btn {
+    .image-list-header-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .batch-action-group {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      padding: 0;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      background: fade(@primary-color, 20%);
-      color: #a8b8ff;
-      cursor: pointer;
-      flex-shrink: 0;
+      gap: 8px;
 
-      &:hover {
-        background: fade(@primary-color, 35%);
-        border-color: @primary-color;
+      .ant-btn {
+        height: 28px !important;
+        min-width: 56px;
+        padding: 0 12px !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+        box-shadow: none !important;
+      }
+    }
+
+    .image-panel-toolbar-btn.ant-btn {
+      height: 28px !important;
+      min-width: 56px;
+      padding: 0 12px !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      line-height: 1 !important;
+      box-shadow: none !important;
+    }
+
+    .image-panel-toolbar-btn.ant-btn-default {
+      background-color: #ffffff !important;
+      border-color: #d9d9d9 !important;
+      color: #262626 !important;
+
+      .anticon,
+      span {
+        color: #262626 !important;
+      }
+
+      &:not(:disabled):hover {
+        background-color: #ffffff !important;
+        border-color: @primary-color !important;
+        color: @primary-color !important;
+
+        .anticon,
+        span {
+          color: @primary-color !important;
+        }
+      }
+
+      &:disabled {
+        background-color: rgba(255, 255, 255, 0.55) !important;
+        border-color: rgba(255, 255, 255, 0.25) !important;
+        color: rgba(38, 38, 38, 0.45) !important;
+      }
+    }
+
+    .image-panel-toolbar-btn--icon.ant-btn {
+      min-width: 28px;
+      width: 28px;
+      padding: 0 !important;
+    }
+
+    .image-panel-toolbar-btn--danger.ant-btn-dangerous.ant-btn-primary {
+      background-color: #ff4d4f !important;
+      border-color: #ff4d4f !important;
+      color: #ffffff !important;
+
+      .anticon,
+      span {
+        color: #ffffff !important;
+      }
+
+      &:not(:disabled):not(.ant-btn-disabled):hover {
+        background-color: #ff7875 !important;
+        border-color: #ff7875 !important;
+        color: #ffffff !important;
+      }
+
+      &:disabled,
+      &.ant-btn-disabled,
+      &.is-disabled {
+        background-color: #8c3a3a !important;
+        border-color: #a84848 !important;
+        color: rgba(255, 255, 255, 0.85) !important;
+        opacity: 1 !important;
+
+        .anticon,
+        span {
+          color: rgba(255, 255, 255, 0.85) !important;
+        }
       }
     }
 
@@ -2554,6 +2831,20 @@ onUnmounted(() => {
         background: rgba(67, 97, 238, 0.35);
         border-color: rgba(67, 97, 238, 0.5);
         color: #fff;
+      }
+
+      &.selected {
+        background: rgba(247, 37, 133, 0.12);
+        border-color: rgba(247, 37, 133, 0.35);
+      }
+
+      .image-select-checkbox {
+        flex-shrink: 0;
+
+        :deep(.ant-checkbox-inner) {
+          background: rgba(255, 255, 255, 0.08);
+          border-color: rgba(255, 255, 255, 0.25);
+        }
       }
 
       .image-index {
@@ -2749,6 +3040,17 @@ onUnmounted(() => {
           opacity: 0.35;
           cursor: not-allowed;
         }
+
+        &.nav-btn-danger:hover {
+          background: fade(@error-color, 55%);
+        }
+      }
+
+      .nav-divider {
+        width: 1px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.2);
+        flex-shrink: 0;
       }
     }
 

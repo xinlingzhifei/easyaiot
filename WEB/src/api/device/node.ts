@@ -63,6 +63,7 @@ export interface ComputeNodeVO {
   diskTotalBytes?: number;
   activeTasks?: number;
   gpuInfo?: string;
+  isPlatform?: boolean;
   createTime?: string;
   updateTime?: string;
 }
@@ -462,4 +463,185 @@ export const listMediaNodes = async () => {
   return list.filter(
     (node: ComputeNodeVO) => node.nodeRole === 'media' || node.nodeRole === 'hybrid',
   );
+};
+
+// ---------- 工作负载 bundle 批量分发 ----------
+
+export type WorkloadBundleTypeKey =
+  | 'stream_forward'
+  | 'algorithm_realtime'
+  | 'algorithm_snap'
+  | 'ai_service';
+
+export interface WorkloadBundleBatchReq {
+  nodeIds: number[];
+  bundleType: WorkloadBundleTypeKey;
+}
+
+export interface WorkloadBundleNodeResult {
+  nodeId?: number;
+  nodeName?: string;
+  host?: string;
+  success?: boolean;
+  message?: string;
+  steps?: MediaDeployStepVO[];
+}
+
+export interface WorkloadBundleBatchResult {
+  bundleType?: string;
+  success?: boolean;
+  message?: string;
+  results?: WorkloadBundleNodeResult[];
+}
+
+export interface WorkloadBundleCheckResult {
+  bundleType?: string;
+  envReady?: boolean;
+  scriptsReady?: boolean;
+  pythonLauncher?: string;
+  success?: boolean;
+  message?: string;
+  steps?: MediaDeployStepVO[];
+}
+
+const BUNDLE_API = `${Api.Node}/workload-bundle`;
+const BUNDLE_TIMEOUT = 45 * 60 * 1000;
+
+export const checkWorkloadBundleBySsh = async (
+  nodeId: number,
+  bundleType: WorkloadBundleTypeKey,
+): Promise<WorkloadBundleCheckResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/check-ssh?nodeId=${nodeId}&bundleType=${encodeURIComponent(bundleType)}`,
+    {},
+    { isTransformResponse: false, timeout: 3 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<WorkloadBundleCheckResult>(res);
+};
+
+export const batchCheckWorkloadBundleBySsh = async (
+  data: WorkloadBundleBatchReq,
+): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/batch-check-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchDeployWorkloadBundleEnvBySsh = async (
+  data: WorkloadBundleBatchReq,
+): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/batch-deploy-env-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchDeployWorkloadBundleScriptsBySsh = async (
+  data: WorkloadBundleBatchReq,
+): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/batch-deploy-scripts-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchDeployWorkloadBundleFullBySsh = async (
+  data: WorkloadBundleBatchReq,
+): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/batch-deploy-full-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchRemoveWorkloadBundleEnvBySsh = async (
+  data: WorkloadBundleBatchReq,
+): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/batch-remove-env-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchRemoveWorkloadBundleScriptsBySsh = async (
+  data: WorkloadBundleBatchReq,
+): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/batch-remove-scripts-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+// ---------- FFmpeg 离线分发 ----------
+
+export interface NodeFfmpegBatchReq {
+  nodeIds: number[];
+}
+
+export interface NodeFfmpegCheckResult {
+  ffmpegReady?: boolean;
+  ffmpegPath?: string;
+  success?: boolean;
+  message?: string;
+  steps?: MediaDeployStepVO[];
+}
+
+export const checkFfmpegBySsh = async (nodeId: number): Promise<NodeFfmpegCheckResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/ffmpeg/check-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 3 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<NodeFfmpegCheckResult>(res);
+};
+
+export const batchCheckFfmpegBySsh = async (data: NodeFfmpegBatchReq): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/ffmpeg/batch-check-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchDeployFfmpegBySsh = async (data: NodeFfmpegBatchReq): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/ffmpeg/batch-deploy-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
+};
+
+export const batchRemoveFfmpegBySsh = async (data: NodeFfmpegBatchReq): Promise<WorkloadBundleBatchResult> => {
+  const res = await commonApi(
+    'post',
+    `${BUNDLE_API}/ffmpeg/batch-remove-ssh`,
+    { data },
+    { isTransformResponse: false, timeout: BUNDLE_TIMEOUT },
+  );
+  return unwrapNodeApiData<WorkloadBundleBatchResult>(res);
 };

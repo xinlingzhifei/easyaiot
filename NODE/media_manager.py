@@ -37,28 +37,27 @@ class MediaStackManager:
         self._running: Dict[str, str] = {}
 
     def _ensure_rendered_configs(self, env: Dict[str, str]) -> None:
-        srs_conf = os.path.join(MEDIA_CLUSTER_ROOT, 'srs', 'docker.conf')
-        zlm_conf = os.path.join(MEDIA_CLUSTER_ROOT, 'zlm', 'config.ini')
-        if os.path.isfile(srs_conf) and os.path.isfile(zlm_conf):
-            return
         install_script = os.path.join(MEDIA_CLUSTER_ROOT, 'install_media_stack.sh')
         if not os.path.isfile(install_script):
+            srs_conf = os.path.join(MEDIA_CLUSTER_ROOT, 'srs', 'docker.conf')
+            zlm_conf = os.path.join(MEDIA_CLUSTER_ROOT, 'zlm', 'config.ini')
             raise FileNotFoundError(
-                f'未找到渲染配置 {srs_conf} 或 {zlm_conf}，且缺少 {install_script}'
+                f'未找到 install_media_stack.sh，且缺少渲染配置 {srs_conf} / {zlm_conf}'
             )
-        env = dict(env)
-        env.setdefault('MEDIA_NODE_NAME', f"node-{env.get('NODE_ID', 'media')}")
-        env.setdefault('MEDIA_NODE_HOST', os.environ.get('POD_IP', '127.0.0.1'))
-        logger.info('渲染媒体栈配置: bash %s', install_script)
+        render_env = dict(env)
+        render_env.setdefault('MEDIA_NODE_NAME', f"node-{render_env.get('NODE_ID', 'media')}")
+        render_env.setdefault('MEDIA_NODE_HOST', os.environ.get('POD_IP', '127.0.0.1'))
+        render_env['MEDIA_RENDER_CONFIGS_ONLY'] = '1'
+        logger.info('渲染媒体栈配置（节点 tags 端口）: bash %s', install_script)
         proc = subprocess.run(
             ['bash', install_script],
             cwd=MEDIA_CLUSTER_ROOT,
-            env=env,
+            env=render_env,
             capture_output=True,
             text=True,
         )
         if proc.returncode != 0:
-            raise RuntimeError(proc.stderr or proc.stdout or 'install_media_stack.sh 失败')
+            raise RuntimeError(proc.stderr or proc.stdout or 'install_media_stack.sh 渲染配置失败')
 
     def deploy(self, spec: Dict[str, Any]) -> Dict[str, Any]:
         stack_type = spec.get('stackType') or spec.get('mediaType')
@@ -69,7 +68,7 @@ class MediaStackManager:
         env = os.environ.copy()
         env.update({k: str(v) for k, v in (spec.get('env') or {}).items() if v is not None})
         env['MEDIA_NODE_ID'] = f'{node_id}-{"srs" if STACK_PROFILES[stack_type]["service"] == "srs" else "zlm"}'
-        env['MEDIA_NODE_NAME'] = f'node-{node_id}'
+        env.setdefault('MEDIA_NODE_NAME', f'node-{node_id}')
         env['MEDIA_NODE_TYPE'] = STACK_PROFILES[stack_type]['MEDIA_NODE_TYPE']
         env.setdefault('MEDIA_SCHEDULER_HOST', os.environ.get('CONTROL_PLANE_HOST', '127.0.0.1'))
         env.setdefault('SRS_CANDIDATE_IP', os.environ.get('POD_IP', ''))

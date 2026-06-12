@@ -12,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const chartRef = ref<HTMLDivElement | null>(null);
-const { setOptions, resize } = useECharts(chartRef as Ref<HTMLDivElement>);
+const { setOptions, resize, getInstance } = useECharts(chartRef as Ref<HTMLDivElement>);
 let resizeObserver: ResizeObserver | null = null;
 let hasRendered = false;
 
@@ -25,6 +25,9 @@ function buildGaugeOptions(val: number) {
     series: [
       {
         type: 'gauge',
+        animationDuration: 0,
+        animationDurationUpdate: 600,
+        animationEasingUpdate: 'cubicOut',
         min: 0,
         max: gaugeMax,
         radius: '90%',
@@ -64,9 +67,29 @@ function buildGaugeOptions(val: number) {
   };
 }
 
-function renderGauge(raw?: number) {
+function buildGaugePatch(val: number) {
+  const color = getProgressColor(Math.min(val, 100));
+  const gaugeMax = Math.max(100, Math.ceil(val / 50) * 50);
+  return {
+    series: [
+      {
+        animationDurationUpdate: 600,
+        animationEasingUpdate: 'cubicOut',
+        max: gaugeMax,
+        progress: { itemStyle: { color } },
+        data: [{ value: val }],
+      },
+    ],
+  };
+}
+
+function renderGauge(raw?: number, initial = false) {
   const val = Math.max(Number(raw ?? props.value) || 0, 0);
-  void setOptions(buildGaugeOptions(val));
+  if (initial || !hasRendered) {
+    void setOptions(buildGaugeOptions(val), true);
+  } else {
+    getInstance()?.setOption(buildGaugePatch(val), false);
+  }
   hasRendered = true;
 }
 
@@ -74,17 +97,17 @@ function tryInitialRender() {
   const el = chartRef.value;
   if (!el || el.offsetWidth <= 0 || el.offsetHeight <= 0) return;
   resize();
-  renderGauge();
+  renderGauge(undefined, true);
 }
 
 watch(
   () => props.value,
-  () => {
+  (val) => {
     if (!hasRendered) {
       tryInitialRender();
       return;
     }
-    renderGauge();
+    renderGauge(val, false);
   },
 );
 
@@ -100,7 +123,7 @@ onMounted(() => {
     if (el.offsetWidth <= 0 || el.offsetHeight <= 0) return;
     resize();
     if (!hasRendered) {
-      renderGauge();
+      renderGauge(undefined, true);
     }
   });
   resizeObserver.observe(el);

@@ -46,7 +46,13 @@ public class NodeAgentServiceImpl implements NodeAgentService {
         node.setStatus(NodeStatusEnum.ONLINE.getStatus());
         node.setLastHeartbeatAt(LocalDateTime.now());
         if (reqVO.getCapabilities() != null && !reqVO.getCapabilities().isEmpty()) {
-            node.setCapabilities(reqVO.getCapabilities());
+            java.util.Map<String, Boolean> caps = node.getCapabilities() != null
+                    ? new java.util.HashMap<>(node.getCapabilities()) : new java.util.HashMap<>();
+            caps.putAll(reqVO.getCapabilities());
+            if (ComputeNodeServiceImpl.isPlatformNode(node)) {
+                caps.put("platform", true);
+            }
+            node.setCapabilities(caps);
         }
         computeNodeMapper.updateById(node);
         touchHeartbeat(node.getId());

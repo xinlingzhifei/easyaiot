@@ -499,7 +499,7 @@ def create_app():
                         ('plate_library_ids', 'TEXT'),
                         ('matching_business_tags', 'TEXT'),
                         ('alert_event_suppress_time', 'INTEGER NOT NULL DEFAULT 5'),
-                        ('service_server_ip', 'VARCHAR(45)'),
+                        ('service_server_ip', 'VARCHAR(512)'),
                         ('service_port', 'INTEGER'),
                         ('service_process_id', 'INTEGER'),
                         ('service_last_heartbeat', 'TIMESTAMP'),
@@ -694,6 +694,8 @@ def create_app():
                         ('playback', 'device_name', 100),
                         ('playback', 'file_path', 500),
                         ('playback', 'thumbnail_path', 500),
+                        ('stream_forward_task', 'service_server_ip', 512),
+                        ('algorithm_task', 'service_server_ip', 512),
                     ]
                     for tbl, col, target_len in widen_specs:
                         result = db.session.execute(text("""

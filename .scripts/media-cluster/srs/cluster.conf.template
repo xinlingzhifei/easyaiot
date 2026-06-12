@@ -1,6 +1,6 @@
 # SRS 集群节点配置模板
 # 渲染: envsubst < cluster.conf.template > docker.conf
-# 变量: MEDIA_NODE_ID, MEDIA_SCHEDULER_HOST, SRS_CANDIDATE_IP
+# 变量: MEDIA_NODE_ID, MEDIA_SCHEDULER_HOST, SRS_CANDIDATE_IP, SRS_RTC_PORT
 
 listen              1935;
 max_connections     500;
@@ -29,7 +29,7 @@ stats {
 
 rtc_server {
     enabled         on;
-    listen          8000;
+    listen          ${SRS_RTC_PORT};
     candidate       ${SRS_CANDIDATE_IP};
 }
 
@@ -64,8 +64,8 @@ vhost __defaultVhost__ {
 
     http_hooks {
         enabled             on;
-        on_publish          http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}/video/media/hook/srs/on_publish;
-        on_unpublish        http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}/video/media/hook/srs/on_unpublish;
-        on_dvr              http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}/video/media/hook/srs/on_dvr;
+        on_publish          http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}${MEDIA_HOOK_PATH_PREFIX}/video/media/hook/srs/on_publish;
+        on_unpublish        http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}${MEDIA_HOOK_PATH_PREFIX}/video/media/hook/srs/on_unpublish;
+        on_dvr              http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}${MEDIA_HOOK_PATH_PREFIX}/video/media/hook/srs/on_dvr;
     }
 }

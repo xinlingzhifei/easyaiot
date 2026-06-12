@@ -308,6 +308,11 @@ def _get_cameras() -> list[Device]:
     return Device.query.all()
 
 
+def _normalize_stream_source(source: str | None) -> str:
+    """取流地址规范化，用于重复检测。"""
+    return (source or '').strip()
+
+
 def find_existing_device_for_register(
     *,
     ip: str = '',
@@ -315,11 +320,13 @@ def find_existing_device_for_register(
     serial_number: str = '',
     nvr_id: int | None = None,
     nvr_channel: int | None = None,
+    source: str = '',
 ) -> Device | None:
     """网段登记或 NVR 通道挂载时查找已注册设备，避免重复创建。"""
     ip = (ip or '').strip()
     mac = (mac or '').strip()
     serial = (serial_number or '').strip()
+    normalized_source = _normalize_stream_source(source)
 
     if nvr_id and nvr_channel and int(nvr_channel) > 0:
         existing = Device.query.filter_by(nvr_id=nvr_id, nvr_channel=int(nvr_channel)).first()
@@ -340,6 +347,13 @@ def find_existing_device_for_register(
         existing = Device.query.filter(Device.serial_number == serial).first()
         if existing:
             return existing
+
+    if normalized_source:
+        existing = Device.query.filter(Device.source == normalized_source).first()
+        if existing:
+            return existing
+        # 已提供完整取流地址时，同一 IP 不同路径视为不同设备，不再按 IP 兜底
+        return None
 
     if ip:
         existing = Device.query.filter(
@@ -1076,6 +1090,7 @@ def register_camera(register_info: dict) -> str:
             serial_number=reg_serial,
             nvr_id=nvr_id,
             nvr_channel=nvr_channel if nvr_channel else None,
+            source=source,
         )
         if existing:
             id = existing.id

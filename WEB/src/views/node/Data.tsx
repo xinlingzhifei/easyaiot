@@ -11,7 +11,12 @@ import {
   NODE_TERM,
   formatGpuSummary,
 } from './utils/constants';
-import { formatSshUsername, renderNodeRoleBadge, renderNodeStatusBadge } from './utils/nodeDisplay';
+import {
+  formatSshUsername,
+  renderNodeNameWithPlatformBadge,
+  renderNodeRoleBadge,
+  renderNodeStatusBadge,
+} from './utils/nodeDisplay';
 
 export { NODE_ROLE_MAP, NODE_STATUS_MAP };
 
@@ -19,8 +24,9 @@ export const columns: BasicColumn[] = [
   {
     title: '节点名称',
     dataIndex: 'name',
-    width: 140,
+    width: 180,
     ellipsis: true,
+    customRender: ({ text, record }) => renderNodeNameWithPlatformBadge(text, record),
   },
   {
     title: '主机',
@@ -245,6 +251,16 @@ export const formSchema: FormSchema[] = [
     componentProps: { min: 1, max: 65535 },
   },
   {
+    label: 'SRS WebRTC 端口',
+    field: 'srsRtcPort',
+    component: 'InputNumber',
+    defaultValue: 8000,
+    colProps: { span: 8 },
+    ifShow: ({ values }) => values.nodeRole === 'media' || values.nodeRole === 'hybrid',
+    componentProps: { min: 1, max: 65535 },
+    helpMessage: 'SRS rtc_server 监听端口，勿与 ZLM WebRTC 端口相同',
+  },
+  {
     label: 'ZLM HTTP 端口',
     field: 'zlmHttpPort',
     component: 'InputNumber',
@@ -270,6 +286,16 @@ export const formSchema: FormSchema[] = [
     colProps: { span: 8 },
     ifShow: ({ values }) => values.nodeRole === 'media' || values.nodeRole === 'hybrid',
     componentProps: { min: 1, max: 65535 },
+  },
+  {
+    label: 'ZLM WebRTC 端口',
+    field: 'zlmRtcPort',
+    component: 'InputNumber',
+    defaultValue: 8800,
+    colProps: { span: 8 },
+    ifShow: ({ values }) => values.nodeRole === 'media' || values.nodeRole === 'hybrid',
+    componentProps: { min: 1, max: 65535 },
+    helpMessage: 'ZLM [rtc] 监听端口，默认 8800，避免与 SRS WebRTC(8000) 冲突',
   },
   {
     label: 'ZLM RTP 端口起',
@@ -400,6 +426,11 @@ export const mediaDetailSchema: DescItem[] = [
     render: (_val, data) => data?.tags?.srs_api_port ?? 1985,
   },
   {
+    field: 'tags.srs_rtc_port',
+    label: 'SRS WebRTC',
+    render: (_val, data) => data?.tags?.srs_rtc_port ?? 8000,
+  },
+  {
     field: 'tags.zlm_http_port',
     label: 'ZLM HTTP',
     render: (_val, data) => data?.tags?.zlm_http_port ?? 6080,
@@ -413,6 +444,11 @@ export const mediaDetailSchema: DescItem[] = [
     field: 'tags.zlm_rtsp_port',
     label: 'ZLM RTSP',
     render: (_val, data) => data?.tags?.zlm_rtsp_port ?? 8554,
+  },
+  {
+    field: 'tags.zlm_rtc_port',
+    label: 'ZLM WebRTC',
+    render: (_val, data) => data?.tags?.zlm_rtc_port ?? 8800,
   },
   {
     field: 'tags.zlm_rtp_port_min',

@@ -7,7 +7,7 @@ import { CollapseContainer } from '@/components/Container';
 import { Button } from '@/components/Button';
 import type { ComputeNodeVO } from '@/api/device/node';
 import { nodeSetupSummarySchema } from '../../Data';
-import { getMediaStackGuideState, NODE_ROLE_DESC, SETUP_COPY } from '../../utils/constants';
+import { getMediaStackGuideState, NODE_ROLE_DESC, SETUP_COPY, readMediaPortsFromTags } from '../../utils/constants';
 import { formatSshUsername, isSshUsernameConfigured } from '../../utils/nodeDisplay';
 import SetupStepShell from '../SetupStepShell/index.vue';
 import NodeMetaBadge from '../NodeMetaBadge/index.vue';
@@ -43,14 +43,7 @@ const mediaParams = computed(() => {
     nodeRole: node.nodeRole,
     host: node.host,
     name: node.name,
-    srsRtmpPort: tags.srs_rtmp_port ? Number(tags.srs_rtmp_port) : 1935,
-    srsHttpPort: tags.srs_http_port ? Number(tags.srs_http_port) : 8080,
-    srsApiPort: tags.srs_api_port ? Number(tags.srs_api_port) : 1985,
-    zlmHttpPort: tags.zlm_http_port ? Number(tags.zlm_http_port) : 6080,
-    zlmRtmpPort: tags.zlm_rtmp_port ? Number(tags.zlm_rtmp_port) : 10935,
-    zlmRtspPort: tags.zlm_rtsp_port ? Number(tags.zlm_rtsp_port) : 8554,
-    zlmRtpPortMin: tags.zlm_rtp_port_min ? Number(tags.zlm_rtp_port_min) : 30000,
-    zlmRtpPortMax: tags.zlm_rtp_port_max ? Number(tags.zlm_rtp_port_max) : 30500,
+    ...readMediaPortsFromTags(tags),
   };
 });
 

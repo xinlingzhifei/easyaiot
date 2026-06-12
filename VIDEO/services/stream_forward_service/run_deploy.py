@@ -3,10 +3,9 @@
 推流转发服务程序
 用于批量推送多个摄像头实时画面，无需AI推理
 
-架构（每路摄像头独立 pipeline，避免多路争抢单线程推流器）：
-- 拉流线程：每路从 RTSP 读取帧，按 EXTRACT_INTERVAL 抽帧，写入 latest-frame 缓存
-- 推流线程：每路独立固定速率推帧线程，匀速写入 FFmpeg stdin，无新帧时重复上一帧
-- FFmpeg：每路独立子进程，负责缩放/编码/RTMP 推送
+架构（两种模式，由 STREAM_FORWARD_FFMPEG_NATIVE 控制）：
+- 原生多路复用（默认）：单 FFmpeg 进程多路 RTSP 输入 + 多路 RTMP 输出，资源占用更低
+- 经典模式：每路独立 OpenCV 拉流 + 独立 FFmpeg stdin 推流（兼容旧行为）
 
 @author 翱翔的雄库鲁
 @email andywebjava@163.com
@@ -36,7 +35,17 @@ sys.path.insert(0, video_root)
 
 from app.utils.video_env import load_video_env
 
-load_video_env(override=True)
+# 子进程由 launcher 注入 POD_IP / SRS_* / DEVICE_IDS 等；.env 中空 POD_IP= 会覆盖注入值，
+# 导致误用 device.rtmp_stream（节点外网播放地址）推流而非本机 127.0.0.1:SRS。
+_LAUNCHER_ENV_KEYS = (
+    'POD_IP', 'HOST_IP', 'TASK_ID', 'DEVICE_IDS', 'WORKLOAD_ID',
+    'SRS_RTMP_PORT', 'SRS_HTTP_PORT', 'SRS_API_PORT',
+    'VIDEO_HEARTBEAT_URL', 'VIDEO_CONTROL_URL', 'LOG_PATH', 'DATABASE_URL',
+)
+_preserved_launcher_env = {k: os.environ[k] for k in _LAUNCHER_ENV_KEYS if os.environ.get(k)}
+load_video_env(override=False)
+for _key, _val in _preserved_launcher_env.items():
+    os.environ[_key] = _val
 
 # 导入VIDEO模块的模型
 from models import db, StreamForwardTask, Device
@@ -390,6 +399,8 @@ device_latest_frame_locks = {}  # {device_id: threading.Lock}
 device_caps = {}  # {device_id: cv2.VideoCapture | AsyncVideoStream}
 # 摄像头推送进程（FFmpeg进程）
 device_pushers = {}  # {device_id: subprocess.Popen}
+native_mux_process: Optional[subprocess.Popen] = None
+native_mux_stderr_thread: Optional[threading.Thread] = None
 device_push_threads = {}  # {device_id: threading.Thread}
 device_push_running = {}  # {device_id: threading.Event}  set() 表示停止
 device_codec_fallback = {}  # {device_id: bool} True 表示已回退到软件编码
@@ -538,8 +549,8 @@ def load_task_config():
                     logger.warning(f"设备 {device.id} 没有配置源地址，跳过")
                     continue
                 
-                # 获取RTMP输出流地址
-                rtmp_url = device.rtmp_stream
+                # 获取 RTMP 推流地址（远程分片推本机 SRS；播放地址由 launcher 同步到外网 IP）
+                rtmp_url = _resolve_rtmp_push_url(device.id, device.rtmp_stream)
                 if not rtmp_url:
                     logger.warning(f"设备 {device.id} 没有配置RTMP输出地址，跳过")
                     continue
@@ -567,6 +578,15 @@ def load_task_config():
             })()
             
             logger.info(f"✅ 任务配置加载成功: task_id={TASK_ID}, task_name={task.task_name}, 设备数={len(device_streams_info)}")
+            pod_ip = os.getenv('POD_IP', '').strip()
+            logger.info(
+                '推流目标解析: POD_IP=%s, SRS_RTMP=%s, SRS_API=%s',
+                pod_ip or '(未设置，将使用 device.rtmp_stream 外网地址)',
+                _srs_rtmp_port(),
+                _srs_api_port(),
+            )
+            for dev_id, info in device_streams_info.items():
+                logger.info('  设备 %s 推流 -> %s', dev_id, info.get('rtmp_url'))
             return True
             
     except Exception as e:
@@ -574,12 +594,46 @@ def load_task_config():
         return False
 
 
-def check_rtmp_server_connection(rtmp_url: str) -> bool:
-    """检查RTMP服务器是否可用"""
+def _srs_api_port() -> int:
+    raw = os.getenv('SRS_API_PORT', '1985').strip() or '1985'
     try:
-        # 从RTMP URL中提取主机和端口
+        return int(raw)
+    except (TypeError, ValueError):
+        return 1985
+
+
+def _srs_rtmp_port() -> int:
+    raw = os.getenv('SRS_RTMP_PORT', '1935').strip() or '1935'
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 1935
+
+
+def _resolve_rtmp_push_url(device_id: str, device_rtmp_stream: Optional[str] = None) -> Optional[str]:
+    """解析 FFmpeg 推流地址。
+
+    远程分片在节点本机推 SRS，固定走 127.0.0.1（避免外网 IP 回环/端口误判）；
+    播放地址仍由 stream_url_sync_service 写入 device.rtmp_stream（外网 IP）。
+    """
+    pod_ip = os.getenv('POD_IP', '').strip()
+    if pod_ip:
+        rtmp_port = _srs_rtmp_port()
+        return f'rtmp://127.0.0.1:{rtmp_port}/live/{device_id}'
+
+    rtmp_url = (device_rtmp_stream or '').strip()
+    return rtmp_url or None
+
+
+def check_rtmp_server_connection(rtmp_url: str) -> bool:
+    """检查 RTMP/SRS 是否可用（优先 SRS API，避免仅 TCP 端口占用误判）。"""
+    try:
         if not rtmp_url.startswith('rtmp://'):
             return False
+
+        api_port = _srs_api_port()
+        if _check_srs_api_ready('127.0.0.1', api_port):
+            return True
 
         url_parts = rtmp_url.replace('rtmp://', '').split('/')
         host_port = url_parts[0]
@@ -589,20 +643,38 @@ def check_rtmp_server_connection(rtmp_url: str) -> bool:
             try:
                 port = int(port_str)
             except ValueError:
-                port = 1935  # 默认RTMP端口
+                port = 1935
         else:
             host = host_port
-            port = 1935  # 默认RTMP端口
-        
-        # 尝试连接RTMP服务器端口
+            port = 1935
+
+        if host in ('127.0.0.1', 'localhost') and _check_srs_api_ready('127.0.0.1', api_port):
+            return True
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
         result = sock.connect_ex((host, port))
         sock.close()
-        
         return result == 0
     except Exception as e:
         logger.debug(f"检查RTMP服务器连接时出错: {str(e)}")
+        return False
+
+
+def _check_srs_api_ready(host: str, api_port: int, timeout: float = 3.0) -> bool:
+    host = (host or '').strip()
+    if not host:
+        return False
+    try:
+        resp = requests.get(
+            f'http://{host}:{api_port}/api/v1/versions',
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        return data.get('code') == 0 and bool(data.get('data'))
+    except Exception:
         return False
 
 
@@ -754,6 +826,181 @@ def _build_ffmpeg_cmd(
         rtmp_url,
     ])
     return ffmpeg_cmd
+
+
+def _ffmpeg_native_enabled() -> bool:
+    return os.getenv('STREAM_FORWARD_FFMPEG_NATIVE', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+
+
+def _build_native_ffmpeg_mux_cmd(device_streams: Dict[str, dict]) -> List[str]:
+    """单 FFmpeg 进程：多路 RTSP 拉流 + 多路 RTMP 推流（降低进程数与 CPU 开销）。"""
+    rtsp_transport = (
+        os.getenv('AI_RTSP_TRANSPORT')
+        or os.getenv('FFMPEG_RTSP_TRANSPORT')
+        or os.getenv('OPENCV_FFMPEG_RTSP_TRANSPORT')
+        or 'tcp'
+    ).strip().lower()
+    if rtsp_transport not in ('tcp', 'udp'):
+        rtsp_transport = 'tcp'
+
+    profile_name, effective_fps, effective_w, effective_h, effective_bitrate, effective_gop = _get_effective_stream_params()
+    use_hardware = _hwaccel_codec == 'h264_nvenc'
+    if use_hardware:
+        target_w, target_h = align_resolution(effective_w, effective_h, 16)
+    else:
+        target_w, target_h = effective_w, effective_h
+
+    cmd = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'warning']
+    entries = list(device_streams.items())
+    for _device_id, info in entries:
+        cmd.extend([
+            '-rtsp_transport', rtsp_transport,
+            '-analyzeduration', '10000000',
+            '-probesize', '10000000',
+            '-fflags', '+genpts+discardcorrupt',
+            '-err_detect', 'ignore_err',
+            '-i', info['rtsp_url'],
+        ])
+
+    for idx, (device_id, info) in enumerate(entries):
+        rtmp_url = info['rtmp_url']
+        cmd.extend([
+            '-map', f'{idx}:v:0?',
+            '-vf', f'scale={target_w}:{target_h}:flags=lanczos,fps={effective_fps}',
+        ])
+        if use_hardware:
+            ffmpeg_gpu_id = get_ffmpeg_gpu_id(device_id)
+            cmd.extend([
+                '-c:v', 'h264_nvenc',
+                '-b:v', effective_bitrate,
+                '-preset', 'p3',
+                '-tune', 'll',
+                '-gpu', str(ffmpeg_gpu_id),
+                '-rc', 'vbr',
+                '-profile:v', 'main',
+                '-g', str(effective_gop),
+                '-bf', '0',
+                '-pix_fmt', 'yuv420p',
+            ])
+        else:
+            cmd.extend([
+                '-c:v', 'libx264',
+                '-b:v', effective_bitrate,
+                '-preset', FFMPEG_PRESET,
+                '-tune', 'zerolatency',
+                '-profile:v', 'main',
+                '-g', str(effective_gop),
+                '-bf', '0',
+                '-pix_fmt', 'yuv420p',
+            ])
+            if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
+                try:
+                    threads_value = int(FFMPEG_THREADS)
+                    if threads_value > 0:
+                        cmd.extend(['-threads', str(threads_value)])
+                except (ValueError, TypeError):
+                    pass
+        cmd.extend(['-f', 'flv', '-flvflags', 'no_duration_filesize', rtmp_url])
+
+    logger.info(
+        'FFmpeg 原生多路复用: %d 路, 编码 %s, 输出 %dx%d@%sfps, 档位=%s',
+        len(entries),
+        'h264_nvenc' if use_hardware else 'libx264',
+        target_w, target_h, effective_fps, profile_name,
+    )
+    return cmd
+
+
+def _stop_native_mux_process() -> None:
+    global native_mux_process
+    proc = native_mux_process
+    native_mux_process = None
+    if not proc:
+        return
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+    except Exception as e:
+        logger.warning('停止 FFmpeg 多路复用进程时出错: %s', e)
+
+
+def _run_native_ffmpeg_mode(device_streams: Dict[str, dict]) -> None:
+    """FFmpeg 原生多路复用主循环（无 OpenCV 中间层）。"""
+    global native_mux_process, native_mux_stderr_thread, heartbeat_thread
+
+    unavailable = []
+    for device_id, info in device_streams.items():
+        rtmp_url = info.get('rtmp_url')
+        if rtmp_url and not check_rtmp_server_connection(rtmp_url):
+            unavailable.append((device_id, rtmp_url))
+            logger.warning('设备 %s RTMP/SRS 不可用: %s', device_id, rtmp_url)
+
+    if unavailable:
+        api_port = _srs_api_port()
+        reason = (
+            f'SRS 未就绪（{len(unavailable)} 路），'
+            f'请确认节点媒体栈已部署且 API {api_port} 可访问'
+        )
+        logger.error(reason)
+        update_task_status(status=1, exception_reason=reason[:200])
+        return
+
+    ffmpeg_cmd = _build_native_ffmpeg_mux_cmd(device_streams)
+    logger.info('启动 FFmpeg 多路复用: %s', ' '.join(ffmpeg_cmd[:20]) + ' ...')
+
+    stderr_buffer: List[str] = []
+    stderr_lock = threading.Lock()
+    try:
+        native_mux_process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+            shell=False,
+        )
+        native_mux_stderr_thread = threading.Thread(
+            target=read_ffmpeg_stderr,
+            args=('native-mux', native_mux_process.stderr, stderr_buffer, stderr_lock),
+            daemon=True,
+        )
+        native_mux_stderr_thread.start()
+    except Exception as e:
+        logger.error('FFmpeg 多路复用启动失败: %s', e, exc_info=True)
+        update_task_status(status=1, exception_reason=f'FFmpeg多路复用启动失败: {str(e)[:200]}')
+        return
+
+    logger.info('FFmpeg 多路复用进程已启动 PID=%s', native_mux_process.pid)
+    heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
+    heartbeat_thread.start()
+
+    try:
+        while not stop_event.is_set():
+            if native_mux_process.poll() is not None:
+                exit_code = native_mux_process.returncode
+                with stderr_lock:
+                    tail = stderr_buffer[-10:]
+                logger.error('FFmpeg 多路复用进程退出 code=%s, stderr=%s', exit_code, tail)
+                update_task_status(status=1, exception_reason=f'FFmpeg多路复用退出({exit_code})')
+                break
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info('收到键盘中断，准备退出多路复用模式...')
+    finally:
+        stop_event.set()
+        _stop_native_mux_process()
+        try:
+            update_task_status(status=0, exception_reason=None)
+        except Exception as e:
+            logger.warning('更新任务停止状态失败: %s', e)
+        logger.info('FFmpeg 多路复用模式已停止')
 
 
 def _stop_device_pusher_process(device_id: str) -> None:
@@ -1290,7 +1537,13 @@ def main():
     update_task_status(status=0, exception_reason=None)
     
     device_streams = task_config.device_streams
+
+    if _ffmpeg_native_enabled():
+        logger.info('使用 FFmpeg 原生多路复用模式（STREAM_FORWARD_FFMPEG_NATIVE=true）')
+        _run_native_ffmpeg_mode(device_streams)
+        return
     
+    # 经典模式：每路 OpenCV 拉流 + 独立 FFmpeg stdin 推流
     # 为每个设备初始化 latest-frame 缓存与推流控制
     push_threads = []
     for device_id in device_streams.keys():

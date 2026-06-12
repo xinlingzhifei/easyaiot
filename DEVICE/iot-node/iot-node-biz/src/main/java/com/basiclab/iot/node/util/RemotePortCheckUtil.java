@@ -23,9 +23,11 @@ public final class RemotePortCheckUtil {
         ports.put("SRS RTMP", MediaStackDeployUtil.tagInt(tags, "srs_rtmp_port", 1935));
         ports.put("SRS HTTP", MediaStackDeployUtil.tagInt(tags, "srs_http_port", 8080));
         ports.put("SRS API", MediaStackDeployUtil.tagInt(tags, "srs_api_port", 1985));
+        ports.put("SRS WebRTC", MediaStackDeployUtil.tagInt(tags, "srs_rtc_port", 8000));
         ports.put("ZLM HTTP", MediaStackDeployUtil.tagInt(tags, "zlm_http_port", 6080));
         ports.put("ZLM RTMP", MediaStackDeployUtil.tagInt(tags, "zlm_rtmp_port", 10935));
         ports.put("ZLM RTSP", MediaStackDeployUtil.tagInt(tags, "zlm_rtsp_port", 8554));
+        ports.put("ZLM WebRTC", MediaStackDeployUtil.tagInt(tags, "zlm_rtc_port", 8800));
         return ports;
     }
 

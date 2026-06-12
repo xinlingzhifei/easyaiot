@@ -11,7 +11,9 @@ import com.basiclab.iot.node.dal.pgsql.NodeWorkloadBindingMapper;
 import com.basiclab.iot.node.domain.vo.NodeWorkloadDeployReqVO;
 import com.basiclab.iot.node.domain.vo.NodeWorkloadDeployRespVO;
 import com.basiclab.iot.node.enums.NodeStatusEnum;
+import com.basiclab.iot.node.service.NodeAiWorkloadSyncService;
 import com.basiclab.iot.node.service.NodeCommandService;
+import com.basiclab.iot.node.service.NodeVideoWorkloadSyncService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,11 +39,17 @@ public class NodeCommandServiceImpl implements NodeCommandService {
     private ComputeNodeMapper computeNodeMapper;
     @Resource
     private NodeWorkloadBindingMapper nodeWorkloadBindingMapper;
+    @Resource
+    private NodeVideoWorkloadSyncService nodeVideoWorkloadSyncService;
+    @Resource
+    private NodeAiWorkloadSyncService nodeAiWorkloadSyncService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public NodeWorkloadDeployRespVO deployWorkload(NodeWorkloadDeployReqVO reqVO) {
         ComputeNodeDO node = validateOnlineNode(reqVO.getNodeId());
+        nodeVideoWorkloadSyncService.syncBeforeDeploy(node, reqVO.getWorkloadType());
+        nodeAiWorkloadSyncService.syncBeforeDeploy(node, reqVO.getWorkloadType());
         Map<String, Object> body = new HashMap<>();
         body.put("workloadType", reqVO.getWorkloadType());
         body.put("workloadId", reqVO.getWorkloadId());

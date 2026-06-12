@@ -28,7 +28,8 @@ import {
   type ClusterWsMessage,
   type ClusterWsStatus,
 } from '../../utils/clusterMetricsWs';
-import { TREND_SAMPLE_INTERVAL_DEFAULT } from '../../utils/constants';
+import { NODE_TERM, TREND_SAMPLE_INTERVAL_DEFAULT } from '../../utils/constants';
+import { sortNodesWithPlatformFirst } from '../../utils/platformNode';
 
 export type { TrendViewMode };
 
@@ -112,7 +113,7 @@ export function useClusterDashboard() {
   });
 
   function applySnapshot(currentNodes: ComputeNodeVO[]) {
-    nodes.value = currentNodes;
+    nodes.value = sortNodesWithPlatformFirst(currentNodes);
     recomputeDerivedState();
     loading.value = false;
   }
@@ -125,6 +126,7 @@ export function useClusterDashboard() {
     } else {
       nodes.value.push(update);
     }
+    nodes.value = sortNodesWithPlatformFirst(nodes.value);
     recomputeDerivedState();
     loading.value = false;
   }
@@ -206,12 +208,10 @@ export function useClusterDashboard() {
     displayNodeDisks,
     lastUpdated,
     computeNodeOptions: computed(() =>
-      nodes.value
-        .filter(isComputeNode)
-        .map((node) => ({
-          label: `${node.name} (${node.host})`,
-          value: node.id!,
-        })),
+      sortNodesWithPlatformFirst(nodes.value.filter(isComputeNode)).map((node) => ({
+        label: node.isPlatform ? `${node.name} [${NODE_TERM.controlPlaneNode}] (${node.host})` : `${node.name} (${node.host})`,
+        value: node.id!,
+      })),
     ),
   };
 }

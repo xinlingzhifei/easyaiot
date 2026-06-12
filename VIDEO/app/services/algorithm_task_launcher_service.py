@@ -16,6 +16,7 @@ from typing import Dict, Optional, Tuple
 from datetime import datetime
 
 from models import db, AlgorithmTask
+from app.utils.node_remote_python import resolve_video_bundle_python
 from .algorithm_task_daemon import AlgorithmTaskDaemon
 from .snap_space_service import get_snap_space_by_device_id, create_snap_space_for_device
 
@@ -85,6 +86,8 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
         env['KAFKA_BOOTSTRAP_SERVERS'] = os.getenv('NODE_REMOTE_KAFKA', kafka_bootstrap)
     else:
         env['KAFKA_BOOTSTRAP_SERVERS'] = kafka_bootstrap
+    from app.utils.node_remote_tools import apply_remote_toolchain_env
+    apply_remote_toolchain_env(env)
     return env
 
 
@@ -112,7 +115,8 @@ def _deploy_task_on_remote_node(task_id: int, task: AlgorithmTask) -> Tuple[bool
     service_dir = 'snapshot_algorithm_service' if task.task_type == 'snap' else 'realtime_algorithm_service'
     work_dir = os.path.join(video_root_remote, 'services', service_dir)
     log_dir = os.path.join(video_root_remote, 'logs', f'task_{task_id}')
-    python_exec = os.getenv('NODE_REMOTE_PYTHON', 'python3')
+    bundle = 'algorithm_snap' if task.task_type == 'snap' else 'algorithm_realtime'
+    python_exec = resolve_video_bundle_python(bundle, video_root_remote)
     deploy_script = os.path.join(work_dir, 'run_deploy.py')
     command = [python_exec, deploy_script]
 

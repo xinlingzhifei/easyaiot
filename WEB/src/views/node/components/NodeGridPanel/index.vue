@@ -55,12 +55,16 @@
                           <EyeOutlined />
                         </button>
                       </Tooltip>
-                      <Tooltip title="编辑">
+                      <Tooltip v-if="!isPlatformNode(item)" title="编辑">
                         <button class="overlay-btn" @click="handleEdit(item)">
                           <EditOutlined />
                         </button>
                       </Tooltip>
-                      <Popconfirm title="确认删除该节点？" @confirm="handleDelete(item)">
+                      <Popconfirm
+                        v-if="!isPlatformNode(item)"
+                        title="确认删除该节点？"
+                        @confirm="handleDelete(item)"
+                      >
                         <Tooltip title="删除">
                           <button class="overlay-btn overlay-btn--danger">
                             <DeleteOutlined />
@@ -73,7 +77,8 @@
 
                 <div class="node-card-body">
                   <h3 class="node-card-title" :title="item.name" @click="handleView(item)">
-                    {{ item.name }}
+                    <span>{{ item.name }}</span>
+                    <NodeMetaBadge v-if="isPlatformNode(item)" type="scope" />
                   </h3>
                   <p v-if="getMetaText(item)" class="node-card-meta-line" :title="getMetaText(item)">
                     {{ getMetaText(item) }}
@@ -99,6 +104,8 @@ import type { ComputeNodeVO } from '@/api/device/node';
 import { NODE_ROLE_MAP, NODE_TERM } from '../../utils/constants';
 import { getNodeRoleVisual } from '../../utils/nodeAssets';
 import { renderNodeStatusBadge } from '../../utils/nodeDisplay';
+import { isPlatformNode } from '../../utils/platformNode';
+import NodeMetaBadge from '../NodeMetaBadge/index.vue';
 import NodeRoleIcon from '../NodeRoleIcon/index.vue';
 import { getNodeCardFormConfig } from './Data';
 
@@ -434,9 +441,11 @@ defineExpose({ fetch });
   font-weight: 600;
   line-height: 1.45;
   color: #181818;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   cursor: pointer;
 
   &:hover {

@@ -4,6 +4,7 @@ import com.basiclab.iot.node.dal.dataobject.ComputeNodeDO;
 import com.basiclab.iot.node.dal.pgsql.ComputeNodeMapper;
 import com.basiclab.iot.node.enums.NodeStatusEnum;
 import com.basiclab.iot.node.service.NodeHealthService;
+import com.basiclab.iot.node.service.impl.ComputeNodeServiceImpl;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -34,6 +35,9 @@ public class NodeHealthServiceImpl implements NodeHealthService {
                         .eq(ComputeNodeDO::getStatus, NodeStatusEnum.ONLINE.getStatus()));
         LocalDateTime threshold = LocalDateTime.now().minusSeconds(OFFLINE_THRESHOLD_SECONDS);
         for (ComputeNodeDO node : onlineNodes) {
+            if (ComputeNodeServiceImpl.isPlatformNode(node)) {
+                continue;
+            }
             String heartbeat = stringRedisTemplate.opsForValue().get(HEARTBEAT_KEY_PREFIX + node.getId());
             boolean redisAlive = heartbeat != null;
             boolean dbAlive = node.getLastHeartbeatAt() != null && node.getLastHeartbeatAt().isAfter(threshold);

@@ -107,6 +107,26 @@ def get_node(node_id: int) -> Dict[str, Any]:
     return _get('/get', {'id': node_id})
 
 
+def get_platform_node_id() -> Optional[int]:
+    """获取控制面节点 ID，用于调度时排除或降权本机。"""
+    try:
+        data = _get('/platform-agent-bootstrap', {})
+        node_id = data.get('nodeId')
+        return int(node_id) if node_id is not None else None
+    except Exception as e:
+        logger.debug('获取控制面节点 ID 失败: %s', e)
+        return None
+
+
+def deploy_media_stack(node_id: int, stack_type: str = 'srs_live') -> Dict[str, Any]:
+    """通过 Agent 在目标节点部署 SRS/ZLM 媒体栈。"""
+    payload = {
+        'nodeId': node_id,
+        'stackType': stack_type,
+    }
+    return _post('/media/deploy-stack', payload)
+
+
 def deploy_workload(
     node_id: int,
     workload_type: str,

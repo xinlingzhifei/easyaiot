@@ -1,7 +1,7 @@
-# yFeiEye（逸飞 AI 智眼管控平台）
+# yFeiEye（云边端一体化智能算法应用平台）
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
+[![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 我希望全世界都能使用这个系统，实现AI的真正0门槛，人人都能体验到AI带来的好处，而并不只是掌握在少数人手里。
@@ -30,7 +30,7 @@
 ### 📍 项目定位
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye是一个AI 智眼的智能物联网平台，专注于AI与IoT的深度融合。平台通过算法任务管理、实时流分析、模型服务集群推理等核心能力，实现从设备接入到数据采集、AI分析、智能决策的全链路闭环，真正实现万物互联、万物智控。
+yFeiEye是一个云边端一体化的智能物联网平台，专注于AI与IoT的深度融合。平台通过算法任务管理、实时流分析、模型服务集群推理等核心能力，实现从设备接入到数据采集、AI分析、智能决策的全链路闭环，真正实现万物互联、万物智控。
 </p>
 
 #### 🧠 AI能力
@@ -45,7 +45,7 @@ yFeiEye是一个AI 智眼的智能物联网平台，专注于AI与IoT的深度�
   <li><strong>算力与资源全景监测</strong>：集成 GPUStack 资源管控能力，对服务器 GPU、CPU、内存、存储等关键指标进行统一采集与可视化展示，实时掌握算力占用、显存余量、磁盘与内存使用情况，为模型部署、训练任务与视频分析链路提供可观测、可预警的运维底座</li>
   <li><strong>视觉大模型智能理解</strong>：集成QwenVL3视觉大模型，支持对实时视频画面进行深度视觉推理与语义理解，能够对画面内容进行智能分析与场景理解，提供更丰富的视觉认知能力，实现从像素级感知到语义级理解的跨越</li>
   <li><strong>摄像头实时画面AI分析</strong>：支持摄像头实时画面的AI智能分析，可对实时视频流进行目标检测、行为分析、异常识别等AI算法处理，提供毫秒级响应的实时分析结果，支持多路视频并发分析</li>
-  <li><strong>AI 智眼算法预警监控大屏</strong>：提供统一的AI 智眼算法预警监控大屏，实时展示设备状态、算法任务运行情况、告警事件统计、视频流分析结果等关键信息，支持多维度数据可视化展示，实现云端、边缘端、设备端的统一监控与管理，为决策者提供全局视角的智能监控指挥中心</li>
+  <li><strong>云边端一体算法预警监控大屏</strong>：提供统一的云边端一体化算法预警监控大屏，实时展示设备状态、算法任务运行情况、告警事件统计、视频流分析结果等关键信息，支持多维度数据可视化展示，实现云端、边缘端、设备端的统一监控与管理，为决策者提供全局视角的智能监控指挥中心</li>
   <li><strong>人脸识别与人脸库管理能力</strong>：支持在摄像头任务中灵活开启人脸识别能力，基于Milvus构建人脸库与人脸特征向量管理体系，提供人脸样本/特征的新增、查询、更新、删除与向量检索能力。支持对抓拍画面进行高效人脸比对与身份检索，完整记录匹配结果、抓拍图片、摄像头位置信息与设备上下文，便于后续人员轨迹追溯、安防取证与多维度统计分析</li>
   <li><strong>车牌识别与车牌库管理能力</strong>：支持在监控任务中一键启用车牌识别，自动从过车画面中识别车牌信息，并与自建车牌库实时比对。可灵活维护白名单、黑名单及业务标签，车辆命中规则时即时告警联动，帮助实现出入口通行管控、重点车辆布控、访客与固定车辆分类管理等需求。支持自动收录新出现车牌、完整留存抓拍与匹配记录，便于事后查车、轨迹核对与证据留存；识别过程与原有视频分析并行运行，不影响监控与告警主流程的稳定性和实时性</li>
   <li><strong>设备检测区域绘制</strong>：提供可视化的设备检测区域绘制工具，支持在设备抓拍图片上绘制四边形和多边形检测区域，支持区域与算法模型灵活关联配置，支持区域的可视化管理、编辑、删除等操作，支持快捷键操作提升绘制效率，实现精准的区域检测配置，为算法任务提供精确的检测范围定义</li>
@@ -140,7 +140,7 @@ Java擅长构建稳定可靠的平台架构，但不适合网络编程和AI编�
 ### 🏗️ 项目架构特点
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye其实不是一个项目，而是五个项目。
+yFeiEye其实不是一个项目，而是六个项目。
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -203,7 +203,7 @@ yFeiEye积极响应本土化战略，全面支持本土化硬件和操作系统�
 ## 🧩 项目结构
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye由五个核心项目组成：
+yFeiEye由六个核心项目组成：
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -226,6 +226,20 @@ yFeiEye由五个核心项目组成：
     <li><strong>设备认证</strong>：设备动态注册、身份认证、安全接入</li>
     <li><strong>规则引擎</strong>：数据流转规则、消息路由、数据转换</li>
     <li><strong>数据采集</strong>：设备数据采集、存储、查询与分析</li>
+    <li><strong>节点控制面</strong>：内置 <code>iot-node</code> 微服务，提供计算/媒体节点 CRUD、SSH 连通测试、Agent 注册与心跳、工作负载调度与媒体节点池分配等统一控制面能力</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>NODE模块</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>节点代理</strong>：基于 Python 的边缘/远程节点 Agent，通过 <code>install.sh</code> 一键安装为 systemd 服务，部署于目标服务器后自动接入平台</li>
+    <li><strong>控制面通信</strong>：向 <code>iot-node</code> 控制面注册并周期性心跳，实时上报 CPU、内存、磁盘、GPU 利用率及在运工作负载状态</li>
+    <li><strong>远程工作负载</strong>：通过 HTTP 接口（默认 9100 端口）接收控制面下发的部署/停止指令，在节点本地拉起 AI 模型服务、算法任务、FFmpeg 转码等工作负载</li>
+    <li><strong>媒体节点池</strong>：支持在节点上远程 <code>docker compose</code> 部署 SRS/ZLM 流媒体栈，配合控制面实现设备与媒体节点的 Sticky 绑定与流地址生成</li>
+    <li><strong>节点角色</strong>：支持 compute（算力）、media（媒体）、hybrid（混合）三种角色，支撑 AI 推理、算法任务与流媒体业务的跨节点调度与弹性扩容</li>
+    <li><strong>离线友好</strong>：提供 pip wheels 离线依赖打包与 Agent 热更新能力，适配无外网或受限网络环境下的批量节点纳管</li>
   </ul>
 </td>
 </tr>
@@ -305,7 +319,7 @@ yFeiEye支持在Linux、Mac、Windows三大主流操作系统上部署，为不�
 <strong>统一体验</strong>：无论选择哪种操作系统，yFeiEye都提供一致的安装脚本和部署文档，确保跨平台部署体验的一致性。
 </p>
 
-## ☁️ yFeiEye = AI + IoT = AI 智眼解决方案
+## ☁️ yFeiEye = AI + IoT = 云边端一体化解决方案
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
 支持上千种垂直场景，支持AI模型定制化和AI算法定制化开发，深度融合。
@@ -343,8 +357,8 @@ yFeiEye是一个开源学习项目，与商业行为无关。用户在使用该�
 
 ## ⚙️ 项目地址
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
+- Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 截图
 <div>
@@ -604,6 +618,38 @@ yFeiEye是一个开源学习项目，与商业行为无关。用户在使用该�
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
 </div>
 
+## 📞 联系方式
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+请先关注下方公众号，再通过技术交流群或微信号与我们联系。
+</p>
+
+## 👥 公众号
+
+<div>
+  <img src=".image/公众号.jpg" alt="公众号" width="30%">
+</div>
+
+## 💬 技术交流群
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+关注公众号后，使用微信扫描下方二维码加入 yFeiEye 技术交流群。
+</p>
+
+<div>
+  <img src=".image/交流群3群.jpg" alt="yFeiEye技术交流3群" width="30%">
+</div>
+
+## 💬 微信号联系
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+关注公众号后，如需一对一沟通，可扫描下方二维码添加微信好友。
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="微信号联系方式" width="200">
+</div>
+
 ## 🪐 知识星球：
 
 <p>
@@ -613,6 +659,7 @@ yFeiEye是一个开源学习项目，与商业行为无关。用户在使用该�
 ## 💰 打赏赞助
 
 <div>
+    <img src=".image/微信支付.jpg" alt="微信支付" width="30%" height="30%">
     <img src=".image/支付宝支付.jpg" alt="支付宝支付" width="30%" height="10%">
 </div>
 
@@ -932,13 +979,13 @@ yFeiEye是一个开源学习项目，与商业行为无关。用户在使用该�
 ## 💡 期望
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-欢迎提出更好的意见，帮助完善 yfeieye
+欢迎提出更好的意见，帮助完善 easyaiot
 </p>
 
 ## 📄 版权
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye 采用 <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 开源协议。我们致力于推动 AI 技术的普及与发展，让更多人能够自由使用和受益于这项技术。
+翱翔的雄库鲁/easyaiot 采用 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 开源协议。我们致力于推动 AI 技术的普及与发展，让更多人能够自由使用和受益于这项技术。
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -947,4 +994,4 @@ yFeiEye是一个开源学习项目，与商业行为无关。用户在使用该�
 
 ## 🌟 Star增长趋势图
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-import { Progress } from 'ant-design-vue';
 import { useRender } from '@/components/Table';
 import NodeGpuMiniBars from '../NodeGpuMiniBars/index.vue';
+import MetricBar from './MetricBar.vue';
 import type { NodeLoadItem } from '../../utils/clusterMetrics';
 import { formatCpuQuantity, formatPercent, formatStorageRange, getProgressColor } from '../../utils/clusterMetrics';
 import { NODE_DASHBOARD, NODE_METRIC, NODE_STATUS_MAP } from '../../utils/constants';
@@ -46,11 +46,9 @@ function renderStatusTag(status?: string) {
         </span>
         <div class="metric-cell">
           <span class="metric-cell__pct">{{ formatCpuQuantity(node.cpu) }}</span>
-          <Progress
+          <MetricBar
             :percent="Math.min(node.cpu, 100)"
             :stroke-color="getProgressColor(Math.min(node.cpu, 100))"
-            :show-info="false"
-            size="small"
           />
         </div>
         <div class="metric-cell">
@@ -61,7 +59,7 @@ function renderStatusTag(status?: string) {
               {{ formatStorageRange(node.memUsedBytes, node.memTotalBytes) }}
             </span>
           </div>
-          <Progress :percent="node.mem" :stroke-color="getProgressColor(node.mem)" :show-info="false" size="small" />
+          <MetricBar :percent="node.mem" :stroke-color="getProgressColor(node.mem)" />
         </div>
         <div class="gpu-cell">
           <NodeGpuMiniBars
@@ -81,7 +79,7 @@ function renderStatusTag(status?: string) {
               {{ formatStorageRange(node.diskUsedBytes, node.diskTotalBytes) }}
             </span>
           </div>
-          <Progress :percent="node.disk" :stroke-color="getProgressColor(node.disk)" :show-info="false" size="small" />
+          <MetricBar :percent="node.disk" :stroke-color="getProgressColor(node.disk)" />
         </div>
       </div>
     </template>

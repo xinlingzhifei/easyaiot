@@ -1,7 +1,7 @@
 # yFeiEye（雲邊端一體化智能算法應用平臺）
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
+[![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 我希望全世界都能使用這個系統，實現AI的真正0門檻，人人都能體驗到AI帶來的好處，而並不只是掌握在少數人手裏。
@@ -140,7 +140,7 @@ Java擅長構建穩定可靠的平臺架構，但不適合網絡編程和AI編�
 ### 🏗️ 項目架構特點
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye其實不是一個項目，而是五個項目。
+yFeiEye其實不是一個項目，而是六個項目。
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -203,7 +203,7 @@ yFeiEye積極響應本土化戰略，全面支持本土化硬件和操作系統�
 ## 🧩 項目結構
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye由五個核心項目組成：
+yFeiEye由六個核心項目組成：
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -226,6 +226,20 @@ yFeiEye由五個核心項目組成：
     <li><strong>設備認證</strong>：設備動態註冊、身份認證、安全接入</li>
     <li><strong>規則引擎</strong>：數據流轉規則、消息路由、數據轉換</li>
     <li><strong>數據采集</strong>：設備數據采集、存儲、查詢與分析</li>
+    <li><strong>節點控制面</strong>：內置 <code>iot-node</code> 微服務，提供計算/媒體節點 CRUD、SSH 連通測試、Agent 註冊與心跳、工作負載調度與媒體節點池分配等統一控制面能力</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>NODE模塊</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>節點代理</strong>：基於 Python 的邊緣/遠程節點 Agent，通過 <code>install.sh</code> 一鍵安裝為 systemd 服務，部署於目標服務器後自動接入平臺</li>
+    <li><strong>控制面通信</strong>：向 <code>iot-node</code> 控制面註冊並周期性心跳，實時上報 CPU、內存、磁盤、GPU 利用率及在運工作負載狀態</li>
+    <li><strong>遠程工作負載</strong>：通過 HTTP 接口（默認 9100 端口）接收控制面下發的部署/停止指令，在節點本地拉起 AI 模型服務、算法任務、FFmpeg 轉碼等工作負載</li>
+    <li><strong>媒體節點池</strong>：支持在節點上遠程 <code>docker compose</code> 部署 SRS/ZLM 流媒體棧，配合控制面實現設備與媒體節點的 Sticky 綁定與流地址生成</li>
+    <li><strong>節點角色</strong>：支持 compute（算力）、media（媒體）、hybrid（混合）三種角色，支撐 AI 推理、算法任務與流媒體業務的跨節點調度與彈性擴容</li>
+    <li><strong>離線友好</strong>：提供 pip wheels 離線依賴打包與 Agent 熱更新能力，適配無外網或受限網絡環境下的批量節點納管</li>
   </ul>
 </td>
 </tr>
@@ -343,8 +357,8 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 
 ## ⚙️ 項目地址
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
+- Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 截圖
 <div>
@@ -599,7 +613,7 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 ## 🛠️ 服務支持
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-我們提供了各種服務方式幫助您深入了解yFeiEye平臺和代碼，通過產品文檔、付費教學等方式，你將獲得如下服務：
+我們提供了各種服務方式幫助您深入了解yFeiEye平臺和代碼，通過產品文檔、技術交流群、付費教學等方式，你將獲得如下服務：
 </p>
 
 <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin: 20px 0; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -633,6 +647,38 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 </tbody>
 </table>
 
+## 📞 聯系方式
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+請先關注下方公眾號，再通過技術交流群或微信號與我們聯系。
+</p>
+
+## 👥 公眾號
+
+<div>
+  <img src=".image/公众号.jpg" alt="公眾號" width="30%">
+</div>
+
+## 💬 技術交流群
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+關注公眾號後，使用微信掃描下方二維碼加入 yFeiEye 技術交流群。
+</p>
+
+<div>
+  <img src=".image/交流群3群.jpg" alt="yFeiEye技術交流3群" width="30%">
+</div>
+
+## 💬 微信號聯系
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+關注公眾號後，如需一對一溝通，可掃描下方二維碼添加微信好友。
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="微信號聯系方式" width="200">
+</div>
+
 ## 🪐 知識星球：
 
 <p>
@@ -642,6 +688,7 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 ## 💰 打賞贊助
 
 <div>
+    <img src=".image/微信支付.jpg" alt="微信支付" width="30%" height="30%">
     <img src=".image/支付寶支付.jpg" alt="支付寶支付" width="30%" height="10%">
 </div>
 
@@ -961,13 +1008,13 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 ## 💡 期望
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-歡迎提出更好的意見，幫助完善 yfeieye
+歡迎提出更好的意見，幫助完善 easyaiot
 </p>
 
 ## 📄 版權
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翺翔的雄庫魯/yfeieye 采用 <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 開源協議。我們致力於推動 AI 技術的普及與發展，讓更多人能夠自由使用和受益於這項技術。
+翺翔的雄庫魯/easyaiot 采用 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 開源協議。我們致力於推動 AI 技術的普及與發展，讓更多人能夠自由使用和受益於這項技術。
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -976,4 +1023,4 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 
 ## 🌟 Star增長趨勢圖
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)

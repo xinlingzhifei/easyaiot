@@ -1,6 +1,7 @@
 # ZLMediaKit 集群节点配置模板
-# 变量: MEDIA_NODE_ID, MEDIA_HOOK_HOST, MEDIA_HOOK_PORT, ZLM_SECRET,
-#       ZLM_HTTP_PORT, ZLM_RTMP_PORT, ZLM_RTSP_PORT, ZLM_RTP_PORT_MIN, ZLM_RTP_PORT_MAX
+# 变量: MEDIA_NODE_ID, MEDIA_HOOK_HOST, MEDIA_HOOK_PORT, MEDIA_HOOK_PATH_PREFIX, ZLM_SECRET,
+#       ZLM_HTTP_PORT, ZLM_RTMP_PORT, ZLM_RTSP_PORT, ZLM_RTP_PORT_MIN, ZLM_RTP_PORT_MAX,
+#       ZLM_RTC_PORT, ZLM_RTC_EXTERN_IP
 
 [api]
 apiDebug=0
@@ -37,9 +38,9 @@ udpTTL=64
 
 [hook]
 enable=1
-on_publish=http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}/video/media/hook/srs/on_publish
-on_stream_changed=http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}/video/media/hook/srs/on_unpublish
-on_record_mp4=http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}/video/media/hook/zlm/on_record_mp4
+on_publish=http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}${MEDIA_HOOK_PATH_PREFIX}/video/media/hook/srs/on_publish
+on_stream_changed=http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}${MEDIA_HOOK_PATH_PREFIX}/video/media/hook/srs/on_unpublish
+on_record_mp4=http://${MEDIA_HOOK_HOST}:${MEDIA_HOOK_PORT}${MEDIA_HOOK_PATH_PREFIX}/video/media/hook/zlm/on_record_mp4
 timeoutSec=10
 alive_interval=30.0
 
@@ -64,3 +65,10 @@ fileRepeat=0
 
 [rtp_proxy]
 port_range=${ZLM_RTP_PORT_MIN}-${ZLM_RTP_PORT_MAX}
+
+[rtc]
+# 默认 8800，与 SRS rtc_server(8000) 错开，避免 host 网络同机部署端口冲突
+externIP=${ZLM_RTC_EXTERN_IP}
+port=${ZLM_RTC_PORT}
+tcpPort=${ZLM_RTC_PORT}
+timeoutSec=15

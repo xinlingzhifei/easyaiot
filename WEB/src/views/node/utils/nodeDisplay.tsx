@@ -1,6 +1,7 @@
-import { h } from 'vue';
+import { h, type VNode } from 'vue';
 import type { ComputeNodeVO } from '@/api/device/node';
-import { NODE_ROLE_MAP, NODE_STATUS_MAP, SETUP_COPY } from './constants';
+import { NODE_ROLE_MAP, NODE_STATUS_MAP, NODE_TERM, SETUP_COPY } from './constants';
+import { isPlatformNode } from './platformNode';
 
 type SshCredentialNode = Pick<ComputeNodeVO, 'sshUsername' | 'sshCredentialConfigured'>;
 
@@ -52,4 +53,19 @@ export function renderNodeReadinessBadge(ready: boolean) {
     { class: `node-meta-badge node-meta-badge--readiness-${ready ? 'ready' : 'pending'}` },
     ready ? SETUP_COPY.readinessReady : SETUP_COPY.readinessPending,
   );
+}
+
+export function renderPlatformNodeBadge() {
+  return h('span', { class: 'node-meta-badge node-meta-badge--scope-control-plane' }, NODE_TERM.controlPlaneNode);
+}
+
+export function renderNodeNameWithPlatformBadge(
+  name?: string,
+  node?: Pick<ComputeNodeVO, 'isPlatform' | 'capabilities'> | null,
+) {
+  const children: VNode[] = [h('span', null, name || '-')];
+  if (isPlatformNode(node)) {
+    children.push(h('span', { class: 'node-name-platform-badge' }, [renderPlatformNodeBadge()]));
+  }
+  return h('span', { class: 'node-name-with-badge' }, children);
 }

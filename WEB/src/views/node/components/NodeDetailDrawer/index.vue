@@ -12,11 +12,14 @@ import { getNode, testNodeSsh, type ComputeNodeVO } from '@/api/device/node';
 import {
   NODE_DETAIL,
   NODE_ROLE_DESC,
+  NODE_TERM,
   loadNodeControlPlaneUrlAsync,
   saveNodeControlPlaneUrl,
+  readMediaPortsFromTags,
 } from '../../utils/constants';
 import { mediaDetailSchema, nodeSetupSummarySchema } from '../../Data';
 import NodeMetaBadge from '../NodeMetaBadge/index.vue';
+import { isPlatformNode } from '../../utils/platformNode';
 import SetupOverviewPanel from '../SetupOverviewPanel/index.vue';
 import NodeDetailResourcePanel from '../NodeDetailResourcePanel/index.vue';
 import MediaStackSetupPanel from '../MediaStackSetupPanel/index.vue';
@@ -57,6 +60,8 @@ const isMediaNode = computed(
   () => node.value?.nodeRole === 'media' || node.value?.nodeRole === 'hybrid',
 );
 
+const isPlatformReadonly = computed(() => isPlatformNode(node.value));
+
 const roleDesc = computed(() => NODE_ROLE_DESC[node.value?.nodeRole || ''] || '');
 
 const mediaFormValues = computed(() => {
@@ -72,14 +77,7 @@ const mediaFormValues = computed(() => {
     sshCredentialConfigured: current.sshCredentialConfigured,
     sshLastTestOk: current.sshLastTestOk,
     sshPort: current.sshPort,
-    srsRtmpPort: tags.srs_rtmp_port ? Number(tags.srs_rtmp_port) : 1935,
-    srsHttpPort: tags.srs_http_port ? Number(tags.srs_http_port) : 8080,
-    srsApiPort: tags.srs_api_port ? Number(tags.srs_api_port) : 1985,
-    zlmHttpPort: tags.zlm_http_port ? Number(tags.zlm_http_port) : 6080,
-    zlmRtmpPort: tags.zlm_rtmp_port ? Number(tags.zlm_rtmp_port) : 10935,
-    zlmRtspPort: tags.zlm_rtsp_port ? Number(tags.zlm_rtsp_port) : 8554,
-    zlmRtpPortMin: tags.zlm_rtp_port_min ? Number(tags.zlm_rtp_port_min) : 30000,
-    zlmRtpPortMax: tags.zlm_rtp_port_max ? Number(tags.zlm_rtp_port_max) : 30500,
+    ...readMediaPortsFromTags(tags),
   };
 });
 
@@ -119,10 +117,15 @@ const [registerMediaDesc] = useDescription({
 
 const [registerDrawer, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) => {
   drawerOpen.value = true;
+  const platformReadonly = isPlatformNode(data?.record);
   const pending = data?.record?.status === 'pending';
   const isMedia =
     data?.record?.nodeRole === 'media' || data?.record?.nodeRole === 'hybrid';
-  activeTab.value = pending ? (isMedia ? 'mediaDeploy' : 'agentDeploy') : 'resource';
+  activeTab.value = platformReadonly
+    ? 'resource'
+    : pending
+      ? (isMedia ? 'mediaDeploy' : 'agentDeploy')
+      : 'resource';
   setDrawerProps({ showFooter: true, showOkBtn: false, showCancelBtn: false });
   if (data?.record?.id) {
     skipControlPlanePersist.value = true;
@@ -216,6 +219,7 @@ defineExpose({
           </div>
         </div>
         <div class="detail-drawer-header__tags">
+          <NodeMetaBadge v-if="isPlatformNode(node)" type="scope" size="lg" />
           <NodeMetaBadge type="status" :status="node.status" size="lg" />
           <NodeMetaBadge type="role" :role="node.nodeRole" size="lg" />
         </div>
@@ -228,7 +232,7 @@ defineExpose({
           <Button @click="handleClose">{{ NODE_DETAIL.footerClose }}</Button>
           <Button @click="handleRefresh">{{ NODE_DETAIL.actionRefresh }}</Button>
         </div>
-        <div class="detail-footer__right">
+        <div v-if="!isPlatformReadonly" class="detail-footer__right">
           <Button
             v-if="node?.status === 'pending'"
             type="primary"
@@ -249,7 +253,15 @@ defineExpose({
 
     <div v-if="node" class="detail-drawer-content">
       <Alert
-        v-if="statusAlert"
+        v-if="isPlatformReadonly"
+        type="info"
+        show-icon
+        class="detail-status-alert"
+        :message="NODE_TERM.controlPlaneNodeReadonly"
+        description="该节点由平台自动纳管，仅支持查看资源指标。监测代理需在宿主机手动启动。"
+      />
+      <Alert
+        v-else-if="statusAlert"
         :type="statusAlert.type"
         show-icon
         class="detail-status-alert"
@@ -271,7 +283,7 @@ defineExpose({
           </div>
         </Tabs.TabPane>
 
-        <Tabs.TabPane :key="'config'" :tab="NODE_DETAIL.tabConfig">
+        <Tabs.TabPane v-if="!isPlatformReadonly" :key="'config'" :tab="NODE_DETAIL.tabConfig">
           <div class="detail-tab-pane">
             <Alert v-if="roleDesc" type="info" show-icon class="detail-tab-alert" :message="roleDesc" />
             <div class="setup-desc">
@@ -290,7 +302,7 @@ defineExpose({
           </div>
         </Tabs.TabPane>
 
-        <Tabs.TabPane :key="'access'" :tab="NODE_DETAIL.tabAccess">
+        <Tabs.TabPane v-if="!isPlatformReadonly" :key="'access'" :tab="NODE_DETAIL.tabAccess">
           <div class="detail-tab-pane">
             <SetupOverviewPanel
               embedded
@@ -304,7 +316,7 @@ defineExpose({
         </Tabs.TabPane>
 
         <Tabs.TabPane
-          v-if="isMediaNode"
+          v-if="isMediaNode && !isPlatformReadonly"
           :key="'mediaDeploy'"
           :tab="NODE_DETAIL.tabMediaDeploy"
         >
@@ -317,7 +329,7 @@ defineExpose({
           </div>
         </Tabs.TabPane>
 
-        <Tabs.TabPane :key="'agentDeploy'" :tab="NODE_DETAIL.tabAgentDeploy">
+        <Tabs.TabPane v-if="!isPlatformReadonly" :key="'agentDeploy'" :tab="NODE_DETAIL.tabAgentDeploy">
           <div class="detail-tab-pane detail-tab-pane--flush">
             <div class="detail-tab-stack">
               <AgentDeployPanel

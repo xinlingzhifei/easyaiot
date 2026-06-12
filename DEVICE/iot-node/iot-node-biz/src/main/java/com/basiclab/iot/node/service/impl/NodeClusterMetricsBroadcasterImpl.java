@@ -86,6 +86,7 @@ public class NodeClusterMetricsBroadcasterImpl implements NodeClusterMetricsBroa
         node.setActiveTasks(resp.getActiveTasks());
         node.setGpuInfo(resp.getGpuInfo());
         node.setLastHeartbeatAt(resp.getLastHeartbeatAt());
+        node.setIsPlatform(resp.getIsPlatform());
         return node;
     }
 
@@ -97,6 +98,7 @@ public class NodeClusterMetricsBroadcasterImpl implements NodeClusterMetricsBroa
         payload.setStatus(node.getStatus());
         payload.setNodeRole(node.getNodeRole());
         payload.setLastHeartbeatAt(node.getLastHeartbeatAt());
+        payload.setIsPlatform(ComputeNodeServiceImpl.isPlatformNode(node));
         if (metric != null) {
             payload.setCpuPercent(metric.getCpuPercent());
             payload.setMemPercent(metric.getMemPercent());

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { formatMemMb, formatPercent, getProgressColor } from '../../utils/clusterMetrics';
 import { NODE_METRIC, parseGpuInfo, type GpuInfoItem } from '../../utils/constants';
 
@@ -20,6 +20,13 @@ const props = withDefaults(
 );
 
 const items = computed(() => parseGpuInfo(props.gpuInfo));
+const animated = ref(false);
+
+onMounted(() => {
+  nextTick(() => {
+    animated.value = true;
+  });
+});
 
 function getPercent(gpu: GpuInfoItem): number {
   if (props.metric === 'util') {
@@ -55,6 +62,7 @@ function getValueText(gpu: GpuInfoItem): string {
       <div class="gpu-mini-bar-row__track" :title="getTooltip(gpu)">
         <div
           class="gpu-mini-bar-row__fill"
+          :class="{ 'gpu-mini-bar-row__fill--animated': animated }"
           :style="{
             width: `${getPercent(gpu)}%`,
             backgroundColor: getProgressColor(getPercent(gpu)),
@@ -117,7 +125,10 @@ function getValueText(gpu: GpuInfoItem): string {
 .gpu-mini-bar-row__fill {
   height: 100%;
   border-radius: 3px;
-  transition: width 0.25s ease;
+}
+
+.gpu-mini-bar-row__fill--animated {
+  transition: width 0.35s ease, background-color 0.35s ease;
 }
 
 .gpu-mini-bar-row__value {

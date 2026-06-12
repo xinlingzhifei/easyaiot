@@ -7,7 +7,7 @@ import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { Button } from '@/components/Button';
 import { createNode, updateNode, type ComputeNodeVO } from '@/api/device/node';
-import { generateDefaultAgentPort, generateRandomDeployPorts, SETUP_COPY } from '../../utils/constants';
+import { generateDefaultAgentPort, generateRandomDeployPorts, SETUP_COPY, readMediaPortsFromTags, buildMediaPortTags } from '../../utils/constants';
 import {
   nodeFormHistoryToFields,
   saveNodeFormHistory,
@@ -45,17 +45,9 @@ function isComputeRole(role: unknown) {
 }
 
 function flattenMediaTags(record: ComputeNodeVO) {
-  const tags = record.tags || {};
   return {
     ...record,
-    srsRtmpPort: tags.srs_rtmp_port ? Number(tags.srs_rtmp_port) : 1935,
-    srsHttpPort: tags.srs_http_port ? Number(tags.srs_http_port) : 8080,
-    srsApiPort: tags.srs_api_port ? Number(tags.srs_api_port) : 1985,
-    zlmHttpPort: tags.zlm_http_port ? Number(tags.zlm_http_port) : 6080,
-    zlmRtmpPort: tags.zlm_rtmp_port ? Number(tags.zlm_rtmp_port) : 10935,
-    zlmRtspPort: tags.zlm_rtsp_port ? Number(tags.zlm_rtsp_port) : 8554,
-    zlmRtpPortMin: tags.zlm_rtp_port_min ? Number(tags.zlm_rtp_port_min) : 30000,
-    zlmRtpPortMax: tags.zlm_rtp_port_max ? Number(tags.zlm_rtp_port_max) : 30500,
+    ...readMediaPortsFromTags(record.tags),
   };
 }
 
@@ -65,14 +57,7 @@ function buildMediaTags(values: Record<string, unknown>) {
   }
   return {
     ...(values.tags as Record<string, string> | undefined),
-    srs_rtmp_port: String(values.srsRtmpPort ?? 1935),
-    srs_http_port: String(values.srsHttpPort ?? 8080),
-    srs_api_port: String(values.srsApiPort ?? 1985),
-    zlm_http_port: String(values.zlmHttpPort ?? 6080),
-    zlm_rtmp_port: String(values.zlmRtmpPort ?? 10935),
-    zlm_rtsp_port: String(values.zlmRtspPort ?? 8554),
-    zlm_rtp_port_min: String(values.zlmRtpPortMin ?? 30000),
-    zlm_rtp_port_max: String(values.zlmRtpPortMax ?? 30500),
+    ...buildMediaPortTags(values),
   };
 }
 

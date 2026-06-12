@@ -122,6 +122,47 @@ public class SshSessionHelper implements AutoCloseable {
         }
     }
 
+    /**
+     * 递归上传本地目录到远程（跳过 __pycache__、.env、logs 等）。
+     *
+     * @return 上传的文件数
+     */
+    public int uploadDirectoryRecursive(
+            File localDir,
+            String remoteDir,
+            java.util.function.Predicate<String> skipDir,
+            java.util.function.Predicate<String> skipFile) throws JSchException, SftpException, IOException {
+        if (localDir == null || !localDir.isDirectory()) {
+            throw new SftpException(ChannelSftp.SSH_FX_NO_SUCH_FILE, "本地目录不存在: " + localDir);
+        }
+        ensureRemoteDir(remoteDir);
+        int count = 0;
+        File[] children = localDir.listFiles();
+        if (children == null) {
+            return 0;
+        }
+        for (File child : children) {
+            String name = child.getName();
+            if (child.isDirectory()) {
+                if (skipDir != null && skipDir.test(name)) {
+                    continue;
+                }
+                count += uploadDirectoryRecursive(
+                        child,
+                        remoteDir + "/" + name,
+                        skipDir,
+                        skipFile);
+            } else if (child.isFile()) {
+                if (skipFile != null && skipFile.test(name)) {
+                    continue;
+                }
+                uploadFile(child.getAbsolutePath(), remoteDir + "/" + name);
+                count++;
+            }
+        }
+        return count;
+    }
+
     @Override
     public void close() {
         if (session != null && session.isConnected()) {

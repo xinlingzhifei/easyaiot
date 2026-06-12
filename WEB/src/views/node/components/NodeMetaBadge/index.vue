@@ -1,12 +1,12 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
-import { NODE_ROLE_MAP, NODE_STATUS_MAP, SETUP_COPY } from '../../utils/constants';
+import { NODE_ROLE_MAP, NODE_STATUS_MAP, NODE_TERM, SETUP_COPY } from '../../utils/constants';
 
 defineOptions({ name: 'NodeMetaBadge' });
 
 const props = withDefaults(
   defineProps<{
-    type: 'status' | 'role' | 'readiness';
+    type: 'status' | 'role' | 'readiness' | 'scope';
     status?: string;
     role?: string;
     ready?: boolean;
@@ -29,6 +29,9 @@ const badgeClass = computed(() => {
     const key = props.role || 'compute';
     return `node-meta-badge--role-${NODE_ROLE_MAP[key] ? key : 'compute'}`;
   }
+  if (props.type === 'scope') {
+    return 'node-meta-badge--scope-control-plane';
+  }
   return props.ready ? 'node-meta-badge--readiness-ready' : 'node-meta-badge--readiness-pending';
 });
 
@@ -39,6 +42,9 @@ const label = computed(() => {
   }
   if (props.type === 'role') {
     return NODE_ROLE_MAP[props.role || ''] || props.role || '-';
+  }
+  if (props.type === 'scope') {
+    return NODE_TERM.controlPlaneNode;
   }
   return props.ready ? SETUP_COPY.readinessReady : SETUP_COPY.readinessPending;
 });

@@ -25,5 +25,6 @@ public class NodeClusterMetricNodeVO {
     private Integer activeTasks;
     private String gpuInfo;
     private LocalDateTime lastHeartbeatAt;
+    private Boolean isPlatform;
 
 }

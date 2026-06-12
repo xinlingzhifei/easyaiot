@@ -24,4 +24,12 @@ public interface ComputeNodeMapper extends BaseMapperX<ComputeNodeDO> {
         return selectOne(ComputeNodeDO::getHost, host);
     }
 
+    default ComputeNodeDO selectPlatformNode() {
+        return selectList().stream()
+                .filter(node -> node.getCapabilities() != null
+                        && Boolean.TRUE.equals(node.getCapabilities().get("platform")))
+                .findFirst()
+                .orElse(null);
+    }
+
 }

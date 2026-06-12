@@ -21,12 +21,15 @@ import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendPointRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendRespVO;
+import com.basiclab.iot.node.domain.vo.PlatformAgentBootstrapRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendSeriesRespVO;
 import com.basiclab.iot.node.enums.NodeRoleEnum;
 import com.basiclab.iot.node.enums.NodeStatusEnum;
+import com.basiclab.iot.node.service.ControlPlaneEndpointResolver;
 import com.basiclab.iot.node.service.ComputeNodeService;
 import com.basiclab.iot.node.util.AgentDeployUtil;
 import com.basiclab.iot.node.util.CredentialEncryptUtil;
+import com.basiclab.iot.node.util.HostIpUtil;
 import com.basiclab.iot.node.util.RemotePortCheckUtil;
 import com.basiclab.iot.node.util.SshClientUtil;
 import com.basiclab.iot.node.util.SshSessionHelper;
@@ -69,6 +72,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     private static final int DEFAULT_AGENT_PORT = 9100;
     private static final int DEPLOY_TIMEOUT_MS = 300000;
     private static final int EXPORT_PIP_WHEELS_TIMEOUT_MS = 600000;
+    private static final String PLATFORM_CAPABILITY_KEY = "platform";
+    private static final String PLATFORM_NODE_NAME = "控制面节点";
 
     @Resource
     private ComputeNodeMapper computeNodeMapper;
@@ -83,12 +88,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
     @Value("${easyaiot.agent.source-path:}")
     private String agentSourcePath;
-    @Value("${easyaiot.agent.control-plane-url:}")
-    private String agentControlPlaneUrl;
-    @Value("${easyaiot.media.hook-host:127.0.0.1}")
-    private String mediaHookHost;
-    @Value("${easyaiot.media.hook-port:48080}")
-    private int mediaHookPort;
+    @Resource
+    private ControlPlaneEndpointResolver controlPlaneEndpointResolver;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -116,6 +117,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Transactional(rollbackFor = Exception.class)
     public void updateNode(ComputeNodeSaveReqVO updateReqVO) {
         ComputeNodeDO existing = validateExists(updateReqVO.getId());
+        if (isPlatformNode(existing)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         ComputeNodeDO other = computeNodeMapper.selectByHost(updateReqVO.getHost());
         if (other != null && !other.getId().equals(updateReqVO.getId())) {
             throw exception(COMPUTE_NODE_HOST_EXISTS);
@@ -133,7 +137,10 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteNode(Long id) {
-        validateExists(id);
+        ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_DELETE_FORBIDDEN);
+        }
         if (nodeWorkloadBindingMapper.countRunningByNodeId(id) > 0) {
             throw exception(COMPUTE_NODE_HAS_WORKLOAD);
         }
@@ -152,17 +159,94 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
     @Override
     public PageResult<ComputeNodeRespVO> getNodePage(ComputeNodePageReqVO pageReqVO) {
+        ensurePlatformNode();
         PageResult<ComputeNodeDO> pageResult = computeNodeMapper.selectPage(pageReqVO);
         List<ComputeNodeRespVO> list = pageResult.getList().stream()
                 .map(node -> toRespVO(node, false))
+                .sorted(platformNodeFirstComparator())
                 .collect(Collectors.toList());
         return new PageResult<>(list, pageResult.getTotal());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void ensurePlatformNode() {
+        String hostIp = HostIpUtil.detectHostIp();
+        ComputeNodeDO platformNode = computeNodeMapper.selectPlatformNode();
+        if (platformNode != null) {
+            boolean changed = false;
+            if (!hostIp.equals(platformNode.getHost())) {
+                ComputeNodeDO conflict = computeNodeMapper.selectByHost(hostIp);
+                if (conflict == null || conflict.getId().equals(platformNode.getId())) {
+                    platformNode.setHost(hostIp);
+                    changed = true;
+                }
+            }
+            Map<String, Boolean> caps = platformNode.getCapabilities() != null
+                    ? new HashMap<>(platformNode.getCapabilities()) : defaultCapabilities(platformNode.getNodeRole());
+            if (!Boolean.TRUE.equals(caps.get(PLATFORM_CAPABILITY_KEY))) {
+                caps.put(PLATFORM_CAPABILITY_KEY, true);
+                platformNode.setCapabilities(caps);
+                changed = true;
+            }
+            if (changed) {
+                computeNodeMapper.updateById(platformNode);
+            }
+            return;
+        }
+
+        ComputeNodeDO byHost = computeNodeMapper.selectByHost(hostIp);
+        if (byHost != null) {
+            Map<String, Boolean> caps = byHost.getCapabilities() != null
+                    ? new HashMap<>(byHost.getCapabilities())
+                    : defaultCapabilities(byHost.getNodeRole());
+            caps.put(PLATFORM_CAPABILITY_KEY, true);
+            byHost.setCapabilities(caps);
+            computeNodeMapper.updateById(byHost);
+            return;
+        }
+
+        ComputeNodeDO node = new ComputeNodeDO();
+        node.setName(PLATFORM_NODE_NAME);
+        node.setHost(hostIp);
+        node.setNodeRole(NodeRoleEnum.HYBRID.getRole());
+        node.setStatus(NodeStatusEnum.ONLINE.getStatus());
+        node.setSshPort(DEFAULT_SSH_PORT);
+        node.setAgentPort(DEFAULT_AGENT_PORT);
+        node.setWeight(100);
+        node.setMaxGpuCount(0);
+        node.setMaxTaskCount(50);
+        Map<String, Boolean> caps = defaultCapabilities(NodeRoleEnum.HYBRID.getRole());
+        caps.put(PLATFORM_CAPABILITY_KEY, true);
+        node.setCapabilities(caps);
+        node.setAgentToken(IdUtil.fastSimpleUUID());
+        node.setRemark("平台控制面宿主机，自动纳管");
+        computeNodeMapper.insert(node);
+        log.info("已自动纳管控制面节点: id={}, host={}", node.getId(), node.getHost());
+    }
+
+    @Override
+    public PlatformAgentBootstrapRespVO getPlatformAgentBootstrap() {
+        ensurePlatformNode();
+        ComputeNodeDO node = computeNodeMapper.selectPlatformNode();
+        if (node == null) {
+            throw exception(COMPUTE_NODE_NOT_EXISTS);
+        }
+        PlatformAgentBootstrapRespVO resp = new PlatformAgentBootstrapRespVO();
+        resp.setNodeId(node.getId());
+        resp.setAgentToken(node.getAgentToken());
+        resp.setAgentPort(defaultPort(node.getAgentPort(), DEFAULT_AGENT_PORT));
+        resp.setControlPlaneUrl(resolveControlPlaneUrl(null));
+        return resp;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean testSsh(Long id) {
         ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         NodeSshCredentialDO credential = nodeSshCredentialMapper.selectByNodeId(id);
         if (credential == null) {
             throw exception(SSH_CREDENTIAL_NOT_EXISTS);
@@ -190,6 +274,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Transactional(rollbackFor = Exception.class)
     public String resetAgentToken(Long id) {
         ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         String token = IdUtil.fastSimpleUUID();
         node.setAgentToken(token);
         computeNodeMapper.updateById(node);
@@ -208,6 +295,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Override
     public NodeMediaRemoteDeployRespVO deployAgentBySsh(Long nodeId, String controlPlaneUrlOverride) {
         ComputeNodeDO node = validateExists(nodeId);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         NodeSshCredentialDO credential = nodeSshCredentialMapper.selectByNodeId(nodeId);
         if (credential == null) {
             throw exception(SSH_CREDENTIAL_NOT_EXISTS);
@@ -245,7 +335,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
             String targetPython = detectRemotePythonVersion(ssh);
             String sourceRoot = resolveAgentSource();
-            NodeMediaRemoteDeployRespVO.DeployStep wheelsStep = ensureLocalAgentPipWheels(sourceRoot, targetPython);
+            AgentPipBundle pipBundle = resolveAgentPipBundle(targetPython);
+            NodeMediaRemoteDeployRespVO.DeployStep wheelsStep = ensureLocalAgentPipWheels(pipBundle, targetPython);
             steps.add(wheelsStep);
             if (!"success".equals(wheelsStep.getStatus())) {
                 resp.setSuccess(false);
@@ -261,7 +352,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                 return resp;
             }
 
-            NodeMediaRemoteDeployRespVO.DeployStep syncStep = syncAgentFiles(ssh, sourceRoot);
+            NodeMediaRemoteDeployRespVO.DeployStep syncStep = syncAgentFiles(ssh, sourceRoot, pipBundle);
             steps.add(syncStep);
             if (!"success".equals(syncStep.getStatus())) {
                 resp.setSuccess(false);
@@ -469,6 +560,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Transactional(rollbackFor = Exception.class)
     public void setMaintenance(Long id, boolean enabled) {
         ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         node.setStatus(enabled ? NodeStatusEnum.MAINTENANCE.getStatus() : NodeStatusEnum.OFFLINE.getStatus());
         computeNodeMapper.updateById(node);
     }
@@ -743,6 +837,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
     private ComputeNodeRespVO toRespVO(ComputeNodeDO node, boolean exposeToken) {
         ComputeNodeRespVO resp = BeanUtils.toBean(node, ComputeNodeRespVO.class);
+        resp.setIsPlatform(isPlatformNode(node));
         if (exposeToken) {
             resp.setAgentToken(node.getAgentToken());
         }
@@ -783,6 +878,16 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         return node.getSshPort() != null && node.getSshPort() > 0 ? node.getSshPort() : DEFAULT_SSH_PORT;
     }
 
+    static boolean isPlatformNode(ComputeNodeDO node) {
+        return node != null
+                && node.getCapabilities() != null
+                && Boolean.TRUE.equals(node.getCapabilities().get(PLATFORM_CAPABILITY_KEY));
+    }
+
+    private Comparator<ComputeNodeRespVO> platformNodeFirstComparator() {
+        return Comparator.comparing((ComputeNodeRespVO node) -> !Boolean.TRUE.equals(node.getIsPlatform()));
+    }
+
     private Map<String, Boolean> defaultCapabilities(String nodeRole) {
         Map<String, Boolean> caps = new HashMap<>();
         if (NodeRoleEnum.COMPUTE.getRole().equals(nodeRole) || NodeRoleEnum.HYBRID.getRole().equals(nodeRole)) {
@@ -800,33 +905,11 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     }
 
     private String resolveControlPlaneUrl(String override) {
-        if (override != null && !override.isBlank()) {
-            return override.trim().replaceAll("/+$", "");
-        }
-        if (agentControlPlaneUrl != null && !agentControlPlaneUrl.isBlank()) {
-            return agentControlPlaneUrl.trim().replaceAll("/+$", "");
-        }
-        String fallback = "http://" + mediaHookHost + ":" + mediaHookPort + "/admin-api/node/agent";
-        if ("127.0.0.1".equals(mediaHookHost) || "localhost".equalsIgnoreCase(mediaHookHost)) {
-            log.warn("未配置 yFeiEye Agent 控制面地址，远程 Agent 将无法访问 {}，"
-                    + "请设置 Agent 控制面地址环境变量或在部署时传入平台接入地址", fallback);
-        }
-        return fallback;
+        return controlPlaneEndpointResolver.resolveControlPlaneUrl(override);
     }
 
     private String resolveAgentSource() {
-        if (agentSourcePath != null && !agentSourcePath.isBlank()) {
-            File dir = new File(agentSourcePath);
-            if (dir.isDirectory()) {
-                return dir.getAbsolutePath();
-            }
-        }
-        String[] candidates = {
-                "/opt/easyaiot/NODE",
-                System.getProperty("user.dir") + "/NODE",
-                System.getProperty("user.dir") + "/../NODE",
-        };
-        for (String path : candidates) {
+        for (String path : listAgentSourceCandidates()) {
             File entry = new File(path, "run_agent.py");
             if (entry.isFile()) {
                 return new File(path).getAbsolutePath();
@@ -835,8 +918,103 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         throw exception(AGENT_SOURCE_NOT_FOUND);
     }
 
-    private NodeMediaRemoteDeployRespVO.DeployStep syncAgentFiles(SshSessionHelper ssh, String sourceRoot)
-            throws Exception {
+    /**
+     * Agent 源码候选目录（优先完整 repo/NODE，最后才是 /opt/easyaiot/node-agent 运行时目录）。
+     */
+    private List<String> listAgentSourceCandidates() {
+        LinkedHashMap<String, Boolean> ordered = new LinkedHashMap<>();
+        if (agentSourcePath != null && !agentSourcePath.isBlank()) {
+            ordered.put(agentSourcePath.trim(), Boolean.TRUE);
+        }
+        ordered.put("/opt/easyaiot/NODE", Boolean.TRUE);
+        String userDir = System.getProperty("user.dir");
+        if (userDir != null && !userDir.isBlank()) {
+            ordered.put(userDir + "/NODE", Boolean.TRUE);
+            ordered.put(userDir + "/../NODE", Boolean.TRUE);
+            ordered.put(userDir + "/../../NODE", Boolean.TRUE);
+        }
+        ordered.put("/opt/easyaiot/node-agent", Boolean.TRUE);
+        return new ArrayList<>(ordered.keySet());
+    }
+
+    private File resolveAgentExportScript() {
+        for (String path : listAgentSourceCandidates()) {
+            File script = new File(path, AgentDeployUtil.EXPORT_PIP_WHEELS_SCRIPT);
+            if (script.isFile()) {
+                return script;
+            }
+        }
+        return null;
+    }
+
+    private AgentPipBundle resolveAgentPipBundle(String targetPython) {
+        for (String path : listAgentSourceCandidates()) {
+            if (isAgentPipWheelsReady(path, targetPython)) {
+                File wheelsDir = new File(path, AgentDeployUtil.PIP_WHEELS_DIR);
+                File getPip = new File(path, AgentDeployUtil.GET_PIP_SCRIPT);
+                return new AgentPipBundle(path, wheelsDir, getPip);
+            }
+        }
+        File exportScript = resolveAgentExportScript();
+        if (exportScript == null) {
+            return new AgentPipBundle(null, null, null);
+        }
+        String bundleRoot = exportScript.getParentFile().getAbsolutePath();
+        File getPip = new File(bundleRoot, AgentDeployUtil.GET_PIP_SCRIPT);
+        File cacheDir = new File(System.getProperty("java.io.tmpdir"),
+                "easyaiot-agent-pip-wheels/" + targetPython.replace('.', '_'));
+        if (isAgentPipWheelsReady(bundleRoot, targetPython, cacheDir)) {
+            return new AgentPipBundle(bundleRoot, cacheDir, getPip);
+        }
+        File wheelsDir = resolveWritablePipWheelsDir(exportScript.getParentFile(), targetPython);
+        return new AgentPipBundle(bundleRoot, wheelsDir, getPip);
+    }
+
+    private File resolveWritablePipWheelsDir(File bundleRoot, String targetPython) {
+        File defaultDir = new File(bundleRoot, AgentDeployUtil.PIP_WHEELS_DIR);
+        if (isDirectoryWritable(defaultDir)) {
+            return defaultDir;
+        }
+        File cacheDir = new File(System.getProperty("java.io.tmpdir"),
+                "easyaiot-agent-pip-wheels/" + targetPython.replace('.', '_'));
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            log.warn("无法创建 Agent pip 缓存目录: {}", cacheDir.getAbsolutePath());
+        }
+        return cacheDir;
+    }
+
+    private boolean isDirectoryWritable(File dir) {
+        try {
+            if (!dir.exists() && !dir.mkdirs()) {
+                return false;
+            }
+            if (!dir.isDirectory()) {
+                return false;
+            }
+            File probe = new File(dir, ".write-probe-" + System.currentTimeMillis());
+            if (!probe.createNewFile()) {
+                return false;
+            }
+            return probe.delete();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static final class AgentPipBundle {
+        private final String bundleRoot;
+        private File wheelsDir;
+        private File getPipScript;
+
+        private AgentPipBundle(String bundleRoot, File wheelsDir, File getPipScript) {
+            this.bundleRoot = bundleRoot;
+            this.wheelsDir = wheelsDir;
+            this.getPipScript = getPipScript;
+        }
+    }
+
+    private NodeMediaRemoteDeployRespVO.DeployStep syncAgentFiles(
+            SshSessionHelper ssh, String sourceRoot, AgentPipBundle pipBundle) throws Exception {
         ssh.ensureRemoteDir(AgentDeployUtil.REMOTE_INSTALL_DIR);
         int count = 0;
         for (String relative : AgentDeployUtil.SYNC_RELATIVE_FILES) {
@@ -851,8 +1029,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             count++;
         }
 
-        File getPip = new File(sourceRoot, AgentDeployUtil.GET_PIP_SCRIPT);
-        if (!getPip.isFile()) {
+        File getPip = pipBundle.getPipScript;
+        if (getPip == null || !getPip.isFile()) {
             NodeMediaRemoteDeployRespVO.DeployStep fail = new NodeMediaRemoteDeployRespVO.DeployStep();
             fail.setName("同步文件");
             fail.setStatus("failed");
@@ -864,7 +1042,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                 AgentDeployUtil.REMOTE_INSTALL_DIR + "/" + AgentDeployUtil.GET_PIP_SCRIPT);
         count++;
 
-        File wheelsDir = new File(sourceRoot, AgentDeployUtil.PIP_WHEELS_DIR);
+        File wheelsDir = pipBundle.wheelsDir;
         File[] wheels = listPipWheelFiles(wheelsDir);
         if (wheels.length == 0) {
             NodeMediaRemoteDeployRespVO.DeployStep fail = new NodeMediaRemoteDeployRespVO.DeployStep();
@@ -885,35 +1063,46 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         NodeMediaRemoteDeployRespVO.DeployStep step = new NodeMediaRemoteDeployRespVO.DeployStep();
         step.setName("同步文件");
         step.setStatus("success");
+        String wheelsNote = pipBundle.bundleRoot != null && wheelsDir != null
+                && !wheelsDir.getAbsolutePath().startsWith(new File(pipBundle.bundleRoot).getAbsolutePath())
+                ? "\n离线包目录: " + wheelsDir.getAbsolutePath()
+                : "";
         step.setOutput("已上传 " + count + " 个文件 + " + wheels.length + " 个离线 pip 包（"
-                + formatDeployBytes(wheelBytes) + "）至 " + AgentDeployUtil.REMOTE_INSTALL_DIR);
+                + formatDeployBytes(wheelBytes) + "）至 " + AgentDeployUtil.REMOTE_INSTALL_DIR + wheelsNote);
         return step;
     }
 
-    private NodeMediaRemoteDeployRespVO.DeployStep ensureLocalAgentPipWheels(String sourceRoot, String targetPython) {
-        File wheelsDir = new File(sourceRoot, AgentDeployUtil.PIP_WHEELS_DIR);
-        File[] existing = listPipWheelFiles(wheelsDir);
-        if (existing.length > 0 && isAgentPipWheelsReady(sourceRoot, targetPython)) {
-            long total = 0;
-            for (File wheel : existing) {
-                total += wheel.length();
+    private NodeMediaRemoteDeployRespVO.DeployStep ensureLocalAgentPipWheels(
+            AgentPipBundle pipBundle, String targetPython) {
+        if (pipBundle.wheelsDir != null) {
+            File[] existing = listPipWheelFiles(pipBundle.wheelsDir);
+            if (existing.length > 0 && pipBundle.bundleRoot != null
+                    && isAgentPipWheelsReady(pipBundle.bundleRoot, targetPython, pipBundle.wheelsDir)) {
+                long total = 0;
+                for (File wheel : existing) {
+                    total += wheel.length();
+                }
+                return runDeployStep("准备离线 pip 包", "success",
+                        "本机离线 pip 包已就绪（" + existing.length + " 个，"
+                                + formatDeployBytes(total) + "，目标 Python " + targetPython + "）\n目录: "
+                                + pipBundle.wheelsDir.getAbsolutePath());
             }
-            return runDeployStep("准备离线 pip 包", "success",
-                    "本机离线 pip 包已就绪（" + existing.length + " 个，"
-                            + formatDeployBytes(total) + "，目标 Python " + targetPython + "）\n目录: "
-                            + wheelsDir.getAbsolutePath());
         }
 
-        File exportScript = new File(sourceRoot, AgentDeployUtil.EXPORT_PIP_WHEELS_SCRIPT);
-        if (!exportScript.isFile()) {
+        File exportScript = resolveAgentExportScript();
+        if (exportScript == null) {
             return runDeployStep("准备离线 pip 包", "failed",
                     "缺少离线 pip 包且未找到 export_pip_wheels.sh；"
-                            + "请先在平台服务器安装 pip（apt install python3-pip），"
-                            + "再执行: bash NODE/export_pip_wheels.sh");
+                            + "请配置 EASYAIOT_AGENT_SOURCE_PATH 指向含 NODE 源码的目录，"
+                            + "或在平台执行: bash NODE/export_pip_wheels.sh");
         }
 
+        File wheelsDir = pipBundle.wheelsDir != null
+                ? pipBundle.wheelsDir
+                : resolveWritablePipWheelsDir(exportScript.getParentFile(), targetPython);
+
         try {
-            String exportOutput = runExportPipWheelsScript(exportScript, targetPython);
+            String exportOutput = runExportPipWheelsScript(exportScript, targetPython, wheelsDir);
             File[] wheels = listPipWheelFiles(wheelsDir);
             if (wheels.length == 0) {
                 return runDeployStep("准备离线 pip 包", "failed",
@@ -930,17 +1119,24 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             if (!exportOutput.isBlank()) {
                 output += "\n" + trimDeployOutput(exportOutput, 3000);
             }
+            pipBundle.wheelsDir = wheelsDir;
+            if (pipBundle.getPipScript == null || !pipBundle.getPipScript.isFile()) {
+                pipBundle.getPipScript = new File(exportScript.getParentFile(), AgentDeployUtil.GET_PIP_SCRIPT);
+            }
             return runDeployStep("准备离线 pip 包", "success", output);
         } catch (Exception e) {
-            log.error("本机导出 Agent pip wheel 失败 sourceRoot={}", sourceRoot, e);
+            log.error("本机导出 Agent pip wheel 失败 wheelsDir={}", wheelsDir.getAbsolutePath(), e);
             return runDeployStep("准备离线 pip 包", "failed",
                     "本机下载 pip 包失败: " + e.getMessage()
-                            + "\n请确认平台服务器已安装 pip: apt install python3-pip");
+                            + "\n请确认平台服务器已安装 pip，或设置 PYTHON 指向带 pip 的解释器");
         }
     }
 
-    private boolean isAgentPipWheelsReady(String sourceRoot, String targetPython) {
-        File wheelsDir = new File(sourceRoot, AgentDeployUtil.PIP_WHEELS_DIR);
+    private boolean isAgentPipWheelsReady(String bundleRoot, String targetPython) {
+        return isAgentPipWheelsReady(bundleRoot, targetPython, new File(bundleRoot, AgentDeployUtil.PIP_WHEELS_DIR));
+    }
+
+    private boolean isAgentPipWheelsReady(String bundleRoot, String targetPython, File wheelsDir) {
         File[] wheels = listPipWheelFiles(wheelsDir);
         if (wheels.length == 0) {
             return false;
@@ -962,7 +1158,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                 || !hasAgentBootstrapWheel(wheelsDir, "wheel")) {
             return false;
         }
-        if (!new File(sourceRoot, AgentDeployUtil.GET_PIP_SCRIPT).isFile()) {
+        if (!new File(bundleRoot, AgentDeployUtil.GET_PIP_SCRIPT).isFile()) {
             return false;
         }
         if (isPythonVersionBelow(targetPython, "3.10")) {
@@ -1055,10 +1251,14 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                 "目标机未找到 python3。\n" + trimDeployOutput(out, 800));
     }
 
-    private String runExportPipWheelsScript(File exportScript, String targetPython) throws Exception {
+    private String runExportPipWheelsScript(File exportScript, String targetPython, File wheelsDir)
+            throws Exception {
         ProcessBuilder pb = new ProcessBuilder("bash", exportScript.getAbsolutePath());
         pb.directory(exportScript.getParentFile());
         pb.environment().put("AGENT_TARGET_PYTHON", targetPython);
+        if (wheelsDir != null) {
+            pb.environment().put("AGENT_PIP_WHEELS_DIR", wheelsDir.getAbsolutePath());
+        }
         pb.redirectErrorStream(true);
         Process process = pb.start();
         String output;

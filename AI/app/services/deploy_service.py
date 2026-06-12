@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 
 from db_models import db, Model, AIService, beijing_now
+from app.utils.node_remote_python import resolve_ai_bundle_python
 from .deploy_daemon import DeployServiceDaemon
 
 logger = logging.getLogger(__name__)
@@ -286,7 +287,7 @@ def _deploy_on_remote_node(
     ai_root_remote = os.getenv('NODE_REMOTE_AI_ROOT', '/opt/easyaiot/AI')
     work_dir = os.path.join(ai_root_remote, 'services', 'ai_service')
     log_dir = os.path.join(ai_root_remote, 'logs', str(ai_service.id))
-    python_exec = os.getenv('NODE_REMOTE_PYTHON', 'python3')
+    python_exec = resolve_ai_bundle_python(ai_root_remote)
     deploy_script = os.path.join(ai_root_remote, 'services', 'ai_service', 'run_deploy.py')
     command = [python_exec, deploy_script]
 

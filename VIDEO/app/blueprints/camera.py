@@ -2127,8 +2127,10 @@ def list_directories():
 def _device_monitor_tree_node(device, nvr_by_ip=None):
     """分屏监控树中的设备节点（仅含播放与展示所需字段）。"""
     from app.services.nvr_service import infer_nvr_link_from_source
+    from app.services.stream_url_sync_service import resolve_device_stream_urls
 
     d = _to_dict(device)
+    rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream = resolve_device_stream_urls(device)
     source = (d.get('source') or '').strip()
     is_gb28181 = source.lower().startswith('gb28181://')
     device_kind = d.get('device_kind') or ('gb28181' if is_gb28181 else 'direct')
@@ -2150,10 +2152,10 @@ def _device_monitor_tree_node(device, nvr_by_ip=None):
         'type': 'device',
         'id': d['id'],
         'name': d.get('name') or d['id'],
-        'http_stream': d.get('http_stream'),
-        'rtmp_stream': d.get('rtmp_stream'),
-        'ai_http_stream': d.get('ai_http_stream'),
-        'ai_rtmp_stream': d.get('ai_rtmp_stream'),
+        'http_stream': http_stream or d.get('http_stream'),
+        'rtmp_stream': rtmp_stream or d.get('rtmp_stream'),
+        'ai_http_stream': ai_http_stream or d.get('ai_http_stream'),
+        'ai_rtmp_stream': ai_rtmp_stream or d.get('ai_rtmp_stream'),
         'online': d.get('online'),
         'directory_id': d.get('directory_id'),
         'device_kind': device_kind,

@@ -1,7 +1,7 @@
 # yFeiEye (Plateforme d'Application d'Algorithmes Intelligents à Intégration Cloud-Bord-Périphérique)
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
+[![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 Mon souhait est que ce système soit utilisé dans le monde entier, rendant l'IA véritablement accessible à tous, permettant à chacun de bénéficier des avantages de l'IA, et non pas seulement réservée à une minorité.
@@ -140,7 +140,7 @@ En s'appuyant de manière innovante sur les grands modèles, nous construisons u
 ### 🏗️ Caractéristiques de l'architecture du projet
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye n'est pas vraiment un seul projet, mais cinq projets distincts.
+yFeiEye n'est pas vraiment un seul projet, mais six projets distincts.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -203,7 +203,7 @@ yFeiEye répond activement à la stratégie de localisation, prenant pleinement 
 ## 🧩 Structure du projet
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye est composé de cinq projets principaux :
+yFeiEye est composé de six projets principaux :
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -226,6 +226,20 @@ yFeiEye est composé de cinq projets principaux :
     <li><strong>Authentification des appareils</strong> : Enregistrement dynamique, authentification d'identité, connexion sécurisée.</li>
     <li><strong>Moteur de règles</strong> : Règles de flux de données, routage des messages, transformation des données.</li>
     <li><strong>Collecte de données</strong> : Collecte, stockage, requête et analyse des données des appareils.</li>
+    <li><strong>Plan de contrôle des nœuds</strong> : Microservice <code>iot-node</code> intégré offrant un plan de contrôle unifié pour le CRUD des nœuds de calcul/média, les tests de connectivité SSH, l'enregistrement et le heartbeat des Agents, l'ordonnancement des charges de travail et l'allocation du pool de nœuds média.</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module NODE</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Agent de nœud</strong> : Agent de nœud edge/distant basé sur Python ; installation en un clic via <code>install.sh</code> en tant que service systemd, rejoignant automatiquement la plateforme une fois déployé sur les serveurs cibles.</li>
+    <li><strong>Communication avec le plan de contrôle</strong> : S'enregistre auprès du plan de contrôle <code>iot-node</code> et envoie des heartbeats périodiques, rapportant en temps réel l'utilisation CPU, mémoire, disque, GPU et l'état des charges de travail actives.</li>
+    <li><strong>Charges de travail distantes</strong> : Reçoit les commandes de déploiement/arrêt du plan de contrôle via l'API HTTP (port 9100 par défaut), lançant localement sur le nœud les services de modèles IA, tâches algorithmiques, transcodage FFmpeg et autres charges de travail.</li>
+    <li><strong>Pool de nœuds média</strong> : Prend en charge le déploiement distant <code>docker compose</code> des piles de streaming SRS/ZLM sur les nœuds, en collaboration avec le plan de contrôle pour la liaison sticky appareil-nœud média et la génération d'URL de flux.</li>
+    <li><strong>Rôles de nœud</strong> : Prend en charge les rôles compute (calcul), media (média) et hybrid (mixte), permettant l'ordonnancement inter-nœuds et la mise à l'échelle élastique pour l'inférence IA, les tâches algorithmiques et les services de streaming.</li>
+    <li><strong>Compatible hors ligne</strong> : Fournit l'empaquetage hors ligne des dépendances pip wheels et la mise à jour à chaud de l'Agent, adapté à l'intégration en masse de nœuds dans des environnements sans accès Internet ou à réseau restreint.</li>
   </ul>
 </td>
 </tr>
@@ -343,8 +357,8 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
 
 ## ⚙️ Dépôts du projet
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
+- Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 Captures d'écran
 <div>
@@ -633,6 +647,38 @@ Nous offrons diverses méthodes de service pour vous aider à mieux comprendre l
 </tbody>
 </table>
 
+## 📞 Contact
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+Veuillez d'abord suivre le compte officiel ci-dessous, puis nous contacter via le groupe d'échange technique ou WeChat.
+</p>
+
+## 👥 Compte officiel (WeChat)
+
+<div>
+  <img src=".image/公众号.jpg" alt="Compte officiel" width="30%">
+</div>
+
+## 💬 Groupe d'échange technique
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+Après avoir suivi le compte officiel, scannez le code QR ci-dessous avec WeChat pour rejoindre le groupe d'échange technique yFeiEye.
+</p>
+
+<div>
+  <img src=".image/交流群3群.jpg" alt="Groupe d'échange technique yFeiEye" width="30%">
+</div>
+
+## 💬 Contact WeChat
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+Après avoir suivi le compte officiel, scannez le code QR ci-dessous pour nous ajouter en ami WeChat pour une communication individuelle.
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="Contact WeChat" width="200">
+</div>
+
 ## 🪐 Planète du savoir (Zhishi Xingqiu) :
 
 <p>
@@ -642,6 +688,7 @@ Nous offrons diverses méthodes de service pour vous aider à mieux comprendre l
 ## 💰 Soutien / Don
 
 <div>
+    <img src=".image/微信支付.jpg" alt="Paiement WeChat" width="30%" height="30%">
     <img src=".image/支付宝支付.jpg" alt="Paiement Alipay" width="30%" height="10%">
 </div>
 
@@ -967,7 +1014,7 @@ Vos suggestions pour améliorer yFeiEye sont les bienvenues.
 ## 📄 Licence
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye utilise la licence open source <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
+翱翔的雄库鲁/easyaiot utilise la licence open source <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -976,4 +1023,4 @@ Vos suggestions pour améliorer yFeiEye sont les bienvenues.
 
 ## 🌟 Tendance de croissance des Stars
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)

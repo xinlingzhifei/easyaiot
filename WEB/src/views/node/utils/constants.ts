@@ -62,6 +62,7 @@ export const NODE_TERM = {
   nodeDetail: '节点详情',
   nodeManage: '节点管理',
   clusterOverview: '集群概览',
+  workloadBundleDistribute: '工作负载分发',
   pendingTitle: '节点待纳管',
   offlineTitle: '节点离线',
   maintenanceTitle: '维护模式',
@@ -77,6 +78,8 @@ export const NODE_TERM = {
   addNode: '添加节点',
   viewDetail: '详情',
   attentionNodes: '需关注节点',
+  controlPlaneNode: '控制面节点',
+  controlPlaneNodeReadonly: '控制面节点仅可查看，不可编辑',
 } as const;
 
 export const NODE_STATUS_MAP: Record<string, { text: string; color: string }> = {
@@ -169,12 +172,12 @@ export const NODE_DASHBOARD = {
   trendMetricLabel: '指标',
   trendNodeFilter: '节点筛选',
   trendNodeFilterAll: '全部节点',
-  trendClusterHint: '按节点展示 CPU 用量（%，多核可超过 100%）及内存 / 显存 / 磁盘已用量',
-  trendClusterMetricHint: '左轴：各节点 CPU 用量（%）；右轴：各节点内存 / 显存 / 磁盘已用量',
+  trendClusterHint: '按节点展示 CPU 使用率（%）及内存 / 显存 / 磁盘已用量',
+  trendClusterMetricHint: '左轴：各节点 CPU 使用率（%）；右轴：各节点内存 / 显存 / 磁盘已用量',
   trendNodeHint: '按节点对比单一指标；CPU 为用量（%），内存 / 显存 / 磁盘为已用量',
   trendNodeVolumeHint: '当前指标（已用量）：',
   trendNodePercentHint: '当前指标（GPU 利用率）：',
-  trendAxisPercent: 'CPU 用量 %',
+  trendAxisPercent: 'CPU 使用率 %',
   trendAxisVolume: '已用量',
   trendSampleIntervalLabel: '采样间隔',
   trendSampleIntervalHint: '折线图追加数据点的时间间隔，间隔内仅更新最新点',
@@ -232,6 +235,69 @@ export const NODE_DETAIL = {
 export const NODE_PAGE = {
   clusterOverview: NODE_TERM.clusterOverview,
   nodeManage: NODE_TERM.nodeManage,
+  workloadBundleDistribute: NODE_TERM.workloadBundleDistribute,
+} as const;
+
+/** 工作负载 bundle 分发（目标机默认无外网，控制面离线打包 pip wheels） */
+export const WORKLOAD_BUNDLE_TYPES = [
+  {
+    key: 'stream_forward',
+    label: '推流转发',
+    module: 'VIDEO',
+    remoteRoot: '/opt/easyaiot/VIDEO',
+    pythonLauncher: '/opt/easyaiot/VIDEO/.bundles/stream_forward/run-python.sh',
+    scriptMarker: 'services/stream_forward_service/run_deploy.py',
+    desc: '批量分发推流转发 run_deploy.py 及离线 Python 运行时（opencv/flask/sqlalchemy 等）',
+  },
+  {
+    key: 'algorithm_realtime',
+    label: '实时算法',
+    module: 'VIDEO',
+    remoteRoot: '/opt/easyaiot/VIDEO',
+    pythonLauncher: '/opt/easyaiot/VIDEO/.bundles/algorithm_realtime/run-python.sh',
+    scriptMarker: 'services/realtime_algorithm_service/run_deploy.py',
+    desc: '批量分发实时算法 run_deploy.py 及离线运行时（含 onnxruntime 等）',
+  },
+  {
+    key: 'algorithm_snap',
+    label: '抓拍算法',
+    module: 'VIDEO',
+    remoteRoot: '/opt/easyaiot/VIDEO',
+    pythonLauncher: '/opt/easyaiot/VIDEO/.bundles/algorithm_snap/run-python.sh',
+    scriptMarker: 'services/snapshot_algorithm_service/run_deploy.py',
+    desc: '批量分发抓拍算法 run_deploy.py 及离线运行时',
+  },
+  {
+    key: 'ai_service',
+    label: '模型服务',
+    module: 'AI',
+    remoteRoot: '/opt/easyaiot/AI',
+    pythonLauncher: '/opt/easyaiot/AI/.bundles/ai_service/run-python.sh',
+    scriptMarker: 'services/ai_service/run_deploy.py',
+    desc: '批量分发模型服务 run_deploy.py 及离线运行时（flask/onnxruntime/ultralytics 等）',
+  },
+] as const;
+
+export type WorkloadBundleType = (typeof WORKLOAD_BUNDLE_TYPES)[number]['key'];
+
+export const WORKLOAD_BUNDLE_COPY = {
+  offlineHint:
+    '目标服务器默认无外网：控制面在有网环境自动下载 pip wheel 并 SSH 同步至节点离线安装，无需节点联网。',
+  selectNodes: '选择目标节点（需已配置 SSH 凭据，建议 compute / hybrid 角色）',
+  deployEnv: '分发运行时',
+  deployScripts: '分发脚本',
+  deployFull: '全量分发',
+  check: '检测',
+  removeEnv: '删除运行时',
+  removeScripts: '删除脚本',
+  remotePythonTip:
+    '分发完成后，请在 VIDEO/AI 控制面设置 NODE_REMOTE_PYTHON 为对应 run-python.sh 路径，或在节点 agent.env 中配置。',
+  ffmpegHint:
+    '推流/算法节点需 FFmpeg：控制面下载 BtbN 静态二进制包，SSH 同步至 /opt/easyaiot/tools/ffmpeg（无外网可离线安装）。全量分发 VIDEO bundle 时会自动安装 FFmpeg。',
+  ffmpegPath: '/opt/easyaiot/tools/ffmpeg/bin/ffmpeg',
+  ffmpegDeploy: '分发 FFmpeg',
+  ffmpegCheck: '检测 FFmpeg',
+  ffmpegRemove: '删除 FFmpeg',
 } as const;
 
 /** 集群洞察文案 */
@@ -431,15 +497,84 @@ function sanitizeNodeName(name?: string): string {
   return slug || 'media-node';
 }
 
+/** 媒体节点端口默认值（与 iot-node tags、install_media_stack.sh 一致） */
+export const MEDIA_PORT_DEFAULTS = {
+  srsRtmpPort: 1935,
+  srsHttpPort: 8080,
+  srsApiPort: 1985,
+  srsRtcPort: 8000,
+  zlmHttpPort: 6080,
+  zlmRtmpPort: 10935,
+  zlmRtspPort: 8554,
+  zlmRtcPort: 8800,
+  zlmRtpPortMin: 30000,
+  zlmRtpPortMax: 30500,
+} as const;
+
+export interface MediaPortFields {
+  srsRtmpPort: number;
+  srsHttpPort: number;
+  srsApiPort: number;
+  srsRtcPort: number;
+  zlmHttpPort: number;
+  zlmRtmpPort: number;
+  zlmRtspPort: number;
+  zlmRtcPort: number;
+  zlmRtpPortMin: number;
+  zlmRtpPortMax: number;
+}
+
+function tagPort(tags: Record<string, string | undefined> | undefined, key: string, fallback: number): number {
+  const raw = tags?.[key];
+  if (raw == null || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** 从节点 tags 解析媒体端口（表单/部署脚本共用） */
+export function readMediaPortsFromTags(tags?: Record<string, string | undefined>): MediaPortFields {
+  return {
+    srsRtmpPort: tagPort(tags, 'srs_rtmp_port', MEDIA_PORT_DEFAULTS.srsRtmpPort),
+    srsHttpPort: tagPort(tags, 'srs_http_port', MEDIA_PORT_DEFAULTS.srsHttpPort),
+    srsApiPort: tagPort(tags, 'srs_api_port', MEDIA_PORT_DEFAULTS.srsApiPort),
+    srsRtcPort: tagPort(tags, 'srs_rtc_port', MEDIA_PORT_DEFAULTS.srsRtcPort),
+    zlmHttpPort: tagPort(tags, 'zlm_http_port', MEDIA_PORT_DEFAULTS.zlmHttpPort),
+    zlmRtmpPort: tagPort(tags, 'zlm_rtmp_port', MEDIA_PORT_DEFAULTS.zlmRtmpPort),
+    zlmRtspPort: tagPort(tags, 'zlm_rtsp_port', MEDIA_PORT_DEFAULTS.zlmRtspPort),
+    zlmRtcPort: tagPort(tags, 'zlm_rtc_port', MEDIA_PORT_DEFAULTS.zlmRtcPort),
+    zlmRtpPortMin: tagPort(tags, 'zlm_rtp_port_min', MEDIA_PORT_DEFAULTS.zlmRtpPortMin),
+    zlmRtpPortMax: tagPort(tags, 'zlm_rtp_port_max', MEDIA_PORT_DEFAULTS.zlmRtpPortMax),
+  };
+}
+
+/** 将表单媒体端口写入节点 tags */
+export function buildMediaPortTags(values: Record<string, unknown>): Record<string, string> {
+  const d = MEDIA_PORT_DEFAULTS;
+  return {
+    srs_rtmp_port: String(values.srsRtmpPort ?? d.srsRtmpPort),
+    srs_http_port: String(values.srsHttpPort ?? d.srsHttpPort),
+    srs_api_port: String(values.srsApiPort ?? d.srsApiPort),
+    srs_rtc_port: String(values.srsRtcPort ?? d.srsRtcPort),
+    zlm_http_port: String(values.zlmHttpPort ?? d.zlmHttpPort),
+    zlm_rtmp_port: String(values.zlmRtmpPort ?? d.zlmRtmpPort),
+    zlm_rtsp_port: String(values.zlmRtspPort ?? d.zlmRtspPort),
+    zlm_rtc_port: String(values.zlmRtcPort ?? d.zlmRtcPort),
+    zlm_rtp_port_min: String(values.zlmRtpPortMin ?? d.zlmRtpPortMin),
+    zlm_rtp_port_max: String(values.zlmRtpPortMax ?? d.zlmRtpPortMax),
+  };
+}
+
 export interface MediaStackScriptParams {
   name?: string;
   host?: string;
   srsRtmpPort?: number;
   srsHttpPort?: number;
   srsApiPort?: number;
+  srsRtcPort?: number;
   zlmHttpPort?: number;
   zlmRtmpPort?: number;
   zlmRtspPort?: number;
+  zlmRtcPort?: number;
   zlmRtpPortMin?: number;
   zlmRtpPortMax?: number;
 }
@@ -467,14 +602,18 @@ function areMediaPortsValid(params?: MediaStackScriptParams): boolean {
     params.srsRtmpPort,
     params.srsHttpPort,
     params.srsApiPort,
+    params.srsRtcPort,
     params.zlmHttpPort,
     params.zlmRtmpPort,
     params.zlmRtspPort,
+    params.zlmRtcPort,
     params.zlmRtpPortMin,
     params.zlmRtpPortMax,
   ];
   if (!ports.every(isValidPort)) return false;
-  return (params.zlmRtpPortMin as number) <= (params.zlmRtpPortMax as number);
+  if ((params.zlmRtpPortMin as number) > (params.zlmRtpPortMax as number)) return false;
+  if (params.srsRtcPort === params.zlmRtcPort) return false;
+  return true;
 }
 
 /** 媒体栈脚本是否可生成（角色为 media/hybrid 且 IP、端口已填写有效） */
@@ -528,8 +667,8 @@ export function getMediaStackGuideState(
   if (isReady && params?.host) {
     readySummary =
       `目标机 ${params.host}：` +
-      `SRS RTMP ${params.srsRtmpPort} / HTTP ${params.srsHttpPort} / API ${params.srsApiPort}，` +
-      `ZLM HTTP ${params.zlmHttpPort} / RTMP ${params.zlmRtmpPort} / RTSP ${params.zlmRtspPort}，` +
+      `SRS RTMP ${params.srsRtmpPort} / HTTP ${params.srsHttpPort} / API ${params.srsApiPort} / WebRTC ${params.srsRtcPort}，` +
+      `ZLM HTTP ${params.zlmHttpPort} / RTMP ${params.zlmRtmpPort} / RTSP ${params.zlmRtspPort} / WebRTC ${params.zlmRtcPort}，` +
       `RTP ${params.zlmRtpPortMin}-${params.zlmRtpPortMax}，` +
       `Hook 回调 ${hook.host}:${hook.port}`;
   }
@@ -593,10 +732,12 @@ export function buildMediaStackInstallScript(params: MediaStackScriptParams = {}
   const host = params.host?.trim() || '';
   const srsRtmp = params.srsRtmpPort ?? 1935;
   const srsHttp = params.srsHttpPort ?? 8080;
-  const srsApi = params.srsApiPort ?? 1985;
-  const zlmHttp = params.zlmHttpPort ?? 6080;
-  const zlmRtmp = params.zlmRtmpPort ?? 10935;
-  const zlmRtsp = params.zlmRtspPort ?? 8554;
+  const srsApi = params.srsApiPort ?? MEDIA_PORT_DEFAULTS.srsApiPort;
+  const srsRtc = params.srsRtcPort ?? MEDIA_PORT_DEFAULTS.srsRtcPort;
+  const zlmHttp = params.zlmHttpPort ?? MEDIA_PORT_DEFAULTS.zlmHttpPort;
+  const zlmRtmp = params.zlmRtmpPort ?? MEDIA_PORT_DEFAULTS.zlmRtmpPort;
+  const zlmRtsp = params.zlmRtspPort ?? MEDIA_PORT_DEFAULTS.zlmRtspPort;
+  const zlmRtc = params.zlmRtcPort ?? MEDIA_PORT_DEFAULTS.zlmRtcPort;
   const zlmRtpMin = params.zlmRtpPortMin ?? 30000;
   const zlmRtpMax = params.zlmRtpPortMax ?? 30500;
 
@@ -611,15 +752,19 @@ export MEDIA_NODE_NAME="${nodeName}"
 export MEDIA_NODE_HOST="${host}"
 export MEDIA_HOOK_HOST="${hook.host}"
 export MEDIA_HOOK_PORT="${hook.port}"
+export MEDIA_HOOK_PATH_PREFIX="/admin-api"
 export SRS_CANDIDATE_IP="${host}"
 export SRS_RTMP_PORT=${srsRtmp}
 export SRS_HTTP_PORT=${srsHttp}
 export SRS_API_PORT=${srsApi}
+export SRS_RTC_PORT=${srsRtc}
 export ZLM_HTTP_PORT=${zlmHttp}
 export ZLM_RTMP_PORT=${zlmRtmp}
 export ZLM_RTSP_PORT=${zlmRtsp}
 export ZLM_RTP_PORT_MIN=${zlmRtpMin}
 export ZLM_RTP_PORT_MAX=${zlmRtpMax}
+export ZLM_RTC_PORT=${zlmRtc}
+export ZLM_RTC_EXTERN_IP="${host}"
 export ZLM_SECRET="yFeiEye_Media_Secret"
 
 # ---------- 2. 前置检查 ----------
@@ -681,9 +826,11 @@ export interface RandomDeployPorts {
   srsRtmpPort?: number;
   srsHttpPort?: number;
   srsApiPort?: number;
+  srsRtcPort?: number;
   zlmHttpPort?: number;
   zlmRtmpPort?: number;
   zlmRtspPort?: number;
+  zlmRtcPort?: number;
 }
 
 /** 生成一组互不冲突的部署端口（不含 RTP 范围端口） */
@@ -700,9 +847,11 @@ export function generateRandomDeployPorts(nodeRole?: string): RandomDeployPorts 
     srsRtmpPort: pickUniquePort(used, anchor, anchor + 80),
     srsHttpPort: pickUniquePort(used, anchor + 100, anchor + 180),
     srsApiPort: pickUniquePort(used, anchor + 200, anchor + 280),
+    srsRtcPort: pickUniquePort(used, anchor + 280, anchor + 360),
     zlmHttpPort: pickUniquePort(used, anchor + 400, anchor + 480),
     zlmRtmpPort: pickUniquePort(used, anchor + 500, anchor + 580),
     zlmRtspPort: pickUniquePort(used, anchor + 600, anchor + 680),
+    zlmRtcPort: pickUniquePort(used, anchor + 700, anchor + 780),
   };
 }
 
@@ -760,9 +909,8 @@ cd ${AGENT_INSTALL_DIR}
 sudo tee agent.env > /dev/null <<'EOF'
 ${env}
 EOF
-sudo bash install.sh
-sudo systemctl enable --now easyaiot-node-agent
-sudo systemctl status easyaiot-node-agent --no-pager`;
+sudo bash install.sh install
+sudo bash install.sh status`;
 }
 
 /** 一键部署脚本（需先完成 rsync 同步） */

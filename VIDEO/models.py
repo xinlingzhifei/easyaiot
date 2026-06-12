@@ -926,7 +926,7 @@ class AlgorithmTask(db.Model):
     node_id = db.Column(db.BigInteger, nullable=True, comment='实际运行节点ID')
 
     # 服务状态信息（仅实时算法任务使用）
-    service_server_ip = db.Column(db.String(45), nullable=True, comment='服务运行服务器IP')
+    service_server_ip = db.Column(db.String(512), nullable=True, comment='服务运行服务器IP（多节点时为逗号分隔）')
     service_port = db.Column(db.Integer, nullable=True, comment='服务端口')
     service_process_id = db.Column(db.Integer, nullable=True, comment='服务进程ID')
     service_last_heartbeat = db.Column(db.DateTime, nullable=True, comment='服务最后心跳时间')
@@ -1842,7 +1842,7 @@ class StreamForwardTask(db.Model):
     exception_reason = db.Column(db.String(500), nullable=True, comment='异常原因')
     
     # 服务状态信息
-    service_server_ip = db.Column(db.String(45), nullable=True, comment='服务运行服务器IP')
+    service_server_ip = db.Column(db.String(512), nullable=True, comment='服务运行服务器IP（多节点时为逗号分隔）')
     service_port = db.Column(db.Integer, nullable=True, comment='服务端口')
     service_process_id = db.Column(db.Integer, nullable=True, comment='服务进程ID')
     service_last_heartbeat = db.Column(db.DateTime, nullable=True, comment='服务最后心跳时间')

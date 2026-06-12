@@ -101,6 +101,9 @@ public class ComputeNodeRespVO {
     @Schema(description = "GPU 信息 JSON")
     private String gpuInfo;
 
+    @Schema(description = "是否为控制面宿主机节点（平台自动纳管，不可删除）")
+    private Boolean isPlatform;
+
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 

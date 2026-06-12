@@ -3,7 +3,7 @@
     v-bind="$attrs"
     @register="register"
     :title="drawerTitle"
-    width="1200"
+    width="1500"
     :maskClosable="true"
     @close="handleClose"
   >
@@ -253,7 +253,8 @@ const getColumns = () => [
   {
     title: '服务名称',
     dataIndex: 'service_name',
-    width: 150,
+    width: 280,
+    ellipsis: false,
     fixed: 'left',
   },
   {
@@ -264,7 +265,8 @@ const getColumns = () => [
   {
     title: '服务器IP',
     dataIndex: 'server_ip',
-    width: 140,
+    width: 180,
+    ellipsis: false,
     customRender: ({text}: { text: string }) => text || '--',
   },
   {
@@ -737,6 +739,8 @@ const [register] = useDrawerInner(async (data) => {
       font-weight: 500;
       color: #262626;
       font-size: 14px;
+      word-break: break-all;
+      white-space: normal;
     }
   }
 

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { Progress } from 'ant-design-vue';
+import MetricBar from './MetricBar.vue';
 import { useRender } from '@/components/Table';
 import type { NodeDiskItem } from '../../utils/clusterMetrics';
 import { formatPercent, formatStorageRange, getProgressColor } from '../../utils/clusterMetrics';
@@ -45,12 +45,7 @@ function renderStatusTag(status?: string) {
       </div>
       <div class="disk-storage-node__bar">
         <div class="disk-storage-node__percent">{{ formatPercent(node.disk) }}</div>
-        <Progress
-          :percent="node.disk"
-          :stroke-color="getProgressColor(node.disk)"
-          :show-info="false"
-          size="small"
-        />
+        <MetricBar :percent="node.disk" :stroke-color="getProgressColor(node.disk)" />
       </div>
       <div v-if="node.diskTotalBytes" class="disk-storage-node__capacity">
         {{ formatStorageRange(node.diskUsedBytes, node.diskTotalBytes) }}

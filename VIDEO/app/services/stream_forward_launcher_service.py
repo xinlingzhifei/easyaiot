@@ -9,6 +9,7 @@
 """
 import json
 import os
+import socket
 import subprocess
 import logging
 import threading
@@ -18,6 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 
 from models import db, StreamForwardTask
+from app.utils.node_remote_python import resolve_video_bundle_python
 from .stream_forward_daemon import StreamForwardDaemon
 
 logger = logging.getLogger(__name__)
@@ -28,10 +30,170 @@ _running_daemons: Dict[int, StreamForwardDaemon] = {}
 _daemons_lock = threading.Lock()
 _starting_tasks: Dict[int, threading.Lock] = {}
 _starting_lock = threading.Lock()
+_local_shard_processes: Dict[str, subprocess.Popen] = {}
+_local_shard_lock = threading.Lock()
 
 
 def _get_video_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _auto_include_local() -> bool:
+    """auto 调度时是否将少量分片留在本机（控制面节点仅作兜底）。"""
+    return os.getenv('STREAM_FORWARD_AUTO_INCLUDE_LOCAL', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+
+
+def _local_shard_max() -> int:
+    """auto 调度时本机（控制面）最多承载的分片数，0 表示完全不下本机。"""
+    try:
+        return max(0, int(os.getenv('STREAM_FORWARD_LOCAL_MAX_SHARDS', '1')))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _should_deploy_shard_locally(task: StreamForwardTask, shard_index: int, total_shards: int) -> bool:
+    policy = getattr(task, 'schedule_policy', None) or 'local'
+    if policy == 'local':
+        return True
+    if policy != 'auto' or not _auto_include_local():
+        return False
+    max_local = _local_shard_max()
+    if max_local <= 0:
+        return False
+    if total_shards <= max_local:
+        return shard_index < total_shards
+    # 仅前 max_local 个分片留在本机，其余全部分配到远程计算节点
+    return shard_index < max_local
+
+
+def _stop_local_shard(workload_id: str) -> None:
+    with _local_shard_lock:
+        proc = _local_shard_processes.pop(workload_id, None)
+    if not proc:
+        return
+    try:
+        if proc.poll() is None:
+            if os.name != 'nt':
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            else:
+                proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                if os.name != 'nt':
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
+    except (ProcessLookupError, OSError) as e:
+        logger.warning('停止本机推流转发分片失败 workload_id=%s: %s', workload_id, e)
+
+
+def _stop_all_local_shards(task: StreamForwardTask) -> None:
+    deployments = _parse_device_deployments(task)
+    for dep in deployments:
+        if dep.get('local'):
+            workload_id = dep.get('workload_id')
+            if workload_id:
+                _stop_local_shard(str(workload_id))
+
+
+def _deploy_shard_locally(
+    task_id: int,
+    task: StreamForwardTask,
+    shard_index: int,
+    device_ids: List[str],
+) -> Dict[str, Any]:
+    from app.services.camera_service import _get_host_ip_for_stream_urls
+    from app.services.stream_url_sync_service import sync_devices_for_deployment
+    import sys
+
+    workload_id = _workload_id(task_id, shard_index, device_ids)
+    host = _get_host_ip_for_stream_urls()
+    video_root = _get_video_root()
+    log_dir = os.path.join(
+        video_root,
+        'logs',
+        f'stream_forward_task_{task_id}',
+        _shard_log_suffix(shard_index, device_ids),
+    )
+    os.makedirs(log_dir, exist_ok=True)
+
+    _stop_local_shard(workload_id)
+    env = os.environ.copy()
+    env.update(_build_stream_forward_deploy_env(task_id, log_dir, host, device_ids, workload_id))
+    env['VIDEO_ROOT'] = video_root
+    deploy_script = os.path.join(video_root, 'services', 'stream_forward_service', 'run_deploy.py')
+
+    proc = subprocess.Popen(
+        [sys.executable, deploy_script],
+        cwd=video_root,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=os.setsid if os.name != 'nt' else None,
+    )
+
+    with _local_shard_lock:
+        _local_shard_processes[workload_id] = proc
+
+    deployment = {
+        'device_ids': device_ids,
+        'node_id': None,
+        'host': host,
+        'workload_id': workload_id,
+        'pid': proc.pid,
+        'log_dir': log_dir,
+        'local': True,
+    }
+    try:
+        sync_devices_for_deployment(deployment, commit=False)
+    except Exception as e:
+        logger.warning('本机分片流地址同步失败 task_id=%s: %s', task_id, e)
+
+    logger.info(
+        '推流转发分片本机部署成功 task_id=%s workload_id=%s host=%s devices=%s pid=%s',
+        task_id, workload_id, host, device_ids, proc.pid,
+    )
+    return deployment
+
+
+def _spread_shards_enabled() -> bool:
+    """auto 调度批量部署时，尽量将分片分散到不同节点（轮询式反亲和）。"""
+    return os.getenv('STREAM_FORWARD_SPREAD_SHARDS', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+
+
+def _should_spread_shards(task: StreamForwardTask) -> bool:
+    policy = getattr(task, 'schedule_policy', None) or 'local'
+    return policy == 'auto' and _spread_shards_enabled()
+
+
+def _deploy_shard_for_schedule(
+    task_id: int,
+    task: StreamForwardTask,
+    shard_index: int,
+    device_ids: List[str],
+    total_shards: int,
+    spread_assigned_node_ids: Optional[List[int]] = None,
+    fresh_allocate: bool = False,
+) -> Dict[str, Any]:
+    if _should_deploy_shard_locally(task, shard_index, total_shards):
+        return _deploy_shard_locally(task_id, task, shard_index, device_ids)
+    deployment = _deploy_shard_on_remote_node(
+        task_id, task, shard_index, device_ids,
+        spread_assigned_node_ids=spread_assigned_node_ids,
+        fresh_allocate=fresh_allocate,
+    )
+    if spread_assigned_node_ids is not None:
+        node_id = deployment.get('node_id')
+        if node_id is not None:
+            nid = int(node_id)
+            if nid not in spread_assigned_node_ids:
+                spread_assigned_node_ids.append(nid)
+    return deployment
 
 
 def _use_remote_deploy(task: StreamForwardTask) -> bool:
@@ -44,9 +206,160 @@ def _use_remote_deploy(task: StreamForwardTask) -> bool:
 
 def _devices_per_shard() -> int:
     try:
-        return max(1, int(os.getenv('STREAM_FORWARD_DEVICES_PER_SHARD', '1')))
+        return max(1, int(os.getenv('STREAM_FORWARD_DEVICES_PER_SHARD', '4')))
     except (TypeError, ValueError):
-        return 1
+        return 4
+
+
+def _merge_exclude_node_ids(*groups: Optional[List[int]]) -> Optional[List[int]]:
+    excludes: List[int] = []
+    seen = set()
+    for group in groups:
+        for node_id in group or []:
+            if node_id is None:
+                continue
+            nid = int(node_id)
+            if nid not in seen:
+                seen.add(nid)
+                excludes.append(nid)
+    return excludes or None
+
+
+def _resolve_exclude_node_ids(extra: Optional[List[int]] = None) -> Optional[List[int]]:
+    """合并调用方显式排除的节点 ID（控制面降权由 iot-node 调度器 score 负责）。"""
+    excludes: List[int] = []
+    seen = set()
+    for node_id in extra or []:
+        if node_id is None:
+            continue
+        nid = int(node_id)
+        if nid not in seen:
+            seen.add(nid)
+            excludes.append(nid)
+    hard_exclude_platform = os.getenv('STREAM_FORWARD_EXCLUDE_PLATFORM', 'false').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+    if hard_exclude_platform:
+        try:
+            from app.utils import node_client
+            platform_id = node_client.get_platform_node_id()
+            if platform_id is not None and platform_id not in seen:
+                seen.add(platform_id)
+                excludes.append(platform_id)
+        except Exception as e:
+            logger.debug('获取控制面节点 ID 失败: %s', e)
+    return excludes or None
+
+
+def _tag_int(tags: Optional[dict], key: str, default: int) -> int:
+    if not tags:
+        return default
+    raw = tags.get(key)
+    if raw is None:
+        return default
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _srs_ports_from_tags(tags: Optional[dict]) -> Dict[str, int]:
+    tag_map = tags or {}
+    return {
+        'rtmp': _tag_int(tag_map, 'srs_rtmp_port', 1935),
+        'http': _tag_int(tag_map, 'srs_http_port', 8080),
+        'api': _tag_int(tag_map, 'srs_api_port', 1985),
+    }
+
+
+def _check_rtmp_port(host: str, port: int, timeout: float = 2.0) -> bool:
+    host = (host or '').strip()
+    if not host:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _check_srs_api_ready(host: str, api_port: int, timeout: float = 3.0) -> bool:
+    """通过 SRS HTTP API 判断媒体栈是否真正就绪（避免仅 TCP 端口占用误判）。"""
+    host = (host or '').strip()
+    if not host:
+        return False
+    try:
+        import requests
+        resp = requests.get(
+            f'http://{host}:{api_port}/api/v1/versions',
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        return data.get('code') == 0 and bool(data.get('data'))
+    except Exception:
+        return False
+
+
+def _ensure_node_srs_ready(node_id: int, host: str, tags: Optional[dict] = None) -> None:
+    """远程推流前确认目标节点 SRS 可用，不可用则尝试 Agent 拉起媒体栈。"""
+    if os.getenv('STREAM_FORWARD_ENSURE_SRS', 'true').strip().lower() not in ('1', 'true', 'yes', 'on'):
+        return
+    tag_map = tags or {}
+    try:
+        from app.utils import node_client
+        if not tag_map:
+            node = node_client.get_node(node_id)
+            tag_map = node.get('tags') or {}
+            host = host or str(node.get('host') or '').strip()
+    except Exception as e:
+        logger.warning('查询节点 SRS 配置失败 node_id=%s: %s', node_id, e)
+        return
+
+    srs_ports = _srs_ports_from_tags(tag_map)
+    rtmp_port = srs_ports['rtmp']
+    api_port = srs_ports['api']
+
+    if _check_srs_api_ready(host, api_port):
+        return
+
+    if _check_rtmp_port(host, rtmp_port) and not _check_srs_api_ready(host, api_port):
+        logger.warning(
+            '目标节点 RTMP 端口 %s:%s 可连接但 SRS API %s 不可用，可能端口被非 SRS 进程占用',
+            host, rtmp_port, api_port,
+        )
+
+    logger.warning(
+        '目标节点 SRS 未就绪，尝试拉起媒体栈 node_id=%s host=%s api=%s rtmp=%s',
+        node_id, host, api_port, rtmp_port,
+    )
+    try:
+        from app.utils import node_client
+        node_client.deploy_media_stack(node_id, stack_type='srs_live')
+        for _ in range(15):
+            time.sleep(2)
+            if _check_srs_api_ready(host, api_port):
+                logger.info(
+                    '目标节点 SRS 已就绪 node_id=%s host=%s api=%s rtmp=%s',
+                    node_id, host, api_port, rtmp_port,
+                )
+                return
+        logger.error(
+            '目标节点 SRS 启动超时 node_id=%s host=%s api=%s rtmp=%s，推流可能失败',
+            node_id, host, api_port, rtmp_port,
+        )
+        raise RuntimeError(
+            f'目标节点 SRS 未就绪: {host} (API {api_port}, RTMP {rtmp_port})，'
+            f'请先在节点管理部署媒体栈或检查端口/防火墙'
+        )
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.error('目标节点媒体栈部署失败 node_id=%s: %s', node_id, e, exc_info=True)
+        raise RuntimeError(
+            f'目标节点媒体栈部署失败: {host} (node_id={node_id}): {e}'
+        ) from e
 
 
 def _use_device_level_schedule(task: StreamForwardTask) -> bool:
@@ -116,6 +429,7 @@ def _build_stream_forward_deploy_env(
     server_host: str,
     device_ids: Optional[List[str]] = None,
     workload_id: Optional[str] = None,
+    node_tags: Optional[dict] = None,
 ) -> dict:
     env = {}
     for key in (
@@ -130,10 +444,18 @@ def _build_stream_forward_deploy_env(
         'AI_RTSP_ASYNC_READ', 'AI_RTSP_ASYNC_QUEUE_MAX', 'AI_RTSP_TRANSPORT',
         'OPENCV_FFMPEG_RTSP_TRANSPORT', 'RTSP_OPEN_TIMEOUT_MSEC', 'RTSP_READ_TIMEOUT_MSEC',
         'PUSH_FLUSH_EVERY',
+        'STREAM_FORWARD_FFMPEG_NATIVE', 'STREAM_FORWARD_ENSURE_SRS',
+        'STREAM_FORWARD_DEVICES_PER_SHARD', 'STREAM_FORWARD_LOCAL_MAX_SHARDS',
+        'SRS_RTMP_PORT', 'SRS_HTTP_PORT', 'SRS_API_PORT',
     ):
         val = os.getenv(key)
         if val is not None and val != '':
             env[key] = val
+
+    srs_ports = _srs_ports_from_tags(node_tags)
+    env.setdefault('SRS_RTMP_PORT', str(srs_ports['rtmp']))
+    env.setdefault('SRS_HTTP_PORT', str(srs_ports['http']))
+    env.setdefault('SRS_API_PORT', str(srs_ports['api']))
 
     video_control_url = _resolve_video_control_url()
     video_service_port = os.getenv('FLASK_RUN_PORT', '6000')
@@ -149,6 +471,8 @@ def _build_stream_forward_deploy_env(
         env['DEVICE_IDS'] = ','.join(device_ids)
     if workload_id:
         env['WORKLOAD_ID'] = workload_id
+    from app.utils.node_remote_tools import apply_remote_toolchain_env
+    apply_remote_toolchain_env(env)
     return env
 
 
@@ -170,6 +494,80 @@ def _apply_task_service_fields_from_deployments(task: StreamForwardTask, deploym
     task.node_id = node_ids[0] if len(node_ids) == 1 else None
 
 
+def _release_remote_workload_binding(workload_id: str) -> None:
+    """释放调度器中的 workload 绑定，避免重启后 running 计数与 sticky 沿用旧状态。"""
+    from app.utils import node_client
+    try:
+        node_client.release_workload(WORKLOAD_TYPE_STREAM_FORWARD, str(workload_id))
+    except Exception as e:
+        logger.warning('释放推流转发节点绑定失败 workload_id=%s: %s', workload_id, e)
+
+
+def _release_all_task_workload_bindings(task: StreamForwardTask) -> None:
+    """释放任务下全部分片的调度绑定（全量重启前调用）。"""
+    workload_ids = set()
+    for dep in _parse_device_deployments(task):
+        workload_id = dep.get('workload_id')
+        if workload_id:
+            workload_ids.add(str(workload_id))
+    if not workload_ids and task.id:
+        workload_ids.add(str(task.id))
+    for workload_id in sorted(workload_ids):
+        _release_remote_workload_binding(workload_id)
+
+
+def _allocate_stream_forward_node(
+    task: StreamForwardTask,
+    workload_id: str,
+    *,
+    exclude_node_ids: Optional[List[int]] = None,
+    spread_assigned_node_ids: Optional[List[int]] = None,
+    fresh_allocate: bool = False,
+) -> Dict[str, Any]:
+    from app.utils import node_client
+
+    policy = getattr(task, 'schedule_policy', None) or 'local'
+    target_node_id = getattr(task, 'target_node_id', None)
+    if policy == 'node' and not target_node_id:
+        raise RuntimeError('已选择指定节点但未配置目标节点')
+
+    base_excludes = _resolve_exclude_node_ids(exclude_node_ids)
+    spread_excludes = (
+        list(spread_assigned_node_ids)
+        if _should_spread_shards(task) and spread_assigned_node_ids
+        else None
+    )
+    full_excludes = _merge_exclude_node_ids(base_excludes, spread_excludes)
+
+    sticky = not fresh_allocate
+    try:
+        return node_client.allocate_node(
+            WORKLOAD_TYPE_STREAM_FORWARD,
+            workload_id,
+            capabilities=['stream_forward', 'srs_live'],
+            gpu_count=1,
+            target_node_id=target_node_id if policy == 'node' else None,
+            sticky=sticky,
+            exclude_node_ids=full_excludes,
+        )
+    except RuntimeError:
+        if spread_excludes:
+            logger.warning(
+                '推流转发分片分散调度候选不足，回退为负载优先 workload_id=%s excludes=%s',
+                workload_id, spread_excludes,
+            )
+            return node_client.allocate_node(
+                WORKLOAD_TYPE_STREAM_FORWARD,
+                workload_id,
+                capabilities=['stream_forward', 'srs_live'],
+                gpu_count=1,
+                target_node_id=target_node_id if policy == 'node' else None,
+                sticky=sticky,
+                exclude_node_ids=base_excludes,
+            )
+        raise
+
+
 def _deploy_shard_with_workload_id(
     task_id: int,
     task: StreamForwardTask,
@@ -178,6 +576,8 @@ def _deploy_shard_with_workload_id(
     *,
     shard_index: Optional[int] = None,
     exclude_node_ids: Optional[List[int]] = None,
+    spread_assigned_node_ids: Optional[List[int]] = None,
+    fresh_allocate: bool = False,
 ) -> Dict[str, Any]:
     from app.utils import node_client
 
@@ -195,19 +595,25 @@ def _deploy_shard_with_workload_id(
         else:
             shard_index = 0
 
-    allocation = node_client.allocate_node(
-        WORKLOAD_TYPE_STREAM_FORWARD,
+    allocation = _allocate_stream_forward_node(
+        task,
         workload_id,
-        capabilities=['stream_forward'],
-        gpu_count=1,
-        target_node_id=target_node_id if policy == 'node' else None,
-        sticky=True,
         exclude_node_ids=exclude_node_ids,
+        spread_assigned_node_ids=spread_assigned_node_ids,
+        fresh_allocate=fresh_allocate,
     )
 
     node_id = allocation['nodeId']
     host = allocation['host']
     gpu_ids = allocation.get('gpuIds')
+
+    node_tags = None
+    try:
+        node_info = node_client.get_node(node_id)
+        node_tags = node_info.get('tags')
+    except Exception as e:
+        logger.debug('查询分配节点详情失败 node_id=%s: %s', node_id, e)
+    _ensure_node_srs_ready(node_id, host, node_tags)
 
     video_root_remote = os.getenv('NODE_REMOTE_VIDEO_ROOT', '/opt/easyaiot/VIDEO')
     work_dir = os.path.join(video_root_remote, 'services', 'stream_forward_service')
@@ -217,11 +623,11 @@ def _deploy_shard_with_workload_id(
         f'stream_forward_task_{task_id}',
         _shard_log_suffix(shard_index, device_ids),
     )
-    python_exec = os.getenv('NODE_REMOTE_PYTHON', 'python3')
+    python_exec = resolve_video_bundle_python('stream_forward', video_root_remote)
     deploy_script = os.path.join(work_dir, 'run_deploy.py')
     command = [python_exec, deploy_script]
 
-    env = _build_stream_forward_deploy_env(task_id, log_dir, host, device_ids, workload_id)
+    env = _build_stream_forward_deploy_env(task_id, log_dir, host, device_ids, workload_id, node_tags)
     env['VIDEO_ROOT'] = video_root_remote
 
     result = node_client.deploy_workload(
@@ -239,7 +645,7 @@ def _deploy_shard_with_workload_id(
         '推流转发分片远程部署成功 task_id=%s workload_id=%s node_id=%s host=%s devices=%s pid=%s',
         task_id, workload_id, node_id, host, device_ids, result.get('pid'),
     )
-    return {
+    deployment = {
         'device_ids': device_ids,
         'node_id': node_id,
         'host': host,
@@ -247,6 +653,12 @@ def _deploy_shard_with_workload_id(
         'pid': result.get('pid'),
         'log_dir': log_dir,
     }
+    try:
+        from app.services.stream_url_sync_service import sync_devices_for_deployment
+        sync_devices_for_deployment(deployment, commit=False)
+    except Exception as e:
+        logger.warning('远程分片流地址同步失败 task_id=%s: %s', task_id, e)
+    return deployment
 
 
 def _deploy_shard_on_remote_node(
@@ -254,10 +666,15 @@ def _deploy_shard_on_remote_node(
     task: StreamForwardTask,
     shard_index: int,
     device_ids: List[str],
+    *,
+    spread_assigned_node_ids: Optional[List[int]] = None,
+    fresh_allocate: bool = False,
 ) -> Dict[str, Any]:
     workload_id = _workload_id(task_id, shard_index, device_ids)
     return _deploy_shard_with_workload_id(
         task_id, task, device_ids, workload_id, shard_index=shard_index,
+        spread_assigned_node_ids=spread_assigned_node_ids,
+        fresh_allocate=fresh_allocate,
     )
 
 
@@ -276,11 +693,8 @@ def redeploy_existing_shard(
     old_node_id = deployment.get('node_id')
     if old_node_id:
         _stop_remote_workload(int(old_node_id), workload_id)
-    try:
-        from app.utils import node_client
-        node_client.release_workload(WORKLOAD_TYPE_STREAM_FORWARD, workload_id)
-    except Exception as e:
-        logger.warning('释放分片绑定失败 workload_id=%s: %s', workload_id, e)
+    else:
+        _release_remote_workload_binding(workload_id)
 
     excludes = list(exclude_node_ids or [])
     if old_node_id and int(old_node_id) not in excludes:
@@ -292,6 +706,7 @@ def redeploy_existing_shard(
         device_ids,
         workload_id,
         exclude_node_ids=excludes or None,
+        fresh_allocate=True,
     )
 
 
@@ -380,7 +795,12 @@ def migrate_unhealthy_stream_forward_task(task_id: int) -> int:
     return migrated
 
 
-def _deploy_task_on_remote_node(task_id: int, task: StreamForwardTask) -> Tuple[bool, str, bool]:
+def _deploy_task_on_remote_node(
+    task_id: int,
+    task: StreamForwardTask,
+    *,
+    fresh_allocate: bool = False,
+) -> Tuple[bool, str, bool]:
     device_ids = [d.id for d in (task.devices or []) if d.id]
     if not device_ids:
         return (False, '任务未关联可用摄像头', False)
@@ -389,10 +809,17 @@ def _deploy_task_on_remote_node(task_id: int, task: StreamForwardTask) -> Tuple[
         shards = _make_device_shards(device_ids)
         deployments: List[Dict[str, Any]] = []
         failed: List[str] = []
+        spread_assigned: Optional[List[int]] = [] if _should_spread_shards(task) else None
 
         for shard_index, shard_device_ids in enumerate(shards):
             try:
-                deployments.append(_deploy_shard_on_remote_node(task_id, task, shard_index, shard_device_ids))
+                deployments.append(
+                    _deploy_shard_for_schedule(
+                        task_id, task, shard_index, shard_device_ids, len(shards),
+                        spread_assigned_node_ids=spread_assigned,
+                        fresh_allocate=fresh_allocate,
+                    )
+                )
             except Exception as e:
                 logger.error(
                     '推流转发分片部署失败 task_id=%s devices=%s: %s',
@@ -422,27 +849,33 @@ def _deploy_task_on_remote_node(task_id: int, task: StreamForwardTask) -> Tuple[
     if policy == 'node' and not target_node_id:
         return (False, '已选择指定节点但未配置目标节点', False)
 
-    allocation = node_client.allocate_node(
-        WORKLOAD_TYPE_STREAM_FORWARD,
+    allocation = _allocate_stream_forward_node(
+        task,
         str(task_id),
-        capabilities=['stream_forward'],
-        gpu_count=1,
-        target_node_id=target_node_id if policy == 'node' else None,
-        sticky=True,
+        exclude_node_ids=_resolve_exclude_node_ids(),
+        fresh_allocate=fresh_allocate,
     )
 
     node_id = allocation['nodeId']
     host = allocation['host']
     gpu_ids = allocation.get('gpuIds')
 
+    node_tags = None
+    try:
+        node_info = node_client.get_node(node_id)
+        node_tags = node_info.get('tags')
+    except Exception as e:
+        logger.debug('查询分配节点详情失败 node_id=%s: %s', node_id, e)
+    _ensure_node_srs_ready(node_id, host, node_tags)
+
     video_root_remote = os.getenv('NODE_REMOTE_VIDEO_ROOT', '/opt/easyaiot/VIDEO')
     work_dir = os.path.join(video_root_remote, 'services', 'stream_forward_service')
     log_dir = os.path.join(video_root_remote, 'logs', f'stream_forward_task_{task_id}')
-    python_exec = os.getenv('NODE_REMOTE_PYTHON', 'python3')
+    python_exec = resolve_video_bundle_python('stream_forward', video_root_remote)
     deploy_script = os.path.join(work_dir, 'run_deploy.py')
     command = [python_exec, deploy_script]
 
-    env = _build_stream_forward_deploy_env(task_id, log_dir, host)
+    env = _build_stream_forward_deploy_env(task_id, log_dir, host, node_tags=node_tags)
     env['VIDEO_ROOT'] = video_root_remote
 
     result = node_client.deploy_workload(
@@ -464,6 +897,12 @@ def _deploy_task_on_remote_node(task_id: int, task: StreamForwardTask) -> Tuple[
         'pid': result.get('pid'),
         'log_dir': log_dir,
     }]
+    try:
+        from app.services.stream_url_sync_service import sync_devices_for_deployment
+        for dep in deployment:
+            sync_devices_for_deployment(dep, commit=False)
+    except Exception as e:
+        logger.warning('推流转发任务流地址同步失败 task_id=%s: %s', task_id, e)
     _apply_task_service_fields_from_deployments(task, deployment)
     task.node_id = node_id
     db.session.commit()
@@ -481,6 +920,7 @@ def _stop_remote_workload(node_id: int, workload_id: str) -> None:
         node_client.stop_workload(node_id, WORKLOAD_TYPE_STREAM_FORWARD, workload_id)
     except Exception as e:
         logger.warning('远程停止推流转发 workload 失败 node_id=%s workload_id=%s: %s', node_id, workload_id, e)
+    _release_remote_workload_binding(workload_id)
 
 
 def _stop_all_remote_deployments(task: StreamForwardTask) -> None:
@@ -622,6 +1062,7 @@ def stop_stream_forward_task(task_id: int):
     was_remote = bool(task and _task_has_active_remote_deployments(task))
     if was_remote and task:
         _stop_all_remote_deployments(task)
+        _stop_all_local_shards(task)
         _apply_task_service_fields_from_deployments(task, [])
         db.session.commit()
 
@@ -706,7 +1147,9 @@ def rebalance_stream_forward_task(task_id: int) -> bool:
         if dep_devices & removed_ids:
             node_id = dep.get('node_id')
             workload_id = dep.get('workload_id')
-            if node_id and workload_id:
+            if dep.get('local') and workload_id:
+                _stop_local_shard(str(workload_id))
+            elif node_id and workload_id:
                 _stop_remote_workload(int(node_id), str(workload_id))
             continue
         kept_deployments.append(dep)
@@ -715,10 +1158,20 @@ def rebalance_stream_forward_task(task_id: int) -> bool:
     if added_ids:
         shards = _make_device_shards(added_ids)
         shard_index = _next_shard_index(kept_deployments)
+        spread_assigned: Optional[List[int]] = None
+        if _should_spread_shards(task):
+            spread_assigned = []
+            for dep in kept_deployments:
+                node_id = dep.get('node_id')
+                if node_id is not None and int(node_id) not in spread_assigned:
+                    spread_assigned.append(int(node_id))
         for shard_device_ids in shards:
             try:
                 kept_deployments.append(
-                    _deploy_shard_on_remote_node(task_id, task, shard_index, shard_device_ids)
+                    _deploy_shard_for_schedule(
+                        task_id, task, shard_index, shard_device_ids, len(shards) + len(kept_deployments),
+                        spread_assigned_node_ids=spread_assigned,
+                    )
                 )
                 shard_index += 1
             except Exception as e:
@@ -746,9 +1199,11 @@ def restart_stream_forward_task_services(task_id: int) -> bool:
     task = StreamForwardTask.query.get(task_id)
     if task and _use_remote_deploy(task):
         _stop_all_remote_deployments(task)
+        _release_all_task_workload_bindings(task)
+        _stop_all_local_shards(task)
         _apply_task_service_fields_from_deployments(task, [])
         db.session.commit()
-        success, _, _ = _deploy_task_on_remote_node(task_id, task)
+        success, _, _ = _deploy_task_on_remote_node(task_id, task, fresh_allocate=True)
         return success
 
     with _daemons_lock:
@@ -761,6 +1216,17 @@ def restart_stream_forward_task_services(task_id: int) -> bool:
             except Exception as e:
                 logger.error(f"❌ 重启推流转发任务 {task_id} 的服务失败: {str(e)}")
                 return False
+
+    # VIDEO 进程重启后内存中无守护进程记录，回退为重新拉起
+    if task and not _use_remote_deploy(task):
+        try:
+            logger.info('推流转发任务 %s 本机守护进程不在内存中，回退为重新启动', task_id)
+            start_stream_forward_task(task_id)
+            return True
+        except Exception as e:
+            logger.error('推流转发任务 %s 回退启动失败: %s', task_id, e, exc_info=True)
+            return False
+
     logger.warning(f"推流转发任务 {task_id} 的服务未运行，无法重启")
     return False
 

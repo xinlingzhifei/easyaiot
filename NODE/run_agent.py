@@ -69,8 +69,8 @@ def collect_metrics() -> Dict[str, Any]:
         active_tasks = 0
         workloads = []
 
-    cpu_per = psutil.cpu_percent(interval=0.5, percpu=True)
-    cpu = round(sum(cpu_per), 2) if cpu_per else 0.0
+    # 整机平均利用率 0–100%，与系统监视器一致（勿对各核求和，否则会随逻辑核数虚高）
+    cpu = round(psutil.cpu_percent(interval=0.5), 2)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
     return {

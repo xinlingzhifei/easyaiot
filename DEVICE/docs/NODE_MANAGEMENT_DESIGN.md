@@ -144,8 +144,12 @@ psql -d iot-video20 -f VIDEO/migrations/add_algorithm_task_node_fields.sql
 |-----|------|------|
 | `srs_rtmp_port` | 1935 | SRS RTMP |
 | `srs_http_port` | 8080 | SRS HTTP-FLV |
+| `srs_api_port` | 1985 | SRS HTTP API |
+| `srs_rtc_port` | 8000 | SRS WebRTC（rtc_server） |
 | `zlm_http_port` | 6080 | ZLM HTTP API |
 | `zlm_rtmp_port` | 10935 | ZLM RTMP |
+| `zlm_rtsp_port` | 8554 | ZLM RTSP |
+| `zlm_rtc_port` | 8800 | ZLM WebRTC（[rtc]，勿与 SRS WebRTC 同端口） |
 | `zlm_rtp_port_min/max` | 30000-30500 | GB28181 RTP 范围 |
 
 ### VIDEO 环境变量

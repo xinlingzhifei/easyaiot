@@ -1,7 +1,7 @@
 # yFeiEye (Объединенная платформа интеллектуальных алгоритмов "Облако-Край-Устройство")
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
+[![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 Я надеюсь, что эта система будет использоваться по всему миру, чтобы сделать ИИ действительно доступным для всех, чтобы каждый мог испытать преимущества ИИ, а не только узкая группа людей.
@@ -140,7 +140,7 @@ Java хорошо подходит для создания стабильной 
 ### 🏗️ Особенности архитектуры проекта
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye на самом деле не один проект, а пять проектов.
+yFeiEye на самом деле не один проект, а шесть проектов.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -203,7 +203,7 @@ yFeiEye активно поддерживает стратегию локали�
 ## 🧩 Структура проекта
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye состоит из пяти основных проектов:
+yFeiEye состоит из шести основных проектов:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -226,6 +226,20 @@ yFeiEye состоит из пяти основных проектов:
     <li><strong>Аутентификация устройств</strong>: Динамическая регистрация устройств, проверка подлинности, безопасное подключение.</li>
     <li><strong>Движок правил</strong>: Правила маршрутизации данных, маршрутизация сообщений, преобразование данных.</li>
     <li><strong>Сбор данных</strong>: Сбор данных с устройств, хранение, запрос и анализ.</li>
+    <li><strong>Плоскость управления узлами</strong>: Встроенный микросервис <code>iot-node</code>, обеспечивающий единую плоскость управления для CRUD вычислительных/медиа-узлов, проверки SSH-соединения, регистрации и heartbeat Agent, планирования рабочих нагрузок и распределения пула медиа-узлов.</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Модуль NODE</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Агент узла</strong>: Python-агент периферийного/удалённого узла; установка в один клик через <code>install.sh</code> как служба systemd, автоматическое подключение к платформе после развёртывания на целевых серверах.</li>
+    <li><strong>Связь с плоскостью управления</strong>: Регистрация на плоскости управления <code>iot-node</code> и периодическая отправка heartbeat с отчётом об использовании CPU, памяти, диска, GPU и статусе активных рабочих нагрузок в реальном времени.</li>
+    <li><strong>Удалённые рабочие нагрузки</strong>: Приём команд развёртывания/остановки от плоскости управления через HTTP API (порт 9100 по умолчанию), локальный запуск на узле сервисов моделей ИИ, алгоритмических задач, транскодирования FFmpeg и других нагрузок.</li>
+    <li><strong>Пул медиа-узлов</strong>: Поддержка удалённого развёртывания <code>docker compose</code> стеков потоковой передачи SRS/ZLM на узлах, совместно с плоскостью управления для sticky-привязки устройств к медиа-узлам и генерации URL потоков.</li>
+    <li><strong>Роли узлов</strong>: Поддержка ролей compute (вычисления), media (медиа) и hybrid (смешанная), обеспечивая межузловое планирование и эластичное масштабирование для вывода ИИ, алгоритмических задач и потоковых сервисов.</li>
+    <li><strong>Работа в офлайн</strong>: Предоставляет офлайн-упаковку зависимостей pip wheels и горячее обновление Agent, подходит для массового подключения узлов в средах без доступа к интернету или с ограниченной сетью.</li>
   </ul>
 </td>
 </tr>
@@ -343,8 +357,8 @@ yFeiEye — это проект с открытым исходным кодом 
 
 ## ⚙️ Адреса проекта
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
+- Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 Скриншоты
 <div>
@@ -633,6 +647,38 @@ yFeiEye — это проект с открытым исходным кодом 
 </tbody>
 </table>
 
+## 📞 Контакты
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+Сначала подпишитесь на официальный аккаунт ниже, затем свяжитесь с нами через техническую группу или WeChat.
+</p>
+
+## 👥 Официальный аккаунт
+
+<div>
+  <img src=".image/公众号.jpg" alt="Официальный аккаунт" width="30%">
+</div>
+
+## 💬 Техническая группа
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+После подписки на официальный аккаунт отсканируйте QR-код ниже через WeChat, чтобы вступить в техническую группу yFeiEye.
+</p>
+
+<div>
+  <img src=".image/交流群3群.jpg" alt="Техническая группа yFeiEye" width="30%">
+</div>
+
+## 💬 WeChat
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+После подписки на официальный аккаунт отсканируйте QR-код ниже, чтобы добавить нас в друзья WeChat для личного общения.
+</p>
+
+<div>
+  <img src=".image/微信联系方式.jpg" alt="WeChat контакт" width="200">
+</div>
+
 ## 🪐 Знаниевая планета:
 
 <p>
@@ -642,6 +688,7 @@ yFeiEye — это проект с открытым исходным кодом 
 ## 💰 Спонсорство и пожертвования
 
 <div>
+    <img src=".image/微信支付.jpg" alt="微信支付" width="30%" height="30%">
     <img src=".image/支付宝支付.jpg" alt="支付宝支付" width="30%" height="10%">
 </div>
 
@@ -961,13 +1008,13 @@ yFeiEye — это проект с открытым исходным кодом 
 ## 💡 Пожелания
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Добро пожаловать с предложениями по улучшению, которые помогут усовершенствовать yfeieye.
+Добро пожаловать с предложениями по улучшению, которые помогут усовершенствовать easyaiot.
 </p>
 
 ## 📄 Авторские права
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye использует лицензию с открытым исходным кодом <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Мы стремимся способствовать популяризации и развитию технологий ИИ, позволяя большему количеству людей свободно использовать и получать выгоду от этой технологии.
+翱翔的雄库鲁/easyaiot использует лицензию с открытым исходным кодом <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Мы стремимся способствовать популяризации и развитию технологий ИИ, позволяя большему количеству людей свободно использовать и получать выгоду от этой технологии.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -976,5 +1023,5 @@ yFeiEye — это проект с открытым исходным кодом 
 
 ## 🌟 График роста звезд (Star)
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)
 

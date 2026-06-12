@@ -15,15 +15,20 @@ MEDIA_NODE_NAME="${MEDIA_NODE_NAME:-media-node}"
 MEDIA_NODE_HOST="${MEDIA_NODE_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
 MEDIA_HOOK_HOST="${MEDIA_HOOK_HOST:-127.0.0.1}"
 MEDIA_HOOK_PORT="${MEDIA_HOOK_PORT:-48080}"
+# 经 Gateway(48080) 回调需 /admin-api 前缀；直连 VIDEO(6000) 时设为空
+MEDIA_HOOK_PATH_PREFIX="${MEDIA_HOOK_PATH_PREFIX:-/admin-api}"
 SRS_CANDIDATE_IP="${SRS_CANDIDATE_IP:-${MEDIA_NODE_HOST}}"
 SRS_RTMP_PORT="${SRS_RTMP_PORT:-1935}"
 SRS_HTTP_PORT="${SRS_HTTP_PORT:-8080}"
 SRS_API_PORT="${SRS_API_PORT:-1985}"
+SRS_RTC_PORT="${SRS_RTC_PORT:-8000}"
 ZLM_HTTP_PORT="${ZLM_HTTP_PORT:-6080}"
 ZLM_RTMP_PORT="${ZLM_RTMP_PORT:-10935}"
 ZLM_RTSP_PORT="${ZLM_RTSP_PORT:-8554}"
 ZLM_RTP_PORT_MIN="${ZLM_RTP_PORT_MIN:-30000}"
 ZLM_RTP_PORT_MAX="${ZLM_RTP_PORT_MAX:-30500}"
+ZLM_RTC_PORT="${ZLM_RTC_PORT:-8800}"
+ZLM_RTC_EXTERN_IP="${ZLM_RTC_EXTERN_IP:-${SRS_CANDIDATE_IP:-${MEDIA_NODE_HOST}}}"
 ZLM_SECRET="${ZLM_SECRET:-yFeiEye_Media_Secret}"
 SRS_IMAGE="${SRS_IMAGE:-ossrs/srs:5}"
 ZLM_IMAGE="${ZLM_IMAGE:-zlmediakit/zlmediakit:master}"
@@ -191,9 +196,9 @@ zlm_healthy() {
 render_srs_config() {
   local out="${MEDIA_CLUSTER_ROOT}/srs/docker.conf"
   export MEDIA_NODE_ID="${MEDIA_NODE_NAME}-srs"
-  export MEDIA_HOOK_HOST MEDIA_HOOK_PORT SRS_CANDIDATE_IP
+  export MEDIA_HOOK_HOST MEDIA_HOOK_PORT MEDIA_HOOK_PATH_PREFIX SRS_CANDIDATE_IP SRS_RTC_PORT
   print_step "渲染 SRS 配置 -> ${out}"
-  envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST} ${MEDIA_HOOK_PORT} ${SRS_CANDIDATE_IP}' \
+  envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST} ${MEDIA_HOOK_PORT} ${MEDIA_HOOK_PATH_PREFIX} ${SRS_CANDIDATE_IP} ${SRS_RTC_PORT}' \
     < "${MEDIA_CLUSTER_ROOT}/srs/cluster.conf.template" \
     | sed -E \
       -e "s/^listen[[:space:]]+[0-9]+;/listen              ${SRS_RTMP_PORT};/" \
@@ -206,10 +211,11 @@ render_srs_config() {
 render_zlm_config() {
   local out="${MEDIA_CLUSTER_ROOT}/zlm/config.ini"
   export MEDIA_NODE_ID="${MEDIA_NODE_NAME}-zlm"
-  export MEDIA_HOOK_HOST MEDIA_HOOK_PORT ZLM_SECRET
+  export MEDIA_HOOK_HOST MEDIA_HOOK_PORT MEDIA_HOOK_PATH_PREFIX ZLM_SECRET
   export ZLM_HTTP_PORT ZLM_RTMP_PORT ZLM_RTSP_PORT ZLM_RTP_PORT_MIN ZLM_RTP_PORT_MAX
+  export ZLM_RTC_PORT ZLM_RTC_EXTERN_IP
   print_step "渲染 ZLM 配置 -> ${out}"
-  envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST} ${MEDIA_HOOK_PORT} ${ZLM_SECRET} ${ZLM_HTTP_PORT} ${ZLM_RTMP_PORT} ${ZLM_RTSP_PORT} ${ZLM_RTP_PORT_MIN} ${ZLM_RTP_PORT_MAX}' \
+  envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST} ${MEDIA_HOOK_PORT} ${MEDIA_HOOK_PATH_PREFIX} ${ZLM_SECRET} ${ZLM_HTTP_PORT} ${ZLM_RTMP_PORT} ${ZLM_RTSP_PORT} ${ZLM_RTP_PORT_MIN} ${ZLM_RTP_PORT_MAX} ${ZLM_RTC_PORT} ${ZLM_RTC_EXTERN_IP}' \
     < "${MEDIA_CLUSTER_ROOT}/zlm/config.ini.template" \
     > "${out}"
   print_ok "ZLM 配置已生成"
@@ -267,6 +273,12 @@ main() {
   echo "========================================"
   echo " yFeiEye 媒体栈部署 — ${MEDIA_NODE_NAME} @ ${MEDIA_NODE_HOST}"
   echo "========================================"
+  if [[ -n "${MEDIA_RENDER_CONFIGS_ONLY:-}" ]]; then
+    render_srs_config
+    render_zlm_config
+    print_ok "媒体栈配置已渲染（MEDIA_RENDER_CONFIGS_ONLY）"
+    exit 0
+  fi
   require_docker
   resolve_compose_cmd
   print_ok "Compose 命令: ${COMPOSE_CMD}"
