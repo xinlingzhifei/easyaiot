@@ -20,7 +20,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     restart: always
 
@@ -44,7 +44,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48099"]
@@ -78,7 +78,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48082"]
@@ -116,7 +116,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48083"]
@@ -153,7 +153,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48087"]
@@ -183,7 +183,7 @@ services:
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL=jdbc:postgresql://PostgresSQL:5432/iot-node20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&createDatabaseIfNotExist=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified
       - SPRING_REDIS_HOST=Redis
     volumes:
-      - ${HOME}/docker/iot-node/logs:/root/logs/
+      - ../.build-cache/device/node-logs:/root/logs/
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48094/actuator/health"]
       interval: 30s
@@ -217,7 +217,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48091"]
@@ -254,7 +254,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48090"]
@@ -297,7 +297,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     # 配置hosts映射，将kafka-server映射到宿主机IP
     # 使用host-gateway自动解析为宿主机IP（Docker 20.10+支持）
@@ -346,7 +346,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # 告警图片目录（与VIDEO/算法进程共享，用于读取告警 JPG 并上传 MinIO）
       # 算法侧须挂载同一宿主机目录且设置 ALERT_IMAGES_DIR=/app/alert_images（见 VIDEO/app/utils/alert_images_paths.py）
       # 注意：使用相对路径，从DEVICE目录指向VIDEO目录下的alert_images
@@ -391,7 +391,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ${HOME}/docker/iot-device/logs:/root/logs/
+      - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     # 配置hosts映射，将PostgresSQL和Redis映射到宿主机IP（使用host-gateway自动解析为宿主机IP）
     # 这样使用host网络模式的服务可以通过服务名访问Docker网络中的服务
