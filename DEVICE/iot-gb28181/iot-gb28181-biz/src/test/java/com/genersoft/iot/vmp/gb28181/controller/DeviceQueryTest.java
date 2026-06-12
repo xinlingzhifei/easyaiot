@@ -6,6 +6,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DeviceQueryTest {
 
@@ -29,6 +30,19 @@ class DeviceQueryTest {
         String refreshed = controller.generateDeviceAccessInfo(2, true).getData();
 
         assertNotEquals(first, refreshed);
+    }
+
+    @Test
+    void generateDeviceAccessInfoUsesConfiguredPasswordWhenRegisterPasswordAuthIsEnabled() {
+        DeviceQuery controller = new DeviceQuery();
+        SipConfig sipConfig = sipConfig();
+        sipConfig.setRegisterPasswordAuth(true);
+        sipConfig.setPassword("admin123");
+        ReflectionTestUtils.setField(controller, "sipConfig", sipConfig);
+
+        String accessInfo = controller.generateDeviceAccessInfo(1).getData();
+
+        assertTrue(accessInfo.contains("SIP用户认证密码：admin123"));
     }
 
     private static SipConfig sipConfig() {

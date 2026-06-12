@@ -467,8 +467,12 @@ public class DeviceQuery {
 		String transport = "UDP";
 		String protocolVersion = "GB/T28181-2022";
 		String localSipPort = "5060";
+		String sharedPassword = (sipConfig.isRegisterPasswordAuth() && !ObjectUtils.isEmpty(sipConfig.getPassword()))
+				? sipConfig.getPassword()
+				: null;
 		String cacheKey = cnt + "|" + sipServerId + "|" + sipDomain + "|" + sipPort + "|" + sipAddr
-				+ "|" + transport + "|" + protocolVersion + "|" + localSipPort;
+				+ "|" + transport + "|" + protocolVersion + "|" + localSipPort
+				+ "|" + sipConfig.isRegisterPasswordAuth() + "|" + (sharedPassword != null ? sharedPassword : "");
 		String cached = deviceAccessInfoCache.get(cacheKey);
 		if (!Boolean.TRUE.equals(force) && cached != null) {
 			return WVPResult.success(cached);
@@ -488,7 +492,7 @@ public class DeviceQuery {
 			// 每次随机生成 10 位数字后缀，保证 20 位国标 ID 且每次请求都随机
 			String suffix = randomDigits(rng, 10);
 			String deviceId = domainPrefix + suffix;
-			String password = randomAlphanumeric(rng, 32);
+			String password = sharedPassword != null ? sharedPassword : randomAlphanumeric(rng, 32);
 
 			out.append("========== 设备组 #").append(i).append(" ==========\n");
 			out.append("传输协议：").append(transport).append("\n");
