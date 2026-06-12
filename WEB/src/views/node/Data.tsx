@@ -194,6 +194,7 @@ export const formSchema: FormSchema[] = [
     label: 'SSH 密码',
     field: 'sshPassword',
     component: 'InputPassword',
+    slot: 'sshPassword',
     colProps: { span: 16 },
     ifShow: ({ values }) => values.sshAuthType !== 'private_key',
     componentProps: {
@@ -204,6 +205,7 @@ export const formSchema: FormSchema[] = [
     label: 'SSH 私钥',
     field: 'sshPrivateKey',
     component: 'InputTextArea',
+    slot: 'sshPrivateKey',
     colProps: { span: 24 },
     ifShow: ({ values }) => values.sshAuthType === 'private_key',
     componentProps: { rows: 4, placeholder: '-----BEGIN RSA PRIVATE KEY-----' },
@@ -234,6 +236,15 @@ export const formSchema: FormSchema[] = [
     componentProps: { min: 1, max: 65535 },
   },
   {
+    label: 'SRS API 端口',
+    field: 'srsApiPort',
+    component: 'InputNumber',
+    defaultValue: 1985,
+    colProps: { span: 8 },
+    ifShow: ({ values }) => values.nodeRole === 'media' || values.nodeRole === 'hybrid',
+    componentProps: { min: 1, max: 65535 },
+  },
+  {
     label: 'ZLM HTTP 端口',
     field: 'zlmHttpPort',
     component: 'InputNumber',
@@ -252,6 +263,15 @@ export const formSchema: FormSchema[] = [
     componentProps: { min: 1, max: 65535 },
   },
   {
+    label: 'ZLM RTSP 端口',
+    field: 'zlmRtspPort',
+    component: 'InputNumber',
+    defaultValue: 8554,
+    colProps: { span: 8 },
+    ifShow: ({ values }) => values.nodeRole === 'media' || values.nodeRole === 'hybrid',
+    componentProps: { min: 1, max: 65535 },
+  },
+  {
     label: 'ZLM RTP 端口起',
     field: 'zlmRtpPortMin',
     component: 'InputNumber',
@@ -264,8 +284,9 @@ export const formSchema: FormSchema[] = [
     label: 'ZLM RTP 端口止',
     field: 'zlmRtpPortMax',
     component: 'InputNumber',
+    slot: 'zlmRtpPortMax',
     defaultValue: 30500,
-    colProps: { span: 8 },
+    colProps: { span: 16 },
     ifShow: ({ values }) => values.nodeRole === 'media' || values.nodeRole === 'hybrid',
     componentProps: { min: 1, max: 65535 },
   },
@@ -374,6 +395,11 @@ export const mediaDetailSchema: DescItem[] = [
     render: (_val, data) => data?.tags?.srs_http_port ?? 8080,
   },
   {
+    field: 'tags.srs_api_port',
+    label: 'SRS API',
+    render: (_val, data) => data?.tags?.srs_api_port ?? 1985,
+  },
+  {
     field: 'tags.zlm_http_port',
     label: 'ZLM HTTP',
     render: (_val, data) => data?.tags?.zlm_http_port ?? 6080,
@@ -382,6 +408,11 @@ export const mediaDetailSchema: DescItem[] = [
     field: 'tags.zlm_rtmp_port',
     label: 'ZLM RTMP',
     render: (_val, data) => data?.tags?.zlm_rtmp_port ?? 10935,
+  },
+  {
+    field: 'tags.zlm_rtsp_port',
+    label: 'ZLM RTSP',
+    render: (_val, data) => data?.tags?.zlm_rtsp_port ?? 8554,
   },
   {
     field: 'tags.zlm_rtp_port_min',

@@ -39,6 +39,17 @@ export interface StreamForwardTask {
   service_process_id?: number;
   service_last_heartbeat?: string;
   service_log_path?: string;
+  schedule_policy?: 'local' | 'auto' | 'node';
+  target_node_id?: number | null;
+  node_id?: number | null;
+  device_deployments?: Array<{
+    device_ids: string[];
+    node_id: number;
+    host?: string;
+    workload_id?: string;
+    pid?: number;
+    log_dir?: string;
+  }>;
   total_streams: number;
   last_process_time?: string;
   last_success_time?: string;
@@ -89,6 +100,8 @@ export const createStreamForwardTask = (data: {
   output_bitrate?: string;
   description?: string;
   is_enabled?: boolean;
+  schedule_policy?: 'local' | 'auto' | 'node';
+  target_node_id?: number | null;
 }) => {
   return commonApi<{ code: number; msg: string; data: StreamForwardTask }>(
     'post',
@@ -104,7 +117,7 @@ export const createStreamForwardTask = (data: {
  * 更新推流转发任务
  */
 export const updateStreamForwardTask = (task_id: number, data: Partial<StreamForwardTask>) => {
-  return commonApi<{ code: number; msg: string; data: StreamForwardTask }>(
+  return commonApi<{ code: number; msg: string; data: StreamForwardTask; sync_action?: 'rebalance' | 'full_restart' | null }>(
     'put',
     `${STREAM_FORWARD_PREFIX}/task/${task_id}`,
     data,

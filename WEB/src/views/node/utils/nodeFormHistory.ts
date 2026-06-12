@@ -16,8 +16,10 @@ export interface NodeFormHistoryEntry {
   sshPrivateKey?: string;
   srsRtmpPort?: number;
   srsHttpPort?: number;
+  srsApiPort?: number;
   zlmHttpPort?: number;
   zlmRtmpPort?: number;
+  zlmRtspPort?: number;
   zlmRtpPortMin?: number;
   zlmRtpPortMax?: number;
 }
@@ -113,8 +115,10 @@ export function nodeFormHistoryToFields(entry: NodeFormHistoryEntry): Record<str
     sshPrivateKey: entry.sshPrivateKey,
     srsRtmpPort: entry.srsRtmpPort ?? 1935,
     srsHttpPort: entry.srsHttpPort ?? 8080,
+    srsApiPort: entry.srsApiPort ?? 1985,
     zlmHttpPort: entry.zlmHttpPort ?? 6080,
     zlmRtmpPort: entry.zlmRtmpPort ?? 10935,
+    zlmRtspPort: entry.zlmRtspPort ?? 8554,
     zlmRtpPortMin: entry.zlmRtpPortMin ?? 30000,
     zlmRtpPortMax: entry.zlmRtpPortMax ?? 30500,
   };
@@ -135,8 +139,10 @@ export function valuesToNodeFormHistoryEntry(values: Record<string, unknown>): O
     sshPrivateKey: values.sshPrivateKey ? String(values.sshPrivateKey) : undefined,
     srsRtmpPort: values.srsRtmpPort != null ? Number(values.srsRtmpPort) : undefined,
     srsHttpPort: values.srsHttpPort != null ? Number(values.srsHttpPort) : undefined,
+    srsApiPort: values.srsApiPort != null ? Number(values.srsApiPort) : undefined,
     zlmHttpPort: values.zlmHttpPort != null ? Number(values.zlmHttpPort) : undefined,
     zlmRtmpPort: values.zlmRtmpPort != null ? Number(values.zlmRtmpPort) : undefined,
+    zlmRtspPort: values.zlmRtspPort != null ? Number(values.zlmRtspPort) : undefined,
     zlmRtpPortMin: values.zlmRtpPortMin != null ? Number(values.zlmRtpPortMin) : undefined,
     zlmRtpPortMax: values.zlmRtpPortMax != null ? Number(values.zlmRtpPortMax) : undefined,
   };

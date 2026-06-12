@@ -7,6 +7,7 @@ import com.basiclab.iot.node.domain.vo.ComputeNodeRespVO;
 import com.basiclab.iot.node.domain.vo.ComputeNodeSaveReqVO;
 import com.basiclab.iot.node.domain.vo.NodeAgentCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
+import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendRespVO;
 import com.basiclab.iot.node.domain.vo.PlatformHostRespVO;
@@ -116,6 +117,13 @@ public class ComputeNodeController {
             @RequestParam("nodeId") Long nodeId,
             @RequestParam(value = "controlPlaneUrl", required = false) String controlPlaneUrl) {
         return success(computeNodeService.checkAgentBySsh(nodeId, controlPlaneUrl));
+    }
+
+    @PostMapping("/check-agent-port-ssh")
+    @Operation(summary = "通过 SSH 检测 Agent 部署端口占用")
+    @Parameter(name = "nodeId", description = "节点编号", required = true)
+    public CommonResult<NodePortCheckRespVO> checkAgentPortBySsh(@RequestParam("nodeId") Long nodeId) {
+        return success(computeNodeService.checkAgentPortBySsh(nodeId));
     }
 
     @PostMapping("/stop-agent-ssh")

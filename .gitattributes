@@ -55,6 +55,10 @@ env.example    text eol=lf
 *.onnx binary
 *.bin binary
 
+# Node Agent 离线 pip wheel（体积大，本地/export 下载，不参与 diff）
+NODE/pip-wheels/** -diff
+NODE/get-pip.py -diff
+
 # VIDEO 人脸特征模型（体积大，本地/install 下载，不参与 diff）
 VIDEO/face_rec.onnx binary -diff
 

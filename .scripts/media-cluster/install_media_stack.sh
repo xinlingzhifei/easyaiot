@@ -21,6 +21,7 @@ SRS_HTTP_PORT="${SRS_HTTP_PORT:-8080}"
 SRS_API_PORT="${SRS_API_PORT:-1985}"
 ZLM_HTTP_PORT="${ZLM_HTTP_PORT:-6080}"
 ZLM_RTMP_PORT="${ZLM_RTMP_PORT:-10935}"
+ZLM_RTSP_PORT="${ZLM_RTSP_PORT:-8554}"
 ZLM_RTP_PORT_MIN="${ZLM_RTP_PORT_MIN:-30000}"
 ZLM_RTP_PORT_MAX="${ZLM_RTP_PORT_MAX:-30500}"
 ZLM_SECRET="${ZLM_SECRET:-yFeiEye_Media_Secret}"
@@ -205,13 +206,11 @@ render_srs_config() {
 render_zlm_config() {
   local out="${MEDIA_CLUSTER_ROOT}/zlm/config.ini"
   export MEDIA_NODE_ID="${MEDIA_NODE_NAME}-zlm"
-  export MEDIA_HOOK_HOST MEDIA_HOOK_PORT ZLM_SECRET ZLM_RTP_PORT_MIN ZLM_RTP_PORT_MAX
+  export MEDIA_HOOK_HOST MEDIA_HOOK_PORT ZLM_SECRET
+  export ZLM_HTTP_PORT ZLM_RTMP_PORT ZLM_RTSP_PORT ZLM_RTP_PORT_MIN ZLM_RTP_PORT_MAX
   print_step "渲染 ZLM 配置 -> ${out}"
-  envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST} ${MEDIA_HOOK_PORT} ${ZLM_SECRET} ${ZLM_RTP_PORT_MIN} ${ZLM_RTP_PORT_MAX}' \
+  envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST} ${MEDIA_HOOK_PORT} ${ZLM_SECRET} ${ZLM_HTTP_PORT} ${ZLM_RTMP_PORT} ${ZLM_RTSP_PORT} ${ZLM_RTP_PORT_MIN} ${ZLM_RTP_PORT_MAX}' \
     < "${MEDIA_CLUSTER_ROOT}/zlm/config.ini.template" \
-    | sed -E \
-      -e "/^\[http\]/,/^\[/ s/^port=[0-9]+/port=${ZLM_HTTP_PORT}/" \
-      -e "/^\[rtmp\]/,/^\[/ s/^port=[0-9]+/port=${ZLM_RTMP_PORT}/" \
     > "${out}"
   print_ok "ZLM 配置已生成"
 }
@@ -254,7 +253,7 @@ deploy_zlm() {
   local i=0
   while [[ $i -lt 30 ]]; do
     if zlm_healthy; then
-      print_ok "ZLMediaKit 已就绪 (HTTP ${ZLM_HTTP_PORT}, RTMP ${ZLM_RTMP_PORT})"
+      print_ok "ZLMediaKit 已就绪 (HTTP ${ZLM_HTTP_PORT}, RTMP ${ZLM_RTMP_PORT}, RTSP ${ZLM_RTSP_PORT})"
       return 0
     fi
     sleep 2

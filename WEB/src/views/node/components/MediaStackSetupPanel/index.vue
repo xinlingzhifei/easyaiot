@@ -8,11 +8,13 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { copyText } from '@/utils/copyTextToClipboard';
 import {
   checkMediaStackBySsh,
+  checkMediaPortsBySsh,
   deployMediaStackBySsh,
   removeMediaContainerBySsh,
   removeMediaImageBySsh,
   stopMediaServiceBySsh,
   type MediaStackCheckResult as MediaStackCheckData,
+  type PortCheckResult as PortCheckData,
 } from '@/api/device/node';
 import {
   buildMediaStackManualContent,
@@ -26,6 +28,7 @@ import {
 import { resolveDeployMessage, type DeployResultState } from '../../utils/deployLog';
 import DeployProgressPanel from '../DeployProgressPanel/index.vue';
 import MediaStackCheckResult from '../MediaStackCheckResult/index.vue';
+import PortCheckResult from '../PortCheckResult/index.vue';
 import SetupStepShell from '../SetupStepShell/index.vue';
 
 defineOptions({ name: 'MediaStackSetupPanel' });
@@ -53,6 +56,8 @@ const deployResult = ref<DeployResultState | null>(null);
 const deployAbort = ref<AbortController | null>(null);
 const checking = ref(false);
 const checkResult = ref<MediaStackCheckData | null>(null);
+const portChecking = ref(false);
+const portCheckResult = ref<PortCheckData | null>(null);
 const mediaOpLoading = ref<'stop-srs' | 'stop-zlm' | 'remove-container' | 'remove-image' | null>(null);
 const mediaOpResult = ref<DeployResultState | null>(null);
 const hasAutoChecked = ref(false);
@@ -124,6 +129,26 @@ async function handleCheckDeploy() {
     };
   } finally {
     checking.value = false;
+  }
+}
+
+async function handleCheckPorts() {
+  const nodeId = props.formValues?.nodeId;
+  if (!nodeId || portChecking.value) return;
+  portChecking.value = true;
+  portCheckResult.value = null;
+  try {
+    portCheckResult.value = await checkMediaPortsBySsh(nodeId);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '检测请求失败';
+    portCheckResult.value = {
+      success: false,
+      portsReady: false,
+      message: msg,
+      steps: [{ name: '检测中断', status: 'failed', output: msg }],
+    };
+  } finally {
+    portChecking.value = false;
   }
 }
 
@@ -270,6 +295,23 @@ watch(
           </Radio.Group>
         </FormItem>
 
+        <FormItem :label="SETUP_COPY.mediaPortCheck">
+          <Space wrap>
+            <Button
+              :loading="portChecking"
+              :disabled="!canCheckDeploy || deploying || checking"
+              @click="handleCheckPorts"
+            >
+              {{ SETUP_COPY.checkMediaPortBtn }}
+            </Button>
+          </Space>
+          <div v-if="!canCheckDeploy" class="form-hint">{{ autoDisabledReason || '请先保存节点并配置 SSH' }}</div>
+          <PortCheckResult v-else-if="portCheckResult" :result="portCheckResult" @close="portCheckResult = null" />
+          <div v-else class="form-hint">
+            检测 SRS/ZLM 部署端口（RTMP、HTTP、RTSP、API 等）是否被占用；RTP 端口范围不在检测范围内
+          </div>
+        </FormItem>
+
         <FormItem :label="SETUP_COPY.mediaDeployCheck">
           <Space wrap>
             <Button :loading="checking" :disabled="!canCheckDeploy || deploying" @click="handleCheckDeploy">
@@ -297,7 +339,7 @@ watch(
             镜像仅在本机（平台服务器）下载并导出，经文件同步至目标机 docker load；目标机不会联网拉取镜像
           </div>
           <div v-if="canAutoDeploy" class="form-hint">
-            部署前将检测目标机已有镜像与服务：已有 Docker 镜像则跳过导出/同步/导入；仅缺一项时自动补部署；两项均已运行则跳过
+            部署前将自动检测目标机端口占用，并检测已有镜像与服务
           </div>
         </FormItem>
 

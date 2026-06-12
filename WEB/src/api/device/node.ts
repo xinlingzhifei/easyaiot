@@ -273,6 +273,21 @@ export interface AgentCheckResult {
   steps?: MediaDeployStepVO[];
 }
 
+export interface PortCheckItemVO {
+  name: string;
+  port: number;
+  status: 'free' | 'occupied' | 'allowed';
+  process?: string;
+}
+
+export interface PortCheckResult {
+  success?: boolean;
+  portsReady?: boolean;
+  message?: string;
+  ports?: PortCheckItemVO[];
+  steps?: MediaDeployStepVO[];
+}
+
 /** 解析 isTransformResponse:false 时的 { code, data } 信封 */
 function unwrapNodeApiData<T>(res: unknown): T {
   const body = (res as { data?: unknown })?.data ?? res;
@@ -343,6 +358,17 @@ export const checkMediaStackBySsh = async (nodeId: number): Promise<MediaStackCh
   return unwrapNodeApiData<MediaStackCheckResult>(res);
 };
 
+/** 通过 SSH 检测目标机流媒体部署端口占用 */
+export const checkMediaPortsBySsh = async (nodeId: number): Promise<PortCheckResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/media/check-ports-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 2 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<PortCheckResult>(res);
+};
+
 /** 通过 SSH 检测目标机 Node Agent 是否已部署 */
 export const checkAgentBySsh = async (
   nodeId: number,
@@ -359,6 +385,17 @@ export const checkAgentBySsh = async (
     { isTransformResponse: false, timeout: 2 * 60 * 1000 },
   );
   return unwrapNodeApiData<AgentCheckResult>(res);
+};
+
+/** 通过 SSH 检测目标机 Node Agent 部署端口占用 */
+export const checkAgentPortBySsh = async (nodeId: number): Promise<PortCheckResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/check-agent-port-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 2 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<PortCheckResult>(res);
 };
 
 /** 通过 SSH 停止目标机 Node Agent 服务 */

@@ -439,6 +439,7 @@ export interface MediaStackScriptParams {
   srsApiPort?: number;
   zlmHttpPort?: number;
   zlmRtmpPort?: number;
+  zlmRtspPort?: number;
   zlmRtpPortMin?: number;
   zlmRtpPortMax?: number;
 }
@@ -468,6 +469,7 @@ function areMediaPortsValid(params?: MediaStackScriptParams): boolean {
     params.srsApiPort,
     params.zlmHttpPort,
     params.zlmRtmpPort,
+    params.zlmRtspPort,
     params.zlmRtpPortMin,
     params.zlmRtpPortMax,
   ];
@@ -527,7 +529,7 @@ export function getMediaStackGuideState(
     readySummary =
       `目标机 ${params.host}：` +
       `SRS RTMP ${params.srsRtmpPort} / HTTP ${params.srsHttpPort} / API ${params.srsApiPort}，` +
-      `ZLM HTTP ${params.zlmHttpPort} / RTMP ${params.zlmRtmpPort}，` +
+      `ZLM HTTP ${params.zlmHttpPort} / RTMP ${params.zlmRtmpPort} / RTSP ${params.zlmRtspPort}，` +
       `RTP ${params.zlmRtpPortMin}-${params.zlmRtpPortMax}，` +
       `Hook 回调 ${hook.host}:${hook.port}`;
   }
@@ -539,6 +541,7 @@ export function getMediaStackGuideState(
 export const MEDIA_STACK_DEPLOY_PENDING_STEPS = [
   '准备离线镜像',
   'SSH 连接',
+  '端口占用检测',
   '检测已有服务',
   'Docker',
   '清理旧目录',
@@ -593,6 +596,7 @@ export function buildMediaStackInstallScript(params: MediaStackScriptParams = {}
   const srsApi = params.srsApiPort ?? 1985;
   const zlmHttp = params.zlmHttpPort ?? 6080;
   const zlmRtmp = params.zlmRtmpPort ?? 10935;
+  const zlmRtsp = params.zlmRtspPort ?? 8554;
   const zlmRtpMin = params.zlmRtpPortMin ?? 30000;
   const zlmRtpMax = params.zlmRtpPortMax ?? 30500;
 
@@ -613,6 +617,7 @@ export SRS_HTTP_PORT=${srsHttp}
 export SRS_API_PORT=${srsApi}
 export ZLM_HTTP_PORT=${zlmHttp}
 export ZLM_RTMP_PORT=${zlmRtmp}
+export ZLM_RTSP_PORT=${zlmRtsp}
 export ZLM_RTP_PORT_MIN=${zlmRtpMin}
 export ZLM_RTP_PORT_MAX=${zlmRtpMax}
 export ZLM_SECRET="yFeiEye_Media_Secret"
@@ -644,9 +649,66 @@ echo "  SRS API: http://\${MEDIA_NODE_HOST}:\${SRS_API_PORT}/api/v1/versions"
 echo "  ZLM API: http://\${MEDIA_NODE_HOST}:\${ZLM_HTTP_PORT}/index/api/getServerConfig"`;
 }
 
+/** 常见服务默认端口，随机生成时尽量避开 */
+const COMMON_SERVICE_PORTS = new Set([
+  22, 80, 443, 554, 8554, 873, 1935, 1985, 2181, 3306, 4379, 5432, 5672, 6379, 8080, 8443, 9000, 9001,
+  9100, 9200, 9300, 9848, 10909, 10911, 10912, 48080, 6080, 10935, 5540,
+]);
+
+function randomInt(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function pickUniquePort(used: Set<number>, min: number, max: number): number {
+  for (let i = 0; i < 200; i++) {
+    const port = randomInt(min, max);
+    if (!used.has(port) && !COMMON_SERVICE_PORTS.has(port)) {
+      used.add(port);
+      return port;
+    }
+  }
+  for (let port = min; port <= max; port++) {
+    if (!used.has(port) && !COMMON_SERVICE_PORTS.has(port)) {
+      used.add(port);
+      return port;
+    }
+  }
+  return min;
+}
+
+export interface RandomDeployPorts {
+  agentPort: number;
+  srsRtmpPort?: number;
+  srsHttpPort?: number;
+  srsApiPort?: number;
+  zlmHttpPort?: number;
+  zlmRtmpPort?: number;
+  zlmRtspPort?: number;
+}
+
+/** 生成一组互不冲突的部署端口（不含 RTP 范围端口） */
+export function generateRandomDeployPorts(nodeRole?: string): RandomDeployPorts {
+  const used = new Set<number>();
+  const agentPort = pickUniquePort(used, 19100, 19999);
+  const isMedia = nodeRole === 'media' || nodeRole === 'hybrid';
+  if (!isMedia) {
+    return { agentPort };
+  }
+  const anchor = 22000 + Math.floor(Math.random() * 80) * 100;
+  return {
+    agentPort,
+    srsRtmpPort: pickUniquePort(used, anchor, anchor + 80),
+    srsHttpPort: pickUniquePort(used, anchor + 100, anchor + 180),
+    srsApiPort: pickUniquePort(used, anchor + 200, anchor + 280),
+    zlmHttpPort: pickUniquePort(used, anchor + 400, anchor + 480),
+    zlmRtmpPort: pickUniquePort(used, anchor + 500, anchor + 580),
+    zlmRtspPort: pickUniquePort(used, anchor + 600, anchor + 680),
+  };
+}
+
 /** 添加节点时生成随机 Agent 监听端口（19100–19999，避开常见服务端口） */
 export function generateDefaultAgentPort(): number {
-  return 19100 + Math.floor(Math.random() * 900);
+  return generateRandomDeployPorts().agentPort;
 }
 
 export const AGENT_INSTALL_DIR = '/opt/easyaiot/node-agent';
@@ -679,7 +741,7 @@ MINIO_SECRET_KEY=your-secret
 export function buildAgentRsyncCommand(host?: string, sshUsername = 'root'): string {
   const targetHost = host?.trim() || '<目标服务器>';
   const user = sshUsername?.trim() || 'root';
-  return `rsync -avz NODE/agent/ ${user}@${targetHost}:${AGENT_INSTALL_DIR}/`;
+  return `rsync -avz NODE/ ${user}@${targetHost}:${AGENT_INSTALL_DIR}/\n# 若 pip-wheels/ 为空，请先在平台服务器安装 pip 并执行: bash NODE/export_pip_wheels.sh`;
 }
 
 /** 目标主机上写入配置、安装并启动 Agent */
@@ -758,6 +820,8 @@ export const SETUP_COPY = {
   deployMediaBtn: `部署${NODE_TERM.mediaService}`,
   mediaDeployCheck: NODE_TERM.deployCheck,
   checkMediaDeployBtn: '检测部署状态',
+  mediaPortCheck: '端口占用检测',
+  checkMediaPortBtn: '检测端口占用',
   mediaOps: NODE_TERM.ops,
   stopSrsBtn: '停止 SRS',
   stopZlmBtn: '停止 ZLMediaKit',
@@ -765,6 +829,10 @@ export const SETUP_COPY = {
   removeImageBtn: '删除镜像',
   agentDeployCheck: NODE_TERM.deployCheck,
   checkAgentDeployBtn: '检测部署状态',
+  agentPortCheck: '端口占用检测',
+  checkAgentPortBtn: '检测端口占用',
+  generateRandomPortsBtn: '生成随机端口',
+  generateRandomPortsSuccess: '已生成随机端口',
   agentOps: NODE_TERM.ops,
   stopAgentBtn: `停止${NODE_TERM.agent}`,
   removeAgentBtn: `删除${NODE_TERM.agent}`,

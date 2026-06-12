@@ -55,6 +55,26 @@ export function getBasicColumns(): BasicColumn[] {
       },
     },
     {
+      title: '调度策略',
+      dataIndex: 'schedule_policy',
+      width: 120,
+      customRender: ({ text, record }) => {
+        const policyMap: Record<string, string> = {
+          local: '本机',
+          auto: '自动节点',
+          node: '指定节点',
+        };
+        const label = policyMap[text as string] || text || '本机';
+        if (text === 'node' && record?.node_id) {
+          return `${label}(#${record.node_id})`;
+        }
+        if (text === 'auto' && record?.node_id) {
+          return `${label}(#${record.node_id})`;
+        }
+        return label;
+      },
+    },
+    {
       title: '运行状态',
       dataIndex: 'is_enabled',
       width: 100,

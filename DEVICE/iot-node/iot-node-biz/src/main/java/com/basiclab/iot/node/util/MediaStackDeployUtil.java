@@ -64,6 +64,7 @@ public final class MediaStackDeployUtil {
         int srsApi = tagInt(tags, "srs_api_port", 1985);
         int zlmHttp = tagInt(tags, "zlm_http_port", 6080);
         int zlmRtmp = tagInt(tags, "zlm_rtmp_port", 10935);
+        int zlmRtsp = tagInt(tags, "zlm_rtsp_port", 8554);
         int zlmRtpMin = tagInt(tags, "zlm_rtp_port_min", 30000);
         int zlmRtpMax = tagInt(tags, "zlm_rtp_port_max", 30500);
 
@@ -80,6 +81,7 @@ public final class MediaStackDeployUtil {
                 + "export SRS_API_PORT=" + srsApi + "\n"
                 + "export ZLM_HTTP_PORT=" + zlmHttp + "\n"
                 + "export ZLM_RTMP_PORT=" + zlmRtmp + "\n"
+                + "export ZLM_RTSP_PORT=" + zlmRtsp + "\n"
                 + "export ZLM_RTP_PORT_MIN=" + zlmRtpMin + "\n"
                 + "export ZLM_RTP_PORT_MAX=" + zlmRtpMax + "\n"
                 + "export ZLM_SECRET=\"yFeiEye_Media_Secret\"\n";

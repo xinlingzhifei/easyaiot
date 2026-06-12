@@ -533,6 +533,38 @@ def create_app():
                     import traceback
                     traceback.print_exc()
                     db.session.rollback()
+
+                # stream_forward_task 节点调度字段
+                try:
+                    for col_name, col_def in [
+                        ('schedule_policy', "VARCHAR(20) NOT NULL DEFAULT 'local'"),
+                        ('target_node_id', 'BIGINT'),
+                        ('node_id', 'BIGINT'),
+                        ('device_deployments', 'TEXT'),
+                    ]:
+                        result = db.session.execute(text(f"""
+                            SELECT EXISTS (
+                                SELECT FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                AND table_name = 'stream_forward_task'
+                                AND column_name = '{col_name}'
+                            );
+                        """))
+                        col_exists = result.scalar()
+                        if not col_exists:
+                            print(f"⚠️  stream_forward_task.{col_name} 列不存在，正在添加...")
+                            db.session.execute(text(f"""
+                                ALTER TABLE stream_forward_task
+                                ADD COLUMN {col_name} {col_def};
+                            """))
+                            db.session.commit()
+                            print(f"✅ stream_forward_task.{col_name} 列添加成功")
+                    print("✅ stream_forward_task 表迁移检查完成")
+                except Exception as e:
+                    print(f"⚠️  stream_forward_task 表迁移检查失败: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    db.session.rollback()
                 
                 # 检查 alert 表的 task_type 字段
                 try:
@@ -1065,7 +1097,8 @@ def create_app():
                 janitor_interval = int(os.getenv('JANITOR_INTERVAL_SECONDS', '60'))
 
                 def media_janitor_wrapper():
-                    return run_janitor_cycle()
+                    with app.app_context():
+                        return run_janitor_cycle()
 
                 scheduler.add_job(
                     media_janitor_wrapper,
@@ -1077,6 +1110,33 @@ def create_app():
                 print(f'✅ 媒体 Janitor 已启动（每 {janitor_interval} 秒）')
         except Exception as e:
             print(f'❌ 启动媒体 Janitor 失败: {str(e)}')
+            import traceback
+            traceback.print_exc()
+
+        # 推流转发集群健康监控：离线节点分片迁移
+        try:
+            from app.services.stream_forward_health_service import (
+                is_health_monitor_enabled,
+                run_stream_forward_health_cycle,
+            )
+
+            if is_health_monitor_enabled():
+                health_interval = int(os.getenv('STREAM_FORWARD_HEALTH_INTERVAL_SECONDS', '60'))
+
+                def stream_forward_health_wrapper():
+                    with app.app_context():
+                        return run_stream_forward_health_cycle()
+
+                scheduler.add_job(
+                    stream_forward_health_wrapper,
+                    'interval',
+                    seconds=health_interval,
+                    id='stream_forward_health',
+                    replace_existing=True,
+                )
+                print(f'✅ 推流转发健康监控已启动（每 {health_interval} 秒）')
+        except Exception as e:
+            print(f'❌ 启动推流转发健康监控失败: {str(e)}')
             import traceback
             traceback.print_exc()
         

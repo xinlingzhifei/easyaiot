@@ -13,7 +13,7 @@
           :columns="columns"
           :data-source="state.devices"
           :pagination="tablePagination"
-          :scroll="{ x: 720 }"
+          :scroll="{ x: 720, y: 300 }"
           row-key="ip"
           size="small"
           bordered

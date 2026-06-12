@@ -5,6 +5,7 @@ import com.basiclab.iot.node.domain.vo.NodeMediaAllocateReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaDeployReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaStackCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
+import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 
 import java.util.Map;
 
@@ -21,6 +22,8 @@ public interface NodeMediaService {
     NodeMediaRemoteDeployRespVO deployMediaStackBySsh(Long nodeId);
 
     NodeMediaStackCheckRespVO checkMediaStackBySsh(Long nodeId);
+
+    NodePortCheckRespVO checkMediaPortsBySsh(Long nodeId);
 
     NodeMediaRemoteDeployRespVO stopMediaServiceBySsh(Long nodeId, String service);
 

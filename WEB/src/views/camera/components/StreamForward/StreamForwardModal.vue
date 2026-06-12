@@ -33,15 +33,23 @@ import {
   type StreamForwardTask,
 } from '@/api/device/stream_forward';
 import { getDeviceList } from '@/api/device/camera';
+import { getNodePage } from '@/api/device/node';
 import { Button } from '@/components/Button'
 defineOptions({ name: 'StreamForwardModal' });
 
 const { createMessage } = useMessage();
 const emit = defineEmits(['success', 'register']);
 
+const schedulePolicyOptions = [
+  { label: '本机部署', value: 'local' },
+  { label: '自动调度节点', value: 'auto' },
+  { label: '指定节点', value: 'node' },
+];
+
 const taskId = ref<number | null>(null);
 const confirmLoading = ref(false);
 const deviceOptions = ref<Array<{ label: string; value: string }>>([]);
+const nodeOptions = ref<Array<{ label: string; value: number }>>([]);
 const formValues = ref<any>({});
 const modalData = ref<{ type?: string; record?: StreamForwardTask }>({});
 
@@ -59,8 +67,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
   confirmLoading.value = false;
   resetFields();
   
-  // 加载设备列表
-  await loadDeviceOptions();
+  // 加载设备列表与计算节点
+  await Promise.all([loadDeviceOptions(), loadNodes()]);
   
   if (modalData.value.record) {
     const record = modalData.value.record;
@@ -75,6 +83,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       output_bitrate: record.output_bitrate,
       description: record.description,
       is_enabled: record.is_enabled !== undefined ? record.is_enabled : false,
+      schedule_policy: record.schedule_policy || 'local',
+      target_node_id: record.target_node_id ?? undefined,
     });
     
     // 查看模式禁用表单
@@ -87,6 +97,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
         { field: 'output_bitrate', componentProps: { disabled: true } },
         { field: 'description', componentProps: { disabled: true } },
         { field: 'is_enabled', componentProps: { disabled: true } },
+        { field: 'schedule_policy', componentProps: { disabled: true } },
+        { field: 'target_node_id', componentProps: { disabled: true } },
       ]);
       setDrawerProps({ showOkBtn: false });
     } else {
@@ -99,6 +111,7 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       output_format: 'rtmp',
       output_quality: 'high',
       is_enabled: false,
+      schedule_policy: 'local',
     });
     setDrawerProps({ showOkBtn: true });
   }
@@ -136,6 +149,33 @@ const [registerForm, { setFieldsValue, resetFields, validate, updateSchema }] = 
         },
       },
       helpMessage: '选择需要推流转发的摄像头，可多选',
+    },
+    {
+      field: 'schedule_policy',
+      label: '调度策略',
+      component: 'Select',
+      defaultValue: 'local',
+      componentProps: {
+        placeholder: '请选择调度策略',
+        options: schedulePolicyOptions,
+      },
+      helpMessage: '本机：在当前 VIDEO 服务部署；自动/指定节点：多路摄像头默认按设备分片分散到集群节点',
+    },
+    {
+      field: 'target_node_id',
+      label: '目标节点',
+      component: 'Select',
+      componentProps: {
+        placeholder: '选择在线计算节点',
+        options: nodeOptions,
+        showSearch: true,
+        allowClear: true,
+        filterOption: (input: string, option: any) => {
+          return option.label.toLowerCase().indexOf(input.toLowerCase()) >= 0;
+        },
+      },
+      ifShow: ({ values }) => values.schedule_policy === 'node',
+      required: ({ values }) => values.schedule_policy === 'node',
     },
     {
       field: 'output_format',
@@ -201,21 +241,38 @@ const [registerForm, { setFieldsValue, resetFields, validate, updateSchema }] = 
   showActionButtonGroup: false,
 });
 
+const loadNodes = async () => {
+  try {
+    const res = await getNodePage({ pageNo: 1, pageSize: 200, status: 'online' });
+    const page = res?.data || res;
+    const list = (page?.list || []).filter(
+      (node: any) => node.nodeRole === 'compute' || node.nodeRole === 'hybrid',
+    );
+    nodeOptions.value = list.map((node: any) => ({
+      label: `${node.name} (${node.host})`,
+      value: node.id,
+    }));
+    updateSchema({
+      field: 'target_node_id',
+      componentProps: {
+        options: nodeOptions.value,
+      },
+    });
+  } catch (error) {
+    console.error('加载节点列表失败', error);
+    nodeOptions.value = [];
+  }
+};
+
 const loadDeviceOptions = async () => {
   try {
-    // 加载设备列表（推流转发任务和算法任务可以共存，不再检查冲突）
     const deviceResponse = await getDeviceList({ pageNo: 1, pageSize: 1000 });
-    
     if (deviceResponse.code === 0 && deviceResponse.data) {
-      deviceOptions.value = deviceResponse.data.map((device: any) => {
-        return {
-          label: device.name || device.id,
-          value: device.id,
-          disabled: false,
-        };
-      });
-      
-      // 更新表单schema，设置禁用选项
+      deviceOptions.value = deviceResponse.data.map((device: any) => ({
+        label: device.name || device.id,
+        value: device.id,
+        disabled: false,
+      }));
       updateSchema({
         field: 'device_ids',
         componentProps: {
@@ -231,7 +288,6 @@ const loadDeviceOptions = async () => {
 const handleReset = async () => {
   resetFields();
   if (modalData.value.record) {
-    // 编辑模式，恢复到原始值
     const record = modalData.value.record;
     await setFieldsValue({
       task_name: record.task_name,
@@ -241,13 +297,15 @@ const handleReset = async () => {
       output_bitrate: record.output_bitrate,
       description: record.description,
       is_enabled: record.is_enabled !== undefined ? record.is_enabled : false,
+      schedule_policy: record.schedule_policy || 'local',
+      target_node_id: record.target_node_id ?? undefined,
     });
   } else {
-    // 新建模式，重置为默认值
     await setFieldsValue({
       output_format: 'rtmp',
       output_quality: 'high',
       is_enabled: false,
+      schedule_policy: 'local',
     });
   }
 };
@@ -255,6 +313,13 @@ const handleReset = async () => {
 const handleSubmit = async () => {
   try {
     const values = await validate();
+    if (values.schedule_policy === 'node' && !values.target_node_id) {
+      createMessage.error('请选择目标节点');
+      return;
+    }
+    if (values.schedule_policy !== 'node') {
+      values.target_node_id = null;
+    }
     confirmLoading.value = true;
     setDrawerProps({ confirmLoading: true });
     
@@ -266,13 +331,20 @@ const handleSubmit = async () => {
     if (taskId.value) {
       // 更新
       const response = await updateStreamForwardTask(taskId.value, values);
+      const syncAction = (response as any)?.sync_action;
+      const successMsg =
+        syncAction === 'full_restart'
+          ? '更新成功，调度策略已变更，任务已全量重启'
+          : syncAction === 'rebalance'
+            ? '更新成功，摄像头列表已变更，正在重平衡部署'
+            : '更新成功';
       if (response && (response as any).id) {
-        createMessage.success('更新成功');
+        createMessage.success(successMsg);
         emit('success');
         closeDrawer();
       } else if (response && typeof response === 'object' && 'code' in response) {
         if ((response as any).code === 0) {
-          createMessage.success('更新成功');
+          createMessage.success(successMsg);
           emit('success');
           closeDrawer();
         } else {

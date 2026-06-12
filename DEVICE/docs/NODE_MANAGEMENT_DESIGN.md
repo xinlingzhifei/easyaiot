@@ -9,7 +9,7 @@
 ## 已实现（Phase 1）
 
 - `iot-node` 微服务：节点 CRUD、SSH 测试、Agent 注册/心跳、基础调度 API
-- `NODE/agent/`：Python Agent 骨架（注册 + 心跳 + GPU/CPU 指标）
+- `NODE/`：Python Agent 骨架（注册 + 心跳 + GPU/CPU 指标）
 - Gateway 路由：`/admin-api/node/**`
 - WEB 页面：`/node/index` 服务器节点管理
 - 数据库表：`compute_node`、`node_ssh_credential`、`node_metric_snapshot`、`node_workload_binding`
@@ -54,7 +54,7 @@ cd DEVICE && mvn package -pl iot-node/iot-node-biz -am -DskipTests
 ### 3. 安装 Agent（目标服务器）
 
 ```bash
-cd NODE/agent
+cd NODE
 # 编辑 agent.env 填入 NODE_ID 和 AGENT_TOKEN
 sudo bash install.sh
 sudo systemctl enable --now easyaiot-node-agent

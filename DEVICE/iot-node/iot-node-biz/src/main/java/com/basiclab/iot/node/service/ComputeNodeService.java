@@ -7,6 +7,7 @@ import com.basiclab.iot.node.domain.vo.ComputeNodeRespVO;
 import com.basiclab.iot.node.domain.vo.ComputeNodeSaveReqVO;
 import com.basiclab.iot.node.domain.vo.NodeAgentCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
+import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendRespVO;
 
@@ -31,6 +32,8 @@ public interface ComputeNodeService {
     NodeMediaRemoteDeployRespVO deployAgentBySsh(Long nodeId, String controlPlaneUrl);
 
     NodeAgentCheckRespVO checkAgentBySsh(Long nodeId, String controlPlaneUrl);
+
+    NodePortCheckRespVO checkAgentPortBySsh(Long nodeId);
 
     NodeMediaRemoteDeployRespVO stopAgentBySsh(Long nodeId);
 

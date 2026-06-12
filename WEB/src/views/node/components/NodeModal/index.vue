@@ -1,13 +1,13 @@
 <script lang="ts" setup>
 import { computed, ref, unref } from 'vue';
-import { Spin } from 'ant-design-vue';
+import { Input, InputNumber, Spin } from 'ant-design-vue';
 import { formSchema } from '../../Data';
 import { useMessage } from '@/hooks/web/useMessage';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { Button } from '@/components/Button';
 import { createNode, updateNode, type ComputeNodeVO } from '@/api/device/node';
-import { generateDefaultAgentPort } from '../../utils/constants';
+import { generateDefaultAgentPort, generateRandomDeployPorts, SETUP_COPY } from '../../utils/constants';
 import {
   nodeFormHistoryToFields,
   saveNodeFormHistory,
@@ -34,14 +34,26 @@ const [registerForm, { setFieldsValue, resetFields, validate, clearValidate }] =
   baseColProps: { span: 24 },
 });
 
+function handleGenerateRandomPorts(model: Record<string, unknown>) {
+  const ports = generateRandomDeployPorts(String(model.nodeRole || 'compute'));
+  setFieldsValue(ports);
+  createMessage.success(SETUP_COPY.generateRandomPortsSuccess);
+}
+
+function isComputeRole(role: unknown) {
+  return role !== 'media' && role !== 'hybrid';
+}
+
 function flattenMediaTags(record: ComputeNodeVO) {
   const tags = record.tags || {};
   return {
     ...record,
     srsRtmpPort: tags.srs_rtmp_port ? Number(tags.srs_rtmp_port) : 1935,
     srsHttpPort: tags.srs_http_port ? Number(tags.srs_http_port) : 8080,
+    srsApiPort: tags.srs_api_port ? Number(tags.srs_api_port) : 1985,
     zlmHttpPort: tags.zlm_http_port ? Number(tags.zlm_http_port) : 6080,
     zlmRtmpPort: tags.zlm_rtmp_port ? Number(tags.zlm_rtmp_port) : 10935,
+    zlmRtspPort: tags.zlm_rtsp_port ? Number(tags.zlm_rtsp_port) : 8554,
     zlmRtpPortMin: tags.zlm_rtp_port_min ? Number(tags.zlm_rtp_port_min) : 30000,
     zlmRtpPortMax: tags.zlm_rtp_port_max ? Number(tags.zlm_rtp_port_max) : 30500,
   };
@@ -58,6 +70,7 @@ function buildMediaTags(values: Record<string, unknown>) {
     srs_api_port: String(values.srsApiPort ?? 1985),
     zlm_http_port: String(values.zlmHttpPort ?? 6080),
     zlm_rtmp_port: String(values.zlmRtmpPort ?? 10935),
+    zlm_rtsp_port: String(values.zlmRtspPort ?? 8554),
     zlm_rtp_port_min: String(values.zlmRtpPortMin ?? 30000),
     zlm_rtp_port_max: String(values.zlmRtpPortMax ?? 30500),
   };
@@ -172,6 +185,54 @@ function handleCancel() {
               @apply-history="applyHistoryEntry"
             />
           </template>
+          <template #zlmRtpPortMax="{ model, field }">
+            <div class="field-with-action">
+              <InputNumber
+                v-model:value="model[field]"
+                :min="1"
+                :max="65535"
+                class="field-with-action__control"
+              />
+              <Button type="default" class="field-with-action__btn" @click="handleGenerateRandomPorts(model)">
+                {{ SETUP_COPY.generateRandomPortsBtn }}
+              </Button>
+            </div>
+          </template>
+          <template #sshPassword="{ model, field }">
+            <div class="field-with-action">
+              <Input.Password
+                v-model:value="model[field]"
+                placeholder="更换目标服务器时请重新填写密码"
+                class="field-with-action__control"
+              />
+              <Button
+                v-if="isComputeRole(model.nodeRole)"
+                type="default"
+                class="field-with-action__btn"
+                @click="handleGenerateRandomPorts(model)"
+              >
+                {{ SETUP_COPY.generateRandomPortsBtn }}
+              </Button>
+            </div>
+          </template>
+          <template #sshPrivateKey="{ model, field }">
+            <div class="field-with-action field-with-action--top">
+              <Input.TextArea
+                v-model:value="model[field]"
+                :rows="4"
+                placeholder="-----BEGIN RSA PRIVATE KEY-----"
+                class="field-with-action__control"
+              />
+              <Button
+                v-if="isComputeRole(model.nodeRole)"
+                type="default"
+                class="field-with-action__btn"
+                @click="handleGenerateRandomPorts(model)"
+              >
+                {{ SETUP_COPY.generateRandomPortsBtn }}
+              </Button>
+            </div>
+          </template>
         </BasicForm>
       </div>
     </Spin>
@@ -191,4 +252,26 @@ function handleCancel() {
   align-items: center;
   gap: 8px;
 }
+
+.field-with-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.field-with-action--top {
+  align-items: flex-start;
+}
+
+.field-with-action__control {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-with-action__btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 </style>

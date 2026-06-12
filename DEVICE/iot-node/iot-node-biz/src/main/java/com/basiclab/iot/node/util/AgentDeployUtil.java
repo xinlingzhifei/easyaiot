@@ -1,10 +1,11 @@
 package com.basiclab.iot.node.util;
 
-import com.basiclab.iot.node.dal.dataobject.ComputeNodeDO;
-
 public final class AgentDeployUtil {
 
     public static final String REMOTE_INSTALL_DIR = "/opt/easyaiot/node-agent";
+    public static final String PIP_WHEELS_DIR = "pip-wheels";
+    public static final String EXPORT_PIP_WHEELS_SCRIPT = "export_pip_wheels.sh";
+    public static final String GET_PIP_SCRIPT = "get-pip.py";
 
     public static final String[] SYNC_RELATIVE_FILES = {
             "run_agent.py",
@@ -19,15 +20,14 @@ public final class AgentDeployUtil {
     private AgentDeployUtil() {
     }
 
-    public static String buildEnvContent(ComputeNodeDO node, String controlPlaneUrl) {
-        int port = node.getAgentPort() != null && node.getAgentPort() > 0 ? node.getAgentPort() : 9100;
+    public static String buildEnvContent(long nodeId, String agentToken, int agentPort, String controlPlaneUrl) {
         return "# yFeiEye Node Agent 配置\n"
-                + "NODE_ID=" + node.getId() + "\n"
-                + "AGENT_TOKEN=" + node.getAgentToken() + "\n"
+                + "NODE_ID=" + nodeId + "\n"
+                + "AGENT_TOKEN=" + agentToken + "\n"
                 + "CONTROL_PLANE_URL=" + controlPlaneUrl + "\n"
                 + "HEARTBEAT_INTERVAL=10\n"
                 + "AGENT_LISTEN_HOST=0.0.0.0\n"
-                + "AGENT_LISTEN_PORT=" + port + "\n"
+                + "AGENT_LISTEN_PORT=" + agentPort + "\n"
                 + "AI_ROOT=/opt/easyaiot/AI\n"
                 + "VIDEO_ROOT=/opt/easyaiot/VIDEO\n"
                 + "MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster\n"
@@ -46,7 +46,8 @@ public final class AgentDeployUtil {
                 + "EOF\n"
                 + "sudo chmod +x install.sh\n"
                 + "sudo bash install.sh\n"
-                + "sudo systemctl enable --now easyaiot-node-agent\n";
+                + "sudo systemctl enable easyaiot-node-agent\n"
+                + "sudo systemctl restart easyaiot-node-agent\n";
     }
 
 }

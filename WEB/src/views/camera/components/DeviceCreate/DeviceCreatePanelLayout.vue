@@ -164,6 +164,8 @@ defineProps({
 .panel-result-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   padding: 12px;
 
@@ -191,6 +193,61 @@ defineProps({
     :deep(.ant-select) {
       width: 100%;
     }
+  }
+
+  /* 让 ant-design Table 在 flex 容器中自适应：表头固定、表体滚动、分页始终可见 */
+  :deep(.ant-table-wrapper) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.ant-spin-nested-loading) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.ant-spin-container) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.ant-table) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.ant-table-container) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* scroll.y 模式下 .ant-table-body 有固定高度，用 flex:1 覆盖使其自适应容器 */
+  :deep(.ant-table-body) {
+    flex: 1;
+    min-height: 0;
+    max-height: none !important;
+    overflow: auto !important;
+  }
+
+  /* 分页控件始终固定在底部，不被表格内容推出可视区域 */
+  :deep(.ant-table-pagination) {
+    flex-shrink: 0;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+
+  :deep(.ant-table-content + .ant-table-pagination) {
+    flex-shrink: 0;
   }
 }
 </style>

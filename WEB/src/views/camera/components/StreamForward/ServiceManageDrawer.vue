@@ -205,10 +205,21 @@ const serviceList = computed(() => {
         : 'stopped';
     }
     
-    // 为每个摄像头创建一条记录
+    // 为每个摄像头创建一条记录（设备级远程部署时展示各分片节点信息）
+    const deployments = serviceStatusInfo.value?.device_deployments
+      || taskInfo.value.device_deployments
+      || [];
+    const deploymentByDevice = new Map<string, any>();
+    deployments.forEach((dep: any) => {
+      (dep.device_ids || []).forEach((deviceId: string) => {
+        deploymentByDevice.set(deviceId, dep);
+      });
+    });
+
     deviceIds.forEach((deviceId: string, index: number) => {
       const deviceName = deviceNames[index] || deviceId;
       const cameraStream = cameraStreamsList.value.find(s => s.device_id === deviceId);
+      const dep = deploymentByDevice.get(deviceId);
       
       const serviceItem = {
         id: `stream_forward_${taskInfo.value!.id}_${deviceId}`,
@@ -217,11 +228,13 @@ const serviceList = computed(() => {
         device_id: deviceId,
         device_name: deviceName,
         status: status,
-        server_ip: serviceStatusInfo.value?.server_ip,
+        server_ip: dep?.host || serviceStatusInfo.value?.server_ip,
         port: serviceStatusInfo.value?.port,
-        process_id: serviceStatusInfo.value?.process_id,
+        process_id: dep?.pid || serviceStatusInfo.value?.process_id,
+        node_id: dep?.node_id,
+        workload_id: dep?.workload_id,
         last_heartbeat: serviceStatusInfo.value?.last_heartbeat,
-        log_path: serviceStatusInfo.value?.log_path,
+        log_path: dep?.log_dir || serviceStatusInfo.value?.log_path,
         total_streams: serviceStatusInfo.value?.total_streams || deviceIds.length,
         rtmp_stream: cameraStream?.rtmp_stream,
         http_stream: cameraStream?.http_stream,

@@ -1847,6 +1847,14 @@ class StreamForwardTask(db.Model):
     service_process_id = db.Column(db.Integer, nullable=True, comment='服务进程ID')
     service_last_heartbeat = db.Column(db.DateTime, nullable=True, comment='服务最后心跳时间')
     service_log_path = db.Column(db.String(500), nullable=True, comment='服务日志路径')
+
+    # 节点调度（跨节点部署）
+    schedule_policy = db.Column(db.String(20), default='local', nullable=False,
+                                comment='调度策略[local:本机,auto:自动节点,node:指定节点]')
+    target_node_id = db.Column(db.BigInteger, nullable=True, comment='指定部署节点ID')
+    node_id = db.Column(db.BigInteger, nullable=True, comment='实际运行节点ID（单节点部署）')
+    device_deployments = db.Column(db.Text, nullable=True,
+                                   comment='设备级远程部署明细 JSON：[{device_ids,node_id,host,workload_id,pid}]')
     
     # 统计信息
     total_streams = db.Column(db.Integer, default=0, nullable=False, comment='总推流数')
@@ -1860,6 +1868,17 @@ class StreamForwardTask(db.Model):
     
     # 关联关系
     devices = db.relationship('Device', secondary=stream_forward_task_device, backref='stream_forward_task_list', lazy=True)  # 多对多关系
+
+    def _parse_device_deployments(self):
+        import json
+        raw = self.device_deployments
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
     
     def to_dict(self):
         """转换为字典"""
@@ -1885,6 +1904,10 @@ class StreamForwardTask(db.Model):
             'service_process_id': self.service_process_id,
             'service_last_heartbeat': utc_isoformat_z(self.service_last_heartbeat),
             'service_log_path': self.service_log_path,
+            'schedule_policy': self.schedule_policy,
+            'target_node_id': self.target_node_id,
+            'node_id': self.node_id,
+            'device_deployments': self._parse_device_deployments(),
             'total_streams': self.total_streams,
             'last_process_time': utc_isoformat_z(self.last_process_time),
             'last_success_time': utc_isoformat_z(self.last_success_time),

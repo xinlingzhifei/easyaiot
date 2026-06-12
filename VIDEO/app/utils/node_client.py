@@ -61,6 +61,7 @@ def allocate_node(
     region: Optional[str] = None,
     sticky: bool = True,
     target_node_id: Optional[int] = None,
+    exclude_node_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     if target_node_id:
         node = get_node(target_node_id)
@@ -72,17 +73,34 @@ def allocate_node(
             'bindingId': None,
         }
 
+    requirements: Dict[str, Any] = {
+        'capabilities': capabilities or ['algorithm_realtime'],
+        'gpuCount': gpu_count,
+        'region': region,
+    }
+    if exclude_node_ids:
+        requirements['excludeNodeIds'] = exclude_node_ids
+
     payload = {
         'workloadType': workload_type,
         'workloadId': workload_id,
         'sticky': sticky,
-        'requirements': {
-            'capabilities': capabilities or ['algorithm_realtime'],
-            'gpuCount': gpu_count,
-            'region': region,
-        },
+        'requirements': requirements,
     }
     return _post('/scheduler/allocate', payload)
+
+
+def release_workload(workload_type: str, workload_id: str) -> None:
+    url = f'{NODE_API_BASE}/scheduler/release'
+    params = {
+        'workloadType': workload_type,
+        'workloadId': workload_id,
+    }
+    resp = requests.post(url, params=params, headers=_headers(), timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get('code') != 0:
+        raise RuntimeError(data.get('msg') or '释放节点绑定失败')
 
 
 def get_node(node_id: int) -> Dict[str, Any]:

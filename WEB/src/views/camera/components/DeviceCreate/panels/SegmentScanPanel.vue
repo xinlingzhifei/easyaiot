@@ -68,7 +68,7 @@
           :columns="mode === 'camera' ? cameraColumns : nvrColumns"
           :data-source="state.devices"
           :pagination="tablePagination"
-          :scroll="{ x: 1000 }"
+          :scroll="{ x: 1000, y: 300 }"
           row-key="ip"
           size="small"
           bordered

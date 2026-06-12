@@ -75,6 +75,10 @@ hs_err_pid*
 # 媒体节点离线 Docker 镜像包（体积大，勿提交）
 .scripts/media-cluster/images/*.tar
 
+# Node Agent 离线 pip wheel（体积大，勿提交）
+NODE/pip-wheels/
+NODE/get-pip.py
+
 # alert_images 文件夹
 **/alert_images/
 

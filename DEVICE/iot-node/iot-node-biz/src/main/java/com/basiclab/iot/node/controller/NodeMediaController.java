@@ -6,6 +6,7 @@ import com.basiclab.iot.node.domain.vo.NodeMediaAllocateReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaDeployReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaStackCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
+import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.service.NodeMediaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -64,6 +65,12 @@ public class NodeMediaController {
     @Operation(summary = "通过 SSH 检测媒体节点 SRS/ZLM 是否已部署")
     public CommonResult<NodeMediaStackCheckRespVO> checkBySsh(@RequestParam("nodeId") Long nodeId) {
         return success(nodeMediaService.checkMediaStackBySsh(nodeId));
+    }
+
+    @PostMapping("/check-ports-ssh")
+    @Operation(summary = "通过 SSH 检测媒体节点部署端口占用")
+    public CommonResult<NodePortCheckRespVO> checkPortsBySsh(@RequestParam("nodeId") Long nodeId) {
+        return success(nodeMediaService.checkMediaPortsBySsh(nodeId));
     }
 
     @PostMapping("/stop-ssh")

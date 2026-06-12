@@ -17,6 +17,7 @@ import com.basiclab.iot.node.domain.vo.ComputeNodeRespVO;
 import com.basiclab.iot.node.domain.vo.ComputeNodeSaveReqVO;
 import com.basiclab.iot.node.domain.vo.NodeAgentCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
+import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendPointRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendRespVO;
@@ -26,6 +27,7 @@ import com.basiclab.iot.node.enums.NodeStatusEnum;
 import com.basiclab.iot.node.service.ComputeNodeService;
 import com.basiclab.iot.node.util.AgentDeployUtil;
 import com.basiclab.iot.node.util.CredentialEncryptUtil;
+import com.basiclab.iot.node.util.RemotePortCheckUtil;
 import com.basiclab.iot.node.util.SshClientUtil;
 import com.basiclab.iot.node.util.SshSessionHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,9 +39,11 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.io.File;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -47,8 +51,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.basiclab.iot.common.exception.util.ServiceExceptionUtil.exception;
@@ -62,6 +68,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     private static final int DEFAULT_SSH_PORT = 22;
     private static final int DEFAULT_AGENT_PORT = 9100;
     private static final int DEPLOY_TIMEOUT_MS = 300000;
+    private static final int EXPORT_PIP_WHEELS_TIMEOUT_MS = 600000;
 
     @Resource
     private ComputeNodeMapper computeNodeMapper;
@@ -228,11 +235,48 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
             steps.add(runDeployStep("SSH 连接", "success", "已连接 " + node.getHost() + ":" + sshPort));
 
+            NodePortCheckRespVO portCheck = checkAgentPortOnSession(ssh, node);
+            steps.add(portCheck.getSteps().get(0));
+            if (!Boolean.TRUE.equals(portCheck.getPortsReady())) {
+                resp.setSuccess(false);
+                resp.setMessage(portCheck.getMessage());
+                return resp;
+            }
+
+            String targetPython = detectRemotePythonVersion(ssh);
             String sourceRoot = resolveAgentSource();
-            steps.add(syncAgentFiles(ssh, sourceRoot));
+            NodeMediaRemoteDeployRespVO.DeployStep wheelsStep = ensureLocalAgentPipWheels(sourceRoot, targetPython);
+            steps.add(wheelsStep);
+            if (!"success".equals(wheelsStep.getStatus())) {
+                resp.setSuccess(false);
+                resp.setMessage(wheelsStep.getOutput());
+                return resp;
+            }
+
+            NodeMediaRemoteDeployRespVO.DeployStep pythonStep = ensureRemotePythonRuntime(ssh, targetPython);
+            steps.add(pythonStep);
+            if (!"success".equals(pythonStep.getStatus())) {
+                resp.setSuccess(false);
+                resp.setMessage(pythonStep.getOutput());
+                return resp;
+            }
+
+            NodeMediaRemoteDeployRespVO.DeployStep syncStep = syncAgentFiles(ssh, sourceRoot);
+            steps.add(syncStep);
+            if (!"success".equals(syncStep.getStatus())) {
+                resp.setSuccess(false);
+                resp.setMessage(syncStep.getOutput());
+                return resp;
+            }
 
             String controlPlaneUrl = resolveControlPlaneUrl(controlPlaneUrlOverride);
-            String envContent = AgentDeployUtil.buildEnvContent(node, controlPlaneUrl);
+            int agentPort = node.getAgentPort() != null && node.getAgentPort() > 0
+                    ? node.getAgentPort() : DEFAULT_AGENT_PORT;
+            String envContent = AgentDeployUtil.buildEnvContent(
+                    node.getId(),
+                    node.getAgentToken() != null ? node.getAgentToken() : "",
+                    agentPort,
+                    controlPlaneUrl);
             String installScript = AgentDeployUtil.buildInstallScript(envContent);
             String encoded = Base64.getEncoder().encodeToString(installScript.getBytes(StandardCharsets.UTF_8));
             SshSessionHelper.SshExecResult installResult = ssh.exec(
@@ -242,12 +286,13 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                     DEPLOY_TIMEOUT_MS);
             NodeMediaRemoteDeployRespVO.DeployStep installStep = new NodeMediaRemoteDeployRespVO.DeployStep();
             installStep.setName("安装启动");
-            installStep.setOutput(trimDeployOutput(installResult.combinedOutput(), 8000));
-            if (!installResult.isSuccess()) {
+            String installOutput = trimDeployOutput(installResult.combinedOutput(), 8000);
+            installStep.setOutput(installOutput);
+            if (!isAgentInstallOutputSuccessful(installResult, installOutput)) {
                 installStep.setStatus("failed");
                 steps.add(installStep);
                 resp.setSuccess(false);
-                resp.setMessage("Agent 安装脚本执行失败");
+                resp.setMessage(resolveAgentInstallFailureMessage(installOutput));
                 return resp;
             }
             installStep.setStatus("success");
@@ -270,6 +315,63 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             resp.setMessage(e.getMessage());
             return resp;
         }
+    }
+
+    @Override
+    public NodePortCheckRespVO checkAgentPortBySsh(Long nodeId) {
+        ComputeNodeDO node = validateExists(nodeId);
+        NodeSshCredentialDO credential = nodeSshCredentialMapper.selectByNodeId(nodeId);
+        if (credential == null) {
+            throw exception(SSH_CREDENTIAL_NOT_EXISTS);
+        }
+        String password = null;
+        String privateKey = null;
+        if ("password".equals(credential.getAuthType())) {
+            password = CredentialEncryptUtil.decrypt(credential.getCredentialEnc());
+        } else {
+            privateKey = CredentialEncryptUtil.decrypt(credential.getCredentialEnc());
+        }
+
+        NodePortCheckRespVO resp = new NodePortCheckRespVO();
+        List<NodeMediaRemoteDeployRespVO.DeployStep> steps = new ArrayList<>();
+        resp.setSteps(steps);
+
+        int sshPort = resolveSshPort(node);
+        try (SshSessionHelper ssh = SshSessionHelper.connect(
+                node.getHost(),
+                sshPort,
+                credential.getUsername(),
+                credential.getAuthType(),
+                password,
+                privateKey)) {
+
+            steps.add(runDeployStep("SSH 连接", "success", "已连接 " + node.getHost() + ":" + sshPort));
+            NodePortCheckRespVO portCheck = checkAgentPortOnSession(ssh, node);
+            steps.addAll(portCheck.getSteps());
+            resp.setPorts(portCheck.getPorts());
+            resp.setPortsReady(portCheck.getPortsReady());
+            resp.setSuccess(true);
+            resp.setMessage(portCheck.getMessage());
+            return resp;
+        } catch (Exception e) {
+            log.error("Agent 端口检测失败 nodeId={} host={}:{}", nodeId, node.getHost(), sshPort, e);
+            NodeMediaRemoteDeployRespVO.DeployStep fail = new NodeMediaRemoteDeployRespVO.DeployStep();
+            fail.setName(steps.isEmpty() ? "SSH 连接" : "检测中断");
+            fail.setStatus("failed");
+            fail.setOutput(e.getMessage());
+            steps.add(fail);
+            resp.setSuccess(false);
+            resp.setPortsReady(false);
+            resp.setMessage(e.getMessage());
+            return resp;
+        }
+    }
+
+    private NodePortCheckRespVO checkAgentPortOnSession(SshSessionHelper ssh, ComputeNodeDO node) throws Exception {
+        int agentPort = node.getAgentPort() != null && node.getAgentPort() > 0 ? node.getAgentPort() : 9100;
+        LinkedHashMap<String, Integer> portMap = new LinkedHashMap<>();
+        portMap.put("节点代理", agentPort);
+        return RemotePortCheckUtil.checkPorts(ssh, portMap);
     }
 
     @Override
@@ -720,9 +822,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             }
         }
         String[] candidates = {
-                "/opt/easyaiot/NODE/agent",
-                System.getProperty("user.dir") + "/NODE/agent",
-                System.getProperty("user.dir") + "/../NODE/agent",
+                "/opt/easyaiot/NODE",
+                System.getProperty("user.dir") + "/NODE",
+                System.getProperty("user.dir") + "/../NODE",
         };
         for (String path : candidates) {
             File entry = new File(path, "run_agent.py");
@@ -748,7 +850,243 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             }
             count++;
         }
-        return runDeployStep("同步文件", "success", "已上传 " + count + " 个文件至 " + AgentDeployUtil.REMOTE_INSTALL_DIR);
+
+        File getPip = new File(sourceRoot, AgentDeployUtil.GET_PIP_SCRIPT);
+        if (!getPip.isFile()) {
+            NodeMediaRemoteDeployRespVO.DeployStep fail = new NodeMediaRemoteDeployRespVO.DeployStep();
+            fail.setName("同步文件");
+            fail.setStatus("failed");
+            fail.setOutput("本机缺少 " + AgentDeployUtil.GET_PIP_SCRIPT
+                    + "，请重新执行 export_pip_wheels.sh 生成完整离线包后重试");
+            return fail;
+        }
+        ssh.uploadFile(getPip.getAbsolutePath(),
+                AgentDeployUtil.REMOTE_INSTALL_DIR + "/" + AgentDeployUtil.GET_PIP_SCRIPT);
+        count++;
+
+        File wheelsDir = new File(sourceRoot, AgentDeployUtil.PIP_WHEELS_DIR);
+        File[] wheels = listPipWheelFiles(wheelsDir);
+        if (wheels.length == 0) {
+            NodeMediaRemoteDeployRespVO.DeployStep fail = new NodeMediaRemoteDeployRespVO.DeployStep();
+            fail.setName("同步文件");
+            fail.setStatus("failed");
+            fail.setOutput("本机缺少离线 pip 包，请执行 NODE/export_pip_wheels.sh 后重试");
+            return fail;
+        }
+
+        String remoteWheelsDir = AgentDeployUtil.REMOTE_INSTALL_DIR + "/" + AgentDeployUtil.PIP_WHEELS_DIR;
+        ssh.ensureRemoteDir(remoteWheelsDir);
+        long wheelBytes = 0;
+        for (File wheel : wheels) {
+            ssh.uploadFile(wheel.getAbsolutePath(), remoteWheelsDir + "/" + wheel.getName());
+            wheelBytes += wheel.length();
+        }
+
+        NodeMediaRemoteDeployRespVO.DeployStep step = new NodeMediaRemoteDeployRespVO.DeployStep();
+        step.setName("同步文件");
+        step.setStatus("success");
+        step.setOutput("已上传 " + count + " 个文件 + " + wheels.length + " 个离线 pip 包（"
+                + formatDeployBytes(wheelBytes) + "）至 " + AgentDeployUtil.REMOTE_INSTALL_DIR);
+        return step;
+    }
+
+    private NodeMediaRemoteDeployRespVO.DeployStep ensureLocalAgentPipWheels(String sourceRoot, String targetPython) {
+        File wheelsDir = new File(sourceRoot, AgentDeployUtil.PIP_WHEELS_DIR);
+        File[] existing = listPipWheelFiles(wheelsDir);
+        if (existing.length > 0 && isAgentPipWheelsReady(sourceRoot, targetPython)) {
+            long total = 0;
+            for (File wheel : existing) {
+                total += wheel.length();
+            }
+            return runDeployStep("准备离线 pip 包", "success",
+                    "本机离线 pip 包已就绪（" + existing.length + " 个，"
+                            + formatDeployBytes(total) + "，目标 Python " + targetPython + "）\n目录: "
+                            + wheelsDir.getAbsolutePath());
+        }
+
+        File exportScript = new File(sourceRoot, AgentDeployUtil.EXPORT_PIP_WHEELS_SCRIPT);
+        if (!exportScript.isFile()) {
+            return runDeployStep("准备离线 pip 包", "failed",
+                    "缺少离线 pip 包且未找到 export_pip_wheels.sh；"
+                            + "请先在平台服务器安装 pip（apt install python3-pip），"
+                            + "再执行: bash NODE/export_pip_wheels.sh");
+        }
+
+        try {
+            String exportOutput = runExportPipWheelsScript(exportScript, targetPython);
+            File[] wheels = listPipWheelFiles(wheelsDir);
+            if (wheels.length == 0) {
+                return runDeployStep("准备离线 pip 包", "failed",
+                        "export_pip_wheels.sh 执行后仍未生成 wheel 包\n"
+                                + trimDeployOutput(exportOutput, 4000));
+            }
+            long total = 0;
+            for (File wheel : wheels) {
+                total += wheel.length();
+            }
+            String output = "本机已下载离线 pip 包（" + wheels.length + " 个，"
+                    + formatDeployBytes(total) + "，目标 Python " + targetPython + "）\n目录: "
+                    + wheelsDir.getAbsolutePath();
+            if (!exportOutput.isBlank()) {
+                output += "\n" + trimDeployOutput(exportOutput, 3000);
+            }
+            return runDeployStep("准备离线 pip 包", "success", output);
+        } catch (Exception e) {
+            log.error("本机导出 Agent pip wheel 失败 sourceRoot={}", sourceRoot, e);
+            return runDeployStep("准备离线 pip 包", "failed",
+                    "本机下载 pip 包失败: " + e.getMessage()
+                            + "\n请确认平台服务器已安装 pip: apt install python3-pip");
+        }
+    }
+
+    private boolean isAgentPipWheelsReady(String sourceRoot, String targetPython) {
+        File wheelsDir = new File(sourceRoot, AgentDeployUtil.PIP_WHEELS_DIR);
+        File[] wheels = listPipWheelFiles(wheelsDir);
+        if (wheels.length == 0) {
+            return false;
+        }
+        File marker = new File(wheelsDir, ".target-python");
+        if (!marker.isFile()) {
+            return false;
+        }
+        try {
+            String markerVersion = Files.readString(marker.toPath(), StandardCharsets.UTF_8).trim();
+            if (!markerVersion.equals(targetPython)) {
+                return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        if (!hasAgentBootstrapWheel(wheelsDir, "pip")
+                || !hasAgentBootstrapWheel(wheelsDir, "setuptools")
+                || !hasAgentBootstrapWheel(wheelsDir, "wheel")) {
+            return false;
+        }
+        if (!new File(sourceRoot, AgentDeployUtil.GET_PIP_SCRIPT).isFile()) {
+            return false;
+        }
+        if (isPythonVersionBelow(targetPython, "3.10")) {
+            return hasAgentBootstrapWheel(wheelsDir, "importlib_metadata")
+                    && hasAgentBootstrapWheel(wheelsDir, "zipp");
+        }
+        return hasAgentBootstrapWheel(wheelsDir, "requests")
+                && hasAgentBootstrapWheel(wheelsDir, "psutil")
+                && hasAgentBootstrapWheel(wheelsDir, "flask")
+                && hasAgentBootstrapWheel(wheelsDir, "minio");
+    }
+
+    private boolean hasAgentBootstrapWheel(File wheelsDir, String prefix) {
+        String lowerPrefix = prefix.toLowerCase(Locale.ROOT);
+        File[] wheels = listPipWheelFiles(wheelsDir);
+        for (File wheel : wheels) {
+            if (wheel.getName().toLowerCase(Locale.ROOT).startsWith(lowerPrefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isPythonVersionBelow(String version, String threshold) {
+        int[] current = parsePythonVersion(version);
+        int[] baseline = parsePythonVersion(threshold);
+        if (current == null || baseline == null) {
+            return false;
+        }
+        if (current[0] != baseline[0]) {
+            return current[0] < baseline[0];
+        }
+        return current[1] < baseline[1];
+    }
+
+    private int[] parsePythonVersion(String version) {
+        if (version == null || !version.matches("3\\.\\d+")) {
+            return null;
+        }
+        String[] parts = version.split("\\.");
+        return new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1])};
+    }
+
+    private File[] listPipWheelFiles(File wheelsDir) {
+        if (!wheelsDir.isDirectory()) {
+            return new File[0];
+        }
+        File[] files = wheelsDir.listFiles(f -> f.isFile() && isPipWheelArtifact(f.getName()));
+        return files != null ? files : new File[0];
+    }
+
+    private boolean isPipWheelArtifact(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".whl") || lower.endsWith(".tar.gz") || lower.endsWith(".zip");
+    }
+
+    private String detectRemotePythonVersion(SshSessionHelper ssh) throws Exception {
+        SshSessionHelper.SshExecResult result = ssh.exec(
+                "python3 -c \"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')\" 2>/dev/null || echo 3.10",
+                10000);
+        String version = result.combinedOutput().trim();
+        if (!version.matches("3\\.\\d+")) {
+            return "3.10";
+        }
+        return version;
+    }
+
+    private NodeMediaRemoteDeployRespVO.DeployStep ensureRemotePythonRuntime(SshSessionHelper ssh, String targetPython)
+            throws Exception {
+        SshSessionHelper.SshExecResult result = ssh.exec(
+                "if command -v python3 >/dev/null 2>&1 "
+                        + "&& python3 -c \"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')\" "
+                        + "2>/dev/null | grep -qx '" + targetPython + "'; then "
+                        + "echo PYTHON_OK; "
+                        + "else echo PYTHON_MISMATCH; fi",
+                15000);
+        String out = result.combinedOutput();
+        if (out.contains("PYTHON_OK")) {
+            return runDeployStep("Python 运行时", "success",
+                    "目标机 Python " + targetPython + " 可用；"
+                            + "将同步离线 wheel + get-pip.py，在 prefix 目录隔离安装（无需联网 apt / python-venv）");
+        }
+        if (out.contains("PYTHON_MISMATCH")) {
+            return runDeployStep("Python 运行时", "failed",
+                    "目标机 Python 版本与预期 " + targetPython + " 不一致。\n"
+                            + trimDeployOutput(out, 800)
+                            + "\n请确认目标机已安装 python" + targetPython);
+        }
+        return runDeployStep("Python 运行时", "failed",
+                "目标机未找到 python3。\n" + trimDeployOutput(out, 800));
+    }
+
+    private String runExportPipWheelsScript(File exportScript, String targetPython) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("bash", exportScript.getAbsolutePath());
+        pb.directory(exportScript.getParentFile());
+        pb.environment().put("AGENT_TARGET_PYTHON", targetPython);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        boolean finished = process.waitFor(EXPORT_PIP_WHEELS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+            throw new IllegalStateException("export_pip_wheels.sh 超时（超过 "
+                    + (EXPORT_PIP_WHEELS_TIMEOUT_MS / 60000) + " 分钟）");
+        }
+        if (process.exitValue() != 0) {
+            throw new IllegalStateException(output.isBlank()
+                    ? "export_pip_wheels.sh 退出码 " + process.exitValue()
+                    : output.trim());
+        }
+        return output;
+    }
+
+    private String formatDeployBytes(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        if (bytes < 1024L * 1024) {
+            return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        }
+        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     private NodeMediaRemoteDeployRespVO.DeployStep probeAgentInstallDir(SshSessionHelper ssh) throws Exception {
@@ -806,10 +1144,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             throws Exception {
         int agentPort = node.getAgentPort() != null && node.getAgentPort() > 0
                 ? node.getAgentPort() : DEFAULT_AGENT_PORT;
-        SshSessionHelper.SshExecResult result = ssh.exec(
-                "if curl -sf http://127.0.0.1:" + agentPort + "/health >/dev/null 2>&1; then echo HEALTH_OK; "
-                        + "else echo HEALTH_FAIL; fi",
-                15000);
+        SshSessionHelper.SshExecResult result = ssh.exec(buildAgentHealthProbeScript(agentPort), 30000);
         String out = result.combinedOutput();
         NodeMediaRemoteDeployRespVO.DeployStep step = new NodeMediaRemoteDeployRespVO.DeployStep();
         step.setName("健康检查");
@@ -819,8 +1154,55 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             return step;
         }
         step.setStatus("failed");
-        step.setOutput("http://127.0.0.1:" + agentPort + "/health 无响应");
+        StringBuilder output = new StringBuilder("http://127.0.0.1:" + agentPort + "/health 无响应");
+        if (out.contains("PORT_MISMATCH=1")) {
+            output.append("\nagent.env 中 AGENT_LISTEN_PORT 与平台节点代理端口不一致，请重新部署以同步配置");
+        } else if (out.contains("HEALTH_OK_ON_CONFIGURED_PORT=1")) {
+            output.append("\nAgent 在 agent.env 配置的端口有响应，但与平台登记端口不一致，请重新部署");
+        } else if (out.contains("CURL_MISSING=1")) {
+            output.append("\n目标机未安装 curl/wget，无法执行 HTTP 探测");
+        } else {
+            output.append("\n服务可能刚启动或进程异常，可查看 Agent 日志后重试");
+        }
+        String diag = trimDeployOutput(out, 1500);
+        if (!diag.isBlank()) {
+            output.append('\n').append(diag);
+        }
+        step.setOutput(output.toString());
         return step;
+    }
+
+    private String buildAgentHealthProbeScript(int agentPort) {
+        String envFile = AgentDeployUtil.REMOTE_INSTALL_DIR + "/agent.env";
+        return "AGENT_PORT=" + agentPort + "\n"
+                + "ENV_FILE='" + envFile + "'\n"
+                + "probe_health() {\n"
+                + "  local port=\"$1\"\n"
+                + "  if command -v curl >/dev/null 2>&1; then\n"
+                + "    curl -sf \"http://127.0.0.1:${port}/health\" >/dev/null 2>&1\n"
+                + "    return $?\n"
+                + "  fi\n"
+                + "  if command -v wget >/dev/null 2>&1; then\n"
+                + "    wget -q -O /dev/null \"http://127.0.0.1:${port}/health\" 2>/dev/null\n"
+                + "    return $?\n"
+                + "  fi\n"
+                + "  python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:'+str(${port})+'/health', timeout=3)\" 2>/dev/null\n"
+                + "}\n"
+                + "for i in 1 2 3 4 5 6; do\n"
+                + "  if probe_health \"$AGENT_PORT\"; then echo HEALTH_OK; exit 0; fi\n"
+                + "  sleep 2\n"
+                + "done\n"
+                + "LISTEN_PORT=$(grep '^AGENT_LISTEN_PORT=' \"$ENV_FILE\" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' ')\n"
+                + "echo HEALTH_FAIL\n"
+                + "echo AGENT_LISTEN_PORT=${LISTEN_PORT:-unset}\n"
+                + "if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then\n"
+                + "  echo CURL_MISSING=1\n"
+                + "fi\n"
+                + "if [ -n \"$LISTEN_PORT\" ] && [ \"$LISTEN_PORT\" != \"$AGENT_PORT\" ]; then\n"
+                + "  echo PORT_MISMATCH=1\n"
+                + "  if probe_health \"$LISTEN_PORT\"; then echo HEALTH_OK_ON_CONFIGURED_PORT=1; fi\n"
+                + "fi\n"
+                + "ss -tlnp 2>/dev/null | grep -E \":(${AGENT_PORT}|${LISTEN_PORT:-9100}) \" | head -3 || true";
     }
 
     private String buildAgentCheckMessage(NodeAgentCheckRespVO resp, ComputeNodeDO node) {
@@ -852,8 +1234,13 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                     sb.append("，");
                 }
                 sb.append("健康检查通过");
+            } else if (Boolean.TRUE.equals(resp.getServiceRunning())) {
+                sb.append("，但健康检查未通过");
             }
-            sb.append("。建议重新部署或排查服务状态");
+            if (Boolean.FALSE.equals(resp.getConfigOk())) {
+                sb.append("；接入配置与平台不一致");
+            }
+            sb.append("。建议重新部署（将自动重启服务）或排查服务状态");
             return sb.toString();
         }
         if (Boolean.TRUE.equals(resp.getInstallDirReady())) {
@@ -867,7 +1254,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         String out = envStep.getOutput() != null ? envStep.getOutput() : "";
         resp.setNodeIdMatch(out.contains("NODE_ID_MATCH=1"));
         resp.setTokenMatch(out.contains("TOKEN_MATCH=1"));
-        resp.setConfigOk(Boolean.TRUE.equals(resp.getNodeIdMatch()) && Boolean.TRUE.equals(resp.getTokenMatch()));
+        resp.setConfigOk(Boolean.TRUE.equals(resp.getNodeIdMatch())
+                && Boolean.TRUE.equals(resp.getTokenMatch())
+                && out.contains("LISTEN_PORT_MATCH=1"));
         int cpIdx = out.indexOf("CP_URL=");
         if (cpIdx >= 0) {
             String line = out.substring(cpIdx);
@@ -881,20 +1270,27 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         String envFile = AgentDeployUtil.REMOTE_INSTALL_DIR + "/agent.env";
         String expectedNodeId = String.valueOf(node.getId());
         String expectedToken = node.getAgentToken() != null ? node.getAgentToken() : "";
+        int expectedAgentPort = node.getAgentPort() != null && node.getAgentPort() > 0
+                ? node.getAgentPort() : DEFAULT_AGENT_PORT;
         String script = "ENV_FILE='" + envFile + "'\n"
                 + "EXPECTED_NODE_ID='" + expectedNodeId + "'\n"
                 + "EXPECTED_TOKEN='" + expectedToken.replace("'", "'\\''") + "'\n"
                 + "EXPECTED_CP='" + expectedControlPlaneUrl.replace("'", "'\\''") + "'\n"
+                + "EXPECTED_LISTEN_PORT='" + expectedAgentPort + "'\n"
                 + "if [ ! -f \"$ENV_FILE\" ]; then echo ENV_MISSING; exit 0; fi\n"
                 + "NODE_ID=$(grep '^NODE_ID=' \"$ENV_FILE\" | head -1 | cut -d= -f2-)\n"
                 + "TOKEN=$(grep '^AGENT_TOKEN=' \"$ENV_FILE\" | head -1 | cut -d= -f2-)\n"
                 + "CP_URL=$(grep '^CONTROL_PLANE_URL=' \"$ENV_FILE\" | head -1 | cut -d= -f2-)\n"
+                + "LISTEN_PORT=$(grep '^AGENT_LISTEN_PORT=' \"$ENV_FILE\" | head -1 | cut -d= -f2- | tr -d ' ')\n"
                 + "echo NODE_ID=$NODE_ID\n"
                 + "echo CP_URL=$CP_URL\n"
                 + "echo EXPECTED_CP=$EXPECTED_CP\n"
+                + "echo AGENT_LISTEN_PORT=${LISTEN_PORT:-unset}\n"
+                + "echo EXPECTED_LISTEN_PORT=$EXPECTED_LISTEN_PORT\n"
                 + "if [ \"$NODE_ID\" = \"$EXPECTED_NODE_ID\" ]; then echo NODE_ID_MATCH=1; else echo NODE_ID_MATCH=0; fi\n"
                 + "if [ \"$TOKEN\" = \"$EXPECTED_TOKEN\" ]; then echo TOKEN_MATCH=1; else echo TOKEN_MATCH=0; fi\n"
                 + "if [ \"$CP_URL\" = \"$EXPECTED_CP\" ]; then echo CP_MATCH=1; else echo CP_MATCH=0; fi\n"
+                + "if [ \"$LISTEN_PORT\" = \"$EXPECTED_LISTEN_PORT\" ]; then echo LISTEN_PORT_MATCH=1; else echo LISTEN_PORT_MATCH=0; fi\n"
                 + "if echo \"$CP_URL\" | grep -Eq 'localhost|127\\.0\\.0\\.1'; then echo CP_LOCALHOST=1; fi";
         SshSessionHelper.SshExecResult result = ssh.exec(script, 15000);
         String out = result.combinedOutput();
@@ -909,15 +1305,18 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         boolean idOk = out.contains("NODE_ID_MATCH=1");
         boolean tokenOk = out.contains("TOKEN_MATCH=1");
         boolean cpOk = out.contains("CP_MATCH=1");
+        boolean portOk = out.contains("LISTEN_PORT_MATCH=1");
         boolean localhost = out.contains("CP_LOCALHOST=1");
-        if (idOk && tokenOk && cpOk && !localhost) {
+        if (idOk && tokenOk && cpOk && portOk && !localhost) {
             step.setStatus("success");
         } else if (idOk && tokenOk) {
-            step.setStatus(localhost ? "failed" : "success");
+            step.setStatus(localhost || !portOk ? "failed" : "success");
             if (localhost) {
                 step.setOutput(step.getOutput() + "\nCONTROL_PLANE_URL 使用了 localhost/127.0.0.1，远程 Agent 无法访问平台");
             } else if (!cpOk) {
                 step.setOutput(step.getOutput() + "\nCONTROL_PLANE_URL 与平台期望不一致，请更新 agent.env 并重启服务");
+            } else if (!portOk) {
+                step.setOutput(step.getOutput() + "\nAGENT_LISTEN_PORT 与平台节点代理端口不一致，请重新部署并重启服务");
             }
         } else {
             step.setStatus("failed");
@@ -926,6 +1325,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             }
             if (!tokenOk) {
                 step.setOutput(step.getOutput() + "\nAGENT_TOKEN 与平台不一致（若重置过令牌需同步 agent.env）");
+            }
+            if (!portOk) {
+                step.setOutput(step.getOutput() + "\nAGENT_LISTEN_PORT 与平台节点代理端口不一致，请重新部署并重启服务");
             }
         }
         return step;
@@ -980,24 +1382,53 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         SshSessionHelper.SshExecResult serviceResult = ssh.exec(
                 "systemctl is-active easyaiot-node-agent 2>/dev/null || echo INACTIVE",
                 15000);
-        SshSessionHelper.SshExecResult healthResult = ssh.exec(
-                "curl -sf http://127.0.0.1:" + agentPort + "/health >/dev/null && echo AGENT_OK || echo AGENT_FAIL",
-                15000);
+        SshSessionHelper.SshExecResult healthResult = ssh.exec(buildAgentHealthProbeScript(agentPort), 30000);
         String out = serviceResult.combinedOutput() + " " + healthResult.combinedOutput();
         NodeMediaRemoteDeployRespVO.DeployStep step = new NodeMediaRemoteDeployRespVO.DeployStep();
         step.setName("服务验证");
         step.setOutput(out.trim());
         boolean serviceActive = out.contains("active");
-        boolean healthOk = out.contains("AGENT_OK");
+        boolean healthOk = out.contains("HEALTH_OK");
         if (serviceActive && healthOk) {
             step.setStatus("success");
-        } else if (serviceActive || healthOk) {
-            step.setStatus("success");
-            step.setOutput(out.trim() + "（部分检查通过，请稍后确认心跳）");
         } else {
             step.setStatus("failed");
+            if (serviceActive && out.contains("HEALTH_FAIL")) {
+                step.setOutput(out.trim() + "\n服务已启动但健康检查未通过，请检查 journalctl -u easyaiot-node-agent");
+            }
         }
         return step;
+    }
+
+    private boolean isAgentInstallOutputSuccessful(SshSessionHelper.SshExecResult result, String output) {
+        if (!result.isSuccess()) {
+            return false;
+        }
+        if (output == null || !output.contains("INSTALL_OK")) {
+            return false;
+        }
+        String lower = output.toLowerCase(Locale.ROOT);
+        return !lower.contains("install_fail:")
+                && !lower.contains("externally-managed-environment")
+                && !lower.contains("ensurepip is not available");
+    }
+
+    private String resolveAgentInstallFailureMessage(String output) {
+        if (output != null) {
+            String lower = output.toLowerCase(Locale.ROOT);
+            if (lower.contains("ensurepip is not available") || lower.contains("python3.12-venv")
+                    || lower.contains("python3-venv")) {
+                return "Agent 安装失败：目标机缺少 python-venv 包，请执行 sudo apt install python3.12-venv 后重试";
+            }
+            if (lower.contains("externally-managed-environment")) {
+                return "Agent 安装失败：系统 Python 受 PEP 668 保护，请确认 install.sh 已更新为 venv 隔离安装";
+            }
+            if (lower.contains("install_fail:")) {
+                int idx = lower.indexOf("install_fail:");
+                return "Agent 安装失败：" + output.substring(idx).split("\n")[0].trim();
+            }
+        }
+        return "Agent 安装脚本执行失败";
     }
 
     private NodeMediaRemoteDeployRespVO.DeployStep runDeployStep(String name, String status, String output) {

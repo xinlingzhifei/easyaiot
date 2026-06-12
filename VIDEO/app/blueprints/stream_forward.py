@@ -93,7 +93,9 @@ def create_task():
             output_quality=data.get('output_quality', 'high'),
             output_bitrate=data.get('output_bitrate'),
             description=data.get('description'),
-            is_enabled=is_enabled
+            is_enabled=is_enabled,
+            schedule_policy=data.get('schedule_policy', 'local'),
+            target_node_id=data.get('target_node_id'),
         )
         
         return jsonify({
@@ -130,12 +132,13 @@ def update_task(task_id):
                 is_enabled = False
             data['is_enabled'] = is_enabled
         
-        task = update_stream_forward_task(task_id, **data)
+        task, sync_action = update_stream_forward_task(task_id, **data)
         
         return jsonify({
             'code': 0,
             'msg': '更新成功',
-            'data': task.to_dict()
+            'data': task.to_dict(),
+            'sync_action': sync_action,
         })
     except ValueError as e:
         return jsonify({'code': 400, 'msg': str(e)}), 400
@@ -296,17 +299,22 @@ def get_task_status(task_id):
         except Exception as e:
             logger.debug(f"检查守护进程状态失败: {str(e)}")
         
-        # 根据 is_enabled、心跳和守护进程状态判断服务状态
-        # 优先考虑 is_enabled 字段：如果 is_enabled=False，即使有心跳也应该返回 stopped
+        # 根据 is_enabled、心跳、守护进程、远程节点判断服务状态
         if not task.is_enabled:
             service_status = 'stopped'
         else:
-            # is_enabled=True 时，再根据心跳和守护进程状态判断
-            has_recent_heartbeat = task.service_last_heartbeat and (datetime.utcnow() - task.service_last_heartbeat).total_seconds() < 60
+            has_recent_heartbeat = (
+                task.service_last_heartbeat
+                and (datetime.utcnow() - task.service_last_heartbeat).total_seconds() < 60
+            )
+            is_remote = bool(getattr(task, 'node_id', None)) or bool(
+                task._parse_device_deployments() if hasattr(task, '_parse_device_deployments') else []
+            )
             if has_recent_heartbeat:
                 service_status = 'running'
+            elif is_remote and task.service_process_id:
+                service_status = 'running'
             elif daemon_running:
-                # 守护进程在运行但心跳未上报（可能是刚启动，心跳还未上报）
                 service_status = 'running'
             else:
                 service_status = 'stopped'
@@ -321,7 +329,12 @@ def get_task_status(task_id):
             'last_heartbeat': utc_isoformat_z(task.service_last_heartbeat),
             'log_path': task.service_log_path,
             'status': service_status,
-            'total_streams': task.total_streams
+            'total_streams': task.total_streams,
+            'schedule_policy': getattr(task, 'schedule_policy', None) or 'local',
+            'target_node_id': getattr(task, 'target_node_id', None),
+            'node_id': getattr(task, 'node_id', None),
+            'device_deployments': task._parse_device_deployments() if hasattr(task, '_parse_device_deployments') else [],
+            'deployment_count': len(task._parse_device_deployments()) if hasattr(task, '_parse_device_deployments') else 0,
         }
         
         return jsonify({

@@ -11,10 +11,12 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { copyText } from '@/utils/copyTextToClipboard';
 import {
   checkAgentBySsh,
+  checkAgentPortBySsh,
   deployAgentBySsh,
   removeAgentBySsh,
   stopAgentBySsh,
   type ComputeNodeVO,
+  type PortCheckResult as PortCheckData,
 } from '@/api/device/node';
 import {
   AGENT_INSTALL_DIR,
@@ -29,6 +31,7 @@ import {
 import { resolveDeployMessage, type DeployResultState } from '../../utils/deployLog';
 import AgentCheckResult from '../AgentCheckResult/index.vue';
 import DeployProgressPanel from '../DeployProgressPanel/index.vue';
+import PortCheckResult from '../PortCheckResult/index.vue';
 import SetupStepShell from '../SetupStepShell/index.vue';
 
 defineOptions({ name: 'AgentDeployPanel' });
@@ -52,6 +55,8 @@ const deploying = ref(false);
 const deployResult = ref<DeployResultState | null>(null);
 const checking = ref(false);
 const checkResult = ref<Awaited<ReturnType<typeof checkAgentBySsh>> | null>(null);
+const portChecking = ref(false);
+const portCheckResult = ref<PortCheckData | null>(null);
 const agentOpLoading = ref<'stop' | 'remove' | null>(null);
 const agentOpResult = ref<DeployResultState | null>(null);
 const hasAutoChecked = ref(false);
@@ -64,8 +69,8 @@ const agentExists = computed(() => {
 
 const deployPendingSteps = computed(() =>
   agentExists.value
-    ? [`停止${NODE_TERM.agent}`, `删除${NODE_TERM.agent}`, 'SSH 连接', '同步文件', '部署启动', '服务验证']
-    : ['SSH 连接', '同步文件', '部署启动', '服务验证'],
+    ? [`停止${NODE_TERM.agent}`, `删除${NODE_TERM.agent}`, 'SSH 连接', '端口占用检测', '准备离线 pip 包', 'Python 运行时', '同步文件', '部署启动', '服务验证']
+    : ['SSH 连接', '端口占用检测', '准备离线 pip 包', 'Python 运行时', '同步文件', '部署启动', '服务验证'],
 );
 
 const deployBtnLabel = computed(() =>
@@ -187,6 +192,26 @@ async function handleCheckDeploy() {
     };
   } finally {
     checking.value = false;
+  }
+}
+
+async function handleCheckPorts() {
+  const nodeId = props.node?.id;
+  if (!nodeId || portChecking.value) return;
+  portChecking.value = true;
+  portCheckResult.value = null;
+  try {
+    portCheckResult.value = await checkAgentPortBySsh(nodeId);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '检测请求失败';
+    portCheckResult.value = {
+      success: false,
+      portsReady: false,
+      message: msg,
+      steps: [{ name: '检测中断', status: 'failed', output: msg }],
+    };
+  } finally {
+    portChecking.value = false;
   }
 }
 
@@ -372,6 +397,23 @@ watch(
           </div>
         </FormItem>
 
+        <FormItem :label="SETUP_COPY.agentPortCheck">
+          <Space wrap>
+            <Button
+              :loading="portChecking"
+              :disabled="!canCheckDeploy || deploying || !!agentOpLoading || checking"
+              @click="handleCheckPorts"
+            >
+              {{ SETUP_COPY.checkAgentPortBtn }}
+            </Button>
+          </Space>
+          <div v-if="!canCheckDeploy" class="form-hint">{{ autoDisabledReason || '请先保存节点并配置 SSH' }}</div>
+          <PortCheckResult v-else-if="portCheckResult" :result="portCheckResult" @close="portCheckResult = null" />
+          <div v-else class="form-hint">
+            检测节点代理监听端口（agentPort）是否被其他进程占用
+          </div>
+        </FormItem>
+
         <FormItem :label="SETUP_COPY.agentDeployCheck">
           <Space wrap>
             <Button :loading="checking" :disabled="!canCheckDeploy || deploying || !!agentOpLoading" @click="handleCheckDeploy">
@@ -399,6 +441,9 @@ watch(
             </Space>
             <div class="form-hint">
               {{ deployHint }}
+            </div>
+            <div v-if="canAutoDeploy" class="form-hint">
+              部署前将自动检测目标机 Agent 监听端口是否可用
             </div>
           </FormItem>
 

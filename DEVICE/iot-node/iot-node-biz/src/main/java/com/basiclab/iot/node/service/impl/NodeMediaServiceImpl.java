@@ -16,6 +16,7 @@ import com.basiclab.iot.node.domain.vo.NodeMediaAllocateReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaDeployReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaRemoteDeployRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMediaStackCheckRespVO;
+import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeSchedulerAllocateReqVO;
 import com.basiclab.iot.node.domain.vo.NodeSchedulerAllocateRespVO;
 import com.basiclab.iot.node.enums.NodeRoleEnum;
@@ -26,6 +27,7 @@ import com.basiclab.iot.node.util.CredentialEncryptUtil;
 import com.basiclab.iot.node.util.MediaStackDeployUtil;
 import com.basiclab.iot.node.util.MediaStackDeployUtil.DeployPhase;
 import com.basiclab.iot.node.util.MediaUrlBuilder;
+import com.basiclab.iot.node.util.RemotePortCheckUtil;
 import com.basiclab.iot.node.util.SshSessionHelper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -224,6 +227,14 @@ public class NodeMediaServiceImpl implements NodeMediaService {
         try (SshSessionHelper ssh = openSshSession(node, sshCredential, sshPort)) {
 
             steps.add(runStep("SSH 连接", "success", "已连接 " + node.getHost() + ":" + sshPort));
+
+            NodePortCheckRespVO portCheck = checkMediaPortsOnSession(ssh, node);
+            steps.add(portCheck.getSteps().get(0));
+            if (!Boolean.TRUE.equals(portCheck.getPortsReady())) {
+                resp.setSuccess(false);
+                resp.setMessage(portCheck.getMessage());
+                return resp;
+            }
 
             ExistingMediaCheck existingCheck = checkExistingMediaServices(ssh, node);
             steps.add(existingCheck.step);
@@ -485,6 +496,52 @@ public class NodeMediaServiceImpl implements NodeMediaService {
         } catch (Exception e) {
             return buildSshFailure(resp, steps, node, sshPort, "删除镜像", e);
         }
+    }
+
+    @Override
+    public NodePortCheckRespVO checkMediaPortsBySsh(Long nodeId) {
+        ComputeNodeDO node = computeNodeMapper.selectById(nodeId);
+        if (node == null) {
+            throw exception(COMPUTE_NODE_NOT_EXISTS);
+        }
+        if (!NodeRoleEnum.MEDIA.getRole().equals(node.getNodeRole())
+                && !NodeRoleEnum.HYBRID.getRole().equals(node.getNodeRole())) {
+            throw new IllegalStateException("仅 media / hybrid 节点支持媒体栈端口检测");
+        }
+        NodeSshCredential credential = loadSshCredential(nodeId);
+        int sshPort = ComputeNodeServiceImpl.resolveSshPort(node);
+
+        NodePortCheckRespVO resp = new NodePortCheckRespVO();
+        List<NodeMediaRemoteDeployRespVO.DeployStep> steps = new ArrayList<>();
+        resp.setSteps(steps);
+
+        try (SshSessionHelper ssh = openSshSession(node, credential, sshPort)) {
+            steps.add(runStep("SSH 连接", "success", "已连接 " + node.getHost() + ":" + sshPort));
+            NodePortCheckRespVO portCheck = checkMediaPortsOnSession(ssh, node);
+            steps.addAll(portCheck.getSteps());
+            resp.setPorts(portCheck.getPorts());
+            resp.setPortsReady(portCheck.getPortsReady());
+            resp.setSuccess(true);
+            resp.setMessage(portCheck.getMessage());
+            return resp;
+        } catch (Exception e) {
+            log.error("媒体栈端口检测失败 nodeId={} host={}:{}", nodeId, node.getHost(), sshPort, e);
+            NodeMediaRemoteDeployRespVO.DeployStep fail = new NodeMediaRemoteDeployRespVO.DeployStep();
+            fail.setName(steps.isEmpty() ? "SSH 连接" : "检测中断");
+            fail.setStatus("failed");
+            String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            fail.setOutput("连接 " + node.getHost() + ":" + sshPort + " 失败: " + detail);
+            steps.add(fail);
+            resp.setSuccess(false);
+            resp.setPortsReady(false);
+            resp.setMessage(fail.getOutput());
+            return resp;
+        }
+    }
+
+    private NodePortCheckRespVO checkMediaPortsOnSession(SshSessionHelper ssh, ComputeNodeDO node) throws Exception {
+        LinkedHashMap<String, Integer> portMap = RemotePortCheckUtil.mediaDeployPorts(node.getTags());
+        return RemotePortCheckUtil.checkPorts(ssh, portMap);
     }
 
     @Override

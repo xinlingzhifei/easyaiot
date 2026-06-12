@@ -1,5 +1,6 @@
 # ZLMediaKit 集群节点配置模板
-# 变量: MEDIA_NODE_ID, MEDIA_SCHEDULER_HOST, ZLM_SECRET, ZLM_RTP_PORT_MIN, ZLM_RTP_PORT_MAX
+# 变量: MEDIA_NODE_ID, MEDIA_HOOK_HOST, MEDIA_HOOK_PORT, ZLM_SECRET,
+#       ZLM_HTTP_PORT, ZLM_RTMP_PORT, ZLM_RTSP_PORT, ZLM_RTP_PORT_MIN, ZLM_RTP_PORT_MAX
 
 [api]
 apiDebug=0
@@ -11,25 +12,23 @@ flowThreshold=1024
 mediaServerId=${MEDIA_NODE_ID}
 
 [http]
-port=80
-sslport=443
+port=${ZLM_HTTP_PORT}
+sslport=0
 maxReqSize=40960
 keepAliveSecond=30
 
 [rtmp]
-port=10935
+port=${ZLM_RTMP_PORT}
 handshakeSecond=15
 keepAliveSecond=15
-modifyStamp=0
 directProxy=1
+sslport=0
 
 [rtsp]
-port=5540
+port=${ZLM_RTSP_PORT}
 directProxy=1
 lowLatency=1
-
-[rtp]
-port=10000
+sslport=0
 
 [multicast]
 addrMax=239.255.255.255
@@ -49,7 +48,6 @@ enable_rtmp=1
 enable_rtsp=1
 enable_hls=0
 enable_mp4=0
-gop_cache=0
 modify_stamp=1
 auto_close=0
 continue_push_ms=15000
@@ -63,7 +61,6 @@ appName=record
 sampleMS=500
 fastStart=0
 fileRepeat=0
-filePath=/mnt/easyaiot-media/playbacks/gb28181/
 
 [rtp_proxy]
 port_range=${ZLM_RTP_PORT_MIN}-${ZLM_RTP_PORT_MAX}
