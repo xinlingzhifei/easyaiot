@@ -383,8 +383,10 @@ services:
     network_mode: host # 使用host网络模式，直接使用宿主机网络（GB28181需要直接访问网络）
     environment:
       - TZ=Asia/Shanghai # 配置程序默认时区为上海（中国标准时间）
-      - JAVA_OPTS=-Xms512m -Xmx512m
+      - JAVA_OPTS=-Xms512m -Xmx512m -Duser.home=/app
       - SPRING_PROFILES_ACTIVE=local # 指定程序运行环境
+      - MEDIA_SDP_IP=1.95.118.210 # GB28181 SDP 公网收流地址，避免摄像头向内网地址推流
+      - MEDIA_STREAM_IP=eye.yfeiai.com # 播放地址对外展示域名
       - SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=localhost:8848 # 配置中心地址（使用host网络模式，通过localhost访问）
       - SPRING_CLOUD_NACOS_CONFIG_NAMESPACE= # 使用默认命名空间（public）
       - SPRING_CLOUD_NACOS_SERVER_ADDR=localhost:8848 # 注册中心地址（使用host网络模式，通过localhost访问）

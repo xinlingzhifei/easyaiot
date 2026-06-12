@@ -172,7 +172,7 @@ const loadTreeData = async () => {
   if (!hasCache) loading.value = true
 
   await loadMonitorDirectoryTreeWithCache({
-    skipSync: true,
+    skipSync: false,
     onBundle: (bundle) => {
       treeData.value = bundle.treeItems
       expandedKeys.value = collectMonitorTreeExpandedKeys(treeData.value)

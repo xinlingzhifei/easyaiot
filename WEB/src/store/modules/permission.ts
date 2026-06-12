@@ -12,6 +12,7 @@ import node from '@/router/routes/modules/node'
 import {PAGE_NOT_FOUND_ROUTE} from '@/router/routes/basic'
 import {transformRouteToMenu} from '@/router/helper/menuHelper'
 import {flatMultiLevelRoutes, transformObjToRoute} from '@/router/helper/routeHelper'
+import {resolveRequiredLocalBackRoutes} from '@/router/helper/localBackRouteGuard'
 import {useI18n} from '@/hooks/web/useI18n'
 import {useMessage} from '@/hooks/web/useMessage'
 import {filter} from '@/utils/helper/treeHelper'
@@ -221,8 +222,7 @@ export const usePermissionStore = defineStore('app-permission', {
           // Dynamically introduce components
           // 动态引入组件
           routeList = transformObjToRoute(routeList)
-          const hasNodeRoute = routeList.some(route => route.name === node.name || route.path === node.path)
-          const requiredLocalBackRoutes = hasNodeRoute ? [] : [node]
+          const requiredLocalBackRoutes = resolveRequiredLocalBackRoutes(routeList, [node])
           //  Background routing to menu structure
           //  后台路由到菜单结构
           const backMenuList = transformRouteToMenu([dashboard, ...requiredLocalBackRoutes, ...routeList])
