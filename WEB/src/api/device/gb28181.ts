@@ -900,7 +900,10 @@ export const subscribeMobilePosition = (id: number, cycle: number, interval: num
  * 生成国标设备接入信息（调用后端脚本，返回文本）
  * @param count 生成组数，1～100，默认 10
  */
-export const generateDeviceAccessInfo = (count?: number) => {
-  const params = count != null && count >= 1 && count <= 100 ? { count } : {};
+export const generateDeviceAccessInfo = (count?: number, force?: boolean) => {
+  const params = {
+    ...(count != null && count >= 1 && count <= 100 ? { count } : {}),
+    ...(force ? { force: true } : {}),
+  };
   return commonApi('get', `${GB28181_PREFIX}/device-access-info/generate`, params, false);
 };
