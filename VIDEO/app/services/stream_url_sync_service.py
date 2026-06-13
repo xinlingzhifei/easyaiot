@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from models import Device, StreamForwardTask, db
 
@@ -34,12 +35,32 @@ def build_stream_urls_for_host(
     """根据 SRS 节点 host/tags 生成 live/ai 流地址。"""
     rtmp_port = _tag_int(tags, 'srs_rtmp_port', 1935)
     http_port = _tag_int(tags, 'srs_http_port', 8080)
-    play_host = (http_play_host or os.getenv('MEDIA_HTTP_PLAY_HOST') or '').strip() or host
     rtmp_stream = f'rtmp://{host}:{rtmp_port}/live/{device_id}'
-    http_stream = f'http://{play_host}:{http_port}/live/{device_id}.flv'
+    http_stream = _build_http_flv_url(http_play_host, host, http_port, f'live/{device_id}.flv')
     ai_rtmp_stream = f'rtmp://{host}:{rtmp_port}/ai/{device_id}'
-    ai_http_stream = f'http://{play_host}:{http_port}/ai/{device_id}.flv'
+    ai_http_stream = _build_http_flv_url(http_play_host, host, http_port, f'ai/{device_id}.flv')
     return rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream
+
+
+def _build_http_flv_url(
+    http_play_host: Optional[str],
+    node_host: str,
+    http_port: int,
+    path: str,
+) -> str:
+    play_host = (http_play_host or os.getenv('MEDIA_HTTP_PLAY_HOST') or '').strip()
+    clean_path = path.lstrip('/')
+
+    if play_host:
+        parsed = urlparse(play_host)
+        if parsed.scheme in ('http', 'https') and parsed.netloc:
+            return f'{parsed.scheme}://{parsed.netloc}/{clean_path}'
+
+        host = play_host.strip('/').split('/')[0]
+        if host:
+            return f'http://{host}:{http_port}/{clean_path}'
+
+    return f'http://{node_host}:{http_port}/{clean_path}'
 
 
 def _find_stream_forward_deployment(device_id: str) -> Optional[Dict[str, Any]]:
