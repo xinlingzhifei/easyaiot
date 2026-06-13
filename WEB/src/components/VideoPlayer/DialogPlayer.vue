@@ -13,7 +13,12 @@
         <div style="min-height: 200px; max-height: 680px;">
           <!-- 播放器 -->
           <div style="height: 420px">
-            <Jessibuca ref="jessibuca" :playUrl="state.currentUrl" :hasAudio="false"/>
+            <Jessibuca
+              ref="jessibuca"
+              :playUrl="state.currentUrl"
+              :hasAudio="false"
+              :playerEngine="state.playerEngine"
+            />
           </div>
           <!-- 控制台 -->
           <div class="tabs">
@@ -108,7 +113,7 @@ import {useMessage} from "@/hooks/web/useMessage";
 import {controlPTZ} from "@/api/device/camera";
 import {controlGbPtz, playByDeviceAndChannel} from "@/api/device/gb28181";
 import { getGb28181PlayIds, shouldPlayViaGb28181 } from '@/views/camera/utils/deviceLabel';
-import { pickWvpPlayUrl } from '@/views/camera/utils/devicePlay';
+import { pickWvpPlaySource } from '@/views/camera/utils/devicePlay';
 
 const {createMessage} = useMessage()
 
@@ -127,6 +132,7 @@ const state = reactive({
   },
   hasAudio: false,
   currentUrl: '',
+  playerEngine: '',
   iframeUrl: '',
   mediaType: 'flv',
   videoUrlList: [{label: 'flv', value: "1"}],
@@ -144,6 +150,7 @@ const state = reactive({
 
 const [register, {closeModal}] = useModalInner(async (record) => {
   state.currentUrl = '';
+  state.playerEngine = '';
   state.iframeUrl = '';
   state.playLoading = false;
 
@@ -161,9 +168,11 @@ const [register, {closeModal}] = useModalInner(async (record) => {
     try {
       const res = await playByDeviceAndChannel(sipDeviceId, channelId);
       const streamContent = res?.data?.data ?? res?.data;
-      const url = pickWvpPlayUrl(streamContent) || '';
+      const playSource = pickWvpPlaySource(streamContent);
+      const url = playSource?.url || '';
       if (url) {
         state.currentUrl = url;
+        state.playerEngine = playSource?.playerEngine ?? '';
         state.iframeUrl = '<iframe src="' + url + '"></iframe>';
         state.videoUrlList = [{ label: 'flv', value: url }];
         state.mediaType = url;
@@ -183,6 +192,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   // 已有播放地址（如摄像头等）
   state.deviceId = record['id'];
   state.currentUrl = record['http_stream'] ?? '';
+  state.playerEngine = '';
   state.iframeUrl = record['http_stream'] ? '<iframe src="' + record['http_stream'] + '"></iframe>' : '';
   state.videoUrlList = record['http_stream']
     ? [{ label: 'http_stream', value: record['http_stream'] }]

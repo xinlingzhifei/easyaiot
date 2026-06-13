@@ -9,6 +9,10 @@ import {
   shouldPlayViaGb28181,
 } from './deviceLabel';
 import { isProtectedStreamUrl, signStreamUrl } from './streamTicket';
+import {
+  pickWvpPlaySource as pickWvpLivePlayerSource,
+  type WvpPlaySource,
+} from './livePlayer';
 
 export type DevicePlayModalOpener = (visible: boolean, data: Record<string, any>) => void;
 
@@ -239,33 +243,14 @@ export function supportsRtspForward(record: DeviceInfo): boolean {
 }
 
 /** 从 WVP 点播结果中选取浏览器可播地址（HTTPS 页优先 wss/https，并做 localhost 改写） */
+export function pickWvpPlaySource(
+  streamContent: Record<string, any> | null | undefined,
+): WvpPlaySource | null {
+  return pickWvpLivePlayerSource(streamContent, { toBrowserPlayUrl });
+}
+
 export function pickWvpPlayUrl(streamContent: Record<string, any> | null | undefined): string | null {
-  if (!streamContent) return null;
-  const isHttps =
-    typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const candidates = isHttps
-    ? [
-        streamContent.wss_flv,
-        streamContent.https_flv,
-        streamContent.wss_fmp4,
-        streamContent.https_fmp4,
-        streamContent.ws_flv,
-        streamContent.flv,
-        streamContent.fmp4,
-      ]
-    : [
-        streamContent.ws_flv,
-        streamContent.flv,
-        streamContent.ws_fmp4,
-        streamContent.fmp4,
-        streamContent.https_flv,
-        streamContent.wss_flv,
-      ];
-  for (const raw of candidates) {
-    const url = toBrowserPlayUrl(raw);
-    if (url) return url;
-  }
-  return toBrowserPlayUrl(streamContent.rtmp);
+  return pickWvpPlaySource(streamContent)?.url ?? null;
 }
 
 export async function resolveGb28181StreamUrl(

@@ -1,67 +1,100 @@
 <template>
-  <div id="easyplayer" ></div>
+  <div :id="playerId" class="easy-player"></div>
 </template>
 
 <script>
 export default {
-    name: 'player',
-    data() {
-        return {
-            easyPlayer: null
-        };
+  name: 'EasyWasmPlayer',
+  emits: ['stream-error'],
+  props: {
+    videoUrl: {
+      type: String,
+      default: '',
     },
-    props: ['videoUrl', 'error', 'hasaudio', 'height'],
-    mounted () {
-      let paramUrl = decodeURIComponent(this.$route.params.url)
-       this.$nextTick(() =>{
-          if (typeof (this.videoUrl) == "undefined") {
-            this.videoUrl = paramUrl;
-          }
-          console.log("初始化时的地址为: " + this.videoUrl)
-          this.play(this.videoUrl)
-        })
+    hasaudio: {
+      type: Boolean,
+      default: false,
     },
-    watch:{
-        videoUrl(newData, oldData){
-            this.play(newData)
-        },
-        immediate:true
+    hasAudio: {
+      type: Boolean,
+      default: false,
     },
-    methods: {
-        play: function (url) {
-          console.log(url)
-            if (this.easyPlayer != null) {
-              this.easyPlayer.destroy();
-            }
-            if (typeof (this.height) == "undefined") {
-              this.height = false
-            }
-            this.easyPlayer = new WasmPlayer(null, 'easyplayer', this.eventcallbacK, {Height: this.height})
-            this.easyPlayer.play(url, 1)
-        },
-        pause: function () {
-          this.easyPlayer.destroy();
-          this.easyPlayer = null
-        },
-        eventcallbacK: function(type, message) {
-            // console.log("player 事件回调")
-            // console.log(type)
-            // console.log(message)
-        }
+    height: {
+      type: [String, Number, Boolean],
+      default: false,
     },
-    destroyed() {
-      this.easyPlayer.destroy();
+  },
+  data() {
+    return {
+      easyPlayer: null,
+      playerId: `easyplayer-${Math.random().toString(36).slice(2)}`,
+    };
+  },
+  mounted() {
+    this.$nextTick(() => {
+      if (this.videoUrl) this.play(this.videoUrl);
+    });
+  },
+  watch: {
+    videoUrl(newUrl) {
+      if (newUrl) {
+        this.play(newUrl);
+      } else {
+        this.destroyPlayer();
+      }
     },
-}
+  },
+  beforeUnmount() {
+    this.destroyPlayer();
+  },
+  destroyed() {
+    this.destroyPlayer();
+  },
+  methods: {
+    createPlayer() {
+      if (typeof window === 'undefined' || !window.WasmPlayer) {
+        this.$emit('stream-error', { type: 'missing-wasm-player' });
+        return null;
+      }
+      return new window.WasmPlayer(null, this.playerId, this.eventCallback, {
+        Height: this.height,
+      });
+    },
+    destroyPlayer() {
+      if (this.easyPlayer && typeof this.easyPlayer.destroy === 'function') {
+        this.easyPlayer.destroy();
+      }
+      this.easyPlayer = null;
+    },
+    play(url) {
+      const target = typeof url === 'string' ? url.trim() : '';
+      if (!target) return;
+      this.destroyPlayer();
+      const player = this.createPlayer();
+      if (!player) return;
+      this.easyPlayer = player;
+      this.easyPlayer.play(target, 1);
+    },
+    pause() {
+      this.destroyPlayer();
+    },
+    eventCallback(type, message) {
+      if (type === 'error' || type === 'timeout') {
+        this.$emit('stream-error', { type, detail: message });
+      }
+    },
+  },
+};
 </script>
 
 <style>
-    .LodingTitle {
-        min-width: 70px;
-    }
-    /* 隐藏logo */
-    .iconqingxiLOGO {
-        display: none !important;
-    }
+.easy-player {
+  width: 100%;
+  height: 100%;
+  background: #000c17;
+}
 
+.iconqingxiLOGO {
+  display: none !important;
+}
 </style>

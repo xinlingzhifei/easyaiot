@@ -1,6 +1,14 @@
 <template>
   <div style="width: 100%; height: 100%; background-color: #000c17">
-    <div ref="container" class="jessibuca-container" @dblclick="fullscreen" @mousemove="mouseenter">
+    <EasyPlayer
+      v-if="useEasyWasm"
+      ref="easyWasmPlayer"
+      :videoUrl="easyWasmUrl"
+      :hasaudio="hasAudio"
+      height="100%"
+      @stream-error="$emit('stream-error', $event)"
+    />
+    <div v-else ref="container" class="jessibuca-container" @dblclick="fullscreen" @mousemove="mouseenter">
       <transition name="toolBtn">
         <div
           v-if="showToolBtn"
@@ -89,12 +97,13 @@
 <script>
 
 import {Icon} from "@/components/Icon";
-import {ref} from "vue";
 import {signStreamUrl, isProtectedStreamUrl, clearTicketForUrl} from "@/views/camera/utils/streamTicket";
+import EasyPlayer from "@/components/VideoPlayer/EasyPlayer.vue";
+import {shouldUseWasmLivePlayer} from "@/views/camera/utils/livePlayer";
 
 export default {
   name: "Player",
-  components: {Icon},
+  components: {EasyPlayer, Icon},
   emits: ["stream-error"],
   props: {
     playUrl: {
@@ -104,11 +113,16 @@ export default {
     hasAudio: {
       type: Boolean,
       required: true,
-    }
+    },
+    playerEngine: {
+      type: String,
+      default: '',
+    },
   },
   data() {
     return {
       jessibuca: null,
+      easyWasmUrl: '',
       version: '',
       wasm: false,
       vc: "ff",
@@ -138,8 +152,18 @@ export default {
       maxProtectedRetries: 2,
     };
   },
+  computed: {
+    useEasyWasm() {
+      return shouldUseWasmLivePlayer({
+        playerEngine: this.playerEngine,
+        url: this.playUrl,
+      });
+    },
+  },
   mounted() {
-    this.create();
+    if (!this.useEasyWasm) {
+      this.create();
+    }
     window.onerror = (msg) => (this.err = msg);
     if (this.playUrl) {
       this.$nextTick(() => this.play());
@@ -148,9 +172,13 @@ export default {
   watch: {
     playUrl(url) {
       this.protectedRetries = 0; // 切换地址，重置续票重试计数
-      if (url && this.jessibuca) {
-        this.$nextTick(() => this.play());
-      }
+      this.easyWasmUrl = '';
+      if (url) this.switchPlayerAndPlay();
+    },
+    playerEngine() {
+      this.protectedRetries = 0;
+      this.easyWasmUrl = '';
+      if (this.playUrl) this.switchPlayerAndPlay();
     },
   },
   async unmounted() {
@@ -160,7 +188,19 @@ export default {
     }
   },
   methods: {
+    async switchPlayerAndPlay() {
+      if (this.useEasyWasm) {
+        if (this.jessibuca) {
+          await this.jessibuca.destroy();
+          this.jessibuca = null;
+        }
+      } else if (!this.jessibuca && this.$refs.container) {
+        this.create();
+      }
+      this.$nextTick(() => this.play());
+    },
     create(options) {
+      if (this.useEasyWasm) return;
       options = options || {};
       const pageHttps =
         typeof window !== 'undefined' && window.location.protocol === 'https:';
@@ -286,10 +326,10 @@ export default {
     async play(forceRefresh = false) {
       // 模板 @click="play" 会把鼠标事件当参数传入，这里归一为布尔，避免手动点播时被误判为强制续票
       const force = forceRefresh === true;
-      if (!this.jessibuca && this.$refs.container) {
+      if (!this.useEasyWasm && !this.jessibuca && this.$refs.container) {
         this.create();
       }
-      if (!this.playUrl || !this.jessibuca) return;
+      if (!this.playUrl) return;
 
       let target = this.playUrl;
       // 受保护流(/ai /live /rtp)需带 secure_link 票据，未签名会被 nginx 403
@@ -305,8 +345,20 @@ export default {
           target = this.playUrl;
         }
         // 防竞态：等待签发期间地址已切换/组件已销毁则放弃
-        if (this.playUrl !== reqUrl || !this.jessibuca) return;
+        if (this.playUrl !== reqUrl) return;
       }
+      if (this.useEasyWasm) {
+        this.easyWasmUrl = target;
+        this.playing = true;
+        this.protectedRetries = 0;
+        this.$nextTick(() => {
+          if (this.$refs.easyWasmPlayer?.play) {
+            this.$refs.easyWasmPlayer.play(target);
+          }
+        });
+        return;
+      }
+      if (!this.jessibuca) return;
       this.jessibuca.play(target);
     },
     // 受保护流报错(多为票据过期/连接被关)时：强制重新签发并重连，限次防死循环。
@@ -320,24 +372,42 @@ export default {
       return true;
     },
     mute() {
+      if (!this.jessibuca) return;
       this.jessibuca.mute();
     },
     cancelMute() {
+      if (!this.jessibuca) return;
       this.jessibuca.cancelMute();
     },
     pause() {
+      if (this.useEasyWasm) {
+        this.$refs.easyWasmPlayer?.pause?.();
+        this.playing = false;
+        return;
+      }
+      if (!this.jessibuca) return;
       this.jessibuca.pause();
       this.playing = false;
       this.err = "";
       this.performance = "";
     },
     volumeChange() {
+      if (!this.jessibuca) return;
       this.jessibuca.setVolume(this.volume);
     },
     rotateChange() {
+      if (!this.jessibuca) return;
       this.jessibuca.setRotate(this.rotate);
     },
     async destroy() {
+      if (this.useEasyWasm) {
+        this.$refs.easyWasmPlayer?.pause?.();
+        this.easyWasmUrl = '';
+        this.playing = false;
+        this.loaded = false;
+        this.performance = "";
+        return;
+      }
       if (this.jessibuca) {
         await this.jessibuca.destroy();
         this.jessibuca = null;
@@ -351,21 +421,26 @@ export default {
       this.performance = "";
     },
     fullscreen() {
+      if (!this.jessibuca) return;
       this.jessibuca.setFullscreen(true);
     },
     clearView() {
+      if (!this.jessibuca) return;
       this.jessibuca.clearView();
     },
     startRecord() {
+      if (!this.jessibuca) return;
       this.recording = !this.recording;
       const time = new Date().getTime();
       this.jessibuca.startRecord(time, this.recordType);
     },
     stopAndSaveRecord() {
+      if (!this.jessibuca) return;
       this.recording = !this.recording;
       this.jessibuca.stopRecordAndSave();
     },
     screenShot() {
+      if (!this.jessibuca) return;
       this.jessibuca.screenshot();
     },
     mouseenter() {
@@ -386,6 +461,11 @@ export default {
       return document.fullscreenElement || false
     },
     async restartPlay(type) {
+      if (this.useEasyWasm) {
+        await this.destroy();
+        setTimeout(() => this.play(), 100)
+        return
+      }
       if (type === 'mse') {
         this.useWCS = false;
         this.useOffscreen = false;
@@ -400,9 +480,11 @@ export default {
       }, 100)
     },
     changeBuffer() {
+      if (!this.jessibuca) return;
       this.jessibuca.setBufferTime(Number(0.2));
     },
     scaleChange() {
+      if (!this.jessibuca) return;
       this.jessibuca.setScaleMode(this.scale);
     },
   },
