@@ -28,6 +28,9 @@ CONTROL_PLANE_URL = os.environ.get(
     'CONTROL_PLANE_URL', 'http://localhost:48080/admin-api/node/agent'
 ).rstrip('/')
 HEARTBEAT_INTERVAL = int(os.environ.get('HEARTBEAT_INTERVAL', '10'))
+COMMAND_POLL_ENABLED = os.environ.get('COMMAND_POLL_ENABLED', 'true').lower() in ('1', 'true', 'yes', 'on')
+COMMAND_POLL_INTERVAL = float(os.environ.get('COMMAND_POLL_INTERVAL', '3'))
+COMMAND_POLL_MAX_COMMANDS = int(os.environ.get('COMMAND_POLL_MAX_COMMANDS', '5'))
 AGENT_VERSION = '1.0.0'
 
 
@@ -134,6 +137,39 @@ def heartbeat_loop():
         time.sleep(HEARTBEAT_INTERVAL)
 
 
+def build_command_executors():
+    try:
+        from stream_forward_executor import StreamForwardExecutor
+    except ImportError as exc:
+        logger.warning('stream forward executor unavailable: %s', exc)
+        return {}
+
+    stream_forward_executor = StreamForwardExecutor()
+    return {
+        'stream_forward.deploy': stream_forward_executor.deploy,
+        'stream_forward.stop': stream_forward_executor.stop,
+    }
+
+
+def start_command_loop():
+    from agent_commands import AgentCommandClient, AgentCommandRunner
+
+    command_client = AgentCommandClient(
+        CONTROL_PLANE_URL,
+        NODE_ID,
+        AGENT_TOKEN,
+        max_commands=COMMAND_POLL_MAX_COMMANDS,
+    )
+    command_runner = AgentCommandRunner(command_client, build_command_executors())
+    thread = threading.Thread(
+        target=command_runner.run_forever,
+        args=(COMMAND_POLL_INTERVAL,),
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
 def main():
     if not NODE_ID or not AGENT_TOKEN:
         logger.error('请设置环境变量 NODE_ID 和 AGENT_TOKEN')
@@ -142,6 +178,8 @@ def main():
     from agent_server import run_server  # noqa: F401 - 先加载 HTTP 服务与 workload manager
 
     threading.Thread(target=heartbeat_loop, daemon=True).start()
+    if COMMAND_POLL_ENABLED:
+        start_command_loop()
     run_server()
 
 
