@@ -506,6 +506,21 @@ def get_service_logs(service_obj, lines: int = 100, date: str = None):
 
 
 # ====================== 设备推流转发任务检查接口 ======================
+@stream_forward_bp.route('/device/<string:device_id>/ensure-edge-task', methods=['POST'])
+def ensure_edge_task(device_id):
+    try:
+        from app.services.edge_stream_forward_service import ensure_edge_rtsp_forward
+
+        data = request.get_json(silent=True) or {}
+        edge_node_id = data.get('edge_node_id') or data.get('edgeNodeId')
+        transport = (data.get('transport') or 'tcp').strip().lower()
+        result = ensure_edge_rtsp_forward(device_id, edge_node_id=int(edge_node_id), transport=transport)
+        return jsonify({'code': 0, 'msg': 'success', 'data': result})
+    except Exception as e:
+        logger.error('ensure edge stream-forward task failed device_id=%s: %s', device_id, e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
 @stream_forward_bp.route('/device/<string:device_id>/ensure-task', methods=['POST'])
 def ensure_device_task(device_id):
     """检查并确保摄像头存在推流转发任务，如果不存在则自动创建并启动"""
@@ -538,4 +553,3 @@ def ensure_device_task(device_id):
     except Exception as e:
         logger.error(f"确保设备推流转发任务失败: {str(e)}", exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
-
