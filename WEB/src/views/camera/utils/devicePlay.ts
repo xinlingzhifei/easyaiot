@@ -13,6 +13,11 @@ import {
   pickWvpPlaySource as pickWvpLivePlayerSource,
   type WvpPlaySource,
 } from './livePlayer';
+import {
+  convertRtmpToHttp as convertRtmpToHttpForBrowser,
+  isLocalOrPrivateStreamHost,
+  rewriteStreamUrlForBrowser as rewriteStreamUrlForBrowserForBrowser,
+} from './streamUrlRewrite';
 
 export type DevicePlayModalOpener = (visible: boolean, data: Record<string, any>) => void;
 
@@ -47,24 +52,10 @@ export const AI_STREAM_PROBE_MS = 2000;
 /** AI 流播放超时后回退原始流（毫秒，仅 preferAi 时生效） */
 export const AI_PLAY_FALLBACK_MS = 6000;
 
-const LOCAL_STREAM_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
 
 /** 将服务端生成的 127.0.0.1/localhost 流地址改写为当前页面主机名，便于浏览器拉流 */
 export function rewriteStreamUrlForBrowser(url: string): string {
-  const trimmed = url?.trim();
-  if (!trimmed || typeof window === 'undefined') return trimmed;
-
-  try {
-    const parsed = new URL(trimmed);
-    const pageHost = window.location.hostname;
-    if (!pageHost || LOCAL_STREAM_HOSTS.has(pageHost)) return trimmed;
-    if (!LOCAL_STREAM_HOSTS.has(parsed.hostname)) return trimmed;
-
-    parsed.hostname = pageHost;
-    return parsed.toString();
-  } catch {
-    return trimmed;
-  }
+  return rewriteStreamUrlForBrowserForBrowser(url);
 }
 
 /**
@@ -80,21 +71,24 @@ export function rewriteStreamHostToPageHost(url: string): string {
   try {
     const parsed = new URL(trimmed);
     const pageHost = window.location.host;
-    if (!pageHost) return trimmed;
+    const pageHostname = window.location.hostname;
+    if (!pageHost || isLocalOrPrivateStreamHost(pageHostname)) return trimmed;
 
     // 集群模式：流在远端 SRS 节点，nginx 仅代理本机 srs-host，不应改写为页面 host
     const streamHost = parsed.hostname;
-    const pageHostname = window.location.hostname;
     if (
       streamHost &&
       pageHostname &&
-      !LOCAL_STREAM_HOSTS.has(streamHost) &&
+      !isLocalOrPrivateStreamHost(streamHost) &&
       streamHost !== pageHostname
     ) {
       return trimmed;
     }
 
-    parsed.host = pageHost;
+    const publicOrigin = new URL(`${window.location.protocol || parsed.protocol}//${pageHost}`);
+    parsed.protocol = publicOrigin.protocol;
+    parsed.hostname = publicOrigin.hostname;
+    parsed.port = publicOrigin.port;
     return parsed.toString();
   } catch {
     return trimmed;
@@ -103,20 +97,7 @@ export function rewriteStreamHostToPageHost(url: string): string {
 
 /** RTMP 转 HTTP-FLV（Jessibuca 浏览器端需 HTTP/WS 地址） */
 export function convertRtmpToHttp(rtmpUrl: string): string | null {
-  const trimmed = rtmpUrl?.trim();
-  if (!trimmed || !trimmed.startsWith('rtmp://')) {
-    return null;
-  }
-  try {
-    const url = new URL(trimmed);
-    const server = url.hostname;
-    let path = url.pathname.replace(/^\//, '');
-    if (!path) path = 'live';
-    if (!path.endsWith('.flv')) path = `${path}.flv`;
-    return rewriteStreamUrlForBrowser(`http://${server}:8080/${path}`);
-  } catch {
-    return null;
-  }
+  return convertRtmpToHttpForBrowser(rtmpUrl);
 }
 
 function toBrowserPlayUrl(stream?: string | null): string | null {
