@@ -277,3 +277,33 @@ End-to-end acceptance:
 
 Those are follow-on slices. The first slice proves the Edge path no longer
 needs inbound access to Agent `9100`.
+
+## Implementation Status
+
+First Edge RTSP outbound slice implemented:
+
+- `iot-node` has the durable `node_agent_command` queue schema, mapper, service,
+  and `/node/agent/commands/*` API for enqueue, poll, ack, and result.
+- Python Agent polls commands outbound, acknowledges them, runs local command
+  executors, and reports success or failure.
+- Python Agent includes a local `stream_forward.deploy` executor that starts an
+  ffmpeg RTSP-to-RTMP pusher.
+- VIDEO exposes `/stream-forward/device/{device_id}/ensure-edge-task`, allocates
+  media URLs, and enqueues `stream_forward.deploy` instead of requiring the
+  platform to reach the customer-site Agent `9100`.
+
+Verified on 2026-06-13:
+
+- Java: `mvn -pl iot-node/iot-node-biz -am "-Dtest=NodeAgentCommandSchemaSqlTest,NodeAgentCommandServiceImplTest" -DfailIfNoTests=false test`
+- Agent: `python -m unittest NODE.tests.test_agent_commands NODE.tests.test_stream_forward_executor`
+- VIDEO: `python -m unittest VIDEO.tests.test_edge_stream_forward_service`
+- Invariant scan: Edge path contains `commands/poll`, `ensure-edge-task`, and
+  `stream_forward.deploy`; existing `/workload/deploy`, `agentPort`, and `9100`
+  matches remain in the direct managed-node Agent path.
+
+Remaining follow-on slices:
+
+- Signed RTMP ingest enforcement.
+- Unified access-center state integration across GB28181, RTSP, RTMP,
+  HTTP-FLV/WebRTC, and Edge Agent.
+- Production WebRTC TURN/STUN validation.
