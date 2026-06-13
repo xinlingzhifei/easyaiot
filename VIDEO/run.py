@@ -19,6 +19,7 @@ from healthcheck import HealthCheck, EnvironmentDump
 from nacos import NacosClient
 from sqlalchemy import text
 
+from app.utils.nacos_registration import NacosRegistrationConfig, NacosRegistrationLoop
 from app.utils.video_env import load_video_env
 
 from app.blueprints import camera, alert, snap, playback, record, algorithm_task, stream_forward, face
@@ -883,53 +884,46 @@ def create_app():
 
     init_health_check(app)
 
-    # Nacos注册与心跳线程管理
-    try:
-        # 获取环境变量
-        nacos_server = os.getenv('NACOS_SERVER', 'Nacos:8848')
-        namespace = os.getenv('NACOS_NAMESPACE', '')
-        service_name = os.getenv('SERVICE_NAME', 'video-server')
-        port = int(os.getenv('FLASK_RUN_PORT', 6000))
-        username = os.getenv('NACOS_USERNAME', 'nacos')
-        password = os.getenv('NACOS_PASSWORD', 'basiclab@iot78475418754')
+    # Nacos registration must survive slow Nacos startup after host reboots.
+    nacos_server = os.getenv('NACOS_SERVER', 'Nacos:8848')
+    namespace = os.getenv('NACOS_NAMESPACE', '')
+    service_name = os.getenv('SERVICE_NAME', 'video-server')
+    port = int(os.getenv('FLASK_RUN_PORT', 6000))
+    username = os.getenv('NACOS_USERNAME', 'nacos')
+    password = os.getenv('NACOS_PASSWORD', 'basiclab@iot78475418754')
+    ip = os.getenv('POD_IP') or get_local_ip()
 
-        # 获取IP地址
-        ip = os.getenv('POD_IP') or get_local_ip()
+    app.nacos_client = None
+    app.registered_ip = ip
+    app.nacos_registered = False
+    app.heartbeat_stop_event = threading.Event()
 
-        # 创建Nacos客户端
-        app.nacos_client = NacosClient(
+    def mark_nacos_registered(client):
+        app.nacos_client = client
+        app.registered_ip = ip
+        app.nacos_registered = True
+
+    app.nacos_registration_loop = NacosRegistrationLoop(
+        NacosRegistrationConfig(
             server_addresses=nacos_server,
             namespace=namespace,
             username=username,
-            password=password
-        )
-
-        # 注册服务实例
-        app.nacos_client.add_naming_instance(
+            password=password,
             service_name=service_name,
             ip=ip,
             port=port,
-            cluster_name="DEFAULT",
-            healthy=True,
-            ephemeral=True
-        )
-        print(f"✅ 服务注册成功: {service_name}@{ip}:{port}")
-
-        # 存储注册IP到主应用对象
-        app.registered_ip = ip
-
-        # 启动心跳线程
-        app.heartbeat_stop_event = threading.Event()
-        app.heartbeat_thread = threading.Thread(
-            target=send_heartbeat,
-            args=(app.nacos_client, ip, port, app.heartbeat_stop_event),
-            daemon=True
-        )
-        app.heartbeat_thread.start()
-
-    except Exception as e:
-        print(f"❌ Nacos注册失败: {str(e)}")
-        app.nacos_client = None
+        ),
+        NacosClient,
+        on_registered=mark_nacos_registered,
+    )
+    app.nacos_registration_loop.tick()
+    app.heartbeat_thread = threading.Thread(
+        target=app.nacos_registration_loop.run,
+        args=(app.heartbeat_stop_event,),
+        daemon=True,
+    )
+    app.heartbeat_thread.start()
+    print(f"Nacos registration loop started: {service_name}@{ip}:{port}")
 
     # Nacos初始化标记
     has_setup_nacos = False
@@ -938,7 +932,7 @@ def create_app():
     def setup_nacos_once():
         nonlocal has_setup_nacos
         if not has_setup_nacos:
-            app.nacos_registered = True if hasattr(app, 'nacos_client') else False
+            app.nacos_registered = bool(getattr(app, 'nacos_client', None))
             has_setup_nacos = True
 
     # 应用退出时注销服务
