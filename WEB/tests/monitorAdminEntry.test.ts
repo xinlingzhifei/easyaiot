@@ -2,6 +2,8 @@ import * as assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
+  ADMIN_ENTRY_CLUSTER_PATH,
+  ADMIN_ENTRY_PARENT_ROUTE_NAME,
   ADMIN_ENTRY_FALLBACK_ROUTE,
   ADMIN_ENTRY_ROUTE_NAME,
   resolveAdminEntryTarget,
@@ -16,18 +18,40 @@ assert.deepEqual(
 )
 
 assert.deepEqual(
+  resolveAdminEntryTarget({ hasRoute: (name) => name === ADMIN_ENTRY_PARENT_ROUTE_NAME }),
+  { name: ADMIN_ENTRY_PARENT_ROUTE_NAME },
+  'The dashboard admin entry should use the cluster-management parent route when the child page is not registered.',
+)
+
+assert.deepEqual(
+  resolveAdminEntryTarget({
+    hasRoute: () => false,
+    getRoutes: () => [
+      {
+        path: '/ops/cluster',
+        name: 'BackendClusterRoute',
+        meta: { title: '\u96c6\u7fa4\u7ba1\u7406' },
+      },
+    ] as any,
+  }),
+  { name: 'BackendClusterRoute' },
+  'The dashboard admin entry should use the back-end registered cluster-management menu instead of going home.',
+)
+
+assert.deepEqual(
   resolveAdminEntryTarget({ hasRoute: () => false }),
   ADMIN_ENTRY_FALLBACK_ROUTE,
-  'The dashboard admin entry should fall back to the admin shell instead of pushing an unregistered route.',
+  'The dashboard admin entry should fall back to the local cluster-management path instead of the home page.',
 )
 
 assert.deepEqual(
   ADMIN_ENTRY_FALLBACK_ROUTE,
-  { path: '/dashboard/index', query: { __full__: 'false' } },
-  'The fallback should leave full-screen mode without leaving the registered dashboard route.',
+  { path: ADMIN_ENTRY_CLUSTER_PATH },
+  'The fallback should navigate directly to cluster management and never back to the dashboard home page.',
 )
 
 const monitorHeader = readFileSync(resolve('src/views/dashboard/monitor/components/Header.vue'), 'utf8')
+const adminEntry = readFileSync(resolve('src/views/dashboard/monitor/adminEntry.ts'), 'utf8')
 const permissionStore = readFileSync(resolve('src/store/modules/permission.ts'), 'utf8')
 
 assert.doesNotMatch(
@@ -40,6 +64,12 @@ assert.match(
   monitorHeader,
   /resolveAdminEntryTarget\(router\)/,
   'The dashboard admin entry should resolve a safe target before navigating.',
+)
+
+assert.doesNotMatch(
+  adminEntry,
+  /\/dashboard\/index/,
+  'The dashboard admin entry fallback must never target the dashboard home page.',
 )
 
 assert.match(
