@@ -19,7 +19,7 @@ import * as authUtil from '@/utils/auth'
 import { Verify } from '@/components/Verifition'
 import { getTenantByWebsite, getTenantIdByName } from '@/api/base/login'
 import { Button } from '@/components/Button'
-import { extractLoginErrorMessage, runLoginSubmitFlow } from './loginSubmit'
+import { extractLoginErrorMessage, resolveLoginTenantId, runLoginSubmitFlow } from './loginSubmit'
 const FormItem = Form.Item
 const InputPassword = Input.Password
 
@@ -66,18 +66,16 @@ async function getCode() {
 
 // 根据域名，获得租户信息 && 获取租户ID
 async function getTenantId() {
-  if (tenantEnable === 'true') {
-    const website = location.host
-    const tenant = await getTenantByWebsite(website)
-    if (tenant.id != null) {
-      formData.tenantName = tenant.name
-      authUtil.setTenantId(tenant.id)
-    }
-    else {
-      const res = await getTenantIdByName(formData.tenantName)
-      authUtil.setTenantId(res.id)
-    }
-  }
+  const tenantId = await resolveLoginTenantId({
+    tenantEnable,
+    tenantName: formData.tenantName,
+    website: location.host,
+    getTenantByWebsite,
+    getTenantIdByName,
+    setTenantId: authUtil.setTenantId,
+  })
+  if (tenantId)
+    formData.tenantName = formData.tenantName || 'Admin-IoT'
 }
 
 async function handleLogin(params = {}) {
