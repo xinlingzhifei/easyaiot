@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   ADMIN_ENTRY_CLUSTER_PATH,
-  ADMIN_ENTRY_PARENT_ROUTE_NAME,
   ADMIN_ENTRY_FALLBACK_ROUTE,
   ADMIN_ENTRY_ROUTE_NAME,
   resolveAdminEntryTarget,
@@ -18,9 +17,19 @@ assert.deepEqual(
 )
 
 assert.deepEqual(
-  resolveAdminEntryTarget({ hasRoute: (name) => name === ADMIN_ENTRY_PARENT_ROUTE_NAME }),
-  { name: ADMIN_ENTRY_PARENT_ROUTE_NAME },
-  'The dashboard admin entry should use the cluster-management parent route when the child page is not registered.',
+  resolveAdminEntryTarget({
+    hasRoute: (name) => name === 'NodeManage',
+    getRoutes: () => [
+      {
+        path: '/node',
+        name: 'NodeManage',
+        meta: { title: '\u96c6\u7fa4\u7ba1\u7406' },
+        redirect: '/node/index',
+      },
+    ] as any,
+  }),
+  ADMIN_ENTRY_FALLBACK_ROUTE,
+  'The dashboard admin entry should not target a cluster-management parent shell when the child page is not registered.',
 )
 
 assert.deepEqual(
@@ -34,8 +43,8 @@ assert.deepEqual(
       },
     ] as any,
   }),
-  { name: 'BackendClusterRoute' },
-  'The dashboard admin entry should use the back-end registered cluster-management menu instead of going home.',
+  ADMIN_ENTRY_FALLBACK_ROUTE,
+  'The dashboard admin entry should not target a back-end menu shell that may not render the local cluster page.',
 )
 
 assert.deepEqual(
@@ -86,6 +95,6 @@ assert.match(
 
 assert.match(
   permissionStore,
-  /routes\s+=\s+\[PAGE_NOT_FOUND_ROUTE,\s+dashboard,\s+\.\.\.requiredLocalBackRoutes,\s+\.\.\.routeList\]/,
-  'Back-end permission mode should register the local cluster-management route so the admin entry can navigate to it.',
+  /routes\s+=\s+\[PAGE_NOT_FOUND_ROUTE,\s+dashboard,\s+\.\.\.routeList,\s+node\]/,
+  'Back-end permission mode should always register the local cluster-management page after server routes so the admin entry can render it.',
 )

@@ -234,7 +234,7 @@ export const usePermissionStore = defineStore('app-permission', {
           routeList = routeList.filter(routeRemoveIgnoreFilter)
           routeList = flatMultiLevelRoutes(routeList)
           console.log('routeList---', routeList);
-          routes = [PAGE_NOT_FOUND_ROUTE, dashboard, ...requiredLocalBackRoutes, ...routeList]
+          routes = [PAGE_NOT_FOUND_ROUTE, dashboard, ...routeList, node]
           break
       }
 
