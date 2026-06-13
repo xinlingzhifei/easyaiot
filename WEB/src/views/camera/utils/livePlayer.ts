@@ -101,12 +101,12 @@ export function pickWvpPlaySource(
     });
   const candidates = isHttps
     ? [
-        streamContent.wss_flv,
         streamContent.https_flv,
-        streamContent.wss_fmp4,
         streamContent.https_fmp4,
-        streamContent.ws_flv,
+        streamContent.wss_flv,
+        streamContent.wss_fmp4,
         streamContent.flv,
+        streamContent.ws_flv,
         streamContent.fmp4,
       ]
     : [

@@ -64,3 +64,17 @@ assert.deepEqual(source, {
   videoCodec: 'h265',
   playerEngine: 'easywasm',
 })
+
+const publicH265Source = pickWvpPlaySource({
+  https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+  wss_flv: 'wss://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+  mediaInfo: { videoCodec: 'H265' },
+}, {
+  isHttps: true,
+})
+
+assert.deepEqual(publicH265Source, {
+  url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+  videoCodec: 'h265',
+  playerEngine: 'easywasm',
+})
