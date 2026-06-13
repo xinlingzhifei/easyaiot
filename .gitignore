@@ -105,3 +105,6 @@ VIDEO/face_capture_head_yolov8.onnx
 # Claude Code 个人配置与本地钩子（仅本机，不随仓库分发）
 .claude/settings.local.json
 .claude/changed-files-hook.sh
+
+# Local git worktrees
+.worktrees/
