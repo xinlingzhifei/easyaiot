@@ -362,7 +362,7 @@ async function fetch(p: Record<string, any> = {}) {
   try {
     state.loading = true;
     const search = p.deviceName;
-    const [devRes, gbRes, nvrs] = await Promise.all([
+    const [devResult, gbResult, nvrResult] = await Promise.allSettled([
       getDeviceList({
         ...params,
         pageNo: 1,
@@ -381,6 +381,9 @@ async function fetch(p: Record<string, any> = {}) {
       }),
       fetchNvrListBrief(),
     ]);
+    const devRes = devResult.status === 'fulfilled' ? devResult.value : undefined;
+    const gbRes = gbResult.status === 'fulfilled' ? gbResult.value : undefined;
+    const nvrs = nvrResult.status === 'fulfilled' ? nvrResult.value : [];
     let devices: DeviceInfo[] = [];
     if (devRes?.data) {
       devices = devRes.data;

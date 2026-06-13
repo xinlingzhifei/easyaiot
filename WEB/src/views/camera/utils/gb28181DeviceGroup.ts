@@ -97,7 +97,7 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
   const search = params.search ?? params.deviceName;
   const online = params.online;
 
-  const [devRes, gbRes, nvrs] = await Promise.all([
+  const [devResult, gbResult, nvrResult] = await Promise.allSettled([
     getDeviceList({
       pageNo: 1,
       pageSize: 10000,
@@ -110,6 +110,10 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
     }),
     fetchNvrListBrief(),
   ]);
+
+  const devRes = devResult.status === 'fulfilled' ? devResult.value : undefined;
+  const gbRes = gbResult.status === 'fulfilled' ? gbResult.value : undefined;
+  const nvrs = nvrResult.status === 'fulfilled' ? nvrResult.value : [];
 
   const allDevices = devRes?.data ?? [];
   const direct = filterStandaloneDirectDevices(
