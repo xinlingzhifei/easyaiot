@@ -2,7 +2,9 @@ import * as assert from 'node:assert/strict'
 
 import {
   detectVideoCodecFromUrl,
+  canPlayNativeHevc,
   getStreamVideoCodec,
+  isFmp4StreamUrl,
   normalizeVideoCodec,
   pickLivePlayerEngine,
   pickWvpPlaySource,
@@ -22,6 +24,8 @@ assert.equal(
   'h265',
 )
 assert.equal(detectVideoCodecFromUrl('not a url'), 'unknown')
+assert.equal(isFmp4StreamUrl('https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265'), true)
+assert.equal(isFmp4StreamUrl('https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265'), false)
 
 assert.equal(
   getStreamVideoCodec({
@@ -78,3 +82,54 @@ assert.deepEqual(publicH265Source, {
   videoCodec: 'h265',
   playerEngine: 'easywasm',
 })
+
+const originalDocument = globalThis.document
+
+Object.defineProperty(globalThis, 'document', {
+  configurable: true,
+  value: {
+    createElement(tagName: string) {
+      assert.equal(tagName, 'video')
+      return {
+        canPlayType(mimeType: string) {
+          return mimeType.includes('hev1') || mimeType.includes('hvc1') ? 'probably' : ''
+        },
+      }
+    },
+  },
+})
+
+try {
+  assert.equal(canPlayNativeHevc(), true)
+  assert.equal(
+    pickLivePlayerEngine({
+      videoCodec: 'H265',
+      url: 'https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265',
+    }),
+    'native',
+  )
+
+  const nativeH265Source = pickWvpPlaySource({
+    https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+    https_fmp4: 'https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265',
+    wss_flv: 'wss://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+    mediaInfo: { videoCodec: 'H265' },
+  }, {
+    isHttps: true,
+  })
+
+  assert.deepEqual(nativeH265Source, {
+    url: 'https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265',
+    videoCodec: 'h265',
+    playerEngine: 'native',
+  })
+} finally {
+  if (originalDocument === undefined) {
+    delete (globalThis as typeof globalThis & { document?: Document }).document
+  } else {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+  }
+}

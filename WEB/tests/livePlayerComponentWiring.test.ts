@@ -47,8 +47,18 @@ assert.match(
 )
 assert.match(
   sharedPlayer,
-  /<EasyPlayer[\s\S]*v-if="useEasyWasm"/,
+  /<EasyPlayer[\s\S]*v-(?:else-)?if="useEasyWasm"/,
   'The shared live player wrapper should render EasyPlayer for H265/H264-style WASM playback.',
+)
+assert.match(
+  sharedPlayer,
+  /<video[\s\S]*v-if="useNativeVideo"[\s\S]*class="native-video-player"/,
+  'The shared live player wrapper should render a native video element for HEVC fMP4 when the browser supports it.',
+)
+assert.match(
+  sharedPlayer,
+  /useNativeVideo\(\)[\s\S]*playerEngine === 'native'/,
+  'The shared live player wrapper should honor the native player engine selected by the stream strategy.',
 )
 assert.match(
   sharedPlayer,
@@ -69,6 +79,11 @@ assert.match(
   sharedPlayer,
   /:decodeType="easyWasmDecodeType"/,
   'The shared live player wrapper should pass a codec-aware decode type to EasyPlayer.',
+)
+assert.match(
+  sharedPlayer,
+  /nativeVideoUrl = target/,
+  'The shared live player wrapper should pass the signed stream URL to the native video element.',
 )
 
 assert.match(

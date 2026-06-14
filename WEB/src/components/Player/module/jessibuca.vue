@@ -1,7 +1,20 @@
 <template>
   <div style="width: 100%; height: 100%; background-color: #000c17">
+    <video
+      v-if="useNativeVideo"
+      ref="nativeVideo"
+      class="native-video-player"
+      :src="nativeVideoUrl"
+      :muted="!hasAudio"
+      autoplay
+      playsinline
+      controls
+      @playing="onNativeVideoPlaying"
+      @waiting="onNativeVideoWaiting"
+      @error="onNativeVideoError"
+    />
     <EasyPlayer
-      v-if="useEasyWasm"
+      v-else-if="useEasyWasm"
       ref="easyWasmPlayer"
       :videoUrl="easyWasmUrl"
       :hasaudio="hasAudio"
@@ -128,6 +141,7 @@ export default {
     return {
       jessibuca: null,
       easyWasmUrl: '',
+      nativeVideoUrl: '',
       version: '',
       wasm: false,
       vc: "ff",
@@ -158,7 +172,11 @@ export default {
     };
   },
   computed: {
+    useNativeVideo() {
+      return this.playerEngine === 'native';
+    },
     useEasyWasm() {
+      if (this.useNativeVideo) return false;
       return shouldUseWasmLivePlayer({
         playerEngine: this.playerEngine,
         videoCodec: this.videoCodec,
@@ -172,7 +190,7 @@ export default {
     },
   },
   mounted() {
-    if (!this.useEasyWasm) {
+    if (!this.useEasyWasm && !this.useNativeVideo) {
       this.create();
     }
     window.onerror = (msg) => (this.err = msg);
@@ -184,20 +202,24 @@ export default {
     playUrl(url) {
       this.protectedRetries = 0; // 切换地址，重置续票重试计数
       this.easyWasmUrl = '';
+      this.nativeVideoUrl = '';
       if (url) this.switchPlayerAndPlay();
     },
     playerEngine() {
       this.protectedRetries = 0;
       this.easyWasmUrl = '';
+      this.nativeVideoUrl = '';
       if (this.playUrl) this.switchPlayerAndPlay();
     },
     videoCodec() {
       this.protectedRetries = 0;
       this.easyWasmUrl = '';
+      this.nativeVideoUrl = '';
       if (this.playUrl) this.switchPlayerAndPlay();
     },
   },
   async unmounted() {
+    this.resetNativeVideo();
     if(this.jessibuca){
       await this.jessibuca.destroy();
       this.jessibuca = null;
@@ -205,7 +227,7 @@ export default {
   },
   methods: {
     async switchPlayerAndPlay() {
-      if (this.useEasyWasm) {
+      if (this.useEasyWasm || this.useNativeVideo) {
         if (this.jessibuca) {
           await this.jessibuca.destroy();
           this.jessibuca = null;
@@ -342,7 +364,7 @@ export default {
     async play(forceRefresh = false) {
       // 模板 @click="play" 会把鼠标事件当参数传入，这里归一为布尔，避免手动点播时被误判为强制续票
       const force = forceRefresh === true;
-      if (!this.useEasyWasm && !this.jessibuca && this.$refs.container) {
+      if (!this.useEasyWasm && !this.useNativeVideo && !this.jessibuca && this.$refs.container) {
         this.create();
       }
       if (!this.playUrl) return;
@@ -363,6 +385,14 @@ export default {
         // 防竞态：等待签发期间地址已切换/组件已销毁则放弃
         if (this.playUrl !== reqUrl) return;
       }
+      if (this.useNativeVideo) {
+        this.nativeVideoUrl = target;
+        this.playing = true;
+        this.loaded = true;
+        this.protectedRetries = 0;
+        this.$nextTick(() => this.playNativeVideo());
+        return;
+      }
       if (this.useEasyWasm) {
         this.easyWasmUrl = target;
         this.playing = true;
@@ -382,6 +412,45 @@ export default {
       this.play(true);
       return true;
     },
+    playNativeVideo() {
+      const video = this.$refs.nativeVideo;
+      if (!video) return;
+      const promise = video.play?.();
+      if (promise?.catch) {
+        promise.catch((error) => {
+          video.muted = true;
+          const retry = video.play?.();
+          retry?.catch?.((retryError) => {
+            this.$emit("stream-error", {
+              type: "native-play-error",
+              detail: retryError?.message || error?.message || retryError || error,
+            });
+          });
+        });
+      }
+    },
+    resetNativeVideo() {
+      const video = this.$refs.nativeVideo;
+      if (video) {
+        video.pause?.();
+        video.removeAttribute?.("src");
+        video.load?.();
+      }
+      this.nativeVideoUrl = '';
+    },
+    onNativeVideoPlaying() {
+      this.playing = true;
+      this.loaded = true;
+      this.protectedRetries = 0;
+      this.performance = "";
+    },
+    onNativeVideoWaiting() {
+      this.performance = "buffering";
+    },
+    onNativeVideoError(event) {
+      if (this.maybeRenewOnError()) return;
+      this.$emit("stream-error", { type: "native-video-error", detail: event });
+    },
     mute() {
       if (!this.jessibuca) return;
       this.jessibuca.mute();
@@ -391,6 +460,11 @@ export default {
       this.jessibuca.cancelMute();
     },
     pause() {
+      if (this.useNativeVideo) {
+        this.$refs.nativeVideo?.pause?.();
+        this.playing = false;
+        return;
+      }
       if (this.useEasyWasm) {
         this.$refs.easyWasmPlayer?.pause?.();
         this.playing = false;
@@ -411,6 +485,13 @@ export default {
       this.jessibuca.setRotate(this.rotate);
     },
     async destroy() {
+      if (this.useNativeVideo) {
+        this.resetNativeVideo();
+        this.playing = false;
+        this.loaded = false;
+        this.performance = "";
+        return;
+      }
       if (this.useEasyWasm) {
         this.$refs.easyWasmPlayer?.pause?.();
         this.easyWasmUrl = '';
@@ -432,6 +513,10 @@ export default {
       this.performance = "";
     },
     fullscreen() {
+      if (this.useNativeVideo) {
+        this.$refs.nativeVideo?.requestFullscreen?.();
+        return;
+      }
       if (!this.jessibuca) return;
       this.jessibuca.setFullscreen(true);
     },
@@ -472,6 +557,11 @@ export default {
       return document.fullscreenElement || false
     },
     async restartPlay(type) {
+      if (this.useNativeVideo) {
+        await this.destroy();
+        setTimeout(() => this.play(), 100)
+        return
+      }
       if (this.useEasyWasm) {
         await this.destroy();
         setTimeout(() => this.play(), 100)
@@ -527,6 +617,13 @@ export default {
   cursor: pointer;
   text-align: center;
   font-size: 1rem !important;
+}
+
+.native-video-player {
+  width: 100%;
+  height: 100%;
+  background: #000c17;
+  object-fit: contain;
 }
 
 .buttons-box-right {

@@ -1,4 +1,4 @@
-export type LivePlayerEngine = 'jessibuca' | 'easywasm';
+export type LivePlayerEngine = 'jessibuca' | 'easywasm' | 'native';
 export type NormalizedVideoCodec =
   | 'h265'
   | 'h264'
@@ -13,6 +13,12 @@ export interface WvpPlaySource {
 }
 
 const WASM_VIDEO_CODECS = new Set<NormalizedVideoCodec>(['h265', 'h264', 'mpeg4', 'mjpeg']);
+const NATIVE_HEVC_CODECS = [
+  'video/mp4; codecs="hev1.1.6.L123.B0"',
+  'video/mp4; codecs="hvc1.1.6.L123.B0"',
+  'video/mp4; codecs="hev1"',
+  'video/mp4; codecs="hvc1"',
+];
 
 export function normalizeVideoCodec(codec?: string | null): NormalizedVideoCodec {
   const normalized = String(codec ?? '')
@@ -43,6 +49,22 @@ export function detectVideoCodecFromUrl(url?: string | null): NormalizedVideoCod
   }
 }
 
+export function isFmp4StreamUrl(url?: string | null): boolean {
+  const raw = url?.trim();
+  if (!raw) return false;
+  try {
+    return new URL(raw).pathname.toLowerCase().endsWith('.mp4');
+  } catch {
+    return /\.mp4(?:\?|#|$)/i.test(raw);
+  }
+}
+
+export function canPlayNativeHevc(): boolean {
+  if (typeof document === 'undefined') return false;
+  const video = document.createElement('video');
+  return NATIVE_HEVC_CODECS.some((codec) => video.canPlayType(codec) !== '');
+}
+
 export function getStreamVideoCodec(streamContent?: Record<string, any> | null): NormalizedVideoCodec {
   if (!streamContent) return 'unknown';
 
@@ -69,6 +91,7 @@ export function pickLivePlayerEngine(options: {
 }): LivePlayerEngine {
   const codec = normalizeVideoCodec(options.videoCodec);
   const urlCodec = codec === 'unknown' ? detectVideoCodecFromUrl(options.url) : codec;
+  if (urlCodec === 'h265' && isFmp4StreamUrl(options.url) && canPlayNativeHevc()) return 'native';
   return WASM_VIDEO_CODECS.has(urlCodec) ? 'easywasm' : 'jessibuca';
 }
 
@@ -99,29 +122,50 @@ export function pickWvpPlaySource(
       const trimmed = url?.trim();
       return trimmed || null;
     });
+  const videoCodec = getStreamVideoCodec(streamContent);
+  const preferNativeFmp4 = videoCodec === 'h265' && canPlayNativeHevc();
   const candidates = isHttps
-    ? [
-        streamContent.https_flv,
-        streamContent.https_fmp4,
-        streamContent.wss_flv,
-        streamContent.wss_fmp4,
-        streamContent.flv,
-        streamContent.ws_flv,
-        streamContent.fmp4,
-      ]
-    : [
-        streamContent.ws_flv,
-        streamContent.flv,
-        streamContent.ws_fmp4,
-        streamContent.fmp4,
-        streamContent.https_flv,
-        streamContent.wss_flv,
-      ];
+    ? preferNativeFmp4
+      ? [
+          streamContent.https_fmp4,
+          streamContent.https_flv,
+          streamContent.wss_fmp4,
+          streamContent.wss_flv,
+          streamContent.fmp4,
+          streamContent.flv,
+          streamContent.ws_flv,
+        ]
+      : [
+          streamContent.https_flv,
+          streamContent.https_fmp4,
+          streamContent.wss_flv,
+          streamContent.wss_fmp4,
+          streamContent.flv,
+          streamContent.ws_flv,
+          streamContent.fmp4,
+        ]
+    : preferNativeFmp4
+      ? [
+          streamContent.fmp4,
+          streamContent.ws_fmp4,
+          streamContent.flv,
+          streamContent.ws_flv,
+          streamContent.https_fmp4,
+          streamContent.https_flv,
+          streamContent.wss_flv,
+        ]
+      : [
+          streamContent.ws_flv,
+          streamContent.flv,
+          streamContent.ws_fmp4,
+          streamContent.fmp4,
+          streamContent.https_flv,
+          streamContent.wss_flv,
+        ];
 
   for (const raw of candidates) {
     const url = toPlayableUrl(raw);
     if (url) {
-      const videoCodec = getStreamVideoCodec(streamContent);
       return {
         url,
         videoCodec,
@@ -132,7 +176,6 @@ export function pickWvpPlaySource(
 
   const rtmpUrl = toPlayableUrl(streamContent.rtmp);
   if (!rtmpUrl) return null;
-  const videoCodec = getStreamVideoCodec(streamContent);
   return {
     url: rtmpUrl,
     videoCodec,
