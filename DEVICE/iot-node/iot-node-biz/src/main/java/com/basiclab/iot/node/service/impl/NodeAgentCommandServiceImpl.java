@@ -18,11 +18,11 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import static com.basiclab.iot.common.exception.util.ServiceExceptionUtil.exception;
 import static com.basiclab.iot.node.enums.ErrorCodeConstants.AGENT_TOKEN_INVALID;
@@ -35,8 +35,11 @@ public class NodeAgentCommandServiceImpl implements NodeAgentCommandService {
     private static final String STATUS_PENDING = "pending";
     private static final String STATUS_LEASED = "leased";
     private static final String STATUS_RUNNING = "running";
+    private static final String STATUS_FAILED = "failed";
+    private static final String ERROR_RETRY_EXHAUSTED = "agent_command_retry_exhausted";
     private static final int DEFAULT_MAX_COMMANDS = 5;
     private static final int LEASE_SECONDS = 30;
+    private static final int MAX_COMMAND_ATTEMPTS = 3;
 
     @Resource
     private ComputeNodeMapper computeNodeMapper;
@@ -76,13 +79,24 @@ public class NodeAgentCommandServiceImpl implements NodeAgentCommandService {
         int maxCommands = reqVO.getMaxCommands() != null ? reqVO.getMaxCommands() : DEFAULT_MAX_COMMANDS;
         LocalDateTime now = LocalDateTime.now();
         List<NodeAgentCommandDO> commands = nodeAgentCommandMapper.selectPollable(reqVO.getNodeId(), now, maxCommands);
+        List<NodeAgentCommandRespVO> leasedCommands = new ArrayList<>();
         for (NodeAgentCommandDO command : commands) {
+            int attemptCount = command.getAttemptCount() != null ? command.getAttemptCount() : 0;
+            if (attemptCount >= MAX_COMMAND_ATTEMPTS) {
+                command.setStatus(STATUS_FAILED);
+                command.setLastError(ERROR_RETRY_EXHAUSTED);
+                command.setLeaseUntil(null);
+                command.setFinishedAt(now);
+                nodeAgentCommandMapper.updateById(command);
+                continue;
+            }
             command.setStatus(STATUS_LEASED);
-            command.setAttemptCount(command.getAttemptCount() != null ? command.getAttemptCount() + 1 : 1);
+            command.setAttemptCount(attemptCount + 1);
             command.setLeaseUntil(now.plusSeconds(LEASE_SECONDS));
             nodeAgentCommandMapper.updateById(command);
+            leasedCommands.add(toRespVO(command));
         }
-        return commands.stream().map(this::toRespVO).collect(Collectors.toList());
+        return leasedCommands;
     }
 
     @Override

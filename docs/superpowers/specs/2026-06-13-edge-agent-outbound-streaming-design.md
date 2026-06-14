@@ -284,6 +284,8 @@ First Edge RTSP outbound slice implemented:
 
 - `iot-node` has the durable `node_agent_command` queue schema, mapper, service,
   and `/node/agent/commands/*` API for enqueue, poll, ack, and result.
+- Command polling now stops re-leasing commands after three attempts, marks
+  them `failed`, and records `agent_command_retry_exhausted`.
 - Python Agent polls commands outbound, acknowledges them, runs local command
   executors, and reports success or failure.
 - Python Agent includes a local `stream_forward.deploy` executor that starts an
@@ -301,9 +303,15 @@ Verified on 2026-06-13:
   `stream_forward.deploy`; existing `/workload/deploy`, `agentPort`, and `9100`
   matches remain in the direct managed-node Agent path.
 
+Verified on 2026-06-14:
+
+- Java retry budget: `mvn -pl iot-node/iot-node-biz -am -Dtest=NodeAgentCommandServiceImplTest -DfailIfNoTests=false test`
+
 Remaining follow-on slices:
 
-- Signed RTMP ingest enforcement.
+- Long-running command heartbeat extension, running-timeout recovery, and
+  command-status audit/monitoring.
+- Public SRS/ZLM signed RTMP hook cutover and target-environment validation.
 - Unified access-center state integration across GB28181, RTSP, RTMP,
   HTTP-FLV/WebRTC, and Edge Agent.
 - Production WebRTC TURN/STUN validation.

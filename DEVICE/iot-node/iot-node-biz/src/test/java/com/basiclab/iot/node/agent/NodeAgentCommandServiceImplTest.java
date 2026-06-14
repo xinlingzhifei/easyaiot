@@ -93,6 +93,26 @@ class NodeAgentCommandServiceImplTest {
     }
 
     @Test
+    void pollFailsExpiredCommandWhenRetryBudgetIsExhausted() {
+        NodeAgentCommandDO command = command(100L, "leased");
+        command.setAttemptCount(3);
+        command.setLeaseUntil(LocalDateTime.now().minusMinutes(1));
+        fakeCommandMapper.pollable = List.of(command);
+
+        NodeAgentCommandPollReqVO reqVO = new NodeAgentCommandPollReqVO();
+        reqVO.setNodeId(NODE_ID);
+        reqVO.setAgentToken(AGENT_TOKEN);
+
+        List<NodeAgentCommandRespVO> commands = service.poll(reqVO);
+
+        assertEquals(0, commands.size());
+        assertEquals("failed", command.getStatus());
+        assertEquals("agent_command_retry_exhausted", command.getLastError());
+        assertNotNull(command.getFinishedAt());
+        assertEquals(command, fakeCommandMapper.updated.get(0));
+    }
+
+    @Test
     void ackMarksCommandRunning() {
         NodeAgentCommandDO command = command(100L, "leased");
         fakeCommandMapper.byId.put(100L, command);
