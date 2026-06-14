@@ -23,6 +23,7 @@ port=${ZLM_RTMP_PORT}
 handshakeSecond=15
 keepAliveSecond=15
 directProxy=1
+enhanced=0
 sslport=0
 
 [rtsp]

@@ -158,6 +158,8 @@ enable_rtmp=1
 enable_rtsp=1
 
 [rtmp]
+directProxy=1
+enhanced=0
 port=10001
 
 [rtsp]

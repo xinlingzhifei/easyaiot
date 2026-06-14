@@ -6,6 +6,7 @@
       :videoUrl="easyWasmUrl"
       :hasaudio="hasAudio"
       height="100%"
+      :decodeType="easyWasmDecodeType"
       @stream-error="$emit('stream-error', $event)"
     />
     <div v-else ref="container" class="jessibuca-container" @dblclick="fullscreen" @mousemove="mouseenter">
@@ -99,7 +100,7 @@
 import {Icon} from "@/components/Icon";
 import {signStreamUrl, isProtectedStreamUrl, clearTicketForUrl} from "@/views/camera/utils/streamTicket";
 import EasyPlayer from "@/components/VideoPlayer/EasyPlayer.vue";
-import {shouldUseWasmLivePlayer} from "@/views/camera/utils/livePlayer";
+import {detectVideoCodecFromUrl, normalizeVideoCodec, shouldUseWasmLivePlayer} from "@/views/camera/utils/livePlayer";
 
 export default {
   name: "Player",
@@ -115,6 +116,10 @@ export default {
       required: true,
     },
     playerEngine: {
+      type: String,
+      default: '',
+    },
+    videoCodec: {
       type: String,
       default: '',
     },
@@ -156,8 +161,14 @@ export default {
     useEasyWasm() {
       return shouldUseWasmLivePlayer({
         playerEngine: this.playerEngine,
+        videoCodec: this.videoCodec,
         url: this.playUrl,
       });
+    },
+    easyWasmDecodeType() {
+      const codec = normalizeVideoCodec(this.videoCodec);
+      const resolved = codec === 'unknown' ? detectVideoCodecFromUrl(this.playUrl) : codec;
+      return resolved === 'h265' ? 'soft' : 'auto';
     },
   },
   mounted() {
@@ -176,6 +187,11 @@ export default {
       if (url) this.switchPlayerAndPlay();
     },
     playerEngine() {
+      this.protectedRetries = 0;
+      this.easyWasmUrl = '';
+      if (this.playUrl) this.switchPlayerAndPlay();
+    },
+    videoCodec() {
       this.protectedRetries = 0;
       this.easyWasmUrl = '';
       if (this.playUrl) this.switchPlayerAndPlay();

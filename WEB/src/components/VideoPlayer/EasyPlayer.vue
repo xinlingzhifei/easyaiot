@@ -23,6 +23,10 @@ export default {
       type: [String, Number, Boolean],
       default: false,
     },
+    decodeType: {
+      type: String,
+      default: 'auto',
+    },
   },
   data() {
     return {
@@ -43,6 +47,9 @@ export default {
         this.destroyPlayer();
       }
     },
+    decodeType() {
+      if (this.videoUrl) this.play(this.videoUrl);
+    },
   },
   beforeUnmount() {
     this.destroyPlayer();
@@ -58,6 +65,8 @@ export default {
       }
       return new window.WasmPlayer(null, this.playerId, this.eventCallback, {
         Height: this.height,
+        decodeType: this.decodeType,
+        openAudio: this.hasaudio || this.hasAudio ? 1 : 0,
       });
     },
     destroyPlayer() {

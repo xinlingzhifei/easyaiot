@@ -238,15 +238,29 @@ export async function resolveGb28181StreamUrl(
   sipDeviceId: string,
   channelId: string,
 ): Promise<string | null> {
+  return (await resolveGb28181StreamSource(sipDeviceId, channelId))?.url ?? null;
+}
+
+export async function resolveGb28181StreamSource(
+  sipDeviceId: string,
+  channelId: string,
+): Promise<WvpPlaySource | null> {
   const res = await playByDeviceAndChannel(sipDeviceId, channelId);
   const streamContent = (res as any)?.data?.data ?? (res as any)?.data;
-  return pickWvpPlayUrl(streamContent);
+  return pickWvpPlaySource(streamContent);
 }
 
 export interface GbChannelPlayUrlResult {
   url: string | null;
   fallbackUrl?: string | null;
   preferAi?: boolean;
+  playerEngine?: WvpPlaySource['playerEngine'] | null;
+  videoCodec?: WvpPlaySource['videoCodec'] | null;
+}
+
+function buildManualWvpPlaySource(url?: string | null): GbChannelPlayUrlResult {
+  const trimmed = url?.trim();
+  return { url: trimmed || null, playerEngine: null, videoCodec: null };
 }
 
 /** 加载国标通道对应的 device 表记录（含 ai_http_stream） */
@@ -284,17 +298,17 @@ export async function resolveGbChannelPlayUrls(
   },
 ): Promise<GbChannelPlayUrlResult> {
   const enableAi = options?.enableAi ?? false;
-  const wvpPromise =
+  const wvpSourcePromise: Promise<GbChannelPlayUrlResult> =
     options?.wvpUrl != null
-      ? Promise.resolve(options.wvpUrl)
-      : resolveGb28181StreamUrl(sipDeviceId, channelId);
+      ? Promise.resolve(buildManualWvpPlaySource(options.wvpUrl))
+      : resolveGb28181StreamSource(sipDeviceId, channelId).then((source) => source ?? { url: null });
 
   if (!enableAi) {
-    return { url: await wvpPromise };
+    return wvpSourcePromise;
   }
 
-  const [wvpUrl, synced] = await Promise.all([
-    wvpPromise,
+  const [wvpSource, synced] = await Promise.all([
+    wvpSourcePromise,
     loadGbChannelSyncedDevice(sipDeviceId, channelId, options?.synced ?? null),
   ]);
 
@@ -306,13 +320,15 @@ export async function resolveGbChannelPlayUrls(
     if (url) {
       return {
         url,
-        fallbackUrl: fallbackUrl ?? wvpUrl,
+        fallbackUrl: fallbackUrl ?? wvpSource.url,
         preferAi,
+        playerEngine: wvpSource.playerEngine,
+        videoCodec: wvpSource.videoCodec,
       };
     }
   }
 
-  return { url: wvpUrl };
+  return wvpSource;
 }
 
 export function buildDialogPlayerPayload(

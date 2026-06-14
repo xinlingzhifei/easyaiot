@@ -42,6 +42,8 @@
             v-else
             :playUrl="video.url"
             :hasAudio="false"
+            :playerEngine="video.playerEngine || ''"
+            :videoCodec="video.videoCodec || ''"
             :ref="el => setVideoRef(el, index)"
             class="video-player"
           />
@@ -456,6 +458,8 @@ async function startPlayAtScreen(
     device?: MonitorTreeDeviceNode
     fallbackUrl?: string | null
     preferAi?: boolean
+    playerEngine?: string | null
+    videoCodec?: string | null
   },
 ) {
   clearAiFallbackTimer(targetIndex)
@@ -478,6 +482,8 @@ async function startPlayAtScreen(
     deviceId: payload.deviceId,
     location: payload.location || '',
     device: payload.device,
+    playerEngine: payload.playerEngine || '',
+    videoCodec: payload.videoCodec || '',
   }
 
   await nextTick()
@@ -537,7 +543,7 @@ async function reloadVideoAtIndex(index: number) {
     const gb = parseGbChannelKey(playId)
     if (!gb) return
     const deviceNode = (slot as any).device as MonitorTreeDeviceNode | undefined
-    const { url, fallbackUrl, preferAi } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: deviceNode },
@@ -551,6 +557,8 @@ async function reloadVideoAtIndex(index: number) {
         location: slot.location,
         fallbackUrl,
         preferAi,
+        playerEngine,
+        videoCodec,
       })
     }
     return
@@ -616,7 +624,7 @@ const playDeviceStream = async (device: any) => {
       createMessage.warning('无效国标通道')
       return
     }
-    const { url, fallbackUrl, preferAi } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: dev },
@@ -638,6 +646,8 @@ const playDeviceStream = async (device: any) => {
       device: dev,
       fallbackUrl,
       preferAi,
+      playerEngine,
+      videoCodec,
     })
     return
   }

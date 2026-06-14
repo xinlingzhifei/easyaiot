@@ -112,6 +112,8 @@
                   :ref="(el) => setPlayerRef(el, i - 1)"
                   :play-url="state.playCells[i - 1]!.url"
                   :hasAudio="false"
+                  :playerEngine="state.playCells[i - 1]!.playerEngine || ''"
+                  :videoCodec="state.playCells[i - 1]!.videoCodec || ''"
                   @stream-error="handleCellStreamError(i - 1)"
                 />
                 <span class="cell-name" :title="state.playCells[i - 1]!.name">
@@ -192,6 +194,8 @@ interface PlayCell {
   url: string;
   /** 播放中断时可回退的原始流地址（仅在播 AI 流且存在原始流时设置） */
   fallbackUrl?: string | null;
+  playerEngine?: string | null;
+  videoCodec?: string | null;
 }
 
 const { createMessage } = useMessage();
@@ -271,6 +275,8 @@ async function startPlayAtCell(
     url: string;
     fallbackUrl?: string | null;
     preferAi?: boolean;
+    playerEngine?: string | null;
+    videoCodec?: string | null;
   },
 ) {
   clearAiFallbackTimer(cellIdx);
@@ -287,7 +293,9 @@ async function startPlayAtCell(
     deviceId: payload.deviceId,
     name: payload.name,
     url: payload.url,
-    fallbackUrl: hasFallback ? fallbackUrl : null};
+    fallbackUrl: hasFallback ? fallbackUrl : null,
+    playerEngine: payload.playerEngine ?? null,
+    videoCodec: payload.videoCodec ?? null};
 
   await nextTick();
   const player = playerRefs.value[cellIdx];
@@ -335,7 +343,7 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
     const gb = parseGbChannelKey(playId);
     if (gb) {
       const synced = findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId);
-      const { url, fallbackUrl, preferAi } = await resolveGbChannelPlayUrls(
+      const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
         gb.sipDeviceId,
         gb.channelId,
         { enableAi: enableAi.value, synced },
@@ -346,7 +354,9 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
           name: cell.name,
           url,
           fallbackUrl,
-          preferAi});
+          preferAi,
+          playerEngine,
+          videoCodec});
       }
     }
     return;
@@ -500,7 +510,7 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
     const synced =
       findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId) ??
       ((node as any)?.device as MonitorTreeDeviceNode | undefined);
-    const { url, fallbackUrl, preferAi } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced },
@@ -519,7 +529,9 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
       name: displayName,
       url,
       fallbackUrl,
-      preferAi});
+      preferAi,
+      playerEngine,
+      videoCodec});
   } catch (e) {
     console.error(e);
     createMessage.error('播放失败，请检查设备连接');
