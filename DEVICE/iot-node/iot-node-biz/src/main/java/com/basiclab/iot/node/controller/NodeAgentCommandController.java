@@ -52,6 +52,15 @@ public class NodeAgentCommandController {
         return success(true);
     }
 
+    @PostMapping("/{commandId}/heartbeat")
+    @Operation(summary = "Extend command execution lease")
+    @TenantIgnore
+    public CommonResult<Boolean> heartbeat(@PathVariable("commandId") Long commandId,
+                                           @Valid @RequestBody NodeAgentCommandAckReqVO reqVO) {
+        nodeAgentCommandService.heartbeat(commandId, reqVO);
+        return success(true);
+    }
+
     @PostMapping("/{commandId}/result")
     @Operation(summary = "Report command result")
     @TenantIgnore

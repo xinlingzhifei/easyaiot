@@ -59,7 +59,7 @@ class AgentCommandClientTest(unittest.TestCase):
             "maxCommands": 3,
         }, session.calls[0]["json"])
 
-    def test_ack_and_report_result_use_command_endpoints(self):
+    def test_ack_heartbeat_and_report_result_use_command_endpoints(self):
         session = FakeSession()
         client = AgentCommandClient(
             "http://control/admin-api/node/agent",
@@ -69,12 +69,14 @@ class AgentCommandClientTest(unittest.TestCase):
         )
 
         client.ack(101)
+        client.heartbeat(101)
         client.report_result(101, "succeeded", {"pid": 4321}, None)
 
         self.assertEqual("http://control/admin-api/node/agent/commands/101/ack", session.calls[0]["url"])
-        self.assertEqual("http://control/admin-api/node/agent/commands/101/result", session.calls[1]["url"])
-        self.assertEqual("succeeded", session.calls[1]["json"]["status"])
-        self.assertEqual({"pid": 4321}, session.calls[1]["json"]["result"])
+        self.assertEqual("http://control/admin-api/node/agent/commands/101/heartbeat", session.calls[1]["url"])
+        self.assertEqual("http://control/admin-api/node/agent/commands/101/result", session.calls[2]["url"])
+        self.assertEqual("succeeded", session.calls[2]["json"]["status"])
+        self.assertEqual({"pid": 4321}, session.calls[2]["json"]["result"])
 
 
 class AgentCommandRunnerTest(unittest.TestCase):

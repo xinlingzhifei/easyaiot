@@ -288,6 +288,8 @@ First Edge RTSP outbound slice implemented:
   them `failed`, and records `agent_command_retry_exhausted`.
 - A scheduled command reclaimer marks stale `running` commands whose lease has
   expired as `failed` with `agent_command_running_timeout`.
+- The Java command API exposes `/commands/{commandId}/heartbeat`, and the
+  Python Agent client can call it to extend a running command lease.
 - Python Agent polls commands outbound, acknowledges them, runs local command
   executors, and reports success or failure.
 - Python Agent includes a local `stream_forward.deploy` executor that starts an
@@ -309,10 +311,12 @@ Verified on 2026-06-14:
 
 - Java retry budget and running-timeout reclaim:
   `mvn -pl iot-node/iot-node-biz -am -Dtest=NodeAgentCommandServiceImplTest -DfailIfNoTests=false test`
+- Agent heartbeat client: `python -m unittest tests.test_agent_commands`
 
 Remaining follow-on slices:
 
-- Long-running command heartbeat extension and command-status audit/monitoring.
+- Automatic periodic heartbeat during blocking long-running executors and
+  command-status audit/monitoring.
 - Public SRS/ZLM signed RTMP hook cutover and target-environment validation.
 - Unified access-center state integration across GB28181, RTSP, RTMP,
   HTTP-FLV/WebRTC, and Edge Agent.

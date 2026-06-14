@@ -16,6 +16,8 @@ public interface NodeAgentCommandService {
 
     void ack(Long commandId, NodeAgentCommandAckReqVO reqVO);
 
+    void heartbeat(Long commandId, NodeAgentCommandAckReqVO reqVO);
+
     void reportResult(Long commandId, NodeAgentCommandResultReqVO reqVO);
 
     int reclaimTimedOutCommands();

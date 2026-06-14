@@ -23,6 +23,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeAgentCommandServiceImplTest {
 
@@ -124,6 +125,25 @@ class NodeAgentCommandServiceImplTest {
         assertEquals("failed", command.getStatus());
         assertEquals("agent_command_running_timeout", command.getLastError());
         assertNotNull(command.getFinishedAt());
+        assertEquals(command, fakeCommandMapper.updated.get(0));
+    }
+
+    @Test
+    void heartbeatExtendsRunningCommandLease() {
+        NodeAgentCommandDO command = command(100L, "running");
+        LocalDateTime previousLease = LocalDateTime.now().minusSeconds(5);
+        command.setLeaseUntil(previousLease);
+        fakeCommandMapper.byId.put(100L, command);
+
+        NodeAgentCommandAckReqVO reqVO = new NodeAgentCommandAckReqVO();
+        reqVO.setNodeId(NODE_ID);
+        reqVO.setAgentToken(AGENT_TOKEN);
+
+        service.heartbeat(100L, reqVO);
+
+        assertEquals("running", command.getStatus());
+        assertNotNull(command.getLeaseUntil());
+        assertTrue(command.getLeaseUntil().isAfter(previousLease));
         assertEquals(command, fakeCommandMapper.updated.get(0));
     }
 

@@ -114,6 +114,18 @@ public class NodeAgentCommandServiceImpl implements NodeAgentCommandService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void heartbeat(Long commandId, NodeAgentCommandAckReqVO reqVO) {
+        validateAgent(reqVO.getNodeId(), reqVO.getAgentToken());
+        NodeAgentCommandDO command = validateCommand(commandId, reqVO.getNodeId());
+        if (!STATUS_RUNNING.equals(command.getStatus())) {
+            return;
+        }
+        command.setLeaseUntil(LocalDateTime.now().plusSeconds(LEASE_SECONDS));
+        nodeAgentCommandMapper.updateById(command);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void reportResult(Long commandId, NodeAgentCommandResultReqVO reqVO) {
         validateAgent(reqVO.getNodeId(), reqVO.getAgentToken());
         NodeAgentCommandDO command = validateCommand(commandId, reqVO.getNodeId());

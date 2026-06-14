@@ -46,6 +46,14 @@ class AgentCommandClient:
         )
         self._response_data(response)
 
+    def heartbeat(self, command_id: int) -> None:
+        response = self.session.post(
+            f"{self.base_url}/commands/{command_id}/heartbeat",
+            json={"nodeId": self.node_id, "agentToken": self.agent_token},
+            timeout=10,
+        )
+        self._response_data(response)
+
     def report_result(
         self,
         command_id: int,
