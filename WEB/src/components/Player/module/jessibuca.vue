@@ -367,11 +367,6 @@ export default {
         this.easyWasmUrl = target;
         this.playing = true;
         this.protectedRetries = 0;
-        this.$nextTick(() => {
-          if (this.$refs.easyWasmPlayer?.play) {
-            this.$refs.easyWasmPlayer.play(target);
-          }
-        });
         return;
       }
       if (!this.jessibuca) return;

@@ -113,7 +113,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Checkbox as ACheckbox } from 'ant-design-vue'
 import { Icon } from '@/components/Icon'
 import { queryAlarmList } from '@/api/device/calculate'
@@ -154,7 +154,7 @@ const currentTime = ref('')
 const activeVideoIndex = ref(0)
 const currentLayout = ref('1')
 /** 勾选后点播 AI 流（检测框由算法任务烧录在此路流上） */
-const enableAi = ref(true)
+const enableAi = ref(false)
 const videoRefs = ref<(InstanceType<typeof Jessibuca> | null)[]>([])
 const alertRecordList = ref<any[]>([])
 const loadingRecords = ref(false)
@@ -486,27 +486,6 @@ async function startPlayAtScreen(
     videoCodec: payload.videoCodec || '',
   }
 
-  await nextTick()
-
-  const tryPlay = (retryCount = 0) => {
-    const jessibucaInstance = videoRefs.value[targetIndex]
-    if (jessibucaInstance?.play) {
-      try {
-        jessibucaInstance.play()
-      } catch (error) {
-        console.error('播放失败:', error)
-        createMessage.error('播放失败，请重试')
-      }
-      return
-    }
-    if (retryCount < 15) {
-      setTimeout(() => tryPlay(retryCount + 1), 150)
-    } else {
-      createMessage.error('播放器初始化失败，请重试')
-    }
-  }
-  setTimeout(() => tryPlay(), 200)
-
   const fallbackUrl = payload.fallbackUrl?.trim()
   if (!payload.preferAi || !fallbackUrl || fallbackUrl === payload.url) return
 
@@ -521,8 +500,6 @@ async function startPlayAtScreen(
       'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
     )
     internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl }
-    await nextTick()
-    videoRefs.value[targetIndex]?.play?.()
   }, AI_PLAY_FALLBACK_MS)
   aiFallbackTimers.set(targetIndex, timerId)
 }
