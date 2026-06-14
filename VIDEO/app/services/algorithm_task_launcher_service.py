@@ -658,6 +658,9 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
             
             # 如果进程已启动，立即清理一次遗留进程（这次会保护新进程）
             if process_pid:
+                task.service_process_id = process_pid
+                task.run_status = 'running'
+                db.session.commit()
                 logger.debug(f'新进程已启动 (PID: {process_pid})，再次清理遗留进程（会保护新进程）...')
                 cleanup_orphaned_processes(task_id)
             
@@ -814,4 +817,3 @@ def stop_all_daemons():
                     del _running_daemons[task_id]
         
         logger.info(f"✅ 所有守护进程已停止")
-

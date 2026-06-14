@@ -436,7 +436,23 @@ QUALITY_PROFILE_PRESETS = {
         'yolo_img_size': 640,
     },
 }
-if VIDEO_QUALITY_PROFILE in QUALITY_PROFILE_PRESETS:
+MANUAL_QUALITY_CONFIGURED = any(
+    (os.getenv(key) or '').strip()
+    for key in (
+        'AI_SOURCE_FPS',
+        'AI_TARGET_WIDTH',
+        'AI_TARGET_HEIGHT',
+        'AI_FFMPEG_VIDEO_BITRATE',
+        'AI_FFMPEG_GOP_SIZE',
+        'SOURCE_FPS',
+        'TARGET_WIDTH',
+        'TARGET_HEIGHT',
+        'FFMPEG_VIDEO_BITRATE',
+        'FFMPEG_GOP_SIZE',
+        'YOLO_IMG_SIZE',
+    )
+)
+if VIDEO_QUALITY_PROFILE in QUALITY_PROFILE_PRESETS and not MANUAL_QUALITY_CONFIGURED:
     selected_profile = QUALITY_PROFILE_PRESETS[VIDEO_QUALITY_PROFILE]
     SOURCE_FPS = selected_profile['source_fps']
     TARGET_WIDTH = selected_profile['target_width']
@@ -468,6 +484,16 @@ def _get_effective_quality_profile_name() -> str:
 
 
 def _get_effective_realtime_stream_params():
+    if not AUTO_QUALITY_ENABLED or MANUAL_QUALITY_CONFIGURED:
+        return (
+            'manual',
+            int(SOURCE_FPS),
+            int(TARGET_WIDTH),
+            int(TARGET_HEIGHT),
+            str(FFMPEG_VIDEO_BITRATE),
+            int(FFMPEG_GOP_SIZE),
+        )
+
     profile_name = AUTO_QUALITY_LOCK_PROFILE if AUTO_QUALITY_LOCK_PROFILE in QUALITY_PROFILE_PRESETS else _get_effective_quality_profile_name()
     preset = QUALITY_PROFILE_PRESETS.get(profile_name, QUALITY_PROFILE_PRESETS['high'])
     source_fps = int(preset['source_fps'])
@@ -2428,7 +2454,10 @@ def buffer_streamer_worker(device_id: str):
 
                 if not cap.isOpened():
                     _fallback_url = None
-                    if _is_gb28181 and _original_source and rtsp_url.startswith('rtmp://'):
+                    if _is_gb28181 and _original_source and (
+                        rtsp_url.startswith('rtmp://')
+                        or rtsp_url.startswith('rtsp://')
+                    ):
                         _fallback_url = resolve_gb28181_alternate_pull_url(
                             _original_source, rtsp_url, logger=logger,
                         )

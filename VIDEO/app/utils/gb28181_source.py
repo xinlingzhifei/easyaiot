@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -162,6 +162,18 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         'branch': 'rtmp_first',
     }
 
+    if mode in ('flv_first', 'http_flv_first', 'http_first', 'flv'):
+        meta['branch'] = 'flv_first'
+        candidates = [
+            *flv_block,
+            *other,
+            body.get('rtmp'),
+            body.get('rtmps'),
+            body.get('rtsp'),
+            body.get('rtsps'),
+        ]
+        return candidates, meta
+
     if mode in ('rtsp_first', 'rtsp', 'legacy'):
         meta['branch'] = 'rtsp_first'
         candidates = [
@@ -206,6 +218,7 @@ def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
         'rtsp_first': '接口顺序优先RTSP',
         'rtmp_first': '接口顺序优先RTMP(占读者保活)',
         'hevc_rtsp_first': 'HEVC+RTMP线索则优先RTSP(OpenCV兼容)',
+        'flv_first': '接口顺序优先HTTP-FLV(OpenCV兼容)',
     }.get(branch, branch)
     hevc_on = '开启' if meta.get('hevc_rtsp_first_env_on') else '关闭'
     hint = '是' if meta.get('hevc_hint') else '否'
@@ -218,6 +231,22 @@ def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
         f'选用={scheme or "?"} | {branch_tip} | PLAY_PROTOCOL={meta.get("play_protocol")} | '
         f'HEVC线索={hint} | HEVC_RTSP_FIRST={hevc_on}{zlm_tip}'
     )
+
+
+def _localize_flv_pull_url(url: str) -> str:
+    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or '').strip().lower()
+    if mode not in ('flv_first', 'http_flv_first', 'http_first', 'flv'):
+        return url
+
+    parsed = urlparse(url)
+    if parsed.scheme.lower() != 'http':
+        return url
+
+    port = parsed.port or 80
+    if port != 6080:
+        return url
+
+    return urlunparse(parsed._replace(netloc='127.0.0.1:6080'))
 
 
 def _unwrap_wvp_play_body(payload: dict) -> Tuple[Optional[dict], Optional[str]]:
@@ -246,6 +275,8 @@ def _extract_stream_url_and_meta(payload: dict) -> Tuple[Optional[str], Dict[str
         return None, {'wvp_error': err} if err else {}
     candidates, meta = _gb28181_play_candidates(body)
     chosen = next((url for url in candidates if isinstance(url, str) and url.strip()), None)
+    if chosen:
+        chosen = _localize_flv_pull_url(chosen)
     if err:
         meta['wvp_error'] = err
     return chosen, meta
@@ -342,24 +373,32 @@ def resolve_gb28181_alternate_pull_url(
     current_scheme = urlparse(current).scheme.lower()
     candidates = _all_play_urls_from_body(body)
 
+    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or '').strip().lower()
+    if prefer_schemes == ('rtsp', 'rtsps') and mode in (
+        'flv_first', 'http_flv_first', 'http_first', 'flv',
+    ):
+        prefer_schemes = ('http', 'https', 'ws', 'wss', 'rtsp', 'rtsps', 'rtmp', 'rtmps')
+
     for scheme in prefer_schemes:
         for url in candidates:
             if urlparse(url).scheme.lower() == scheme and url != current:
                 log_fn = logger.warning if logger else _logger.warning
+                fallback_url = _localize_flv_pull_url(url)
                 log_fn(
                     f'GB28181 OpenCV 拉流降级: {device_id}/{channel_id} '
-                    f'{current_scheme} -> {scheme} | {current} -> {url}'
+                    f'{current_scheme} -> {scheme} | {current} -> {fallback_url}'
                 )
-                return url
+                return fallback_url
 
     for url in candidates:
         if url != current and urlparse(url).scheme.lower() != current_scheme:
             log_fn = logger.warning if logger else _logger.warning
+            fallback_url = _localize_flv_pull_url(url)
             log_fn(
                 f'GB28181 OpenCV 拉流降级(其它协议): {device_id}/{channel_id} '
-                f'{current} -> {url}'
+                f'{current} -> {fallback_url}'
             )
-            return url
+            return fallback_url
 
     if logger and errors:
         logger.debug(

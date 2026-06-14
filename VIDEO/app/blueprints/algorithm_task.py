@@ -296,8 +296,9 @@ def receive_realtime_heartbeat():
             log_base_dir = os.path.join(video_root, 'logs')
             task.service_log_path = os.path.join(log_base_dir, f'task_{task_id}')
         
-        # 更新运行状态为running
-        if task.run_status != 'stopped':
+        # Enabled tasks that are still sending heartbeats are running, even if a
+        # previous restart left the persisted run_status as stopped.
+        if task.is_enabled:
             task.run_status = 'running'
         
         db.session.commit()
@@ -696,4 +697,3 @@ def get_service_logs(service_obj, lines: int = 100, date: str = None):
             'code': 500,
             'msg': f'服务器内部错误: {str(e)}'
         }), 500
-
