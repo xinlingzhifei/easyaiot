@@ -154,7 +154,27 @@ const currentTime = ref('')
 const activeVideoIndex = ref(0)
 const currentLayout = ref('1')
 /** 勾选后点播 AI 流（检测框由算法任务烧录在此路流上） */
-const enableAi = ref(false)
+const AI_TOGGLE_STORAGE_KEY = 'yfeieye.dashboard.monitor.enableAi'
+
+function readPersistedEnableAi() {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.sessionStorage.getItem(AI_TOGGLE_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function persistEnableAi(checked: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(AI_TOGGLE_STORAGE_KEY, String(checked))
+  } catch {
+    // Storage can be unavailable in hardened browser modes; keep the in-page toggle working.
+  }
+}
+
+const enableAi = ref(readPersistedEnableAi())
 const videoRefs = ref<(InstanceType<typeof Jessibuca> | null)[]>([])
 const alertRecordList = ref<any[]>([])
 const loadingRecords = ref(false)
@@ -568,7 +588,8 @@ async function reloadAllVideosForAiToggle() {
   await Promise.all(tasks)
 }
 
-watch(enableAi, () => {
+watch(enableAi, (checked) => {
+  persistEnableAi(checked)
   reloadAllVideosForAiToggle()
 })
 

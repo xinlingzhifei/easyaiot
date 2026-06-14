@@ -16,8 +16,26 @@ const sharedPlayer = readFileSync(
 
 assert.match(
   videoMonitor,
-  /const enableAi = ref\(false\)/,
-  'Dashboard live video should start with the original stream by default; AI probing must be opt-in so first paint is not blocked.',
+  /function readPersistedEnableAi\(\)[\s\S]*return false/,
+  'Dashboard live video should still default to the original stream when no persisted AI choice exists.',
+)
+
+assert.match(
+  videoMonitor,
+  /const AI_TOGGLE_STORAGE_KEY = 'yfeieye\.dashboard\.monitor\.enableAi'/,
+  'Dashboard AI toggle should use a stable storage key so route navigation can restore the user choice.',
+)
+
+assert.match(
+  videoMonitor,
+  /const enableAi = ref\(readPersistedEnableAi\(\)\)/,
+  'Dashboard AI toggle should initialize from the persisted session value when the user returns to the page.',
+)
+
+assert.match(
+  videoMonitor,
+  /window\.sessionStorage\.setItem\(AI_TOGGLE_STORAGE_KEY, String\(checked\)\)/,
+  'Dashboard AI toggle should persist user changes before route navigation destroys the component.',
 )
 
 assert.doesNotMatch(
