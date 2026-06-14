@@ -18,4 +18,6 @@ public interface NodeAgentCommandService {
 
     void reportResult(Long commandId, NodeAgentCommandResultReqVO reqVO);
 
+    int reclaimTimedOutCommands();
+
 }

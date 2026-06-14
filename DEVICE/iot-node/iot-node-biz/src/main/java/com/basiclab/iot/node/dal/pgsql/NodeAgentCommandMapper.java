@@ -29,4 +29,12 @@ public interface NodeAgentCommandMapper extends BaseMapperX<NodeAgentCommandDO> 
                 .orderByAsc(NodeAgentCommandDO::getCreateTime)
                 .last("LIMIT " + Math.max(1, Math.min(limit, 20))));
     }
+
+    default List<NodeAgentCommandDO> selectTimedOutRunning(LocalDateTime now, int limit) {
+        return selectList(new LambdaQueryWrapperX<NodeAgentCommandDO>()
+                .eq(NodeAgentCommandDO::getStatus, "running")
+                .lt(NodeAgentCommandDO::getLeaseUntil, now)
+                .orderByAsc(NodeAgentCommandDO::getUpdateTime)
+                .last("LIMIT " + Math.max(1, Math.min(limit, 200))));
+    }
 }

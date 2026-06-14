@@ -12,6 +12,7 @@ import com.basiclab.iot.node.domain.vo.NodeAgentCommandPollReqVO;
 import com.basiclab.iot.node.domain.vo.NodeAgentCommandRespVO;
 import com.basiclab.iot.node.domain.vo.NodeAgentCommandResultReqVO;
 import com.basiclab.iot.node.service.NodeAgentCommandService;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -37,9 +38,11 @@ public class NodeAgentCommandServiceImpl implements NodeAgentCommandService {
     private static final String STATUS_RUNNING = "running";
     private static final String STATUS_FAILED = "failed";
     private static final String ERROR_RETRY_EXHAUSTED = "agent_command_retry_exhausted";
+    private static final String ERROR_RUNNING_TIMEOUT = "agent_command_running_timeout";
     private static final int DEFAULT_MAX_COMMANDS = 5;
     private static final int LEASE_SECONDS = 30;
     private static final int MAX_COMMAND_ATTEMPTS = 3;
+    private static final int TIMEOUT_SCAN_LIMIT = 100;
 
     @Resource
     private ComputeNodeMapper computeNodeMapper;
@@ -119,6 +122,22 @@ public class NodeAgentCommandServiceImpl implements NodeAgentCommandService {
         command.setLastError(reqVO.getError());
         command.setFinishedAt(LocalDateTime.now());
         nodeAgentCommandMapper.updateById(command);
+    }
+
+    @Override
+    @Scheduled(fixedDelay = 30000)
+    @Transactional(rollbackFor = Exception.class)
+    public int reclaimTimedOutCommands() {
+        LocalDateTime now = LocalDateTime.now();
+        List<NodeAgentCommandDO> commands = nodeAgentCommandMapper.selectTimedOutRunning(now, TIMEOUT_SCAN_LIMIT);
+        for (NodeAgentCommandDO command : commands) {
+            command.setStatus(STATUS_FAILED);
+            command.setLastError(ERROR_RUNNING_TIMEOUT);
+            command.setLeaseUntil(null);
+            command.setFinishedAt(now);
+            nodeAgentCommandMapper.updateById(command);
+        }
+        return commands.size();
     }
 
     private void validateNodeExists(Long nodeId) {

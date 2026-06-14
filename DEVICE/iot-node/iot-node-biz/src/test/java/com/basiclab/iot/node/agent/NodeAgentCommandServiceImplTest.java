@@ -113,6 +113,21 @@ class NodeAgentCommandServiceImplTest {
     }
 
     @Test
+    void reclaimTimedOutCommandsFailsRunningCommandsPastLease() {
+        NodeAgentCommandDO command = command(100L, "running");
+        command.setLeaseUntil(LocalDateTime.now().minusMinutes(1));
+        fakeCommandMapper.timedOutRunning = List.of(command);
+
+        int reclaimed = service.reclaimTimedOutCommands();
+
+        assertEquals(1, reclaimed);
+        assertEquals("failed", command.getStatus());
+        assertEquals("agent_command_running_timeout", command.getLastError());
+        assertNotNull(command.getFinishedAt());
+        assertEquals(command, fakeCommandMapper.updated.get(0));
+    }
+
+    @Test
     void ackMarksCommandRunning() {
         NodeAgentCommandDO command = command(100L, "leased");
         fakeCommandMapper.byId.put(100L, command);
@@ -176,6 +191,7 @@ class NodeAgentCommandServiceImplTest {
         private final List<NodeAgentCommandDO> inserted = new ArrayList<>();
         private final List<NodeAgentCommandDO> updated = new ArrayList<>();
         private List<NodeAgentCommandDO> pollable = List.of();
+        private List<NodeAgentCommandDO> timedOutRunning = List.of();
 
         @Override
         public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) {
@@ -188,6 +204,8 @@ class NodeAgentCommandServiceImplTest {
                             .orElse(null);
                 case "selectPollable":
                     return pollable;
+                case "selectTimedOutRunning":
+                    return timedOutRunning;
                 case "selectById":
                     return byId.get(args[0]);
                 case "insert":
