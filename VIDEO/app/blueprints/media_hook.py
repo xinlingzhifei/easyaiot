@@ -7,7 +7,6 @@ from flask import Blueprint, jsonify, request
 
 from app.services.dvr_device_resolver import resolve_device_from_hook
 from app.services.dvr_upload_service import process_dvr_event
-from app.services.device_access_state_service import record_srs_publish_online
 from app.services.media_kafka_service import (
     build_event_from_srs_hook,
     build_event_from_zlm_hook,
@@ -18,6 +17,7 @@ from app.services.media_kafka_service import (
     publish_dvr_event,
     publish_snap_event,
 )
+from app.services.rtmp_ingest_auth_service import verify_rtmp_publish_hook
 from app.services.snap_upload_service import build_snap_event, process_snap_event
 
 logger = logging.getLogger(__name__)
@@ -47,19 +47,24 @@ def srs_on_dvr():
 def srs_on_publish():
     """转发至现有 on_publish 逻辑（流冲突检测）。"""
     data = request.get_json(silent=True) or {}
-    try:
-        raw_node_id = data.get('node_id') if data.get('node_id') is not None else data.get('nodeId')
-        node_id = int(raw_node_id) if raw_node_id not in (None, '') else None
-        tenant_id = data.get('tenant_id') or data.get('tenantId')
-        record_srs_publish_online(data, node_id=node_id, tenant_id=tenant_id)
-    except Exception as e:
-        logger.warning('record SRS publish access state failed: %s', e)
+    result = verify_rtmp_publish_hook(data, remote_ip=request.headers.get('X-Forwarded-For') or request.remote_addr)
+    if not result.get('accepted'):
+        return jsonify({'code': 403, 'msg': result.get('reason_message') or result.get('reason_code')}), 403
     from app.blueprints.camera import on_publish_callback
     return on_publish_callback()
 
 
 @media_hook_bp.route('/hook/srs/on_unpublish', methods=['POST'])
 def srs_on_unpublish():
+    return _hook_ok()
+
+
+@media_hook_bp.route('/hook/zlm/on_publish', methods=['POST'])
+def zlm_on_publish():
+    data = request.get_json(silent=True) or {}
+    result = verify_rtmp_publish_hook(data, remote_ip=request.headers.get('X-Forwarded-For') or request.remote_addr)
+    if not result.get('accepted'):
+        return jsonify({'code': 403, 'msg': result.get('reason_message') or result.get('reason_code')}), 403
     return _hook_ok()
 
 

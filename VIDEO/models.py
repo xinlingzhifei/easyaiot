@@ -165,6 +165,38 @@ class DeviceAccessStateCurrent(db.Model):
         }
 
 
+class DeviceRtmpIngestSecret(db.Model):
+    __tablename__ = 'device_rtmp_ingest_secret'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    device_id = db.Column(db.String(100), nullable=False, index=True)
+    tenant_id = db.Column(db.String(100), nullable=False, index=True)
+    token_version = db.Column(db.Integer, nullable=False, default=1)
+    secret = db.Column(db.String(128), nullable=False)
+    rotated_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
+
+
+class DeviceRtmpPublishAudit(db.Model):
+    __tablename__ = 'device_rtmp_publish_audit'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    device_id = db.Column(db.String(100), nullable=True, index=True)
+    tenant_id = db.Column(db.String(100), nullable=True, index=True)
+    node_id = db.Column(db.Integer, nullable=True, index=True)
+    app = db.Column(db.String(64), nullable=True)
+    stream = db.Column(db.String(200), nullable=True)
+    token_version = db.Column(db.Integer, nullable=True)
+    accepted = db.Column(db.Boolean, nullable=False, default=False)
+    reason_code = db.Column(db.String(100), nullable=False)
+    reason_message = db.Column(db.Text, nullable=True)
+    remote_ip = db.Column(db.String(64), nullable=True)
+    raw_params = db.Column(db.Text, nullable=True)
+    event_time = db.Column(db.DateTime, default=lambda: datetime.utcnow(), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
+
+
 class DeviceTrackSession(db.Model):
     """摄像头轨迹段：一次连续移动/巡逻/上报周期，供轨迹回放列表与分段展示。"""
     __tablename__ = 'device_track_session'

@@ -216,6 +216,41 @@ export const getDeviceInfo = (device_id: string, params?: { name?: string }) => 
   return commonApi('get', cameraDevicePath(device_id), params || {});
 };
 
+export interface RtmpIngestUrlInfo {
+  push_url: string;
+  device_id: string;
+  tenant_id: string;
+  app: string;
+  stream: string;
+  expires_at: number;
+  token_version: number;
+}
+
+export interface RtmpIngestTokenInfo {
+  device_id: string;
+  tenant_id: string;
+  token_version: number;
+  rotated_at?: string | null;
+}
+
+export const issueRtmpIngestUrl = (device_id: string, data?: {
+  tenant_id?: string;
+  tenantId?: string;
+  ttl?: number;
+  ttl_seconds?: number;
+  base_url?: string;
+  baseUrl?: string;
+}): Promise<RtmpIngestUrlInfo> => {
+  return commonApi('post', `${cameraDevicePath(device_id)}/rtmp-ingest-url`, data || {});
+};
+
+export const rotateRtmpIngestToken = (device_id: string, data?: {
+  tenant_id?: string;
+  tenantId?: string;
+}): Promise<RtmpIngestTokenInfo> => {
+  return commonApi('post', `${cameraDevicePath(device_id)}/rtmp-ingest-token/rotate`, data || {});
+};
+
 /** 确保设备已有关联的抓拍空间与录像空间（缺失则自动创建） */
 export const ensureDeviceSpaces = (device_id: string) => {
   return commonApi('post', `${cameraDevicePath(device_id)}/ensure-spaces`, {}, {}, false);

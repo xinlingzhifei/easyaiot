@@ -39,6 +39,10 @@ sys.modules.setdefault(
     "app.services.device_access_state_service",
     types.SimpleNamespace(record_srs_publish_online=Mock()),
 )
+sys.modules.setdefault(
+    "app.services.rtmp_ingest_auth_service",
+    types.SimpleNamespace(verify_rtmp_publish_hook=Mock(return_value={"accepted": True})),
+)
 
 camera_module = types.SimpleNamespace()
 
@@ -55,21 +59,56 @@ from app.blueprints import media_hook
 
 class MediaHookAccessStateTest(unittest.TestCase):
 
-    def test_srs_on_publish_records_stream_online_before_delegating(self):
+    def test_srs_on_publish_verifies_signed_ingest_before_delegating(self):
         app = Flask(__name__)
         payload = {
             "app": "live",
             "stream": "cam-001",
-            "node_id": 7,
-            "tenant_id": "tenant-a",
+            "param": "?tenant=tenant-a&exp=1700000060&ver=1&sig=abc",
         }
 
         with app.test_request_context("/hook/srs/on_publish", method="POST", json=payload):
-            with patch("app.blueprints.media_hook.record_srs_publish_online") as record_state:
+            with patch("app.blueprints.media_hook.verify_rtmp_publish_hook", return_value={"accepted": True}) as verify:
                 response = media_hook.srs_on_publish()
 
         self.assertEqual(200, response.status_code)
-        record_state.assert_called_once_with(payload, node_id=7, tenant_id="tenant-a")
+        verify.assert_called_once_with(payload, remote_ip=None)
+
+    def test_srs_on_publish_rejects_unsigned_ingest_without_delegating(self):
+        app = Flask(__name__)
+        payload = {"app": "live", "stream": "cam-001", "param": ""}
+        camera_module.on_publish_callback = Mock(side_effect=_ok_publish_callback)
+
+        with app.test_request_context("/hook/srs/on_publish", method="POST", json=payload):
+            with patch(
+                "app.blueprints.media_hook.verify_rtmp_publish_hook",
+                return_value={
+                    "accepted": False,
+                    "reason_code": "rtmp_missing_sig",
+                    "reason_message": "RTMP ingest signature is required",
+                },
+            ) as verify:
+                response = media_hook.srs_on_publish()
+
+        self.assertEqual(403, response[1])
+        self.assertEqual({"code": 403, "msg": "RTMP ingest signature is required"}, response[0].get_json())
+        verify.assert_called_once_with(payload, remote_ip=None)
+        camera_module.on_publish_callback.assert_not_called()
+
+    def test_zlm_on_publish_uses_same_signed_ingest_validation(self):
+        app = Flask(__name__)
+        payload = {
+            "app": "live",
+            "stream": "cam-001",
+            "param": "?tenant=tenant-a&exp=1700000060&ver=1&sig=abc",
+        }
+
+        with app.test_request_context("/hook/zlm/on_publish", method="POST", json=payload):
+            with patch("app.blueprints.media_hook.verify_rtmp_publish_hook", return_value={"accepted": True}) as verify:
+                response = media_hook.zlm_on_publish()
+
+        self.assertEqual({"code": 0, "msg": None}, response.get_json())
+        verify.assert_called_once_with(payload, remote_ip=None)
 
 
 if __name__ == "__main__":

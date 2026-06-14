@@ -104,6 +104,55 @@ def sign_stream_ticket():
     return jsonify({'code': 0, 'msg': 'success', 'data': {'e': e, 'st': st}})
 
 
+def _tenant_id_from_request(req, data=None) -> str:
+    body = data or {}
+    return (
+        str(body.get('tenant_id') or body.get('tenantId') or '').strip()
+        or (req.headers.get('tenant-id') or req.headers.get('Tenant-Id') or '').strip()
+    )
+
+
+@camera_bp.route('/device/<string:device_id>/rtmp-ingest-url', methods=['POST'])
+def issue_device_rtmp_ingest_url(device_id):
+    if not _check_login(request):
+        return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    tenant_id = _tenant_id_from_request(request, data)
+    if not tenant_id:
+        return jsonify({'code': 400, 'msg': 'tenant_id is required'}), 400
+    try:
+        from app.services.rtmp_ingest_auth_service import issue_rtmp_ingest_url
+
+        result = issue_rtmp_ingest_url(
+            device_id,
+            tenant_id=tenant_id,
+            ttl_seconds=int(data.get('ttl') or data.get('ttl_seconds') or 3600),
+            base_url=data.get('base_url') or data.get('baseUrl'),
+        )
+        return jsonify({'code': 0, 'msg': 'success', 'data': result})
+    except Exception as e:
+        logger.error('issue RTMP ingest URL failed device_id=%s: %s', device_id, e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/device/<string:device_id>/rtmp-ingest-token/rotate', methods=['POST'])
+def rotate_device_rtmp_ingest_token(device_id):
+    if not _check_login(request):
+        return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    tenant_id = _tenant_id_from_request(request, data)
+    if not tenant_id:
+        return jsonify({'code': 400, 'msg': 'tenant_id is required'}), 400
+    try:
+        from app.services.rtmp_ingest_auth_service import rotate_rtmp_ingest_token
+
+        result = rotate_rtmp_ingest_token(device_id, tenant_id=tenant_id)
+        return jsonify({'code': 0, 'msg': 'success', 'data': result})
+    except Exception as e:
+        logger.error('rotate RTMP ingest token failed device_id=%s: %s', device_id, e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
 def _strip_rtsp_transport_query(source_url: str) -> tuple[str, Optional[str]]:
     """
     从 RTSP URL 查询参数中读取传输方式并剔除该参数，避免将自定义参数传给 NVR/摄像头。

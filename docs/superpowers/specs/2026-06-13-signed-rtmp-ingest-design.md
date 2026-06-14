@@ -61,6 +61,35 @@ UI/API:
 - Audit records include device, tenant, media node, reason, remote IP, and
   timestamp.
 
+## Implementation Status
+
+Done in the current slice:
+
+- Added per-device, per-tenant RTMP ingest secrets with token version metadata.
+- Added signed URL issuance with bounded expiry and no raw secret exposure.
+- Added forced token rotation that invalidates the previous token version.
+- Added SRS/ZLM media-cluster `on_publish` validation for tenant, app, stream,
+  expiry, token version, and HMAC.
+- Added accepted/rejected publish audit records.
+- Added device access state writes: accepted publishes become `stream_online`;
+  rejected publishes become `error` with normalized RTMP reason codes.
+- Added camera API endpoints for issuing a signed URL and rotating the token.
+- Added frontend API wrappers for issue/rotate actions.
+- Added SQL DDL for the two RTMP ingest tables.
+
+Still required before calling the public RTMP ingress production-ready:
+
+- Wire the SQL into the project's migration execution chain and run it in the
+  target environments.
+- Cut over the real public SRS/ZLM hook configuration to the signed media-hook
+  routes, while preserving local/internal stream-forward compatibility.
+- Bind tenant authorization to the authenticated user/session, not only to a
+  request body or header value.
+- Add UI controls for viewing the signed URL state, expiry, rotation status,
+  and recent rejection reasons.
+- Run E2E public RTMP push validation against real SRS/ZLM nodes and verify the
+  resulting audit/state rows.
+
 ## Non-Goals
 
 - Implementing WebRTC playback authorization.
