@@ -17,7 +17,7 @@ export interface DashboardGuardTask {
   tracking_similarity_threshold?: number
   tracking_max_age?: number
   tracking_smooth_alpha?: number
-  alert_event_enabled?: boolean
+  alert_event_enabled?: boolean | number
   alert_event_suppress_time?: number
   alert_notification_enabled?: boolean
   alert_notification_config?: unknown
@@ -145,6 +145,10 @@ function isTaskEnabled(task: DashboardGuardTask) {
   return task.is_enabled === true || task.is_enabled === 1 || task.run_status === 'running'
 }
 
+function isAlertEventEnabled(task: DashboardGuardTask) {
+  return task.alert_event_enabled === true || task.alert_event_enabled === 1
+}
+
 export function buildDashboardGuardTaskName(scope: DashboardGuardScope) {
   return `${DASHBOARD_GUARD_TASK_PREFIX} ${scope.label} (${scope.key})`
 }
@@ -177,6 +181,21 @@ function findConflictingTasks(tasks: DashboardGuardTask[], deviceIds: string[], 
     if (!isTaskEnabled(task)) return false
     return normalizeStringIds(task.device_ids).some((id) => selected.has(id))
   })
+}
+
+function taskCoversAllDevices(task: DashboardGuardTask, deviceIds: string[]) {
+  const taskDeviceIds = new Set(normalizeStringIds(task.device_ids))
+  return deviceIds.every((id) => taskDeviceIds.has(id))
+}
+
+function findRunningAlertTaskCoveringScope(tasks: DashboardGuardTask[], deviceIds: string[]) {
+  return tasks.find(
+    (task) =>
+      !isDashboardGuardTask(task) &&
+      isTaskEnabled(task) &&
+      isAlertEventEnabled(task) &&
+      taskCoversAllDevices(task, deviceIds),
+  )
 }
 
 function formatConflictMessage(conflicts: DashboardGuardTask[]) {
@@ -248,17 +267,24 @@ export async function startDashboardGuardTask(options: StartDashboardGuardTaskOp
 
   const tasks = await listRealtimeTasks(api)
   const reusableTask = findReusableDashboardTask(tasks, { ...scope, deviceIds })
-  const templateTask = selectTemplateTask(tasks) || reusableTask
+  const runningCoveringTask = findRunningAlertTaskCoveringScope(tasks, deviceIds)
+  const templateTask = selectTemplateTask(tasks) || reusableTask || runningCoveringTask
   if (!templateTask) {
     throw new Error('No realtime algorithm task with models is available for dashboard guard recognition.')
   }
 
-  const conflicts = findConflictingTasks(tasks, deviceIds, reusableTask?.id)
+  const conflicts = runningCoveringTask
+    ? []
+    : findConflictingTasks(tasks, deviceIds, reusableTask?.id)
   if (conflicts.length) {
     throw new Error(formatConflictMessage(conflicts))
   }
 
   await stopOtherDashboardGuardTasks(api, tasks, scope)
+
+  if (runningCoveringTask) {
+    return { taskId: runningCoveringTask.id, reusedExistingTask: true }
+  }
 
   if (reusableTask) {
     if (!isTaskEnabled(reusableTask)) {
@@ -290,7 +316,10 @@ export async function getDashboardGuardStateForScope(options: GuardStateOptions)
   const { scope, api } = options
   if (!scope) return { enabled: false, taskId: null as number | null }
   const tasks = await listRealtimeTasks(api)
-  const task = tasks.find((item) => isDashboardGuardTaskForScope(item, scope) && isTaskEnabled(item))
+  const deviceIds = uniqueStrings(scope.deviceIds)
+  const task =
+    tasks.find((item) => isDashboardGuardTaskForScope(item, scope) && isTaskEnabled(item)) ||
+    findRunningAlertTaskCoveringScope(tasks, deviceIds)
   return { enabled: !!task, taskId: task?.id ?? null }
 }
 

@@ -185,6 +185,44 @@ assert.equal(payload.defense_mode, 'full')
 }
 
 {
+  const calls: string[] = []
+  const runningAllModelsTask = {
+    id: 80,
+    task_name: 'all_models_realtime',
+    task_type: 'realtime',
+    is_enabled: true,
+    alert_event_enabled: true,
+    device_ids: scope.deviceIds,
+    model_ids: [11, 12],
+  }
+  const api = {
+    listAlgorithmTasks: async () => ({ code: 0, data: [runningAllModelsTask], total: 1 }),
+    createAlgorithmTask: async () => {
+      throw new Error('create should not run when an enabled alerting task already covers the selected devices')
+    },
+    startAlgorithmTask: async () => {
+      throw new Error('start should not run when an enabled alerting task already covers the selected devices')
+    },
+    stopAlgorithmTask: async (taskId: number) => {
+      calls.push(`stop:${taskId}`)
+      return { id: taskId, is_enabled: false }
+    },
+  }
+
+  const result = await startDashboardGuardTask({ scope, api })
+  assert.equal(result.taskId, 80)
+  assert.equal(result.reusedExistingTask, true)
+  assert.deepEqual(calls, [])
+
+  const state = await getDashboardGuardStateForScope({ scope, api })
+  assert.equal(state.enabled, true)
+  assert.equal(state.taskId, 80)
+
+  await stopDashboardGuardTask({ scope, api })
+  assert.deepEqual(calls, [], 'The dashboard switch must not stop a manually managed all-models task.')
+}
+
+{
   const api = {
     listAlgorithmTasks: async () => ({
       code: 0,
