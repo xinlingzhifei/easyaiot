@@ -102,6 +102,9 @@ Implemented in the first TDD slice:
   Edge Agent outbound node. Edge mode enqueues `/ensure-edge-task`, which writes
   `edge_agent/registering` and lets the refreshed access-state column show the
   queued command status and later errors.
+- The `VIDEO/sql` DDL files for access state and signed RTMP ingest are now
+  registered in `video_schema_migration_service` and executed during
+  `VIDEO/run.py` database startup.
 
 Still remaining:
 
@@ -111,5 +114,5 @@ Still remaining:
 - Full frontend detail UI for recent command status, lease/running result, and
   RTMP signature rejection history beyond the table summary column.
 - HTTP-FLV/WebRTC playback probe writers and WebRTC NAT production rollout.
-- Full migration execution chain, monitoring, alerting, and real-device E2E
-  acceptance across public/cross-network scenarios.
+- Target-environment migration execution verification, monitoring, alerting,
+  and real-device E2E acceptance across public/cross-network scenarios.

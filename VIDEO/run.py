@@ -207,6 +207,10 @@ def create_app():
             try:
                 # 确保所有表都存在（包括 device_directory）
                 db.create_all()
+                from app.services.video_schema_migration_service import apply_video_schema_migrations
+                applied_schema_migrations = apply_video_schema_migrations(db.session)
+                if applied_schema_migrations:
+                    print(f"Video schema migrations applied: {', '.join(applied_schema_migrations)}")
                 
                 # 检查 device 表的 directory_id 列是否存在
                 result = db.session.execute(text("""

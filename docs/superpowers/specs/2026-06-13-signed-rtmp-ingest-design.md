@@ -76,11 +76,12 @@ Done in the current slice:
 - Added camera API endpoints for issuing a signed URL and rotating the token.
 - Added frontend API wrappers for issue/rotate actions.
 - Added SQL DDL for the two RTMP ingest tables.
+- Wired the SQL DDL into `video_schema_migration_service`, which runs during
+  `VIDEO/run.py` database startup.
 
 Still required before calling the public RTMP ingress production-ready:
 
-- Wire the SQL into the project's migration execution chain and run it in the
-  target environments.
+- Run and verify the migration execution chain in the target environments.
 - Cut over the real public SRS/ZLM hook configuration to the signed media-hook
   routes, while preserving local/internal stream-forward compatibility.
 - Bind tenant authorization to the authenticated user/session, not only to a
