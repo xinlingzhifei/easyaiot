@@ -268,3 +268,29 @@ export const ensureDeviceStreamForwardTask = (device_id: string) => {
   );
 };
 
+export interface EdgeStreamForwardCommandResult {
+  deviceId: string;
+  edgeNodeId: number;
+  payload?: Record<string, unknown>;
+  command?: Record<string, unknown>;
+}
+
+export const ensureEdgeStreamForwardTask = (device_id: string, data: {
+  edge_node_id?: number;
+  edgeNodeId?: number;
+  transport?: 'tcp' | 'udp';
+}) => {
+  return commonApi<{
+    code: number;
+    msg: string;
+    data: EdgeStreamForwardCommandResult;
+  }>(
+    'post',
+    `${STREAM_FORWARD_PREFIX}/device/${encodeURIComponent(device_id)}/ensure-edge-task`,
+    data,
+    {},
+    true,
+    'none',
+    LONG_RUNNING_TIMEOUT,
+  );
+};

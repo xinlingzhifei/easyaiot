@@ -95,13 +95,21 @@ Implemented in the first TDD slice:
   reason, play readiness, AI readiness, last transition time, and protocols.
 - The camera table UI includes an access-state column that shows state,
   playback readiness, AI readiness, and the current reason.
+- RTMP public push now has signed URL issuance, token rotation, SRS/ZLM
+  publish-hook validation, audit rows, and `rtmp` state writes for
+  `stream_online` and `error`.
+- Direct RTSP manual onboarding now lets the user choose local forwarding or an
+  Edge Agent outbound node. Edge mode enqueues `/ensure-edge-task`, which writes
+  `edge_agent/registering` and lets the refreshed access-state column show the
+  queued command status and later errors.
 
 Still remaining:
 
 - GB28181 SIP/catalog/PTZ writers into the shared state model.
-- Direct RTSP validation/pull writers.
-- RTMP signed ingest issuance, publish hook validation, audit, and token
-  rotation.
+- Direct RTSP source validation, same-network pull, and local media pull
+  readiness writers.
+- Full frontend detail UI for recent command status, lease/running result, and
+  RTMP signature rejection history beyond the table summary column.
 - HTTP-FLV/WebRTC playback probe writers and WebRTC NAT production rollout.
 - Full migration execution chain, monitoring, alerting, and real-device E2E
   acceptance across public/cross-network scenarios.
