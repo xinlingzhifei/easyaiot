@@ -78,3 +78,30 @@ remain queryable for debugging.
 - Redesigning the camera onboarding UI.
 - Implementing signed RTMP ingest or TURN/STUN rollout; those have separate
   specs.
+
+## Implementation Status
+
+Implemented in the first TDD slice:
+
+- `VIDEO` now has `device_access_state_event` and `device_access_state_current`
+  models plus an additive SQL schema file.
+- `record_device_access_event()` writes one transition and materializes the
+  current state using the shared state vocabulary.
+- Edge RTSP command enqueue writes `edge_agent/registering` with an actionable
+  `edge_command_queued` reason.
+- SRS `on_publish` writes `stream_online`, preferring an existing
+  `edge_agent` registration state and falling back to `rtmp`.
+- Device list serialization includes an `access_state` summary with state,
+  reason, play readiness, AI readiness, last transition time, and protocols.
+- The camera table UI includes an access-state column that shows state,
+  playback readiness, AI readiness, and the current reason.
+
+Still remaining:
+
+- GB28181 SIP/catalog/PTZ writers into the shared state model.
+- Direct RTSP validation/pull writers.
+- RTMP signed ingest issuance, publish hook validation, audit, and token
+  rotation.
+- HTTP-FLV/WebRTC playback probe writers and WebRTC NAT production rollout.
+- Full migration execution chain, monitoring, alerting, and real-device E2E
+  acceptance across public/cross-network scenarios.

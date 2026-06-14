@@ -610,6 +610,24 @@ export interface StartStreamResponse {
   };
 }
 
+export interface DeviceAccessStateSummary {
+  state:
+    | 'pending_config'
+    | 'registering'
+    | 'registered'
+    | 'stream_online'
+    | 'play_ready'
+    | 'ai_ready'
+    | 'error'
+    | string;
+  reason_code?: string | null;
+  reason_message?: string | null;
+  play_ready?: boolean;
+  ai_ready?: boolean;
+  last_transition_time?: string | null;
+  protocols?: string[];
+}
+
 export interface DeviceInfo {
   id: string;
   name: string;
@@ -641,6 +659,7 @@ export interface DeviceInfo {
   rtsp_direct?: string | null;
   channel_online?: boolean | null;
   connection_status?: string | null;
+  access_state?: DeviceAccessStateSummary;
   channel_count?: number;
   longitude?: number | null;
   latitude?: number | null;

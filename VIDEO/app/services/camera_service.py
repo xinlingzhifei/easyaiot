@@ -35,6 +35,12 @@ _LOCATION_FIELD_KEYS = frozenset({
 })
 
 
+def get_device_access_summary(device_id: str) -> dict:
+    from app.services.device_access_state_service import get_device_access_summary as _get_device_access_summary
+
+    return _get_device_access_summary(device_id)
+
+
 def _parse_optional_float(value):
     """解析可选浮点；空字符串/None 表示清除。"""
     if value is None or value == '':
@@ -398,6 +404,19 @@ def _to_dict(camera: Device) -> dict:
         online_status = True
     else:
         online_status = _monitor.is_online(camera.id)
+    try:
+        access_state = get_device_access_summary(camera.id)
+    except Exception as e:
+        logger.debug('device access state summary unavailable device_id=%s: %s', camera.id, e)
+        access_state = {
+            'state': 'pending_config',
+            'reason_code': 'access_state_unavailable',
+            'reason_message': 'Device access state is not available',
+            'play_ready': False,
+            'ai_ready': False,
+            'last_transition_time': None,
+            'protocols': [],
+        }
     
     source = (camera.source or '').strip()
     payload = {
@@ -425,6 +444,7 @@ def _to_dict(camera: Device) -> dict:
         'rtsp_direct': camera.rtsp_direct,
         'channel_online': camera.channel_online,
         'connection_status': camera.connection_status,
+        'access_state': access_state,
         'online': online_status,
         **_location_fields_for_device(camera),
         **nvr_fields_for_device(camera),

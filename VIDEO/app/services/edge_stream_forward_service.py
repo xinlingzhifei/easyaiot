@@ -2,6 +2,7 @@ import os
 from typing import Any, Dict
 
 from models import Device, db
+from app.services.device_access_state_service import record_device_access_event
 from app.utils.media_client import allocate_device_media, enqueue_agent_command
 
 
@@ -40,6 +41,18 @@ def ensure_edge_rtsp_forward(device_id: str, *, edge_node_id: int, transport: st
         command_type="stream_forward.deploy",
         command_key=f"stream_forward:{device_id}",
         payload=payload,
+    )
+    record_device_access_event(
+        device_id=device_id,
+        protocol="edge_agent",
+        state="registering",
+        reason_code="edge_command_queued",
+        reason_message="Edge Agent stream-forward command queued",
+        source_event="stream_forward.deploy.enqueued",
+        stream_id=f"live/{device_id}",
+        node_id=int(edge_node_id),
+        tenant_id=None,
+        commit=False,
     )
 
     device.rtmp_stream = rtmp_stream

@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request
 
 from app.services.dvr_device_resolver import resolve_device_from_hook
 from app.services.dvr_upload_service import process_dvr_event
+from app.services.device_access_state_service import record_srs_publish_online
 from app.services.media_kafka_service import (
     build_event_from_srs_hook,
     build_event_from_zlm_hook,
@@ -45,6 +46,14 @@ def srs_on_dvr():
 @media_hook_bp.route('/hook/srs/on_publish', methods=['POST'])
 def srs_on_publish():
     """转发至现有 on_publish 逻辑（流冲突检测）。"""
+    data = request.get_json(silent=True) or {}
+    try:
+        raw_node_id = data.get('node_id') if data.get('node_id') is not None else data.get('nodeId')
+        node_id = int(raw_node_id) if raw_node_id not in (None, '') else None
+        tenant_id = data.get('tenant_id') or data.get('tenantId')
+        record_srs_publish_online(data, node_id=node_id, tenant_id=tenant_id)
+    except Exception as e:
+        logger.warning('record SRS publish access state failed: %s', e)
     from app.blueprints.camera import on_publish_callback
     return on_publish_callback()
 

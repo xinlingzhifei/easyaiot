@@ -8,16 +8,19 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-sys.modules.setdefault(
-    "models",
-    types.SimpleNamespace(Device=object, db=types.SimpleNamespace(session=Mock())),
-)
+models_stub = sys.modules.setdefault("models", types.SimpleNamespace())
+models_stub.Device = object
+models_stub.DeviceAccessStateCurrent = object
+models_stub.DeviceAccessStateEvent = object
+models_stub.StreamForwardTask = getattr(models_stub, "StreamForwardTask", object)
+models_stub.db = getattr(models_stub, "db", types.SimpleNamespace(session=Mock()))
 
 from app.services.edge_stream_forward_service import ensure_edge_rtsp_forward
 
 
 class EdgeStreamForwardServiceTest(unittest.TestCase):
 
+    @patch("app.services.edge_stream_forward_service.record_device_access_event")
     @patch("app.services.edge_stream_forward_service.enqueue_agent_command")
     @patch("app.services.edge_stream_forward_service.allocate_device_media")
     @patch("app.services.edge_stream_forward_service.db")
@@ -28,6 +31,7 @@ class EdgeStreamForwardServiceTest(unittest.TestCase):
         db,
         allocate_media,
         enqueue,
+        record_state,
     ):
         device = Mock()
         device.id = "cam-001"
@@ -52,6 +56,18 @@ class EdgeStreamForwardServiceTest(unittest.TestCase):
         self.assertEqual("cam-001", payload["deviceId"])
         self.assertEqual("rtsp://user:pass@10.0.0.8/live", payload["rtspUrl"])
         self.assertEqual("rtmp://media.example.com/live/cam-001", payload["rtmpPushUrl"])
+        record_state.assert_called_once_with(
+            device_id="cam-001",
+            protocol="edge_agent",
+            state="registering",
+            reason_code="edge_command_queued",
+            reason_message="Edge Agent stream-forward command queued",
+            source_event="stream_forward.deploy.enqueued",
+            stream_id="live/cam-001",
+            node_id=7,
+            tenant_id=None,
+            commit=False,
+        )
         db.session.commit.assert_called_once()
 
     @patch("app.services.edge_stream_forward_service.Device")
