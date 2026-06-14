@@ -357,8 +357,8 @@ yFeiEye — это проект с открытым исходным кодом 
 
 ## ⚙️ Адреса проекта
 
-- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
-- Github: https://github.com/soaring-xiongkulu/easyaiot
+- Gitee: [yFeiEye](https://gitee.com/soaring-xiongkulu/easyaiot)
+- Github: [yFeiEye](https://github.com/soaring-xiongkulu/easyaiot)
 
 ## 📸 Скриншоты
 <div>
@@ -1008,13 +1008,13 @@ yFeiEye — это проект с открытым исходным кодом 
 ## 💡 Пожелания
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Добро пожаловать с предложениями по улучшению, которые помогут усовершенствовать easyaiot.
+Добро пожаловать с предложениями по улучшению, которые помогут усовершенствовать yFeiEye.
 </p>
 
 ## 📄 Авторские права
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/easyaiot использует лицензию с открытым исходным кодом <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Мы стремимся способствовать популяризации и развитию технологий ИИ, позволяя большему количеству людей свободно использовать и получать выгоду от этой технологии.
+翱翔的雄库鲁/yFeiEye использует лицензию с открытым исходным кодом <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Мы стремимся способствовать популяризации и развитию технологий ИИ, позволяя большему количеству людей свободно использовать и получать выгоду от этой технологии.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">

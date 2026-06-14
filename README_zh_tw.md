@@ -357,8 +357,8 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 
 ## ⚙️ 項目地址
 
-- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
-- Github: https://github.com/soaring-xiongkulu/easyaiot
+- Gitee: [yFeiEye](https://gitee.com/soaring-xiongkulu/easyaiot)
+- Github: [yFeiEye](https://github.com/soaring-xiongkulu/easyaiot)
 
 ## 📸 截圖
 <div>
@@ -1008,13 +1008,13 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 ## 💡 期望
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-歡迎提出更好的意見，幫助完善 easyaiot
+歡迎提出更好的意見，幫助完善 yFeiEye
 </p>
 
 ## 📄 版權
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翺翔的雄庫魯/easyaiot 采用 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 開源協議。我們致力於推動 AI 技術的普及與發展，讓更多人能夠自由使用和受益於這項技術。
+翺翔的雄庫魯/yFeiEye 采用 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 開源協議。我們致力於推動 AI 技術的普及與發展，讓更多人能夠自由使用和受益於這項技術。
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">

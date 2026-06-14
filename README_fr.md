@@ -357,8 +357,8 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
 
 ## ⚙️ Dépôts du projet
 
-- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
-- Github: https://github.com/soaring-xiongkulu/easyaiot
+- Gitee: [yFeiEye](https://gitee.com/soaring-xiongkulu/easyaiot)
+- Github: [yFeiEye](https://github.com/soaring-xiongkulu/easyaiot)
 
 ## 📸 Captures d'écran
 <div>
@@ -1014,7 +1014,7 @@ Vos suggestions pour améliorer yFeiEye sont les bienvenues.
 ## 📄 Licence
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/easyaiot utilise la licence open source <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
+翱翔的雄库鲁/yFeiEye utilise la licence open source <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">

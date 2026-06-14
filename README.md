@@ -360,8 +360,8 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 
 ## ⚙️ Project Repositories
 
-- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
-- Github: https://github.com/soaring-xiongkulu/easyaiot
+- Gitee: [yFeiEye](https://gitee.com/soaring-xiongkulu/easyaiot)
+- Github: [yFeiEye](https://github.com/soaring-xiongkulu/easyaiot)
 
 ## 📸 Screenshots
 <div>
@@ -970,13 +970,13 @@ Thanks to the following contributors for code, feedback, donations, and support 
 ## 💡 Expectations
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-We welcome suggestions for improvement to help refine easyaiot.
+We welcome suggestions for improvement to help refine yFeiEye.
 </p>
 
 ## 📄 Copyright
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Soaring Xiongkulu / easyaiot is licensed under the <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. We are committed to promoting the popularization and development of AI technology, enabling more people to freely use and benefit from this technology.
+Soaring Xiongkulu / yFeiEye is licensed under the <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. We are committed to promoting the popularization and development of AI technology, enabling more people to freely use and benefit from this technology.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">

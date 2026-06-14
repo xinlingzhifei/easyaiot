@@ -357,8 +357,8 @@ yFeiEye는 오픈소스 학습 프로젝트이며 상업적 행위와 무관합�
 
 ## ⚙️ 프로젝트 주소
 
-- Gitee: https://gitee.com/soaring-xiongkulu/easyaiot
-- Github: https://github.com/soaring-xiongkulu/easyaiot
+- Gitee: [yFeiEye](https://gitee.com/soaring-xiongkulu/easyaiot)
+- Github: [yFeiEye](https://github.com/soaring-xiongkulu/easyaiot)
 
 ## 📸 스크린샷
 <div>
@@ -1008,13 +1008,13 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 ## 💡 기대
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-좋은 의견을 제안하여 easyaiot을 완성하는 데 도움을 주세요.
+좋은 의견을 제안하여 yFeiEye을 완성하는 데 도움을 주세요.
 </p>
 
 ## 📄 저작권
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/easyaiot는 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 오픈소스 라이선스를 채택합니다. 우리는 AI 기술의 대중화와 발전을 촉진하여 더 많은 사람들이 이 기술을 자유롭게 사용하고 혜택을 받을 수 있도록 노력하고 있습니다.
+翱翔的雄库鲁/yFeiEye는 <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 오픈소스 라이선스를 채택합니다. 우리는 AI 기술의 대중화와 발전을 촉진하여 더 많은 사람들이 이 기술을 자유롭게 사용하고 혜택을 받을 수 있도록 노력하고 있습니다.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
