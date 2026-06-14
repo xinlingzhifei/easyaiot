@@ -57,6 +57,18 @@
           </span>
         </div>
       </div>
+      <div class="guard-control" data-testid="dashboard-guard-toggle">
+        <div class="guard-copy">
+          <span class="guard-title">启用识别</span>
+          <span class="guard-target" :title="guardScopeLabel">{{ guardScopeLabel }}</span>
+        </div>
+        <ASwitch
+          size="small"
+          :checked="guardChecked"
+          :loading="guardBusy || guardStateLoading"
+          @change="handleGuardSwitchChange"
+        />
+      </div>
       <!-- 设备树（与分屏监控一致：搜索框固定，树列表区域滚动） -->
       <div class="sidebar-tree">
         <div class="sidebar-tree-scroll">
@@ -82,6 +94,7 @@
 
 <script lang="ts" setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { Switch as ASwitch } from 'ant-design-vue'
 import { Icon } from '@/components/Icon'
 import { BasicTree } from '@/components/Tree'
 import type { TreeItem } from '@/components/Tree'
@@ -92,6 +105,7 @@ import {
   countMonitorTreePlayableLeaves,
   findMonitorGbDeviceByChannel,
   findMonitorTreeNodeByKey,
+  withDirectoryTreeSelectable,
 } from '@/views/camera/utils/monitorDeviceTree'
 import { buildWvpChannelTreeNodes, parseGbChannelKey, type GbChannelRef } from '@/views/camera/utils/gb28181Tree'
 import { getDeviceChannels } from '@/api/device/gb28181'
@@ -103,6 +117,21 @@ import {
 } from '@/views/camera/utils/monitorGbDisplay'
 import { getDashboardStatistics } from '@/api/device/calculate'
 import { useMessage } from '@/hooks/web/useMessage'
+import {
+  createDashboardGuardScopeFromNode,
+  extractDashboardGuardErrorMessage,
+  getDashboardGuardStateForScope,
+  startDashboardGuardTask,
+  stopDashboardGuardTask,
+  type DashboardGuardScope,
+  type DashboardGuardTaskApi,
+} from '../dashboardGuardTask'
+import {
+  createAlgorithmTask,
+  listAlgorithmTasks,
+  startAlgorithmTask,
+  stopAlgorithmTask,
+} from '@/api/device/algorithm_task'
 import type { TreeProps } from 'ant-design-vue'
 
 defineOptions({
@@ -124,6 +153,18 @@ const expandedKeys = ref<string[]>([])
 const selectedKeys = ref<string[]>([])
 const treeData = ref<TreeItem[]>([])
 const loading = ref(false)
+const selectedGuardScope = ref<DashboardGuardScope | null>(null)
+const guardChecked = ref(false)
+const guardBusy = ref(false)
+const guardStateLoading = ref(false)
+
+const GUARD_SCOPE_STORAGE_KEY = 'yfeieye.dashboard.monitor.guardScopeKey'
+const dashboardGuardApi: DashboardGuardTaskApi = {
+  listAlgorithmTasks,
+  createAlgorithmTask: createAlgorithmTask as DashboardGuardTaskApi['createAlgorithmTask'],
+  startAlgorithmTask,
+  stopAlgorithmTask,
+}
 
 // 统计数据
 const statistics = ref({
@@ -134,6 +175,103 @@ const statistics = ref({
 })
 
 const playableLeafCount = computed(() => countMonitorTreePlayableLeaves(treeData.value))
+const guardScopeLabel = computed(() => {
+  const scope = selectedGuardScope.value
+  if (!scope) return '请选择设备或设备组'
+  return `${scope.label} · ${scope.deviceIds.length} 个设备`
+})
+
+function readPersistedGuardScopeKey() {
+  if (typeof window === 'undefined') return ''
+  try {
+    return window.sessionStorage.getItem(GUARD_SCOPE_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+function persistGuardScopeKey(key: string) {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(GUARD_SCOPE_STORAGE_KEY, key)
+  } catch {
+    // Keep the in-page guard switch usable even when storage is unavailable.
+  }
+}
+
+async function refreshGuardState(scope = selectedGuardScope.value) {
+  if (!scope) {
+    guardChecked.value = false
+    return
+  }
+  guardStateLoading.value = true
+  try {
+    const state = await getDashboardGuardStateForScope({ scope, api: dashboardGuardApi })
+    if (selectedGuardScope.value?.key === scope.key) {
+      guardChecked.value = state.enabled
+    }
+  } catch (error) {
+    console.warn('刷新首页识别状态失败', error)
+  } finally {
+    guardStateLoading.value = false
+  }
+}
+
+async function setGuardScopeFromNode(node: TreeItem, showHint = false) {
+  const scope = createDashboardGuardScopeFromNode(node as any)
+  selectedGuardScope.value = scope
+  persistGuardScopeKey(scope.key)
+  await refreshGuardState(scope)
+  if (!showHint) return
+  if (scope.deviceIds.length > 0) {
+    createMessage.success(`已选择识别目标：${scope.label}`)
+  } else {
+    createMessage.warning('当前目标下没有已同步设备，请选择摄像头或已同步国标通道')
+  }
+}
+
+async function restorePersistedGuardScope() {
+  const key = readPersistedGuardScopeKey()
+  if (!key) return
+  const node = findMonitorTreeNodeByKey(treeData.value, key)
+  if (!node) return
+  selectedKeys.value = [key]
+  await setGuardScopeFromNode(node)
+}
+
+async function handleGuardSwitchChange(checked: boolean) {
+  if (guardBusy.value) return
+  const scope = selectedGuardScope.value
+  if (!scope) {
+    guardChecked.value = false
+    createMessage.warning('请先选择设备或设备组')
+    return
+  }
+  if (!scope.deviceIds.length) {
+    guardChecked.value = false
+    createMessage.warning('当前目标下没有可识别的已同步设备')
+    return
+  }
+
+  const previous = guardChecked.value
+  guardChecked.value = checked
+  guardBusy.value = true
+  try {
+    if (checked) {
+      await startDashboardGuardTask({ scope, api: dashboardGuardApi })
+      createMessage.success(`已启用识别：${scope.label}`)
+    } else {
+      await stopDashboardGuardTask({ scope, api: dashboardGuardApi })
+      createMessage.success(`已停止识别：${scope.label}`)
+    }
+    await refreshGuardState(scope)
+  } catch (error) {
+    guardChecked.value = previous
+    createMessage.error(extractDashboardGuardErrorMessage(error))
+  } finally {
+    guardBusy.value = false
+  }
+}
 
 const onLoadGbDeviceChannels: TreeProps['loadData'] = (treeNode) => {
   return new Promise<void>((resolve) => {
@@ -174,8 +312,9 @@ const loadTreeData = async () => {
   await loadMonitorDirectoryTreeWithCache({
     skipSync: false,
     onBundle: (bundle) => {
-      treeData.value = bundle.treeItems
+      treeData.value = withDirectoryTreeSelectable(bundle.treeItems)
       expandedKeys.value = collectMonitorTreeExpandedKeys(treeData.value)
+      restorePersistedGuardScope()
     },
     onError: (error) => {
       console.error('加载设备目录失败', error)
@@ -244,26 +383,34 @@ function buildGbChannelPlayPayload(gb: GbChannelRef, node: TreeItem | null) {
 }
 
 // 处理树节点选择（与分屏监控一致：国标设备下展开通道后点播）
-const handleTreeSelect = (keys: string[], _info?: unknown) => {
+const handleTreeSelect = async (keys: string[], _info?: unknown) => {
   if (!keys.length) return
 
   const selectedKey = String(keys[0])
+  const node = findMonitorTreeNodeByKey(treeData.value, selectedKey)
+  if (!node) return
 
   if (selectedKey.startsWith('gb_dev_')) {
-    createMessage.info('请展开国标设备并选择具体通道')
+    selectedKeys.value = [selectedKey]
+    await setGuardScopeFromNode(node, true)
+    if (!node.children?.length) {
+      createMessage.info('请展开国标设备后再启用整组识别')
+    }
     return
   }
   if (selectedKey.startsWith('nvr_')) {
-    createMessage.info('请展开 NVR 并选择具体通道')
+    selectedKeys.value = [selectedKey]
+    await setGuardScopeFromNode(node, true)
+    if (!node.children?.length) {
+      createMessage.info('请展开 NVR 后再启用整组识别')
+    }
     return
   }
   if (selectedKey.startsWith('gb_dir_') || selectedKey.startsWith('dir_')) {
-    createMessage.info('请选择摄像头或国标通道')
+    selectedKeys.value = [selectedKey]
+    await setGuardScopeFromNode(node, true)
     return
   }
-
-  const node = findMonitorTreeNodeByKey(treeData.value, selectedKey)
-  if (!node) return
 
   if (selectedKey.startsWith('gb_ch_')) {
     let gb = parseGbChannelKey(selectedKey)
@@ -276,6 +423,7 @@ const handleTreeSelect = (keys: string[], _info?: unknown) => {
     }
     selectedKeys.value = [selectedKey]
     const payload = buildGbChannelPlayPayload(gb, node)
+    await setGuardScopeFromNode(node)
     emit('device-change', payload)
     emit('device-play', payload)
     return
@@ -297,6 +445,7 @@ const handleTreeSelect = (keys: string[], _info?: unknown) => {
   }
 
   selectedKeys.value = [selectedKey]
+  await setGuardScopeFromNode(node)
   const payload = {
     id: device.id,
     name: formatCameraDeviceLabel(device),

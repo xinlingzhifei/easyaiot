@@ -153,7 +153,7 @@ export const createAlgorithmTask = (data: {
       template_id: string | number;
       template_name?: string;
     }>;
-  };
+  } | string | null;
   alarm_suppress_time?: number;
   // 抓拍算法任务配置
   cron_expression?: string;
@@ -162,6 +162,8 @@ export const createAlgorithmTask = (data: {
   is_enabled?: boolean;
   defense_mode?: string;
   defense_schedule?: string;
+  schedule_policy?: 'local' | 'auto' | 'node';
+  target_node_id?: number | null;
 }) => {
   return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
     'post',
@@ -608,4 +610,3 @@ export const getTaskStreams = (task_id: number) => {
     `${ALGORITHM_PREFIX}/task/${task_id}/streams`
   );
 };
-
