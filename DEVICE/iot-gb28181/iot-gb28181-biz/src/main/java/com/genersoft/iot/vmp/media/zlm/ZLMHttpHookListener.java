@@ -109,7 +109,7 @@ public class ZLMHttpHookListener {
 
         String mediaServerId = json.getString("mediaServerId");
         MediaServer mediaServer = getHookMediaServer(mediaServerId);
-        if (mediaServer != null && ObjectUtils.isEmpty(mediaServerId)) {
+        if (mediaServer != null && !Objects.equals(mediaServer.getId(), mediaServerId)) {
             param.setMediaServerId(mediaServer.getId());
         }
         if (mediaServer == null) {
@@ -132,7 +132,10 @@ public class ZLMHttpHookListener {
 
     private MediaServer getHookMediaServer(String mediaServerId) {
         if (!ObjectUtils.isEmpty(mediaServerId)) {
-            return mediaServerService.getOne(mediaServerId);
+            MediaServer mediaServer = mediaServerService.getOne(mediaServerId);
+            if (mediaServer != null) {
+                return mediaServer;
+            }
         }
         return mediaServerService.getDefaultMediaServer();
     }

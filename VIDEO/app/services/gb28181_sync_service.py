@@ -344,7 +344,7 @@ def _upsert_gb_device(
         if not (device.ai_rtmp_stream or '').strip():
             device.ai_rtmp_stream = ai_rtmp_stream
             changed = True
-        if not (device.ai_http_stream or '').strip():
+        if ai_http_stream and (device.ai_http_stream or '').strip() != ai_http_stream:
             device.ai_http_stream = ai_http_stream
             changed = True
         if _apply_gb_location(device, location or {}):
@@ -419,14 +419,16 @@ def backfill_gb28181_ai_stream_urls() -> int:
         source = (device.source or '').strip()
         if not source.lower().startswith(prefix):
             continue
-        need_ai = not (device.ai_rtmp_stream or '').strip() or not (device.ai_http_stream or '').strip()
-        if not need_ai:
-            continue
         _, _, ai_rtmp, ai_http = gb28181_device_stream_urls(device.id)
+        changed = False
         if not (device.ai_rtmp_stream or '').strip():
             device.ai_rtmp_stream = ai_rtmp
-        if not (device.ai_http_stream or '').strip():
+            changed = True
+        if ai_http and (device.ai_http_stream or '').strip() != ai_http:
             device.ai_http_stream = ai_http
+            changed = True
+        if not changed:
+            continue
         updated += 1
     if updated:
         db.session.commit()

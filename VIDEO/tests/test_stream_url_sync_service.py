@@ -53,6 +53,20 @@ class StreamUrlSyncServiceTest(unittest.TestCase):
         self.assertEqual(http_stream, "https://eye.yfeiai.com/live/gb28181_demo.flv")
         self.assertEqual(ai_http_stream, "https://eye.yfeiai.com/ai/gb28181_demo.flv")
 
+    def test_build_gb28181_zlm_http_flv_url_uses_public_rtp_route(self):
+        os.environ["MEDIA_HTTP_PLAY_HOST"] = "https://eye.yfeiai.com/"
+
+        url = stream_url_sync_service.build_gb28181_zlm_http_flv_url(
+            "gb28181_44010200493432381460_34020000001320000001",
+        )
+
+        self.assertEqual(
+            url,
+            "https://eye.yfeiai.com/rtp/"
+            "44010200493432381460_34020000001320000001.live.flv"
+            "?originTypeStr=rtp_push&videoCodec=H265",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

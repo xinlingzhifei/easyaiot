@@ -63,6 +63,54 @@ def _build_http_flv_url(
     return f'http://{node_host}:{http_port}/{clean_path}'
 
 
+def parse_gb28181_virtual_device_id(device_id: str) -> Optional[Tuple[str, str]]:
+    device_id = (device_id or '').strip()
+    prefix = 'gb28181_'
+    if not device_id.startswith(prefix):
+        return None
+    rest = device_id[len(prefix):]
+    if not rest or '_' not in rest:
+        return None
+    sip_device_id, channel_id = rest.rsplit('_', 1)
+    sip_device_id = sip_device_id.strip()
+    channel_id = channel_id.strip()
+    if not sip_device_id or not channel_id:
+        return None
+    return sip_device_id, channel_id
+
+
+def build_gb28181_zlm_http_flv_url(
+    device_id: str,
+    *,
+    http_play_host: Optional[str] = None,
+    node_host: Optional[str] = None,
+    http_port: Optional[int] = None,
+) -> Optional[str]:
+    parsed = parse_gb28181_virtual_device_id(device_id)
+    if not parsed:
+        return None
+
+    sip_device_id, channel_id = parsed
+    stream_id = f'{sip_device_id}_{channel_id}'
+    host = (
+        (node_host or '').strip()
+        or (os.getenv('ZLM_HTTP_HOST') or '').strip()
+        or (os.getenv('MEDIA_HTTP_HOST') or '').strip()
+        or (os.getenv('POD_IP') or '').strip()
+        or '127.0.0.1'
+    )
+    try:
+        port = int(http_port or os.getenv('ZLM_HTTP_PORT') or 80)
+    except (TypeError, ValueError):
+        port = 80
+    return _build_http_flv_url(
+        http_play_host,
+        host,
+        port,
+        f'rtp/{stream_id}.live.flv?originTypeStr=rtp_push&videoCodec=H265',
+    )
+
+
 def _find_stream_forward_deployment(device_id: str) -> Optional[Dict[str, Any]]:
     tasks = (
         StreamForwardTask.query.filter(StreamForwardTask.is_enabled.is_(True))
@@ -90,6 +138,14 @@ def _find_stream_forward_deployment(device_id: str) -> Optional[Dict[str, Any]]:
 def resolve_device_stream_urls(device: Device) -> Tuple[str, str, str, str]:
     """解析设备当前应使用的流地址（只读，不写库）。"""
     device_id = device.id
+    source = (getattr(device, 'source', None) or '').strip().lower()
+    gb28181_http_stream = (
+        build_gb28181_zlm_http_flv_url(device_id)
+        if source.startswith('gb28181://')
+        else None
+    )
+    if gb28181_http_stream:
+        return '', '', device.ai_rtmp_stream or '', gb28181_http_stream
     try:
         from app.utils.media_client import (
             get_device_media_binding,

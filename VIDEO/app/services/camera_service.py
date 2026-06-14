@@ -400,6 +400,13 @@ def _to_dict(camera: Device) -> dict:
         online_status = _monitor.is_online(camera.id)
     
     source = (camera.source or '').strip()
+    ai_http_stream = camera.ai_http_stream
+    if source.lower().startswith('gb28181://'):
+        try:
+            from app.services.stream_url_sync_service import build_gb28181_zlm_http_flv_url
+            ai_http_stream = build_gb28181_zlm_http_flv_url(camera.id) or ai_http_stream
+        except Exception as e:
+            logger.debug('Failed to build GB28181 public stream URL device_id=%s: %s', camera.id, e)
     payload = {
         'id': camera.id,
         'name': camera.name,
@@ -407,7 +414,7 @@ def _to_dict(camera: Device) -> dict:
         'rtmp_stream': camera.rtmp_stream,
         'http_stream': camera.http_stream,
         'ai_rtmp_stream': camera.ai_rtmp_stream,
-        'ai_http_stream': camera.ai_http_stream,
+        'ai_http_stream': ai_http_stream,
         'enable_forward': camera.enable_forward,
         'stream': camera.stream,
         'ip': camera.ip,
@@ -597,6 +604,13 @@ def _default_stream_urls(device_id: str) -> tuple[str, str, str, str]:
 def gb28181_device_stream_urls(device_id: str) -> tuple[str, str, str, str]:
     """国标虚拟设备：播放走 WVP 点播，仅生成算法任务用的 AI 推流地址。"""
     try:
+        from app.services.stream_url_sync_service import build_gb28181_zlm_http_flv_url
+        gb28181_http_stream = build_gb28181_zlm_http_flv_url(device_id)
+    except Exception as e:
+        logger.warning('Failed to build GB28181 ZLM playback URL device_id=%s: %s', device_id, e)
+        gb28181_http_stream = None
+
+    try:
         from app.utils.media_client import (
             allocate_device_media,
             is_media_pool_enabled,
@@ -610,12 +624,12 @@ def gb28181_device_stream_urls(device_id: str) -> tuple[str, str, str, str]:
                 need_zlm=True,
             )
             _, _, ai_rtmp_stream, ai_http_stream = stream_urls_from_binding(binding)
-            return '', '', ai_rtmp_stream, ai_http_stream
+            return '', '', ai_rtmp_stream, gb28181_http_stream or ai_http_stream
     except Exception as e:
         logger.warning('国标设备媒体节点池分配失败 device_id=%s，回退本机地址: %s', device_id, e)
 
     _, _, ai_rtmp_stream, ai_http_stream = _legacy_local_stream_urls(device_id)
-    return '', '', ai_rtmp_stream, ai_http_stream
+    return '', '', ai_rtmp_stream, gb28181_http_stream or ai_http_stream
 
 
 def resolve_device_ai_rtmp_stream(device) -> str | None:
