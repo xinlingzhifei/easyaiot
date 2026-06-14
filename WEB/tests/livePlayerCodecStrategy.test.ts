@@ -106,10 +106,10 @@ try {
       videoCodec: 'H265',
       url: 'https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265',
     }),
-    'native',
+    'easywasm',
   )
 
-  const nativeH265Source = pickWvpPlaySource({
+  const browserReportedHevcSource = pickWvpPlaySource({
     https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
     https_fmp4: 'https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265',
     wss_flv: 'wss://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
@@ -118,10 +118,10 @@ try {
     isHttps: true,
   })
 
-  assert.deepEqual(nativeH265Source, {
-    url: 'https://eye.yfeiai.com/rtp/demo.live.mp4?videoCodec=H265',
+  assert.deepEqual(browserReportedHevcSource, {
+    url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
     videoCodec: 'h265',
-    playerEngine: 'native',
+    playerEngine: 'easywasm',
   })
 } finally {
   if (originalDocument === undefined) {

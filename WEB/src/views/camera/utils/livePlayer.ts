@@ -91,7 +91,6 @@ export function pickLivePlayerEngine(options: {
 }): LivePlayerEngine {
   const codec = normalizeVideoCodec(options.videoCodec);
   const urlCodec = codec === 'unknown' ? detectVideoCodecFromUrl(options.url) : codec;
-  if (urlCodec === 'h265' && isFmp4StreamUrl(options.url) && canPlayNativeHevc()) return 'native';
   return WASM_VIDEO_CODECS.has(urlCodec) ? 'easywasm' : 'jessibuca';
 }
 
@@ -123,45 +122,24 @@ export function pickWvpPlaySource(
       return trimmed || null;
     });
   const videoCodec = getStreamVideoCodec(streamContent);
-  const preferNativeFmp4 = videoCodec === 'h265' && canPlayNativeHevc();
   const candidates = isHttps
-    ? preferNativeFmp4
-      ? [
-          streamContent.https_fmp4,
-          streamContent.https_flv,
-          streamContent.wss_fmp4,
-          streamContent.wss_flv,
-          streamContent.fmp4,
-          streamContent.flv,
-          streamContent.ws_flv,
-        ]
-      : [
-          streamContent.https_flv,
-          streamContent.https_fmp4,
-          streamContent.wss_flv,
-          streamContent.wss_fmp4,
-          streamContent.flv,
-          streamContent.ws_flv,
-          streamContent.fmp4,
-        ]
-    : preferNativeFmp4
-      ? [
-          streamContent.fmp4,
-          streamContent.ws_fmp4,
-          streamContent.flv,
-          streamContent.ws_flv,
-          streamContent.https_fmp4,
-          streamContent.https_flv,
-          streamContent.wss_flv,
-        ]
-      : [
-          streamContent.ws_flv,
-          streamContent.flv,
-          streamContent.ws_fmp4,
-          streamContent.fmp4,
-          streamContent.https_flv,
-          streamContent.wss_flv,
-        ];
+    ? [
+        streamContent.https_flv,
+        streamContent.wss_flv,
+        streamContent.https_fmp4,
+        streamContent.wss_fmp4,
+        streamContent.flv,
+        streamContent.ws_flv,
+        streamContent.fmp4,
+      ]
+    : [
+        streamContent.ws_flv,
+        streamContent.flv,
+        streamContent.ws_fmp4,
+        streamContent.fmp4,
+        streamContent.https_flv,
+        streamContent.wss_flv,
+      ];
 
   for (const raw of candidates) {
     const url = toPlayableUrl(raw);
