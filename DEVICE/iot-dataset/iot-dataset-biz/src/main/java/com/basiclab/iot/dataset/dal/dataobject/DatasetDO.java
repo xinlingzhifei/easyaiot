@@ -64,7 +64,7 @@ public class DatasetDO extends BaseEntity {
      */
     private Integer isAllocated;
     /**
-     * 自动化标注预训练模型服务ID
+     * 自动化标注模型 ID（直连 AI 推理，无需部署推理服务）
      */
     private Long modelServiceId;
     /**

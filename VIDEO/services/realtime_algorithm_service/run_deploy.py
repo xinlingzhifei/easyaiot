@@ -51,8 +51,7 @@ from app.utils.gb28181_source import (
 )
 from app.services.camera_service import gb28181_device_stream_urls, resolve_device_ai_rtmp_stream
 from app.utils.alert_images_paths import resolve_alert_images_root
-from app.utils.async_video_stream import AsyncVideoStream, async_rtsp_read_enabled
-from app.utils.rtsp_stream_utils import open_network_videocapture
+from app.utils.decode.stream_adapter import is_async_stream, open_device_stream, stream_mode_label
 from app.utils.onnx_inference import ONNXInference
 from app.utils.algo_model_detect import (
     allowed_classes_include_person,
@@ -339,8 +338,8 @@ overlay_detection_queues = {}  # {device_id: queue.Queue}
 alert_detection_queues = {}  # {device_id: queue.Queue}
 overlay_executor = None
 alert_executor = None
-# 摄像头流连接（VideoCapture 或 AsyncVideoStream）
-device_caps = {}  # {device_id: cv2.VideoCapture | AsyncVideoStream}
+# 摄像头流连接（FFmpeg 解码 / OpenCV / 异步缓冲）
+device_caps = {}  # {device_id: FfmpegVideoStream | AsyncVideoStream | cv2.VideoCapture}
 # 摄像头推送进程（FFmpeg进程）
 device_pushers = {}  # {device_id: subprocess.Popen}
 # 固定速率推帧线程：将推帧从主循环解耦，确保匀速推流
@@ -360,6 +359,9 @@ last_alert_time = {}  # {device_id: timestamp}
 alert_time_lock = threading.Lock()  # 告警时间戳锁，确保线程安全
 # 最新检测 overlay 缓存：检测迟达时主画面仍可叠框（与告警图一致）
 device_latest_overlays = {}  # {device_id: {'detections': [...], 'timestamp': float, 'frame_number': int}}
+# SAM 补充识别（YOLO + SAM Pipeline）
+_sam_config = None
+_sam_client = None
 device_latest_overlay_locks = {}  # {device_id: threading.Lock()}
 
 
@@ -804,6 +806,33 @@ def _run_yolo_on_frame(
             dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0)
             for det in all_detections
         ]
+
+    # SAM 补充识别（Pipeline 精修 / 开放词汇 / 告警确认）
+    global _sam_config, _sam_client
+    if _sam_config and _sam_config.get('enabled') and _sam_client:
+        try:
+            from app.utils.sam_supplement import sam_supplement_frame
+            supplemented = sam_supplement_frame(
+                frame, all_detections, _sam_config, _sam_client, frame_number=frame_number,
+            )
+            if supplemented is not all_detections:
+                all_detections = supplemented
+                if use_tracking and task_config and task_config.tracking_enabled:
+                    tracker = trackers.get(device_id)
+                    if tracker:
+                        tracked_detections = tracker.update(all_detections, frame_number, current_time=timestamp)
+                    else:
+                        tracked_detections = [
+                            dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0)
+                            for det in all_detections
+                        ]
+                else:
+                    tracked_detections = [
+                        dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0)
+                        for det in all_detections
+                    ]
+        except Exception as e:
+            logger.warning(f"SAM 补充识别异常 device={device_id}: {e}")
 
     detections = []
     for tracked_det in tracked_detections:
@@ -1330,7 +1359,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
 
 def load_task_config():
     """从数据库加载任务配置（重启时会重新加载，确保获取最新的摄像头信息）"""
-    global task_config, yolo_models, yolo_model_devices, yolo_model_allowed_classes, tracker
+    global task_config, yolo_models, yolo_model_devices, yolo_model_allowed_classes, tracker, _sam_config, _sam_client
 
     try:
         logger.info(f"🔄 正在从数据库重新加载任务配置: task_id={TASK_ID}")
@@ -1343,6 +1372,31 @@ def load_task_config():
             return False
 
         task_config = task
+
+        # SAM 补充识别配置
+        try:
+            from app.utils.sam_supplement import load_sam_config_from_env, SamClient
+            _sam_config = load_sam_config_from_env()
+            if not _sam_config.get('enabled') and getattr(task, 'sam_supplement_enabled', False):
+                raw = getattr(task, 'sam_supplement_config', None)
+                cfg = json.loads(raw) if raw and isinstance(raw, str) else (raw or {})
+                _sam_config = {
+                    'enabled': True,
+                    'pipeline_mode': cfg.get('pipeline_mode', 'none'),
+                    'text_prompts': cfg.get('text_prompts') or [],
+                    'conf': float(cfg.get('conf', 0.45)),
+                    'trigger': cfg.get('trigger', 'on_interval'),
+                    'interval_frames': int(cfg.get('interval_frames', 25)),
+                    'merge_iou': float(cfg.get('merge_iou', 0.5)),
+                    'return_masks': bool(cfg.get('return_masks', True)),
+                }
+            _sam_client = SamClient() if _sam_config.get('enabled') else None
+            if _sam_config.get('enabled'):
+                logger.info(f"✅ SAM 补充识别已启用: mode={_sam_config.get('pipeline_mode')}")
+        except Exception as e:
+            logger.warning(f"SAM 补充配置加载失败: {e}")
+            _sam_config = {'enabled': False}
+            _sam_client = None
 
         # 解析模型ID列表
         model_ids = []
@@ -2539,14 +2593,26 @@ def buffer_streamer_worker(device_id: str):
 
                 logger.info(f"正在连接设备 {device_id} 的 {stream_type} 流: {rtsp_url} (重试次数: {retry_count})")
 
+                _queue_max_override = None
+                if _is_gb28181 or device_stream_info.get('source_type') == 'gb28181':
+                    _gb_fifo = int(os.getenv("AI_GB28181_ASYNC_QUEUE_MAX", "10"))
+                    if _gb_fifo > 1:
+                        _queue_max_override = _gb_fifo
+                        logger.info(
+                            f"📌 设备 {device_id} GB28181源，FIFO 缓冲 {_gb_fifo} 帧按序消费（AI_GB28181_ASYNC_QUEUE_MAX）"
+                        )
+
                 try:
-                    cap = open_network_videocapture(
+                    cap = open_device_stream(
                         rtsp_url,
+                        device_id,
+                        task_id=str(TASK_ID),
                         open_timeout_msec=rtsp_open_timeout_msec,
                         read_timeout_msec=rtsp_read_timeout_msec,
+                        queue_max_override=_queue_max_override,
                     )
                 except Exception as e:
-                    logger.error(f"设备 {device_id} 创建 VideoCapture 时出错: {str(e)}")
+                    logger.error(f"设备 {device_id} 打开视频流时出错: {str(e)}")
                     # 确保释放资源
                     if cap is not None:
                         try:
@@ -2621,27 +2687,7 @@ def buffer_streamer_worker(device_id: str):
                     except Exception as _e:
                         logger.debug(f"设备 {device_id} 读取源流帧率失败: {_e}")
 
-                if (
-                    async_rtsp_read_enabled()
-                    and (rtsp_url.startswith("rtsp://") or rtsp_url.startswith("rtmp://"))
-                ):
-                    # GB28181 录像回放等非实时源使用 FIFO 队列模式，按序消费帧防止快进
-                    _queue_max_override = None
-                    if _is_gb28181 or device_stream_info.get('source_type') == 'gb28181':
-                        _gb_fifo = int(os.getenv("AI_GB28181_ASYNC_QUEUE_MAX", "10"))
-                        if _gb_fifo > 1:
-                            _queue_max_override = _gb_fifo
-                            logger.info(f"📌 设备 {device_id} GB28181源，使用 FIFO 缓冲 {_gb_fifo} 帧按序消费（AI_GB28181_ASYNC_QUEUE_MAX）")
-                    cap = AsyncVideoStream(cap, queue_max=_queue_max_override).start()
-                    _fifo = getattr(cap, "queue_max", 1)
-                    logger.info(
-                        f"📌 设备 {device_id} 已启用异步拉流（后台解码；AI_RTSP_ASYNC_READ=0 关闭）"
-                        + (
-                            f"，FIFO 缓冲 {_fifo} 帧（恢复后按序播、减轻 OSD 跳秒；AI_RTSP_ASYNC_QUEUE_MAX）"
-                            if _fifo > 1
-                            else "，仅保留最新帧（AI_RTSP_ASYNC_QUEUE_MAX=1）"
-                        )
-                    )
+                logger.info(f"📌 设备 {device_id} {stream_mode_label(cap)}")
                 device_caps[device_id] = cap
                 logger.info(f"✅ 设备 {device_id} {stream_type} 流连接成功")
                 if rtsp_url.startswith("rtsp://"):
@@ -2658,7 +2704,7 @@ def buffer_streamer_worker(device_id: str):
             ret, frame = cap.read()
 
             if not ret or frame is None:
-                if isinstance(cap, AsyncVideoStream):
+                if is_async_stream(cap):
                     if cap.read_failed:
                         logger.warning(f"设备 {device_id} 异步拉流结束或解码失败，重新连接...")
                         if cap is not None:

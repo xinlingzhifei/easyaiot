@@ -15,7 +15,10 @@
           <TrainTaskList :tab-active="state.activeKey === '6'" />
         </TabPane>
         <TabPane key="2" tab="模型推理">
-          <AiModelTool :initialLLMId="initialLLMId"></AiModelTool>
+          <AiModelTool :initialLLMId="initialLLMId" :tab-active="state.activeKey === '2'" />
+        </TabPane>
+        <TabPane key="7" tab="SAM 万物识别">
+          <SamInferencePage />
         </TabPane>
         <TabPane key="3" tab="模型导出">
           <ModelExport></ModelExport>
@@ -41,6 +44,7 @@ import AiModelTool from "@/views/train/components/AiModelTool/index.vue";
 import ModelExport from "@/views/train/components/ModelExport/index.vue";
 import DeployService from "@/views/train/components/DeployService/index.vue";
 import LLMManage from "@/views/train/components/LLMManage/index.vue";
+import SamInferencePage from "@/views/model/SamInference/index.vue";
 import GpuStackMonitorTip from '@/components/GpuStackMonitorTip/index.vue';
 
 defineOptions({name: 'TRAIN'})

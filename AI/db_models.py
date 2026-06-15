@@ -423,19 +423,54 @@ class AIService(db.Model):
         return f'<AIService {self.service_name} ({self.status})>'
 
 
+class SAMInferenceResult(db.Model):
+    """SAM 分割推理结果表"""
+    __tablename__ = 'sam_inference_result'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    prompt_type = db.Column(db.String(20), nullable=False, comment='提示类型[point/box/auto/text]')
+    prompt_data = db.Column(db.Text, nullable=True, comment='提示参数JSON')
+    image_url = db.Column(db.String(500), nullable=True, comment='图片URL')
+    result_data = db.Column(db.Text, nullable=True, comment='推理结果JSON')
+    model_type = db.Column(db.String(20), nullable=True, comment='模型类型[vit_b/vit_l/vit_h]')
+    inference_ms = db.Column(db.Integer, nullable=True, comment='推理耗时(毫秒)')
+    created_at = db.Column(db.DateTime, default=beijing_now, comment='创建时间')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'prompt_type': self.prompt_type,
+            'prompt_data': self.prompt_data,
+            'image_url': self.image_url,
+            'result_data': self.result_data,
+            'model_type': self.model_type,
+            'inference_ms': self.inference_ms,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class AutoLabelTask(db.Model):
     """自动化标注任务表"""
     __tablename__ = 'auto_label_task'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     dataset_id = db.Column(db.BigInteger, nullable=False, comment='数据集ID')
-    model_service_id = db.Column(db.Integer, db.ForeignKey('ai_service.id'), nullable=True, comment='AI服务ID')
+    model_id = db.Column(db.Integer, db.ForeignKey('model.id'), nullable=True, comment='模型ID（直连推理，无需部署服务）')
+    model_service_id = db.Column(db.Integer, db.ForeignKey('ai_service.id'), nullable=True, comment='AI服务ID（兼容旧版）')
     status = db.Column(db.String(20), default='PENDING', nullable=False, comment='状态[PENDING:待处理,PROCESSING:处理中,COMPLETED:已完成,FAILED:失败]')
     total_images = db.Column(db.Integer, default=0, comment='总图片数')
     processed_images = db.Column(db.Integer, default=0, comment='已处理图片数')
     success_count = db.Column(db.Integer, default=0, comment='成功标注数')
     failed_count = db.Column(db.Integer, default=0, comment='失败数')
     confidence_threshold = db.Column(db.Float, default=0.5, comment='置信度阈值')
+    label_mode = db.Column(db.String(20), default='yolo', comment='标注模式[yolo/sam]')
+    text_prompts = db.Column(db.Text, nullable=True, comment='SAM 文本 prompt JSON 数组')
+    annotation_type = db.Column(db.String(20), default='rectangle', comment='标注形态[rectangle/polygon]')
+    phase = db.Column(db.String(20), nullable=True, comment='阶段[BOOTSTRAP/PRODUCTION]')
+    bootstrap_limit = db.Column(db.Integer, nullable=True, comment='冷启动张数上限')
+    bootstrap_selection = db.Column(db.String(30), default='unlabeled_first', comment='冷启动选图策略')
+    review_passed = db.Column(db.Boolean, default=False, comment='人工抽检是否通过')
+    return_masks = db.Column(db.Boolean, default=False, comment='SAM 是否返回 mask')
     created_at = db.Column(db.DateTime, default=beijing_now, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=beijing_now, onupdate=beijing_now, comment='更新时间')
     started_at = db.Column(db.DateTime, nullable=True, comment='开始时间')
@@ -443,6 +478,7 @@ class AutoLabelTask(db.Model):
     error_message = db.Column(db.Text, nullable=True, comment='错误信息')
     
     # 关系定义
+    model = db.relationship('Model', backref=db.backref('auto_label_tasks', lazy='dynamic'))
     model_service = db.relationship('AIService', backref=db.backref('auto_label_tasks', lazy='dynamic'))
     
     def to_dict(self):
@@ -450,6 +486,7 @@ class AutoLabelTask(db.Model):
         return {
             'id': self.id,
             'dataset_id': self.dataset_id,
+            'model_id': self.model_id,
             'model_service_id': self.model_service_id,
             'status': self.status,
             'total_images': self.total_images,
@@ -457,6 +494,14 @@ class AutoLabelTask(db.Model):
             'success_count': self.success_count,
             'failed_count': self.failed_count,
             'confidence_threshold': self.confidence_threshold,
+            'label_mode': self.label_mode or 'yolo',
+            'text_prompts': json.loads(self.text_prompts) if self.text_prompts else None,
+            'annotation_type': self.annotation_type or 'rectangle',
+            'phase': self.phase,
+            'bootstrap_limit': self.bootstrap_limit,
+            'bootstrap_selection': self.bootstrap_selection,
+            'review_passed': self.review_passed,
+            'return_masks': self.return_masks,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None,
@@ -560,6 +605,57 @@ def ensure_model_class_columns(engine):
                 log.info('已为 model 表添加 selected_class_names 列')
     except Exception as e:
         log.warning('ensure_model_class_columns: %s', e)
+
+
+def ensure_auto_label_task_model_id_column(engine):
+    """老库 auto_label_task 表无 model_id 列时补列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'auto_label_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('auto_label_task')}
+        if 'model_id' in col_names:
+            return
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE auto_label_task ADD COLUMN model_id INTEGER'))
+        log.info('已为 auto_label_task 表添加 model_id 列')
+    except Exception as e:
+        log.warning('ensure_auto_label_task_model_id_column: %s', e)
+
+
+def ensure_auto_label_task_sam_columns(engine):
+    """老库 auto_label_task 表补 SAM 相关列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'label_mode': "VARCHAR(20) DEFAULT 'yolo'",
+        'text_prompts': 'TEXT',
+        'annotation_type': "VARCHAR(20) DEFAULT 'rectangle'",
+        'phase': 'VARCHAR(20)',
+        'bootstrap_limit': 'INTEGER',
+        'bootstrap_selection': "VARCHAR(30) DEFAULT 'unlabeled_first'",
+        'review_passed': 'BOOLEAN DEFAULT FALSE',
+        'return_masks': 'BOOLEAN DEFAULT FALSE',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'auto_label_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('auto_label_task')}
+        for col, ddl in columns.items():
+            if col in col_names:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE auto_label_task ADD COLUMN {col} {ddl}'))
+            log.info('已为 auto_label_task 表添加 %s 列', col)
+    except Exception as e:
+        log.warning('ensure_auto_label_task_sam_columns: %s', e)
 
 
 def ensure_model_table_status_column(engine):

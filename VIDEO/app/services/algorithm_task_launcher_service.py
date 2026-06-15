@@ -7,6 +7,7 @@
 """
 import os
 import sys
+import json
 import subprocess
 import logging
 import threading
@@ -47,6 +48,8 @@ def _use_remote_deploy(task: AlgorithmTask) -> bool:
 def _task_capabilities(task_type: str) -> list:
     if task_type == 'snap':
         return ['algorithm_snap']
+    if task_type == 'patrol':
+        return ['algorithm_patrol']
     return ['algorithm_realtime']
 
 
@@ -55,7 +58,34 @@ def _resolve_video_control_url() -> str:
     return f'{gateway}/admin-api/video'
 
 
-def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_host: str) -> dict:
+def _inject_sam_supplement_env(env: dict, task) -> None:
+    """将算法任务的 SAM 补充配置写入子进程环境变量。"""
+    enabled = bool(getattr(task, 'sam_supplement_enabled', False))
+    env['SAM_SUPPLEMENT_ENABLED'] = 'true' if enabled else 'false'
+    if not enabled:
+        return
+    cfg = {}
+    raw = getattr(task, 'sam_supplement_config', None)
+    if raw:
+        try:
+            cfg = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            cfg = {}
+    env['SAM_SUPPLEMENT_CONFIG'] = json.dumps(cfg, ensure_ascii=False)
+    env['SAM_PIPELINE_MODE'] = str(cfg.get('pipeline_mode', 'none'))
+    prompts = cfg.get('text_prompts') or []
+    env['SAM_TEXT_PROMPTS'] = ','.join(prompts) if isinstance(prompts, list) else str(prompts)
+    env['SAM_CONF'] = str(cfg.get('conf', 0.45))
+    env['SAM_TRIGGER'] = str(cfg.get('trigger', 'on_interval'))
+    env['SAM_INTERVAL_FRAMES'] = str(cfg.get('interval_frames', 25))
+    env['SAM_MERGE_IOU'] = str(cfg.get('merge_iou', 0.5))
+    env['SAM_RETURN_MASKS'] = 'true' if cfg.get('return_masks', True) else 'false'
+    ai_url = os.getenv('AI_SERVICE_URL')
+    if ai_url:
+        env['AI_SERVICE_URL'] = ai_url
+
+
+def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_host: str, task=None) -> dict:
     env = {}
     for key in (
         'DATABASE_URL', 'GATEWAY_URL', 'GB28181_SERVICE_URL', 'JWT_TOKEN', 'JAVA_BACKEND_URL',
@@ -76,7 +106,10 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
     env['TASK_ID'] = str(task_id)
     env['VIDEO_SERVICE_PORT'] = video_service_port
     env['VIDEO_CONTROL_URL'] = video_control_url
-    env['VIDEO_HEARTBEAT_URL'] = f'{video_control_url}/algorithm/heartbeat/realtime'
+    if task_type == 'patrol':
+        env['VIDEO_HEARTBEAT_URL'] = f'{video_control_url}/algorithm/heartbeat/patrol'
+    else:
+        env['VIDEO_HEARTBEAT_URL'] = f'{video_control_url}/algorithm/heartbeat/realtime'
     env['LOG_PATH'] = log_path
     env['POD_IP'] = server_host
     env['HOST_IP'] = server_host
@@ -88,6 +121,8 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
         env['KAFKA_BOOTSTRAP_SERVERS'] = kafka_bootstrap
     from app.utils.node_remote_tools import apply_remote_toolchain_env
     apply_remote_toolchain_env(env)
+    if task is not None:
+        _inject_sam_supplement_env(env, task)
     return env
 
 
@@ -112,15 +147,22 @@ def _deploy_task_on_remote_node(task_id: int, task: AlgorithmTask) -> Tuple[bool
     gpu_ids = allocation.get('gpuIds')
 
     video_root_remote = os.getenv('NODE_REMOTE_VIDEO_ROOT', '/opt/easyaiot/VIDEO')
-    service_dir = 'snapshot_algorithm_service' if task.task_type == 'snap' else 'realtime_algorithm_service'
+    service_dir = {
+        'realtime': 'realtime_algorithm_service',
+        'snap': 'snapshot_algorithm_service',
+        'patrol': 'patrol_algorithm_service',
+    }.get(task.task_type, 'realtime_algorithm_service')
     work_dir = os.path.join(video_root_remote, 'services', service_dir)
     log_dir = os.path.join(video_root_remote, 'logs', f'task_{task_id}')
-    bundle = 'algorithm_snap' if task.task_type == 'snap' else 'algorithm_realtime'
+    bundle = {
+        'snap': 'algorithm_snap',
+        'patrol': 'algorithm_patrol',
+    }.get(task.task_type, 'algorithm_realtime')
     python_exec = resolve_video_bundle_python(bundle, video_root_remote)
     deploy_script = os.path.join(work_dir, 'run_deploy.py')
     command = [python_exec, deploy_script]
 
-    env = _build_task_deploy_env(task_id, task.task_type, log_dir, host)
+    env = _build_task_deploy_env(task_id, task.task_type, log_dir, host, task=task)
     env['VIDEO_ROOT'] = video_root_remote
 
     result = node_client.deploy_workload(
@@ -174,7 +216,8 @@ def get_service_script_path(service_type: str) -> str:
     
     service_paths = {
         'realtime': os.path.join(video_root, 'services', 'realtime_algorithm_service', 'run_deploy.py'),
-        'snap': os.path.join(video_root, 'services', 'snapshot_algorithm_service', 'run_deploy.py')
+        'snap': os.path.join(video_root, 'services', 'snapshot_algorithm_service', 'run_deploy.py'),
+        'patrol': os.path.join(video_root, 'services', 'patrol_algorithm_service', 'run_deploy.py'),
     }
     
     return service_paths.get(service_type)
@@ -547,7 +590,7 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
     
     try:
         # 实时算法任务和抓拍算法任务都需要启动服务进程
-        if task.task_type in ['realtime', 'snap']:
+        if task.task_type in ['realtime', 'snap', 'patrol']:
             if _use_remote_deploy(task):
                 if task.node_id:
                     logger.info('任务 %s 已在远程节点 %s 运行，跳过重复部署', task_id, task.node_id)
@@ -664,7 +707,11 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
                 logger.debug(f'新进程已启动 (PID: {process_pid})，再次清理遗留进程（会保护新进程）...')
                 cleanup_orphaned_processes(task_id)
             
-            task_type_name = "实时算法" if task.task_type == 'realtime' else "抓拍算法"
+            task_type_name = {
+                'realtime': '实时算法',
+                'snap': '抓拍算法',
+                'patrol': '巡检算法',
+            }.get(task.task_type, task.task_type)
             logger.info(f"✅ 任务 {task_id} 的{task_type_name}服务启动成功（守护进程已启动）")
             return (True, "启动成功", False)
         else:
@@ -725,31 +772,24 @@ def _auto_start_all_tasks_internal():
                     if not task.model_ids:
                         logger.warning(f"任务 {task.id} ({task.task_name}) 缺少模型ID配置，跳过")
                         continue
-                elif task.task_type == 'snap':
-                    # 抓拍算法任务需要模型ID列表
+                elif task.task_type in ('snap', 'patrol'):
                     if not task.model_ids:
                         logger.warning(f"任务 {task.id} ({task.task_name}) 缺少模型ID配置，跳过")
                         continue
-                    
-                    # 确保任务关联的所有设备都有抓拍空间（如果没有则自动创建）
                     if not task.devices or len(task.devices) == 0:
                         logger.warning(f"任务 {task.id} ({task.task_name}) 没有关联的设备，跳过")
                         continue
-                    
-                    # 为每个关联的设备确保有抓拍空间
-                    for device in task.devices:
-                        try:
-                            # 检查设备是否已有抓拍空间
-                            snap_space = get_snap_space_by_device_id(device.id)
-                            if not snap_space:
-                                # 如果没有，自动创建
-                                logger.info(f"为设备 {device.id} ({device.name or device.id}) 自动创建抓拍空间")
-                                create_snap_space_for_device(device.id, device.name)
-                            else:
-                                logger.debug(f"设备 {device.id} 已有抓拍空间: {snap_space.space_name}")
-                        except Exception as e:
-                            logger.error(f"为设备 {device.id} 创建/获取抓拍空间失败: {str(e)}", exc_info=True)
-                            # 继续处理其他设备，不中断整个任务
+                    if task.task_type == 'snap':
+                        for device in task.devices:
+                            try:
+                                snap_space = get_snap_space_by_device_id(device.id)
+                                if not snap_space:
+                                    logger.info(f"为设备 {device.id} ({device.name or device.id}) 自动创建抓拍空间")
+                                    create_snap_space_for_device(device.id, device.name)
+                                else:
+                                    logger.debug(f"设备 {device.id} 已有抓拍空间: {snap_space.space_name}")
+                            except Exception as e:
+                                logger.error(f"为设备 {device.id} 创建/获取抓拍空间失败: {str(e)}", exc_info=True)
                 else:
                     logger.warning(f"任务 {task.id} ({task.task_name}) 未知的任务类型: {task.task_type}，跳过")
                     continue

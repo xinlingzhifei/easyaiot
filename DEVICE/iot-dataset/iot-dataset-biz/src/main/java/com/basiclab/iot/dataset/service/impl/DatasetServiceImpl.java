@@ -108,12 +108,14 @@ public class DatasetServiceImpl implements DatasetService {
 
     @Override
     public void setAutoLabelModel(Long datasetId, AutoLabelModelReqVO reqVO) {
-        // 1. 验证数据集存在
         validateExists(datasetId);
 
-        // 3. 更新数据集状态
-        datasetMapper.updateById(new DatasetDO().setId(datasetId)
-                .setModelServiceId(reqVO.getModelServiceId()));
+        Long modelId = reqVO.getModelId();
+        if (modelId == null) {
+            modelId = reqVO.getModelServiceId();
+        }
+
+        datasetMapper.updateById(new DatasetDO().setId(datasetId).setModelServiceId(modelId));
     }
 
     @Override

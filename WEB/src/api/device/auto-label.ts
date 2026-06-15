@@ -9,6 +9,8 @@ import {
 enum Api {
   /** AI 推理与自动标注任务（model-server） */
   AutoLabel = '/model/dataset',
+  Model = '/model',
+  /** @deprecated 旧版依赖部署推理服务，保留兼容 */
   AIService = '/model/deploy_service',
 }
 
@@ -37,10 +39,46 @@ const commonApi = (
   );
 };
 
-// —— AI 自动标注（仍走 model-server）——
+// —— AI 自动标注（直连 model-server 模型推理，无需部署推理服务）——
 
-export const startAutoLabel = (datasetId: number, data: Record<string, unknown>) => {
+export interface StartAutoLabelParams {
+  model_id?: number;
+  label_mode?: 'yolo' | 'sam';
+  text_prompts?: string[];
+  confidence_threshold?: number;
+  annotation_type?: 'rectangle' | 'polygon';
+  return_masks?: boolean;
+  sample_selection?: string;
+  /** @deprecated 请使用 model_id */
+  model_service_id?: number;
+}
+
+export interface StartSamBootstrapParams {
+  text_prompts: string[];
+  bootstrap_limit?: number;
+  bootstrap_selection?: 'unlabeled_first' | 'random' | 'all';
+  confidence_threshold?: number;
+  annotation_type?: 'rectangle' | 'polygon';
+  return_masks?: boolean;
+}
+
+export const startAutoLabel = (datasetId: number, data: StartAutoLabelParams | Record<string, unknown>) => {
   return commonApi('post', `${Api.AutoLabel}/dataset/${datasetId}/auto-label/start`, { data });
+};
+
+export const startSamBootstrap = (datasetId: number, data: StartSamBootstrapParams) => {
+  return commonApi('post', `${Api.AutoLabel}/dataset/${datasetId}/auto-label/bootstrap/start`, { data });
+};
+
+export const getSamBootstrapStatus = (datasetId: number) => {
+  return commonApi('get', `${Api.AutoLabel}/dataset/${datasetId}/auto-label/bootstrap/status`);
+};
+
+export const completeSamBootstrapReview = (
+  datasetId: number,
+  data: { review_passed: boolean; reviewer_note?: string },
+) => {
+  return commonApi('post', `${Api.AutoLabel}/dataset/${datasetId}/auto-label/bootstrap/complete-review`, { data });
 };
 
 export const getAutoLabelTask = (datasetId: number, taskId: number) => {
@@ -51,6 +89,11 @@ export const listAutoLabelTasks = (datasetId: number, params: any) => {
   return commonApi('get', `${Api.AutoLabel}/dataset/${datasetId}/auto-label/tasks`, { params });
 };
 
+export const getAutoLabelModelList = (params = {}) => {
+  return commonApi('get', `${Api.Model}/list`, { params });
+};
+
+/** @deprecated 自动标注已改为直连模型，请使用 getAutoLabelModelList */
 export const getAIServiceList = (params = {}) => {
   return commonApi('get', `${Api.AIService}/list`, { params }, {}, false);
 };

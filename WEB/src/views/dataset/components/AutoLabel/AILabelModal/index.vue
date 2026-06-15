@@ -20,28 +20,28 @@
         type="info"
         show-icon
         class="guide-alert"
-        message="使用前提（三步）"
+        message="使用说明"
       >
         <template #description>
           <ol class="guide-steps">
-            <li>在 <strong>训练中心 → 模型部署</strong> 中部署目标检测模型并<strong>启动</strong>（状态为运行中）</li>
+            <li>在 <strong>训练中心 → 模型管理</strong> 中上传或训练目标检测模型（需有 .pt / .onnx 权重）</li>
             <li>确认本数据集已导入待标注图片（当前 <strong>{{ totalImages }}</strong> 张）</li>
-            <li>选择推理服务并设置置信度，将对<strong>全部图片</strong>批量推理并写回标注</li>
+            <li>选择模型并设置置信度，将直连 AI 推理能力批量标注并写回，<strong>无需部署推理服务</strong></li>
           </ol>
         </template>
       </Alert>
 
       <Alert
-        v-if="!modelLoading && fewShotModelList.length === 0"
+        v-if="!modelLoading && modelList.length === 0"
         type="warning"
         show-icon
         class="empty-alert"
-        message="暂无运行中的推理服务"
+        message="暂无可用模型"
       >
         <template #description>
-          <p>请先在模型部署中部署并启动推理服务，完成后点击「刷新列表」。</p>
-          <Button type="link" size="small" class="deploy-link" @click="goDeployPage">
-            前往模型部署
+          <p>请先在模型管理中上传或训练模型，完成后点击「刷新列表」。</p>
+          <Button type="link" size="small" class="deploy-link" @click="goModelPage">
+            前往模型管理
             <Icon icon="ant-design:arrow-right-outlined" />
           </Button>
         </template>
@@ -54,15 +54,15 @@
       >
         <FormItem>
           <div class="form-label-row">
-            <span class="form-label">选择推理服务</span>
-            <Button type="link" size="small" :loading="modelLoading" @click="loadFewShotModelList">
+            <span class="form-label">选择检测模型</span>
+            <Button type="link" size="small" :loading="modelLoading" @click="loadModelList">
               <Icon icon="ant-design:reload-outlined" />
               刷新列表
             </Button>
           </div>
           <Select
-            v-model:value="form.few_shot_model_id"
-            placeholder="请选择状态为「运行中」的推理服务"
+            v-model:value="form.model_id"
+            placeholder="请选择已上传权重的目标检测模型"
             :loading="modelLoading"
             show-search
             :filter-option="filterModelOption"
@@ -71,15 +71,15 @@
             :get-popup-container="getSelectPopupContainer"
           >
             <SelectOption
-              v-for="model in fewShotModelList"
+              v-for="model in modelList"
               :key="model.id"
               :value="model.id"
             >
-              {{ formatServiceLabel(model) }}
+              {{ formatModelLabel(model) }}
             </SelectOption>
           </Select>
           <div class="form-hint">
-            仅列出运行中的服务；模型类别需与待标注场景匹配（如 person、车辆等）
+            直接使用模型权重推理，无需额外部署；模型类别需与待标注场景匹配
           </div>
         </FormItem>
 
@@ -104,7 +104,7 @@
           <div class="scope-note">
             <Icon icon="ant-design:info-circle-outlined" />
             <span>
-              任务在后台异步执行，可在顶栏查看进度；完成后请抽查几张并修正误检，再划分用途与导出训练集。
+              任务在后台异步执行，模型仅加载一次以提升性能；可在顶栏查看进度，完成后请抽查并修正误检。
             </span>
           </div>
         </FormItem>
@@ -117,7 +117,7 @@
           class="start-ai-label-btn"
           @click="handleStart"
           :loading="loading"
-          :disabled="fewShotModelList.length === 0 || totalImages === 0"
+          :disabled="modelList.length === 0 || totalImages === 0"
         >
           <template #icon><Icon icon="ant-design:play-circle-outlined" /></template>
           开启 AI 批量标注
@@ -138,19 +138,18 @@ import { BasicModal, useModal } from '@/components/Modal';
 import { Icon } from '@/components/Icon';
 import { Alert, Form, FormItem, Select, SelectOption, Slider } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
-import { startAutoLabel, getAIServiceList } from '@/api/device/auto-label';
+import { startAutoLabel, getAutoLabelModelList } from '@/api/device/auto-label';
 import { Button } from '@/components/Button';
 
 defineOptions({ name: 'AILabelModal' });
 
-interface DeployServiceOption {
+interface ModelOption {
   id: number;
   name: string;
-  model_id?: number;
-  model_name?: string;
-  service_name?: string;
-  format?: string;
-  status?: string;
+  version?: string;
+  description?: string;
+  model_path?: string;
+  onnx_model_path?: string;
 }
 
 const props = defineProps<{
@@ -168,50 +167,54 @@ const emits = defineEmits(['success']);
 
 const loading = ref(false);
 const modelLoading = ref(false);
-const fewShotModelList = ref<DeployServiceOption[]>([]);
+const modelList = ref<ModelOption[]>([]);
 
 const form = reactive({
-  few_shot_model_id: undefined as number | undefined,
+  model_id: undefined as number | undefined,
   confidence_threshold: 0.5,
 });
 
 const [register, { openModal, closeModal }] = useModal();
 
-function formatServiceLabel(service: DeployServiceOption): string {
-  const model = service.model_name || service.name;
-  const svc = service.service_name;
-  const fmt = service.format ? ` · ${service.format}` : '';
-  return svc ? `${model}（${svc}）${fmt}` : `${model}${fmt}`;
+function hasModelWeights(model: Record<string, unknown>): boolean {
+  return Boolean(
+    model.model_path || model.onnx_model_path || model.torchscript_model_path
+      || model.tensorrt_model_path || model.openvino_model_path,
+  );
 }
 
-async function loadFewShotModelList() {
+function formatModelLabel(model: ModelOption): string {
+  const version = model.version ? ` · v${model.version}` : '';
+  return `${model.name}${version}`;
+}
+
+async function loadModelList() {
   try {
     modelLoading.value = true;
-    const response = await getAIServiceList({ status: 'running', pageNo: 1, pageSize: 100 });
+    const response = await getAutoLabelModelList({ pageNo: 1, pageSize: 200 });
 
-    let serviceList: Record<string, unknown>[] = [];
-    const backendData = response?.data;
-
-    if (backendData?.code === 0 && backendData?.data) {
-      if (Array.isArray(backendData.data)) {
-        serviceList = backendData.data;
-      } else if (backendData.data.list && Array.isArray(backendData.data.list)) {
-        serviceList = backendData.data.list;
-      }
+    let rawList: Record<string, unknown>[] = [];
+    if (Array.isArray(response)) {
+      rawList = response;
+    } else if (response?.data && Array.isArray(response.data)) {
+      rawList = response.data;
+    } else if (response?.list && Array.isArray(response.list)) {
+      rawList = response.list;
     }
 
-    fewShotModelList.value = serviceList.map((service: Record<string, unknown>) => ({
-      id: service.id as number,
-      name: (service.model_name || service.service_name || `模型服务 ${service.id}`) as string,
-      model_id: service.model_id as number | undefined,
-      model_name: service.model_name as string | undefined,
-      service_name: service.service_name as string | undefined,
-      format: service.format as string | undefined,
-      status: service.status as string | undefined,
-    }));
+    modelList.value = rawList
+      .filter((m) => hasModelWeights(m))
+      .map((model) => ({
+        id: model.id as number,
+        name: (model.name || `模型 ${model.id}`) as string,
+        version: model.version as string | undefined,
+        description: model.description as string | undefined,
+        model_path: model.model_path as string | undefined,
+        onnx_model_path: model.onnx_model_path as string | undefined,
+      }));
   } catch {
-    createMessage.error('加载推理服务列表失败');
-    fewShotModelList.value = [];
+    createMessage.error('加载模型列表失败');
+    modelList.value = [];
   } finally {
     modelLoading.value = false;
   }
@@ -222,14 +225,14 @@ const filterModelOption = (input: string, option: { children?: { children?: stri
   return String(label).toLowerCase().includes(input.toLowerCase());
 };
 
-function goDeployPage() {
+function goModelPage() {
   closeModal();
-  router.push({ path: '/train', query: { tab: '4' } });
+  router.push({ path: '/train', query: { tab: '1' } });
 }
 
 async function handleStart() {
-  if (!form.few_shot_model_id) {
-    createMessage.warning('请选择推理服务');
+  if (!form.model_id) {
+    createMessage.warning('请选择检测模型');
     return;
   }
 
@@ -247,7 +250,7 @@ async function handleStart() {
   try {
     loading.value = true;
     const res = await startAutoLabel(dsId, {
-      model_service_id: form.few_shot_model_id,
+      model_id: form.model_id,
       confidence_threshold: form.confidence_threshold,
     });
 
@@ -273,7 +276,7 @@ async function handleStart() {
 }
 
 const openModalWithLoad = () => {
-  loadFewShotModelList();
+  loadModelList();
   openModal();
 };
 
@@ -281,7 +284,7 @@ defineExpose({
   openModal: openModalWithLoad,
   closeModal,
   form,
-  loadFewShotModelList,
+  loadModelList,
 });
 
 function handleCancel() {

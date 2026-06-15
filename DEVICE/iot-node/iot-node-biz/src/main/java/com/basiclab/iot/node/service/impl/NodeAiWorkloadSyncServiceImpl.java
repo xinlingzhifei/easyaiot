@@ -41,6 +41,10 @@ public class NodeAiWorkloadSyncServiceImpl implements NodeAiWorkloadSyncService 
         if (!autoSyncBeforeDeploy || !WorkloadBundleDeployUtil.requiresAiSync(workloadType)) {
             return;
         }
+        if (ComputeNodeServiceImpl.isPlatformNode(node)) {
+            log.debug("控制面节点跳过 AI SSH 同步 nodeId={} type={}", node.getId(), workloadType);
+            return;
+        }
         WorkloadBundleTypeEnum bundle = WorkloadBundleTypeEnum.AI_SERVICE;
         List<String> relativePaths = WorkloadBundleDeployUtil.syncScriptRelativePaths(bundle);
         if (relativePaths.isEmpty()) {

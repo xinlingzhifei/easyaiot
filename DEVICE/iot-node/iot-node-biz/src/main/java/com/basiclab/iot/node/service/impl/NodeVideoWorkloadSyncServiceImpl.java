@@ -48,6 +48,10 @@ public class NodeVideoWorkloadSyncServiceImpl implements NodeVideoWorkloadSyncSe
         if (!autoSyncBeforeDeploy || !WorkloadBundleDeployUtil.requiresVideoSync(workloadType)) {
             return;
         }
+        if (ComputeNodeServiceImpl.isPlatformNode(node)) {
+            log.debug("控制面节点跳过 VIDEO SSH 同步 nodeId={} type={}", node.getId(), workloadType);
+            return;
+        }
         List<String> relativePaths = resolveSyncPaths(workloadType);
         if (relativePaths.isEmpty()) {
             return;

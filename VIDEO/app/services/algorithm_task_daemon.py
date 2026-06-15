@@ -387,7 +387,9 @@ class AlgorithmTaskDaemon:
         video_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         if self._task_type == 'snap':
             deploy_service_dir = os.path.join(video_root, 'services', 'snapshot_algorithm_service')
-        else:  # realtime
+        elif self._task_type == 'patrol':
+            deploy_service_dir = os.path.join(video_root, 'services', 'patrol_algorithm_service')
+        else:
             deploy_service_dir = os.path.join(video_root, 'services', 'realtime_algorithm_service')
         
         deploy_script = os.path.join(deploy_service_dir, 'run_deploy.py')
@@ -422,12 +424,14 @@ class AlgorithmTaskDaemon:
         if video_env:
             env['VIDEO_ENV'] = video_env
         for key in (
-            'DATABASE_URL', 'GATEWAY_URL', 'GB28181_SERVICE_URL', 'JWT_TOKEN',
+            'DATABASE_URL', 'GATEWAY_URL', 'GB28181_SERVICE_URL', 'JWT_TOKEN', 'JAVA_BACKEND_URL',
             'GB28181_HTTP_READ_TIMEOUT', 'GB28181_PLAY_PROTOCOL', 'GB28181_HEVC_RTSP_FIRST',
-            'GB28181_OPENCV_RTMP_FALLBACK_RTSP', 'POD_IP', 'HOST_IP',
+            'GB28181_OPENCV_RTMP_FALLBACK_RTSP', 'POD_IP', 'HOST_IP', 'AI_SERVICE_URL',
             'USE_GPU', 'GPU_IDS', 'GPU_POLICY', 'INFER_GPU_POLICY', 'FFMPEG_GPU_POLICY',
             'CUDA_VISIBLE_DEVICES', 'NVIDIA_VISIBLE_DEVICES', 'ORT_EXECUTION_PROVIDERS',
-            'KAFKA_BOOTSTRAP_SERVERS',
+            'KAFKA_BOOTSTRAP_SERVERS', 'SAM_SUPPLEMENT_ENABLED', 'SAM_SUPPLEMENT_CONFIG',
+            'SAM_PIPELINE_MODE', 'SAM_TEXT_PROMPTS', 'SAM_CONF', 'SAM_TRIGGER',
+            'SAM_INTERVAL_FRAMES', 'SAM_MERGE_IOU', 'SAM_RETURN_MASKS',
         ):
             val = os.getenv(key)
             if val is not None and val != '':
@@ -448,7 +452,10 @@ class AlgorithmTaskDaemon:
         env['VIDEO_SERVICE_PORT'] = video_service_port
         gateway = os.getenv('JAVA_BACKEND_URL', os.getenv('GATEWAY_URL', 'http://localhost:48080')).rstrip('/')
         env['VIDEO_CONTROL_URL'] = f'{gateway}/admin-api/video'
-        env['VIDEO_HEARTBEAT_URL'] = f'{env["VIDEO_CONTROL_URL"]}/algorithm/heartbeat/realtime'
+        if self._task_type == 'patrol':
+            env['VIDEO_HEARTBEAT_URL'] = f'{env["VIDEO_CONTROL_URL"]}/algorithm/heartbeat/patrol'
+        else:
+            env['VIDEO_HEARTBEAT_URL'] = f'{env["VIDEO_CONTROL_URL"]}/algorithm/heartbeat/realtime'
         
         # 重要：realtime_algorithm_service 使用 host 网络模式，必须使用 localhost 访问 Kafka
         # 如果环境变量中配置了容器名（如 Kafka:9092），需要强制覆盖为 EXTERNAL listener
@@ -464,6 +471,15 @@ class AlgorithmTaskDaemon:
         
         # 设置日志路径
         env['LOG_PATH'] = self._log_path
+
+        try:
+            from models import AlgorithmTask
+            from app.services.algorithm_task_launcher_service import _inject_sam_supplement_env
+            task = AlgorithmTask.query.get(self._task_id)
+            if task:
+                _inject_sam_supplement_env(env, task)
+        except Exception as e:
+            self._log(f'加载 SAM 补充配置失败: {e}', 'WARNING')
         
         self._log(
             f'环境变量已设置: TASK_ID={env["TASK_ID"]}, VIDEO_SERVICE_PORT={env["VIDEO_SERVICE_PORT"]}, '

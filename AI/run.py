@@ -285,6 +285,7 @@ def create_app():
                 InferenceTask,
                 LLMModel,
                 OCRResult,
+                SAMInferenceResult,
                 AIService,
                 AutoLabelTask,
                 AutoLabelResult,
@@ -292,12 +293,16 @@ def create_app():
                 ensure_model_class_columns,
                 ensure_train_task_name_column,
                 ensure_train_task_dataset_columns,
+                ensure_auto_label_task_model_id_column,
+                ensure_auto_label_task_sam_columns,
             )
             db.create_all()
             ensure_model_table_status_column(db.engine)
             ensure_model_class_columns(db.engine)
             ensure_train_task_name_column(db.engine)
             ensure_train_task_dataset_columns(db.engine)
+            ensure_auto_label_task_model_id_column(db.engine)
+            ensure_auto_label_task_sam_columns(db.engine)
             print(f"✅ 数据库连接成功，表结构已创建/验证")
         except Exception as e:
             error_msg = str(e)
@@ -311,7 +316,7 @@ def create_app():
 
     # 注册蓝图（延迟导入，避免在环境变量加载前就导入）
     try:
-        from app.blueprints import export, inference, model, train, train_task, llm, ocr, speech, deploy, auto_label, plate, minio_proxy
+        from app.blueprints import export, inference, model, train, train_task, llm, ocr, speech, deploy, auto_label, plate, minio_proxy, sam
         
         app.register_blueprint(export.export_bp, url_prefix='/model/export')
         app.register_blueprint(inference.inference_task_bp, url_prefix='/model/inference_task')
@@ -325,6 +330,7 @@ def create_app():
         app.register_blueprint(auto_label.auto_label_bp, url_prefix='/model/dataset')  # 与其他模块保持一致，使用 /model/ 前缀
         app.register_blueprint(plate.plate_bp, url_prefix='/model/plate')
         app.register_blueprint(minio_proxy.minio_proxy_bp)
+        app.register_blueprint(sam.sam_bp, url_prefix='/model/sam')
         
         # 注册集群推理接口（使用不同的路由，不影响原有推理接口）
         from app.blueprints import cluster

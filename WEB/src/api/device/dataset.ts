@@ -34,7 +34,9 @@ const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params = {}, 
 
 // 新增类型定义
 interface AutoLabelModelReqVO {
-  modelServiceId: string;
+  modelId?: number;
+  /** @deprecated 请使用 modelId */
+  modelServiceId?: number;
 }
 
 interface DatasetSplitReqVO {

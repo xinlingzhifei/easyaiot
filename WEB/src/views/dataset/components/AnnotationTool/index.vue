@@ -77,6 +77,17 @@
           <Icon icon="ant-design:robot-outlined"/>
           AI 标注
         </button>
+        <button
+          type="button"
+          class="action-btn sam-bootstrap-btn"
+          :disabled="batchTaskRunning || totalImages === 0"
+          title="SAM 零样本冷启动：首批约 200 张开放词汇标注（未安装模型时将先引导下载）"
+          @click="openSamBootstrapWizard"
+        >
+          <Icon icon="ant-design:experiment-outlined"/>
+          SAM 冷启动
+          <span v-if="samModelChecked && !samModelReady" class="sam-model-badge" title="SAM 模型未安装">!</span>
+        </button>
         <span class="top-actions-divider"/>
         <Dropdown :trigger="['click']" placement="bottomRight">
           <button type="button" class="action-btn">
@@ -433,6 +444,18 @@
       :get-container="getModalContainer"
       @success="onBatchAiSuccess"
     />
+    <SamBootstrapWizard
+      ref="samBootstrapRef"
+      :dataset-id="datasetId"
+      :get-container="getModalContainer"
+      @success="onBatchAiSuccess"
+    />
+    <SamModelSetupModal
+      ref="samModelSetupRef"
+      :get-container="getModalContainer"
+      @ready="onSamModelReady"
+      @closed="onSamModelSetupClosed"
+    />
     <ImportDatasetModal
       ref="importModalRef"
       :dataset-id="datasetId"
@@ -490,7 +513,10 @@ const ANNOTATION_SELECTED_STROKE_WIDTH = 2.5;
 /** 标注框填充透明度（高度透明） */
 const ANNOTATION_FILL_ALPHA = 0.1;
 import { getAutoLabelTask } from '@/api/device/auto-label';
+import { getSamModelStatus } from '@/api/device/sam';
 import AILabelModal from '@/views/dataset/components/AutoLabel/AILabelModal/index.vue';
+import SamBootstrapWizard from '@/views/dataset/components/AutoLabel/SamBootstrapWizard/index.vue';
+import SamModelSetupModal from '@/views/dataset/components/AutoLabel/SamModelSetupModal/index.vue';
 import ImportDatasetModal from '@/views/dataset/components/AutoLabel/ImportDatasetModal/index.vue';
 import ExportDatasetModal from '@/views/dataset/components/AutoLabel/ExportDatasetModal/index.vue';
 import DatasetImageModal from '@/views/dataset/components/DatasetImageModal/index.vue';
@@ -550,6 +576,12 @@ async function refreshSyncCheck() {
   }
 }
 const aiLabelModalRef = ref<InstanceType<typeof AILabelModal> | null>(null);
+const samBootstrapRef = ref<InstanceType<typeof SamBootstrapWizard> | null>(null);
+const samModelSetupRef = ref<InstanceType<typeof SamModelSetupModal> | null>(null);
+const samModelChecked = ref(false);
+const samModelReady = ref(false);
+/** 用户从「SAM 冷启动」进入下载弹框，安装完成后自动打开业务向导 */
+const samBootstrapPending = ref(false);
 const importModalRef = ref<InstanceType<typeof ImportDatasetModal> | null>(null);
 const exportModalRef = ref<InstanceType<typeof ExportDatasetModal> | null>(null);
 
@@ -2073,6 +2105,41 @@ function openAiBatchModal(): void {
   aiLabelModalRef.value?.openModal();
 }
 
+async function refreshSamModelStatus(): Promise<boolean> {
+  try {
+    const res = await getSamModelStatus();
+    samModelReady.value = !!res?.data?.exists;
+  } catch {
+    samModelReady.value = false;
+  } finally {
+    samModelChecked.value = true;
+  }
+  return samModelReady.value;
+}
+
+async function openSamBootstrapWizard(): Promise<void> {
+  const ready = await refreshSamModelStatus();
+  if (!ready) {
+    samBootstrapPending.value = true;
+    samModelSetupRef.value?.openModal();
+    return;
+  }
+  samBootstrapRef.value?.openModal();
+}
+
+function onSamModelReady(): void {
+  samModelReady.value = true;
+  samModelChecked.value = true;
+  if (samBootstrapPending.value) {
+    samBootstrapPending.value = false;
+    samBootstrapRef.value?.openModal();
+  }
+}
+
+function onSamModelSetupClosed(): void {
+  samBootstrapPending.value = false;
+}
+
 function openImportModal(): void {
   importModalRef.value?.openModal();
 }
@@ -2345,6 +2412,7 @@ onMounted(() => {
   fetchLabels();
   fetchImages(1);
   refreshSyncCheck();
+  refreshSamModelStatus();
 });
 
 onUnmounted(() => {
@@ -2595,6 +2663,34 @@ onUnmounted(() => {
           border-color: #ffc53d;
           color: #d48806;
         }
+      }
+
+      &.sam-bootstrap-btn {
+        position: relative;
+        background: #f0f5ff;
+        border-color: #adc6ff;
+        color: #266cfb;
+
+        &:hover:not(:disabled) {
+          background: #d6e4ff;
+          border-color: #85a5ff;
+          color: #266cfb;
+        }
+      }
+
+      .sam-model-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        margin-left: 4px;
+        border-radius: 50%;
+        background: #ff4d4f;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
       }
 
     }
