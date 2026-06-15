@@ -1591,7 +1591,7 @@ def _resolve_face_matching_threshold() -> Optional[float]:
     from models import AlgorithmTask, FaceLibrary
     lib_ids = AlgorithmTask._parse_library_ids(getattr(task_config, 'face_library_ids', None))
     if lib_ids:
-        library = FaceLibrary.query.get(lib_ids[0])
+        library = db_session.get(FaceLibrary, lib_ids[0])
         if library is not None and getattr(library, 'similarity_threshold', None) is not None:
             return float(library.similarity_threshold)
     return None
