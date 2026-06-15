@@ -14,6 +14,14 @@ class VideoRuntimeConfigTest(unittest.TestCase):
             compose,
         )
 
+    def test_realtime_ai_uses_full_detection_resolution_for_small_people(self):
+        compose = (VIDEO_ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
+
+        self.assertIn("YOLO_IMG_SIZE=640", compose)
+        self.assertIn("OVERLAY_YOLO_IMG_SIZE=640", compose)
+        self.assertNotIn("YOLO_IMG_SIZE=320", compose)
+        self.assertNotIn("OVERLAY_YOLO_IMG_SIZE=320", compose)
+
     def test_host_network_video_scripts_do_not_write_kafka_internal_port(self):
         runtime_files = [
             "install_linux.sh",
