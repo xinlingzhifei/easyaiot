@@ -139,10 +139,13 @@ def prefer_loaded_person_classes(
 ) -> Optional[Set[str]]:
     loaded_allowed = _normalize_class_names(_iter_class_names(loaded_class_names))
     person_aliases = _normalize_class_names(PERSON_CLASS_ALIASES)
+    if configured_allowed_class_names:
+        configured_allowed = set(configured_allowed_class_names)
+        if loaded_allowed and loaded_allowed.issubset(person_aliases) and configured_allowed & person_aliases:
+            return loaded_allowed
+        return configured_allowed
     if loaded_allowed and loaded_allowed.issubset(person_aliases):
         return loaded_allowed
-    if configured_allowed_class_names:
-        return set(configured_allowed_class_names)
     return None
 
 
@@ -151,6 +154,75 @@ def allowed_classes_include_person(allowed_class_names: Optional[Iterable[str]])
         return False
     allowed = set(allowed_class_names)
     return bool(allowed & _normalize_class_names(PERSON_CLASS_ALIASES))
+
+
+def is_person_class_name(class_name: Any) -> bool:
+    return normalize_class_name(class_name) in _normalize_class_names(PERSON_CLASS_ALIASES)
+
+
+def is_person_like_detection(
+    detection: Dict[str, Any],
+    frame_shape=None,
+    *,
+    min_confidence: float = 0.18,
+    min_height_ratio: float = 0.025,
+    min_area_ratio: float = 0.00005,
+    min_width_height_ratio: float = 0.10,
+    max_width_height_ratio: float = 0.95,
+) -> bool:
+    if not is_person_class_name(detection.get("class_name", "")):
+        return True
+
+    if float(detection.get("confidence", 0.0)) < float(min_confidence):
+        return False
+
+    bbox = detection.get("bbox") or []
+    if len(bbox) != 4:
+        return False
+    x1, y1, x2, y2 = [float(value) for value in bbox]
+    box_w = max(0.0, x2 - x1)
+    box_h = max(0.0, y2 - y1)
+    if box_w <= 0 or box_h <= 0:
+        return False
+
+    ratio = box_w / box_h
+    if ratio < float(min_width_height_ratio) or ratio > float(max_width_height_ratio):
+        return False
+
+    if frame_shape is not None and len(frame_shape) >= 2:
+        frame_h = max(1.0, float(frame_shape[0]))
+        frame_w = max(1.0, float(frame_shape[1]))
+        if box_h < frame_h * float(min_height_ratio):
+            return False
+        if (box_w * box_h) < frame_w * frame_h * float(min_area_ratio):
+            return False
+
+    return True
+
+
+def filter_person_like_detections(
+    detections: List[Dict[str, Any]],
+    frame_shape=None,
+    *,
+    min_confidence: float = 0.18,
+    min_height_ratio: float = 0.025,
+    min_area_ratio: float = 0.00005,
+    min_width_height_ratio: float = 0.10,
+    max_width_height_ratio: float = 0.95,
+) -> List[Dict[str, Any]]:
+    return [
+        detection
+        for detection in detections
+        if is_person_like_detection(
+            detection,
+            frame_shape,
+            min_confidence=min_confidence,
+            min_height_ratio=min_height_ratio,
+            min_area_ratio=min_area_ratio,
+            min_width_height_ratio=min_width_height_ratio,
+            max_width_height_ratio=max_width_height_ratio,
+        )
+    ]
 
 
 def iter_tiled_regions(frame_shape, columns: int, rows: int, overlap_ratio: float):

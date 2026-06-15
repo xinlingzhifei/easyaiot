@@ -57,6 +57,7 @@ from app.utils.onnx_inference import ONNXInference
 from app.utils.algo_model_detect import (
     allowed_classes_include_person,
     dedupe_detections_by_iou,
+    filter_person_like_detections,
     prefer_loaded_person_classes,
     resolve_model_allowed_class_names,
     run_model_detection,
@@ -424,7 +425,12 @@ PERSON_TILED_DETECTION_ENABLED = os.getenv('PERSON_TILED_DETECTION_ENABLED', 'tr
 PERSON_TILE_COLUMNS = int(os.getenv('PERSON_TILE_COLUMNS', '3'))
 PERSON_TILE_ROWS = int(os.getenv('PERSON_TILE_ROWS', '2'))
 PERSON_TILE_OVERLAP = float(os.getenv('PERSON_TILE_OVERLAP', '0.20'))
-PERSON_TILE_CONF_THRESHOLD = float(os.getenv('PERSON_TILE_CONF_THRESHOLD', '0.10'))
+PERSON_TILE_CONF_THRESHOLD = float(os.getenv('PERSON_TILE_CONF_THRESHOLD', '0.18'))
+PERSON_MIN_CONFIDENCE = float(os.getenv('PERSON_MIN_CONFIDENCE', '0.18'))
+PERSON_MIN_HEIGHT_RATIO = float(os.getenv('PERSON_MIN_HEIGHT_RATIO', '0.025'))
+PERSON_MIN_AREA_RATIO = float(os.getenv('PERSON_MIN_AREA_RATIO', '0.00005'))
+PERSON_MIN_WIDTH_HEIGHT_RATIO = float(os.getenv('PERSON_MIN_WIDTH_HEIGHT_RATIO', '0.10'))
+PERSON_MAX_WIDTH_HEIGHT_RATIO = float(os.getenv('PERSON_MAX_WIDTH_HEIGHT_RATIO', '0.95'))
 # 画质分档（算法链路）：优先 AI_VIDEO_QUALITY_PROFILE
 VIDEO_QUALITY_PROFILE = os.getenv(
     'AI_VIDEO_QUALITY_PROFILE',
@@ -767,6 +773,16 @@ def _run_yolo_on_frame(
                 )
                 if tiled_dets:
                     model_dets = dedupe_detections_by_iou(model_dets + tiled_dets, iou_threshold=0.45)
+            if allowed_classes_include_person(allowed_class_names):
+                model_dets = filter_person_like_detections(
+                    model_dets,
+                    frame.shape,
+                    min_confidence=PERSON_MIN_CONFIDENCE,
+                    min_height_ratio=PERSON_MIN_HEIGHT_RATIO,
+                    min_area_ratio=PERSON_MIN_AREA_RATIO,
+                    min_width_height_ratio=PERSON_MIN_WIDTH_HEIGHT_RATIO,
+                    max_width_height_ratio=PERSON_MAX_WIDTH_HEIGHT_RATIO,
+                )
             all_detections.extend(model_dets)
         except Exception as e:
             if stop_event.is_set():
