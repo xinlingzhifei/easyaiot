@@ -4,9 +4,11 @@ RTSP/FFmpeg 拉流共用工具（realtime / snapshot 算法服务对齐）。
 from __future__ import annotations
 
 import os
+import subprocess
 from typing import Any, Dict, Optional
 
 import cv2
+import numpy as np
 
 
 def build_opencv_ffmpeg_capture_options(rtsp_transport: str) -> str:
@@ -91,6 +93,95 @@ def apply_videocapture_stream_timeouts(
         pass
 
 
+def use_ffmpeg_raw_capture_for_url(url: str) -> bool:
+    enabled = os.getenv("AI_HTTP_FLV_FFMPEG_CAPTURE", "true").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    return enabled and (url or "").lower().startswith(("http://", "https://")) and ".flv" in (url or "").lower()
+
+
+class FfmpegRawVideoCapture:
+    def __init__(self, url: str):
+        self.url = url
+        self.width = int(os.getenv("AI_FFMPEG_INPUT_WIDTH", "1280"))
+        self.height = int(os.getenv("AI_FFMPEG_INPUT_HEIGHT", "720"))
+        self.fps = float(os.getenv("AI_FFMPEG_INPUT_FPS", "25"))
+        self.frame_size = self.width * self.height * 3
+        ffmpeg_bin = os.getenv("FFMPEG_BIN", "ffmpeg")
+        self.process = subprocess.Popen(
+            [
+                ffmpeg_bin,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-fflags",
+                "nobuffer",
+                "-flags",
+                "low_delay",
+                "-rw_timeout",
+                "5000000",
+                "-i",
+                url,
+                "-an",
+                "-vf",
+                f"scale={self.width}:{self.height}",
+                "-pix_fmt",
+                "bgr24",
+                "-f",
+                "rawvideo",
+                "pipe:1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=self.frame_size,
+        )
+
+    def isOpened(self) -> bool:
+        return self.process is not None and self.process.poll() is None and self.process.stdout is not None
+
+    def read(self):
+        if not self.isOpened():
+            return False, None
+        data = self.process.stdout.read(self.frame_size)
+        if len(data) != self.frame_size:
+            self.release()
+            return False, None
+        frame = np.frombuffer(data, dtype=np.uint8).reshape((self.height, self.width, 3)).copy()
+        return True, frame
+
+    def release(self) -> None:
+        process = self.process
+        self.process = None
+        if process is None:
+            return
+        try:
+            if process.stdout:
+                process.stdout.close()
+        except Exception:
+            pass
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+    def get(self, prop_id: int) -> float:
+        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
+            return float(self.width)
+        if prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
+            return float(self.height)
+        if prop_id == cv2.CAP_PROP_FPS:
+            return float(self.fps)
+        return 0.0
+
+    def set(self, _prop_id: int, _value: float) -> bool:
+        return False
+
+
 def open_network_videocapture(
     url: str,
     *,
@@ -98,6 +189,8 @@ def open_network_videocapture(
     read_timeout_msec: int = 2500,
 ) -> cv2.VideoCapture:
     """打开 RTSP/RTMP 网络流；超时属性仅作用于 RTSP。"""
+    if use_ffmpeg_raw_capture_for_url(url):
+        return FfmpegRawVideoCapture(url)
     if url.startswith("rtmp://") or url.startswith("rtsp://"):
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     else:

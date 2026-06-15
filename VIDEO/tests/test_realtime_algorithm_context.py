@@ -36,6 +36,20 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertIn("using generated GB28181 HTTP stream", source)
         self.assertIn("for cached_attr in ('http_stream', 'rtmp_stream')", source)
         self.assertIn("using cached {cached_attr}", source)
+        self.assertIn("prefer_h264_http_flv_for_opencv", source)
+        self.assertIn("rtsp_url = _normalize_gb28181_opencv_input_url(rtsp_url)", source)
+
+    def test_realtime_detection_uses_model_allowed_class_filter(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("resolve_model_allowed_class_names", source)
+        self.assertIn("yolo_model_allowed_classes[model_id]", source)
+        self.assertIn("allowed_class_names = yolo_model_allowed_classes.get(model_id)", source)
+        self.assertIn("allowed_class_names=allowed_class_names", source)
+        self.assertIn("allowed_classes_include_person", source)
+        self.assertIn("run_tiled_model_detection", source)
 
 
 if __name__ == "__main__":
