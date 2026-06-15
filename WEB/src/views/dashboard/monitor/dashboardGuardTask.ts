@@ -19,6 +19,8 @@ export interface DashboardGuardTask {
   tracking_smooth_alpha?: number
   alert_event_enabled?: boolean | number
   alert_event_suppress_time?: number
+  face_detection_enabled?: boolean
+  plate_detection_enabled?: boolean
   alert_notification_enabled?: boolean
   alert_notification_config?: unknown
   alarm_suppress_time?: number
@@ -42,6 +44,8 @@ export interface DashboardGuardTaskPayload {
   tracking_smooth_alpha?: number
   alert_event_enabled: true
   alert_event_suppress_time?: number
+  face_detection_enabled: true
+  plate_detection_enabled: true
   alert_notification_enabled?: boolean
   alert_notification_config?: unknown
   alarm_suppress_time?: number
@@ -142,7 +146,10 @@ function sameDeviceSet(left: string[], right: string[]) {
 }
 
 function isTaskEnabled(task: DashboardGuardTask) {
-  return task.is_enabled === true || task.is_enabled === 1 || task.run_status === 'running'
+  if (typeof task.run_status === 'string' && task.run_status.length > 0) {
+    return task.run_status === 'running'
+  }
+  return task.is_enabled === true || task.is_enabled === 1
 }
 
 function isAlertEventEnabled(task: DashboardGuardTask) {
@@ -224,6 +231,8 @@ export function buildDashboardGuardTaskPayload(
     tracking_smooth_alpha: template.tracking_smooth_alpha,
     alert_event_enabled: true,
     alert_event_suppress_time: template.alert_event_suppress_time,
+    face_detection_enabled: true,
+    plate_detection_enabled: true,
     alert_notification_enabled: template.alert_notification_enabled,
     alert_notification_config: template.alert_notification_config,
     alarm_suppress_time: template.alarm_suppress_time,

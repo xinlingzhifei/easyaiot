@@ -8,6 +8,7 @@ import {
   normalizeVideoCodec,
   pickLivePlayerEngine,
   pickWvpPlaySource,
+  pickWvpPlaySources,
 } from '../src/views/camera/utils/livePlayer'
 
 assert.equal(normalizeVideoCodec('H.265'), 'h265')
@@ -67,6 +68,71 @@ assert.deepEqual(source, {
   url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
   videoCodec: 'h265',
   playerEngine: 'easywasm',
+})
+
+const h264WebRtcSources = pickWvpPlaySources({
+  rtcs: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
+  https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+  wss_flv: 'wss://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+  mediaInfo: { videoCodec: 'H264' },
+}, {
+  isHttps: true,
+})
+
+assert.deepEqual(h264WebRtcSources, [
+  {
+    label: 'rtcs',
+    url: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
+    videoCodec: 'h264',
+    playerEngine: 'webrtc',
+  },
+  {
+    label: 'https_flv',
+    url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+    videoCodec: 'h264',
+    playerEngine: 'easywasm',
+  },
+  {
+    label: 'wss_flv',
+    url: 'wss://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+    videoCodec: 'h264',
+    playerEngine: 'easywasm',
+  },
+])
+
+assert.deepEqual(pickWvpPlaySource({
+  rtcs: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
+  https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+  mediaInfo: { videoCodec: 'H264' },
+}, {
+  isHttps: true,
+}), {
+  url: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
+  videoCodec: 'h264',
+  playerEngine: 'webrtc',
+})
+
+assert.deepEqual(pickWvpPlaySource({
+  rtcs: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H265',
+  https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+  mediaInfo: { videoCodec: 'H265' },
+}, {
+  isHttps: true,
+}), {
+  url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+  videoCodec: 'h265',
+  playerEngine: 'easywasm',
+})
+
+assert.deepEqual(pickWvpPlaySource({
+  rtcs: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play',
+  https_flv: 'https://eye.yfeiai.com/rtp/demo.live.flv',
+}, {
+  isHttps: true,
+}), {
+  url: 'https://eye.yfeiai.com/rtp/demo.live.flv',
+  videoCodec: 'unknown',
+  playerEngine: 'jessibuca',
 })
 
 const publicH265Source = pickWvpPlaySource({

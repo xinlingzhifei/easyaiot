@@ -10,6 +10,10 @@ const dialogPlayer = readFileSync(
   fileURLToPath(new URL('../src/components/VideoPlayer/DialogPlayer.vue', import.meta.url)),
   'utf8',
 )
+const rtcPlayer = readFileSync(
+  fileURLToPath(new URL('../src/components/VideoPlayer/rtcPlayer.vue', import.meta.url)),
+  'utf8',
+)
 const monitorPanel = readFileSync(
   fileURLToPath(
     new URL('../src/views/camera/components/SplitScreenMonitor/MonitorPanel.vue', import.meta.url),
@@ -93,8 +97,43 @@ assert.match(
 )
 assert.match(
   dialogPlayer,
+  /pickWvpPlaySources/,
+  'DialogPlayer should keep all playable WVP sources so WebRTC can fall back to FLV.',
+)
+assert.match(
+  dialogPlayer,
+  /import RtcPlayer from ["']@\/components\/VideoPlayer\/rtcPlayer\.vue["']/,
+  'DialogPlayer should import the WebRTC player for rtcs playback.',
+)
+assert.match(
+  dialogPlayer,
+  /<RtcPlayer[\s\S]*v-if="state\.playerEngine === 'webrtc'"/,
+  'DialogPlayer should render the WebRTC player when the selected source is rtcs/rtc.',
+)
+assert.match(
+  dialogPlayer,
+  /@stream-error="handleStreamError"/,
+  'DialogPlayer should listen for WebRTC failures and fall back to another source.',
+)
+assert.match(
+  dialogPlayer,
   /:playerEngine="state\.playerEngine"/,
   'DialogPlayer should pass the selected player engine to the shared live player wrapper.',
+)
+assert.match(
+  dialogPlayer,
+  /state\.playSources\.find\(\(source\) => source\.url === value\)/,
+  'DialogPlayer should switch the active player source when the URL dropdown changes.',
+)
+assert.match(
+  rtcPlayer,
+  /WEBRTC_ON_CONNECTION_STATE_CHANGE/,
+  'RtcPlayer should surface peer connection failures so DialogPlayer can fall back to FLV.',
+)
+assert.match(
+  rtcPlayer,
+  /first-frame-timeout/,
+  'RtcPlayer should surface a no-first-frame timeout so DialogPlayer can fall back to FLV.',
 )
 
 assert.match(

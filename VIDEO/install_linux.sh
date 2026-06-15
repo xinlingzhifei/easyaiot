@@ -573,7 +573,7 @@ clean_service() {
 #      本次 git pull 改动了依赖或构建输入（requirements*.txt、Dockerfile、docker-entrypoint.sh）。
 #   3. 需要构建时：旧容器在 git pull + build 全程持续运行，构建完成后才 up -d 触发重建，
 #      并复用 BuildKit 层缓存 + 离线 pip 缓存，停机最小化。
-#   注：VIDEO 用 host 网络模式，从不加入 easyaiot-network，更新流程无需 clean_compose_cache。
+#   注：VIDEO 用 host 网络模式，从不加入 yfeieye-network，更新流程无需 clean_compose_cache。
 update_service() {
     print_info "更新服务..."
     check_docker

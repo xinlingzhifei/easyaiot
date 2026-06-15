@@ -1099,15 +1099,28 @@ def start_algorithm_task(task_id: int):
         try:
             from app.services.algorithm_task_launcher_service import start_task_services
             success, msg, is_running = start_task_services(task_id, task)
-            if success:
-                service_message = msg
-                already_running = is_running
-            else:
-                service_message = msg
-                logger.warning(f"启动任务 {task_id} 的服务失败: {msg}")
         except Exception as e:
             logger.warning(f"启动任务 {task_id} 的服务时出错: {str(e)}", exc_info=True)
             service_message = f"服务启动异常: {str(e)}"
+            task.is_enabled = False
+            task.run_status = 'stopped'
+            task.exception_reason = service_message
+            task.updated_at = datetime.utcnow()
+            db.session.commit()
+            raise RuntimeError(service_message)
+
+        if success:
+            service_message = msg
+            already_running = is_running
+        else:
+            service_message = msg
+            logger.warning(f"启动任务 {task_id} 的服务失败: {msg}")
+            task.is_enabled = False
+            task.run_status = 'stopped'
+            task.exception_reason = service_message
+            task.updated_at = datetime.utcnow()
+            db.session.commit()
+            raise RuntimeError(service_message)
         
         logger.info(f"启动算法任务成功: task_id={task_id}, message={service_message}, already_running={already_running}")
         return task, service_message, already_running
@@ -1194,4 +1207,3 @@ def restart_algorithm_task(task_id: int):
         db.session.rollback()
         logger.error(f"重启算法任务失败: {str(e)}", exc_info=True)
         raise RuntimeError(f"重启算法任务失败: {str(e)}")
-

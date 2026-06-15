@@ -286,7 +286,7 @@ PG_PASSWORD='线上真实密码' ./sync_schema_migra.sh --db iot-ai20
 #### 容器名/端口/网络不同
 
 ```bash
-PG_CONTAINER=my-postgres PG_PORT=5433 PG_NETWORK=easyaiot-network \
+PG_CONTAINER=my-postgres PG_PORT=5433 PG_NETWORK=yfeieye-network \
     ./sync_schema_migra.sh --db iot-ai20
 ```
 

@@ -1112,7 +1112,7 @@ show_help() {
     echo "可选环境变量:"
     echo "  PARALLEL_MODULES=true|false  - 业务模块并行开关：start 默认并行；update 默认串行(可能含重建镜像)"
     echo "  PARALLEL_BUILD=true          - build 时并行构建各模块（默认串行，防小内存并行 OOM）"
-    echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 easyaiot-network（宿主机 IP 变更后使用）"
+    echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 yfeieye-network（宿主机 IP 变更后使用）"
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
     echo ""
 }

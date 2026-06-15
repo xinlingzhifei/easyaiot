@@ -1,4 +1,4 @@
-export type LivePlayerEngine = 'jessibuca' | 'easywasm' | 'native';
+export type LivePlayerEngine = 'jessibuca' | 'easywasm' | 'native' | 'webrtc';
 export type NormalizedVideoCodec =
   | 'h265'
   | 'h264'
@@ -10,6 +10,10 @@ export interface WvpPlaySource {
   url: string;
   videoCodec: NormalizedVideoCodec;
   playerEngine: LivePlayerEngine;
+}
+
+export interface WvpPlaySourceOption extends WvpPlaySource {
+  label: string;
 }
 
 const WASM_VIDEO_CODECS = new Set<NormalizedVideoCodec>(['h265', 'h264', 'mpeg4', 'mjpeg']);
@@ -101,17 +105,18 @@ export function shouldUseWasmLivePlayer(options: {
 }): boolean {
   if (options.playerEngine === 'easywasm') return true;
   if (options.playerEngine === 'jessibuca') return false;
+  if (options.playerEngine === 'webrtc') return false;
   return pickLivePlayerEngine(options) === 'easywasm';
 }
 
-export function pickWvpPlaySource(
+export function pickWvpPlaySources(
   streamContent: Record<string, any> | null | undefined,
   options?: {
     isHttps?: boolean;
     toBrowserPlayUrl?: (url?: string | null) => string | null;
   },
-): WvpPlaySource | null {
-  if (!streamContent) return null;
+): WvpPlaySourceOption[] {
+  if (!streamContent) return [];
   const isHttps =
     options?.isHttps ??
     (typeof window !== 'undefined' && window.location.protocol === 'https:');
@@ -122,41 +127,80 @@ export function pickWvpPlaySource(
       return trimmed || null;
     });
   const videoCodec = getStreamVideoCodec(streamContent);
-  const candidates = isHttps
-    ? [
-        streamContent.https_flv,
-        streamContent.wss_flv,
-        streamContent.https_fmp4,
-        streamContent.wss_fmp4,
-        streamContent.flv,
-        streamContent.ws_flv,
-        streamContent.fmp4,
-      ]
-    : [
-        streamContent.ws_flv,
-        streamContent.flv,
-        streamContent.ws_fmp4,
-        streamContent.fmp4,
-        streamContent.https_flv,
-        streamContent.wss_flv,
-      ];
-
-  for (const raw of candidates) {
+  const sources: WvpPlaySourceOption[] = [];
+  const pushSource = (
+    label: string,
+    raw: string | null | undefined,
+    playerEngine?: LivePlayerEngine,
+  ) => {
     const url = toPlayableUrl(raw);
     if (url) {
-      return {
+      sources.push({
+        label,
         url,
         videoCodec,
-        playerEngine: pickLivePlayerEngine({ videoCodec, url }),
-      };
+        playerEngine: playerEngine ?? pickLivePlayerEngine({ videoCodec, url }),
+      });
+    }
+  };
+
+  if (videoCodec === 'h264') {
+    if (isHttps) {
+      pushSource('rtcs', streamContent.rtcs, 'webrtc');
+      pushSource('rtc', streamContent.rtc, 'webrtc');
+    } else {
+      pushSource('rtc', streamContent.rtc, 'webrtc');
+      pushSource('rtcs', streamContent.rtcs, 'webrtc');
     }
   }
 
+  const candidates = isHttps
+    ? [
+        ['https_flv', streamContent.https_flv],
+        ['wss_flv', streamContent.wss_flv],
+        ['https_fmp4', streamContent.https_fmp4],
+        ['wss_fmp4', streamContent.wss_fmp4],
+        ['flv', streamContent.flv],
+        ['ws_flv', streamContent.ws_flv],
+        ['fmp4', streamContent.fmp4],
+      ]
+    : [
+        ['ws_flv', streamContent.ws_flv],
+        ['flv', streamContent.flv],
+        ['ws_fmp4', streamContent.ws_fmp4],
+        ['fmp4', streamContent.fmp4],
+        ['https_flv', streamContent.https_flv],
+        ['wss_flv', streamContent.wss_flv],
+      ];
+
+  for (const [label, raw] of candidates) {
+    pushSource(label, raw as string | null | undefined);
+  }
+
   const rtmpUrl = toPlayableUrl(streamContent.rtmp);
-  if (!rtmpUrl) return null;
+  if (rtmpUrl) {
+    sources.push({
+      label: 'rtmp',
+      url: rtmpUrl,
+      videoCodec,
+      playerEngine: pickLivePlayerEngine({ videoCodec, url: rtmpUrl }),
+    });
+  }
+  return sources;
+}
+
+export function pickWvpPlaySource(
+  streamContent: Record<string, any> | null | undefined,
+  options?: {
+    isHttps?: boolean;
+    toBrowserPlayUrl?: (url?: string | null) => string | null;
+  },
+): WvpPlaySource | null {
+  const source = pickWvpPlaySources(streamContent, options)[0];
+  if (!source) return null;
   return {
-    url: rtmpUrl,
-    videoCodec,
-    playerEngine: pickLivePlayerEngine({ videoCodec, url: rtmpUrl }),
+    url: source.url,
+    videoCodec: source.videoCodec,
+    playerEngine: source.playerEngine,
   };
 }

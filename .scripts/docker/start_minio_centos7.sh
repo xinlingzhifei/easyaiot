@@ -45,7 +45,7 @@ cd "$SCRIPT_DIR"
 COMPOSE_FILE="docker-compose.yml"
 SERVICE_MINIO="MinIO"
 CONTAINER_NAME="minio-server"
-NETWORK_NAME="easyaiot-network"
+NETWORK_NAME="yfeieye-network"
 MINIO_API_PORT=9000
 MINIO_CONSOLE_PORT=9001
 MINIO_ROOT_USER="minioadmin"

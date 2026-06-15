@@ -13,11 +13,19 @@
         <div style="min-height: 200px; max-height: 680px;">
           <!-- 播放器 -->
           <div style="height: 420px">
+            <RtcPlayer
+              v-if="state.playerEngine === 'webrtc'"
+              :videoUrl="state.currentUrl"
+              :hasaudio="state.hasAudio"
+              @stream-error="handleStreamError"
+            />
             <Jessibuca
+              v-else
               ref="jessibuca"
               :playUrl="state.currentUrl"
               :hasAudio="false"
               :playerEngine="state.playerEngine"
+              :videoCodec="state.videoCodec"
             />
           </div>
           <!-- 控制台 -->
@@ -107,13 +115,21 @@ import BasicModal from "@/components/Modal/src/BasicModal.vue";
 import {reactive, ref} from "vue";
 import {Select, TabPane, Tabs} from 'ant-design-vue';
 import Jessibuca from "@/components/Player/module/jessibuca.vue";
+import RtcPlayer from "@/components/VideoPlayer/rtcPlayer.vue";
 import Ptz from "@/components/Player/module/ptz.vue";
 import {copyText} from "@/utils/copyTextToClipboard";
 import {useMessage} from "@/hooks/web/useMessage";
 import {controlPTZ} from "@/api/device/camera";
 import {controlGbPtz, playByDeviceAndChannel} from "@/api/device/gb28181";
 import { getGb28181PlayIds, shouldPlayViaGb28181 } from '@/views/camera/utils/deviceLabel';
-import { pickWvpPlaySource } from '@/views/camera/utils/devicePlay';
+import { pickWvpPlaySources } from '@/views/camera/utils/devicePlay';
+
+interface DialogPlaySource {
+  label: string;
+  url: string;
+  playerEngine?: string | null;
+  videoCodec?: string | null;
+}
 
 const {createMessage} = useMessage()
 
@@ -133,9 +149,11 @@ const state = reactive({
   hasAudio: false,
   currentUrl: '',
   playerEngine: '',
+  videoCodec: '',
   iframeUrl: '',
   mediaType: 'flv',
   videoUrlList: [{label: 'flv', value: "1"}],
+  playSources: [] as DialogPlaySource[],
   deviceId: '',
   activeKey: 'info',
   playLoading: false,
@@ -151,7 +169,11 @@ const state = reactive({
 const [register, {closeModal}] = useModalInner(async (record) => {
   state.currentUrl = '';
   state.playerEngine = '';
+  state.videoCodec = '';
   state.iframeUrl = '';
+  state.mediaType = '';
+  state.videoUrlList = [];
+  state.playSources = [];
   state.playLoading = false;
 
   const gbIds = getGb28181PlayIds(record);
@@ -168,14 +190,16 @@ const [register, {closeModal}] = useModalInner(async (record) => {
     try {
       const res = await playByDeviceAndChannel(sipDeviceId, channelId);
       const streamContent = res?.data?.data ?? res?.data;
-      const playSource = pickWvpPlaySource(streamContent);
+      const playSources = pickWvpPlaySources(streamContent);
+      const playSource = playSources[0];
       const url = playSource?.url || '';
       if (url) {
-        state.currentUrl = url;
-        state.playerEngine = playSource?.playerEngine ?? '';
-        state.iframeUrl = '<iframe src="' + url + '"></iframe>';
-        state.videoUrlList = [{ label: 'flv', value: url }];
-        state.mediaType = url;
+        state.playSources = playSources;
+        state.videoUrlList = playSources.map((source) => ({
+          label: source.label,
+          value: source.url,
+        }));
+        applyPlaySource(playSource);
       } else {
         createMessage.error(streamContent?.msg || res?.data?.msg || '未获取到播放地址');
       }
@@ -193,18 +217,49 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.deviceId = record['id'];
   state.currentUrl = record['http_stream'] ?? '';
   state.playerEngine = '';
+  state.videoCodec = '';
   state.iframeUrl = record['http_stream'] ? '<iframe src="' + record['http_stream'] + '"></iframe>' : '';
+  state.playSources = record['http_stream']
+    ? [{ label: 'http_stream', url: record['http_stream'], playerEngine: '', videoCodec: '' }]
+    : [];
   state.videoUrlList = record['http_stream']
     ? [{ label: 'http_stream', value: record['http_stream'] }]
     : [{ label: 'flv', value: '1' }];
+  state.mediaType = state.currentUrl;
 });
 
 const handleChange = (value: string) => {
-  copyText(value);
+  const source = state.playSources.find((source) => source.url === value);
+  if (source) {
+    applyPlaySource(source);
+    return;
+  }
+  state.currentUrl = value;
+  state.mediaType = value;
+  state.playerEngine = '';
+  state.videoCodec = '';
+  state.iframeUrl = value ? '<iframe src="' + value + '"></iframe>' : '';
 };
 
 const handleCopy = (value: string) => {
   copyText(value);
+};
+
+const applyPlaySource = (source: DialogPlaySource) => {
+  state.currentUrl = source.url;
+  state.playerEngine = source.playerEngine ?? '';
+  state.videoCodec = source.videoCodec ?? '';
+  state.mediaType = source.url;
+  state.iframeUrl = '<iframe src="' + source.url + '"></iframe>';
+};
+
+const handleStreamError = () => {
+  const fallback = state.playSources.find(
+    (source) => source.playerEngine !== 'webrtc' && source.url !== state.currentUrl,
+  );
+  if (!fallback) return;
+  applyPlaySource(fallback);
+  createMessage.warning('WebRTC 播放异常，已切换到备用播放源');
 };
 
 const handlePtzCamera = async (command: string, speed: number) => {

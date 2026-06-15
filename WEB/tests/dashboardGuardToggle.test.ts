@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+async function main() {
 const sidebarPath = fileURLToPath(
   new URL('../src/views/dashboard/monitor/components/Sidebar.vue', import.meta.url),
 )
@@ -110,6 +111,8 @@ assert.equal(payload.task_type, 'realtime')
 assert.deepEqual(payload.device_ids, scope.deviceIds)
 assert.deepEqual(payload.model_ids, [11, 12])
 assert.equal(payload.alert_event_enabled, true)
+assert.equal(payload.face_detection_enabled, true)
+assert.equal(payload.plate_detection_enabled, true)
 assert.equal(payload.alert_notification_enabled, true)
 assert.equal(payload.defense_mode, 'full')
 
@@ -136,6 +139,8 @@ assert.equal(payload.defense_mode, 'full')
   assert.equal(result.taskId, 42)
   assert.deepEqual(calls, ['create', 'start:42'])
   assert.equal(createdPayload.alert_event_enabled, true)
+  assert.equal(createdPayload.face_detection_enabled, true)
+  assert.equal(createdPayload.plate_detection_enabled, true)
 }
 
 {
@@ -182,6 +187,38 @@ assert.equal(payload.defense_mode, 'full')
   const result = await startDashboardGuardTask({ scope, api })
   assert.equal(result.taskId, 70)
   assert.deepEqual(calls, ['start:70'])
+}
+
+{
+  const calls: string[] = []
+  const staleDashboardTask = {
+    id: 71,
+    task_name: buildDashboardGuardTaskName(scope),
+    task_type: 'realtime',
+    is_enabled: true,
+    run_status: 'stopped',
+    device_ids: scope.deviceIds,
+    model_ids: [11],
+  }
+  const api = {
+    listAlgorithmTasks: async () => ({ code: 0, data: [staleDashboardTask], total: 1 }),
+    createAlgorithmTask: async () => {
+      throw new Error('create should not run when a stale reusable dashboard task exists')
+    },
+    startAlgorithmTask: async (taskId: number) => {
+      calls.push(`start:${taskId}`)
+      return { id: taskId, is_enabled: true, run_status: 'running' }
+    },
+    stopAlgorithmTask: async () => null,
+  }
+
+  const result = await startDashboardGuardTask({ scope, api })
+  assert.equal(result.taskId, 71)
+  assert.deepEqual(
+    calls,
+    ['start:71'],
+    'A dashboard task with is_enabled=true but run_status=stopped must be restarted so AI detection actually runs.',
+  )
 }
 
 {
@@ -343,3 +380,9 @@ assert.equal(payload.defense_mode, 'full')
   assert.equal(groupScope.label, 'Warehouse')
   assert.deepEqual(groupScope.deviceIds, ['cam-1', 'gb-2'])
 }
+}
+
+main().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})

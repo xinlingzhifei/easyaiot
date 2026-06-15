@@ -127,11 +127,25 @@ import { formatAlertListTitle } from '@/views/alert/alertDisplay'
 import { formatCameraDeviceLabel, isGb28181Device } from '@/views/camera/utils/deviceLabel'
 import {
   AI_PLAY_FALLBACK_MS,
+  loadGbChannelSyncedDevice,
   pickDirectPlayUrls,
   resolveGbChannelPlayUrls,
 } from '@/views/camera/utils/devicePlay'
 import { parseGbChannelKey } from '@/views/camera/utils/gb28181Tree'
 import type { MonitorTreeDeviceNode } from '@/api/device/camera'
+import {
+  createAlgorithmTask,
+  listAlgorithmTasks,
+  startAlgorithmTask,
+  stopAlgorithmTask,
+} from '@/api/device/algorithm_task'
+import {
+  extractDashboardGuardErrorMessage,
+  startDashboardGuardTask,
+  stopDashboardGuardTask,
+  type DashboardGuardScope,
+  type DashboardGuardTaskApi,
+} from '../dashboardGuardTask'
 
 defineOptions({
   name: 'VideoMonitor'
@@ -214,6 +228,12 @@ const scrollContainerRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 const internalVideoList = ref<any[]>([])
+const dashboardGuardApi: DashboardGuardTaskApi = {
+  listAlgorithmTasks,
+  createAlgorithmTask: createAlgorithmTask as DashboardGuardTaskApi['createAlgorithmTask'],
+  startAlgorithmTask,
+  stopAlgorithmTask,
+}
 
 function isKnownLayout(layout: string | undefined) {
   return !!layout && splitLayouts.some(item => item.value === layout)
@@ -226,6 +246,86 @@ function ensureVideoSlots(maxCount: number) {
       url: '',
       name: `视频${internalVideoList.value.length + 1}`
     })
+  }
+}
+
+function getDashboardAiDeviceId(device?: MonitorTreeDeviceNode | null) {
+  const id = String(device?.id ?? '').trim()
+  if (!id || id.startsWith('gb_ch_')) return ''
+  return id
+}
+
+function collectDashboardAiDevices(extraDevice?: MonitorTreeDeviceNode | null): MonitorTreeDeviceNode[] {
+  const byId = new Map<string, MonitorTreeDeviceNode>()
+  const addDevice = (device?: MonitorTreeDeviceNode | null) => {
+    const id = getDashboardAiDeviceId(device)
+    if (!id || byId.has(id)) return
+    byId.set(id, device as MonitorTreeDeviceNode)
+  }
+
+  internalVideoList.value.forEach((slot) => {
+    const device = slot?.device as MonitorTreeDeviceNode | undefined
+    if (device) {
+      addDevice(device)
+      return
+    }
+    const deviceId = String(slot?.deviceId ?? '').trim()
+    if (!deviceId || deviceId.startsWith('gb_ch_')) return
+    addDevice({ id: deviceId, name: slot?.name } as MonitorTreeDeviceNode)
+  })
+
+  addDevice(extraDevice)
+  return [...byId.values()]
+}
+
+function buildDashboardAiScope(devices: MonitorTreeDeviceNode[]): DashboardGuardScope | null {
+  const deviceIds = [...new Set(devices.map(getDashboardAiDeviceId).filter(Boolean))]
+  if (!deviceIds.length) return null
+  const sortedIds = [...deviceIds].sort()
+  const firstDeviceName = formatCameraDeviceLabel(devices[0]) || devices[0]?.name || sortedIds[0]
+  return {
+    key: `monitor-ai:${sortedIds.join(',')}`,
+    label: deviceIds.length === 1 ? firstDeviceName : `当前播放 ${deviceIds.length} 路`,
+    deviceIds,
+  }
+}
+
+async function ensureDashboardAiRecognitionForDevices(devices: MonitorTreeDeviceNode[]) {
+  const scope = buildDashboardAiScope(devices)
+  if (!scope) return true
+  try {
+    await startDashboardGuardTask({ scope, api: dashboardGuardApi })
+    return true
+  } catch (error) {
+    createMessage.error(`AI 识别启动失败：${extractDashboardGuardErrorMessage(error)}`)
+    return false
+  }
+}
+
+async function ensureDashboardAiRecognitionForVisibleDevices() {
+  return ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices())
+}
+
+async function ensureGbDashboardAiRecognition(
+  gb: { sipDeviceId: string; channelId: string },
+  fallbackDevice?: MonitorTreeDeviceNode | null,
+) {
+  const aiDevice = await loadGbChannelSyncedDevice(gb.sipDeviceId, gb.channelId, fallbackDevice)
+  if (!getDashboardAiDeviceId(aiDevice)) {
+    createMessage.warning('国标通道尚未同步到设备库，无法启动 AI 识别；请先同步该通道')
+    return { ready: false, device: fallbackDevice ?? null }
+  }
+  const ready = await ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices(aiDevice))
+  return { ready, device: aiDevice }
+}
+
+async function stopDashboardAiRecognitionForVisibleDevices() {
+  const scope = buildDashboardAiScope(collectDashboardAiDevices())
+  if (!scope) return
+  try {
+    await stopDashboardGuardTask({ scope, api: dashboardGuardApi })
+  } catch (error) {
+    console.warn('停止首页 AI 识别任务失败:', error)
   }
 }
 
@@ -281,7 +381,7 @@ async function restorePersistedVideoState() {
     activeVideoIndex.value = Math.max(0, Math.min(state.activeVideoIndex, maxCount - 1))
   }
 
-  const tasks: Promise<void>[] = []
+  const reloadIndexes: number[] = []
   state.videos.forEach((video) => {
     const index = Number(video.index)
     if (!Number.isInteger(index) || index < 0 || index >= maxCount) return
@@ -297,10 +397,21 @@ async function restorePersistedVideoState() {
       playerEngine: video.playerEngine || '',
       videoCodec: video.videoCodec || '',
     }
-    tasks.push(reloadVideoAtIndex(index).catch((error) => {
-      console.warn('恢复首页视频失败:', error)
-    }))
+    reloadIndexes.push(index)
   })
+
+  if (enableAi.value) {
+    const recognitionReady = await ensureDashboardAiRecognitionForVisibleDevices()
+    if (!recognitionReady) {
+      enableAi.value = false
+    }
+  }
+
+  const tasks = reloadIndexes.map((index) =>
+    reloadVideoAtIndex(index).catch((error) => {
+      console.warn('恢复首页视频失败:', error)
+    }),
+  )
 
   await Promise.all(tasks)
   persistDashboardVideoState()
@@ -687,10 +798,18 @@ async function reloadVideoAtIndex(index: number) {
     const gb = parseGbChannelKey(playId)
     if (!gb) return
     const deviceNode = (slot as any).device as MonitorTreeDeviceNode | undefined
+    let playDevice: MonitorTreeDeviceNode | null | undefined = deviceNode
+    if (enableAi.value) {
+      const recognition = await ensureGbDashboardAiRecognition(gb, deviceNode)
+      playDevice = recognition.device ?? deviceNode
+      if (!recognition.ready) {
+        enableAi.value = false
+      }
+    }
     const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
-      { enableAi: enableAi.value, synced: deviceNode },
+      { enableAi: enableAi.value, synced: playDevice },
     )
     if (url) {
       await startPlayAtScreen(index, {
@@ -703,6 +822,7 @@ async function reloadVideoAtIndex(index: number) {
         preferAi,
         playerEngine,
         videoCodec,
+        device: playDevice ?? undefined,
       })
     }
     return
@@ -735,8 +855,22 @@ async function reloadAllVideosForAiToggle() {
   await Promise.all(tasks)
 }
 
-watch(enableAi, (checked) => {
+let aiToggleRequestSeq = 0
+
+watch(enableAi, async (checked) => {
+  const requestSeq = ++aiToggleRequestSeq
   persistEnableAi(checked)
+  if (checked) {
+    const recognitionReady = await ensureDashboardAiRecognitionForVisibleDevices()
+    if (requestSeq !== aiToggleRequestSeq) return
+    if (!recognitionReady) {
+      enableAi.value = false
+      return
+    }
+  } else {
+    await stopDashboardAiRecognitionForVisibleDevices()
+    if (requestSeq !== aiToggleRequestSeq) return
+  }
   reloadAllVideosForAiToggle()
 })
 
@@ -763,10 +897,18 @@ const playDeviceStream = async (device: any) => {
       createMessage.warning('无效国标通道')
       return
     }
+    let playDevice: MonitorTreeDeviceNode | null | undefined = dev
+    if (enableAi.value) {
+      const recognition = await ensureGbDashboardAiRecognition(gb, dev)
+      playDevice = recognition.device ?? dev
+      if (!recognition.ready) {
+        enableAi.value = false
+      }
+    }
     const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
-      { enableAi: enableAi.value, synced: dev },
+      { enableAi: enableAi.value, synced: playDevice },
     )
     if (!url) {
       createMessage.warn(
@@ -782,7 +924,7 @@ const playDeviceStream = async (device: any) => {
       url,
       deviceId: playId,
       location: device.location || '',
-      device: dev,
+      device: playDevice ?? dev,
       fallbackUrl,
       preferAi,
       playerEngine,
@@ -794,6 +936,13 @@ const playDeviceStream = async (device: any) => {
   if (isGb28181Device(dev.source, dev.device_kind)) {
     createMessage.info('请展开上级国标设备并选择通道')
     return
+  }
+
+  if (enableAi.value) {
+    const recognitionReady = await ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices(dev))
+    if (!recognitionReady) {
+      enableAi.value = false
+    }
   }
 
   const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)

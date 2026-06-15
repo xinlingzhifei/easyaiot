@@ -11,7 +11,9 @@ import {
 import { isProtectedStreamUrl, signStreamUrl } from './streamTicket';
 import {
   pickWvpPlaySource as pickWvpLivePlayerSource,
+  pickWvpPlaySources as pickWvpLivePlayerSources,
   type WvpPlaySource,
+  type WvpPlaySourceOption,
 } from './livePlayer';
 import {
   convertRtmpToHttp as convertRtmpToHttpForBrowser,
@@ -50,7 +52,7 @@ export interface DirectPlayUrlResult {
 /** 探测 AI 流是否在 ZLM 上就绪（毫秒） */
 export const AI_STREAM_PROBE_MS = 2000;
 /** AI 流播放超时后回退原始流（毫秒，仅 preferAi 时生效） */
-export const AI_PLAY_FALLBACK_MS = 6000;
+export const AI_PLAY_FALLBACK_MS = 20000;
 
 
 /** 将服务端生成的 127.0.0.1/localhost 流地址改写为当前页面主机名，便于浏览器拉流 */
@@ -208,11 +210,6 @@ export async function pickDirectPlayUrls(
     return { url: aiUrl };
   }
 
-  // ai_http_stream 在库中常为预置占位地址（国标同步即有），须探测 ZLM 是否在推流
-  const aiReady = await probeStreamPlayable(aiUrl);
-  if (!aiReady) {
-    return { url: videoUrl };
-  }
   if (!videoUrl) {
     return { url: aiUrl };
   }
@@ -228,6 +225,12 @@ export function pickWvpPlaySource(
   streamContent: Record<string, any> | null | undefined,
 ): WvpPlaySource | null {
   return pickWvpLivePlayerSource(streamContent, { toBrowserPlayUrl });
+}
+
+export function pickWvpPlaySources(
+  streamContent: Record<string, any> | null | undefined,
+): WvpPlaySourceOption[] {
+  return pickWvpLivePlayerSources(streamContent, { toBrowserPlayUrl });
 }
 
 export function pickWvpPlayUrl(streamContent: Record<string, any> | null | undefined): string | null {
@@ -272,12 +275,13 @@ export async function loadGbChannelSyncedDevice(
   if (synced?.ai_http_stream?.trim() || synced?.ai_rtmp_stream?.trim()) {
     return synced;
   }
-  // 目录树已有同步设备但无 AI 地址时，跳过详情请求，直接走 WVP 点播
-  if (synced?.id) {
-    return synced;
-  }
+  const syncedId = String(synced?.id ?? '').trim();
+  const lookupId =
+    syncedId && !syncedId.startsWith('gb_ch_')
+      ? syncedId
+      : gb28181VirtualDeviceId(sipDeviceId, channelId);
   try {
-    const res = await getDeviceInfo(gb28181VirtualDeviceId(sipDeviceId, channelId));
+    const res = await getDeviceInfo(lookupId);
     const device = (res as any)?.data ?? res;
     return device?.id ? (device as MonitorTreeDeviceNode) : synced ?? null;
   } catch {
