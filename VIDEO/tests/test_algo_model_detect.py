@@ -138,6 +138,20 @@ class AlgoModelDetectTest(unittest.TestCase):
             ],
         )
 
+    def test_person_like_filter_rejects_tiny_tiled_false_person_boxes_by_default(self):
+        detections = [
+            {"class_name": "person", "confidence": 0.36, "bbox": [443, 203, 450, 214]},
+            {"class_name": "person", "confidence": 0.27, "bbox": [386, 166, 392, 176]},
+            {"class_name": "person", "confidence": 0.82, "bbox": [300, 200, 311, 218]},
+        ]
+
+        filtered = filter_person_like_detections(detections, frame_shape=(360, 640, 3))
+
+        self.assertEqual(
+            [det["bbox"] for det in filtered],
+            [[300, 200, 311, 218]],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
