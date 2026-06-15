@@ -16,6 +16,14 @@ sys.modules.setdefault(
 
 stream_url_sync_service = importlib.import_module("app.services.stream_url_sync_service")
 
+GB_DEVICE_ID = "gb28181_44010200493432381460_34020000001320000001"
+GB_RAW_HTTP = (
+    "https://eye.yfeiai.com/rtp/"
+    "44010200493432381460_34020000001320000001.live.flv"
+    "?originTypeStr=rtp_push&videoCodec=H265"
+)
+GB_AI_HTTP = f"https://eye.yfeiai.com/ai/{GB_DEVICE_ID}.flv"
+
 
 class StreamUrlSyncServiceTest(unittest.TestCase):
     def tearDown(self):
@@ -57,15 +65,30 @@ class StreamUrlSyncServiceTest(unittest.TestCase):
         os.environ["MEDIA_HTTP_PLAY_HOST"] = "https://eye.yfeiai.com/"
 
         url = stream_url_sync_service.build_gb28181_zlm_http_flv_url(
-            "gb28181_44010200493432381460_34020000001320000001",
+            GB_DEVICE_ID,
         )
 
-        self.assertEqual(
-            url,
-            "https://eye.yfeiai.com/rtp/"
-            "44010200493432381460_34020000001320000001.live.flv"
-            "?originTypeStr=rtp_push&videoCodec=H265",
+        self.assertEqual(url, GB_RAW_HTTP)
+
+    def test_resolve_gb_device_keeps_raw_and_ai_streams_separate(self):
+        os.environ["MEDIA_HTTP_PLAY_HOST"] = "https://eye.yfeiai.com/"
+        device = types.SimpleNamespace(
+            id=GB_DEVICE_ID,
+            source="gb28181://44010200493432381460/34020000001320000001",
+            rtmp_stream="",
+            http_stream="",
+            ai_rtmp_stream=f"rtmp://192.168.0.88:1935/ai/{GB_DEVICE_ID}",
+            ai_http_stream=GB_AI_HTTP,
         )
+
+        rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream = (
+            stream_url_sync_service.resolve_device_stream_urls(device)
+        )
+
+        self.assertEqual(rtmp_stream, "")
+        self.assertEqual(http_stream, GB_RAW_HTTP)
+        self.assertEqual(ai_rtmp_stream, f"rtmp://192.168.0.88:1935/ai/{GB_DEVICE_ID}")
+        self.assertEqual(ai_http_stream, GB_AI_HTTP)
 
 
 if __name__ == "__main__":

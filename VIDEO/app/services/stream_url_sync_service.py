@@ -145,7 +145,12 @@ def resolve_device_stream_urls(device: Device) -> Tuple[str, str, str, str]:
         else None
     )
     if gb28181_http_stream:
-        return '', '', device.ai_rtmp_stream or '', gb28181_http_stream
+        return (
+            '',
+            gb28181_http_stream,
+            device.ai_rtmp_stream or '',
+            device.ai_http_stream or '',
+        )
     try:
         from app.utils.media_client import (
             get_device_media_binding,

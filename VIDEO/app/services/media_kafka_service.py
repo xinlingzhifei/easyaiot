@@ -32,9 +32,9 @@ def is_snap_kafka_mode() -> bool:
 
 
 def _bootstrap_servers() -> str:
-    servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+    servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9094')
     if 'Kafka' in servers or 'kafka-server' in servers:
-        return 'localhost:9092'
+        return 'localhost:9094'
     return servers
 
 

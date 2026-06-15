@@ -81,9 +81,9 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
     env['POD_IP'] = server_host
     env['HOST_IP'] = server_host
 
-    kafka_bootstrap = env.get('KAFKA_BOOTSTRAP_SERVERS', os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'))
+    kafka_bootstrap = env.get('KAFKA_BOOTSTRAP_SERVERS', os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9094'))
     if 'Kafka' in kafka_bootstrap or 'kafka-server' in kafka_bootstrap:
-        env['KAFKA_BOOTSTRAP_SERVERS'] = os.getenv('NODE_REMOTE_KAFKA', kafka_bootstrap)
+        env['KAFKA_BOOTSTRAP_SERVERS'] = os.getenv('NODE_REMOTE_KAFKA', 'localhost:9094')
     else:
         env['KAFKA_BOOTSTRAP_SERVERS'] = kafka_bootstrap
     from app.utils.node_remote_tools import apply_remote_toolchain_env

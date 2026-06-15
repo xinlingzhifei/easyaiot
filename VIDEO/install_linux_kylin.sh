@@ -426,8 +426,8 @@ create_env_file() {
             # 更新Redis配置（使用localhost，因为使用host网络模式）
             sed -i 's|^REDIS_HOST=.*|REDIS_HOST=localhost|' .env.docker
             
-            # 更新Kafka配置（使用localhost，因为使用host网络模式）
-            sed -i 's|^KAFKA_BOOTSTRAP_SERVERS=.*|KAFKA_BOOTSTRAP_SERVERS=localhost:9092|' .env.docker
+            # 更新Kafka配置（使用EXTERNAL listener，因为使用host网络模式）
+            sed -i 's|^KAFKA_BOOTSTRAP_SERVERS=.*|KAFKA_BOOTSTRAP_SERVERS=localhost:9094|' .env.docker
             
             # 更新TDengine配置（使用localhost，因为使用host网络模式）
             sed -i 's|^TDENGINE_HOST=.*|TDENGINE_HOST=localhost|' .env.docker
@@ -472,8 +472,8 @@ create_env_file() {
         
         # 检查并更新Kafka配置（如果还是旧的服务名，改为localhost）
         if grep -q "KAFKA_BOOTSTRAP_SERVERS=.*Kafka" .env.docker || grep -q "KAFKA_BOOTSTRAP_SERVERS=.*kafka-server" .env.docker; then
-            sed -i 's|^KAFKA_BOOTSTRAP_SERVERS=.*|KAFKA_BOOTSTRAP_SERVERS=localhost:9092|' .env.docker
-            print_info "已更新Kafka连接为 localhost:9092（host网络模式）"
+            sed -i 's|^KAFKA_BOOTSTRAP_SERVERS=.*|KAFKA_BOOTSTRAP_SERVERS=localhost:9094|' .env.docker
+            print_info "已更新Kafka连接为 localhost:9094（host网络模式）"
         fi
         
         # 检查并更新TDengine配置（如果还是旧的服务名，改为localhost）

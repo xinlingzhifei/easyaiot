@@ -337,8 +337,10 @@ def _upsert_gb_device(
         if not device.directory_id:
             device.directory_id = default_dir_id
             changed = True
-        if device.rtmp_stream or device.http_stream:
+        if (device.rtmp_stream or '') != (rtmp_stream or ''):
             device.rtmp_stream = rtmp_stream
+            changed = True
+        if http_stream and (device.http_stream or '').strip() != http_stream:
             device.http_stream = http_stream
             changed = True
         if not (device.ai_rtmp_stream or '').strip():
@@ -419,8 +421,11 @@ def backfill_gb28181_ai_stream_urls() -> int:
         source = (device.source or '').strip()
         if not source.lower().startswith(prefix):
             continue
-        _, _, ai_rtmp, ai_http = gb28181_device_stream_urls(device.id)
+        _, http, ai_rtmp, ai_http = gb28181_device_stream_urls(device.id)
         changed = False
+        if http and (device.http_stream or '').strip() != http:
+            device.http_stream = http
+            changed = True
         if not (device.ai_rtmp_stream or '').strip():
             device.ai_rtmp_stream = ai_rtmp
             changed = True

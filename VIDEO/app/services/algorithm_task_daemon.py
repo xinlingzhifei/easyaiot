@@ -451,13 +451,13 @@ class AlgorithmTaskDaemon:
         env['VIDEO_HEARTBEAT_URL'] = f'{env["VIDEO_CONTROL_URL"]}/algorithm/heartbeat/realtime'
         
         # 重要：realtime_algorithm_service 使用 host 网络模式，必须使用 localhost 访问 Kafka
-        # 如果环境变量中配置了容器名（如 Kafka:9092），需要强制覆盖为 localhost:9092
+        # 如果环境变量中配置了容器名（如 Kafka:9092），需要强制覆盖为 EXTERNAL listener
         # 这样可以避免在 host 网络模式下尝试解析容器名导致的连接失败
-        kafka_bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+        kafka_bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9094')
         # 如果配置中包含容器名（Kafka 或 kafka-server），强制使用 localhost
         if 'Kafka' in kafka_bootstrap_servers or 'kafka-server' in kafka_bootstrap_servers:
-            self._log(f'检测到 Kafka 配置使用容器名，强制覆盖为 localhost:9092（realtime_algorithm_service 使用 host 网络模式）', 'INFO')
-            env['KAFKA_BOOTSTRAP_SERVERS'] = 'localhost:9092'
+            self._log(f'检测到 Kafka 配置使用容器名，强制覆盖为 localhost:9094（realtime_algorithm_service 使用 host 网络模式）', 'INFO')
+            env['KAFKA_BOOTSTRAP_SERVERS'] = 'localhost:9094'
         else:
             # 如果已经是 localhost 或 IP 地址，直接使用
             env['KAFKA_BOOTSTRAP_SERVERS'] = kafka_bootstrap_servers
@@ -513,4 +513,3 @@ class AlgorithmTaskDaemon:
         
         self._log(f'未找到Conda环境，将使用系统Python', 'DEBUG')
         return None
-

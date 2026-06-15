@@ -80,6 +80,12 @@ assert.match(
   'When an AI stream address exists, the player should try it first and keep the original stream only as a timeout fallback.',
 )
 
+assert.match(
+  devicePlay,
+  /export const AI_PLAY_FALLBACK_MS = 60000/,
+  'AI playback should wait long enough for realtime algorithm startup and stream warmup before falling back to raw video.',
+)
+
 assert.doesNotMatch(
   devicePlay,
   /if \(synced\?\.id\) \{\s*return synced;\s*\}/,

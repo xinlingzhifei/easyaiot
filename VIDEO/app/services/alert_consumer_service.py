@@ -44,14 +44,14 @@ def get_kafka_consumer():
     
     # 从Flask配置中获取Kafka配置
     try:
-        bootstrap_servers = current_app.config.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+        bootstrap_servers = current_app.config.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9094')
         kafka_topic = current_app.config.get('KAFKA_ALERT_TOPIC', 'iot-alert-notification')
         consumer_group = current_app.config.get('KAFKA_ALERT_CONSUMER_GROUP', 'video-alert-consumer')
         init_retry_interval = current_app.config.get('KAFKA_INIT_RETRY_INTERVAL', 60)
     except RuntimeError:
         # 不在Flask应用上下文中，使用环境变量作为后备
         import os
-        bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+        bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9094')
         kafka_topic = os.getenv('KAFKA_ALERT_TOPIC', 'iot-alert-notification')
         consumer_group = os.getenv('KAFKA_ALERT_CONSUMER_GROUP', 'video-alert-consumer')
         init_retry_interval = int(os.getenv('KAFKA_INIT_RETRY_INTERVAL', '60'))
