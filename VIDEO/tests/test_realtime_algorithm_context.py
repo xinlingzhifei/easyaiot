@@ -26,6 +26,15 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertIn("task['source_event'] = source_event", queue_source)
         self.assertIn("source_event=source_event", realtime_source)
 
+    def test_gb28181_realtime_uses_cached_input_stream_when_play_fails(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("resolve_gb28181_source(device.source", source)
+        self.assertIn("for cached_attr in ('http_stream', 'rtmp_stream')", source)
+        self.assertIn("using cached {cached_attr}", source)
+
 
 if __name__ == "__main__":
     unittest.main()

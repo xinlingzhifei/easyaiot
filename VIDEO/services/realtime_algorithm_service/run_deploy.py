@@ -1289,6 +1289,16 @@ def load_task_config():
                 db_session.refresh(device)
                 # 输入流地址（支持RTSP/RTMP，以及通过gb28181://虚拟源动态解析）
                 rtsp_url = resolve_gb28181_source(device.source, logger=logger) if device.source else None
+                if not rtsp_url and device.source and device.source.strip().lower().startswith('gb28181://'):
+                    for cached_attr in ('http_stream', 'rtmp_stream'):
+                        cached_url = (getattr(device, cached_attr, None) or '').strip()
+                        if cached_url:
+                            rtsp_url = cached_url
+                            logger.warning(
+                                f"GB28181 source resolve failed for {device.id}; "
+                                f"using cached {cached_attr}: {cached_url}"
+                            )
+                            break
                 if not rtsp_url:
                     logger.warning(f"设备 {device.id} 未获取到可用输入流地址，跳过该设备")
                     continue
