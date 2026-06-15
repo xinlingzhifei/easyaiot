@@ -28,6 +28,12 @@ assert.match(
 
 assert.match(
   videoMonitor,
+  /const VIDEO_STATE_STORAGE_KEY = 'yfeieye\.dashboard\.monitor\.videoState'/,
+  'Dashboard live video should keep a stable storage key for restoring visible streams after route navigation.',
+)
+
+assert.match(
+  videoMonitor,
   /const enableAi = ref\(readPersistedEnableAi\(\)\)/,
   'Dashboard AI toggle should initialize from the persisted session value when the user returns to the page.',
 )
@@ -36,6 +42,42 @@ assert.match(
   videoMonitor,
   /window\.sessionStorage\.setItem\(AI_TOGGLE_STORAGE_KEY, String\(checked\)\)/,
   'Dashboard AI toggle should persist user changes before route navigation destroys the component.',
+)
+
+assert.match(
+  videoMonitor,
+  /window\.sessionStorage\.setItem\(VIDEO_STATE_STORAGE_KEY, JSON\.stringify\(state\)\)/,
+  'Dashboard live video should persist the playing slots before route navigation destroys the component.',
+)
+
+assert.match(
+  videoMonitor,
+  /function readPersistedVideoState\(\)[\s\S]*window\.sessionStorage\.getItem\(VIDEO_STATE_STORAGE_KEY\)/,
+  'Dashboard live video should read the previous playing slots when the user returns to the page.',
+)
+
+assert.match(
+  videoMonitor,
+  /async function restorePersistedVideoState\(\)[\s\S]*reloadVideoAtIndex\(index\)/,
+  'Dashboard live video should reload restored devices instead of only rendering stale placeholder data.',
+)
+
+assert.match(
+  videoMonitor,
+  /onActivated\(\(\) => \{[\s\S]*resumeDashboardVideosAfterRouteReturn\(\)/,
+  'Dashboard live video should reconnect when a cached monitor route is activated again.',
+)
+
+assert.match(
+  videoMonitor,
+  /internalVideoList\.value\[targetIndex\] = \{[\s\S]*videoCodec: payload\.videoCodec \|\| '',[\s\S]*persistDashboardVideoState\(\)/,
+  'Dashboard live video should save a stream immediately after assigning it to a screen.',
+)
+
+assert.match(
+  videoMonitor,
+  /internalVideoList\.value\[index\] = \{[\s\S]*name: `[^`]*\$\{index \+ 1\}`[\s\S]*persistDashboardVideoState\(\)/,
+  'Dashboard live video should update persisted state when a stream is removed from a screen.',
 )
 
 assert.doesNotMatch(

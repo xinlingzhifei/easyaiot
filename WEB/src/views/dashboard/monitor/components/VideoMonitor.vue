@@ -113,7 +113,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, nextTick } from 'vue'
 import { Checkbox as ACheckbox } from 'ant-design-vue'
 import { Icon } from '@/components/Icon'
 import { queryAlarmList } from '@/api/device/calculate'
@@ -155,6 +155,25 @@ const activeVideoIndex = ref(0)
 const currentLayout = ref('1')
 /** 勾选后点播 AI 流（检测框由算法任务烧录在此路流上） */
 const AI_TOGGLE_STORAGE_KEY = 'yfeieye.dashboard.monitor.enableAi'
+const VIDEO_STATE_STORAGE_KEY = 'yfeieye.dashboard.monitor.videoState'
+
+type PersistedDashboardVideoSlot = {
+  index: number
+  id: string
+  name: string
+  url: string
+  deviceId?: string
+  location?: string
+  device?: MonitorTreeDeviceNode
+  playerEngine?: string
+  videoCodec?: string
+}
+
+type PersistedDashboardVideoState = {
+  layout: string
+  activeVideoIndex: number
+  videos: PersistedDashboardVideoSlot[]
+}
 
 function readPersistedEnableAi() {
   if (typeof window === 'undefined') return false
@@ -174,6 +193,18 @@ function persistEnableAi(checked: boolean) {
   }
 }
 
+function readPersistedVideoState(): PersistedDashboardVideoState | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(VIDEO_STATE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PersistedDashboardVideoState
+    return Array.isArray(parsed?.videos) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 const enableAi = ref(readPersistedEnableAi())
 const videoRefs = ref<(InstanceType<typeof Jessibuca> | null)[]>([])
 const alertRecordList = ref<any[]>([])
@@ -182,6 +213,123 @@ const scrollContainerRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 const internalVideoList = ref<any[]>([])
+
+function isKnownLayout(layout: string | undefined) {
+  return !!layout && splitLayouts.some(item => item.value === layout)
+}
+
+function ensureVideoSlots(maxCount: number) {
+  while (internalVideoList.value.length < maxCount) {
+    internalVideoList.value.push({
+      id: `placeholder-${internalVideoList.value.length}`,
+      url: '',
+      name: `视频${internalVideoList.value.length + 1}`
+    })
+  }
+}
+
+function persistDashboardVideoState() {
+  if (typeof window === 'undefined') return
+
+  const videos = internalVideoList.value
+    .map((video, index) => {
+      if (!video?.url || !video.deviceId) return null
+      return {
+        index,
+        id: String(video.id || `video-${index}`),
+        name: String(video.name || `视频${index + 1}`),
+        url: String(video.url),
+        deviceId: String(video.deviceId),
+        location: video.location || '',
+        device: video.device,
+        playerEngine: video.playerEngine || '',
+        videoCodec: video.videoCodec || '',
+      } satisfies PersistedDashboardVideoSlot
+    })
+    .filter((video): video is PersistedDashboardVideoSlot => !!video)
+
+  try {
+    if (!videos.length) {
+      window.sessionStorage.removeItem(VIDEO_STATE_STORAGE_KEY)
+      return
+    }
+
+    const state: PersistedDashboardVideoState = {
+      layout: currentLayout.value,
+      activeVideoIndex: activeVideoIndex.value,
+      videos,
+    }
+    window.sessionStorage.setItem(VIDEO_STATE_STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    // Keep playback working even when storage is full or disabled.
+  }
+}
+
+async function restorePersistedVideoState() {
+  const state = readPersistedVideoState()
+  if (!state?.videos.length) return
+
+  if (isKnownLayout(state.layout)) {
+    currentLayout.value = state.layout
+  }
+
+  const maxCount = getMaxVideoCount(currentLayout.value)
+  ensureVideoSlots(maxCount)
+
+  if (Number.isInteger(state.activeVideoIndex)) {
+    activeVideoIndex.value = Math.max(0, Math.min(state.activeVideoIndex, maxCount - 1))
+  }
+
+  const tasks: Promise<void>[] = []
+  state.videos.forEach((video) => {
+    const index = Number(video.index)
+    if (!Number.isInteger(index) || index < 0 || index >= maxCount) return
+    if (!video.url || !video.deviceId) return
+
+    internalVideoList.value[index] = {
+      id: video.id,
+      url: video.url,
+      name: video.name,
+      deviceId: video.deviceId,
+      location: video.location || '',
+      device: video.device,
+      playerEngine: video.playerEngine || '',
+      videoCodec: video.videoCodec || '',
+    }
+    tasks.push(reloadVideoAtIndex(index).catch((error) => {
+      console.warn('恢复首页视频失败:', error)
+    }))
+  })
+
+  await Promise.all(tasks)
+  persistDashboardVideoState()
+}
+
+let lastResumeAttemptAt = 0
+
+async function resumeDashboardVideosAfterRouteReturn() {
+  const now = Date.now()
+  if (now - lastResumeAttemptAt < 500) return
+  lastResumeAttemptAt = now
+
+  await nextTick()
+  const tasks: Promise<void>[] = []
+  internalVideoList.value.forEach((slot, index) => {
+    if (slot?.url && slot.deviceId) {
+      tasks.push(reloadVideoAtIndex(index).catch((error) => {
+        console.warn('重连首页视频失败:', error)
+      }))
+    }
+  })
+
+  if (tasks.length) {
+    await Promise.all(tasks)
+    persistDashboardVideoState()
+    return
+  }
+
+  await restorePersistedVideoState()
+}
 
 // 防重复提示：记录最近提示的时间和内容
 let lastVideoErrorTime = 0
@@ -252,13 +400,7 @@ const videoListWithPlaceholder = computed(() => {
   }
   
   // 确保内部列表长度足够
-  while (internalVideoList.value.length < maxCount) {
-    internalVideoList.value.push({
-      id: `placeholder-${internalVideoList.value.length}`,
-      url: '',
-      name: `视频${internalVideoList.value.length + 1}`
-    })
-  }
+  ensureVideoSlots(maxCount)
   
   return internalVideoList.value.slice(0, maxCount)
 })
@@ -407,6 +549,7 @@ const getVideoStyle = (index: number) => {
 // 处理视频点击
 const handleVideoClick = (index: number) => {
   activeVideoIndex.value = index
+  persistDashboardVideoState()
   // 可以在这里添加全屏或其他操作
 }
 
@@ -439,6 +582,7 @@ const handleVideoRightClick = (index: number, event: MouseEvent) => {
       url: '',
       name: `视频${index + 1}`
     }
+    persistDashboardVideoState()
     
     createMessage.success('已移除视频流')
   }
@@ -505,6 +649,7 @@ async function startPlayAtScreen(
     playerEngine: payload.playerEngine || '',
     videoCodec: payload.videoCodec || '',
   }
+  persistDashboardVideoState()
 
   const fallbackUrl = payload.fallbackUrl?.trim()
   if (!payload.preferAi || !fallbackUrl || fallbackUrl === payload.url) return
@@ -520,6 +665,7 @@ async function startPlayAtScreen(
       'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
     )
     internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl }
+    persistDashboardVideoState()
   }, AI_PLAY_FALLBACK_MS)
   aiFallbackTimers.set(targetIndex, timerId)
 }
@@ -601,13 +747,7 @@ const playDeviceStream = async (device: any) => {
 
   const maxCount = getMaxVideoCount(currentLayout.value)
   if (internalVideoList.value.length === 0) {
-    for (let i = 0; i < maxCount; i++) {
-      internalVideoList.value.push({
-        id: `placeholder-${i}`,
-        url: '',
-        name: `视频${i + 1}`,
-      })
-    }
+    ensureVideoSlots(maxCount)
   }
 
   const targetIndex = resolveTargetScreenIndex()
@@ -723,6 +863,7 @@ watch(() => currentLayout.value, (newLayout) => {
   if (internalVideoList.value.length > maxCount) {
     internalVideoList.value = internalVideoList.value.slice(0, maxCount)
   }
+  persistDashboardVideoState()
 })
 
 // 监听正在播放的视频列表变化，通知父组件
@@ -893,6 +1034,12 @@ onMounted(() => {
   
   // 监听窗口大小变化
   window.addEventListener('resize', checkScrollStatus)
+
+  resumeDashboardVideosAfterRouteReturn()
+})
+
+onActivated(() => {
+  resumeDashboardVideosAfterRouteReturn()
 })
 
 onUnmounted(() => {
