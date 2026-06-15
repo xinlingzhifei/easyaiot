@@ -64,6 +64,7 @@ public class FaceMatchingServiceImpl implements FaceMatchingService {
         payload.put("threshold", message.getThreshold() != null ? message.getThreshold() : message.getFaceMatchingThreshold());
         payload.put("alertId", message.getAlertId());
         payload.put("correlationId", message.getCorrelationId());
+        payload.put("sourceEvent", message.getSourceEvent());
         payload.put("bbox", message.getBbox());
         payload.put("confidence", message.getConfidence());
 

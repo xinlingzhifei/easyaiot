@@ -181,7 +181,6 @@ import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
 import {
   captureDeviceSnapshot,
-  updateDeviceCoverImage,
   getDeviceRegions,
   createDeviceRegion,
   updateDeviceRegion,
@@ -336,20 +335,19 @@ const loadModelList = async () => {
     
     if (allModels.length > 0) {
       let filteredModels = allModels;
-      
-      // 如果提供了 modelIds，则只显示这些模型（包括特殊模型）
+      // 区域检测的算法模型列表 = 当前算法分析任务选择的模型（props.modelIds）：
+      // 任务选了哪几个模型，这里就只显示哪几个，与算法任务的模型列表保持一致（仍支持多选）。
       if (props.modelIds && Array.isArray(props.modelIds) && props.modelIds.length > 0) {
         const modelIdSet = new Set(props.modelIds);
         filteredModels = allModels.filter((model: any) => modelIdSet.has(model.id));
-        console.log('过滤模型列表，任务关联的模型ID:', props.modelIds, '过滤前数量:', allModels.length, '过滤后数量:', filteredModels.length);
+        console.log('区域检测模型列表按任务过滤，任务模型ID:', props.modelIds, '过滤后数量:', filteredModels.length);
       }
-      
       modelList.value = filteredModels.map((model: any) => ({
         id: model.id,
         name: model.name,
         version: model.version
       }));
-      console.log('加载模型列表成功，数量:', modelList.value.length, '模型列表:', modelList.value);
+      console.log('加载模型列表成功（按任务模型过滤），数量:', modelList.value.length);
     } else {
       console.warn('模型列表为空或格式异常:', response);
       modelList.value = [];
@@ -617,12 +615,12 @@ const draw = () => {
     const img = currentImage.value;
     const scaleX = canvas.value.width / img.width;
     const scaleY = canvas.value.height / img.height;
-    // 使用 Math.max 让图片撑满canvas（可能会裁剪部分内容）
-    const scale = Math.max(scaleX, scaleY);
+    // 使用 Math.min 让整张图完整显示在画布内(contain)，避免宽幅画面被裁剪导致"显示不全"
+    const scale = Math.min(scaleX, scaleY);
 
     const scaledWidth = img.width * scale;
     const scaledHeight = img.height * scale;
-    // 居中显示，超出部分会被裁剪
+    // 居中显示，四周可能留白（保证画面完整，区域坐标按图片实际显示区域映射）
     const x = (canvas.value.width - scaledWidth) / 2;
     const y = (canvas.value.height - scaledHeight) / 2;
 
@@ -951,7 +949,7 @@ const handleMouseUp = () => {
 
       if (Math.abs(width) > 0.01 && Math.abs(height) > 0.01) {
         const newRegion: DeviceDetectionRegion = {
-          id: Date.now(),
+          id: -Date.now(),  // 负数=前端未保存的临时区域，区别于数据库正整数 id（删除/保存据此判断）
           device_id: props.deviceId,
           region_name: generateDefaultRegionName(),
           region_type: 'rectangle',
@@ -995,7 +993,7 @@ const handleDoubleClick = () => {
 const finishPolygon = () => {
   if (activeTool.value === ToolType.POLYGON && currentPoints.value.length >= 2) {
     const newRegion: DeviceDetectionRegion = {
-      id: Date.now(),
+      id: -Date.now(),  // 负数=前端未保存的临时区域，区别于数据库正整数 id（删除/保存据此判断）
       device_id: props.deviceId,
       region_name: generateDefaultRegionName(),
       region_type: 'polygon',
@@ -1095,20 +1093,10 @@ const handleCapture = async () => {
       loadImage(result.data.image_url);
       createMessage.success('抓拍成功');
       emit('image-captured', result.data.image_id, result.data.image_url);
-      
-      // 抓拍成功后，自动更新设备封面图
-      try {
-        const coverResponse = await updateDeviceCoverImage(props.deviceId);
-        const coverResult = (coverResponse as any).data || coverResponse;
-        if (coverResult.code === 0 && coverResult.data) {
-          emit('cover-updated', coverResult.data.image_url);
-        } else {
-          console.warn('自动更新封面图失败:', coverResult.msg);
-        }
-      } catch (coverError) {
-        console.error('自动更新封面图失败', coverError);
-        // 不显示错误提示，因为抓拍已经成功了
-      }
+
+      // 抓拍接口已用本次截图同步更新了设备封面，直接用返回的 image_url 同步前端即可；
+      // 无需再调 cover-image 接口（对国标设备会重复点播抓帧，易触发 10s 超时）
+      emit('cover-updated', result.data.image_url);
     } else {
       createMessage.error(result.msg || '抓拍失败');
     }
@@ -1615,7 +1603,7 @@ onUnmounted(() => {
     background: transparent;
 
     .tool-panel {
-      width: 280px;
+      width: 220px;
       background: #ffffff;
       border-radius: 12px;
       box-shadow: @shadow-md;
@@ -1839,7 +1827,7 @@ onUnmounted(() => {
     }
 
     .region-list-panel {
-      width: 320px;
+      width: 260px;
       background: #ffffff;
       border-radius: 12px;
       box-shadow: @shadow-md;

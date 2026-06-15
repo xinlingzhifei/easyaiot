@@ -10,6 +10,9 @@ from models import Alert, db
 
 logger = logging.getLogger('alert')
 
+# 库匹配告警：object 存匹配对象（人员姓名/车牌号），task_name 存任务名
+LIBRARY_MATCH_EVENTS = frozenset({'face_library_match', 'plate_library_match'})
+
 # 与 iot-sink parseAlertEventTime、算法告警 time 字段一致：东八区墙钟
 SHANGHAI_TZ = timezone(timedelta(hours=8))
 
@@ -34,8 +37,7 @@ def _alert_to_dict(alert: Alert) -> dict:
         'image_path': alert.image_path,
         'record_path': alert.record_path,
         'task_id': alert.task_id if hasattr(alert, 'task_id') else None,
-        # task_name 与列表「任务名称」筛选一致：优先 object（任务展示名），其次独立 task_name 字段
-        'task_name': alert.object if alert.object else (alert.task_name if hasattr(alert, 'task_name') else None),
+        'task_name': alert.task_name if hasattr(alert, 'task_name') else None,
     }
     
     # 处理 information 字段（如果是 JSON 字符串则解析）
@@ -131,6 +133,20 @@ def _alert_to_dict(alert: Alert) -> dict:
     if hasattr(alert, 'correlation_id'):
         result['correlation_id'] = alert.correlation_id
 
+    if alert.event == 'face_library_match' and alert.object:
+        result['matched_person_name'] = alert.object
+
+    if information_dict and isinstance(information_dict, dict):
+        source_event = information_dict.get('source_event')
+        if source_event:
+            result['source_event'] = source_event
+        matched_person_code = information_dict.get('matched_person_code')
+        if matched_person_code:
+            result['matched_person_code'] = matched_person_code
+        library_name = information_dict.get('library_name')
+        if library_name:
+            result['library_name'] = library_name
+
     return result
 
 
@@ -175,11 +191,11 @@ def _get_alert_filter_query(args: dict) -> Query:
         except (ValueError, TypeError):
             logger.warning(f'无效的task_id参数: {args["task_id"]}')
 
-    # 任务名称：对 object 字段做模糊匹配（与前端「任务名称」筛选一致）
+    # 任务名称：对 task_name 做模糊匹配
     if 'task_name' in args and args['task_name']:
         task_name_value = args['task_name'].strip() if isinstance(args['task_name'], str) else args['task_name']
         if task_name_value:
-            query = query.filter(Alert.object.like(f'%{task_name_value}%'))
+            query = query.filter(Alert.task_name.like(f'%{task_name_value}%'))
 
     if 'business_tags' in args and args['business_tags']:
         tag_value = args['business_tags']
@@ -459,9 +475,9 @@ def create_alert(alert_data: dict) -> dict:
         if correlation_id:
             correlation_id = str(correlation_id).strip() or None
 
-        # 若传入 task_name，则写入 object（任务展示名）；否则使用 object 字段
+        # 非库匹配告警：task_name 写入 object（任务展示名）；库匹配告警 object 保留匹配对象
         object_value = alert_data['object']
-        if task_name:
+        if task_name and alert_data['event'] not in LIBRARY_MATCH_EVENTS:
             object_value = task_name
 
         # 创建报警记录

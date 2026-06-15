@@ -50,7 +50,7 @@ services:
       [
         "/bin/bash",
         "-c",
-        "mkdir -p /var/lib/postgresql/data /var/log/postgresql && chown -R 999:999 /var/lib/postgresql/data /var/log/postgresql && chmod -R 777 /var/lib/postgresql/data && chmod -R 777 /var/log/postgresql && echo '[PostgreSQL Init] 权限设置完成'",
+        "mkdir -p /var/lib/postgresql/data /var/log/postgresql && chown -R 999:999 /var/lib/postgresql/data /var/log/postgresql && chmod 777 /var/lib/postgresql/data && chmod 777 /var/log/postgresql && echo '[PostgreSQL Init] 权限设置完成（仅设顶层，保留 pgdata 子目录的 0700）'",
       ]
     restart: "no"
     networks:
@@ -336,12 +336,12 @@ services:
       # 宿主机根目录 /data 映射为容器内录像与日志目录（安装脚本会在启动前创建 /data）
       - "/data:/data:rw"
       - "./srs-entrypoint.sh:/usr/local/bin/srs-entrypoint.sh:ro"
+      - "./srs-healthcheck.sh:/usr/local/bin/srs-healthcheck.sh:ro"
     entrypoint: ["/bin/bash", "/usr/local/bin/srs-entrypoint.sh"]
     command: ["./objs/srs", "-c", "conf/docker.conf"]
     working_dir: /usr/local/srs
     healthcheck:
-      test:
-        ["CMD-SHELL", "curl -f http://localhost:1985/api/v1/versions || exit 1"]
+      test: ["CMD", "/bin/bash", "/usr/local/bin/srs-healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 5

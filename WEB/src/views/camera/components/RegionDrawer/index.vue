@@ -437,14 +437,16 @@ const handleCapture = async () => {
   try {
     capturing.value = true;
     const response = await captureSnapshot(props.deviceId);
-    if (response.code === 0 && response.data) {
-      currentImageId.value = response.data.image_id;
-      currentImagePath.value = response.data.image_url;
-      loadImage(response.data.image_url);
+    // captureSnapshot 使用 isTransformResponse=false，返回的是 AxiosResponse，业务体在 .data 上
+    const result = (response as any).data || response;
+    if (result.code === 0 && result.data) {
+      currentImageId.value = result.data.image_id;
+      currentImagePath.value = result.data.image_url;
+      loadImage(result.data.image_url);
       createMessage.success('抓拍成功');
-      emit('image-captured', response.data.image_id, response.data.image_url);
+      emit('image-captured', result.data.image_id, result.data.image_url);
     } else {
-      createMessage.error(response.msg || '抓拍失败');
+      createMessage.error(result.msg || '抓拍失败');
     }
   } catch (error) {
     console.error('抓拍失败', error);

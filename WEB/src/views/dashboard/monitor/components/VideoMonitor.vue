@@ -89,7 +89,7 @@
             @click="handleRecordClick(record)"
           >
             <div class="record-info">
-              <div class="record-title">{{ record.event || record.title || '未知事件' }}</div>
+              <div class="record-title">{{ formatAlertListTitle(record) }}</div>
               <div class="record-meta">
                 <span class="record-device">{{ record.device_name || record.device_id || '未知设备' }}</span>
                 <span class="record-time">{{ formatTime(record.time) }}</span>
@@ -123,6 +123,7 @@ import Jessibuca from '@/components/Player/module/jessibuca.vue'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
 import { useModal } from '@/components/Modal'
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
+import { formatAlertListTitle } from '@/views/alert/alertDisplay'
 import { formatCameraDeviceLabel, isGb28181Device } from '@/views/camera/utils/deviceLabel'
 import {
   AI_PLAY_FALLBACK_MS,

@@ -1,7 +1,7 @@
 import {BasicColumn, FormProps} from "@/components/Table";
 import { Tag } from "ant-design-vue";
 import {queryAlertCameras} from "@/api/device/calculate";
-import { ALERT_EVENT_OPTIONS, formatAlertEvent, getAlertEventTagColor } from "@/views/alert/alertDisplay";
+import { ALERT_EVENT_OPTIONS, formatAlertEvent, getAlertEventTagColor, getAlertMatchedPersonName, getAlertSourceEvent } from "@/views/alert/alertDisplay";
 
 /** 告警列表摄像头筛选：与算法任务里摄像头下拉一致的模糊匹配（按名称） */
 export const alertCameraSelectProps = {
@@ -49,6 +49,21 @@ export function getBasicColumns(): BasicColumn[] {
       customRender: ({ text }) => (
         <Tag color={getAlertEventTagColor(text)}>{formatAlertEvent(text)}</Tag>
       ),
+    },
+    {
+      title: '匹配人员',
+      dataIndex: 'matched_person_name',
+      width: 120,
+      customRender: ({ record }) => getAlertMatchedPersonName(record) || '-',
+    },
+    {
+      title: '触发告警',
+      dataIndex: 'source_event',
+      width: 120,
+      customRender: ({ record }) => {
+        const sourceEvent = getAlertSourceEvent(record);
+        return sourceEvent ? formatAlertEvent(sourceEvent) : '-';
+      },
     },
     {
       title: '任务类型',

@@ -229,6 +229,7 @@ def process_face_matching_message(payload: Dict[str, Any]) -> FaceMatchRecord:
     task_name = payload.get('taskName') or payload.get('task_name')
     task_type = payload.get('taskType') or payload.get('task_type')
     correlation_id = _resolve_correlation_id(payload)
+    source_event = payload.get('sourceEvent') or payload.get('source_event')
 
     matched = False
     best_match = None
@@ -260,6 +261,7 @@ def process_face_matching_message(payload: Dict[str, Any]) -> FaceMatchRecord:
                 correlation_id=correlation_id,
                 information={
                     'match_type': 'face',
+                    'source_event': source_event,
                     'library_id': matched_library.id,
                     'library_name': matched_library.name,
                     'library_code': matched_library.code,

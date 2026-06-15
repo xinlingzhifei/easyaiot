@@ -44,6 +44,7 @@ import AlarmPanel from './components/AlarmPanel.vue'
 import { useMessage } from '@/hooks/web/useMessage'
 import { queryAlarmList, getDashboardStatistics } from '@/api/device/calculate'
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
+import { formatAlertListTitle } from '@/views/alert/alertDisplay'
 
 defineOptions({
   name: 'MonitorDashboard'
@@ -131,15 +132,19 @@ const loadAlarmList = async () => {
         return {
           id: item.id || item.alert_id,
           type: type,
-          title: item.event || item.title || '未知事件',
+          title: formatAlertListTitle(item),
+          event: item.event,
           level: level,
           location: item.device_name || item.location || '未知设备',
           time: item.time || item.alert_time || item.created_at || '',
           image: imageUrl,
+          image_url: item.image_url,
           device_name: item.device_name,
           device_id: item.device_id,
           task_type: item.task_type,
-          information: item.information
+          information: item.information,
+          matched_person_name: item.matched_person_name,
+          source_event: item.source_event,
         }
       })
     } else {

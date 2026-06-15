@@ -58,8 +58,14 @@
                       <div class="value">{{ item.device_name || '-' }}</div>
                     </div>
                     <div class="prop">
-                      <div class="label">告警对象</div>
-                      <div class="value">{{ item.object || '-' }}</div>
+                      <div class="label">{{ item.event === 'face_library_match' ? '匹配人员' : '告警对象' }}</div>
+                      <div class="value">{{ getAlertObjectLabel(item) }}</div>
+                    </div>
+                  </div>
+                  <div v-if="item.event === 'face_library_match'" class="flex" style="justify-content: space-between;">
+                    <div class="prop">
+                      <div class="label">触发告警</div>
+                      <div class="value">{{ formatAlertEvent(getAlertSourceEvent(item)) || '-' }}</div>
                     </div>
                   </div>
                 </div>
@@ -98,7 +104,7 @@ import { Icon } from '@/components/Icon';
 import moment from 'moment';
 import ALERT from "@/assets/images/alert/alert.png";
 import { alertCameraSelectProps } from '@/views/alert/Data';
-import { ALERT_EVENT_OPTIONS, formatAlertEvent, normalizeAlertBusinessTagsParam } from '@/views/alert/alertDisplay';
+import { ALERT_EVENT_OPTIONS, formatAlertEvent, getAlertMatchedPersonName, getAlertSourceEvent, normalizeAlertBusinessTagsParam } from '@/views/alert/alertDisplay';
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage';
 
 const ListItem = List.Item;
@@ -388,6 +394,13 @@ function pageSizeChange(_current, size: number) {
 function formatTime(time: string) {
   if (!time) return '-';
   return moment(time).format('YYYY-MM-DD HH:mm:ss');
+}
+
+function getAlertObjectLabel(item: any): string {
+  if (item?.event === 'face_library_match') {
+    return getAlertMatchedPersonName(item) || '-';
+  }
+  return item?.object || '-';
 }
 
 // 获取任务类型

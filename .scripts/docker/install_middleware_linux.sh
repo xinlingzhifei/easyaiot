@@ -42,6 +42,9 @@ GPUSTACK_ADMIN_USER="${GPUSTACK_ADMIN_USER:-admin}"
 GPUSTACK_ADMIN_PASSWORD="${GPUSTACK_ADMIN_PASSWORD:-${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}}"
 # GPUSTACK_TOKEN 由 API 动态获取；若已导出则优先使用环境变量中的值
 GPUSTACK_API_COOKIE_FILE="${SCRIPT_DIR}/logs/.gpustack_api_cookie"
+# 跳过 GPUStack（Server 容器、Worker、镜像拉取、数据目录递归 chmod）。
+# 导出 SKIP_GPUSTACK=true 可避免 gpustack_data 大目录的递归 777 卡顿、加速部署。
+SKIP_GPUSTACK="${SKIP_GPUSTACK:-false}"
 
 # Dify 1.14.2（LLM 应用平台，独立 compose 部署）
 DIFY_VERSION="${DIFY_VERSION:-1.14.2}"
@@ -50,6 +53,14 @@ DIFY_COMPOSE_FILE="${DIFY_DIR}/docker-compose.yaml"
 DIFY_OVERRIDE_FILE="${DIFY_DIR}/docker-compose.override.yml"
 DIFY_PROJECT_NAME="${DIFY_PROJECT_NAME:-dify}"
 DIFY_HTTP_PORT="${DIFY_HTTP_PORT:-10190}"
+# 跳过 Dify（独立 compose 部署、镜像拉取、dify_data 目录递归权限）。
+# 导出 SKIP_DIFY=true 可避免 dify_data/volumes 大目录的递归 777 卡顿、加速部署。
+SKIP_DIFY="${SKIP_DIFY:-false}"
+
+# 强制对所有已存在的存储目录做完整递归 chmod/chown（兜底用）。
+# 默认 false：已存在目录只设顶层权限，避免对海量数据文件递归导致卡顿（容器自身写的数据权限本就正确）。
+# 仅当怀疑既有数据目录权限损坏、容器读写报错时，导出 FORCE_CHMOD=true 跑一次强制修复。
+FORCE_CHMOD="${FORCE_CHMOD:-false}"
 
 # 日志文件配置（主日志 / GPUStack / Dify 各自独立，互不混写）
 LOG_DIR="${SCRIPT_DIR}/logs"
@@ -130,6 +141,41 @@ MIDDLEWARE_HEALTH_ENDPOINTS["EMQX"]="/api/v5/status"
 MIDDLEWARE_HEALTH_ENDPOINTS["ZLMediaKit"]="/index/api/getServerConfig"
 MIDDLEWARE_HEALTH_ENDPOINTS["GPUStack"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["Dify"]="/"
+
+# 跳过 GPUStack / Dify 时，从中间件列表中移除，避免后续的容器检测/健康检查/端口清理
+if [ "$SKIP_GPUSTACK" = "true" ] || [ "$SKIP_DIFY" = "true" ]; then
+    _filtered_services=()
+    for _svc in "${MIDDLEWARE_SERVICES[@]}"; do
+        [ "$SKIP_GPUSTACK" = "true" ] && [ "$_svc" = "GPUStack" ] && continue
+        [ "$SKIP_DIFY" = "true" ] && [ "$_svc" = "Dify" ] && continue
+        _filtered_services+=("$_svc")
+    done
+    MIDDLEWARE_SERVICES=("${_filtered_services[@]}")
+    unset _filtered_services _svc
+fi
+
+# 计算 compose up/pull 需要操作的服务列表。
+# 未跳过 GPUStack 时返回空（表示操作全部服务）；跳过时返回除 GPUStack 外的所有 compose 服务名。
+# 结果进程内缓存：`compose config` 要解析整个 compose 文件（约 1~2s），一次运行内不会变化
+compose_service_args() {
+    [ "$SKIP_GPUSTACK" != "true" ] && return 0
+    if [ -z "${_COMPOSE_SVC_ARGS:-}" ]; then
+        _COMPOSE_SVC_ARGS=$($COMPOSE_CMD -f "$COMPOSE_FILE" config --services 2>/dev/null | grep -vx "GPUStack" | tr '\n' ' ')
+    fi
+    printf '%s' "$_COMPOSE_SVC_ARGS"
+}
+
+# 以特权执行命令：root 直接执行；非 root 且有 sudo 走 sudo；两者皆无则原样尝试。
+# 统一全文反复出现的 EUID/sudo 三分支样板（语义与原三分支完全一致）。
+run_priv() {
+    if [ "$EUID" -eq 0 ]; then
+        "$@"
+    elif command -v sudo &> /dev/null; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
 
 # 日志输出函数（去掉颜色代码后写入日志文件）
 log_to_file() {
@@ -513,9 +559,13 @@ install_nvidia_container_toolkit() {
         return 1
     fi
     
-    # 第五步：验证安装
+    # 第五步：验证安装（轮询 docker daemon 就绪，最长 15s，就绪即继续）
     print_info "验证安装..."
-    sleep 2  # 等待服务启动
+    local _dw=0
+    while [ $_dw -lt 15 ] && ! docker info > /dev/null 2>&1; do
+        sleep 1
+        _dw=$((_dw + 1))
+    done
     
     if command -v nvidia-container-runtime &> /dev/null; then
         local runtime_path=$(which nvidia-container-runtime)
@@ -1701,7 +1751,8 @@ get_host_ip() {
     # 方法1: 通过路由获取（最可靠，通常返回物理网络接口的 IP）
     if command -v ip &> /dev/null; then
         host_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7}' | head -n 1)
-        if [ -n "$host_ip" ] && [ "$host_ip" != "127.0.0.1" ] && ! is_docker_network_ip "$host_ip"; then
+        # ip route get 返回的是出站路由源地址，即物理网卡 IP；不因 172.17-172.31 网段误判为 Docker 网段
+        if [ -n "$host_ip" ] && [ "$host_ip" != "127.0.0.1" ]; then
             echo "$host_ip"
             return 0
         fi
@@ -1863,31 +1914,34 @@ configure_kafka_hosts() {
 }
 
 
+# 创建目录并智能设置 777 权限（owner 非空时一并 chown）。
+# 已存在目录只设顶层权限，避免对海量数据递归 chmod 卡顿；新建目录或 FORCE_CHMOD=true 时递归。
+# 用法: set_data_dir_perms <owner|""> <dir> [dir2 ...]  返回 0=成功 1=无权限/失败
+set_data_dir_perms() {
+    local owner="$1"; shift
+    local d R SUDO rc=0
+    for d in "$@"; do
+        R="-R"
+        [ -d "$d" ] && [ "$FORCE_CHMOD" != "true" ] && R=""
+        mkdir -p "$d" 2>/dev/null || true
+        SUDO=""
+        if [ "$EUID" -ne 0 ]; then
+            command -v sudo &>/dev/null && SUDO="sudo" || { rc=1; continue; }
+        fi
+        [ -z "$owner" ] || $SUDO chown $R "$owner" "$d" 2>/dev/null || true
+        $SUDO chmod $R 777 "$d" 2>/dev/null || rc=1
+    done
+    return $rc
+}
+
 # 创建并设置 NodeRED 数据目录权限
 create_nodered_directories() {
     local nodered_data_dir="${SCRIPT_DIR}/nodered_data/data"
-    
     print_info "创建 NodeRED 数据目录并设置权限..."
-    
-    # 创建目录
-    mkdir -p "$nodered_data_dir"
-    
-    # 设置目录所有者为 UID 1000 (Node-RED 容器默认用户)
-    # 如果当前用户有权限，则设置；否则只创建目录
-    if [ "$EUID" -eq 0 ]; then
-        chown -R 1000:1000 "$nodered_data_dir"
-        chmod -R 777 "$nodered_data_dir"
+    if set_data_dir_perms "1000:1000" "$nodered_data_dir"; then
         print_success "NodeRED 数据目录权限已设置 (UID 1000:1000, 777)"
     else
-        # 非 root 用户尝试使用 sudo（如果可用）
-        if command -v sudo &> /dev/null; then
-            sudo chown -R 1000:1000 "$nodered_data_dir" 2>/dev/null && \
-            sudo chmod -R 777 "$nodered_data_dir" 2>/dev/null && \
-            print_success "NodeRED 数据目录权限已设置 (UID 1000:1000, 777)" || \
-            print_warning "无法设置 NodeRED 目录权限，可能需要手动设置: sudo chmod -R 777 $nodered_data_dir"
-        else
-            print_warning "无法设置 NodeRED 目录权限，请手动执行: sudo chmod -R 777 $nodered_data_dir"
-        fi
+        print_warning "无法设置 NodeRED 目录权限，请手动执行: sudo chmod -R 777 $nodered_data_dir"
     fi
 }
 
@@ -1895,30 +1949,11 @@ create_nodered_directories() {
 create_postgresql_directories() {
     local postgresql_data_dir="${SCRIPT_DIR}/db_data/data"
     local postgresql_log_dir="${SCRIPT_DIR}/db_data/log"
-    
     print_info "创建 PostgreSQL 数据目录并设置权限..."
-    
-    # 创建目录
-    mkdir -p "$postgresql_data_dir" "$postgresql_log_dir"
-    
-    # 设置目录所有者为 UID 999 (PostgreSQL 容器默认 postgres 用户)
-    # 如果当前用户有权限，则设置；否则只创建目录
-    if [ "$EUID" -eq 0 ]; then
-        chown -R 999:999 "$postgresql_data_dir" "$postgresql_log_dir"
-        chmod -R 777 "$postgresql_data_dir"
-        chmod -R 777 "$postgresql_log_dir"
+    if set_data_dir_perms "999:999" "$postgresql_data_dir" "$postgresql_log_dir"; then
         print_success "PostgreSQL 数据目录权限已设置 (UID 999:999, 777)"
     else
-        # 非 root 用户尝试使用 sudo（如果可用）
-        if command -v sudo &> /dev/null; then
-            sudo chown -R 999:999 "$postgresql_data_dir" "$postgresql_log_dir" 2>/dev/null && \
-            sudo chmod -R 777 "$postgresql_data_dir" 2>/dev/null && \
-            sudo chmod -R 777 "$postgresql_log_dir" 2>/dev/null && \
-            print_success "PostgreSQL 数据目录权限已设置 (UID 999:999, 777)" || \
-            print_warning "无法设置 PostgreSQL 目录权限，可能需要手动设置: sudo chmod -R 777 $postgresql_data_dir $postgresql_log_dir"
-        else
-            print_warning "无法设置 PostgreSQL 目录权限，请手动执行: sudo chmod -R 777 $postgresql_data_dir $postgresql_log_dir"
-        fi
+        print_warning "无法设置 PostgreSQL 目录权限，请手动执行: sudo chmod -R 777 $postgresql_data_dir $postgresql_log_dir"
     fi
 }
 
@@ -1926,30 +1961,11 @@ create_postgresql_directories() {
 create_redis_directories() {
     local redis_data_dir="${SCRIPT_DIR}/redis_data/data"
     local redis_log_dir="${SCRIPT_DIR}/redis_data/logs"
-    
     print_info "创建 Redis 数据目录并设置权限..."
-    
-    # 创建目录
-    mkdir -p "$redis_data_dir" "$redis_log_dir"
-    
-    # Redis 容器默认使用 UID 999 (redis 用户)
-    # 如果当前用户有权限，则设置；否则只创建目录
-    if [ "$EUID" -eq 0 ]; then
-        chown -R 999:999 "$redis_data_dir" "$redis_log_dir"
-        chmod -R 777 "$redis_data_dir"
-        chmod -R 777 "$redis_log_dir"
+    if set_data_dir_perms "999:999" "$redis_data_dir" "$redis_log_dir"; then
         print_success "Redis 数据目录权限已设置 (UID 999:999, 777)"
     else
-        # 非 root 用户尝试使用 sudo（如果可用）
-        if command -v sudo &> /dev/null; then
-            sudo chown -R 999:999 "$redis_data_dir" "$redis_log_dir" 2>/dev/null && \
-            sudo chmod -R 777 "$redis_data_dir" 2>/dev/null && \
-            sudo chmod -R 777 "$redis_log_dir" 2>/dev/null && \
-            print_success "Redis 数据目录权限已设置 (UID 999:999, 777)" || \
-            print_warning "无法设置 Redis 目录权限，可能需要手动设置: sudo chmod -R 777 $redis_data_dir $redis_log_dir"
-        else
-            print_warning "无法设置 Redis 目录权限，请手动执行: sudo chmod -R 777 $redis_data_dir $redis_log_dir"
-        fi
+        print_warning "无法设置 Redis 目录权限，请手动执行: sudo chmod -R 777 $redis_data_dir $redis_log_dir"
     fi
 }
 
@@ -1968,7 +1984,7 @@ create_kafka_directories() {
         return 1
     fi
     
-    # 创建目录
+    # 创建目录（带只读文件系统错误检测）
     local mkdir_output=""
     mkdir_output=$(mkdir -p "$kafka_data_dir" 2>&1)
     local mkdir_exit_code=$?
@@ -1990,21 +2006,10 @@ create_kafka_directories() {
     fi
     
     # Kafka 容器默认使用 UID 1000, GID 1000 (appuser 用户)
-    # 如果当前用户有权限，则设置；否则只创建目录
-    if [ "$EUID" -eq 0 ]; then
-        chown -R 1000:1000 "$kafka_data_dir"
-        chmod -R 777 "$kafka_data_dir"
+    if set_data_dir_perms "1000:1000" "$kafka_data_dir"; then
         print_success "Kafka 数据目录权限已设置 (UID 1000:1000, 777)"
     else
-        # 非 root 用户尝试使用 sudo（如果可用）
-        if command -v sudo &> /dev/null; then
-            sudo chown -R 1000:1000 "$kafka_data_dir" 2>/dev/null && \
-            sudo chmod -R 777 "$kafka_data_dir" 2>/dev/null && \
-            print_success "Kafka 数据目录权限已设置 (UID 1000:1000, 777)" || \
-            print_warning "无法设置 Kafka 目录权限，可能需要手动设置: sudo chmod -R 777 $kafka_data_dir"
-        else
-            print_warning "无法设置 Kafka 目录权限，请手动执行: sudo chmod -R 777 $kafka_data_dir"
-        fi
+        print_warning "无法设置 Kafka 目录权限，请手动执行: sudo chmod -R 777 $kafka_data_dir"
     fi
 }
 
@@ -2060,8 +2065,39 @@ check_filesystem_mount_status() {
     return 0  # 可写
 }
 
-# GPUStack 内嵌 PostgreSQL 要求 PGDATA 为 0700/0750，777 会导致 postgres 拒绝启动
+# GPUStack 容器内 SSL 私钥权限检测修复（先检测再修改）。
+# 内嵌 postgres 开启 ssl，要求 /etc/ssl/private/ssl-cert-snakeoil.key 为
+# 0600(属主为数据库用户) 或 0640(属主 root)；该文件在容器可写层（非宿主机挂载），
+# 层被污染（如容器内调试时 chmod 过）后 docker restart 不会复原，需 exec 修复。
+# 彻底复原方式是重建容器（rw 层重置、gpustack_data 数据不受影响）：
+#   $COMPOSE_CMD -f docker-compose.yml up -d --force-recreate GPUStack
+fix_gpustack_ssl_key_permissions() {
+    local key="/etc/ssl/private/ssl-cert-snakeoil.key"
+
+    docker ps --format '{{.Names}}' | grep -q '^gpustack-server$' || return 0
+
+    local mode
+    mode=$(docker exec gpustack-server stat -c '%a' "$key" 2>/dev/null || echo "")
+    [ -z "$mode" ] && return 0   # 文件不存在或容器暂不可 exec：交给重建容器处理
+    case "$mode" in
+        600|640) return 0 ;;     # 已合规，零操作
+    esac
+
+    print_warning "GPUStack 容器内 SSL 私钥权限为 $mode（要求 600/640），正在修复..."
+    # 还原为 Debian 镜像默认：root:ssl-cert 0640（postgres 经 ssl-cert 组读取）
+    docker exec gpustack-server chown root:ssl-cert "$key" 2>/dev/null || true
+    docker exec gpustack-server chmod 640 "$key" 2>/dev/null || true
+    print_success "GPUStack SSL 私钥权限已修复（仍异常时可重建容器: up -d --force-recreate GPUStack）"
+}
+
+# GPUStack 内嵌 PostgreSQL 要求 PGDATA 为 0700/0750，777 会导致 postgres 拒绝启动。
+# 注意：此操作又快又是正确性关键，即使 SKIP_GPUSTACK=true 也必须执行（仅在目录存在时生效），
+# 否则残留的 777 权限会让 gpustack-server 的内嵌 PG 一直拒绝启动。
 fix_gpustack_postgresql_permissions() {
+    # SSL 私钥与 PGDATA 同为内嵌 PG 的启动阻断项，且互相独立（PGDATA 正常时私钥也可能被污染），
+    # 借同一调用链一并检测（检测式，正常时零开销）
+    fix_gpustack_ssl_key_permissions
+
     local gpustack_pg_root="${SCRIPT_DIR}/gpustack_data/postgresql"
     local gpustack_pg_data="${gpustack_pg_root}/data"
 
@@ -2069,37 +2105,45 @@ fix_gpustack_postgresql_permissions() {
         return 0
     fi
 
-    print_info "修复 GPUStack 内嵌 PostgreSQL 数据目录权限 (0750)..."
-
-    if [ "$EUID" -eq 0 ]; then
-        [ -d "$gpustack_pg_root" ] && chmod 750 "$gpustack_pg_root" 2>/dev/null || true
-        chmod 750 "$gpustack_pg_data" 2>/dev/null || true
-    elif command -v sudo &> /dev/null; then
-        [ -d "$gpustack_pg_root" ] && sudo chmod 750 "$gpustack_pg_root" 2>/dev/null || true
-        sudo chmod 750 "$gpustack_pg_data" 2>/dev/null || true
-    else
-        [ -d "$gpustack_pg_root" ] && chmod 750 "$gpustack_pg_root" 2>/dev/null || true
-        chmod 750 "$gpustack_pg_data" 2>/dev/null || true
+    # 先检测再修改：PGDATA 已是 0700/0750（postgres 接受的两种模式）则零操作、零日志，
+    # 仅在权限确实不对（如被旧版脚本递归 777 过）时才 chmod 修复
+    local data_mode
+    data_mode=$(stat -c '%a' "$gpustack_pg_data" 2>/dev/null || echo "")
+    if [ "$data_mode" = "700" ] || [ "$data_mode" = "750" ]; then
+        return 0
     fi
 
-    print_success "GPUStack PostgreSQL 数据目录权限已设置为 0750"
+    print_warning "GPUStack 内嵌 PostgreSQL 数据目录权限为 ${data_mode:-未知}（要求 0700/0750），正在修复为 0750..."
+
+    run_priv chmod 750 "$gpustack_pg_root" "$gpustack_pg_data" 2>/dev/null || true
+
+    print_success "GPUStack PostgreSQL 数据目录权限已修复为 0750"
 }
 
-# GPUStack 数据目录：除内嵌 PostgreSQL 外其余子目录仍用 777
+# GPUStack 数据目录：除内嵌 PostgreSQL 外其余子目录用 777
+# 参数1（可选）：目录在本次运行前是否已存在（true/false，默认 false=新建）
+# 与全局「已存在目录仅顶层 chmod」策略一致：已存在且未开 FORCE_CHMOD 时，
+# 跳过对模型缓存等大目录的递归 777（每次 update 全量递归正是卡顿来源）；
+# 内嵌 PG 权限始终走 fix_gpustack_postgresql_permissions 的"先检测再修复"。
 set_gpustack_data_permissions() {
+    local pre_existing="${1:-false}"
+    # SKIP_GPUSTACK=true 时只跳过慢的 777 递归，仍必须修正内嵌 PG 权限（否则 gpustack-server 起不来）
+    if [ "$SKIP_GPUSTACK" = "true" ]; then
+        fix_gpustack_postgresql_permissions
+        return 0
+    fi
     local gpustack_dir="${SCRIPT_DIR}/gpustack_data"
 
     mkdir -p "$gpustack_dir"
 
-    if [ "$EUID" -eq 0 ]; then
-        chmod 777 "$gpustack_dir" 2>/dev/null || true
-        find "$gpustack_dir" -mindepth 1 -maxdepth 1 ! -name postgresql -exec chmod -R 777 {} + 2>/dev/null || true
-    elif command -v sudo &> /dev/null; then
-        sudo chmod 777 "$gpustack_dir" 2>/dev/null || true
-        sudo find "$gpustack_dir" -mindepth 1 -maxdepth 1 ! -name postgresql -exec chmod -R 777 {} + 2>/dev/null || true
-    else
-        chmod 777 "$gpustack_dir" 2>/dev/null || true
-        find "$gpustack_dir" -mindepth 1 -maxdepth 1 ! -name postgresql -exec chmod -R 777 {} + 2>/dev/null || true
+    local recurse="true"
+    if [ "$pre_existing" = "true" ] && [ "$FORCE_CHMOD" != "true" ]; then
+        recurse="false"
+    fi
+
+    run_priv chmod 777 "$gpustack_dir" 2>/dev/null || true
+    if [ "$recurse" = "true" ]; then
+        run_priv find "$gpustack_dir" -mindepth 1 -maxdepth 1 ! -name postgresql -exec chmod -R 777 {} + 2>/dev/null || true
     fi
 
     fix_gpustack_postgresql_permissions
@@ -2167,13 +2211,18 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
         "${SCRIPT_DIR}/gpustack_data:::"             # GPUStack 数据（配置、内嵌库等）
-        "${DIFY_DIR}/volumes:::"                    # Dify 应用/数据库/向量库等
     )
-    
+    # Dify 卷目录（SKIP_DIFY=true 时跳过创建与递归 chmod，避免大目录卡顿）
+    [ "$SKIP_DIFY" != "true" ] && storage_dirs+=("${DIFY_DIR}/volumes:::")  # Dify 应用/数据库/向量库等
+
     local created_count=0
     local total_count=${#storage_dirs[@]}
     local failed_dirs=()
-    
+
+    if [ "$FORCE_CHMOD" = "true" ]; then
+        print_info "FORCE_CHMOD=true：对所有已存在目录做完整递归 chmod 修复（数据量大时会较慢）..."
+    fi
+
     for dir_spec in "${storage_dirs[@]}"; do
         # 解析目录规格
         IFS=':' read -r dir_path uid gid perms <<< "$dir_spec"
@@ -2191,29 +2240,28 @@ create_all_storage_directories() {
             continue
         fi
         
-        # 创建目录
+        # 创建目录（记录是否为已存在的目录：已存在则只设置顶层权限，避免对海量数据文件做递归 chmod 导致卡顿）
+        local pre_existing="false"
+        [ -d "$dir_path" ] && pre_existing="true"
+        local R="-R"
+        # 已存在目录默认只设顶层权限（去掉 -R）；FORCE_CHMOD=true 时强制递归兜底修复
+        [ "$pre_existing" = "true" ] && [ "$FORCE_CHMOD" != "true" ] && R=""
+
         local mkdir_output=""
         mkdir_output=$(mkdir -p "$dir_path" 2>&1)
         local mkdir_exit_code=$?
-        
+
         if [ $mkdir_exit_code -eq 0 ]; then
             # 如果指定了 UID/GID，尝试设置权限
             if [ -n "$uid" ] && [ -n "$gid" ]; then
-                if [ "$EUID" -eq 0 ]; then
-                    chown -R "${uid}:${gid}" "$dir_path" 2>/dev/null || true
-                    chmod -R 777 "$dir_path" 2>/dev/null || true
-                elif command -v sudo &> /dev/null; then
-                    sudo chown -R "${uid}:${gid}" "$dir_path" 2>/dev/null || true
-                    sudo chmod -R 777 "$dir_path" 2>/dev/null || true
-                fi
+                run_priv chown $R "${uid}:${gid}" "$dir_path" 2>/dev/null || true
+                run_priv chmod $R 777 "$dir_path" 2>/dev/null || true
             else
                 # 即使没有指定 UID/GID，也设置777权限（GPUStack 内嵌 PG 除外）
                 if [ "$dir_path" = "${SCRIPT_DIR}/gpustack_data" ]; then
-                    set_gpustack_data_permissions
-                elif [ "$EUID" -eq 0 ]; then
-                    chmod -R 777 "$dir_path" 2>/dev/null || true
-                elif command -v sudo &> /dev/null; then
-                    sudo chmod -R 777 "$dir_path" 2>/dev/null || true
+                    set_gpustack_data_permissions "$pre_existing"
+                else
+                    run_priv chmod $R 777 "$dir_path" 2>/dev/null || true
                 fi
             fi
             created_count=$((created_count + 1))
@@ -2235,22 +2283,10 @@ create_all_storage_directories() {
         fi
     done
     
-    # 统一设置所有已创建目录的777权限
-    print_info "统一设置所有存储目录为777权限..."
-    for dir_spec in "${storage_dirs[@]}"; do
-        IFS=':' read -r dir_path uid gid perms <<< "$dir_spec"
-        if [ -n "$dir_path" ] && [ -d "$dir_path" ]; then
-            if [ "$dir_path" = "${SCRIPT_DIR}/gpustack_data" ]; then
-                set_gpustack_data_permissions
-            elif [ "$EUID" -eq 0 ]; then
-                chmod -R 777 "$dir_path" 2>/dev/null || true
-            elif command -v sudo &> /dev/null; then
-                sudo chmod -R 777 "$dir_path" 2>/dev/null || true
-            fi
-        fi
-    done
-    
-    # 同时设置所有父目录为777权限
+    # 注意：上面的创建循环已对每个目录设置好权限（新建目录递归、已存在目录仅顶层），
+    # 此处不再重复递归 chmod，避免对已存在的海量数据目录做无意义的全量扫描导致卡顿。
+
+    # 同时设置所有父目录为777权限（仅顶层，父目录的数据子目录已在上面单独处理）
     local parent_dirs=(
         "${SCRIPT_DIR}/standalone-logs"
         "${SCRIPT_DIR}/db_data"
@@ -2262,34 +2298,29 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/milvus_config"
         "${SCRIPT_DIR}/srs_data"
         "${SCRIPT_DIR}/nodered_data"
-        "${SCRIPT_DIR}/gpustack_data"
-        "${DIFY_DIR}"
         "${SCRIPT_DIR}/../zlmediakit"
         "${SCRIPT_DIR}/logs"
     )
+    # 注：gpustack_data 不在此列——它已在上面的存储目录循环中由
+    # set_gpustack_data_permissions 处理过，重复处理会再次递归扫描大模型缓存目录。
+    # Dify 父目录（SKIP_DIFY=true 时跳过递归 chmod）
+    [ "$SKIP_DIFY" != "true" ] && parent_dirs+=("${DIFY_DIR}")
+    # 默认只设父目录顶层权限；FORCE_CHMOD=true 时递归兜底修复
+    local PR=""
+    [ "$FORCE_CHMOD" = "true" ] && PR="-R"
     for parent_dir in "${parent_dirs[@]}"; do
         if [ -d "$parent_dir" ]; then
-            if [ "$parent_dir" = "${SCRIPT_DIR}/gpustack_data" ]; then
-                set_gpustack_data_permissions
-            elif [ "$EUID" -eq 0 ]; then
-                chmod -R 777 "$parent_dir" 2>/dev/null || true
-            elif command -v sudo &> /dev/null; then
-                sudo chmod -R 777 "$parent_dir" 2>/dev/null || true
-            fi
+            run_priv chmod $PR 777 "$parent_dir" 2>/dev/null || true
         fi
     done
 
     # SRS 容器绑定宿主机 /data -> 容器 /data（与 docker-compose.yml 一致）
-    if [ "$EUID" -eq 0 ]; then
-        mkdir -p /data/playbacks 2>/dev/null || true
-        chmod -R 777 /data 2>/dev/null || true
-    elif command -v sudo &> /dev/null; then
-        sudo mkdir -p /data/playbacks 2>/dev/null || true
-        sudo chmod -R 777 /data 2>/dev/null || true
-    else
-        mkdir -p /data/playbacks 2>/dev/null || true
-        chmod -R 777 /data 2>/dev/null || true
-    fi
+    # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
+    # （/data 下含本仓库及全部 docker 数据，递归 chmod 会扫描海量文件导致严重卡顿）
+    # playbacks 同样不递归：录像无限增长，新文件可删性由 SRS 容器入口 umask 0000 保证
+    # （与 fix_srs.sh / srs-entrypoint.sh / install_middleware_mac.sh 约定一致）
+    run_priv mkdir -p /data/playbacks 2>/dev/null || true
+    run_priv chmod 777 /data /data/playbacks 2>/dev/null || true
     
     if [ $created_count -eq $total_count ]; then
         print_success "所有存储目录已创建并设置为777权限（${created_count}/${total_count}）"
@@ -2660,6 +2691,7 @@ wait_for_zlmediakit() {
 
 # 配置 GPUStack 对外访问地址（供 Worker 节点注册）
 prepare_gpustack_env() {
+    [ "$SKIP_GPUSTACK" = "true" ] && return 0
     local host_ip
     host_ip=$(get_host_ip)
     if [ -z "$host_ip" ]; then
@@ -2907,6 +2939,7 @@ prepare_gpustack_worker_token() {
 
 # 等待 GPUStack Server 就绪
 wait_for_gpustack_server() {
+    [ "$SKIP_GPUSTACK" = "true" ] && return 0
     local max_attempts=60
     local attempt=0
     local check_url="http://127.0.0.1:10180/"
@@ -2927,6 +2960,10 @@ wait_for_gpustack_server() {
 
 # 部署 GPUStack Worker（检测 GPU 后选择是否启用 NVIDIA runtime）
 deploy_gpustack_worker() {
+    if [ "$SKIP_GPUSTACK" = "true" ]; then
+        print_gpustack_info "已设置 SKIP_GPUSTACK=true，跳过 GPUStack Worker 部署"
+        return 0
+    fi
     print_gpustack_section "部署 GPUStack Worker"
 
     if ! docker_cli ps &>/dev/null; then
@@ -3144,23 +3181,43 @@ create_dify_storage_directories() {
 
     for dir_path in "${dify_dirs[@]}"; do
         mkdir -p "$dir_path" 2>/dev/null || true
-        if [ "$EUID" -eq 0 ]; then
-            chmod -R 777 "$dir_path" 2>/dev/null || true
-        elif command -v sudo &>/dev/null; then
-            sudo chmod -R 777 "$dir_path" 2>/dev/null || true
-        fi
+        run_priv chmod -R 777 "$dir_path" 2>/dev/null || true
     done
 }
 
-# 拉取 Dify 所需镜像
+# 拉取 Dify 所需镜像——仅拉取本地缺失的。
+# 全部已存在时零网络请求：原先无条件 `dify_compose pull` 每次都全量联表镜像源，
+# 源端一个 blob 抖动/超时就把"本可纯离线启动"的部署搞失败，且慢。
 check_and_pull_dify_images() {
     if [ ! -f "$DIFY_COMPOSE_FILE" ]; then
         return 0
     fi
 
     print_dify_info "检查 Dify 镜像..."
-    if ! dify_compose pull 2>&1 | tee -a "$DIFY_LOG_FILE"; then
-        print_dify_warning "部分 Dify 镜像拉取失败，启动时将自动重试"
+    # compose v2 用 config --images 枚举镜像清单；v1 回退解析 config 输出
+    local imgs img
+    local missing=()
+    imgs=$(dify_compose config --images 2>/dev/null) \
+        || imgs=$(dify_compose config 2>/dev/null | awk '$1=="image:"{print $2}')
+    if [ -z "$imgs" ]; then
+        print_dify_warning "无法枚举 Dify 镜像清单，跳过预拉取（up 时会按需拉取）"
+        return 0
+    fi
+    for img in $imgs; do
+        docker image inspect "$img" >/dev/null 2>&1 || missing+=("$img")
+    done
+    if [ ${#missing[@]} -eq 0 ]; then
+        print_dify_success "Dify 镜像均已存在，跳过拉取"
+        return 0
+    fi
+    print_dify_info "缺失 ${#missing[@]} 个镜像，开始拉取: ${missing[*]}"
+    local fail=0
+    for img in "${missing[@]}"; do
+        docker pull "$img" 2>&1 | tee -a "$DIFY_LOG_FILE"
+        [ "${PIPESTATUS[0]}" -ne 0 ] && fail=1
+    done
+    if [ "$fail" -ne 0 ]; then
+        print_dify_warning "部分 Dify 镜像拉取失败，up 时将自动重试"
         return 1
     fi
     print_dify_success "Dify 镜像检查完成"
@@ -3198,6 +3255,10 @@ print_dify_access_guide() {
 
 # 部署 Dify 1.14.2
 deploy_dify() {
+    if [ "$SKIP_DIFY" = "true" ]; then
+        print_dify_info "已设置 SKIP_DIFY=true，跳过 Dify 部署"
+        return 0
+    fi
     print_dify_section "部署 Dify ${DIFY_VERSION}"
 
     if ! docker_cli ps &>/dev/null; then
@@ -3218,7 +3279,9 @@ deploy_dify() {
     check_and_pull_dify_images || true
 
     print_dify_info "启动 Dify 服务（project=${DIFY_PROJECT_NAME}）..."
-    if ! dify_compose up -d 2>&1 | tee -a "$DIFY_LOG_FILE"; then
+    # 取 PIPESTATUS[0]（tee 恒 0，`if 管道` 检测不到 up 失败）
+    dify_compose up -d 2>&1 | tee -a "$DIFY_LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
         print_dify_error "Dify 启动失败"
         return 1
     fi
@@ -3242,27 +3305,17 @@ stop_dify() {
 # 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data；compose 挂载 /data:/data）
 ensure_host_data_directory_before_srs() {
     print_info "安装 SRS 前检查宿主机目录 /data ..."
+    # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
+    # （/data 下含本仓库及全部 docker 数据，递归 chmod 会扫描海量文件导致严重卡顿）
     local created=0
-    if [ "$EUID" -eq 0 ]; then
-        if mkdir -p /data/playbacks 2>/dev/null; then
-            chmod -R 777 /data 2>/dev/null || true
-            created=1
-        fi
-    elif command -v sudo &>/dev/null; then
-        if sudo mkdir -p /data/playbacks 2>/dev/null; then
-            sudo chmod -R 777 /data 2>/dev/null || true
-            created=1
-        fi
-    else
-        if mkdir -p /data/playbacks 2>/dev/null; then
-            chmod -R 777 /data 2>/dev/null || true
-            created=1
-        fi
+    if run_priv mkdir -p /data/playbacks 2>/dev/null; then
+        run_priv chmod 777 /data /data/playbacks 2>/dev/null || true
+        created=1
     fi
     if [ "$created" -eq 1 ]; then
         print_success "宿主机目录已就绪: /data（含 playbacks 子目录）"
     else
-        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks && sudo chmod -R 777 /data）。"
+        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks && sudo chmod 777 /data /data/playbacks）。"
     fi
 }
 
@@ -3444,9 +3497,7 @@ reset_postgresql_password() {
         return 1
     fi
     
-    # 额外等待，确保数据库完全就绪
-    print_info "等待数据库完全初始化..."
-    sleep 5
+    # wait_for_postgresql 已用 pg_isready 确认可接受连接，无需再固定等待 5s
     
     # 从 docker-compose.yml 中读取配置的密码
     local target_password="iot45722414822"
@@ -3913,7 +3964,7 @@ wait_for_kafka() {
     if [ -z "$container_status" ]; then
         print_warning "Kafka 容器未运行，尝试启动..."
         docker start kafka-server > /dev/null 2>&1 || true
-        sleep 5
+        # 无需固定 sleep：下方 while 循环本身就是就绪轮询
     fi
     
     while [ $attempt -lt $max_attempts ]; do
@@ -4899,17 +4950,24 @@ init_databases() {
         print_warning "Nacos 未就绪，将跳过 Nacos 密码重置确认步骤"
     fi
     
-    # 定义数据库和 SQL 文件映射
-    # SQL 文件路径：相对于脚本目录的上一级目录的 postgresql 目录
+    # 数据库清单按命名规约自动发现：<名字>10.sql -> 库 <名字>20
+    # （与 schema-sync/sync_schema_migra.sh 同一规约）。新增模块只需在
+    # .scripts/postgresql/ 放一个 *10.sql，无需再改本脚本的硬编码清单。
     local sql_dir="$(cd "${SCRIPT_DIR}/../postgresql" && pwd)"
     declare -A DB_SQL_MAP
-    DB_SQL_MAP["iot-ai20"]="${sql_dir}/iot-ai10.sql"
-    DB_SQL_MAP["iot-device20"]="${sql_dir}/iot-device10.sql"
-    DB_SQL_MAP["iot-video20"]="${sql_dir}/iot-video10.sql"
-    DB_SQL_MAP["ruoyi-vue-pro20"]="${sql_dir}/ruoyi-vue-pro10.sql"
-    DB_SQL_MAP["iot-message20"]="${sql_dir}/iot-message10.sql"
-    DB_SQL_MAP["iot-gb2818120"]="${sql_dir}/iot-gb2818110.sql"
-    DB_SQL_MAP["iot-node20"]="${sql_dir}/iot-node10.sql"
+    local _sqlf _base
+    for _sqlf in "$sql_dir"/*10.sql; do
+        [ -e "$_sqlf" ] || continue
+        _base="$(basename "$_sqlf" .sql)"
+        case "$_base" in
+            *10) DB_SQL_MAP["${_base%10}20"]="$_sqlf" ;;
+        esac
+    done
+    if [ ${#DB_SQL_MAP[@]} -eq 0 ]; then
+        print_warning "未在 $sql_dir 发现任何 *10.sql 文件，跳过数据库初始化"
+        return 0
+    fi
+    print_info "自动发现 ${#DB_SQL_MAP[@]} 个库: ${!DB_SQL_MAP[*]}"
     
     local success_count=0
     local total_count=${#DB_SQL_MAP[@]}
@@ -4932,42 +4990,40 @@ init_databases() {
         echo ""
     done
     
-    # 等待用户手动配置 Nacos 密码
+    # Nacos 账号配置：先自动初始化 admin（新库无内置账号），再用 API 实测登录验证；
+    # 全部通过则零人工介入。仅当验证失败（已有 admin 但密码与预期不一致）才回退人工确认。
     echo ""
     if wait_for_nacos; then
-        print_section "Nacos 密码配置确认"
-        echo ""
-        print_info "请手动登录 Nacos 管理界面配置密码："
-        print_info "  访问地址: http://localhost:8848/nacos"
-        print_info "  用户名: nacos"
-        echo ""
-        print_warning "${RED}重要提示：${NC}新版本 Nacos 初始页面需要设置密码，请将密码配置为："
-        print_warning "${YELLOW}basiclab@iot78475418754${NC}"
-        echo ""
-        print_warning "请确保已经完成密码配置，然后继续..."
-        echo ""
-        
-        while true; do
-            echo -ne "${YELLOW}[提示]${NC} 是否已经完成 Nacos 密码配置（密码必须为: basiclab@iot78475418754）？(y/N): "
-            read -r response
-            case "$response" in
-                [yY][eE][sS]|[yY])
-                    print_success "确认已配置 Nacos 密码，继续执行..."
-                    break
-                    ;;
-                [nN][oO]|[nN]|"")
-                    print_error "请先完成 Nacos 密码配置后再继续"
-                    print_info "您可以："
-                    print_info "  1. 访问 http://localhost:8848/nacos 进行密码配置"
-                    print_info "  2. 密码必须设置为: basiclab@iot78475418754"
-                    print_info "  3. 配置完成后重新运行此脚本"
-                    exit 1
-                    ;;
-                *)
-                    print_warning "请输入 y 或 N"
-                    ;;
-            esac
-        done
+        ensure_nacos_admin_user
+        if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+            --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+            | grep -q '"accessToken"'; then
+            print_success "Nacos 账号验证通过（用户 nacos，密码与各服务 bootstrap 一致）"
+        else
+            print_section "Nacos 密码配置确认"
+            print_warning "自动验证未通过：Nacos 已有 admin 账号但密码与预期不一致"
+            print_info "请登录 http://localhost:8848/nacos 将 nacos 用户密码改为："
+            print_warning "${YELLOW}basiclab@iot78475418754${NC}"
+            echo ""
+            while true; do
+                echo -ne "${YELLOW}[提示]${NC} 是否已经完成 Nacos 密码配置（密码必须为: basiclab@iot78475418754）？(y/N): "
+                read -r response
+                case "$response" in
+                    [yY][eE][sS]|[yY])
+                        print_success "确认已配置 Nacos 密码，继续执行..."
+                        break
+                        ;;
+                    [nN][oO]|[nN]|"")
+                        print_error "请先完成 Nacos 密码配置后再继续"
+                        print_info "配置完成后重新运行此脚本"
+                        exit 1
+                        ;;
+                    *)
+                        print_warning "请输入 y 或 N"
+                        ;;
+                esac
+            done
+        fi
     fi
     
     echo ""
@@ -5012,29 +5068,42 @@ check_and_pull_images() {
         # 匹配 image: 行，支持多种格式
         if echo "$line" | grep -qE "^\s*image:"; then
             local image=$(echo "$line" | sed -E 's/^\s*image:\s*//' | sed -E "s/^['\"]//" | sed -E "s/['\"]$//" | tr -d ' ')
+            # 跳过 GPUStack 时不检查/拉取其镜像（镜像较大，避免无谓拉取）
+            if [ "$SKIP_GPUSTACK" = "true" ] && echo "$image" | grep -qi "gpustack"; then
+                continue
+            fi
             if [ -n "$image" ] && [[ ! " ${images_to_check[@]} " =~ " ${image} " ]]; then
                 images_to_check+=("$image")
             fi
         fi
     done <<< "$compose_config"
     
-    # 检查每个镜像是否存在
+    # 检查每个镜像是否存在（记录缺失清单，后面只拉缺失的）
+    local missing_list=()
     for image in "${images_to_check[@]}"; do
         if docker image inspect "$image" &> /dev/null; then
-            print_info "镜像已存在: $image"
             existing_images=$((existing_images + 1))
         else
             print_warning "镜像不存在: $image"
-            missing_images=$((missing_images + 1))
+            missing_list+=("$image")
         fi
     done
-    
-    # 如果有缺失的镜像，才执行拉取
+    missing_images=${#missing_list[@]}
+
+    # 只拉缺失的镜像：原先缺 1 个就全量 compose pull，会为已存在的十几个镜像逐一联源比对，
+    # 慢且被镜像源网络质量绑架（源端一个 blob 超时即整体失败）
     if [ $missing_images -gt 0 ]; then
-        print_info "发现 $missing_images 个缺失镜像，开始拉取..."
-        print_info "已存在 $existing_images 个镜像，跳过拉取"
-        $COMPOSE_CMD -f "$COMPOSE_FILE" pull 2>&1 | tee -a "$LOG_FILE"
-        print_success "镜像拉取完成"
+        print_info "已存在 $existing_images 个镜像；缺失 $missing_images 个，仅拉取缺失镜像: ${missing_list[*]}"
+        local _pull_img _pull_fail=0
+        for _pull_img in "${missing_list[@]}"; do
+            docker pull "$_pull_img" 2>&1 | tee -a "$LOG_FILE"
+            [ "${PIPESTATUS[0]}" -ne 0 ] && _pull_fail=1
+        done
+        if [ "$_pull_fail" -eq 0 ]; then
+            print_success "缺失镜像拉取完成"
+        else
+            print_warning "部分镜像拉取失败，up 时将自动重试（不影响已有镜像的服务启动）"
+        fi
     else
         if [ ${#images_to_check[@]} -gt 0 ]; then
             print_success "所有所需镜像已存在（${#images_to_check[@]} 个），跳过拉取步骤（节省时间）"
@@ -5865,6 +5934,81 @@ cleanup_stale_containers() {
         done
         sleep 1
     fi
+
+    cleanup_renamed_containers
+    fix_nacos_derby_corruption
+}
+
+# 清理 compose recreate 被中断后遗留的「改名孤儿容器」（形如 <12位hex>_postgres-server）。
+# recreate 时 compose 先把旧容器改名让出 container_name，中途被打断旧容器就残留；
+# 它的服务标签仍在 compose 文件中，下次 up 会把它当正主——若仍在运行还占着端口/数据目录。
+# 上面的 cleanup_stale_containers 只清 exited 容器，覆盖不到「仍在运行」的改名孤儿，故单列。
+cleanup_renamed_containers() {
+    local names
+    names=$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^[0-9a-f]{12}_[a-z]+-(server|init|worker)$' || true)
+    [ -z "$names" ] && return 0
+    print_warning "清理上次中断遗留的改名孤儿容器: $(echo "$names" | tr '\n' ' ')"
+    echo "$names" | xargs -r docker rm -f >/dev/null 2>&1 || true
+}
+
+# Nacos 单机内嵌 Derby 库「半成品损坏」自愈：首次建库中途被打断 → 缺 service.properties，
+# 容器 restart:always 死循环（重启的是同一容器，坏数据在可写层里永远修不好）。
+# nacos 的 /home/nacos/data 未挂载卷 → 强制重建容器即拿到干净可写层，自动恢复。
+# 仅当容器当前非 healthy 且日志命中特征串才介入；健康时开销 ≈ 一次 docker inspect（毫秒级）。
+fix_nacos_derby_corruption() {
+    local health
+    health=$(docker inspect -f '{{.State.Health.Status}}' nacos-server 2>/dev/null) || return 0
+    [ "$health" = "healthy" ] && return 0
+    docker logs --tail 200 nacos-server 2>&1 | grep -q "does not contain the expected 'service.properties'" || return 0
+    print_warning "检测到 Nacos 内嵌 Derby 半成品损坏（初始化曾被中断），删除容器及其匿名卷后重建..."
+    # 必须 docker rm -v 连匿名卷一起删：镜像若对 /home/nacos/data 声明了 VOLUME（匿名卷），
+    # compose --force-recreate 默认会把旧容器的匿名卷原样带给新容器（除非 --renew-anon-volumes），
+    # 坏的 derby-data 随卷复活——实测单纯重建容器修不掉，删容器+匿名卷才彻底。
+    docker rm -f -v nacos-server >/dev/null 2>&1 || true
+    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d Nacos 2>&1 | tee -a "$LOG_FILE" || true
+}
+
+# Nacos 2.2.1+ 开启鉴权后不再内置默认账号：全新数据卷（首次安装或 Derby 修复重建后）里
+# 没有任何用户，业务服务登录会报 "User nacos not found"。
+# /v1/auth/users/admin 仅在尚无 admin 用户时可匿名调用；已有 admin 时返回错误且不做修改（幂等安全）。
+# 密码必须与各服务 bootstrap-*.yaml 的 spring.cloud.nacos.*.password 一致。
+NACOS_INIT_PASSWORD="${NACOS_INIT_PASSWORD:-basiclab@iot78475418754}"
+ensure_nacos_admin_user() {
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nacos-server$' || return 0
+    # 等待 nacos 就绪（新建容器约 30-60s；已就绪时首轮即通过，常态开销≈一次curl）
+    local i resp
+    for i in $(seq 1 45); do
+        curl -s -m 2 "http://localhost:8848/nacos/actuator/health" >/dev/null 2>&1 && break
+        sleep 2
+    done
+    resp=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/users/admin" \
+        --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null || true)
+    echo "$resp" | grep -q '"username"' || return 0   # 已有 admin（常态）→ 静默返回
+    print_success "Nacos admin 用户已初始化（用户 nacos，密码与服务 bootstrap 一致）"
+    # 业务服务的注册/配置均指向 namespace dev（ID 必须为 dev），新库须一并补建
+    local token
+    token=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+        --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+        | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+    [ -z "$token" ] && return 0
+    curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/console/namespaces?accessToken=${token}" \
+        -d "customNamespaceId=dev&namespaceName=dev&namespaceDesc=dev" >/dev/null 2>&1 || true
+    print_info "Nacos 命名空间 dev 已创建"
+}
+
+# up 失败时自动展示 unhealthy 容器：健康检查最后输出 + 容器日志尾部，免手动逐个排查。
+# 健康检查输出很关键——部分服务（如 TDengine 的 taos CLI 探测）失败原因只出现在这里，容器日志里看不到。
+show_unhealthy_containers() {
+    local names n
+    names=$(docker ps --filter "health=unhealthy" --format '{{.Names}}' 2>/dev/null || true)
+    [ -z "$names" ] && return 0
+    for n in $names; do
+        print_warning "unhealthy 容器: $n —— 健康检查最后输出："
+        docker inspect --format '{{range .State.Health.Log}}[exit={{.ExitCode}}] {{.Output}}{{end}}' "$n" 2>/dev/null | tail -n 5 || true
+        print_warning "$n 日志尾部："
+        docker logs --tail 30 "$n" 2>&1 | tail -30 || true
+        echo ""
+    done
 }
 
 # 安装所有中间件
@@ -5922,11 +6066,18 @@ install_middleware() {
     
     print_section "启动 Milvus 等中间件容器"
     print_info "启动所有中间件服务..."
-    if $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"; then
+    # 取 PIPESTATUS[0] 判定（tee 恒 0，`if 管道` 永远走成功分支，失败会被掩盖）
+    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d $(compose_service_args) 2>&1 | tee -a "$LOG_FILE"
+    _up_rc=${PIPESTATUS[0]}
+    if [ "${_up_rc}" -eq 0 ]; then
         print_success "容器启动命令执行完成"
     else
-        print_error "容器启动过程中出现错误"
+        print_error "容器启动过程中出现错误（compose 退出码 ${_up_rc}），unhealthy 容器自动诊断："
+        show_unhealthy_containers
     fi
+
+    # Nacos 全新数据卷需初始化 admin 账号与 dev 命名空间（幂等，已初始化则瞬时跳过）
+    ensure_nacos_admin_user
     
     # 如果 SRS 容器已经在运行，重启它以重新加载配置文件
     if docker ps --filter "name=srs-server" --format "{{.Names}}" | grep -q "srs-server"; then
@@ -6011,9 +6162,7 @@ install_middleware() {
     print_dify_info "  首次安装: http://localhost:${DIFY_HTTP_PORT}/install"
     print_dify_info "  部署日志: ${DIFY_LOG_FILE}"
     echo ""
-    print_info "等待服务启动..."
-    sleep 10
-    
+    # 不再固定 sleep 10：下方 ensure_postgresql_password 内部自带 wait_for_postgresql 精确等待
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
     echo ""
     ensure_postgresql_password
@@ -6085,8 +6234,15 @@ start_middleware() {
     
     print_info "启动所有中间件服务..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"
+    _up_rc=${PIPESTATUS[0]}
+    ensure_nacos_admin_user
     
-    print_success "所有中间件启动完成"
+    if [ "${_up_rc:-0}" -eq 0 ]; then
+        print_success "所有中间件启动完成"
+    else
+        print_error "部分中间件启动失败（compose 退出码 ${_up_rc}），unhealthy 容器自动诊断："
+        show_unhealthy_containers
+    fi
     echo ""
     init_kafka_iot_topics || print_warning "IoT Kafka 主题初始化未完成"
     echo ""
@@ -6171,9 +6327,8 @@ restart_middleware() {
     
     print_success "所有中间件重启完成"
     echo ""
-    print_info "等待服务就绪..."
-    sleep 15
-
+    # 不再固定 sleep 15：下方 init_kafka_iot_topics / ensure_postgresql_password
+    # 各自带就绪轮询（Kafka while 重试、PG wait_for_postgresql），按需精确等待
     echo ""
     init_kafka_iot_topics || print_warning "IoT Kafka 主题初始化未完成"
     
@@ -6576,10 +6731,19 @@ update_middleware() {
     echo ""
     check_and_pull_images
     
+    cleanup_renamed_containers
+    fix_nacos_derby_corruption
     print_info "重启所有中间件服务..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"
-    
-    print_success "所有中间件更新完成"
+    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d $(compose_service_args) 2>&1 | tee -a "$LOG_FILE"
+    _up_rc=${PIPESTATUS[0]}   # 必须紧跟管道取退出码：tee 恒 0，直接判管道会把失败误报成成功
+    ensure_nacos_admin_user
+
+    if [ "${_up_rc}" -eq 0 ]; then
+        print_success "所有中间件更新完成"
+    else
+        print_error "部分中间件更新失败（compose 退出码 ${_up_rc}），unhealthy 容器自动诊断："
+        show_unhealthy_containers
+    fi
     echo ""
     print_section "检查 Milvus 向量数据库"
     wait_for_milvus || print_warning "Milvus 未就绪"
@@ -6615,6 +6779,14 @@ show_help() {
     echo "  update          - 更新并重启所有中间件"
     echo "  fix-postgresql  - 修复 PostgreSQL 密码问题"
     echo "  help            - 显示此帮助信息"
+    echo ""
+    echo "环境变量:"
+    echo "  SKIP_GPUSTACK=true  - 跳过 GPUStack（Server/Worker/镜像/数据目录递归权限），加速部署"
+    echo "  SKIP_DIFY=true      - 跳过 Dify（独立 compose 部署/镜像/数据目录递归权限），加速部署"
+    echo "  FORCE_CHMOD=true    - 对已存在的数据目录强制完整递归 chmod 修复（默认只设顶层，数据量大时慢）"
+    echo "                        仅在怀疑既有目录权限损坏、容器读写报错时使用一次"
+    echo "                        示例: SKIP_GPUSTACK=true SKIP_DIFY=true ./install_middleware_linux.sh update"
+    echo "                        修复示例: FORCE_CHMOD=true ./install_middleware_linux.sh update"
     echo ""
     echo "中间件服务列表:"
     for service in "${MIDDLEWARE_SERVICES[@]}"; do

@@ -11,7 +11,7 @@ import type { AlertMapQuery } from '@/components/TiandituMap';
 import type { MapMarkerData } from '@/components/TiandituMap';
 import { MapLayerSwitcher } from '@/components/MapLayerSwitcher';
 import { getAlertMapFilterFormConfig } from '@/views/alert/Data';
-import { formatAlertEvent } from '@/views/alert/alertDisplay';
+import { formatAlertEvent, formatAlertListTitle } from '@/views/alert/alertDisplay';
 import { canSetDeviceLocation, formatLocationSummary } from '@/views/camera/utils/deviceLocation';
 import {
   normalizeAlertQueryParams,
@@ -416,7 +416,7 @@ defineExpose({ refresh: loadData, resizeMap, applyFilters, init });
           </template>
 
           <template v-else-if="selectedAlert">
-            <p class="alert-map-detail-name">{{ formatAlertEvent(selectedAlert.event) }}</p>
+            <p class="alert-map-detail-name">{{ formatAlertListTitle(selectedAlert) }}</p>
             <p class="alert-map-detail-meta">
               {{ selectedAlert.device_name || selectedAlert.device_id }}
               <span v-if="selectedAlert.time" class="alert-map-detail-meta__time">{{ selectedAlert.time }}</span>

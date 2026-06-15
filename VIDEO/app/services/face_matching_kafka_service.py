@@ -35,6 +35,7 @@ def build_face_matching_message(
         threshold: Optional[float],
         alert_id: Optional[int] = None,
         correlation_id: Optional[str] = None,
+        source_event: Optional[str] = None,
         bbox: Optional[list] = None,
         confidence: Optional[float] = None,
 ) -> Dict:
@@ -56,6 +57,8 @@ def build_face_matching_message(
     }
     if correlation_id:
         message['correlationId'] = correlation_id
+    if source_event:
+        message['sourceEvent'] = source_event
     return message
 
 

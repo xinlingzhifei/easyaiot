@@ -4,9 +4,6 @@
 @email andywebjava@163.com
 """
 import logging
-import cv2
-import subprocess
-import numpy as np
 import json
 from flask import Blueprint, request, jsonify
 
@@ -15,7 +12,7 @@ from app.services.device_detection_region_service import (
     get_device_regions, create_device_region, update_device_region,
     delete_device_region, update_device_cover_image
 )
-from app.blueprints.camera import upload_screenshot_to_minio
+from app.blueprints.camera import upload_screenshot_to_minio, grab_frame_for_snapshot
 
 device_detection_region_bp = Blueprint('device_detection_region', __name__)
 logger = logging.getLogger(__name__)
@@ -80,8 +77,8 @@ def create_region(device_id):
             return jsonify({'code': 400, 'msg': '区域名称不能为空'}), 400
         
         region_type = data.get('region_type', 'polygon')
-        if region_type not in ['polygon', 'line']:
-            return jsonify({'code': 400, 'msg': '区域类型必须是 polygon 或 line'}), 400
+        if region_type not in ['polygon', 'line', 'rectangle']:
+            return jsonify({'code': 400, 'msg': '区域类型必须是 polygon、line 或 rectangle'}), 400
         
         points = data.get('points')
         if not points or not isinstance(points, list):
@@ -161,8 +158,8 @@ def update_region(region_id):
                     logger.info(f"算法任务未配置模型列表，自动禁用区域检测配置: region_id={region_id}")
         
         region_type = data.get('region_type')
-        if region_type and region_type not in ['polygon', 'line']:
-            return jsonify({'code': 400, 'msg': '区域类型必须是 polygon 或 line'}), 400
+        if region_type and region_type not in ['polygon', 'line', 'rectangle']:
+            return jsonify({'code': 400, 'msg': '区域类型必须是 polygon、line 或 rectangle'}), 400
         
         region = update_device_region(region_id, **data)
         
@@ -188,7 +185,9 @@ def delete_region(region_id):
             'msg': '删除成功'
         })
     except ValueError as e:
-        return jsonify({'code': 400, 'msg': str(e)}), 400
+        # 区域不存在视为已删除(幂等)：前端删除未保存的临时区域时也会调到这里，不应报错
+        logger.info(f"删除区域未找到记录，按幂等成功处理: region_id={region_id} ({e})")
+        return jsonify({'code': 0, 'msg': '区域不存在或已删除'})
     except Exception as e:
         logger.error(f'删除设备检测区域失败: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
@@ -196,81 +195,37 @@ def delete_region(region_id):
 
 @device_detection_region_bp.route('/device/<string:device_id>/cover-image', methods=['POST'])
 def update_cover_image(device_id):
-    """抓拍并更新设备封面图"""
+    """更新设备封面图。
+
+    优先复用设备最近一张截图（通常是前端刚抓拍的那张）作为封面，避免对国标设备
+    重复点播+抓帧（耗时长，会导致前端 10s 超时）；仅当设备无历史截图时才现抓一帧。
+    """
     try:
         device = Device.query.get(device_id)
         if not device:
             return jsonify({'code': 400, 'msg': f'设备不存在: ID={device_id}'}), 400
-        
-        if not device.source:
-            return jsonify({'code': 400, 'msg': '设备源地址为空'}), 400
-        
-        # 抓拍逻辑（复用camera.py中的逻辑）
-        source = device.source.strip()
-        source_lower = source.lower()
-        
-        # 判断是否是RTMP流
-        if source_lower.startswith('rtmp://'):
-            # 使用FFmpeg从RTMP流中抽帧
-            try:
-                ffmpeg_cmd = [
-                    'ffmpeg',
-                    '-i', source,
-                    '-vframes', '1',
-                    '-f', 'image2',
-                    '-vcodec', 'mjpeg',
-                    '-q:v', '2',
-                    'pipe:1'
-                ]
-                
-                process = subprocess.Popen(
-                    ffmpeg_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                stdout, stderr = process.communicate(timeout=10)
-                
-                if process.returncode != 0:
-                    error_msg = stderr.decode('utf-8', errors='ignore') if stderr else '未知错误'
-                    return jsonify({'code': 500, 'msg': f'RTMP流抽帧失败: {error_msg}'}), 500
-                
-                if not stdout:
-                    return jsonify({'code': 500, 'msg': 'RTMP流抽帧失败: 未获取到图像数据'}), 500
-                
-                image_array = np.frombuffer(stdout, np.uint8)
-                frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-                
-                if frame is None:
-                    return jsonify({'code': 500, 'msg': 'RTMP流抽帧失败: 图像解码失败'}), 500
-            except subprocess.TimeoutExpired:
-                return jsonify({'code': 500, 'msg': 'RTMP流抽帧超时'}), 500
-            except Exception as e:
-                logger.error(f"RTMP流抽帧异常: {str(e)}", exc_info=True)
-                return jsonify({'code': 500, 'msg': f'RTMP流抽帧异常: {str(e)}'}), 500
+
+        # 优先复用最近一张截图，避免重复抓帧
+        image_record = Image.query.filter_by(device_id=device_id).order_by(Image.created_at.desc()).first()
+        if image_record and image_record.path:
+            image_url = image_record.path
         else:
-            # 使用OpenCV从RTSP流抓取一帧
-            cap = cv2.VideoCapture(source)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            ret, frame = cap.read()
-            cap.release()
-            
-            if not ret:
-                return jsonify({'code': 500, 'msg': '无法从RTSP流读取帧'}), 500
-        
-        # 上传到MinIO并存入数据库
-        image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
-        
-        if not image_url:
-            return jsonify({'code': 500, 'msg': '图片上传失败'}), 500
-        
+            # 无历史截图，才现抓一帧（自动解析 gb28181:// 源，普通 rtsp/rtmp 原样使用）
+            if not device.source:
+                return jsonify({'code': 400, 'msg': '设备源地址为空'}), 400
+            frame, capture_err = grab_frame_for_snapshot(device)
+            if capture_err:
+                # 返回 HTTP 200 + code:500：前端 isTransformResponse=false，会读取 msg 显示具体原因，
+                # 避免全局拦截器把 HTTP 500 统一提示为"服务器错误,请联系管理员!"
+                return jsonify({'code': 500, 'msg': capture_err})
+            image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
+            if not image_url:
+                return jsonify({'code': 500, 'msg': '图片上传失败'})
+            image_record = Image.query.filter_by(device_id=device_id).order_by(Image.created_at.desc()).first()
+
         # 更新设备封面图
         device = update_device_cover_image(device_id, image_url)
-        
-        # 获取图片信息
-        image_record = Image.query.filter_by(device_id=device_id).order_by(Image.created_at.desc()).first()
-        
+
         return jsonify({
             'code': 0,
             'msg': '更新封面图成功',
@@ -297,66 +252,20 @@ def capture_device_snapshot(device_id):
         
         if not device.source:
             return jsonify({'code': 400, 'msg': '设备源地址为空'}), 400
-        
-        source = device.source.strip()
-        source_lower = source.lower()
-        
-        # 判断是否是RTMP流
-        if source_lower.startswith('rtmp://'):
-            # 使用FFmpeg从RTMP流中抽帧
-            try:
-                ffmpeg_cmd = [
-                    'ffmpeg',
-                    '-i', source,
-                    '-vframes', '1',
-                    '-f', 'image2',
-                    '-vcodec', 'mjpeg',
-                    '-q:v', '2',
-                    'pipe:1'
-                ]
-                
-                process = subprocess.Popen(
-                    ffmpeg_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                stdout, stderr = process.communicate(timeout=10)
-                
-                if process.returncode != 0:
-                    error_msg = stderr.decode('utf-8', errors='ignore') if stderr else '未知错误'
-                    return jsonify({'code': 500, 'msg': f'RTMP流抽帧失败: {error_msg}'}), 500
-                
-                if not stdout:
-                    return jsonify({'code': 500, 'msg': 'RTMP流抽帧失败: 未获取到图像数据'}), 500
-                
-                image_array = np.frombuffer(stdout, np.uint8)
-                frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-                
-                if frame is None:
-                    return jsonify({'code': 500, 'msg': 'RTMP流抽帧失败: 图像解码失败'}), 500
-            except subprocess.TimeoutExpired:
-                return jsonify({'code': 500, 'msg': 'RTMP流抽帧超时'}), 500
-            except Exception as e:
-                logger.error(f"RTMP流抽帧异常: {str(e)}", exc_info=True)
-                return jsonify({'code': 500, 'msg': f'RTMP流抽帧异常: {str(e)}'}), 500
-        else:
-            # 使用OpenCV从RTSP流抓取一帧
-            cap = cv2.VideoCapture(source)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            ret, frame = cap.read()
-            cap.release()
-            
-            if not ret:
-                return jsonify({'code': 500, 'msg': '无法从RTSP流读取帧'}), 500
-        
+
+        # 抓拍一帧（自动解析 gb28181:// 源，普通 rtsp/rtmp 原样使用）
+        frame, capture_err = grab_frame_for_snapshot(device)
+        if capture_err:
+            # 返回 HTTP 200 + code:500：前端 isTransformResponse=false，会读取 msg 显示具体原因，
+            # 避免全局拦截器把 HTTP 500 统一提示为"服务器错误,请联系管理员!"
+            return jsonify({'code': 500, 'msg': capture_err})
+
         # 上传到MinIO并存入数据库
         image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
-        
+
         if not image_url:
-            return jsonify({'code': 500, 'msg': '图片上传失败'}), 500
-        
+            return jsonify({'code': 500, 'msg': '图片上传失败'})
+
         # 自动更新设备封面图
         try:
             device = update_device_cover_image(device_id, image_url)

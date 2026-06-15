@@ -1378,6 +1378,7 @@ def try_send_snapshot_detection_alert(
         frame_for_image=frame_image,
         frame_number=frame_number,
         correlation_id=correlation_id,
+        source_event=algorithm_name,
     )
     try_send_plate_matching_for_frame(
         device_id=device_id,
@@ -1661,6 +1662,7 @@ def try_send_face_matching_for_frame(
     frame_for_image: np.ndarray,
     frame_number: int,
     correlation_id: Optional[str] = None,
+    source_event: Optional[str] = None,
 ) -> None:
     if not task_config or not bool(getattr(task_config, 'face_matching_enabled', False)):
         return
@@ -1683,6 +1685,7 @@ def try_send_face_matching_for_frame(
         threshold=_resolve_face_matching_threshold(),
         publish_url=FACE_MATCHING_PUBLISH_URL,
         correlation_id=correlation_id,
+        source_event=source_event,
     )
 
 

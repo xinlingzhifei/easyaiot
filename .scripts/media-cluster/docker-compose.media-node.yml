@@ -16,10 +16,11 @@ services:
       - /mnt/easyaiot-media/playbacks:/mnt/easyaiot-media/playbacks:rw
       - /mnt/easyaiot-media/logs:/mnt/easyaiot-media/logs:rw
       - ./srs/docker.conf:/usr/local/srs/conf/docker.conf:ro
+      - ../docker/srs-healthcheck.sh:/usr/local/bin/srs-healthcheck.sh:ro
     command: ["./objs/srs", "-c", "conf/docker.conf"]
     working_dir: /usr/local/srs
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:1985/api/v1/versions || exit 1"]
+      test: ["CMD", "/bin/bash", "/usr/local/bin/srs-healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 5

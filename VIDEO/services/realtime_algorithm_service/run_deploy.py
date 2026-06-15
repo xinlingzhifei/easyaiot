@@ -1462,6 +1462,7 @@ def try_send_alert_for_detections(
             frame_for_image=frame_for_image,
             frame_number=frame_number,
             correlation_id=correlation_id,
+            source_event=algorithm_name,
         )
         try_send_plate_matching_for_frame(
             device_id=device_id,
@@ -1602,6 +1603,7 @@ def try_send_face_matching_for_frame(
     frame_for_image: np.ndarray,
     frame_number: int,
     correlation_id: Optional[str] = None,
+    source_event: Optional[str] = None,
 ) -> None:
     """启用人脸匹配时，将帧送入独立人脸抓取队列（不阻塞主算法链路）"""
     if not task_config or not bool(getattr(task_config, 'face_matching_enabled', False)):
@@ -1627,6 +1629,7 @@ def try_send_face_matching_for_frame(
         threshold=_resolve_face_matching_threshold(),
         publish_url=FACE_MATCHING_PUBLISH_URL,
         correlation_id=correlation_id,
+        source_event=source_event,
     )
 
 

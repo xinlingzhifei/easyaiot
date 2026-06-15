@@ -32,6 +32,7 @@ from app.services.camera_service import (
     get_snapshot_uri, refresh_camera, _to_dict
 )
 import app.services.camera_service as camera_service
+from app.utils.gb28181_source import resolve_gb28181_source
 from models import Device, db, Image, DeviceDirectory, DetectionRegion, StreamForwardTask, AlgorithmTask
 from sqlalchemy import and_
 
@@ -1050,6 +1051,25 @@ def get_minio_client():
     return Minio(minio_endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
 
 
+def _public_read_policy(bucket_name):
+    """生成匿名只读(download)策略：允许前端经 MinIO 下载接口加载该桶图片。
+
+    截图桶仅供前端展示，只读即可（不开放匿名写），与 alert-images 等显示用桶一致。
+    """
+    import json
+    return json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {"Effect": "Allow", "Principal": {"AWS": ["*"]},
+             "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+             "Resource": [f"arn:aws:s3:::{bucket_name}"]},
+            {"Effect": "Allow", "Principal": {"AWS": ["*"]},
+             "Action": ["s3:GetObject"],
+             "Resource": [f"arn:aws:s3:::{bucket_name}/*"]},
+        ],
+    })
+
+
 def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
     """上传摄像头截图到MinIO并存入数据库"""
     try:
@@ -1058,9 +1078,17 @@ def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
 
         if not minio_client.bucket_exists(bucket_name):
             minio_client.make_bucket(bucket_name)
+            # 新建桶设为匿名只读，否则前端无法经 MinIO 下载接口加载截图（画布会空白）
+            try:
+                minio_client.set_bucket_policy(bucket_name, _public_read_policy(bucket_name))
+            except Exception as e:
+                logger.warning(f"设置截图桶 {bucket_name} 匿名只读策略失败(不影响上传，但前端可能加载不出图片): {e}")
             logger.info(f"创建截图存储桶: {bucket_name}")
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 本模块顶部的 `from app.services.camera_service import *` 会用 datetime 类覆盖
+        # 模块名 datetime，导致 datetime.datetime 不可用，这里用局部别名规避
+        from datetime import datetime as _dt
+        timestamp = _dt.now().strftime("%Y%m%d_%H%M%S")
         # 生成唯一文件名
         unique_filename = f"{uuid.uuid4().hex}.{image_format}"
         object_name = f"{camera_id}/{unique_filename}"
@@ -1317,6 +1345,80 @@ def onvif_status(device_id):
         return jsonify({'code': 500, 'msg': f'获取ONVIF截图状态失败: {str(e)}'}), 500
 
 
+def grab_frame_for_snapshot(device):
+    """解析设备源地址并抓取一帧。
+
+    与 realtime/snapshot 算法服务保持一致：先用 resolve_gb28181_source 把
+    gb28181:// 虚拟源按需点播解析为可播放的 RTSP/RTMP（普通 rtsp/rtmp 源原样返回），
+    这样即使算法任务未启动，也能为抓拍/区域绘制取到一帧。
+
+    返回 (frame, error_msg)，成功时 error_msg 为 None。
+    """
+    try:
+        source = resolve_gb28181_source((device.source or '').strip(), logger=logger)
+    except Exception as e:
+        logger.error(f"解析设备源地址失败: device_id={device.id}, error={str(e)}", exc_info=True)
+        return None, f'解析设备源地址失败: {str(e)}'
+
+    if not source:
+        return None, '无法获取可播放的视频流地址（国标点播失败或设备离线）'
+
+    source = source.strip()
+    source_lower = source.lower()
+
+    # 判断是否是RTMP流
+    if source_lower.startswith('rtmp://'):
+        # 使用FFmpeg从RTMP流中抽帧
+        try:
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-i', source,  # RTMP流地址
+                '-vframes', '1',  # 只抽取1帧
+                '-f', 'image2',  # 输出格式为图片
+                '-vcodec', 'mjpeg',  # 使用MJPEG编码
+                '-q:v', '2',  # 高质量
+                'pipe:1'  # 输出到标准输出
+            ]
+
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+
+            stdout, stderr = process.communicate(timeout=10)  # 10秒超时
+
+            if process.returncode != 0:
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else '未知错误'
+                return None, f'RTMP流抽帧失败: {error_msg}'
+
+            if not stdout:
+                return None, 'RTMP流抽帧失败: 未获取到图像数据'
+
+            image_array = np.frombuffer(stdout, np.uint8)
+            frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                return None, 'RTMP流抽帧失败: 图像解码失败'
+            return frame, None
+        except subprocess.TimeoutExpired:
+            return None, 'RTMP流抽帧超时'
+        except Exception as e:
+            logger.error(f"RTMP流抽帧异常: {str(e)}", exc_info=True)
+            return None, f'RTMP流抽帧异常: {str(e)}'
+    else:
+        # 使用OpenCV从RTSP流抓取一帧
+        cap = cv2.VideoCapture(source)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 减少缓冲区，获取最新帧
+
+        ret, frame = cap.read()
+        cap.release()
+
+        if not ret:
+            return None, '无法从视频流读取帧'
+        return frame, None
+
+
 # ------------------------- RTSP/RTMP单帧抓拍接口 -------------------------
 @camera_bp.route('/device/<string:device_id>/snapshot', methods=['POST'])
 def capture_snapshot(device_id):
@@ -1325,79 +1427,26 @@ def capture_snapshot(device_id):
         device = Device.query.get(device_id)
         if not device:
             return jsonify({'code': 400, 'msg': f'设备不存在: ID={device_id}'}), 400
-        
+
         if not device.source:
             return jsonify({'code': 400, 'msg': '设备源地址为空'}), 400
-        
-        import cv2
-        import subprocess
-        import numpy as np
-        
-        source = device.source.strip()
-        source_lower = source.lower()
-        
-        # 判断是否是RTMP流
-        if source_lower.startswith('rtmp://'):
-            # 使用FFmpeg从RTMP流中抽帧
-            try:
-                # 使用FFmpeg从RTMP流中抽取一帧并输出为JPEG格式
-                ffmpeg_cmd = [
-                    'ffmpeg',
-                    '-i', source,  # RTMP流地址
-                    '-vframes', '1',  # 只抽取1帧
-                    '-f', 'image2',  # 输出格式为图片
-                    '-vcodec', 'mjpeg',  # 使用MJPEG编码
-                    '-q:v', '2',  # 高质量
-                    'pipe:1'  # 输出到标准输出
-                ]
-                
-                # 执行FFmpeg命令并捕获输出
-                process = subprocess.Popen(
-                    ffmpeg_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                stdout, stderr = process.communicate(timeout=10)  # 10秒超时
-                
-                if process.returncode != 0:
-                    error_msg = stderr.decode('utf-8', errors='ignore') if stderr else '未知错误'
-                    return jsonify({'code': 500, 'msg': f'RTMP流抽帧失败: {error_msg}'}), 500
-                
-                if not stdout:
-                    return jsonify({'code': 500, 'msg': 'RTMP流抽帧失败: 未获取到图像数据'}), 500
-                
-                # 将FFmpeg输出的JPEG数据解码为OpenCV图像
-                image_array = np.frombuffer(stdout, np.uint8)
-                frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-                
-                if frame is None:
-                    return jsonify({'code': 500, 'msg': 'RTMP流抽帧失败: 图像解码失败'}), 500
-            except subprocess.TimeoutExpired:
-                return jsonify({'code': 500, 'msg': 'RTMP流抽帧超时'}), 500
-            except Exception as e:
-                logger.error(f"RTMP流抽帧异常: {str(e)}", exc_info=True)
-                return jsonify({'code': 500, 'msg': f'RTMP流抽帧异常: {str(e)}'}), 500
-        else:
-            # 使用OpenCV从RTSP流抓取一帧
-            cap = cv2.VideoCapture(source)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 减少缓冲区，获取最新帧
-            
-            ret, frame = cap.read()
-            cap.release()
-            
-            if not ret:
-                return jsonify({'code': 500, 'msg': '无法从RTSP流读取帧'}), 500
-        
+
+        # 抓拍一帧（自动解析 gb28181:// 源，普通 rtsp/rtmp 原样使用）
+        frame, capture_err = grab_frame_for_snapshot(device)
+        if capture_err:
+            # 返回 HTTP 200 + code:500：前端 isTransformResponse=false，会读取 msg 显示具体原因，
+            # 避免全局拦截器把 HTTP 500 统一提示为"服务器错误,请联系管理员!"
+            return jsonify({'code': 500, 'msg': capture_err})
+
         # 上传到MinIO并存入数据库
         image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
-        
+
         if not image_url:
-            return jsonify({'code': 500, 'msg': '图片上传失败'}), 500
-        
+            return jsonify({'code': 500, 'msg': '图片上传失败'})
+
         # 获取图片信息
         image_record = Image.query.filter_by(device_id=device_id).order_by(Image.created_at.desc()).first()
-        
+
         return jsonify({
             'code': 0,
             'msg': '抓拍成功',

@@ -515,6 +515,7 @@ def publish_face_matching():
             threshold=data.get('threshold') or data.get('faceMatchingThreshold') or data.get('face_matching_threshold'),
             alert_id=data.get('alertId') or data.get('alert_id'),
             correlation_id=data.get('correlationId') or data.get('correlation_id'),
+            source_event=data.get('sourceEvent') or data.get('source_event'),
             bbox=data.get('bbox'),
             confidence=data.get('confidence'),
         )

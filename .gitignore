@@ -108,3 +108,7 @@ VIDEO/face_capture_head_yolov8.onnx
 
 # Local git worktrees
 .worktrees/
+
+# 表结构同步产物（明文整库备份与差异 SQL，绝不可入库）
+.scripts/postgresql/schema-sync/backups/
+.scripts/postgresql/schema-sync/schema_diffs/

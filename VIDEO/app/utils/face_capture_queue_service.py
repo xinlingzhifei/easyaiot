@@ -138,6 +138,9 @@ def _process_task(task: Dict[str, Any]) -> None:
         correlation_id = task.get('correlation_id')
         if correlation_id:
             payload['correlationId'] = correlation_id
+        source_event = task.get('source_event')
+        if source_event:
+            payload['sourceEvent'] = source_event
         _publish_face_matching(payload, publish_url)
 
 
@@ -193,6 +196,7 @@ def enqueue_face_capture(
     threshold: Optional[float],
     publish_url: str,
     correlation_id: Optional[str] = None,
+    source_event: Optional[str] = None,
 ) -> bool:
     """非阻塞入队；队列满时可选丢弃旧任务保留最新，不影响主算法线程。"""
     if not _running or _queue is None:
@@ -212,6 +216,8 @@ def enqueue_face_capture(
     }
     if correlation_id:
         task['correlation_id'] = correlation_id
+    if source_event:
+        task['source_event'] = source_event
 
     drained = 0
     if FACE_CAPTURE_KEEP_LATEST and _queue.qsize() >= FACE_CAPTURE_KEEP_LATEST_THRESHOLD:
