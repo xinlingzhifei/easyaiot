@@ -45,7 +45,7 @@ import app.utils.nvidia_lib_path  # noqa: F401  须在 import onnxruntime 之前
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
 from app.utils.gb28181_source import resolve_gb28181_alternate_pull_url, resolve_gb28181_source
-from app.services.camera_service import resolve_device_ai_rtmp_stream
+from app.services.camera_service import gb28181_device_stream_urls, resolve_device_ai_rtmp_stream
 from app.utils.alert_images_paths import resolve_alert_images_root
 from app.utils.async_video_stream import AsyncVideoStream, async_rtsp_read_enabled
 from app.utils.rtsp_stream_utils import open_network_videocapture
@@ -1290,7 +1290,19 @@ def load_task_config():
                 # 输入流地址（支持RTSP/RTMP，以及通过gb28181://虚拟源动态解析）
                 rtsp_url = resolve_gb28181_source(device.source, logger=logger) if device.source else None
                 if not rtsp_url and device.source and device.source.strip().lower().startswith('gb28181://'):
+                    try:
+                        _, gb_http_stream, _, _ = gb28181_device_stream_urls(device.id)
+                    except Exception:
+                        gb_http_stream = None
+                    if gb_http_stream:
+                        rtsp_url = gb_http_stream
+                        logger.warning(
+                            f"GB28181 source resolve failed for {device.id}; "
+                            f"using generated GB28181 HTTP stream: {gb_http_stream}"
+                        )
                     for cached_attr in ('http_stream', 'rtmp_stream'):
+                        if rtsp_url:
+                            break
                         cached_url = (getattr(device, cached_attr, None) or '').strip()
                         if cached_url:
                             rtsp_url = cached_url

@@ -32,6 +32,8 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("resolve_gb28181_source(device.source", source)
+        self.assertIn("gb28181_device_stream_urls(device.id)", source)
+        self.assertIn("using generated GB28181 HTTP stream", source)
         self.assertIn("for cached_attr in ('http_stream', 'rtmp_stream')", source)
         self.assertIn("using cached {cached_attr}", source)
 
