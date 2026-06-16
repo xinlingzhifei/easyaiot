@@ -343,7 +343,7 @@ def _upsert_gb_device(
         if http_stream and (device.http_stream or '').strip() != http_stream:
             device.http_stream = http_stream
             changed = True
-        if not (device.ai_rtmp_stream or '').strip():
+        if ai_rtmp_stream and (device.ai_rtmp_stream or '').strip() != ai_rtmp_stream:
             device.ai_rtmp_stream = ai_rtmp_stream
             changed = True
         if ai_http_stream and (device.ai_http_stream or '').strip() != ai_http_stream:
@@ -426,7 +426,7 @@ def backfill_gb28181_ai_stream_urls() -> int:
         if http and (device.http_stream or '').strip() != http:
             device.http_stream = http
             changed = True
-        if not (device.ai_rtmp_stream or '').strip():
+        if ai_rtmp and (device.ai_rtmp_stream or '').strip() != ai_rtmp:
             device.ai_rtmp_stream = ai_rtmp
             changed = True
         if ai_http and (device.ai_http_stream or '').strip() != ai_http:

@@ -47,6 +47,7 @@ EXPECTED_AI_HTTP = (
     "https://eye.yfeiai.com/ai/"
     "gb28181_44010200493432381460_34020000001320000001.flv"
 )
+EXPECTED_AI_RTMP = "rtmp://127.0.0.1:1935/ai/gb28181_demo"
 
 
 def fake_gb28181_device_stream_urls(_device_id):
@@ -55,7 +56,7 @@ def fake_gb28181_device_stream_urls(_device_id):
         "https://eye.yfeiai.com/rtp/"
         "44010200493432381460_34020000001320000001.live.flv"
         "?originTypeStr=rtp_push&videoCodec=H265",
-        "rtmp://127.0.0.1:1935/ai/gb28181_demo",
+        EXPECTED_AI_RTMP,
         EXPECTED_AI_HTTP,
     )
 
@@ -74,11 +75,11 @@ class Gb28181SyncServiceTest(unittest.TestCase):
     def setUp(self):
         gb28181_sync_service.db.session.commit_count = 0
 
-    def test_backfill_rewrites_stale_ai_http_stream(self):
+    def test_backfill_rewrites_stale_ai_stream_urls(self):
         device = types.SimpleNamespace(
             id="gb28181_44010200493432381460_34020000001320000001",
             source="gb28181://44010200493432381460/34020000001320000001",
-            ai_rtmp_stream="rtmp://127.0.0.1:1935/ai/gb28181_demo",
+            ai_rtmp_stream="rtmp://192.168.0.88:1935/ai/gb28181_demo",
             ai_http_stream=(
                 "https://eye.yfeiai.com/rtp/"
                 "44010200493432381460_34020000001320000001.live.flv"
@@ -92,6 +93,7 @@ class Gb28181SyncServiceTest(unittest.TestCase):
 
         self.assertEqual(updated, 1)
         self.assertIn("/rtp/", device.http_stream)
+        self.assertEqual(device.ai_rtmp_stream, EXPECTED_AI_RTMP)
         self.assertEqual(device.ai_http_stream, EXPECTED_AI_HTTP)
         self.assertEqual(gb28181_sync_service.db.session.commit_count, 1)
 
