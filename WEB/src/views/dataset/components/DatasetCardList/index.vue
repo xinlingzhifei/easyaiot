@@ -67,6 +67,9 @@
                     />
                   </div>
                   <div class="btns" style="padding-top: 5px;">
+                    <div class="btn audit-btn" title="审核" :onclick="handleVerif.bind(null, item)">
+                      <Icon icon="ant-design:audit-outlined"/>
+                    </div>
                     <Popconfirm
                       title="是否确认删除？"
                       ok-text="是"
@@ -103,6 +106,7 @@
 import {onMounted, reactive, ref} from 'vue';
 import {List, Popconfirm, Progress, Spin, Tag} from 'ant-design-vue';
 import {BasicForm, useForm} from '@/components/Form';
+import {Icon} from '@/components/Icon';
 import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
 import {useMessage} from "@/hooks/web/useMessage";
@@ -120,7 +124,7 @@ const props = defineProps({
   api: propTypes.func,
 });
 //暴露内部方法
-const emit = defineEmits(['getMethod', 'delete', 'edit', 'view']);
+const emit = defineEmits(['getMethod', 'delete', 'edit', 'view', 'verif']);
 
 const data = ref([]);
 const state = reactive({
@@ -347,7 +351,7 @@ img {
     .btns {
       display: flex;
       margin-top: 1px;
-      width: 140px;
+      width: 168px;
       height: 28px;
       border-radius: 45px;
       justify-content: space-around;
@@ -388,6 +392,17 @@ img {
           height: 15px;
           cursor: pointer;
           margin-top: 4px;
+        }
+
+        &.audit-btn {
+          color: #266cfb;
+          cursor: pointer;
+
+          :deep(svg) {
+            width: 15px;
+            height: 15px;
+            margin-top: 4px;
+          }
         }
       }
     }
