@@ -1,4 +1,5 @@
 import { defHttp } from '@/utils/http/axios';
+import { getSamHealthPayloadFromError, unwrapSamHealthPayload } from './samHealth';
 
 enum Api {
   Sam = '/model/sam',
@@ -117,7 +118,25 @@ export interface SamPredictResult {
   engine?: string;
 }
 
-export const getSamHealth = () => commonApi('get', `${Api.Sam}/health`);
+export const getSamHealth = async () => {
+  defHttp.setHeader({ 'X-Authorization': `Bearer ${localStorage.getItem('jwt_token')}` });
+  try {
+    const res = await defHttp.get(
+      {
+        url: `${Api.Sam}/health`,
+        headers: { ignoreCancelToken: true },
+      },
+      { isTransformResponse: false, errorMessageMode: 'none' },
+    );
+    return unwrapSamHealthPayload(res);
+  }
+  catch (error) {
+    const health = getSamHealthPayloadFromError(error);
+    if (health)
+      return health;
+    throw error;
+  }
+};
 
 export const samPredict = (data: SamPredictParams) =>
   commonApi('post', `${Api.Sam}/predict`, { data });
