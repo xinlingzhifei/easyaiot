@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { getSamHealthPayloadFromError, unwrapSamHealthPayload } from './samHealth'
+import {
+  canRunSamPredict,
+  getSamHealthPayloadFromError,
+  getSamUnavailableMessage,
+  unwrapSamHealthPayload,
+} from './samHealth'
 
 test('SAM health keeps disabled 503 payload as a displayable status', () => {
   const health = getSamHealthPayloadFromError({
@@ -36,4 +41,9 @@ test('SAM health unwraps both raw and API-envelope responses', () => {
     unwrapSamHealthPayload({ data: { code: 0, msg: 'success', data: { status: 'healthy' } } }),
     { status: 'healthy' },
   )
+})
+
+test('SAM health marks disabled service as unavailable for prediction', () => {
+  assert.equal(canRunSamPredict({ status: 'disabled', enabled: false }), false)
+  assert.match(getSamUnavailableMessage({ status: 'disabled', enabled: false }) ?? '', /SAM 服务未启用/)
 })

@@ -8,6 +8,7 @@
           SAM 万物识别
         </div>
         <Alert type="info" show-icon class="hint-alert" message="使用英文类别词描述目标，如 car、fire、person with helmet" />
+        <Alert v-if="samUnavailableMessage" type="warning" show-icon class="hint-alert" :message="samUnavailableMessage" />
 
         <div class="field-block">
           <label>文本类别（Tag，英文）</label>
@@ -34,7 +35,7 @@
           <input type="file" accept="image/*" @change="onFileChange" />
         </div>
 
-        <Button type="primary" block :loading="loading" :disabled="!imageFile || !textPrompts.length" @click="runPredict">
+        <Button type="primary" block :loading="loading" :disabled="!canPredict" @click="runPredict">
           开始识别
         </Button>
 
@@ -64,11 +65,12 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Alert, Button, Checkbox, Select, Slider } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import GpuStackMonitorTip from '@/components/GpuStackMonitorTip/index.vue';
 import { getSamHealth, samPredict, fileToBase64, type SamPredictResult } from '@/api/device/sam';
+import { canRunSamPredict, getSamUnavailableMessage } from '@/api/device/samHealth';
 import { useMessage } from '@/hooks/web/useMessage';
 
 defineOptions({ name: 'SamInferencePage' });
@@ -84,6 +86,10 @@ const result = ref<SamPredictResult | null>(null);
 const health = ref<any>(null);
 const imgRef = ref<HTMLImageElement>();
 const canvasRef = ref<HTMLCanvasElement>();
+const samUnavailableMessage = computed(() => getSamUnavailableMessage(health.value));
+const canPredict = computed(() =>
+  !!imageFile.value && !!textPrompts.value.length && canRunSamPredict(health.value),
+);
 
 onMounted(async () => {
   try {
@@ -104,6 +110,10 @@ function onFileChange(e: Event) {
 
 async function runPredict() {
   if (!imageFile.value || !textPrompts.value.length) return;
+  if (samUnavailableMessage.value) {
+    createMessage.warning(samUnavailableMessage.value);
+    return;
+  }
   loading.value = true;
   try {
     const b64 = await fileToBase64(imageFile.value);

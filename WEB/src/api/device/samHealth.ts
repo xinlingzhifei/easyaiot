@@ -29,3 +29,19 @@ export function getSamHealthPayloadFromError(error: unknown): SamHealth | null {
     return null
   return unwrapSamHealthPayload(body)
 }
+
+export function canRunSamPredict(health: SamHealth | null | undefined): boolean {
+  if (!health)
+    return true
+  return health.enabled !== false && health.status !== 'disabled' && health.status !== 'unhealthy'
+}
+
+export function getSamUnavailableMessage(health: SamHealth | null | undefined): string | null {
+  if (!health)
+    return null
+  if (health.enabled === false || health.status === 'disabled')
+    return 'SAM 服务未启用，请先完成模型配置并设置 SAM_ENABLED=true'
+  if (health.status === 'unhealthy')
+    return 'SAM 模型未加载，请检查模型权重和服务配置'
+  return null
+}

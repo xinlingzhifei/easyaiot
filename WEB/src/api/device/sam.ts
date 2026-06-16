@@ -1,4 +1,5 @@
 import { defHttp } from '@/utils/http/axios';
+import { unwrapSamApiPayload } from './samApiResponse';
 import { getSamHealthPayloadFromError, unwrapSamHealthPayload } from './samHealth';
 
 enum Api {
@@ -138,8 +139,23 @@ export const getSamHealth = async () => {
   }
 };
 
-export const samPredict = (data: SamPredictParams) =>
-  commonApi('post', `${Api.Sam}/predict`, { data });
+export const samPredict = async (data: SamPredictParams): Promise<SamPredictResult> => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  try {
+    const res = await defHttp.post(
+      {
+        url: `${Api.Sam}/predict`,
+        data,
+        headers: { ignoreCancelToken: true },
+        timeout: 120000,
+      },
+      { isTransformResponse: false, errorMessageMode: 'none' },
+    );
+    return unwrapSamApiPayload<SamPredictResult>(res, '识别失败');
+  } catch (error) {
+    throw new Error(parseSamApiError(error, '识别失败'));
+  }
+};
 
 export const samPredictFile = (file: File, params: Omit<SamPredictParams, 'image_base64'>) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
@@ -149,10 +165,15 @@ export const samPredictFile = (file: File, params: Omit<SamPredictParams, 'image
   if (params.bboxes) formData.append('bboxes', JSON.stringify(params.bboxes));
   formData.append('return_masks', String(params.return_masks ?? true));
   if (params.conf != null) formData.append('conf', String(params.conf));
-  return defHttp.post(
-    { url: `${Api.Sam}/predict`, data: formData, timeout: 120000 },
-    { isTransformResponse: true },
-  );
+  return defHttp
+    .post(
+      { url: `${Api.Sam}/predict`, data: formData, timeout: 120000 },
+      { isTransformResponse: false, errorMessageMode: 'none' },
+    )
+    .then((res) => unwrapSamApiPayload<SamPredictResult>(res, '识别失败'))
+    .catch((error) => {
+      throw new Error(parseSamApiError(error, '识别失败'));
+    });
 };
 
 export const getSamHistory = (params: { page?: number; page_size?: number; prompt_type?: string } = {}) =>
