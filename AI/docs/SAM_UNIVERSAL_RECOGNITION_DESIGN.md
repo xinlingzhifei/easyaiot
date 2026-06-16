@@ -1,4 +1,4 @@
-# EasyAIoT 万物识别（SAM）— 详细设计文档
+# yFeiEye 万物识别（SAM）— 详细设计文档
 
 > 版本：1.2.0  
 > 更新日期：2026-06-15  
@@ -12,7 +12,7 @@
 
 ### 1.1 业务背景
 
-EasyAIoT 当前目标检测链路依赖 **YOLO 等闭集模型**：需先收集数据、标注、训练，再部署推理。类别固定，新增目标必须重新训练。
+yFeiEye 当前目标检测链路依赖 **YOLO 等闭集模型**：需先收集数据、标注、训练，再部署推理。类别固定，新增目标必须重新训练。
 
 **Segment Anything Model（SAM）** 系列提供 **零样本 / 开放词汇** 的分割与定位能力，用户可通过 **文本描述、框选、点选、涂抹** 等方式指定「任意目标」，无需重新训练即可在标注、推理、告警二次确认等场景使用。
 
@@ -62,7 +62,7 @@ EasyAIoT 当前目标检测链路依赖 **YOLO 等闭集模型**：需先收集�
 | ONNX 导出 | ✅ mask decoder | 有限 | 待评估 |
 | 典型延迟 (GPU) | 100–500 ms/图 | 类似 | **5–30 ms/图**（参考 sam-changkang） |
 | 显存 | vit_h ~8G+ | 更高 | 建议 ≥8G，推荐 ≥16G |
-| EasyAIoT 定位 | 交互标注、AMG | 后续视频 | **万物识别主引擎** |
+| yFeiEye 定位 | 交互标注、AMG | 后续视频 | **万物识别主引擎** |
 
 **结论：**
 
@@ -88,7 +88,7 @@ EasyAIoT 当前目标检测链路依赖 **YOLO 等闭集模型**：需先收集�
 
 ### 2.3 SAM 与 YOLO 协同模式
 
-EasyAIoT 落地采用 **「先 SAM 冷启动、后 YOLO 量产」** 与 **「算法任务 Pipeline 补充」** 两条主线，并保留 SAM 独立推理能力。
+yFeiEye 落地采用 **「先 SAM 冷启动、后 YOLO 量产」** 与 **「算法任务 Pipeline 补充」** 两条主线，并保留 SAM 独立推理能力。
 
 | 模式 | 核心逻辑 | 精度 | 速度 | 算力/部署 | 典型场景 |
 |------|----------|------|------|-----------|----------|
@@ -98,7 +98,7 @@ EasyAIoT 落地采用 **「先 SAM 冷启动、后 YOLO 量产」** 与 **「算
 | 模式四：SAM 独立 | 仅 SAM3 文本/框选 | 中–高 | SAM3 较快 | 单 SAM Worker | 临时分析、画布交互标注 |
 | 模式五：YOLO 独立 | 仅已训练 YOLO | 闭集高 | 最快 | 低 | 量产自动标注、生产告警主链路 |
 
-**代表性参考：** Pipeline 串联类工作 I-SAM-YOLOv5；本方案在 EasyAIoT 中映射为 `algorithm_task.sam_pipeline_mode=refine_mask`。
+**代表性参考：** Pipeline 串联类工作 I-SAM-YOLOv5；本方案在 yFeiEye 中映射为 `algorithm_task.sam_pipeline_mode=refine_mask`。
 
 ---
 
@@ -1042,9 +1042,9 @@ if task_config and task_config.sam_supplement_enabled:
 ```bash
 docker run -it --rm --name sam-worker --gpus all --network host \
   --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
-  -v /path/to/easyaiot/AI:/app \
+  -v /path/to/yFeiEye/AI:/app \
   -e SAM_MODEL_PATH=/model/model.pt \
-  registry.example.com/easyaiot/sam-worker:latest \
+  registry.example.com/yfeieye/sam-worker:latest \
   python /app/services/sam_worker/run_sam.py
 ```
 
@@ -1292,7 +1292,7 @@ curl -X POST "http://localhost:48080/admin-api/model/dataset/dataset/3/auto-labe
 在相同测试图上对比：
 
 1. [`sam-changkang/test/test.py`](file:///projects/sam-changkang/test/test.py) 直连 `:5000/predict`
-2. EasyAIoT `/model/sam/predict` 响应字段一致（boxes.xyxy、masks.xy、orig_shape）
+2. yFeiEye `/model/sam/predict` 响应字段一致（boxes.xyxy、masks.xy、orig_shape）
 
 ### 13.3 场景 A 端到端验收（冷启动 → YOLO）
 
@@ -1366,7 +1366,7 @@ curl -X POST "http://localhost:48080/admin-api/model/dataset/dataset/3/auto-labe
 
 ## 附录 B：响应字段与 sam-changkang 映射
 
-| sam-changkang | EasyAIoT 统一字段 |
+| sam-changkang | yFeiEye 统一字段 |
 |---------------|-------------------|
 | `data.results[].boxes[].xyxy` | `predictions[].bbox` |
 | `data.results[].boxes[].confidence` | `predictions[].confidence` |
@@ -1426,4 +1426,4 @@ PENDING → PROCESSING → COMPLETED
 
 ---
 
-*本文档描述 SAM 万物识别在 EasyAIoT 的落地方案；实现时以 `sam-changkang` 生产服务为 SAM3 行为基准，以 Meta `segment-anything` 为交互式分割与 ONNX 能力基准。*
+*本文档描述 SAM 万物识别在 yFeiEye 的落地方案；实现时以 `sam-changkang` 生产服务为 SAM3 行为基准，以 Meta `segment-anything` 为交互式分割与 ONNX 能力基准。*
