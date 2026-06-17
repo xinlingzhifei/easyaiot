@@ -11,8 +11,8 @@ import org.apache.ibatis.annotations.Mapper;
  * ${DESCRIPTION}
  * -----------------------------------------------------------------------------
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @version 1.0
  * -----------------------------------------------------------------------------
  * Revision History:

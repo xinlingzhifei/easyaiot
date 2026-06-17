@@ -1,7 +1,7 @@
 """
 模型部署服务业务逻辑
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import socket

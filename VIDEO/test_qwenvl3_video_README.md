@@ -263,8 +263,8 @@ python test_qwenvl3_video.py /opt/projects/yfeieye/VIDEO/video/video2.mp4 \
 
 ## 作者信息
 
-- **作者**：翱翔的雄库鲁
-- **邮箱**：andywebjava@163.com
+- **作者**：reese
+- **邮箱**：reese
 
 ## 许可证
 

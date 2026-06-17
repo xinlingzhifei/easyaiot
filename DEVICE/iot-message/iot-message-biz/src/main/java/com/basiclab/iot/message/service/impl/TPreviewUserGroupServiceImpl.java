@@ -19,8 +19,8 @@ import java.util.UUID;
 /**
  * 用户组管理实现层impl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-18
  */
 @Component

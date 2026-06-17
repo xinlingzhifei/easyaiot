@@ -22,8 +22,8 @@ import static com.basiclab.iot.common.exception.GlobalErrorStatus.FORBIDDEN;
  *
  * 补充：Spring Security 通过 {@link ExceptionTranslationFilter#handleAccessDeniedException(HttpServletRequest, HttpServletResponse, FilterChain, AccessDeniedException)} 方法，调用当前类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Slf4j
 @SuppressWarnings("JavadocReference")

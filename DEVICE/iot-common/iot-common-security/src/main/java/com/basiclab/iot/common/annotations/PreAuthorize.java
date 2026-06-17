@@ -8,8 +8,8 @@ import java.lang.annotation.Target;
 /**
  * 权限注解
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Target({ ElementType.TYPE, ElementType.METHOD })
 @Retention(RetentionPolicy.RUNTIME)

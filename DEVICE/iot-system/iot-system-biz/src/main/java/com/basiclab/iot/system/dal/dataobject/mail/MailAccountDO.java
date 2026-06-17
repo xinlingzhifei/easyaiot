@@ -9,8 +9,8 @@ import lombok.EqualsAndHashCode;
 /**
  * MailAccountDO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @TableName(value = "system_mail_account", autoResultMap = true)
 @Data

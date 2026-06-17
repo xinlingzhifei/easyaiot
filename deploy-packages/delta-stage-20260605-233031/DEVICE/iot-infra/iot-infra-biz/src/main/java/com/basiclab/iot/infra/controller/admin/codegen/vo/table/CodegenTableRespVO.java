@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 /**
  * CodegenTableRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 代码生成表定义 Response VO")
 @Data

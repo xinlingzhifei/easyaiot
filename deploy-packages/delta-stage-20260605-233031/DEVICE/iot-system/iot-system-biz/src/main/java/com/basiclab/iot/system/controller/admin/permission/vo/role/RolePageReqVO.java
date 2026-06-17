@@ -13,8 +13,8 @@ import static com.basiclab.iot.common.utils.date.DateUtils.FORMAT_YEAR_MONTH_DAY
 /**
  * RolePageReqVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 角色分页 Request VO")
 @Data

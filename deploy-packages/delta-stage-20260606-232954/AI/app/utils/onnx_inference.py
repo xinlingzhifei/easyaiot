@@ -2,8 +2,8 @@
 ONNX推理模块
 基于yolov8_detect_onnx.py的ONNX推理逻辑
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import logging

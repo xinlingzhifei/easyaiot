@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 /**
  * 消息接收 Response DTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 @Accessors(chain = true)

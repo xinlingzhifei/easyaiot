@@ -9,8 +9,8 @@ import java.util.List;
 /**
  * 数据源配置 Service 接口
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface DataSourceConfigService {
 

@@ -1,7 +1,7 @@
 # yFeiEye（雲邊端一體化智能算法應用平臺）
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/reese/yfeieye/stargazers)
+[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/reese/yfeieye/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 我希望全世界都能使用這個系統，實現AI的真正0門檻，人人都能體驗到AI帶來的好處，而並不只是掌握在少數人手裏。
@@ -334,16 +334,10 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 - [平臺部署文檔](.doc/部署文档/平台部署文档_zh_tw.md) — Linux / Mac / Windows 分步部署指南
 - [部署最佳實踐](.doc/部署文档/部署最佳实践_zh_tw.md) — 環境要求、一鍵部署流程、維運排錯與生產環境建議
 
-## 🎮 演示環境
-
-- 演示地址：http://36.111.47.113:8888/
-- 賬號：admin
-- 密碼：admin123
-
 ## ⚙️ 項目地址
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/reese/yfeieye
+- Github: https://github.com/reese/yfeieye
 
 ## 📸 截圖
 <div>
@@ -934,7 +928,7 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 ## 📄 版權
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翺翔的雄庫魯/yfeieye 采用 <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 開源協議。我們致力於推動 AI 技術的普及與發展，讓更多人能夠自由使用和受益於這項技術。
+reese/yfeieye 采用 <a href="https://gitee.com/reese/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 開源協議。我們致力於推動 AI 技術的普及與發展，讓更多人能夠自由使用和受益於這項技術。
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -943,4 +937,4 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 
 ## 🌟 Star增長趨勢圖
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/reese/yfeieye.svg?variant=adaptive)](https://starchart.cc/reese/yfeieye)

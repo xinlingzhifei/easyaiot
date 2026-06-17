@@ -3,8 +3,8 @@ package com.basiclab.iot.tdengine.constant;
 /**
  * 全局基础常量
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @version v1.0
  * @date 2025/4/12 11:05 PM
  * @create [2024/4/12 11:05 PM ] [mqttsnet] [初始创建]

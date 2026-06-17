@@ -35,8 +35,8 @@ import static com.basiclab.iot.common.utils.collection.CollectionUtils.convertLi
 /**
  * UserController
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Tag(name = "管理后台 - 用户")
 @RestController

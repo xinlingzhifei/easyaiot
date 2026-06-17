@@ -9,8 +9,8 @@ import java.util.Map;
 /**
  * 告警通知消息DTO（用于Kafka消息传输）
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 public class AlertNotificationMessage {

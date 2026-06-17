@@ -1,7 +1,7 @@
 """
 设备存储空间管理服务
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import logging
 from datetime import datetime

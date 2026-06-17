@@ -16,8 +16,8 @@ import java.util.ArrayList;
  *
  * 参考文档：<a href="https://blog.csdn.net/zimou5581/article/details/90043178" />
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Component
 public class CorsResponseHeaderFilter implements GlobalFilter, Ordered {

@@ -10,8 +10,8 @@ import java.util.Map;
 /**
  * OAuth2AccessTokenCheckRespDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - OAuth2 访问令牌的校验 Response DTO")
 @Data

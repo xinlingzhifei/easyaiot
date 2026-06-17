@@ -21,8 +21,8 @@ public interface FileApi {
     /**
  * FileApi
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 default String createFile(byte[] content) {

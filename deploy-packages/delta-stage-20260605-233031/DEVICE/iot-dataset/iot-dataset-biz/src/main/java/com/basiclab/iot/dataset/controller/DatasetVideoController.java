@@ -28,8 +28,8 @@ import static com.basiclab.iot.common.domain.CommonResult.success;
 /**
  * DatasetVideoController
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Tag(name = "管理后台 - 视频数据集")
 @RestController

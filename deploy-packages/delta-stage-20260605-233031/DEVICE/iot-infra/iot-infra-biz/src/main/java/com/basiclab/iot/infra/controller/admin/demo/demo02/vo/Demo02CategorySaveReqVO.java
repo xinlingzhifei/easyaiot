@@ -9,8 +9,8 @@ import javax.validation.constraints.NotNull;
 /**
  * Demo02CategorySaveReqVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 示例分类新增/修改 Request VO")
 @Data

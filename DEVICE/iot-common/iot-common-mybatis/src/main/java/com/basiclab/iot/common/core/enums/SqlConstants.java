@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.annotation.DbType;
 /**
  * SQL相关常量类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class SqlConstants {
 

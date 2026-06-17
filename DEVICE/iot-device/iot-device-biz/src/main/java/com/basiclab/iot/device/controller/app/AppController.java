@@ -20,8 +20,8 @@ import java.util.List;
 /**
  * AppController
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Tag(name = "应用密钥管理")
 @RestController

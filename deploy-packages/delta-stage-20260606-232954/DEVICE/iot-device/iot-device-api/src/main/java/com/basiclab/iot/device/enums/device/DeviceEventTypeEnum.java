@@ -9,8 +9,8 @@ import lombok.NoArgsConstructor;
  * 设备动作类型 枚举
  * </p>
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date 2023-08-20
  */
 @Getter

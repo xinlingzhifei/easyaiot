@@ -8,8 +8,8 @@ import com.basiclab.iot.system.dal.dataobject.notice.NoticeDO;
 /**
  * NoticeService
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface NoticeService {
 

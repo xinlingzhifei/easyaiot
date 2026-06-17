@@ -8,8 +8,8 @@ import java.util.Map;
 /**
  * 短信发送 Service 接口
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface SmsSendService {
 

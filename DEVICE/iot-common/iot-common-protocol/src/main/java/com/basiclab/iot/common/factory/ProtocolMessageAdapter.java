@@ -17,8 +17,8 @@ import java.util.Map;
  * @program: yFeiEye
  * @description: 协议信息适配器
  * @packagename: com.basiclab.iot.mqtt.handler
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2023-05-30 15:08
  **/
 @Slf4j

@@ -10,8 +10,8 @@ import javax.validation.constraints.NotNull;
 /**
  * 设备时序数据查询请求
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @ApiModel("设备时序数据查询请求")
 @Data

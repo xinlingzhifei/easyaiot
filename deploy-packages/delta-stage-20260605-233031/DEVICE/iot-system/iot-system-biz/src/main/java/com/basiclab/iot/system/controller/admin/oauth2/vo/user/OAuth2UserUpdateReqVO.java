@@ -12,8 +12,8 @@ import javax.validation.constraints.Size;
 /**
  * OAuth2UserUpdateReqVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - OAuth2 更新用户基本信息 Request VO")
 @Data

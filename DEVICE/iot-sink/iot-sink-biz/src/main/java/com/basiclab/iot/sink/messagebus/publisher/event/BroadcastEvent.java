@@ -6,8 +6,8 @@ import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 /**
  * BroadcastEvent
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 public class BroadcastEvent extends AbstractIotDeviceEvent {

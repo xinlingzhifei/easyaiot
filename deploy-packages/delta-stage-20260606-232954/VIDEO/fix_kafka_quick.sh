@@ -6,8 +6,8 @@
 # 使用方法：
 #     bash fix_kafka_quick.sh
 #
-# @author 翱翔的雄库鲁
-# @email andywebjava@163.com
+# @author reese
+# @email reese
 
 set -o pipefail
 

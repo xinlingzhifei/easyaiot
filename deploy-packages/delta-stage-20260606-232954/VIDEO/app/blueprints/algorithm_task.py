@@ -1,7 +1,7 @@
 """
 算法任务、抽帧器、排序器管理路由
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import logging
 import os

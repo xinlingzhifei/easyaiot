@@ -2,8 +2,8 @@
 算法任务服务启动器
 用于自动启动算法任务相关的服务（抽帧器、推送器、排序器）
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

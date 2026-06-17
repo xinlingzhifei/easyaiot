@@ -1,6 +1,6 @@
 """
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 from flask import Blueprint, request, jsonify, send_file
 from pathlib import Path

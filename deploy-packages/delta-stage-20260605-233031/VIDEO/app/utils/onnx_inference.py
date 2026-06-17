@@ -1,8 +1,8 @@
 """
 VIDEO 模块 ONNX 推理（支持按 GPU 设备 ID 选择 CUDA Execution Provider）
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import json
 import logging

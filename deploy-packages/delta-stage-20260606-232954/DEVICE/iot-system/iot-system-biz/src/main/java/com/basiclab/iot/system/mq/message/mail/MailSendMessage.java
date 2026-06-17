@@ -8,8 +8,8 @@ import javax.validation.constraints.NotNull;
 /**
  * 邮箱发送消息
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 public class MailSendMessage {

@@ -2,8 +2,8 @@ package com.basiclab.iot.common.mqs;
 
 
 /**
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface ConsumerTopicConstant {
 

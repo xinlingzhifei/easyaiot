@@ -3,8 +3,8 @@ package com.basiclab.iot.infra.enums;
 /**
  * Infra 字典类型的枚举类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface DictTypeConstants {
 

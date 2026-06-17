@@ -11,8 +11,8 @@ import org.springframework.security.config.annotation.web.configurers.Expression
 /**
  * SecurityConfiguration
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Configuration(proxyBeanMethods = false, value = "infraSecurityConfiguration")
 public class SecurityConfiguration {

@@ -25,8 +25,8 @@ import java.util.stream.IntStream;
 /**
  * 设备缓存处理
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 @RequiredArgsConstructor

@@ -214,6 +214,6 @@ bash fix_kafka_consumer_group.sh --check-only
 
 ## 📞 技术支持
 
-- 作者：翱翔的雄库鲁
-- 邮箱：andywebjava@163.com
+- 作者：reese
+- 邮箱：reese
 

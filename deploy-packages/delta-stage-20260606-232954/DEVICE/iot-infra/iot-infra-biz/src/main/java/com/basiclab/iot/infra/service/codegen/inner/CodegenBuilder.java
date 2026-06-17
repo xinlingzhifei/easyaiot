@@ -25,8 +25,8 @@ import static cn.hutool.core.util.RandomUtil.randomInt;
 /**
  * CodegenBuilder
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Component
 public class CodegenBuilder {

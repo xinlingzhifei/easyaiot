@@ -12,8 +12,8 @@ import java.math.BigDecimal;
 /**
  * 自定义导出Excel数据注解
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)

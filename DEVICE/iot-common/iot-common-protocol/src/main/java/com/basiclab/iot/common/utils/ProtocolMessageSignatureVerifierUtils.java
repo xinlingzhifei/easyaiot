@@ -15,8 +15,8 @@ import java.util.function.Function;
  * @program: yfeieye-util-pro
  * @description: 协议消息处理Utils
  * @packagename: com.mqttsnet.basic.utils
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2023-05-07 00:12
  **/
 @Slf4j

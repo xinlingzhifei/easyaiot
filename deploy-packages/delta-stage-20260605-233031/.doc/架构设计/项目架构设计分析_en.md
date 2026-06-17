@@ -11,7 +11,7 @@
 | Metric | Data |
 |------|------|
 | Total Commits | 1,760 |
-| Primary Contributor | 翱翔的雄库鲁 (3,988 commits, 95%+) |
+| Primary Contributor | reese (3,988 commits, 95%+) |
 | Version Iteration | V1.0.0 → V9.17.0 (35+ version branches) |
 | Codebase Size | Java 2,374 files / Python 173 files / Vue 558 files / TypeScript 610 files / C++ 30 files |
 | Shell Scripts | 79 (deployment/operations automation) |

@@ -17,8 +17,8 @@ import java.util.Map;
 /**
  * 消息模板控制层controller（查询iot-message服务的消息推送模板）
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-18
  */
 @RestController

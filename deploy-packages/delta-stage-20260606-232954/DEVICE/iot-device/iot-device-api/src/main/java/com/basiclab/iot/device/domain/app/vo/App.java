@@ -13,8 +13,8 @@ import java.time.LocalDateTime;
 /**
  * App
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @EqualsAndHashCode(callSuper = true)
 @ApiModel(value = "应用密钥")

@@ -17,8 +17,8 @@ public class CodegenProperties {
     /**
  * CodegenProperties
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 @NotNull(message = "Java 代码的基础包不能为空")

@@ -15,8 +15,8 @@ import java.io.Serializable;
 
 * @Description:    java类作用描述
 * @Author:         yFeiEye
-* @E-mail:         andywebjava@163.com
-* @Website:        https://gitee.com/soaring-xiongkulu/yfeieye
+* @E-mail:         reese
+* @Website:        https://gitee.com/reese/yfeieye
 * @CreateDate:     2024/12/25$ 23:52$
 * @UpdateUser:     yFeiEye
 * @UpdateDate:     2024/12/25$ 23:52$
@@ -26,8 +26,8 @@ import java.io.Serializable;
 */
 /**
     * 产品模型设备服务命令表
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @ApiModel(value="产品模型设备服务命令表")
 @Data

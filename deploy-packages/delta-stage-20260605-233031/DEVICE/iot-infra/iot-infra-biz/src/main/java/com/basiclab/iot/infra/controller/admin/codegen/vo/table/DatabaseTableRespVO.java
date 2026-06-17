@@ -12,8 +12,8 @@ public class DatabaseTableRespVO {
 /**
  * DatabaseTableRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 (description = "表名称", example = "yuanma")

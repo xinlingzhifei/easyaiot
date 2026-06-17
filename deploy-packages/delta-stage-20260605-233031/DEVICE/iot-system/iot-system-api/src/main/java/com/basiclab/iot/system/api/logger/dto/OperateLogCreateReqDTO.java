@@ -9,8 +9,8 @@ import javax.validation.constraints.NotNull;
 /**
  * OperateLogCreateReqDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(name = "RPC 服务 - 系统操作日志 Create Request DTO")
 @Data

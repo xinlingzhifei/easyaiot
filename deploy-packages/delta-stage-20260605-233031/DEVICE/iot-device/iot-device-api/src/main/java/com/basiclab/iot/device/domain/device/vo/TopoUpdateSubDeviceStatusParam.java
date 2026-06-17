@@ -13,8 +13,8 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @Description: 网关设备更新子设备状态数据模型
  * @CreateDate: 2024/4/25$ 12:52$
  * @UpdateDate: 2024/4/25$ 12:52$

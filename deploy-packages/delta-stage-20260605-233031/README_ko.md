@@ -1,7 +1,7 @@
 # yFeiEye (클라우드-엣지-디바이스 통합 지능형 알고리즘 응용 플랫폼)
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/reese/yfeieye/stargazers)
+[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/reese/yfeieye/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 전 세계 사람들이 이 시스템을 사용하여 AI의 진정한 무장벽화를 실현하고, AI가 가져다주는 혜택을 누리길 바랍니다. 이는 소수의 사람들만이 접근할 수 있는 것이 아닙니다.
@@ -334,16 +334,10 @@ yFeiEye는 오픈소스 학습 프로젝트이며 상업적 행위와 무관합�
 - [플랫폼 배포 문서](.doc/部署文档/平台部署文档_ko.md) — Linux / Mac / Windows 단계별 배포 가이드
 - [배포 모범 사례](.doc/部署文档/部署最佳实践_ko.md) — 환경 요구 사항, 원클릭 배포, 운영 문제 해결 및 프로덕션 권장 사항
 
-## 🎮 데모 환경
-
-- 데모 주소: http://36.111.47.113:8888/
-- 계정: admin
-- 비밀번호: admin123
-
 ## ⚙️ 프로젝트 주소
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/reese/yfeieye
+- Github: https://github.com/reese/yfeieye
 
 ## 📸 스크린샷
 <div>
@@ -934,7 +928,7 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 ## 📄 저작권
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye는 <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 오픈소스 라이선스를 채택합니다. 우리는 AI 기술의 대중화와 발전을 촉진하여 더 많은 사람들이 이 기술을 자유롭게 사용하고 혜택을 받을 수 있도록 노력하고 있습니다.
+reese/yfeieye는 <a href="https://gitee.com/reese/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a> 오픈소스 라이선스를 채택합니다. 우리는 AI 기술의 대중화와 발전을 촉진하여 더 많은 사람들이 이 기술을 자유롭게 사용하고 혜택을 받을 수 있도록 노력하고 있습니다.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -943,4 +937,4 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 
 ## 🌟 Star 증가 추세도
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/reese/yfeieye.svg?variant=adaptive)](https://starchart.cc/reese/yfeieye)

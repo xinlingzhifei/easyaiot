@@ -7,8 +7,8 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 import java.util.List;
 
 /**
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @desc  spel 表达式比较运算符工具类
  * @created 2025-07-11
  */

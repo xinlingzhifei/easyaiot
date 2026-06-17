@@ -1,7 +1,7 @@
 # yFeiEye (Plateforme d'Application d'Algorithmes Intelligents à Intégration Cloud-Bord-Périphérique)
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/reese/yfeieye/stargazers)
+[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/reese/yfeieye/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 Mon souhait est que ce système soit utilisé dans le monde entier, rendant l'IA véritablement accessible à tous, permettant à chacun de bénéficier des avantages de l'IA, et non pas seulement réservée à une minorité.
@@ -334,16 +334,10 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
 - [Documentation de déploiement de la plateforme](.doc/部署文档/平台部署文档_fr.md) — Guide de déploiement étape par étape pour Linux / Mac / Windows
 - [Bonnes pratiques de déploiement](.doc/部署文档/部署最佳实践_fr.md) — Exigences d'environnement, déploiement en un clic, dépannage et recommandations pour la production
 
-## 🎮 Environnement de démonstration
-
-- URL de démo : http://36.111.47.113:8888/
-- Compte : admin
-- Mot de passe : admin123
-
 ## ⚙️ Dépôts du projet
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/reese/yfeieye
+- Github: https://github.com/reese/yfeieye
 
 ## 📸 Captures d'écran
 <div>
@@ -934,7 +928,7 @@ Vos suggestions pour améliorer yFeiEye sont les bienvenues.
 ## 📄 Licence
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye utilise la licence open source <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
+reese/yfeieye utilise la licence open source <a href="https://gitee.com/reese/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -943,4 +937,4 @@ Vos suggestions pour améliorer yFeiEye sont les bienvenues.
 
 ## 🌟 Tendance de croissance des Stars
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/reese/yfeieye.svg?variant=adaptive)](https://starchart.cc/reese/yfeieye)

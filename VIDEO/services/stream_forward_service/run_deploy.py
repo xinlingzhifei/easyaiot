@@ -8,8 +8,8 @@
 - 原生多路复用（STREAM_FORWARD_FFMPEG_MUX=true）：单进程多路，仅适合单路或调试
 - 经典模式（STREAM_FORWARD_FFMPEG_NATIVE=false）：OpenCV 拉流 + stdin 推流
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

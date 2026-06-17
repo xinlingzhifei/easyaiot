@@ -19,8 +19,8 @@ import java.util.Map;
 /**
  * 协议文件上传下载工具类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-17
  */
 @Slf4j

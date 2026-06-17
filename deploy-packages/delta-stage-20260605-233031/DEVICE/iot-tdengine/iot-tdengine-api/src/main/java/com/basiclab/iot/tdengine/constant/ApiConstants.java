@@ -5,8 +5,8 @@ import com.basiclab.iot.common.enums.RpcConstants;
 /**
  * API 相关的枚举
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class ApiConstants {
 

@@ -5,8 +5,8 @@ import lombok.Getter;
 
 /**
  *  设备状态
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date 2025-10-22
  */
 @Getter

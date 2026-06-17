@@ -198,5 +198,5 @@ sudo yum install ffmpeg
 
 ## 作者信息
 
-- **作者**: 翱翔的雄库鲁
-- **邮箱**: andywebjava@163.com
+- **作者**: reese
+- **邮箱**: reese

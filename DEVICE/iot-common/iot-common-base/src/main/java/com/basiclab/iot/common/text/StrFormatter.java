@@ -5,8 +5,8 @@ import com.basiclab.iot.common.utils.StringUtils;
 /**
  * 字符串格式化
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class StrFormatter
 {

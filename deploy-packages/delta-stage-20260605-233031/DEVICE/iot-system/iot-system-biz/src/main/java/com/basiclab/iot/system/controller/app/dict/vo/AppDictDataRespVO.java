@@ -8,8 +8,8 @@ import lombok.NoArgsConstructor;
 /**
  * AppDictDataRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "用户 App - 字典数据信息 Response VO")
 @Data

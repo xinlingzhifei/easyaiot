@@ -12,8 +12,8 @@ import java.util.Set;
 /**
  * AuthPermissionInfoRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 登录用户的权限信息 Response VO，额外包括用户信息和角色列表")
 @Data
@@ -95,8 +95,8 @@ public class AuthPermissionInfoRespVO {
         /**
  * AuthPermissionInfoRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 private List<MenuVO> children;

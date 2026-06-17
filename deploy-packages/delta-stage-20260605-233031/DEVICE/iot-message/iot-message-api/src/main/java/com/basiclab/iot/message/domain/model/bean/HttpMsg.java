@@ -12,8 +12,8 @@ import java.util.Map;
 /**
  * http消息体
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-17
  */
 @Getter

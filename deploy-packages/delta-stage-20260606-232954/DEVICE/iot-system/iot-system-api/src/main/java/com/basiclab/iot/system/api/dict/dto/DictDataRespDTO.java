@@ -12,8 +12,8 @@ public class DictDataRespDTO {
 /**
  * DictDataRespDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 (description = "字典标签", example = "yFeiEye")

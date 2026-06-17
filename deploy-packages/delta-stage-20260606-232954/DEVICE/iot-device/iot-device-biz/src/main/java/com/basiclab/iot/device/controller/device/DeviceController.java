@@ -40,8 +40,8 @@ import java.util.stream.Collectors;
 /**
  * DeviceController
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Tag(name = "设备管理")
 @RestController

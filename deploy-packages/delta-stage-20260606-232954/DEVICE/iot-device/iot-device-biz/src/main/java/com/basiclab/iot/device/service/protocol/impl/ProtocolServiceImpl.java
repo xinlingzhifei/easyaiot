@@ -21,8 +21,8 @@ import java.util.List;
 /**
  * ProtocolServiceImpl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 public class ProtocolServiceImpl extends ServiceImpl<ProtocolMapper, Protocol> implements ProtocolService {

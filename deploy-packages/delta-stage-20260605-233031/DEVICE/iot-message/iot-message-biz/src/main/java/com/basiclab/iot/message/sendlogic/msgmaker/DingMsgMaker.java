@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 /**
  * 钉钉消息加工器
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2023-07-18
  */
 @Component

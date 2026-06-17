@@ -10,8 +10,8 @@ import org.apache.ibatis.annotations.Mapper;
 /**
  * 标注任务结果 Mapper
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Mapper
 public interface DatasetTaskResultMapper extends BaseMapperX<DatasetTaskResultDO> {

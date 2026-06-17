@@ -6,8 +6,8 @@ import java.util.Set;
  * 租户菜单处理
  * 目的：尽量减少租户逻辑耦合到系统中
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface TenantMenuHandler {
 

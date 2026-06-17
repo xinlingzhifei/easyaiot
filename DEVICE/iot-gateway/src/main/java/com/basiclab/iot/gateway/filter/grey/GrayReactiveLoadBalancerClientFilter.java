@@ -33,8 +33,8 @@ import static org.springframework.cloud.gateway.support.ServerWebExchangeUtils.*
  * 1. https://www.jianshu.com/p/6db15bc0be8f
  * 2. https://cloud.tencent.com/developer/article/1620795
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Component
 @AllArgsConstructor

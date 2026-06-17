@@ -10,8 +10,8 @@ import javax.validation.constraints.Size;
 /**
  * LoginLogCreateReqDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - 登录日志创建 Request DTO")
 @Data

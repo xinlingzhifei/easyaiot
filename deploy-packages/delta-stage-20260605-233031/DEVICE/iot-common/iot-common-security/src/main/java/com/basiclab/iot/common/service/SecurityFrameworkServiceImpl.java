@@ -19,8 +19,8 @@ import static com.basiclab.iot.common.utils.cache.CacheUtils.buildCache;
 /**
  * 默认的 {@link SecurityFrameworkService} 实现类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @AllArgsConstructor
 public class SecurityFrameworkServiceImpl implements SecurityFrameworkService {

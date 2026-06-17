@@ -5,8 +5,8 @@ package com.basiclab.iot.common.enums;
  *
  * 虽然放在 iot-spring-boot-starter-rpc 会相对合适，但是每个 API 模块需要使用到，所以暂时只好放在此处
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class RpcConstants {
 

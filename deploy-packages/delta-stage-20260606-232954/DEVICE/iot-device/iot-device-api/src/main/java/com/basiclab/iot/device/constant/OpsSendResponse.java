@@ -2,8 +2,8 @@ package com.basiclab.iot.device.constant;
 
 import lombok.Getter;
 /**
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @desc
  * @created 2025-06-03
  */

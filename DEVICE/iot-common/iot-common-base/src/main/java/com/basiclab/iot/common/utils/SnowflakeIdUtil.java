@@ -6,8 +6,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * @program: yfeieye-util-pro
  * @description: SnowflakeIdUtil 是一个基于雪花算法的唯一 ID 生成工具类。 雪花算法可以保证生成的 ID 全局唯一且趋势递增。
  * @packagename: com.mqttsnet.basic.utils
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2023-05-03 13:15
  **/
 public class SnowflakeIdUtil {

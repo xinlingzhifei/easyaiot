@@ -6,8 +6,8 @@ import com.basiclab.iot.message.domain.model.AlertNotificationMessage;
  * 告警处理服务接口
  * 负责：存储告警到数据库、上传图片到MinIO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface AlertService {
     

@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
 /**
  * 内部服务调用验证处理
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Aspect
 @Component

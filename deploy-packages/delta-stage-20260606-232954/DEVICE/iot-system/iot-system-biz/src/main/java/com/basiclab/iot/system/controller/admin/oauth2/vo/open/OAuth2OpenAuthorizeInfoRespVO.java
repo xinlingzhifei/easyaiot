@@ -17,8 +17,8 @@ public class OAuth2OpenAuthorizeInfoRespVO {
     /**
  * OAuth2OpenAuthorizeInfoRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 private Client client;

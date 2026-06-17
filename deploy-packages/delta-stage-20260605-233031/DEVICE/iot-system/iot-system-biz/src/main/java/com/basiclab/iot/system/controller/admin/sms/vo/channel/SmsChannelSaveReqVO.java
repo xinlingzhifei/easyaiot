@@ -12,8 +12,8 @@ import javax.validation.constraints.NotNull;
 /**
  * SmsChannelSaveReqVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 public class SmsChannelSaveReqVO {
@@ -43,7 +43,7 @@ public class SmsChannelSaveReqVO {
     @Schema(description = "短信 API 的密钥", example = "yuanma")
     private String apiSecret;
 
-    @Schema(description = "短信发送回调 URL", example = "https://github.com/soaring-xiongkulu/yfeieye")
+    @Schema(description = "短信发送回调 URL", example = "https://github.com/reese/yfeieye")
     @URL(message = "回调 URL 格式不正确")
     private String callbackUrl;
 

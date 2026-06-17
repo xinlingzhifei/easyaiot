@@ -6,8 +6,8 @@
 API 文档参考：
 https://bailian.console.aliyun.com/?spm=5176.29597918.J_C-NDPSQ8SFKWB4aef8i6I.1.298d7b08IRr02o&tab=doc#/doc/?type=model&url=2877996
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

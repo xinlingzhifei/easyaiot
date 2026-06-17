@@ -8,8 +8,8 @@ import javax.validation.constraints.NotEmpty;
 /**
  * FileCreateReqDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - 文件创建 Request DTO")
 @Data

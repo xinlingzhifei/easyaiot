@@ -1,7 +1,7 @@
 """
 帧数据结构 - 用于多摄像头帧传输
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import time
 import numpy as np

@@ -6,8 +6,8 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 public class DeviceShadowVO {

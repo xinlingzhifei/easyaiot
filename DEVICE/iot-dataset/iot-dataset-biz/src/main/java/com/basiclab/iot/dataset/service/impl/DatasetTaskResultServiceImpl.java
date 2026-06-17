@@ -19,8 +19,8 @@ import static com.basiclab.iot.dataset.enums.ErrorCodeConstants.DATASET_TASK_RES
 /**
  * 标注任务结果 Service 实现类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 @Validated

@@ -9,8 +9,8 @@ import java.util.concurrent.Callable;
 /**
  * 数据权限 Util
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class DataPermissionUtils {
 

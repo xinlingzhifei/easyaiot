@@ -5,8 +5,8 @@ import com.basiclab.iot.device.domain.device.vo.DeviceServiceInvokeResponse;
 /**
  * DeviceServiceInvokeResponseService
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface DeviceServiceInvokeResponseService {
 

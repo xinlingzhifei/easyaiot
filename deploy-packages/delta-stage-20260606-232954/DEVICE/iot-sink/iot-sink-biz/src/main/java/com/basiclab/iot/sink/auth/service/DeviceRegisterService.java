@@ -9,8 +9,8 @@ import com.basiclab.iot.sink.auth.enums.SignMethod;
 /**
  * DeviceRegisterService
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 public interface DeviceRegisterService {

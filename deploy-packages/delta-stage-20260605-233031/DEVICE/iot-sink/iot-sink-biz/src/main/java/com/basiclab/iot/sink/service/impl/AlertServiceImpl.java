@@ -56,8 +56,8 @@ import java.util.concurrent.locks.ReentrantLock;
  *        'device_id': ...
  *    }
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Slf4j
 @Service

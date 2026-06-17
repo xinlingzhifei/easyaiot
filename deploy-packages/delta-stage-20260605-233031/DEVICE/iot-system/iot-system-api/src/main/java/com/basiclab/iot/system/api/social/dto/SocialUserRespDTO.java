@@ -8,8 +8,8 @@ import lombok.NoArgsConstructor;
 /**
  * SocialUserRespDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - 社交用户 Response DTO")
 @Data

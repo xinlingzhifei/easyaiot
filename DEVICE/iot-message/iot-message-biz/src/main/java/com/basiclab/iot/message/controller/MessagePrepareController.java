@@ -15,8 +15,8 @@ import java.util.List;
 /**
  * 消息准备控制层controller
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-18
  */
 @RestController

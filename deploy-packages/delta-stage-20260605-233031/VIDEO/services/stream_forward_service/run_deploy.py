@@ -8,8 +8,8 @@
 - 抽帧器：1个共享线程从所有摄像头的缓流器队列抽帧，放入各自的抽帧队列
 - 推流器：1个共享线程从所有摄像头的抽帧队列获取帧，推送到各自的RTMP
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

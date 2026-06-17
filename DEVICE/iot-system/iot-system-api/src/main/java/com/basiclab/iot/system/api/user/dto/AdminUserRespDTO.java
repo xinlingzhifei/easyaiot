@@ -9,8 +9,8 @@ import java.util.Set;
 /**
  * AdminUserRespDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - Admin 用户 Response DTO")
 @Data

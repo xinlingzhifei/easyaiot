@@ -12,8 +12,8 @@ import com.basiclab.iot.device.service.product.ProductCommandsRequestsService;
 /**
  * ProductCommandsRequestsServiceImpl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 public class ProductCommandsRequestsServiceImpl implements ProductCommandsRequestsService {

@@ -7,8 +7,8 @@ import lombok.ToString;
 import java.io.Serializable;
 
 /**
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @desc    日志处理对象
  * @created 2025-06-25
  */

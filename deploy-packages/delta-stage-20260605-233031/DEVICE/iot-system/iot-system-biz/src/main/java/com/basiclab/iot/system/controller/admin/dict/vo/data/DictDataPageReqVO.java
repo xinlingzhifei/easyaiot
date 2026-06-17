@@ -12,8 +12,8 @@ import javax.validation.constraints.Size;
 /**
  * DictDataPageReqVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 字典类型分页列表 Request VO")
 @Data

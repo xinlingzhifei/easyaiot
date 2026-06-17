@@ -8,8 +8,8 @@ import java.util.List;
 /**
  * ProductEventService
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public interface ProductEventService extends IService<ProductEvent> {
 

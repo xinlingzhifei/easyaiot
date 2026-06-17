@@ -6,8 +6,8 @@ import lombok.Data;
 /**
  * SocialWxPhoneNumberInfoRespDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - 微信小程序的手机信息 Response DTO")
 @Data

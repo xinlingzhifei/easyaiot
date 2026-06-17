@@ -10,8 +10,8 @@ import java.util.List;
 
 /**
  * 在线调试请求参数实体
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 @NoArgsConstructor

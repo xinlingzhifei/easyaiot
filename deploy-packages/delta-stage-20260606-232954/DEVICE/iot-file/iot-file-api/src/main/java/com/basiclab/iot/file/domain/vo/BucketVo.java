@@ -9,8 +9,8 @@ import java.time.ZonedDateTime;
 /**
  * 桶信息
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 @ApiModel(value = "桶对象", description = "桶Vo")

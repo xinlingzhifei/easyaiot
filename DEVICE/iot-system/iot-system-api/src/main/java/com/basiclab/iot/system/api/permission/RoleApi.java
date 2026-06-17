@@ -14,8 +14,8 @@ import java.util.Collection;
 /**
  * RoleApi
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFactory =
 @Tag(name = "RPC 服务 - 角色")

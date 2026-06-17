@@ -34,8 +34,8 @@ import static com.basiclab.iot.system.enums.ErrorCodeConstants.*;
 /**
  * SmsTemplateServiceImpl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 @Service

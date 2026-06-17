@@ -1,7 +1,7 @@
 """
 告警Kafka消费者服务：订阅告警事件，上传图片到MinIO并更新数据库
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import json
 import logging

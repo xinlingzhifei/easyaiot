@@ -1,7 +1,7 @@
 # yFeiEye (Cloud-Edge-Device Integrated Collaborative Algorithm Application Platform)
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/reese/yfeieye/stargazers)
+[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/reese/yfeieye/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 My vision is for this system to be accessible worldwide, achieving truly zero barriers to AI. Everyone should experience the benefits of AI, not just a privileged few.
@@ -337,16 +337,10 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 - [Platform Deployment Documentation](.doc/部署文档/平台部署文档.md) — Step-by-step deployment guide for Linux / Mac / Windows
 - [Deployment Best Practices](.doc/部署文档/部署最佳实践_en.md) — Environment requirements, one-click deployment, troubleshooting, and production recommendations
 
-## 🎮 Demo Environment
-
-- Demo URL: http://36.111.47.113:8888/
-- Username: admin
-- Password: admin123
-
 ## ⚙️ Project Repositories
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/reese/yfeieye
+- Github: https://github.com/reese/yfeieye
 
 ## 📸 Screenshots
 <div>
@@ -900,7 +894,7 @@ We welcome suggestions for improvement to help refine yfeieye.
 ## 📄 Copyright
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Soaring Xiongkulu / yfeieye is licensed under the <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. We are committed to promoting the popularization and development of AI technology, enabling more people to freely use and benefit from this technology.
+Soaring Xiongkulu / yfeieye is licensed under the <a href="https://gitee.com/reese/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. We are committed to promoting the popularization and development of AI technology, enabling more people to freely use and benefit from this technology.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -909,4 +903,4 @@ Soaring Xiongkulu / yfeieye is licensed under the <a href="https://gitee.com/soa
 
 ## 🌟 Star Growth Trend Chart
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
+[![Stargazers over time](https://starchart.cc/reese/yfeieye.svg?variant=adaptive)](https://starchart.cc/reese/yfeieye)

@@ -52,8 +52,8 @@ import static org.mockito.Mockito.when;
 /**
  * {@link OAuth2OpenController} 的单元测试
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class OAuth2OpenControllerTest extends BaseMockitoUnitTest {
 

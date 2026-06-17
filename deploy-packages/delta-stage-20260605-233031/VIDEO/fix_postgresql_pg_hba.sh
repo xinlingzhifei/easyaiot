@@ -10,8 +10,8 @@
 #     --check-only    仅检查配置，不进行修改
 #     --force         强制重新添加配置（即使已存在）
 #
-# @author 翱翔的雄库鲁
-# @email andywebjava@163.com
+# @author reese
+# @email reese
 
 # 不使用 set -e，以便更好地处理错误
 set -o pipefail

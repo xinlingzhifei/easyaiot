@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 /**
  * Entity基类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 public class BaseEntity2 implements Serializable {

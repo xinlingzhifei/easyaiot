@@ -2,8 +2,8 @@
 推流转发任务服务启动器
 用于自动启动推流转发任务相关的服务
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

@@ -6,8 +6,8 @@
 # 使用方法：
 #     sudo bash install_fix_postgresql_service.sh
 #
-# @author 翱翔的雄库鲁
-# @email andywebjava@163.com
+# @author reese
+# @email reese
 
 set -e
 

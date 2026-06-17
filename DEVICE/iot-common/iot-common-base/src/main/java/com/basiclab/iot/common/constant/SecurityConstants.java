@@ -3,8 +3,8 @@ package com.basiclab.iot.common.constant;
 /**
  * 权限相关通用常量
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public class SecurityConstants
 {

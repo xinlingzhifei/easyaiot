@@ -27,8 +27,8 @@ import static com.basiclab.iot.system.enums.ErrorCodeConstants.*;
 /**
  * 部门 Service 实现类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 @Validated

@@ -15,8 +15,8 @@ import java.util.Map;
 /**
  * MailLogDO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @TableName(value = "system_mail_log", autoResultMap = true)
 @Data

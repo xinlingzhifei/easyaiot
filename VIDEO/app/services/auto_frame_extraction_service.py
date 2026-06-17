@@ -1,7 +1,7 @@
 """
 自动抽帧服务 - 定时从所有在线摄像头的RTSP/RTMP流中抽帧并保存到抓拍空间
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import logging
 import threading

@@ -4,8 +4,8 @@
 整合缓流器、抽帧器功能，按 Cron 抓拍，支持追踪和告警（不推流）
 参照test_services_pipeline.py和test_services_pipeline_tracking.py
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

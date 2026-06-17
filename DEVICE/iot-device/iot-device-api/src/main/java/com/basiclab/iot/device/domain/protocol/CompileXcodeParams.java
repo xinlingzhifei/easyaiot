@@ -9,8 +9,8 @@ import java.io.Serializable;
  * @program: yFeiEye
  * @description: 动态编译参数
  * @packagename: com.basiclab.iot.device.api.domain.protocol
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2025-08-07 23:45
  **/
 @Data

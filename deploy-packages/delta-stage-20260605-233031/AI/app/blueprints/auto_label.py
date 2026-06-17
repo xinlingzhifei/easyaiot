@@ -1,6 +1,6 @@
 """
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 自动化标注功能蓝图
 """
 import os

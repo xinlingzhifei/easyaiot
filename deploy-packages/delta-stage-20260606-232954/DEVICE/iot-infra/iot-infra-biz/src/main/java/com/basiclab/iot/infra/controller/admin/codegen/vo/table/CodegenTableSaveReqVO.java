@@ -13,8 +13,8 @@ import javax.validation.constraints.NotNull;
 /**
  * CodegenTableSaveReqVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 代码生成表定义创建/修改 ResponseVO")
 @Data

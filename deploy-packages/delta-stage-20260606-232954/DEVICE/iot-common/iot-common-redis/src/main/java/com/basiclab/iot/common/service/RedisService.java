@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * spring redis 工具类
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  **/
 @SuppressWarnings(value = { "unchecked", "rawtypes" })
 @Component

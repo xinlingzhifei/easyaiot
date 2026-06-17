@@ -15,8 +15,8 @@ import java.util.Map;
 /**
  * SmsLogRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 短信日志 ResponseVO")
 @Data

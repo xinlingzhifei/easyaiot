@@ -15,8 +15,8 @@ import java.util.List;
 /**
  * 基于部门的数据权限 AutoConfiguration
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @AutoConfiguration
 @ConditionalOnClass(LoginUser.class)

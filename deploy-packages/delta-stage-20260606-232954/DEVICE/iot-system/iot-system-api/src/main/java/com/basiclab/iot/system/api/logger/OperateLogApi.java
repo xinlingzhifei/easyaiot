@@ -18,8 +18,8 @@ import javax.validation.Valid;
 /**
  * OperateLogApi
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @FeignClient(name = ApiConstants.NAME) // TODO yFeiEye：fallbackFac
 @Tag(name = "RPC 服务 - 操作日志")

@@ -20,8 +20,8 @@ import java.util.Map;
  * 产品模型
  * </p>
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date 2023-03-14 19:39:59
  */
 @Data

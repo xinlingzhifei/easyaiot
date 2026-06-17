@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 设备区域检测前后端逻辑流畅性测试脚本
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import json
 import requests

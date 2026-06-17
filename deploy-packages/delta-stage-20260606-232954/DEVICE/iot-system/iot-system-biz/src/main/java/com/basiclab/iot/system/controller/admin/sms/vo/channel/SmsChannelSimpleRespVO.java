@@ -12,8 +12,8 @@ public class SmsChannelSimpleRespVO {
 /**
  * SmsChannelSimpleRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 description = "编号", example = "1024")

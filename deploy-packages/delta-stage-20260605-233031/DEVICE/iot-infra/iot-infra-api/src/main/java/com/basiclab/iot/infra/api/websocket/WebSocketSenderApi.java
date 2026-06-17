@@ -25,8 +25,8 @@ public interface WebSocketSenderApi {
     /**
  * WebSocketSenderApi
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 
 default void send(Integer userType, Long userId, String messageType, String messageContent) {

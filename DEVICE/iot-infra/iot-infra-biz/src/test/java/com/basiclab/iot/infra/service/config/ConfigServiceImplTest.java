@@ -29,8 +29,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * ConfigServiceImplTest
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Import(ConfigServiceImpl.class)
 public class ConfigServiceImplTest extends BaseDbUnitTest {

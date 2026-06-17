@@ -1,7 +1,7 @@
 """
 监控录像空间管理路由
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import logging
 from flask import Blueprint, request, jsonify, send_file

@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
 /**
  * DeviceThingModelServiceImpl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 public class DeviceThingModelServiceImpl implements DeviceThingModelService {

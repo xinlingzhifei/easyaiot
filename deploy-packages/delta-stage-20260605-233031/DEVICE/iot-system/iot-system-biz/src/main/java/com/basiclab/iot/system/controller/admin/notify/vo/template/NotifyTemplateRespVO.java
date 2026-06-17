@@ -9,8 +9,8 @@ import java.util.List;
 /**
  * NotifyTemplateRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 站内信模版 Response VO")
 @Data

@@ -11,8 +11,8 @@ import java.util.List;
  * @program: yfeieye-cloud-pro-datasource-column
  * @description: 赋能状态类型
  * @packagename: com.basiclab.iot.empowerment.enumeration
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2023-09-18 23:38
  **/
 @AllArgsConstructor

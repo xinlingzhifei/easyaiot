@@ -9,8 +9,8 @@ import java.util.Arrays;
 /**
  * 区域类型枚举
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @AllArgsConstructor
 @Getter

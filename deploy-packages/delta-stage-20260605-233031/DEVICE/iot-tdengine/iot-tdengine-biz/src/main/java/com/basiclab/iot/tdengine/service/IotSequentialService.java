@@ -8,8 +8,8 @@ import java.util.List;
  * @program: yFeiEye
  * @description:
  * @packagename: com.basiclab.iot.tdengine.service.impl
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2025-11-04 10:50
  **/
 public interface IotSequentialService {

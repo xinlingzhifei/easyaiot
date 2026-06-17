@@ -11,7 +11,7 @@
 | Indicateur | Données |
 |------|------|
 | Nombre total de commits | 1 760 |
-| Contributeur principal | 翱翔的雄库鲁 (3 988 commits, 95 %+) |
+| Contributeur principal | reese (3 988 commits, 95 %+) |
 | Itération des versions | V1.0.0 → V9.17.0 (35+ branches de version) |
 | Taille du code | Java 2 374 fichiers / Python 173 fichiers / Vue 558 fichiers / TypeScript 610 fichiers / C++ 30 fichiers |
 | Scripts Shell | 79 (automatisation déploiement/exploitation) |

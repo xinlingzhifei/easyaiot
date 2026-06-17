@@ -14,8 +14,8 @@ import java.util.Set;
 /**
  * UserRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 用户信息 Response VO")
 @Data

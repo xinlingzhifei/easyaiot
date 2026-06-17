@@ -16,8 +16,8 @@ import java.time.LocalDateTime;
 /**
  * Job 日志 Service 实现类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 @Validated

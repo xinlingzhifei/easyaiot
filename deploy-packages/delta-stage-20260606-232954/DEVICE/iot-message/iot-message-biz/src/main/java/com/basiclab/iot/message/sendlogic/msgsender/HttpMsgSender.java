@@ -32,8 +32,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Http消息发送器
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-18
  */
 @Slf4j

@@ -12,8 +12,8 @@ import java.util.Map;
 /**
  * 登录用户信息
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 public class LoginUser {

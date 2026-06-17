@@ -9,8 +9,8 @@ import java.util.Map;
 /**
  * MailLogRespVO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "管理后台 - 邮件日志 Response VO")
 @Data

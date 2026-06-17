@@ -15,8 +15,8 @@ import java.util.List;
 /**
  * 图片数据集 Mapper
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Mapper
 public interface DatasetImageMapper extends BaseMapperX<DatasetImageDO> {

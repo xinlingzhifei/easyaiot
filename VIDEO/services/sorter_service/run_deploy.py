@@ -2,8 +2,8 @@
 排序器服务模板工程
 用于对检测结果进行排序
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

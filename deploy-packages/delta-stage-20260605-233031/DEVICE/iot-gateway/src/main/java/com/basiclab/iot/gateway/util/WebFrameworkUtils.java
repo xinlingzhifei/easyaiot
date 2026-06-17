@@ -21,8 +21,8 @@ import reactor.core.publisher.Mono;
  *
  * copy from iot-spring-boot-starter-web 的 WebFrameworkUtils 类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Slf4j
 public class WebFrameworkUtils {

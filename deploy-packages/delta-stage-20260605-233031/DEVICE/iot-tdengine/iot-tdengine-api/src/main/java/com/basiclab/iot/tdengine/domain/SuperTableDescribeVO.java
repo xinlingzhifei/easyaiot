@@ -13,8 +13,8 @@ import java.util.Map;
  * @program: yFeiEye
  * @description: 超级表结构VO
  * @packagename: com.basiclab.iot.tds.vo.result
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2023-09-17 21:12
  **/
 @Data

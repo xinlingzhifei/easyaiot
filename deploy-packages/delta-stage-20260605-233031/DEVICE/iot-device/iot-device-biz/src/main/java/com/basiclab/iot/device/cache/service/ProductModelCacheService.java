@@ -27,8 +27,8 @@ import java.util.stream.IntStream;
  * Service layer for Product Model cache management.
  * -----------------------------------------------------------------------------
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @version 1.0
  * -----------------------------------------------------------------------------
  * Revision History:

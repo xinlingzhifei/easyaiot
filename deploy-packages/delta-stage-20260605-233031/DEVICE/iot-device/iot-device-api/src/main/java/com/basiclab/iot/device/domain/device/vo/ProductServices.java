@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
  * @program: yFeiEye
  * @description: ${description}
  * @packagename: com.basiclab.iot.device.domain.device.vo.entity
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date: 2025-11-18 20:38
  **/
 

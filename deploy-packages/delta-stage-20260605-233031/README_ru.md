@@ -1,7 +1,7 @@
 # yFeiEye (Объединенная платформа интеллектуальных алгоритмов "Облако-Край-Устройство")
 
-[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/stargazers)
-[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/yfeieye/members)
+[![Gitee star](https://gitee.com/volara/yfeieye/badge/star.svg?theme=gvp)](https://gitee.com/reese/yfeieye/stargazers)
+[![Gitee fork](https://gitee.com/volara/yfeieye/badge/fork.svg?theme=gvp)](https://gitee.com/reese/yfeieye/members)
 
 <p style="font-size: 16px; line-height: 1.8; color: #555; font-weight: 400; margin: 20px 0;">
 Я надеюсь, что эта система будет использоваться по всему миру, чтобы сделать ИИ действительно доступным для всех, чтобы каждый мог испытать преимущества ИИ, а не только узкая группа людей.
@@ -334,16 +334,10 @@ yFeiEye — это проект с открытым исходным кодом 
 - [Документация по развертыванию платформы](.doc/部署文档/平台部署文档_ru.md) — Пошаговое руководство по развертыванию для Linux / Mac / Windows
 - [Лучшие практики развертывания](.doc/部署文档/部署最佳实践_ru.md) — Требования к окружению, развертывание в один клик, устранение неполадок и рекомендации для production
 
-## 🎮 Демонстрационная среда
-
-- Демо-адрес: http://36.111.47.113:8888/
-- Логин: admin
-- Пароль: admin123
-
 ## ⚙️ Адреса проекта
 
-- Gitee: https://gitee.com/soaring-xiongkulu/yfeieye
-- Github: https://github.com/soaring-xiongkulu/yfeieye
+- Gitee: https://gitee.com/reese/yfeieye
+- Github: https://github.com/reese/yfeieye
 
 ## 📸 Скриншоты
 <div>
@@ -934,7 +928,7 @@ yFeiEye — это проект с открытым исходным кодом 
 ## 📄 Авторские права
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/yfeieye использует лицензию с открытым исходным кодом <a href="https://gitee.com/soaring-xiongkulu/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Мы стремимся способствовать популяризации и развитию технологий ИИ, позволяя большему количеству людей свободно использовать и получать выгоду от этой технологии.
+reese/yfeieye использует лицензию с открытым исходным кодом <a href="https://gitee.com/reese/yfeieye/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Мы стремимся способствовать популяризации и развитию технологий ИИ, позволяя большему количеству людей свободно использовать и получать выгоду от этой технологии.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -943,5 +937,4 @@ yFeiEye — это проект с открытым исходным кодом 
 
 ## 🌟 График роста звезд (Star)
 
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/yfeieye.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/yfeieye)
-
+[![Stargazers over time](https://starchart.cc/reese/yfeieye.svg?variant=adaptive)](https://starchart.cc/reese/yfeieye)

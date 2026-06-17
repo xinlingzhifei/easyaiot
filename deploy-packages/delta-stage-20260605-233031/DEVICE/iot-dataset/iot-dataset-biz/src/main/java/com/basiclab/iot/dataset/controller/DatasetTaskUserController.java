@@ -27,8 +27,8 @@ import static com.basiclab.iot.common.domain.CommonResult.success;
 /**
  * DatasetTaskUserController
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Tag(name = "管理后台 - 标注任务用户")
 @RestController

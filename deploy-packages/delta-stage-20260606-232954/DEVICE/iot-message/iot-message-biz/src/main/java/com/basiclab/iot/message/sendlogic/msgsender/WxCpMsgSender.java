@@ -32,8 +32,8 @@ import java.util.Map;
 /**
  * 企业微信模板消息发送器
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @since 2024-07-19
  */
 @Slf4j

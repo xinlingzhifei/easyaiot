@@ -10,8 +10,8 @@ import java.time.LocalDateTime;
 /**
  * 设备扩展数据响应VO
  * 
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @ApiModel("设备扩展数据响应")
 @Data

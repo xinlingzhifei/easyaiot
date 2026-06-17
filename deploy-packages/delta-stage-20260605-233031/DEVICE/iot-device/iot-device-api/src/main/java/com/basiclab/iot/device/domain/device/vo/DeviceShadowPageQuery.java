@@ -16,8 +16,8 @@ import java.io.Serializable;
  * 设备影子查询参数
  * -----------------------------------------------------------------------------
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @version 1.0
  * -----------------------------------------------------------------------------
  * Revision History:
@@ -25,7 +25,7 @@ import java.io.Serializable;
  * --------      --------     -------   --------------------
  * 2024/3/26       basiclab        1.0        Initial creation
  * -----------------------------------------------------------------------------
- * @email andywebjava@163.com
+ * @email reese
  * @date 2025/3/26 19:21
  */
 @Data

@@ -1,4 +1,4 @@
-yFeiEye https://github.com/soaring-xiongkulu/yfeieye
+yFeiEye https://github.com/reese/yfeieye
 Application Version: ${iot.info.version}
 Spring Boot Version: ${spring-boot.version}
 

@@ -5,8 +5,8 @@ import cn.hutool.core.util.RandomUtil;
 /**
  * 常用字符串
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date 2025/07/25
  */
 public interface StrPool {

@@ -30,8 +30,8 @@ import static com.basiclab.iot.system.enums.ErrorCodeConstants.MAIL_TEMPLATE_NOT
 /**
  * MailTemplateServiceImpl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 @Validated

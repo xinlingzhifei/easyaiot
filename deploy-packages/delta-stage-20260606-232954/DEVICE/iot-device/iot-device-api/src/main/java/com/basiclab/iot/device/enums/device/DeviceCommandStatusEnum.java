@@ -17,8 +17,8 @@ import java.util.Optional;
  * Enumeration for Device Command Status
  * -----------------------------------------------------------------------------
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @version 1.0
  * -----------------------------------------------------------------------------
  * Revision History:
@@ -26,7 +26,7 @@ import java.util.Optional;
  * --------      --------     -------   --------------------
  * <p>
  * -----------------------------------------------------------------------------
- * @email andywebjava@163.com
+ * @email reese
  * @date 2023-11-11 16:35
  */
 @Getter

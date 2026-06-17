@@ -11,8 +11,8 @@ import java.util.Set;
 /**
  * 任务状态的枚举
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Getter
 @AllArgsConstructor

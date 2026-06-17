@@ -25,8 +25,8 @@ import static com.basiclab.iot.common.exception.util.ServiceExceptionUtil.except
 /**
  * 文件 Service 实现类
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Service
 public class FileServiceImpl implements FileService {

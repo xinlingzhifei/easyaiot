@@ -2,8 +2,8 @@
 最小化的模型部署服务模板
 用于部署模型并提供推理接口
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import os
 import sys

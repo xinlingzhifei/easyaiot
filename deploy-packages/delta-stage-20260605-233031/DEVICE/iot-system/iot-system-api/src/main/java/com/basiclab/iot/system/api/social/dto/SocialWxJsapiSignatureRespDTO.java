@@ -6,8 +6,8 @@ import lombok.Data;
 /**
  * SocialWxJsapiSignatureRespDTO
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Schema(description = "RPC 服务 - 微信公众号 JSAPI 签名 Response DTO")
 @Data

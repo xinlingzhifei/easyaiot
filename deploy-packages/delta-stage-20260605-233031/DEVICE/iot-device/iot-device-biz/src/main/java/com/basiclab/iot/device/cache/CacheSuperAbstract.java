@@ -3,8 +3,8 @@ package com.basiclab.iot.device.cache;
 /**
  * CacheSuperAbstract
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 public abstract class CacheSuperAbstract {
 

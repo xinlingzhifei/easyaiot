@@ -8,8 +8,8 @@ import java.io.Serializable;
 /**
  * Fields
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Data
 public class Fields implements Serializable {

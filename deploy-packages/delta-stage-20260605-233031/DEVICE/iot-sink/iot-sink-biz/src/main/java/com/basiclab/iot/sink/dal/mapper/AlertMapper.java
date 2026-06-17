@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
  * Alert Mapper接口
  * 使用@DS("video")注解切换到VIDEO数据库
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Mapper
 @Component

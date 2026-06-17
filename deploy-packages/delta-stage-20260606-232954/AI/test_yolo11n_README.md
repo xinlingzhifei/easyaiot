@@ -346,8 +346,8 @@ model = YOLO('yolo11n.pt')
 ## 联系与支持
 
 如有问题或建议，请联系：
-- 作者: 翱翔的雄库鲁
-- 邮箱: andywebjava@163.com
+- 作者: reese
+- 邮箱: reese
 
 ---
 

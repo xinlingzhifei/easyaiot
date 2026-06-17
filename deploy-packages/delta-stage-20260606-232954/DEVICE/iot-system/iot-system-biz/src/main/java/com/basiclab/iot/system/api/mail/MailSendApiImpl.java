@@ -15,8 +15,8 @@ import static com.basiclab.iot.common.domain.CommonResult.success;
 /**
  * MailSendApiImpl
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @RestController // 提供 RESTful API 接口，给 Feign 调用
 @Validated

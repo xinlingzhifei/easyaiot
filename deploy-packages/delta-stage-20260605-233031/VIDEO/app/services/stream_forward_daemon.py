@@ -2,8 +2,8 @@
 推流转发任务守护进程
 用于管理推流转发任务服务进程，支持自动重启
 
-@author 翱翔的雄库鲁
-@email andywebjava@163.com
+@author reese
+@email reese
 """
 import json
 import subprocess as sp

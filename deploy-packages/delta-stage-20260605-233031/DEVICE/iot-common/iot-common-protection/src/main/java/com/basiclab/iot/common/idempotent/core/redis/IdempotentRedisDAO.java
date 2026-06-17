@@ -8,8 +8,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 幂等 Redis Mapper
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @AllArgsConstructor
 public class IdempotentRedisDAO {

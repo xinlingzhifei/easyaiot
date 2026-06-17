@@ -8,8 +8,8 @@ import java.lang.reflect.Method;
 /**
  * Class执行器
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  * @date 2025-07-04
  */
 public class ClassExecutor {

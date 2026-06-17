@@ -19,8 +19,8 @@ import static com.basiclab.iot.system.dal.redis.RedisKeyConstants.OAUTH2_ACCESS_
 /**
  * {@link OAuth2AccessTokenDO} 的 RedisMapper
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @Repository
 public class OAuth2AccessTokenRedisDAO {

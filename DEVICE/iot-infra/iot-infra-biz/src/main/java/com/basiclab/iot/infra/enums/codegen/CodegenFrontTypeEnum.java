@@ -6,8 +6,8 @@ import lombok.Getter;
 /**
  * 代码生成的前端类型枚举
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
+ * @author reese
+ * @email reese
  */
 @AllArgsConstructor
 @Getter
