@@ -10,9 +10,32 @@ from flask import current_app
 from minio import Minio
 from minio.error import S3Error
 
+from urllib.parse import parse_qs, unquote, urlparse
+
 from app.utils.ai_env import load_ai_env
 
 load_ai_env(override=False)
+
+
+def parse_minio_download_url(url: str):
+    """
+    解析 MinIO 下载 URL，提取 bucket 与 object_key。
+    格式: /api/v1/buckets/{bucket_name}/objects/download?prefix={object_key}
+    """
+    try:
+        parsed = urlparse(url)
+        path_parts = parsed.path.split('/')
+        if len(path_parts) < 5 or path_parts[3] != 'buckets':
+            return None, None
+        bucket_name = path_parts[4]
+        query_params = parse_qs(parsed.query)
+        object_key = query_params.get('prefix', [None])[0]
+        if object_key:
+            object_key = unquote(object_key)
+        return bucket_name, object_key
+    except Exception:
+        return None, None
+
 
 class ModelService:
     @staticmethod

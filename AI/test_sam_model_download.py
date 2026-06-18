@@ -52,6 +52,32 @@ class TestSamModelDownloadHelpers(unittest.TestCase):
             self.assertEqual(status['downloaded_bytes'], 50 * 1024 * 1024)
             self.assertGreater(status['progress'], 0)
 
+    def test_build_status_tracks_modelscope_temp_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = os.path.join(tmp, 'sam3', 'sam3.1_multiplex.pt')
+            temp_dir = os.path.join(tmp, 'sam3', '.modelscope_staging', '._____temp')
+            temp_file = os.path.join(temp_dir, 'sam3.1_multiplex.pt')
+            os.makedirs(temp_dir, exist_ok=True)
+            with open(temp_file, 'wb') as f:
+                f.write(b'y' * (80 * 1024 * 1024))
+
+            with mock.patch.object(smd, 'SAM_MODEL_PATH', model_path), mock.patch.object(
+                smd, 'SAM_MODEL_DOWNLOAD_URL', ''
+            ), mock.patch.object(smd, '_state', {
+                'status': 'downloading',
+                'stage': 'downloading',
+                'progress': 0,
+                'downloaded_bytes': 0,
+                'total_bytes': smd.ESTIMATED_MODEL_SIZE_BYTES,
+                'error': None,
+            }):
+                status = smd.get_sam_model_status()
+
+            self.assertFalse(status['exists'])
+            self.assertTrue(status['downloading'])
+            self.assertEqual(status['downloaded_bytes'], 80 * 1024 * 1024)
+            self.assertGreater(status['progress'], 0)
+
     def test_download_resumes_with_range_header(self):
         with tempfile.TemporaryDirectory() as tmp:
             model_path = os.path.join(tmp, 'sam3', 'sam3.1_multiplex.pt')
@@ -107,14 +133,14 @@ class TestSamModelDownloadHelpers(unittest.TestCase):
             with open(staging_file, 'wb') as f:
                 f.write(payload)
 
-            def fake_snapshot_download(**kwargs):
+            def fake_model_file_download(**kwargs):
                 self.assertEqual(kwargs['model_id'], 'facebook/sam3.1')
-                self.assertEqual(kwargs['allow_file_pattern'], 'sam3.1_multiplex.pt')
-                return staging_dir
+                self.assertEqual(kwargs['file_path'], 'sam3.1_multiplex.pt')
+                return staging_file
 
             with mock.patch.object(smd, 'SAM_MODEL_PATH', model_path), mock.patch.object(
                 smd, 'SAM_MODEL_DOWNLOAD_URL', ''
-            ), mock.patch('modelscope.hub.snapshot_download.snapshot_download', fake_snapshot_download):
+            ), mock.patch('modelscope.hub.file_download.model_file_download', fake_model_file_download):
                 smd._download_modelscope_with_progress()
 
             self.assertTrue(os.path.isfile(model_path))

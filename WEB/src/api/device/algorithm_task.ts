@@ -98,10 +98,18 @@ export interface AlgorithmTask {
   defense_schedule?: string | number[][]; // 布防时段: JSON字符串或二维数组，7天×24小时
   /** 调度策略: local(本机) | auto(自动调度) | node(指定节点) */
   schedule_policy?: 'local' | 'auto' | 'node';
+  /** 自动调度时是否优先 GPU 节点 */
+  prefer_gpu?: boolean;
   /** 指定部署节点 ID（schedule_policy=node 时） */
   target_node_id?: number | null;
   /** 实际运行节点 ID（只读，启动后由控制面写入） */
   node_id?: number | null;
+  /** 是否启用 AI 后处理脚本 */
+  post_process_enabled?: boolean;
+  /** 后处理脚本文件名 */
+  post_process_script?: string;
+  /** 后处理 Worker 副本数 */
+  post_process_replicas?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -619,4 +627,103 @@ export const getTaskStreams = (task_id: number) => {
     'get',
     `${ALGORITHM_PREFIX}/task/${task_id}/streams`
   );
+};
+
+// ====================== AI 后处理 ======================
+export interface PostProcessStatus {
+  task_id: number;
+  post_process_enabled: boolean;
+  post_process_script: string;
+  script_exists: boolean;
+  workspace_path: string;
+  ide_url: string;
+  workspace_root: string;
+}
+
+export interface PostProcessIdeUrl {
+  ide_url: string;
+  task_id: number;
+  task_name: string;
+}
+
+export const getPostProcessStatus = (task_id: number) => {
+  return commonApi<{ code: number; msg: string; data: PostProcessStatus }>(
+    'get',
+    `${ALGORITHM_PREFIX}/task/${task_id}/post-process/status`,
+    { errorMessageMode: 'none' },
+  );
+};
+
+export const initPostProcessWorkspace = (task_id: number) => {
+  return commonApi<{ code: number; msg: string; data: Record<string, unknown> }>(
+    'post',
+    `${ALGORITHM_PREFIX}/task/${task_id}/post-process/init`,
+    { errorMessageMode: 'none' },
+  );
+};
+
+export const getPostProcessIdeUrl = (task_id: number) => {
+  return commonApi<{ code: number; msg: string; data: PostProcessIdeUrl }>(
+    'get',
+    `${ALGORITHM_PREFIX}/task/${task_id}/post-process/ide-url`,
+    { errorMessageMode: 'none' },
+  );
+};
+
+export const togglePostProcess = (
+  task_id: number,
+  enabled: boolean,
+  post_process_replicas?: number,
+) => {
+  return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
+    'put',
+    `${ALGORITHM_PREFIX}/task/${task_id}/post-process/toggle`,
+    {
+      data: {
+        enabled,
+        ...(post_process_replicas != null ? { post_process_replicas } : {}),
+      },
+      errorMessageMode: 'none',
+    },
+  );
+};
+
+export interface PostProcessResultItem {
+  id: number;
+  task_id: number;
+  task_name?: string;
+  task_type?: string;
+  device_id: string;
+  device_name?: string;
+  frame_number?: number;
+  event_time?: string;
+  counts?: Record<string, number>;
+  events?: Record<string, unknown>[];
+  alerts?: Record<string, unknown>[];
+  payload?: Record<string, unknown>;
+  correlation_id?: string;
+  created_at?: string;
+}
+
+export const listPostProcessResults = (
+  task_id: number,
+  params?: {
+    pageNo?: number;
+    pageSize?: number;
+    device_id?: string;
+    begin_datetime?: string;
+    end_datetime?: string;
+  },
+) => {
+  return commonApi<{
+    code: number;
+    msg: string;
+    items: PostProcessResultItem[];
+    total: number;
+    page_no: number;
+    page_size: number;
+  }>('get', `${ALGORITHM_PREFIX}/task/${task_id}/post-process/results`, {
+    params,
+    errorMessageMode: 'none',
+  });
 };

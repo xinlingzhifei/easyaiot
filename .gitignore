@@ -102,6 +102,9 @@ VIDEO/face_rec.onnx
 VIDEO/face_matching_insightface_buffalo_l/
 VIDEO/face_capture_head_yolov8.onnx
 
+# AI 模型权重（大文件由 ModelScope 或安装脚本下载，不随仓库分发）
+AI/models/
+
 # Claude Code 个人配置与本地钩子（仅本机，不随仓库分发）
 .claude/settings.local.json
 .claude/changed-files-hook.sh

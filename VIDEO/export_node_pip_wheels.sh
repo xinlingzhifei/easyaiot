@@ -17,6 +17,8 @@ case "${BUNDLE_TYPE}" in
   stream_forward) REQ_FILE="${ROOT}/requirements-node-stream-forward.txt" ;;
   algorithm_realtime) REQ_FILE="${ROOT}/requirements-node-algorithm-realtime.txt" ;;
   algorithm_snap) REQ_FILE="${ROOT}/requirements-node-algorithm-snap.txt" ;;
+  algorithm_patrol) REQ_FILE="${ROOT}/requirements-node-algorithm-patrol.txt" ;;
+  post_process) REQ_FILE="${ROOT}/requirements-node-post-process.txt" ;;
   *)
     echo "[ERROR] 未知 BUNDLE_TYPE=${BUNDLE_TYPE}" >&2
     exit 1

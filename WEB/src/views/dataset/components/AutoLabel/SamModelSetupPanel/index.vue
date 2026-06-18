@@ -16,13 +16,13 @@
         <section class="setup-intro">
           <div class="setup-badge">
             <span class="setup-badge-dot" />
-            数据集标注 · SAM 引擎
+            数据集标注 · SAM 分割引擎
           </div>
 
-          <h1 class="setup-headline">配置 SAM 万物识别引擎</h1>
+          <h1 class="setup-headline">配置 SAM 分割识别引擎</h1>
           <p class="setup-lead">
-            使用 SAM 冷启动、开放词汇自动标注前，需在本机部署
-            <strong>sam3.1_multiplex.pt</strong>（SAM 3.1 权重）。下载一次，持久可用。
+            开启 SAM 冷启动与开放词汇自动标注前，需将
+            <strong>sam3.1_multiplex.pt</strong> 部署至 AI 服务本地。仅需下载一次，安装后即可长期使用。
           </p>
 
           <div class="setup-metrics">
@@ -198,9 +198,9 @@ const metricItems = [
 ];
 
 const featureItems = [
-  'SAM 冷启动：英文类别词批量生成首批标注',
-  '支持检测框与分割多边形两种标注形态',
-  '本地部署权重，数据不出域',
+  '冷启动标注：输入英文类别词，批量生成首批训练样本',
+  '支持检测框与分割多边形，适配不同 YOLO 训练任务',
+  '权重本地部署，标注数据不出域',
 ];
 
 const steps = [
@@ -265,7 +265,7 @@ function formatSize(bytes?: number) {
 
 <style scoped lang="less">
 .sam-model-setup {
-  min-height: 520px;
+  height: 100%;
 }
 
 .setup-loading {
@@ -274,7 +274,7 @@ function formatSize(bytes?: number) {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  min-height: 520px;
+  height: 100%;
   color: rgba(0, 0, 0, 0.45);
   font-size: 14px;
 }
@@ -282,9 +282,8 @@ function formatSize(bytes?: number) {
 .setup-shell {
   position: relative;
   overflow: hidden;
-  border-radius: 12px;
+  height: 100%;
   background: #fff;
-  min-height: 520px;
 }
 
 .setup-bg {
@@ -333,23 +332,26 @@ function formatSize(bytes?: number) {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-columns: minmax(0, 1.2fr) 480px;
   gap: 0;
-  min-height: 520px;
+  height: 100%;
 
   @media (max-width: 960px) {
     grid-template-columns: 1fr;
+    overflow-y: auto;
   }
 }
 
 .setup-intro {
-  padding: 48px 40px 48px 48px;
+  padding: 72px 36px 72px 64px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  position: relative;
+  z-index: 1;
 
   @media (max-width: 960px) {
-    padding: 32px 24px 16px;
+    padding: 36px 24px 24px;
   }
 }
 
@@ -359,7 +361,7 @@ function formatSize(bytes?: number) {
   gap: 8px;
   width: fit-content;
   padding: 6px 14px;
-  margin-bottom: 20px;
+  margin-bottom: 32px;
   border-radius: 20px;
   background: rgba(38, 108, 251, 0.08);
   border: 1px solid rgba(38, 108, 251, 0.15);
@@ -388,18 +390,23 @@ function formatSize(bytes?: number) {
 }
 
 .setup-headline {
-  margin: 0 0 14px;
-  font-size: 28px;
+  margin: 0 0 24px;
+  font-size: 32px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   color: #050708;
+  letter-spacing: -0.02em;
+
+  @media (max-width: 960px) {
+    font-size: 26px;
+  }
 }
 
 .setup-lead {
-  margin: 0 0 28px;
-  max-width: 480px;
+  margin: 0 0 48px;
+  max-width: 540px;
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.85;
   color: rgba(0, 0, 0, 0.55);
 
   strong {
@@ -411,27 +418,29 @@ function formatSize(bytes?: number) {
 .setup-metrics {
   display: flex;
   gap: 16px;
-  margin-bottom: 28px;
+  margin-bottom: 48px;
   flex-wrap: wrap;
 }
 
 .setup-metric {
   flex: 1;
   min-width: 100px;
-  padding: 14px 18px;
-  border-radius: 10px;
+  padding: 20px 22px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.8);
   border: 1px solid rgba(38, 108, 251, 0.1);
 }
 
 .setup-metric-value {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: #050708;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .setup-metric-label {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
 }
@@ -442,14 +451,15 @@ function formatSize(bytes?: number) {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
+  max-width: 540px;
 
   li {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.7;
     color: rgba(0, 0, 0, 0.65);
   }
 }
@@ -464,9 +474,13 @@ function formatSize(bytes?: number) {
 .setup-panel {
   display: flex;
   align-items: stretch;
+  margin-left: -52px;
   padding: 24px 24px 24px 0;
+  position: relative;
+  z-index: 2;
 
   @media (max-width: 960px) {
+    margin-left: 0;
     padding: 0 20px 24px;
   }
 }

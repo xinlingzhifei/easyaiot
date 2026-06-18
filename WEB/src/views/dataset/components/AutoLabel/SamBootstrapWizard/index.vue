@@ -46,9 +46,41 @@
     </div>
 
     <div v-show="currentStep === 2" class="step-body">
-      <Alert type="warning" show-icon message="请随机抽查 10–20 张，修正明显错误后确认通过" />
-      <Input.TextArea v-model:value="reviewNote" placeholder="抽检备注（可选）" :rows="3" />
-      <Button type="primary" class="mt-3" :loading="reviewLoading" @click="submitReview">抽检通过</Button>
+      <Alert
+        v-if="bootstrapStatus?.review_recommended"
+        type="warning"
+        show-icon
+        class="review-alert"
+        message="SAM 识别率偏低，不适合继续智能标注"
+      >
+        <template #description>
+          <p>
+            识别率 {{ bootstrapStatus?.recognition_rate_pct ?? 0 }}%
+            （有检出 {{ bootstrapStatus?.sam_hit_count ?? 0 }} 张 / 空结果 {{ bootstrapStatus?.sam_empty_count ?? 0 }} 张）。
+            行业数据建议恢复冷启动标注后，改用手动标注或 YOLO 自动标注。
+          </p>
+          <Space class="mt-3">
+            <Button :loading="resetLoading" @click="handleReset">恢复冷启动标注</Button>
+            <Button type="primary" @click="emit('open-auto-label')">改用自动标注（YOLO）</Button>
+          </Space>
+        </template>
+      </Alert>
+      <Alert
+        v-else
+        type="warning"
+        show-icon
+        message="请随机抽查 10–20 张，修正明显错误后确认通过"
+      />
+      <Input.TextArea v-model:value="reviewNote" placeholder="抽检备注（可选）" :rows="3" class="mt-3" />
+      <Button
+        v-if="!bootstrapStatus?.review_recommended"
+        type="primary"
+        class="mt-3"
+        :loading="reviewLoading"
+        @click="submitReview"
+      >
+        抽检通过
+      </Button>
     </div>
 
     <div v-show="currentStep === 3" class="step-body">
@@ -61,13 +93,16 @@
 <script lang="ts" setup>
 import { computed, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Alert, Button, Input, Progress, Radio, RadioGroup, Select, Slider, Steps } from 'ant-design-vue';
+import { Alert, Button, Input, Progress, Radio, RadioGroup, Select, Slider, Space, Steps } from 'ant-design-vue';
 import { BasicModal, useModal } from '@/components/Modal';
 import {
   startSamBootstrap,
   getAutoLabelTask,
+  getSamBootstrapStatus,
+  resetSamBootstrapAnnotations,
   completeSamBootstrapReview,
 } from '@/api/device/auto-label';
+import type { SamBootstrapStatus } from '@/api/device/auto-label';
 import { useMessage } from '@/hooks/web/useMessage';
 
 const Step = Steps.Step;
@@ -78,7 +113,7 @@ const props = defineProps<{
   getContainer?: () => HTMLElement;
 }>();
 
-const emit = defineEmits(['success', 'register']);
+const emit = defineEmits(['success', 'register', 'open-auto-label']);
 const { createMessage } = useMessage();
 const router = useRouter();
 
@@ -92,8 +127,10 @@ const form = ref({
 const taskId = ref<number | null>(null);
 const task = ref<any>(null);
 const taskStatus = ref('');
+const bootstrapStatus = ref<SamBootstrapStatus | null>(null);
 const reviewNote = ref('');
 const reviewLoading = ref(false);
+const resetLoading = ref(false);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const progressPercent = computed(() => {
@@ -107,6 +144,7 @@ const [register, { openModal: openModalInner }] = useModal();
 
 function openModal() {
   currentStep.value = 0;
+  bootstrapStatus.value = null;
   openModalInner();
 }
 
@@ -115,6 +153,15 @@ defineExpose({ openModal });
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
 });
+
+async function loadBootstrapStatus() {
+  try {
+    const res = await getSamBootstrapStatus(props.datasetId);
+    bootstrapStatus.value = (res?.data ?? res) as SamBootstrapStatus;
+  } catch {
+    bootstrapStatus.value = null;
+  }
+}
 
 async function startBootstrap() {
   try {
@@ -145,6 +192,7 @@ function startPolling() {
       if (taskStatus.value === 'COMPLETED' || taskStatus.value === 'FAILED') {
         if (pollTimer) clearInterval(pollTimer);
         if (taskStatus.value === 'COMPLETED') {
+          await loadBootstrapStatus();
           currentStep.value = 2;
           emit('success');
         }
@@ -153,6 +201,21 @@ function startPolling() {
       /* ignore poll errors */
     }
   }, 2000);
+}
+
+async function handleReset() {
+  resetLoading.value = true;
+  try {
+    const res = await resetSamBootstrapAnnotations(props.datasetId);
+    const count = res?.data?.reset_count ?? res?.reset_count ?? 0;
+    createMessage.success(`已恢复 ${count} 张图片到未标注状态`);
+    bootstrapStatus.value = null;
+    currentStep.value = 0;
+  } catch (e: any) {
+    createMessage.error(e?.response?.data?.msg || e?.message || '恢复失败');
+  } finally {
+    resetLoading.value = false;
+  }
 }
 
 async function submitReview() {
@@ -165,7 +228,7 @@ async function submitReview() {
     currentStep.value = 3;
     createMessage.success('抽检已通过');
   } catch (e: any) {
-    createMessage.error(e?.message || '提交失败');
+    createMessage.error(e?.response?.data?.msg || e?.message || '提交失败');
   } finally {
     reviewLoading.value = false;
   }
@@ -199,5 +262,8 @@ function goTrain() {
 }
 .mt-3 {
   margin-top: 12px;
+}
+.review-alert {
+  margin-bottom: 12px;
 }
 </style>

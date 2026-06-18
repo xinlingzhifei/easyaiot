@@ -1,7 +1,7 @@
 <template>
   <BasicModal
     @register="register"
-    width="640px"
+    width="800px"
     @cancel="handleCancel"
     :canFullscreen="false"
     :showOkBtn="false"
@@ -25,7 +25,7 @@
         <template #description>
           <ol class="guide-steps">
             <li>在 <strong>训练中心 → 模型管理</strong> 中上传或训练目标检测模型（需有 .pt / .onnx 权重）</li>
-            <li>确认本数据集已导入待标注图片（当前 <strong>{{ totalImages }}</strong> 张）</li>
+            <li>确认本数据集已导入待标注图片（当前 <strong>{{ totalImages }}</strong> 张，已标注 <strong>{{ annotatedCount }}</strong> 张）</li>
             <li>选择模型并设置置信度，将直连 AI 推理能力批量标注并写回，<strong>无需部署推理服务</strong></li>
           </ol>
         </template>
@@ -46,6 +46,46 @@
           </Button>
         </template>
       </Alert>
+
+      <section class="model-update-section">
+        <div class="section-head">
+          <span class="section-title">自动标注模型</span>
+          <Button type="link" size="small" :loading="historyLoading" @click="loadModelHistory">
+            <Icon icon="ant-design:reload-outlined" />
+            刷新
+          </Button>
+        </div>
+        <p v-if="modelHistory?.current_model" class="current-model-tip">
+          当前绑定：
+          <strong>{{ modelHistory.current_model.name }}</strong>
+          <span v-if="modelHistory.current_model.version"> v{{ modelHistory.current_model.version }}</span>
+          <span class="model-id">(#{{ modelHistory.current_model.id }})</span>
+        </p>
+        <p v-else class="current-model-tip muted">尚未绑定数据集专属自动标注模型</p>
+        <div class="update-actions">
+          <Button
+            :loading="updateLoading"
+            :disabled="annotatedCount < minAnnotatedForUpdate || modelUpdateRunning"
+            @click="handleUpdateModel"
+          >
+            <template #icon><Icon icon="ant-design:cloud-sync-outlined" /></template>
+            根据已标注数据更新模型
+          </Button>
+          <span v-if="annotatedCount < minAnnotatedForUpdate" class="update-hint">
+            至少需要 {{ minAnnotatedForUpdate }} 张已标注图片
+          </span>
+        </div>
+        <Table
+          v-if="historyRows.length"
+          size="small"
+          :columns="historyColumns"
+          :data-source="historyRows"
+          :pagination="false"
+          row-key="id"
+          class="history-table"
+        />
+        <p v-else class="history-empty">暂无更新记录（最多保留 {{ historyMax }} 条）</p>
+      </section>
 
       <Form
         :model="form"
@@ -132,13 +172,19 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive } from 'vue';
+import { computed, onUnmounted, ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { BasicModal, useModal } from '@/components/Modal';
 import { Icon } from '@/components/Icon';
-import { Alert, Form, FormItem, Select, SelectOption, Slider } from 'ant-design-vue';
+import { Alert, Form, FormItem, Select, SelectOption, Slider, Table } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
-import { startAutoLabel, getAutoLabelModelList } from '@/api/device/auto-label';
+import {
+  startAutoLabel,
+  getAutoLabelModelList,
+  getAutoLabelModelHistory,
+  updateAutoLabelModel,
+  type AutoLabelModelHistoryResult,
+} from '@/api/device/auto-label';
 import { Button } from '@/components/Button';
 
 defineOptions({ name: 'AILabelModal' });
@@ -155,6 +201,7 @@ interface ModelOption {
 const props = defineProps<{
   datasetId?: number;
   totalImages?: number;
+  annotatedCount?: number;
   getContainer?: () => HTMLElement;
 }>();
 
@@ -167,14 +214,65 @@ const emits = defineEmits(['success']);
 
 const loading = ref(false);
 const modelLoading = ref(false);
+const historyLoading = ref(false);
+const updateLoading = ref(false);
 const modelList = ref<ModelOption[]>([]);
+const modelHistory = ref<AutoLabelModelHistoryResult | null>(null);
+const minAnnotatedForUpdate = 10;
+let historyPollTimer: ReturnType<typeof setInterval> | null = null;
+
+const historyMax = computed(() => modelHistory.value?.max_history ?? 15);
 
 const form = reactive({
   model_id: undefined as number | undefined,
   confidence_threshold: 0.5,
 });
 
+const historyColumns = [
+  { title: '版本', dataIndex: 'version_no', key: 'version_no', width: 56 },
+  { title: '已标注', dataIndex: 'annotated_count', key: 'annotated_count', width: 72 },
+  { title: 'mAP50', dataIndex: 'map50_label', key: 'map50_label', width: 72 },
+  { title: '状态', dataIndex: 'status_label', key: 'status_label', width: 80 },
+  { title: '来源', dataIndex: 'trigger_label', key: 'trigger_label', width: 72 },
+  { title: '时间', dataIndex: 'created_at', key: 'created_at', ellipsis: true },
+];
+
+const historyRows = computed(() =>
+  (modelHistory.value?.history ?? []).map((item) => ({
+    ...item,
+    map50_label: item.map50 != null ? `${(item.map50 * 100).toFixed(1)}%` : '—',
+    status_label: statusText(item.status),
+    trigger_label: item.trigger_source === 'pipeline' ? '流水线' : '手动',
+    created_at: formatTime(item.created_at),
+  })),
+);
+
+const modelUpdateRunning = computed(() =>
+  (modelHistory.value?.history ?? []).some((h) => h.status === 'PENDING' || h.status === 'TRAINING'),
+);
+
+const annotatedCount = computed(() => props.annotatedCount ?? 0);
+
 const [register, { openModal, closeModal }] = useModal();
+
+function statusText(status: string): string {
+  const map: Record<string, string> = {
+    PENDING: '排队中',
+    TRAINING: '训练中',
+    COMPLETED: '已完成',
+    FAILED: '失败',
+  };
+  return map[status] || status;
+}
+
+function formatTime(iso?: string): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
 
 function hasModelWeights(model: Record<string, unknown>): boolean {
   return Boolean(
@@ -212,11 +310,83 @@ async function loadModelList() {
         model_path: model.model_path as string | undefined,
         onnx_model_path: model.onnx_model_path as string | undefined,
       }));
+
+    syncSelectedModel();
   } catch {
     createMessage.error('加载模型列表失败');
     modelList.value = [];
   } finally {
     modelLoading.value = false;
+  }
+}
+
+function syncSelectedModel() {
+  const boundId = modelHistory.value?.current_model_id;
+  if (boundId && modelList.value.some((m) => m.id === boundId)) {
+    form.model_id = boundId;
+    return;
+  }
+  if (!form.model_id && modelList.value.length === 1) {
+    form.model_id = modelList.value[0].id;
+  }
+}
+
+async function loadModelHistory() {
+  const dsId = props.datasetId;
+  if (!dsId) return;
+  try {
+    historyLoading.value = true;
+    const res = await getAutoLabelModelHistory(dsId);
+    modelHistory.value = (res?.data ?? res) as AutoLabelModelHistoryResult;
+    syncSelectedModel();
+    setupHistoryPolling();
+  } catch {
+    modelHistory.value = null;
+  } finally {
+    historyLoading.value = false;
+  }
+}
+
+function setupHistoryPolling() {
+  if (historyPollTimer) {
+    clearInterval(historyPollTimer);
+    historyPollTimer = null;
+  }
+  if (!modelUpdateRunning.value) return;
+  historyPollTimer = setInterval(async () => {
+    await loadModelHistory();
+    if (!modelUpdateRunning.value && historyPollTimer) {
+      clearInterval(historyPollTimer);
+      historyPollTimer = null;
+      await loadModelList();
+      createMessage.success('自动标注模型已更新');
+    }
+  }, 5000);
+}
+
+async function handleUpdateModel() {
+  const dsId = props.datasetId;
+  if (!dsId) {
+    createMessage.warning('请先选择数据集');
+    return;
+  }
+  if (annotatedCount.value < minAnnotatedForUpdate) {
+    createMessage.warning(`至少需要 ${minAnnotatedForUpdate} 张已标注图片`);
+    return;
+  }
+  try {
+    updateLoading.value = true;
+    await updateAutoLabelModel(dsId, {
+      base_model_id: form.model_id,
+      train_epochs: 30,
+    });
+    createMessage.success('模型更新任务已启动，训练完成后将自动绑定到本数据集');
+    await loadModelHistory();
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { msg?: string } }; message?: string };
+    createMessage.error(err?.response?.data?.msg || err?.message || '启动模型更新失败');
+  } finally {
+    updateLoading.value = false;
   }
 }
 
@@ -275,10 +445,14 @@ async function handleStart() {
   }
 }
 
-const openModalWithLoad = () => {
-  loadModelList();
+const openModalWithLoad = async () => {
+  await Promise.all([loadModelList(), loadModelHistory()]);
   openModal();
 };
+
+onUnmounted(() => {
+  if (historyPollTimer) clearInterval(historyPollTimer);
+});
 
 defineExpose({
   openModal: openModalWithLoad,
@@ -319,6 +493,67 @@ function handleCancel() {
       margin-top: 4px;
     }
   }
+}
+
+.model-update-section {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.current-model-tip {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #595959;
+
+  &.muted {
+    color: #999;
+  }
+
+  .model-id {
+    margin-left: 4px;
+    color: #999;
+  }
+}
+
+.update-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.update-hint {
+  font-size: 12px;
+  color: #999;
+}
+
+.history-table {
+  :deep(.ant-table) {
+    background: transparent;
+  }
+}
+
+.history-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #999;
 }
 
 .empty-alert {

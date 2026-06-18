@@ -9,6 +9,11 @@ from typing import Any, Dict
 
 from app.services.sam_service import SAM_MODEL_PATH
 
+# 将 ModelScope 缓存放到模型目录下，避免 Docker/无写权限用户目录导致下载失败
+_MODELSCOPE_CACHE_DIR = os.path.join(os.path.dirname(SAM_MODEL_PATH) or '.', '.modelscope_cache')
+os.makedirs(_MODELSCOPE_CACHE_DIR, exist_ok=True)
+os.environ.setdefault('MODELSCOPE_CACHE', _MODELSCOPE_CACHE_DIR)
+
 SAM_MODEL_DOWNLOAD_URL = os.getenv('SAM_MODEL_DOWNLOAD_URL', '').strip()
 SAM_MODELSCOPE_ID = os.getenv('SAM_MODELSCOPE_ID', 'facebook/sam3.1').strip()
 SAM_MODELSCOPE_FILE = os.getenv('SAM_MODELSCOPE_FILE', 'sam3.1_multiplex.pt').strip()
@@ -43,6 +48,15 @@ def _modelscope_staging_file() -> str:
     return os.path.join(_modelscope_staging_dir(), SAM_MODELSCOPE_FILE)
 
 
+def _modelscope_temp_file() -> str:
+    # ModelScope 下载过程中写入 local_dir/._____temp/<filename>，完成后才移到目标路径
+    return os.path.join(_modelscope_staging_dir(), '._____temp', SAM_MODELSCOPE_FILE)
+
+
+def _iter_partial_file_candidates() -> list[str]:
+    return [_partial_path(), _modelscope_staging_file(), _modelscope_temp_file()]
+
+
 def _download_source() -> str:
     if SAM_MODEL_DOWNLOAD_URL:
         return 'http'
@@ -56,9 +70,8 @@ def _can_auto_download() -> bool:
 
 
 def _get_partial_bytes() -> int:
-    candidates = [_partial_path(), _modelscope_staging_file()]
     best = 0
-    for path in candidates:
+    for path in _iter_partial_file_candidates():
         if not os.path.isfile(path):
             continue
         try:
@@ -192,14 +205,10 @@ def _install_downloaded_file(src_path: str) -> None:
 
 
 def _poll_staging_file(stop_event: threading.Event) -> None:
-    """轮询 ModelScope 本地 staging 文件大小，作为进度回调的补充。"""
-    staging_file = _modelscope_staging_file()
+    """轮询 ModelScope 本地临时/staging 文件大小，作为进度回调的补充。"""
     while not stop_event.wait(1.0):
-        if not os.path.isfile(staging_file):
-            continue
-        try:
-            size = os.path.getsize(staging_file)
-        except OSError:
+        size = _get_partial_bytes()
+        if size <= 0:
             continue
         total = ESTIMATED_MODEL_SIZE_BYTES
         with _lock:
@@ -212,30 +221,36 @@ def _poll_staging_file(stop_event: threading.Event) -> None:
                 )
 
 
+def _friendly_modelscope_error(exc: Exception) -> str:
+    msg = str(exc).strip() or exc.__class__.__name__
+    lowered = msg.lower()
+    if 'failed to download' in lowered or 'filedownloaderror' in lowered:
+        return (
+            f'ModelScope 下载失败：{msg}。'
+            '请确认 AI 服务可访问 www.modelscope.cn（约 3.3 GB），'
+            '或配置 SAM_MODEL_DOWNLOAD_URL 使用 HTTP 直链手动下载。'
+        )
+    if 'name resolution' in lowered or 'connection' in lowered or 'network' in lowered:
+        return (
+            f'无法连接 ModelScope：{msg}。'
+            '请检查 AI 服务外网或配置 SAM_MODEL_DOWNLOAD_URL。'
+        )
+    if 'permission' in lowered:
+        return (
+            f'ModelScope 缓存目录无写权限：{msg}。'
+            f'请确保 {_MODELSCOPE_CACHE_DIR} 可写。'
+        )
+    return msg
+
+
 def _download_modelscope_with_progress() -> None:
     try:
-        from modelscope.hub.snapshot_download import snapshot_download
-        from modelscope.hub.callback import ProgressCallback
+        from modelscope.hub.file_download import model_file_download
     except ImportError as exc:
         raise RuntimeError(
             '未安装 modelscope，无法从魔塔下载 SAM 3.1。'
             '请在 AI 服务环境执行: pip install modelscope'
         ) from exc
-
-    class _SamModelScopeProgress(ProgressCallback):
-        def __init__(self, filename: str, file_size: int):
-            super().__init__(filename, file_size or ESTIMATED_MODEL_SIZE_BYTES)
-            self._downloaded = _get_partial_bytes()
-
-        def update(self, size: int) -> None:
-            self._downloaded += int(size)
-            total = self.file_size or ESTIMATED_MODEL_SIZE_BYTES
-            _set_progress(
-                'downloading',
-                _calc_progress(self._downloaded, total),
-                downloaded=self._downloaded,
-                total=total,
-            )
 
     staging_dir = _modelscope_staging_dir()
     os.makedirs(staging_dir, exist_ok=True)
@@ -256,22 +271,33 @@ def _download_modelscope_with_progress() -> None:
             downloaded=resume_bytes,
             total=ESTIMATED_MODEL_SIZE_BYTES,
         )
-        snapshot_download(
-            model_id=SAM_MODELSCOPE_ID,
-            revision=SAM_MODELSCOPE_REVISION,
-            local_dir=staging_dir,
-            allow_file_pattern=SAM_MODELSCOPE_FILE,
-            progress_callbacks=[
-                _SamModelScopeProgress(SAM_MODELSCOPE_FILE, ESTIMATED_MODEL_SIZE_BYTES),
-            ],
+        try:
+            downloaded_path = model_file_download(
+                model_id=SAM_MODELSCOPE_ID,
+                file_path=SAM_MODELSCOPE_FILE,
+                revision=SAM_MODELSCOPE_REVISION,
+                cache_dir=_MODELSCOPE_CACHE_DIR,
+                local_dir=staging_dir,
+            )
+        except Exception as exc:
+            raise RuntimeError(_friendly_modelscope_error(exc)) from exc
+
+        candidates = [
+            downloaded_path,
+            _modelscope_staging_file(),
+            _modelscope_temp_file(),
+            os.path.join(staging_dir, SAM_MODELSCOPE_FILE),
+        ]
+        resolved_path = next(
+            (p for p in candidates if p and os.path.isfile(p)),
+            None,
         )
-        downloaded_path = _modelscope_staging_file()
-        if not os.path.isfile(downloaded_path):
+        if not resolved_path:
             raise RuntimeError(
                 f'ModelScope 下载完成但未找到 {SAM_MODELSCOPE_FILE}，'
                 f'请检查模型 {SAM_MODELSCOPE_ID} 是否存在该文件'
             )
-        _install_downloaded_file(downloaded_path)
+        _install_downloaded_file(resolved_path)
     finally:
         stop_event.set()
         poller.join(timeout=2)
@@ -359,10 +385,13 @@ def _mark_download_done() -> None:
 
 def _mark_download_error(exc: Exception) -> None:
     partial_bytes = _get_partial_bytes()
+    error_msg = str(exc)
+    if _download_source() == 'modelscope':
+        error_msg = _friendly_modelscope_error(exc)
     with _lock:
         _state['status'] = 'error'
         _state['stage'] = 'error'
-        _state['error'] = str(exc)
+        _state['error'] = error_msg
         if partial_bytes > 0:
             total = int(_state['total_bytes']) or ESTIMATED_MODEL_SIZE_BYTES
             _state['downloaded_bytes'] = partial_bytes

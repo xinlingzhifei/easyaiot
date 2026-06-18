@@ -145,6 +145,56 @@ export const RECORD_SPACE_MANAGE_ROUTE: AppRouteRecordRaw = {
   ],
 }
 
+/** SAM 模型安装独立页（从数据集智能标注跳转） */
+export const SAM_MODEL_SETUP_ROUTE: AppRouteRecordRaw = {
+  path: '/dataset/sam-model-setup',
+  component: LAYOUT,
+  name: 'SamModelSetupLayout',
+  meta: {
+    title: 'SAM 模型安装',
+    hideMenu: true,
+    hideBreadcrumb: true,
+  },
+  children: [
+    {
+      path: '',
+      name: 'SamModelSetup',
+      component: () => import('@/views/dataset/components/AutoLabel/SamModelSetup/index.vue'),
+      meta: {
+        title: 'SAM 模型安装',
+        hideMenu: true,
+        canTo: true,
+        activeMenu: 'dataset/index',
+      },
+    },
+  ],
+}
+
+/** 算法任务 AI 后处理 IDE（内嵌 OpenVSCode） */
+export const ALGORITHM_POST_PROCESS_IDE_ROUTE: AppRouteRecordRaw = {
+  path: '/algorithm-post-process',
+  component: LAYOUT,
+  name: 'AlgorithmPostProcessLayout',
+  meta: {
+    title: 'AI后处理',
+    hideMenu: true,
+    hideBreadcrumb: true,
+  },
+  children: [
+    {
+      path: ':id',
+      name: 'AlgorithmPostProcessIde',
+      component: () => import('@/views/system/iframe/FrameDynamic.vue'),
+      meta: {
+        title: 'AI后处理',
+        hideMenu: true,
+        canTo: true,
+        activeMenu: 'camera/index',
+      },
+    },
+  ],
+}
+
 /** 抓拍空间告警独立页（从抓拍空间列表跳转） */
 export const SNAP_SPACE_MANAGE_ROUTE: AppRouteRecordRaw = {
   path: '/snap-space-manage',

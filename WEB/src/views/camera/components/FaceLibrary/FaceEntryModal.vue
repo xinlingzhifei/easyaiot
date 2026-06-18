@@ -45,56 +45,56 @@
           </div>
 
           <div class="photo-area">
-            <a-upload
-              :show-upload-list="false"
-              :before-upload="beforeUpload"
+            <input
+              ref="fileInputRef"
+              type="file"
+              class="photo-file-input"
               :multiple="allowMultiUpload"
               accept="image/jpeg,image/png,image/webp"
-              :disabled="isViewMode"
-              class="photo-uploader"
+              @change="onFileInputChange"
+            />
+            <div
+              class="photo-zone"
+              :class="{
+                'has-image': !!primaryPreviewUrl,
+                'is-view': isViewMode,
+                'is-dragover': isDragover,
+              }"
+              @click="triggerFileSelect"
+              @dragover.prevent="onDragOver"
+              @dragleave.prevent="onDragLeave"
+              @drop.prevent="onDrop"
             >
-              <div
-                class="photo-zone"
-                :class="{
-                  'has-image': !!primaryPreviewUrl,
-                  'is-view': isViewMode,
-                  'is-dragover': isDragover,
-                }"
-                @dragover.prevent="onDragOver"
-                @dragleave.prevent="onDragLeave"
-                @drop.prevent="onDrop"
-              >
-                <template v-if="primaryPreviewUrl">
-                  <img :src="primaryPreviewUrl" alt="人脸照片" class="photo-preview" />
-                  <div v-if="!isViewMode" class="photo-mask">
-                    <span class="mask-action">
-                      <CameraOutlined />
-                      {{ allowMultiUpload ? '继续添加' : '更换照片' }}
-                    </span>
+              <template v-if="primaryPreviewUrl">
+                <img :src="primaryPreviewUrl" alt="人脸照片" class="photo-preview" />
+                <div v-if="!isViewMode" class="photo-mask">
+                  <span class="mask-action">
+                    <CameraOutlined />
+                    {{ allowMultiUpload ? '继续添加' : '更换照片' }}
+                  </span>
+                </div>
+              </template>
+              <template v-else-if="!isViewMode">
+                <div class="photo-placeholder">
+                  <div class="placeholder-icon">
+                    <UserOutlined />
                   </div>
-                </template>
-                <template v-else-if="!isViewMode">
-                  <div class="photo-placeholder">
-                    <div class="placeholder-icon">
-                      <UserOutlined />
-                    </div>
-                    <p class="placeholder-title">
-                      {{ allowMultiUpload ? '批量上传人脸照片' : '上传人脸照片' }}
-                    </p>
-                    <p class="placeholder-desc">点击选择图片，或拖拽至此处</p>
-                    <p class="placeholder-formats">
-                      JPG / PNG / WebP · 单张最大 5MB{{ allowMultiUpload ? ' · 可多选' : '' }}
-                    </p>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="photo-placeholder empty">
-                    <UserOutlined class="empty-icon" />
-                    <span>暂无照片</span>
-                  </div>
-                </template>
-              </div>
-            </a-upload>
+                  <p class="placeholder-title">
+                    {{ allowMultiUpload ? '批量上传人脸照片' : '上传人脸照片' }}
+                  </p>
+                  <p class="placeholder-desc">点击选择图片，或拖拽至此处</p>
+                  <p class="placeholder-formats">
+                    JPG / PNG / WebP · 单张最大 5MB{{ allowMultiUpload ? ' · 可多选' : '' }}
+                  </p>
+                </div>
+              </template>
+              <template v-else>
+                <div class="photo-placeholder empty">
+                  <UserOutlined class="empty-icon" />
+                  <span>暂无照片</span>
+                </div>
+              </template>
+            </div>
 
             <div v-if="allowMultiUpload && previewItems.length > 1" class="photo-thumbs">
               <div v-for="(item, idx) in previewItems" :key="item.key" class="thumb-item">
@@ -171,7 +171,6 @@ import {
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue';
-import type { UploadProps } from 'ant-design-vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
@@ -198,6 +197,7 @@ const modalData = ref<{
   addToPerson?: boolean;
 }>({});
 const confirmLoading = ref(false);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 const uploadFiles = ref<File[]>([]);
 const previewItems = ref<Array<{ key: string; url: string; file?: File }>>([]);
 const isDragover = ref(false);
@@ -291,6 +291,26 @@ function resetUpload() {
   previewItems.value.forEach(revokePreviewItem);
   uploadFiles.value = [];
   previewItems.value = [];
+  if (fileInputRef.value) {
+    fileInputRef.value.value = '';
+  }
+}
+
+function triggerFileSelect() {
+  if (isViewMode.value) return;
+  fileInputRef.value?.click();
+}
+
+function onFileInputChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  if (!allowMultiUpload.value) {
+    validateAndAcceptFile(files[0]);
+    return;
+  }
+  files.forEach(validateAndAcceptFile);
 }
 
 function setExistingImage(url?: string) {
@@ -370,19 +390,6 @@ function validateAndAcceptFile(file: File): boolean {
   appendUploadFile(file);
   return true;
 }
-
-const beforeUpload: UploadProps['beforeUpload'] = (file, fileList) => {
-  if (allowMultiUpload.value && fileList?.length) {
-    const last = fileList[fileList.length - 1];
-    if (file.uid !== last.uid) {
-      return false;
-    }
-    fileList.forEach((f) => validateAndAcceptFile(f as File));
-    return false;
-  }
-  validateAndAcceptFile(file as File);
-  return false;
-};
 
 function onDragOver() {
   if (!isViewMode.value) isDragover.value = true;
@@ -597,15 +604,12 @@ function handleReset() {
   }
 }
 
-.photo-uploader {
-  flex-shrink: 0;
-
-  :deep(.ant-upload) {
-    display: block;
-  }
+.photo-file-input {
+  display: none;
 }
 
 .photo-zone {
+  flex-shrink: 0;
   position: relative;
   width: 200px;
   height: 240px;
@@ -634,6 +638,7 @@ function handleReset() {
 
     &:hover:not(.is-view) .photo-mask {
       opacity: 1;
+      pointer-events: auto;
     }
   }
 
@@ -656,6 +661,7 @@ function handleReset() {
     justify-content: center;
     background: rgba(0, 0, 0, 0.45);
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.2s;
 
     .mask-action {

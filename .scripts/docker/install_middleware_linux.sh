@@ -104,6 +104,7 @@ MIDDLEWARE_SERVICES=(
     "Milvus"
     "SRS"
     "NodeRED"
+    "VSCode"
     "EMQX"
     "ZLMediaKit"
     "GPUStack"
@@ -121,6 +122,7 @@ MIDDLEWARE_PORTS["MinIO"]="9000"
 MIDDLEWARE_PORTS["Milvus"]="9091"
 MIDDLEWARE_PORTS["SRS"]="1935"
 MIDDLEWARE_PORTS["NodeRED"]="1880"
+MIDDLEWARE_PORTS["VSCode"]="10192"
 MIDDLEWARE_PORTS["EMQX"]="1883"
 MIDDLEWARE_PORTS["ZLMediaKit"]="6080"
 MIDDLEWARE_PORTS["GPUStack"]="10180"
@@ -137,6 +139,7 @@ MIDDLEWARE_HEALTH_ENDPOINTS["MinIO"]="/minio/health/live"
 MIDDLEWARE_HEALTH_ENDPOINTS["Milvus"]="/healthz"
 MIDDLEWARE_HEALTH_ENDPOINTS["SRS"]="/api/v1/versions"
 MIDDLEWARE_HEALTH_ENDPOINTS["NodeRED"]="/"
+MIDDLEWARE_HEALTH_ENDPOINTS["VSCode"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["EMQX"]="/api/v5/status"
 MIDDLEWARE_HEALTH_ENDPOINTS["ZLMediaKit"]="/index/api/getServerConfig"
 MIDDLEWARE_HEALTH_ENDPOINTS["GPUStack"]="/"
@@ -1945,6 +1948,17 @@ create_nodered_directories() {
     fi
 }
 
+# 创建并设置 VSCode（OpenVSCode Server）工作区目录权限
+create_vscode_directories() {
+    local vscode_workspace_dir="${SCRIPT_DIR}/vscode_data/workspaces"
+    print_info "创建 VSCode 后处理工作区目录并设置权限..."
+    if set_data_dir_perms "1000:1000" "$vscode_workspace_dir"; then
+        print_success "VSCode 工作区目录权限已设置 (UID 1000:1000, 777)"
+    else
+        print_warning "无法设置 VSCode 目录权限，请手动执行: sudo chmod -R 777 $vscode_workspace_dir"
+    fi
+}
+
 # 创建并设置 PostgreSQL 数据目录权限
 create_postgresql_directories() {
     local postgresql_data_dir="${SCRIPT_DIR}/db_data/data"
@@ -2207,6 +2221,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/srs_data/data:::"              # SRS 数据（使用默认权限）
         "${SCRIPT_DIR}/srs_data/playbacks:::"          # SRS 回放（使用默认权限）
         "${SCRIPT_DIR}/nodered_data/data:1000:1000:777" # NodeRED 数据
+        "${SCRIPT_DIR}/vscode_data/workspaces:1000:1000:777" # VSCode 后处理工作区
         "${SCRIPT_DIR}/../zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
@@ -4052,6 +4067,8 @@ KAFKA_IOT_TOPICS=(
     "iot-face-matching-result"
     "iot-plate-matching"
     "iot-plate-matching-result"
+    "iot-post-process-request"
+    "iot-post-process-result"
 )
 # 兼容旧变量名
 KAFKA_ALERT_TOPICS=("${KAFKA_IOT_TOPICS[@]}")
@@ -5202,6 +5219,7 @@ check_and_clean_ports() {
             "MinIO") container_name="minio-server" ;;
             "SRS") container_name="srs-server" ;;
             "NodeRED") container_name="nodered-server" ;;
+            "VSCode") container_name="openvscode-server" ;;
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
@@ -5791,6 +5809,7 @@ check_and_clean_ports() {
                                     "MinIO") container_name="minio-server" ;;
                                     "SRS") container_name="srs-server" ;;
                                     "NodeRED") container_name="nodered-server" ;;
+            "VSCode") container_name="openvscode-server" ;;
                                     "EMQX") container_name="emqx-server" ;;
                                     "ZLMediaKit") container_name="zlmediakit-server" ;;
                                     "Milvus") container_name="milvus-server" ;;
@@ -5915,6 +5934,7 @@ cleanup_stale_containers() {
                 "Milvus") container_names+=("milvus-server") ;;
                 "SRS") container_names+=("srs-server") ;;
                 "NodeRED") container_names+=("nodered-server") ;;
+                "VSCode") container_names+=("openvscode-server") ;;
                 "EMQX") container_names+=("emqx-server") ;;
                 "ZLMediaKit") container_names+=("zlmediakit-server") ;;
                 "GPUStack") container_names+=("gpustack-server") ;;
@@ -5924,7 +5944,7 @@ cleanup_stale_containers() {
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|gpustack-server|gpustack-worker|${DIFY_PROJECT_NAME}-)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|openvscode-server|emqx-server|zlmediakit-server|gpustack-server|gpustack-worker|${DIFY_PROJECT_NAME}-)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -6039,6 +6059,7 @@ install_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_vscode_directories
     create_kafka_directories
     configure_kafka_hosts
     
@@ -6101,6 +6122,7 @@ install_middleware() {
             "MinIO") container_name="minio-server" ;;
             "SRS") container_name="srs-server" ;;
             "NodeRED") container_name="nodered-server" ;;
+            "VSCode") container_name="openvscode-server" ;;
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
@@ -6161,6 +6183,7 @@ install_middleware() {
     print_dify_info "Dify LLM 平台: http://localhost:${DIFY_HTTP_PORT}"
     print_dify_info "  首次安装: http://localhost:${DIFY_HTTP_PORT}/install"
     print_dify_info "  部署日志: ${DIFY_LOG_FILE}"
+    print_info "VSCode 后处理 IDE: http://localhost:10192"
     echo ""
     # 不再固定 sleep 10：下方 ensure_postgresql_password 内部自带 wait_for_postgresql 精确等待
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
@@ -6212,6 +6235,7 @@ start_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_vscode_directories
     create_kafka_directories
     configure_kafka_hosts
     
@@ -6307,6 +6331,7 @@ restart_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_vscode_directories
     create_kafka_directories
     configure_kafka_hosts
     
@@ -6713,6 +6738,7 @@ update_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_vscode_directories
     create_kafka_directories
     configure_kafka_hosts
     

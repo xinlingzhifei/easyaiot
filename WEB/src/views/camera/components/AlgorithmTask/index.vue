@@ -113,6 +113,13 @@
                     >
                       <Icon icon="ant-design:aim-outlined" :size="15" color="#3B82F6" />
                     </div>
+                    <div
+                      class="btn"
+                      @click="handleOpenPostProcess(item)"
+                      title="AI后处理"
+                    >
+                      <Icon icon="ant-design:code-outlined" :size="15" color="#3B82F6" />
+                    </div>
                     <div class="btn" @click="handleManageServices(item)" title="心跳信息">
                       <Icon icon="ant-design:heart-outlined" :size="15" color="#3B82F6" />
                     </div>
@@ -271,6 +278,7 @@ import {
   stopAlgorithmTask,
   updateAlgorithmTask,
   getTaskStreams,
+  getPostProcessIdeUrl,
   type AlgorithmTask,
   type CameraStreamInfo,
 } from '@/api/device/algorithm_task';
@@ -283,12 +291,14 @@ import { getBasicColumns, getFormConfig } from './Data';
 import AI_TASK_IMAGE from '@/assets/images/video/ai-task.png';
 import SNAP_TASK_IMAGE from '@/assets/images/video/snap-task.png';
 import { Button } from '@/components/Button'
+import { useGo } from '@/hooks/web/usePage';
 import { rewriteStreamHostToPageHost } from '@/views/camera/utils/devicePlay';
 const ListItem = List.Item;
 
 defineOptions({ name: 'AlgorithmTask' });
 
 const { createMessage } = useMessage();
+const go = useGo();
 
 // 视图模式（默认卡片模式）
 const viewMode = ref<'table' | 'card'>('card');
@@ -432,6 +442,11 @@ const getTableActions = (record: AlgorithmTask) => {
         }
         handleOpenRegionDetection(record);
       },
+    },
+    {
+      icon: 'ant-design:code-outlined',
+      tooltip: 'AI后处理',
+      onClick: () => handleOpenPostProcess(record),
     },
     {
       icon: 'ant-design:folder-outlined',
@@ -661,6 +676,24 @@ const handleOpenSnapSpace = (record: AlgorithmTask) => {
     deviceIds: record.device_ids,
     deviceNames: record.device_names || []
   });
+};
+
+const handleOpenPostProcess = async (record: AlgorithmTask) => {
+  try {
+    const response = await getPostProcessIdeUrl(record.id);
+    if (response.code !== 0 || !response.data?.ide_url) {
+      createMessage.error(response.msg || '获取后处理 IDE 地址失败');
+      return;
+    }
+    const title = encodeURIComponent(record.task_name || String(record.id));
+    go({
+      path: `/algorithm-post-process/${title}`,
+      query: { path: response.data.ide_url },
+    });
+  } catch (error) {
+    console.error('打开后处理 IDE 失败', error);
+    createMessage.error('打开后处理 IDE 失败');
+  }
 };
 
 const handleDelete = async (record: AlgorithmTask) => {

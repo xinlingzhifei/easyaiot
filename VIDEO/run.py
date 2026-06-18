@@ -24,7 +24,11 @@ from app.utils.video_env import load_video_env
 
 from app.blueprints import camera, alert, snap, playback, record, algorithm_task, stream_forward, face
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+_lib_root = os.path.join(_repo_root, '.scripts', 'lib')
+for _p in (_repo_root, _lib_root, os.path.dirname(os.path.abspath(__file__))):
+    if _p not in sys.path:
+        sys.path.append(_p)
 
 # 解析命令行参数
 def parse_args():
@@ -171,6 +175,15 @@ def create_app():
     app.config['KAFKA_FACE_MATCHING_RESULT_TOPIC'] = os.environ.get('KAFKA_FACE_MATCHING_RESULT_TOPIC', 'iot-face-matching-result')
     app.config['KAFKA_PLATE_MATCHING_TOPIC'] = os.environ.get('KAFKA_PLATE_MATCHING_TOPIC', 'iot-plate-matching')
     app.config['KAFKA_PLATE_MATCHING_RESULT_TOPIC'] = os.environ.get('KAFKA_PLATE_MATCHING_RESULT_TOPIC', 'iot-plate-matching-result')
+    app.config['KAFKA_POST_PROCESS_REQUEST_TOPIC'] = os.environ.get(
+        'KAFKA_POST_PROCESS_REQUEST_TOPIC', 'iot-post-process-request',
+    )
+    app.config['KAFKA_POST_PROCESS_RESULT_TOPIC'] = os.environ.get(
+        'KAFKA_POST_PROCESS_RESULT_TOPIC', 'iot-post-process-result',
+    )
+    app.config['KAFKA_POST_PROCESS_SINK_GROUP'] = os.environ.get(
+        'KAFKA_POST_PROCESS_SINK_GROUP', 'video-post-process-sink',
+    )
     app.config['KAFKA_REQUEST_TIMEOUT_MS'] = int(os.environ.get('KAFKA_REQUEST_TIMEOUT_MS', '5000'))
     app.config['KAFKA_RETRIES'] = int(os.environ.get('KAFKA_RETRIES', '1'))
     app.config['KAFKA_RETRY_BACKOFF_MS'] = int(os.environ.get('KAFKA_RETRY_BACKOFF_MS', '100'))
@@ -183,6 +196,21 @@ def create_app():
     app.config['MEDIA_SNAP_DIR'] = os.environ.get('MEDIA_SNAP_DIR', '')
     app.config['MEDIA_SNAP_UPLOAD_MODE'] = os.environ.get('MEDIA_SNAP_UPLOAD_MODE', '')
     app.config['MEDIA_KAFKA_SNAP_TOPIC'] = os.environ.get('MEDIA_KAFKA_SNAP_TOPIC', 'media.snap.completed')
+
+    try:
+        from cluster_storage import apply_cluster_env_defaults, ensure_cluster_dirs, is_cluster_mode
+        applied = apply_cluster_env_defaults()
+        if applied:
+            print(f'✅ 集群存储环境已应用: {", ".join(applied.keys())}')
+        if is_cluster_mode():
+            ensure_cluster_dirs()
+            app.config['CLUSTER_MODE'] = True
+            app.config['MEDIA_HOST_DATA_ROOT'] = os.environ.get('MEDIA_HOST_DATA_ROOT', '/mnt/easyaiot-media')
+            app.config['MEDIA_RECORD_DIR'] = os.environ.get('MEDIA_RECORD_DIR', '')
+            app.config['MEDIA_SNAP_DIR'] = os.environ.get('MEDIA_SNAP_DIR', '')
+            app.config['MEDIA_UPLOAD_MODE'] = os.environ.get('MEDIA_UPLOAD_MODE', 'kafka')
+    except ImportError:
+        pass
 
     # 创建数据目录
     os.makedirs('data/uploads', exist_ok=True)
@@ -199,11 +227,12 @@ def create_app():
                 Device, Image, DeviceDirectory, Nvr, SnapSpace, SnapTask, DetectionRegion,
                 AlgorithmModelService, RegionModelService, DeviceStorageConfig, Playback,
                 RecordSpace,                 AlgorithmTask, FrameExtractor, Sorter, Pusher, DeviceDetectionRegion,
-                DeviceTrackSession, DeviceTrackPoint, PatrolSession,
+                DeviceTrackSession, DeviceTrackPoint, PatrolSession, AlgorithmPostProcessResult,
             )
             db.create_all()
-            from models import ensure_algorithm_task_sam_columns
+            from models import ensure_algorithm_task_sam_columns, ensure_algorithm_task_post_process_columns
             ensure_algorithm_task_sam_columns(db.engine)
+            ensure_algorithm_task_post_process_columns(db.engine)
             
             # 迁移：检查并添加缺失的列和表
             try:
@@ -508,6 +537,7 @@ def create_app():
                         ('service_last_heartbeat', 'TIMESTAMP'),
                         ('service_log_path', 'VARCHAR(500)'),
                         ('schedule_policy', "VARCHAR(20) NOT NULL DEFAULT 'local'"),
+                        ('prefer_gpu', 'BOOLEAN NOT NULL DEFAULT TRUE'),
                         ('target_node_id', 'BIGINT'),
                         ('node_id', 'BIGINT'),
                     ]:
@@ -541,6 +571,7 @@ def create_app():
                 try:
                     for col_name, col_def in [
                         ('schedule_policy', "VARCHAR(20) NOT NULL DEFAULT 'local'"),
+                        ('prefer_gpu', 'BOOLEAN NOT NULL DEFAULT TRUE'),
                         ('target_node_id', 'BIGINT'),
                         ('node_id', 'BIGINT'),
                         ('device_deployments', 'TEXT'),
@@ -1343,6 +1374,16 @@ def create_app():
             print("✅ 推流转发任务服务自动启动完成")
         except Exception as e:
             print(f"❌ 自动启动推流转发任务服务失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+        # 启动后处理 Sink 集群（结果落库 + 告警派发）
+        try:
+            from app.services.post_process_launcher_service import ensure_post_process_sink_workers
+            ensure_post_process_sink_workers()
+            print('✅ 后处理 Sink 集群已启动')
+        except Exception as e:
+            print(f'❌ 启动后处理 Sink 集群失败: {str(e)}')
             import traceback
             traceback.print_exc()
 

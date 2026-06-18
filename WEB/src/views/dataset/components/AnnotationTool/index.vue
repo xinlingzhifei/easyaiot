@@ -80,13 +80,28 @@
         <button
           type="button"
           class="action-btn sam-bootstrap-btn"
-          :disabled="batchTaskRunning || totalImages === 0"
-          title="SAM 零样本冷启动：首批约 200 张开放词汇标注（未安装模型时将先引导下载）"
-          @click="openSamBootstrapWizard"
+          :disabled="batchTaskRunning"
+          title="SAM 冷启动批量标注，对数据集中已有图片生成初始标注"
+          @click="openSamAutoLabelDrawer"
         >
           <Icon icon="ant-design:experiment-outlined"/>
-          SAM 冷启动
-          <span v-if="samModelChecked && !samModelReady" class="sam-model-badge" title="SAM 模型未安装">!</span>
+          智能标注
+          <span
+            v-if="samModelChecked && !samModelReady"
+            class="sam-model-badge"
+            title="SAM 模型未安装，点击前往安装"
+            @click.stop="openSamModelSetupPage"
+          >!</span>
+        </button>
+        <button
+          type="button"
+          class="action-btn unattended-label-btn"
+          :disabled="batchTaskRunning"
+          title="选择摄像头抽帧任务，自动打标扩充本数据集"
+          @click="openUnattendedLabelDrawer"
+        >
+          <Icon icon="ant-design:cluster-outlined"/>
+          无人值守扩充
         </button>
         <span class="top-actions-divider"/>
         <Dropdown :trigger="['click']" placement="bottomRight">
@@ -441,20 +456,22 @@
       ref="aiLabelModalRef"
       :dataset-id="datasetId"
       :total-images="totalImages"
+      :annotated-count="completedCount"
       :get-container="getModalContainer"
       @success="onBatchAiSuccess"
     />
-    <SamBootstrapWizard
-      ref="samBootstrapRef"
+    <SamAutoLabelDrawer
+      @register="registerSamDrawer"
       :dataset-id="datasetId"
-      :get-container="getModalContainer"
       @success="onBatchAiSuccess"
+      @open-frame-tasks="openManageDrawer('frame')"
+      @open-auto-label="openAiBatchModal"
     />
-    <SamModelSetupModal
-      ref="samModelSetupRef"
-      :get-container="getModalContainer"
-      @ready="onSamModelReady"
-      @closed="onSamModelSetupClosed"
+    <UnattendedLabelDrawer
+      @register="registerUnattendedDrawer"
+      :dataset-id="datasetId"
+      @success="onUnattendedLabelSuccess"
+      @open-frame-tasks="openManageDrawer('frame')"
     />
     <ImportDatasetModal
       ref="importModalRef"
@@ -474,6 +491,7 @@
       :initial-tab="manageDrawerTab"
       :get-container="getModalContainer"
       @tags-changed="fetchLabels"
+      @open-unattended="openUnattendedLabelDrawer"
     />
   </div>
   </ConfigProvider>
@@ -485,7 +503,7 @@ import {Checkbox, ConfigProvider, Dropdown, Menu, MenuDivider, MenuItem, Paginat
 import {Icon} from '@/components/Icon';
 import {Button} from '@/components/Button';
 import {useMessage} from "@/hooks/web/useMessage";
-import {useRoute} from "vue-router";
+import {useRoute, useRouter} from "vue-router";
 import {useModal} from '@/components/Modal';
 import {
   checkSyncCondition,
@@ -514,9 +532,10 @@ const ANNOTATION_SELECTED_STROKE_WIDTH = 2.5;
 const ANNOTATION_FILL_ALPHA = 0.1;
 import { getAutoLabelTask } from '@/api/device/auto-label';
 import { getSamModelStatus } from '@/api/device/sam';
+import { useDrawer } from '@/components/Drawer';
 import AILabelModal from '@/views/dataset/components/AutoLabel/AILabelModal/index.vue';
-import SamBootstrapWizard from '@/views/dataset/components/AutoLabel/SamBootstrapWizard/index.vue';
-import SamModelSetupModal from '@/views/dataset/components/AutoLabel/SamModelSetupModal/index.vue';
+import SamAutoLabelDrawer from '@/views/dataset/components/AutoLabel/SamAutoLabelDrawer/index.vue';
+import UnattendedLabelDrawer from '@/views/dataset/components/AutoLabel/UnattendedLabelDrawer/index.vue';
 import ImportDatasetModal from '@/views/dataset/components/AutoLabel/ImportDatasetModal/index.vue';
 import ExportDatasetModal from '@/views/dataset/components/AutoLabel/ExportDatasetModal/index.vue';
 import DatasetImageModal from '@/views/dataset/components/DatasetImageModal/index.vue';
@@ -535,6 +554,7 @@ defineOptions({name: 'AnnotationTool'});
 
 const {createMessage, createConfirm} = useMessage();
 const route = useRoute();
+const router = useRouter();
 const datasetId = computed(() => Number(route.params['id']));
 const manageDrawerOpen = ref(false);
 const manageDrawerTab = ref<ManageDrawerTab>('tags');
@@ -576,12 +596,10 @@ async function refreshSyncCheck() {
   }
 }
 const aiLabelModalRef = ref<InstanceType<typeof AILabelModal> | null>(null);
-const samBootstrapRef = ref<InstanceType<typeof SamBootstrapWizard> | null>(null);
-const samModelSetupRef = ref<InstanceType<typeof SamModelSetupModal> | null>(null);
+const [registerSamDrawer, { openDrawer: openSamDrawer }] = useDrawer();
+const [registerUnattendedDrawer, { openDrawer: openUnattendedDrawer }] = useDrawer();
 const samModelChecked = ref(false);
 const samModelReady = ref(false);
-/** 用户从「SAM 冷启动」进入下载弹框，安装完成后自动打开业务向导 */
-const samBootstrapPending = ref(false);
 const importModalRef = ref<InstanceType<typeof ImportDatasetModal> | null>(null);
 const exportModalRef = ref<InstanceType<typeof ExportDatasetModal> | null>(null);
 
@@ -2117,27 +2135,36 @@ async function refreshSamModelStatus(): Promise<boolean> {
   return samModelReady.value;
 }
 
-async function openSamBootstrapWizard(): Promise<void> {
+async function openSamAutoLabelDrawer(): Promise<void> {
   const ready = await refreshSamModelStatus();
   if (!ready) {
-    samBootstrapPending.value = true;
-    samModelSetupRef.value?.openModal();
+    router.push({
+      name: 'SamModelSetup',
+      query: {
+        datasetId: String(route.params.id ?? ''),
+        autoOpen: '1',
+      },
+    });
     return;
   }
-  samBootstrapRef.value?.openModal();
+  openSamDrawer(true);
 }
 
-function onSamModelReady(): void {
-  samModelReady.value = true;
-  samModelChecked.value = true;
-  if (samBootstrapPending.value) {
-    samBootstrapPending.value = false;
-    samBootstrapRef.value?.openModal();
-  }
+function openUnattendedLabelDrawer(): void {
+  openUnattendedDrawer(true);
 }
 
-function onSamModelSetupClosed(): void {
-  samBootstrapPending.value = false;
+async function onUnattendedLabelSuccess(): Promise<void> {
+  await fetchImages();
+}
+
+function openSamModelSetupPage(): void {
+  router.push({
+    name: 'SamModelSetup',
+    query: {
+      datasetId: String(route.params.id ?? ''),
+    },
+  });
 }
 
 function openImportModal(): void {
@@ -2356,14 +2383,18 @@ function stopBatchTaskPoll(): void {
   resetBatchTaskProgress();
 }
 
+let batchTaskPollFailCount = 0;
+
 async function pollBatchTask(taskId: number): Promise<void> {
   clearBatchTaskPollTimer();
   resetBatchTaskProgress();
   batchTaskRunning.value = true;
+  batchTaskPollFailCount = 0;
 
   const check = async () => {
     try {
       const res = await getAutoLabelTask(datasetId.value, taskId);
+      batchTaskPollFailCount = 0;
       const task = (res?.data ?? res) as Record<string, unknown>;
       applyBatchTaskProgress(task);
       const status = task?.status as string | undefined;
@@ -2384,7 +2415,11 @@ async function pollBatchTask(taskId: number): Promise<void> {
         createMessage.error(String(task?.error_message || 'AI 批量标注失败'));
       }
     } catch {
-      stopBatchTaskPoll();
+      batchTaskPollFailCount += 1;
+      if (batchTaskPollFailCount >= 5) {
+        stopBatchTaskPoll();
+        createMessage.warning('任务进度查询失败，请在大抽屉中查看任务状态');
+      }
     }
   };
 
@@ -2412,7 +2447,14 @@ onMounted(() => {
   fetchLabels();
   fetchImages(1);
   refreshSyncCheck();
-  refreshSamModelStatus();
+  refreshSamModelStatus().then((ready) => {
+    if (route.query.openSam === '1' && ready) {
+      const nextQuery = { ...route.query };
+      delete nextQuery.openSam;
+      router.replace({ query: nextQuery });
+      openSamDrawer(true);
+    }
+  });
 });
 
 onUnmounted(() => {
@@ -2687,6 +2729,7 @@ onUnmounted(() => {
         margin-left: 4px;
         border-radius: 50%;
         background: #ff4d4f;
+        cursor: pointer;
         color: #fff;
         font-size: 10px;
         font-weight: 700;

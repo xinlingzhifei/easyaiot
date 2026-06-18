@@ -62,5 +62,8 @@ NODE/get-pip.py -diff
 # VIDEO 人脸特征模型（体积大，本地/install 下载，不参与 diff）
 VIDEO/face_rec.onnx binary -diff
 
+# AI 模型权重目录（体积大，ModelScope/本地下载，不参与 diff）
+AI/models/** -diff
+
 
 .image/ binary

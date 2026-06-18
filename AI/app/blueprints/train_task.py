@@ -239,6 +239,14 @@ def _get_project_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 
 
+def _get_train_task_dir(task_id) -> str:
+    try:
+        from cluster_storage import get_ai_train_dir
+        return get_ai_train_dir(task_id)
+    except ImportError:
+        return os.path.join(_get_project_root(), 'data', 'datasets', f'train_{task_id}')
+
+
 def _safe_remove_path(path: str) -> None:
     """删除本地文件或目录；路径不存在时静默跳过。"""
     if not path or not os.path.exists(path):
@@ -251,7 +259,7 @@ def _safe_remove_path(path: str) -> None:
 
 def _cleanup_train_task_artifacts(record: TrainTask) -> None:
     """清理训练任务关联的本地文件（数据集工作区、断点权重等）。"""
-    model_dir = os.path.join(_get_project_root(), 'data', 'datasets', f'train_{record.id}')
+    model_dir = _get_train_task_dir(record.id)
     _safe_remove_path(model_dir)
 
     # checkpoint_dir 实际存的是 last.pt 文件路径，不是目录
@@ -302,7 +310,7 @@ def _task_can_resume(task: TrainTask) -> bool:
     checkpoint = (task.checkpoint_dir or '').strip()
     if checkpoint and os.path.isfile(checkpoint):
         return True
-    model_dir = os.path.join(_get_project_root(), 'data', 'datasets', f'train_{task.id}')
+    model_dir = _get_train_task_dir(task.id)
     return _resolve_train_checkpoint_path(model_dir) is not None
 
 
@@ -502,6 +510,11 @@ def _serialize_task(task: TrainTask) -> dict:
         'published_model_id': published_model_id,
         'published_version': _get_published_version(task.hyperparameters),
         'suggested_publish_version': suggested_publish_version,
+        'schedule_policy': getattr(task, 'schedule_policy', None) or 'local',
+        'target_node_id': getattr(task, 'target_node_id', None),
+        'node_id': getattr(task, 'node_id', None),
+        'service_server_ip': getattr(task, 'service_server_ip', None),
+        'service_process_id': getattr(task, 'service_process_id', None),
     }
 
 
@@ -601,6 +614,109 @@ def train_detail(record_id):
         }), 500
 
 
+def _apply_train_model_provenance(
+    model: Model,
+    model_origin: str | None,
+    origin_ref: str | None,
+    task: TrainTask,
+):
+    origin = (model_origin or 'train').strip() or 'train'
+    ref = origin_ref or f'train_task:{task.id}'
+    model.model_origin = origin
+    model.origin_ref = ref
+
+
+def publish_train_task_to_model(
+    task: TrainTask,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    version: str | None = None,
+    published_model_id: int | None = None,
+    class_names: list[str] | None = None,
+    model_origin: str | None = None,
+    origin_ref: str | None = None,
+) -> int:
+    """
+    将已完成训练任务的权重发布到模型管理（供编排器/脚本调用，无需 HTTP 请求）。
+    返回 model.id。
+    """
+    if task.status != 'completed':
+        raise ValueError(f'训练任务 {task.id} 未完成，无法发布')
+
+    model_url = (task.minio_model_path or '').strip()
+    if not model_url:
+        raise ValueError('训练权重尚未上传 MinIO，无法发布')
+
+    publish_name = (name or '').strip() or _default_publish_name(task)
+    publish_desc = (description or '').strip()
+    if not publish_desc:
+        publish_desc = f'从训练任务「{_task_display_name(task)}」自动发布'
+
+    if version:
+        publish_version = _normalize_model_version(version)
+    else:
+        publish_version = _resolve_next_publish_version(task, publish_name)
+
+    if not class_names:
+        class_names = _extract_class_names_from_minio_model(model_url)
+    image_url = _upload_default_model_image()
+
+    existing_model = None
+    if published_model_id:
+        existing_model = Model.query.get(published_model_id)
+
+    if existing_model:
+        conflict = Model.query.filter(
+            db.func.lower(Model.name) == db.func.lower(publish_name),
+            Model.version == publish_version,
+            Model.id != existing_model.id,
+        ).first()
+        if conflict:
+            raise ValueError(f'模型"{publish_name}"版本"{publish_version}"已存在')
+
+        existing_model.name = publish_name
+        existing_model.description = publish_desc
+        existing_model.version = publish_version
+        existing_model.model_path = model_url
+        existing_model.status = 0
+        existing_model.updated_at = datetime.utcnow()
+        if image_url and not existing_model.image_url:
+            existing_model.image_url = image_url
+        if class_names:
+            existing_model.class_names = dump_class_names_json(class_names)
+            existing_model.selected_class_names = dump_class_names_json(class_names)
+        _apply_train_model_provenance(
+            existing_model, model_origin, origin_ref, task,
+        )
+        model = existing_model
+    else:
+        conflict = Model.query.filter(
+            db.func.lower(Model.name) == db.func.lower(publish_name),
+            Model.version == publish_version,
+        ).first()
+        if conflict:
+            raise ValueError(f'模型"{publish_name}"版本"{publish_version}"已存在')
+
+        model = Model(
+            name=publish_name,
+            description=publish_desc,
+            model_path=model_url,
+            image_url=image_url,
+            version=publish_version,
+            status=0,
+            class_names=dump_class_names_json(class_names) if class_names else None,
+            selected_class_names=dump_class_names_json(class_names) if class_names else None,
+        )
+        _apply_train_model_provenance(model, model_origin, origin_ref, task)
+        db.session.add(model)
+
+    db.session.flush()
+    _set_published_model_id(task, model.id, publish_version)
+    db.session.commit()
+    return model.id
+
+
 @train_task_bp.route('/<int:record_id>/publish', methods=['POST'])
 def publish_train_task(record_id):
     """将已完成训练任务的权重发布到模型管理，供推理与算法任务使用。"""
@@ -618,80 +734,32 @@ def publish_train_task(record_id):
             return jsonify({'code': 400, 'msg': '训练权重尚未上传，无法发布'}), 400
 
         data = request.get_json(silent=True) or {}
-        name = (data.get('name') or '').strip() or _default_publish_name(task)
-        description = (data.get('description') or '').strip()
-        if not description:
-            description = f'从训练任务「{_task_display_name(task)}」发布'
-
-        explicit_version = (data.get('version') or '').strip()
+        name = (data.get('name') or '').strip() or None
+        description = (data.get('description') or '').strip() or None
+        explicit_version = (data.get('version') or '').strip() or None
         auto_increment = data.get('auto_increment')
         if auto_increment is None:
             auto_increment = not explicit_version
-        if auto_increment or not explicit_version:
-            version = _resolve_next_publish_version(task, name)
-        else:
-            version = _normalize_model_version(explicit_version)
-
-        class_names = _extract_class_names_from_minio_model(model_url)
-        image_url = _upload_default_model_image()
+        version = None if (auto_increment or not explicit_version) else explicit_version
 
         published_model_id = _get_published_model_id(task.hyperparameters)
-        existing_model = None
-        if published_model_id:
-            existing_model = Model.query.get(published_model_id)
+        if data.get('published_model_id') is not None:
+            try:
+                published_model_id = int(data['published_model_id'])
+            except (TypeError, ValueError):
+                pass
 
-        if existing_model:
-            conflict = Model.query.filter(
-                db.func.lower(Model.name) == db.func.lower(name),
-                Model.version == version,
-                Model.id != existing_model.id,
-            ).first()
-            if conflict:
-                return jsonify({
-                    'code': 400,
-                    'msg': f'模型"{name}"版本"{version}"已存在，请使用其他名称或版本号',
-                }), 400
-
-            existing_model.name = name
-            existing_model.description = description
-            existing_model.version = version
-            existing_model.model_path = model_url
-            existing_model.status = 0
-            existing_model.updated_at = datetime.utcnow()
-            if image_url and not existing_model.image_url:
-                existing_model.image_url = image_url
-            if class_names:
-                existing_model.class_names = dump_class_names_json(class_names)
-                existing_model.selected_class_names = dump_class_names_json(class_names)
-            model = existing_model
-            action_msg = '模型已更新发布'
-        else:
-            conflict = Model.query.filter(
-                db.func.lower(Model.name) == db.func.lower(name),
-                Model.version == version,
-            ).first()
-            if conflict:
-                return jsonify({
-                    'code': 400,
-                    'msg': f'模型"{name}"版本"{version}"已存在，请使用其他名称或版本号',
-                }), 400
-
-            model = Model(
-                name=name,
-                description=description,
-                model_path=model_url,
-                image_url=image_url,
-                version=version,
-                status=0,
-                class_names=dump_class_names_json(class_names) if class_names else None,
-                selected_class_names=dump_class_names_json(class_names) if class_names else None,
-            )
-            db.session.add(model)
-            action_msg = '模型发布成功'
-
-        db.session.flush()
-        _set_published_model_id(task, model.id, version)
-        db.session.commit()
+        model_id = publish_train_task_to_model(
+            task,
+            name=name,
+            description=description,
+            version=version,
+            published_model_id=published_model_id,
+            model_origin='train',
+            origin_ref=f'train_task:{task.id}',
+        )
+        model = Model.query.get(model_id)
+        action_msg = '模型已更新发布' if published_model_id else '模型发布成功'
 
         return jsonify({
             'code': 0,

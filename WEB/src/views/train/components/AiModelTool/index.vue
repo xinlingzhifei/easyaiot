@@ -199,7 +199,7 @@
               </div>
               <div v-if="state.camerasLoading" class="class-tags-status">正在加载摄像头列表...</div>
               <div v-else-if="cameraOptions.length === 0" class="class-tags-status class-tags-status--warn">
-                暂无可用 RTSP 摄像头，请先在摄像头管理中注册设备
+                暂无可用摄像头，请先在摄像头管理中注册设备
               </div>
               <div v-else-if="selectedCameraRtsp" class="camera-rtsp-hint">
                 取流地址：{{ maskRtspUrl(selectedCameraRtsp) }}
@@ -519,6 +519,7 @@ import { getModelPage, runInference, runClusterInference, uploadInputFile, getIn
 import { getLLMList, visionInference, activateLLM, type LLMModel } from "@/api/device/llm";
 import { getDeviceList, startStreamForwarding, getStreamStatus, type DeviceInfo } from '@/api/device/camera';
 import { rewriteStreamHostToPageHost, convertRtmpToHttp, resolveMonitorPlayUrl } from '@/views/camera/utils/devicePlay';
+import { isNvrListRow } from '@/views/camera/utils/deviceLabel';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import { ApiSelect } from '@/components/Form';
@@ -724,7 +725,36 @@ const getCameraRtspUrl = (device: DeviceInfo): string | null => {
   return url.startsWith('rtsp://') ? url : null;
 };
 
-const cameraOptions = computed(() => state.cameras.filter((cam) => getCameraRtspUrl(cam)));
+/** 推理下拉可选设备：含直连 RTSP、GB28181、NVR 通道等（后端可通过 device_id 取流） */
+const isSelectableInferenceCamera = (device: DeviceInfo): boolean => {
+  const id = (device.id || '').trim();
+  if (!id) return false;
+  return !isNvrListRow(device);
+};
+
+const cameraOptions = computed(() =>
+  state.cameras
+    .filter(isSelectableInferenceCamera)
+    .slice()
+    .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id), 'zh-CN')),
+);
+
+const resolveHistoryCameraId = (inputSource: string): string | null => {
+  const source = (inputSource || '').trim();
+  if (!source) return null;
+  if (source.startsWith('device:')) {
+    return source.slice('device:'.length).trim() || null;
+  }
+  return null;
+};
+
+const matchHistoryCamera = (inputSource: string): DeviceInfo | undefined => {
+  const deviceId = resolveHistoryCameraId(inputSource);
+  if (deviceId) {
+    return state.cameras.find((cam) => cam.id === deviceId);
+  }
+  return state.cameras.find((cam) => getCameraRtspUrl(cam) === inputSource);
+};
 
 const selectedCamera = computed(() =>
   state.cameras.find((cam) => cam.id === state.selectedCameraId) || null,
@@ -2211,7 +2241,7 @@ const handleHistoryRecordChange = async () => {
     } else if (inferenceType === 'rtsp') {
       state.activeSource = 'camera';
       await loadCameras();
-      const matchedCamera = state.cameras.find((cam) => getCameraRtspUrl(cam) === inputSource);
+      const matchedCamera = matchHistoryCamera(inputSource);
       if (matchedCamera) {
         state.selectedCameraId = matchedCamera.id;
         await handleCameraChange();

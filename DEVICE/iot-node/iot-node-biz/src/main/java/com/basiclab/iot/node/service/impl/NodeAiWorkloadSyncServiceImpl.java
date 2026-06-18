@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.io.File;
 import java.util.List;
+import java.util.Locale;
 
 import static com.basiclab.iot.common.exception.util.ServiceExceptionUtil.exception;
 import static com.basiclab.iot.node.enums.ErrorCodeConstants.AI_SOURCE_NOT_FOUND;
@@ -45,8 +46,17 @@ public class NodeAiWorkloadSyncServiceImpl implements NodeAiWorkloadSyncService 
             log.debug("控制面节点跳过 AI SSH 同步 nodeId={} type={}", node.getId(), workloadType);
             return;
         }
-        WorkloadBundleTypeEnum bundle = WorkloadBundleTypeEnum.AI_SERVICE;
-        List<String> relativePaths = WorkloadBundleDeployUtil.syncScriptRelativePaths(bundle);
+        WorkloadBundleTypeEnum bundle = WorkloadBundleTypeEnum.of(
+                workloadType == null ? "" : workloadType.trim().toLowerCase(Locale.ROOT));
+        if (bundle == null) {
+            bundle = WorkloadBundleTypeEnum.AI_SERVICE;
+        }
+        List<String> relativePaths;
+        if (bundle == WorkloadBundleTypeEnum.AUTO_LABEL) {
+            relativePaths = WorkloadBundleDeployUtil.syncAutoLabelRelativePaths();
+        } else {
+            relativePaths = WorkloadBundleDeployUtil.syncScriptRelativePaths(bundle);
+        }
         if (relativePaths.isEmpty()) {
             return;
         }

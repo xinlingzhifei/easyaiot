@@ -115,6 +115,7 @@ def create_task():
             defense_mode=data.get('defense_mode'),
             defense_schedule=data.get('defense_schedule'),
             schedule_policy=data.get('schedule_policy', 'local'),
+            prefer_gpu=data.get('prefer_gpu', True),
             target_node_id=data.get('target_node_id'),
             patrol_mode=data.get('patrol_mode', 'pool'),
             patrol_interval_sec=data.get('patrol_interval_sec', 10),
@@ -768,3 +769,111 @@ def get_service_logs(service_obj, lines: int = 100, date: str = None):
             'code': 500,
             'msg': f'服务器内部错误: {str(e)}'
         }), 500
+
+
+# ====================== AI 后处理 ======================
+@algorithm_task_bp.route('/task/<int:task_id>/post-process/status', methods=['GET'])
+def get_post_process_status(task_id):
+    """获取算法任务后处理状态与 IDE 地址"""
+    try:
+        from app.services.post_process_service import get_post_process_status as _status
+        task = AlgorithmTask.query.get_or_404(task_id)
+        return jsonify({'code': 0, 'msg': 'success', 'data': _status(task)})
+    except Exception as e:
+        logger.error('获取后处理状态失败: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@algorithm_task_bp.route('/task/<int:task_id>/post-process/init', methods=['POST'])
+def init_post_process_workspace(task_id):
+    """初始化后处理工作区并启用后处理"""
+    try:
+        from app.services.post_process_service import ensure_task_workspace
+        task = AlgorithmTask.query.get_or_404(task_id)
+        data = ensure_task_workspace(task)
+        return jsonify({'code': 0, 'msg': 'success', 'data': data})
+    except Exception as e:
+        logger.error('初始化后处理工作区失败: %s', e, exc_info=True)
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@algorithm_task_bp.route('/task/<int:task_id>/post-process/ide-url', methods=['GET'])
+def get_post_process_ide_url(task_id):
+    """获取 VSCode IDE 打开地址"""
+    try:
+        from app.services.post_process_service import ensure_task_workspace, build_ide_url
+        task = AlgorithmTask.query.get_or_404(task_id)
+        ensure_task_workspace(task)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': {
+                'ide_url': build_ide_url(task_id),
+                'task_id': task_id,
+                'task_name': task.task_name,
+            },
+        })
+    except Exception as e:
+        logger.error('获取 IDE 地址失败: %s', e, exc_info=True)
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@algorithm_task_bp.route('/task/<int:task_id>/post-process/toggle', methods=['PUT'])
+def toggle_post_process(task_id):
+    """启用/停用后处理"""
+    try:
+        data = request.get_json() or {}
+        enabled = data.get('enabled')
+        if enabled is None:
+            return jsonify({'code': 400, 'msg': '缺少 enabled 参数'}), 400
+        task = AlgorithmTask.query.get_or_404(task_id)
+        task.post_process_enabled = bool(enabled)
+        if data.get('post_process_script'):
+            task.post_process_script = str(data['post_process_script']).strip() or 'post_process.py'
+        if data.get('post_process_replicas') is not None:
+            try:
+                task.post_process_replicas = max(1, int(data['post_process_replicas']))
+            except (TypeError, ValueError):
+                pass
+        db.session.commit()
+        return jsonify({'code': 0, 'msg': 'success', 'data': task.to_dict()})
+    except Exception as e:
+        logger.error('切换后处理状态失败: %s', e, exc_info=True)
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@algorithm_task_bp.route('/task/<int:task_id>/post-process/results', methods=['GET'])
+def list_post_process_results(task_id):
+    """查询后处理结果（Kafka 消费者异步入库）"""
+    try:
+        from app.services.post_process_result_service import list_post_process_results as _list
+        page_no = int(request.args.get('pageNo', 1))
+        page_size = int(request.args.get('pageSize', 20))
+        device_id = request.args.get('device_id', '').strip() or None
+        begin_raw = request.args.get('begin_datetime', '').strip() or None
+        end_raw = request.args.get('end_datetime', '').strip() or None
+
+        begin_dt = None
+        end_dt = None
+        if begin_raw:
+            begin_dt = datetime.fromisoformat(begin_raw.replace('Z', '+00:00'))
+        if end_raw:
+            end_dt = datetime.fromisoformat(end_raw.replace('Z', '+00:00'))
+
+        result = _list(
+            task_id,
+            page_no=page_no,
+            page_size=page_size,
+            device_id=device_id,
+            begin_datetime=begin_dt,
+            end_datetime=end_dt,
+        )
+        return jsonify({'code': 0, 'msg': 'success', **result})
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error('查询后处理结果失败: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500

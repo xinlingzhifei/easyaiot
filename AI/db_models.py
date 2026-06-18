@@ -39,6 +39,10 @@ class Model(db.Model):
     torchscript_model_path = db.Column(db.String(500))
     tensorrt_model_path = db.Column(db.String(500))
     openvino_model_path = db.Column(db.String(500))
+    # 模型来源：upload | auto_label | smart_label | train | import
+    model_origin = db.Column(db.String(32), default='upload', nullable=True)
+    # 来源引用，如 dataset:15 / train_task:88
+    origin_ref = db.Column(db.String(128), nullable=True)
 
     export_records = db.relationship('ExportRecord', back_populates='model', cascade='all, delete-orphan')
 
@@ -59,6 +63,12 @@ class TrainTask(db.Model):
     metrics_path = db.Column(db.Text)
     minio_model_path = db.Column(db.String(500))
     train_results_path = db.Column(db.String(500))
+    schedule_policy = db.Column(db.String(20), default='local', nullable=True,
+                               comment='调度策略: local/auto/node')
+    target_node_id = db.Column(db.BigInteger, nullable=True, comment='指定部署节点ID')
+    node_id = db.Column(db.BigInteger, nullable=True, comment='实际运行节点ID')
+    service_server_ip = db.Column(db.String(128), nullable=True, comment='实际运行节点 IP/主机')
+    service_process_id = db.Column(db.BigInteger, nullable=True, comment='远程 Worker PID')
 
 class ExportRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -471,6 +481,10 @@ class AutoLabelTask(db.Model):
     bootstrap_selection = db.Column(db.String(30), default='unlabeled_first', comment='冷启动选图策略')
     review_passed = db.Column(db.Boolean, default=False, comment='人工抽检是否通过')
     return_masks = db.Column(db.Boolean, default=False, comment='SAM 是否返回 mask')
+    pipeline_config = db.Column(db.Text, nullable=True, comment='无人值守流水线配置 JSON')
+    execution_mode = db.Column(db.String(20), default='local', comment='执行模式[local/cluster]')
+    queue_priority = db.Column(db.Integer, default=0, comment='队列优先级，越大越优先')
+    selected_frame_task_ids = db.Column(db.Text, nullable=True, comment='选中的帧捕获任务 ID JSON 数组')
     created_at = db.Column(db.DateTime, default=beijing_now, comment='创建时间')
     updated_at = db.Column(db.DateTime, default=beijing_now, onupdate=beijing_now, comment='更新时间')
     started_at = db.Column(db.DateTime, nullable=True, comment='开始时间')
@@ -502,6 +516,10 @@ class AutoLabelTask(db.Model):
             'bootstrap_selection': self.bootstrap_selection,
             'review_passed': self.review_passed,
             'return_masks': self.return_masks,
+            'pipeline_config': json.loads(self.pipeline_config) if self.pipeline_config else None,
+            'execution_mode': self.execution_mode or 'local',
+            'queue_priority': self.queue_priority or 0,
+            'selected_frame_task_ids': json.loads(self.selected_frame_task_ids) if self.selected_frame_task_ids else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None,
@@ -511,6 +529,73 @@ class AutoLabelTask(db.Model):
     
     def __repr__(self):
         return f'<AutoLabelTask {self.id} ({self.status})>'
+
+
+class AutoLabelSubTask(db.Model):
+    """自动标注子任务（按摄像头/分片排队，可调度到集群节点）"""
+    __tablename__ = 'auto_label_subtask'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    parent_task_id = db.Column(db.Integer, db.ForeignKey('auto_label_task.id'), nullable=False, comment='父任务ID')
+    dataset_id = db.Column(db.BigInteger, nullable=False, comment='数据集ID')
+    frame_task_id = db.Column(db.BigInteger, nullable=True, comment='帧捕获任务/摄像头ID')
+    frame_task_name = db.Column(db.String(200), nullable=True, comment='摄像头任务名称')
+    rtmp_url = db.Column(db.Text, nullable=True, comment='视频流地址')
+    subtask_type = db.Column(db.String(30), default='capture_label', comment='子任务类型')
+    status = db.Column(
+        db.String(20), default='QUEUED', nullable=False,
+        comment='QUEUED/DISPATCHING/RUNNING/COMPLETED/FAILED',
+    )
+    queue_position = db.Column(db.Integer, default=0, comment='队列位置')
+    assigned_node_id = db.Column(db.Integer, nullable=True, comment='分配的节点ID')
+    assigned_node_host = db.Column(db.String(100), nullable=True, comment='节点主机')
+    workload_id = db.Column(db.String(64), nullable=True, comment='节点工作负载绑定ID')
+    captured_count = db.Column(db.Integer, default=0)
+    labeled_count = db.Column(db.Integer, default=0)
+    failed_count = db.Column(db.Integer, default=0)
+    processed_images = db.Column(db.Integer, default=0)
+    error_message = db.Column(db.Text, nullable=True)
+    config_json = db.Column(db.Text, nullable=True, comment='子任务配置 JSON')
+    created_at = db.Column(db.DateTime, default=beijing_now)
+    updated_at = db.Column(db.DateTime, default=beijing_now, onupdate=beijing_now)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    parent_task = db.relationship('AutoLabelTask', backref=db.backref('subtasks', lazy='dynamic'))
+
+    def to_dict(self):
+        cfg = {}
+        if self.config_json:
+            try:
+                cfg = json.loads(self.config_json) if isinstance(self.config_json, str) else self.config_json
+            except Exception:
+                cfg = {}
+        return {
+            'id': self.id,
+            'parent_task_id': self.parent_task_id,
+            'dataset_id': self.dataset_id,
+            'frame_task_id': self.frame_task_id,
+            'frame_task_name': self.frame_task_name,
+            'rtmp_url': self.rtmp_url,
+            'subtask_type': self.subtask_type,
+            'status': self.status,
+            'queue_position': self.queue_position,
+            'assigned_node_id': self.assigned_node_id,
+            'assigned_node_host': self.assigned_node_host,
+            'captured_count': self.captured_count,
+            'labeled_count': self.labeled_count,
+            'failed_count': self.failed_count,
+            'processed_images': self.processed_images,
+            'error_message': self.error_message,
+            'config': cfg,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+    def __repr__(self):
+        return f'<AutoLabelSubTask {self.id} task={self.parent_task_id} ({self.status})>'
 
 
 class AutoLabelResult(db.Model):
@@ -542,6 +627,60 @@ class AutoLabelResult(db.Model):
     
     def __repr__(self):
         return f'<AutoLabelResult {self.id} ({self.status})>'
+
+
+class AutoLabelModelHistory(db.Model):
+    """数据集自动标注模型更新历史（条数上限可配置，默认读环境变量）"""
+    __tablename__ = 'auto_label_model_history'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    dataset_id = db.Column(db.BigInteger, nullable=False, index=True, comment='数据集ID')
+    model_id = db.Column(db.Integer, nullable=True, comment='发布后模型ID')
+    train_task_id = db.Column(db.Integer, nullable=True, comment='训练任务ID')
+    source_model_id = db.Column(db.Integer, nullable=True, comment='微调基座模型ID')
+    version_no = db.Column(db.Integer, nullable=False, default=1, comment='更新序号')
+    annotated_count = db.Column(db.Integer, default=0, comment='参与训练的已标注张数')
+    class_names = db.Column(db.Text, nullable=True, comment='类别 JSON')
+    map50 = db.Column(db.Float, nullable=True, comment='训练 mAP50')
+    status = db.Column(
+        db.String(20), default='PENDING', nullable=False,
+        comment='PENDING/TRAINING/COMPLETED/FAILED',
+    )
+    trigger_source = db.Column(
+        db.String(30), default='manual', nullable=False,
+        comment='manual/pipeline',
+    )
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=beijing_now, comment='创建时间')
+    completed_at = db.Column(db.DateTime, nullable=True, comment='完成时间')
+
+    def to_dict(self):
+        import json as _json
+        names = None
+        if self.class_names:
+            try:
+                names = _json.loads(self.class_names)
+            except Exception:
+                names = self.class_names
+        return {
+            'id': self.id,
+            'dataset_id': self.dataset_id,
+            'model_id': self.model_id,
+            'train_task_id': self.train_task_id,
+            'source_model_id': self.source_model_id,
+            'version_no': self.version_no,
+            'annotated_count': self.annotated_count,
+            'class_names': names,
+            'map50': self.map50,
+            'status': self.status,
+            'trigger_source': self.trigger_source,
+            'error_message': self.error_message,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+    def __repr__(self):
+        return f'<AutoLabelModelHistory ds={self.dataset_id} v{self.version_no} ({self.status})>'
 
 
 def ensure_train_task_name_column(engine):
@@ -583,6 +722,33 @@ def ensure_train_task_dataset_columns(engine):
                 log.info('已为 train_task 表添加 dataset_version 列')
     except Exception as e:
         log.warning('ensure_train_task_dataset_columns: %s', e)
+
+
+def ensure_train_task_cluster_columns(engine):
+    """老库 train_task 表补集群调度相关列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'schedule_policy': 'VARCHAR(20) DEFAULT \'local\'',
+        'target_node_id': 'BIGINT',
+        'node_id': 'BIGINT',
+        'service_server_ip': 'VARCHAR(128)',
+        'service_process_id': 'BIGINT',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'train_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('train_task')}
+        with engine.begin() as conn:
+            for col, ddl in columns.items():
+                if col not in col_names:
+                    conn.execute(text(f'ALTER TABLE train_task ADD COLUMN {col} {ddl}'))
+                    log.info('已为 train_task 表添加 %s 列', col)
+    except Exception as e:
+        log.warning('ensure_train_task_cluster_columns: %s', e)
 
 
 def ensure_model_class_columns(engine):
@@ -656,6 +822,137 @@ def ensure_auto_label_task_sam_columns(engine):
             log.info('已为 auto_label_task 表添加 %s 列', col)
     except Exception as e:
         log.warning('ensure_auto_label_task_sam_columns: %s', e)
+
+
+def ensure_auto_label_task_pipeline_column(engine):
+    """老库 auto_label_task 表补 pipeline_config 列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'auto_label_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('auto_label_task')}
+        if 'pipeline_config' in col_names:
+            return
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE auto_label_task ADD COLUMN pipeline_config TEXT'))
+        log.info('已为 auto_label_task 表添加 pipeline_config 列')
+    except Exception as e:
+        log.warning('ensure_auto_label_task_pipeline_column: %s', e)
+
+
+def ensure_auto_label_task_cluster_columns(engine):
+    """老库 auto_label_task 表补集群/队列相关列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'execution_mode': "VARCHAR(20) DEFAULT 'local'",
+        'queue_priority': 'INTEGER DEFAULT 0',
+        'selected_frame_task_ids': 'TEXT',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'auto_label_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('auto_label_task')}
+        for col, ddl in columns.items():
+            if col in col_names:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE auto_label_task ADD COLUMN {col} {ddl}'))
+            log.info('已为 auto_label_task 表添加 %s 列', col)
+    except Exception as e:
+        log.warning('ensure_auto_label_task_cluster_columns: %s', e)
+
+
+def ensure_auto_label_subtask_table(engine):
+    """确保 auto_label_subtask 表存在。"""
+    import logging
+    from sqlalchemy import inspect
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'auto_label_subtask' in inspector.get_table_names():
+            return
+        AutoLabelSubTask.__table__.create(bind=engine, checkfirst=True)
+        log.info('已创建 auto_label_subtask 表')
+    except Exception as e:
+        log.warning('ensure_auto_label_subtask_table: %s', e)
+
+
+def ensure_auto_label_model_history_table(engine):
+    """确保 auto_label_model_history 表存在。"""
+    import logging
+    from sqlalchemy import inspect
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'auto_label_model_history' in inspector.get_table_names():
+            return
+        AutoLabelModelHistory.__table__.create(bind=engine, checkfirst=True)
+        log.info('已创建 auto_label_model_history 表')
+    except Exception as e:
+        log.warning('ensure_auto_label_model_history_table: %s', e)
+
+
+def ensure_model_origin_columns(engine):
+    """老库 model 表无 model_origin / origin_ref 列时补列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    try:
+        inspector = inspect(engine)
+        if 'model' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('model')}
+        with engine.begin() as conn:
+            if 'model_origin' not in col_names:
+                conn.execute(text("ALTER TABLE model ADD COLUMN model_origin VARCHAR(32) DEFAULT 'upload'"))
+                log.info('已为 model 表添加 model_origin 列')
+            if 'origin_ref' not in col_names:
+                conn.execute(text('ALTER TABLE model ADD COLUMN origin_ref VARCHAR(128)'))
+                log.info('已为 model 表添加 origin_ref 列')
+        backfill_model_origin(engine)
+    except Exception as e:
+        log.warning('ensure_model_origin_columns: %s', e)
+
+
+def backfill_model_origin(engine):
+    """根据名称/描述推断历史模型的 model_origin（仅填空值）。"""
+    import logging
+    from sqlalchemy import text
+
+    log = logging.getLogger(__name__)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE model SET model_origin = 'auto_label'
+                WHERE (model_origin IS NULL OR model_origin = '' OR model_origin = 'upload')
+                  AND (name ILIKE 'auto-label-%' OR description ILIKE '%自动标注%')
+            """))
+            conn.execute(text("""
+                UPDATE model SET model_origin = 'smart_label'
+                WHERE (model_origin IS NULL OR model_origin = '' OR model_origin = 'upload')
+                  AND (description ILIKE '%智能标注%' OR description ILIKE '%sam_pipeline%'
+                       OR description ILIKE '%sam 冷启动%')
+            """))
+            conn.execute(text("""
+                UPDATE model SET model_origin = 'train'
+                WHERE (model_origin IS NULL OR model_origin = '' OR model_origin = 'upload')
+                  AND (description ILIKE '%训练任务%' OR description ILIKE '%train_task%'
+                       OR description ILIKE '%从训练任务%')
+            """))
+        log.info('已尝试回填历史 model_origin')
+    except Exception as e:
+        log.warning('backfill_model_origin: %s', e)
 
 
 def ensure_model_table_status_column(engine):
