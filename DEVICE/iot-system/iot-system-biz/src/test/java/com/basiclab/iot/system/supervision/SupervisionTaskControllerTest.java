@@ -77,6 +77,59 @@ class SupervisionTaskControllerTest {
     }
 
     @Test
+    void submitTaskRejectsInvalidRequiredFieldsBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        assertInvalidSubmitFieldRejected(
+                mockMvc,
+                applicationService,
+                0,
+                "confirmed_violation",
+                "Handled according to SOP",
+                "taskId must be positive"
+        );
+        assertInvalidSubmitFieldRejected(
+                mockMvc,
+                applicationService,
+                2001,
+                " ",
+                "Handled according to SOP",
+                "resultCategory must not be blank"
+        );
+        assertInvalidSubmitFieldRejected(
+                mockMvc,
+                applicationService,
+                2001,
+                "confirmed_violation",
+                " ",
+                "handlingNote must not be blank"
+        );
+    }
+
+    private static void assertInvalidSubmitFieldRejected(MockMvc mockMvc,
+                                                         CapturingWorkflowApplicationService applicationService,
+                                                         long taskId,
+                                                         String resultCategory,
+                                                         String handlingNote,
+                                                         String expectedMessage) throws Exception {
+        mockMvc.perform(post("/system/supervision/tasks/submit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": %d,
+                                  "resultCategory": "%s",
+                                  "handlingNote": "%s"
+                                }
+                                """.formatted(taskId, resultCategory, handlingNote)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
+
+        assertNull(applicationService.submitRequest());
+    }
+
+    @Test
     void acceptTaskRejectsInvalidRequiredFieldsBeforeApplicationFacade() throws Exception {
         CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
         MockMvc mockMvc = mockMvc(applicationService);
