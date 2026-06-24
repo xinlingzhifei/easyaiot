@@ -3,9 +3,13 @@ package com.basiclab.iot.system.controller.admin.supervision;
 import com.basiclab.iot.common.domain.CommonResult;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventCreateReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.CloseCheckReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventOperationRespVO;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.validation.annotation.Validated;
@@ -42,6 +46,24 @@ public class SupervisionEventController {
                 reqVO.getSourcePayloadHash()
         ));
         return success(AlertEventRespVO.from(response));
+    }
+
+    @PostMapping("/close-check/approve")
+    @Operation(summary = "Approve supervision event close check")
+    public CommonResult<EventOperationRespVO> approveCloseCheck(@Valid @RequestBody CloseCheckReqVO reqVO) {
+        OperationResponse response = supervisionWorkflowApplicationService.approveCloseCheck(
+                new CloseCheckRequest(reqVO.getEventId())
+        );
+        return success(EventOperationRespVO.from(response));
+    }
+
+    @PostMapping("/close-check/reject")
+    @Operation(summary = "Reject supervision event close check")
+    public CommonResult<EventOperationRespVO> rejectCloseCheck(@Valid @RequestBody CloseCheckReqVO reqVO) {
+        OperationResponse response = supervisionWorkflowApplicationService.rejectCloseCheck(
+                new CloseCheckRequest(reqVO.getEventId())
+        );
+        return success(EventOperationRespVO.from(response));
     }
 
 }

@@ -15,6 +15,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionServ
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -67,6 +69,44 @@ class SupervisionEventControllerTest {
                 LocalDateTime.of(2026, 6, 11, 9, 30),
                 "payload-hash-001"
         ), applicationService.request());
+    }
+
+    @Test
+    void approveCloseCheckMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(post("/system/supervision/events/close-check/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "eventId": 1001
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(true));
+
+        assertEquals(new CloseCheckRequest(1001L), applicationService.approveCloseCheckRequest());
+    }
+
+    @Test
+    void rejectCloseCheckMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(post("/system/supervision/events/close-check/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "eventId": 1001
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(true));
+
+        assertEquals(new CloseCheckRequest(1001L), applicationService.rejectCloseCheckRequest());
     }
 
     @Test
@@ -135,6 +175,8 @@ class SupervisionEventControllerTest {
     private static final class CapturingWorkflowApplicationService extends SupervisionWorkflowApplicationService {
 
         private AlertEventRequest request;
+        private CloseCheckRequest approveCloseCheckRequest;
+        private CloseCheckRequest rejectCloseCheckRequest;
 
         private CapturingWorkflowApplicationService() {
             super(
@@ -171,8 +213,28 @@ class SupervisionEventControllerTest {
             );
         }
 
+        @Override
+        public OperationResponse approveCloseCheck(CloseCheckRequest request) {
+            this.approveCloseCheckRequest = request;
+            return new OperationResponse(true);
+        }
+
+        @Override
+        public OperationResponse rejectCloseCheck(CloseCheckRequest request) {
+            this.rejectCloseCheckRequest = request;
+            return new OperationResponse(true);
+        }
+
         private AlertEventRequest request() {
             return request;
+        }
+
+        private CloseCheckRequest approveCloseCheckRequest() {
+            return approveCloseCheckRequest;
+        }
+
+        private CloseCheckRequest rejectCloseCheckRequest() {
+            return rejectCloseCheckRequest;
         }
 
     }
