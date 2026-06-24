@@ -298,10 +298,10 @@ const canScrollRight = ref(false)
 const internalVideoList = ref<any[]>([])
 
 const dashboardGuardApi: DashboardGuardTaskApi = {
-  listAlgorithmTasks,
+  listAlgorithmTasks: (params) => listAlgorithmTasks(params, { errorMessageMode: 'none' }),
   createAlgorithmTask: createAlgorithmTask as DashboardGuardTaskApi['createAlgorithmTask'],
-  startAlgorithmTask,
-  stopAlgorithmTask,
+  startAlgorithmTask: (taskId) => startAlgorithmTask(taskId, { errorMessageMode: 'none' }),
+  stopAlgorithmTask: (taskId) => stopAlgorithmTask(taskId, { errorMessageMode: 'none' }),
 }
 
 function isKnownLayout(layout: string | undefined) {

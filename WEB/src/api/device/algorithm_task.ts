@@ -6,6 +6,9 @@
 import {defHttp} from '@/utils/http/axios';
 
 const ALGORITHM_PREFIX = '/video/algorithm';
+type AlgorithmTaskRequestOptions = {
+  errorMessageMode?: 'none' | 'message' | 'modal';
+};
 
 // 通用请求封装
 const commonApi = <T = any>(method: 'get' | 'post' | 'delete' | 'put', url: string, options: { params?: any; data?: any; errorMessageMode?: 'none' | 'message' | 'modal'; timeout?: number } = {}) => {
@@ -128,8 +131,11 @@ export const listAlgorithmTasks = (params?: {
   device_id?: string;
   task_type?: 'realtime' | 'snap';
   is_enabled?: boolean;
-}) => {
-  return commonApi<AlgorithmTaskListResponse>('get', `${ALGORITHM_PREFIX}/task/list`, { params });
+}, options: AlgorithmTaskRequestOptions = {}) => {
+  return commonApi<AlgorithmTaskListResponse>('get', `${ALGORITHM_PREFIX}/task/list`, {
+    params,
+    errorMessageMode: options.errorMessageMode,
+  });
 };
 
 export const getAlgorithmTask = (task_id: number) => {
@@ -206,19 +212,19 @@ export const deleteAlgorithmTask = (task_id: number) => {
   return commonApi('delete', `${ALGORITHM_PREFIX}/task/${task_id}`);
 };
 
-export const startAlgorithmTask = (task_id: number) => {
+export const startAlgorithmTask = (task_id: number, options: AlgorithmTaskRequestOptions = {}) => {
   return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
     'post',
     `${ALGORITHM_PREFIX}/task/${task_id}/start`,
-    { timeout: 30000 }
+    { timeout: 30000, errorMessageMode: options.errorMessageMode }
   );
 };
 
-export const stopAlgorithmTask = (task_id: number) => {
+export const stopAlgorithmTask = (task_id: number, options: AlgorithmTaskRequestOptions = {}) => {
   return commonApi<{ code: number; msg: string; data: AlgorithmTask }>(
     'post',
     `${ALGORITHM_PREFIX}/task/${task_id}/stop`,
-    { timeout: 30000 }
+    { timeout: 30000, errorMessageMode: options.errorMessageMode }
   );
 };
 

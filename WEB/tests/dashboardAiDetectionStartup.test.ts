@@ -9,6 +9,11 @@ const videoMonitor = readFileSync(
   'utf8',
 )
 
+const algorithmTaskApi = readFileSync(
+  fileURLToPath(new URL('../src/api/device/algorithm_task.ts', import.meta.url)),
+  'utf8',
+)
+
 assert.match(
   videoMonitor,
   /data-testid="monitor-ai-toggle"|<a-checkbox|AI_TOGGLE_STORAGE_KEY|readPersistedEnableAi|persistEnableAi|const enableAi/,
@@ -25,6 +30,24 @@ assert.match(
   videoMonitor,
   /async function ensureDashboardAiRecognitionForDevices[\s\S]*await startDashboardGuardTask\(\{ scope, api: dashboardGuardApi \}\)/,
   'The dashboard AI toggle should call the shared backend recognition task starter.',
+)
+
+assert.match(
+  algorithmTaskApi,
+  /listAlgorithmTasks[\s\S]*options:\s*AlgorithmTaskRequestOptions[\s\S]*errorMessageMode:\s*options\.errorMessageMode/,
+  'Algorithm task list calls should allow dashboard auto-start to suppress the global generic error toast.',
+)
+
+assert.match(
+  algorithmTaskApi,
+  /startAlgorithmTask[\s\S]*options:\s*AlgorithmTaskRequestOptions[\s\S]*errorMessageMode:\s*options\.errorMessageMode[\s\S]*stopAlgorithmTask[\s\S]*options:\s*AlgorithmTaskRequestOptions[\s\S]*errorMessageMode:\s*options\.errorMessageMode/,
+  'Algorithm task start/stop calls should allow dashboard auto-start to suppress the global generic error toast.',
+)
+
+assert.match(
+  videoMonitor,
+  /listAlgorithmTasks\(params[\s\S]*errorMessageMode:\s*'none'[\s\S]*startAlgorithmTask\(taskId,[\s\S]*errorMessageMode:\s*'none'[\s\S]*stopAlgorithmTask\(taskId,[\s\S]*errorMessageMode:\s*'none'/,
+  'Dashboard AI auto-start should handle task API errors itself instead of also showing the global 系统异常 toast after refresh.',
 )
 
 assert.match(
