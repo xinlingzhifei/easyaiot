@@ -15,6 +15,7 @@ export interface MonitorLayoutPreset {
   id: number
   name?: string
   layout: string
+  enableAi?: boolean
   slots: MonitorLayoutSlot[]
   updatedAt: number
 }

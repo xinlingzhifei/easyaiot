@@ -20,27 +20,27 @@ assert.match(
   'Dashboard live video should keep a stable storage key for restoring visible streams after route navigation.',
 )
 
-assert.doesNotMatch(
+assert.match(
   videoMonitor,
-  /AI_TOGGLE_STORAGE_KEY|readPersistedEnableAi|persistEnableAi|const enableAi/,
-  'Dashboard live video should no longer restore a hidden AI choice when the user returns to the page.',
+  /const AI_TOGGLE_STORAGE_KEY = 'yfeieye\.dashboard\.monitor\.enableAi'[\s\S]*function readPersistedEnableAi\(\)[\s\S]*return window\.sessionStorage\.getItem\(AI_TOGGLE_STORAGE_KEY\) === 'true'[\s\S]*const enableAi = ref\(readPersistedEnableAi\(\)\)/,
+  'Dashboard live video should persist the explicit AI choice and default it to off unless the user enables it.',
 )
 
 assert.match(
   videoMonitor,
-  /return pickDirectPlayUrls\(dev,\s*false\)/,
-  'Dashboard direct camera playback should always resolve the original stream after route navigation.',
+  /return pickDirectPlayUrls\(dev,\s*enableAi\.value\)/,
+  'Dashboard direct camera playback should restore through the current explicit AI toggle state after route navigation.',
 )
 
 assert.match(
   videoMonitor,
-  /resolveGbChannelPlayUrls\([\s\S]*\{\s*enableAi:\s*false,/,
-  'Dashboard GB28181 playback should always resolve the raw WVP stream after route navigation.',
+  /resolveGbChannelPlayUrls\([\s\S]*\{\s*enableAi:\s*enableAi\.value,/,
+  'Dashboard GB28181 playback should restore through the current explicit AI toggle state after route navigation.',
 )
 
 assert.match(
   videoMonitor,
-  /async function playSavedSlot[\s\S]*const \{ url, playerEngine, videoCodec \} = await resolveGbChannelPlayUrls[\s\S]*playerEngine,[\s\S]*videoCodec,/,
+  /async function playSavedSlot[\s\S]*resolveGbChannelPlayUrls[\s\S]*playerEngine,[\s\S]*videoCodec,/,
   'Restored GB28181 dashboard slots should keep player engine and codec metadata so H265/WVP streams render.',
 )
 
@@ -58,8 +58,8 @@ assert.match(
 
 assert.match(
   videoMonitor,
-  /async function restorePersistedVideoState\(\)[\s\S]*reloadVideoAtIndex\(index\)/,
-  'Dashboard live video should reload restored devices instead of only rendering stale placeholder data.',
+  /async function restorePersistedVideoState\(\)[\s\S]*ensureDashboardAiRecognitionForVisibleDevices\(\)[\s\S]*reloadVideoAtIndex\(index\)/,
+  'Dashboard live video should restart recognition before reloading restored AI streams.',
 )
 
 assert.match(

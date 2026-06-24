@@ -2,6 +2,9 @@
   <div class="video-monitor" :class="{ 'preset-panel-open': presetPanelOpen }" data-testid="monitor-video">
     <div class="monitor-header" :class="{ 'panel-open': presetPanelOpen }">
       <div class="header-title">实时监控</div>
+      <div class="enable-ai-wrap" data-testid="monitor-ai-toggle">
+        <a-checkbox v-model:checked="enableAi">启用 AI</a-checkbox>
+      </div>
       <div class="header-time">{{ currentTime }}</div>
       <div class="header-location">{{ currentLocation }}</div>
       <div class="header-toolbar">
@@ -167,6 +170,7 @@
 <script lang="ts" setup>
 import { ref, computed, watch, onMounted, onUnmounted, onActivated, nextTick } from 'vue'
 import { Icon } from '@/components/Icon'
+import { Checkbox as ACheckbox } from 'ant-design-vue'
 import { queryAlarmList } from '@/api/device/calculate'
 import { playAlertRecordInModal } from '@/utils/alertRecordPlayback'
 import { useMessage } from '@/hooks/web/useMessage'
@@ -178,11 +182,26 @@ import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
 import { formatAlertListTitle, isSnapAlertTask } from '@/views/alert/alertDisplay'
 import { formatCameraDeviceLabel, formatCameraShortName, isGb28181Device } from '@/views/camera/utils/deviceLabel'
 import {
+  AI_PLAY_FALLBACK_MS,
+  loadGbChannelSyncedDevice,
   pickDirectPlayUrls,
   resolveGbChannelPlayUrls,
 } from '@/views/camera/utils/devicePlay'
 import { parseGbChannelKey } from '@/views/camera/utils/gb28181Tree'
 import type { MonitorTreeDeviceNode } from '@/api/device/camera'
+import {
+  createAlgorithmTask,
+  listAlgorithmTasks,
+  startAlgorithmTask,
+  stopAlgorithmTask,
+} from '@/api/device/algorithm_task'
+import {
+  extractDashboardGuardErrorMessage,
+  startDashboardGuardTask,
+  stopDashboardGuardTask,
+  type DashboardGuardScope,
+  type DashboardGuardTaskApi,
+} from '../dashboardGuardTask'
 import {
   MAX_MONITOR_LAYOUT_PRESETS,
   loadMonitorLayoutStorage,
@@ -218,6 +237,7 @@ const activeVideoIndex = ref(0)
 const dragSourceIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
 const currentLayout = ref('1')
+const AI_TOGGLE_STORAGE_KEY = 'yfeieye.dashboard.monitor.enableAi'
 const VIDEO_STATE_STORAGE_KEY = 'yfeieye.dashboard.monitor.videoState'
 
 type PersistedDashboardVideoSlot = {
@@ -238,6 +258,24 @@ type PersistedDashboardVideoState = {
   videos: PersistedDashboardVideoSlot[]
 }
 
+function readPersistedEnableAi() {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.sessionStorage.getItem(AI_TOGGLE_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function persistEnableAi(checked: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(AI_TOGGLE_STORAGE_KEY, String(checked))
+  } catch {
+    // Keep the toggle usable when storage is unavailable.
+  }
+}
+
 function readPersistedVideoState(): PersistedDashboardVideoState | null {
   if (typeof window === 'undefined') return null
   try {
@@ -250,6 +288,7 @@ function readPersistedVideoState(): PersistedDashboardVideoState | null {
   }
 }
 
+const enableAi = ref(readPersistedEnableAi())
 const videoRefs = ref<(InstanceType<typeof Jessibuca> | null)[]>([])
 const alertRecordList = ref<any[]>([])
 const loadingRecords = ref(false)
@@ -257,6 +296,13 @@ const scrollContainerRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 const internalVideoList = ref<any[]>([])
+
+const dashboardGuardApi: DashboardGuardTaskApi = {
+  listAlgorithmTasks,
+  createAlgorithmTask: createAlgorithmTask as DashboardGuardTaskApi['createAlgorithmTask'],
+  startAlgorithmTask,
+  stopAlgorithmTask,
+}
 
 function isKnownLayout(layout: string | undefined) {
   return !!layout && splitLayouts.some(item => item.value === layout)
@@ -269,6 +315,86 @@ function ensureVideoSlots(maxCount: number) {
       url: '',
       name: `视频${internalVideoList.value.length + 1}`
     })
+  }
+}
+
+function getDashboardAiDeviceId(device?: MonitorTreeDeviceNode | null) {
+  const id = String(device?.id ?? '').trim()
+  if (!id || id.startsWith('gb_ch_')) return ''
+  return id
+}
+
+function collectDashboardAiDevices(extraDevice?: MonitorTreeDeviceNode | null): MonitorTreeDeviceNode[] {
+  const byId = new Map<string, MonitorTreeDeviceNode>()
+  const addDevice = (device?: MonitorTreeDeviceNode | null) => {
+    const id = getDashboardAiDeviceId(device)
+    if (!id || byId.has(id)) return
+    byId.set(id, device as MonitorTreeDeviceNode)
+  }
+
+  internalVideoList.value.forEach((slot) => {
+    const device = slot?.device as MonitorTreeDeviceNode | undefined
+    if (device) {
+      addDevice(device)
+      return
+    }
+    const deviceId = String(slot?.deviceId ?? '').trim()
+    if (!deviceId || deviceId.startsWith('gb_ch_')) return
+    addDevice({ id: deviceId, name: slot?.name } as MonitorTreeDeviceNode)
+  })
+
+  addDevice(extraDevice)
+  return [...byId.values()]
+}
+
+function buildDashboardAiScope(devices: MonitorTreeDeviceNode[]): DashboardGuardScope | null {
+  const deviceIds = [...new Set(devices.map(getDashboardAiDeviceId).filter(Boolean))]
+  if (!deviceIds.length) return null
+  const sortedIds = [...deviceIds].sort()
+  const firstDeviceName = formatCameraDeviceLabel(devices[0]) || devices[0]?.name || sortedIds[0]
+  return {
+    key: `monitor-ai:${sortedIds.join(',')}`,
+    label: deviceIds.length === 1 ? firstDeviceName : `当前播放 ${deviceIds.length} 路`,
+    deviceIds,
+  }
+}
+
+async function ensureDashboardAiRecognitionForDevices(devices: MonitorTreeDeviceNode[]) {
+  const scope = buildDashboardAiScope(devices)
+  if (!scope) return true
+  try {
+    await startDashboardGuardTask({ scope, api: dashboardGuardApi })
+    return true
+  } catch (error) {
+    createMessage.error(`AI 识别启动失败：${extractDashboardGuardErrorMessage(error)}`)
+    return false
+  }
+}
+
+async function ensureDashboardAiRecognitionForVisibleDevices() {
+  return ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices())
+}
+
+async function ensureGbDashboardAiRecognition(
+  gb: { sipDeviceId: string; channelId: string },
+  fallbackDevice?: MonitorTreeDeviceNode | null,
+) {
+  const aiDevice = await loadGbChannelSyncedDevice(gb.sipDeviceId, gb.channelId, fallbackDevice)
+  if (!getDashboardAiDeviceId(aiDevice)) {
+    createMessage.warning('国标通道尚未同步到设备库，无法启动 AI 识别；请先同步该通道')
+    return { ready: false, device: fallbackDevice ?? null }
+  }
+  const ready = await ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices(aiDevice))
+  return { ready, device: aiDevice }
+}
+
+async function stopDashboardAiRecognitionForVisibleDevices() {
+  const scope = buildDashboardAiScope(collectDashboardAiDevices())
+  if (!scope) return
+  try {
+    await stopDashboardGuardTask({ scope, api: dashboardGuardApi })
+  } catch (error) {
+    console.warn('停止首页 AI 识别任务失败:', error)
   }
 }
 
@@ -342,6 +468,13 @@ async function restorePersistedVideoState() {
     }
     reloadIndexes.push(index)
   })
+
+  if (enableAi.value) {
+    const recognitionReady = await ensureDashboardAiRecognitionForVisibleDevices()
+    if (!recognitionReady) {
+      enableAi.value = false
+    }
+  }
 
   const tasks = reloadIndexes.map((index) =>
     reloadVideoAtIndex(index).catch((error) => {
@@ -444,6 +577,7 @@ function saveToLayoutPreset(presetId: number, options?: { keepName?: boolean }) 
     id: presetId,
     name: options?.keepName !== false && existing?.name ? existing.name : undefined,
     layout: currentLayout.value,
+    enableAi: enableAi.value,
     slots: buildCurrentLayoutSlots(),
     updatedAt: Date.now(),
   }
@@ -479,6 +613,7 @@ function buildCurrentLayoutSlots(): MonitorLayoutSlot[] {
 function applyPresetStructure(preset: MonitorLayoutPreset) {
   skipDefaultVideoInit.value = true
   currentLayout.value = normalizeSplitLayout(preset.layout)
+  enableAi.value = !!preset.enableAi
   activeVideoIndex.value = 0
 
   const maxCount = getMaxVideoCount(currentLayout.value)
@@ -512,10 +647,18 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
   if (playId.startsWith('gb_ch_')) {
     const gb = parseGbChannelKey(playId)
     if (!gb) return
-    const { url, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    let playDevice: MonitorTreeDeviceNode | null | undefined = saved.device
+    if (enableAi.value) {
+      const recognition = await ensureGbDashboardAiRecognition(gb, saved.device)
+      playDevice = recognition.device ?? saved.device
+      if (!recognition.ready) {
+        enableAi.value = false
+      }
+    }
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
-      { enableAi: false, synced: saved.device },
+      { enableAi: enableAi.value, synced: playDevice },
     )
     if (!url) {
       createMessage.warn(`方案恢复失败：${saved.name}`)
@@ -527,7 +670,9 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
       url,
       deviceId: playId,
       location: saved.location,
-      device: saved.device,
+      device: playDevice ?? saved.device,
+      fallbackUrl,
+      preferAi,
       playerEngine,
       videoCodec,
     })
@@ -539,7 +684,13 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
     createMessage.warn(`方案恢复失败：${saved.name}（缺少设备信息）`)
     return
   }
-  const { url } = await resolvePlayUrlsForDevice(dev)
+  if (enableAi.value) {
+    const recognitionReady = await ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices(dev))
+    if (!recognitionReady) {
+      enableAi.value = false
+    }
+  }
+  const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)
   if (!url) {
     createMessage.warn(`方案恢复失败：${saved.name}`)
     return
@@ -551,6 +702,8 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
     deviceId: playId,
     location: saved.location,
     device: dev,
+    fallbackUrl,
+    preferAi,
   })
 }
 
@@ -581,6 +734,9 @@ async function restorePendingVideos() {
 async function activateLayoutPreset(presetId: number) {
   const preset = layoutPresets.value[presetId]
   if (!preset) return
+
+  aiFallbackTimers.forEach((id) => window.clearTimeout(id))
+  aiFallbackTimers.clear()
 
   videoRefs.value.forEach((ref) => {
     if (ref?.jessibuca) {
@@ -745,6 +901,16 @@ const currentLocation = computed(() => {
   return '未选择设备'
 })
 
+const aiFallbackTimers = new Map<number, number>()
+
+function clearAiFallbackTimer(screenIdx: number) {
+  const timerId = aiFallbackTimers.get(screenIdx)
+  if (timerId != null) {
+    window.clearTimeout(timerId)
+    aiFallbackTimers.delete(screenIdx)
+  }
+}
+
 // 切换布局
 const switchLayout = (layout: string) => {
   currentLayout.value = normalizeSplitLayout(layout)
@@ -851,6 +1017,7 @@ function destroyPlayerAtIndex(index: number) {
 function removeVideoAtIndex(index: number) {
   if (!hasVideoContent(internalVideoList.value[index])) return
 
+  clearAiFallbackTimer(index)
   destroyPlayerAtIndex(index)
   internalVideoList.value[index] = createPlaceholderSlot(index)
   persistDashboardVideoState()
@@ -950,10 +1117,13 @@ async function startPlayAtScreen(
     deviceId?: string
     location?: string
     device?: MonitorTreeDeviceNode
+    fallbackUrl?: string | null
+    preferAi?: boolean
     playerEngine?: string | null
     videoCodec?: string | null
   },
 ) {
+  clearAiFallbackTimer(targetIndex)
   if (videoRefs.value[targetIndex]) {
     const existingInstance = videoRefs.value[targetIndex]
     try {
@@ -977,13 +1147,31 @@ async function startPlayAtScreen(
     videoCodec: payload.videoCodec || '',
   }
   persistDashboardVideoState()
+
+  const fallbackUrl = payload.fallbackUrl?.trim()
+  if (!payload.preferAi || !fallbackUrl || fallbackUrl === payload.url) return
+
+  const primaryUrl = payload.url
+  const timerId = window.setTimeout(async () => {
+    aiFallbackTimers.delete(targetIndex)
+    const slot = internalVideoList.value[targetIndex]
+    if (!slot || slot.url !== primaryUrl) return
+    if (videoRefs.value[targetIndex]?.playing) return
+
+    createMessage.warning(
+      'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
+    )
+    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl }
+    persistDashboardVideoState()
+  }, AI_PLAY_FALLBACK_MS)
+  aiFallbackTimers.set(targetIndex, timerId)
 }
 
 async function resolvePlayUrlsForDevice(dev: MonitorTreeDeviceNode) {
   if (isGb28181Device(dev.source, dev.device_kind)) {
-    return { url: null as string | null }
+    return { url: null as string | null, fallbackUrl: null as string | null | undefined }
   }
-  return pickDirectPlayUrls(dev, false)
+  return pickDirectPlayUrls(dev, enableAi.value)
 }
 
 async function reloadVideoAtIndex(index: number) {
@@ -995,10 +1183,18 @@ async function reloadVideoAtIndex(index: number) {
     const gb = parseGbChannelKey(playId)
     if (!gb) return
     const deviceNode = (slot as any).device as MonitorTreeDeviceNode | undefined
-    const { url, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    let playDevice: MonitorTreeDeviceNode | null | undefined = deviceNode
+    if (enableAi.value) {
+      const recognition = await ensureGbDashboardAiRecognition(gb, deviceNode)
+      playDevice = recognition.device ?? deviceNode
+      if (!recognition.ready) {
+        enableAi.value = false
+      }
+    }
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
-      { enableAi: false, synced: deviceNode },
+      { enableAi: enableAi.value, synced: playDevice },
     )
     if (url) {
       await startPlayAtScreen(index, {
@@ -1007,9 +1203,11 @@ async function reloadVideoAtIndex(index: number) {
         url,
         deviceId: playId,
         location: slot.location,
+        fallbackUrl,
+        preferAi,
         playerEngine,
         videoCodec,
-        device: deviceNode,
+        device: playDevice ?? undefined,
       })
     }
     return
@@ -1018,9 +1216,9 @@ async function reloadVideoAtIndex(index: number) {
   const dev = (slot as any).device as MonitorTreeDeviceNode | undefined
   if (!dev) return
 
-  const { url } = await resolvePlayUrlsForDevice(dev)
+  const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)
   if (!url) {
-    createMessage.warn('该设备暂无播放地址')
+    createMessage.warn(enableAi.value ? '该设备暂无 AI 流或原始流地址' : '该设备暂无播放地址')
     return
   }
   await startPlayAtScreen(index, {
@@ -1029,8 +1227,37 @@ async function reloadVideoAtIndex(index: number) {
     url,
     deviceId: playId,
     location: slot.location,
+    fallbackUrl,
+    preferAi,
   })
 }
+
+async function reloadAllVideosForAiToggle() {
+  const tasks: Promise<void>[] = []
+  internalVideoList.value.forEach((slot, idx) => {
+    if (slot?.url) tasks.push(reloadVideoAtIndex(idx))
+  })
+  await Promise.all(tasks)
+}
+
+let aiToggleRequestSeq = 0
+
+watch(enableAi, async (checked) => {
+  const requestSeq = ++aiToggleRequestSeq
+  persistEnableAi(checked)
+  if (checked) {
+    const recognitionReady = await ensureDashboardAiRecognitionForVisibleDevices()
+    if (requestSeq !== aiToggleRequestSeq) return
+    if (!recognitionReady) {
+      enableAi.value = false
+      return
+    }
+  } else {
+    await stopDashboardAiRecognitionForVisibleDevices()
+    if (requestSeq !== aiToggleRequestSeq) return
+  }
+  reloadAllVideosForAiToggle()
+})
 
 // 播放设备流
 const playDeviceStream = async (device: any) => {
@@ -1056,13 +1283,25 @@ const playDeviceStream = async (device: any) => {
       createMessage.warning('无效国标通道')
       return
     }
-    const { url, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    let playDevice: MonitorTreeDeviceNode | null | undefined = dev
+    if (enableAi.value) {
+      const recognition = await ensureGbDashboardAiRecognition(gb, dev)
+      playDevice = recognition.device ?? dev
+      if (!recognition.ready) {
+        enableAi.value = false
+      }
+    }
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
-      { enableAi: false, synced: dev },
+      { enableAi: enableAi.value, synced: playDevice },
     )
     if (!url) {
-      createMessage.warn('国标通道拉流失败，请检查 WVP 服务与通道状态')
+      createMessage.warn(
+        enableAi.value
+          ? '国标通道 AI 流不可用，请确认算法任务已启动；WVP 点播也失败，请检查通道状态'
+          : '国标通道拉流失败，请检查 WVP 服务与通道状态',
+      )
       return
     }
     await startPlayAtScreen(targetIndex, {
@@ -1071,7 +1310,9 @@ const playDeviceStream = async (device: any) => {
       url,
       deviceId: playId,
       location: device.location || '',
-      device: dev,
+      device: playDevice ?? dev,
+      fallbackUrl,
+      preferAi,
       playerEngine,
       videoCodec,
     })
@@ -1083,9 +1324,20 @@ const playDeviceStream = async (device: any) => {
     return
   }
 
-  const { url } = await resolvePlayUrlsForDevice(dev)
+  if (enableAi.value) {
+    const recognitionReady = await ensureDashboardAiRecognitionForDevices(collectDashboardAiDevices(dev))
+    if (!recognitionReady) {
+      enableAi.value = false
+    }
+  }
+
+  const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)
   if (!url) {
-    createMessage.warning('该设备暂无可用播放地址，请先在设备列表中配置流地址')
+    createMessage.warning(
+      enableAi.value
+        ? '该设备暂无 AI 流或原始流播放地址，请先在设备列表中配置'
+        : '该设备暂无可用播放地址，请先在设备列表中配置流地址',
+    )
     return
   }
 
@@ -1096,6 +1348,8 @@ const playDeviceStream = async (device: any) => {
     deviceId: playId,
     location: device.location || '',
     device: dev,
+    fallbackUrl,
+    preferAi,
   })
 }
 
@@ -1370,6 +1624,9 @@ onUnmounted(() => {
     }
   })
   videoRefs.value = []
+
+  aiFallbackTimers.forEach((id) => window.clearTimeout(id))
+  aiFallbackTimers.clear()
 })
 
 // 监听告警列表变化，更新滚动状态

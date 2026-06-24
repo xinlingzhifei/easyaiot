@@ -63,7 +63,7 @@ test('dashboard controls expose stable selectors and keep text rendering crisp',
   assert.match(sidebar, /data-testid="monitor-sidebar"/)
   assert.match(videoMonitor, /data-testid="monitor-split-toolbar"/)
   assert.match(videoMonitor, /:data-testid="`monitor-split-\$\{layout\.value\}`"/)
-  assert.doesNotMatch(videoMonitor, /data-testid="monitor-ai-toggle"/)
+  assert.match(videoMonitor, /data-testid="monitor-ai-toggle"/)
 
   assert.match(dashboard, /text-rendering:\s*geometricPrecision;/)
   assert.match(dashboard, /-webkit-font-smoothing:\s*antialiased;/)

@@ -9,6 +9,13 @@ const sidebar = readFileSync(
   'utf8',
 )
 
+const videoMonitor = readFileSync(
+  fileURLToPath(
+    new URL('../src/views/dashboard/monitor/components/VideoMonitor.vue', import.meta.url),
+  ),
+  'utf8',
+)
+
 assert.doesNotMatch(
   sidebar,
   /data-testid="dashboard-guard-toggle"|<ASwitch|启用识别|guardChecked|handleGuardSwitchChange/,
@@ -43,4 +50,16 @@ assert.match(
   sidebar,
   /emit\('device-play', \{[\s\S]*http_stream: device\.http_stream,[\s\S]*rtmp_stream: device\.rtmp_stream/,
   'Direct camera leaves should still pass playable stream fields to the video monitor.',
+)
+
+assert.match(
+  videoMonitor,
+  /data-testid="monitor-ai-toggle"[\s\S]*v-model:checked="enableAi"/,
+  'The only dashboard recognition entry point should be the video header AI toggle.',
+)
+
+assert.match(
+  videoMonitor,
+  /startDashboardGuardTask[\s\S]*stopDashboardGuardTask/,
+  'The video header AI toggle should own dashboard recognition task lifecycle.',
 )
