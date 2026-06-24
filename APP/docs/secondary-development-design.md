@@ -1,15 +1,15 @@
-# EasyAIoT APP 二次开发详细设计文档
+# yFeiEye APP 二次开发详细设计文档
 
-> 版本：基于 unibest 4.1.0 + EasyAIoT yudao-ui-admin-uniapp 2026.05.0-snapshot  
-> 适用对象：需要在 EasyAIoT 移动端管理后台基础上扩展业务功能的开发者
+> 版本：基于 unibest 4.1.0 + yFeiEye yudao-ui-admin-uniapp 2026.05.0-snapshot
+> 适用对象：需要在 yFeiEye 移动端管理后台基础上扩展业务功能的开发者
 
 ---
 
 ## 1. 文档目的
 
-本文档说明 EasyAIoT APP 的工程架构、核心机制与标准开发流程，帮助二次开发者：
+本文档说明 yFeiEye APP 的工程架构、核心机制与标准开发流程，帮助二次开发者：
 
-- 快速搭建本地开发环境并对接 EasyAIoT 后端
+- 快速搭建本地开发环境并对接 yFeiEye 后端
 - 按既有规范新增业务模块、页面、接口与菜单
 - 理解权限、路由、请求、分包等横切能力
 - 在多端（H5 / 微信小程序 / App）下正确发布与调试
@@ -20,7 +20,7 @@
 
 ### 2.1 定位
 
-APP 是 EasyAIoT 平台的**移动端管理后台**，与 PC 端（WEB）共用同一套后端 API（`/admin-api`），面向运维、管理人员在移动场景下完成：
+APP 是 yFeiEye 平台的**移动端管理后台**，与 PC 端（WEB）共用同一套后端 API（`/admin-api`），面向运维、管理人员在移动场景下完成：
 
 - 系统管理（用户、角色、租户等）
 - 物联网设备管理（产品、设备、告警、OTA 等）
@@ -37,7 +37,7 @@ APP 是 EasyAIoT 平台的**移动端管理后台**，与 PC 端（WEB）共用�
 | 包管理 | pnpm ≥ 9 | 强制使用 pnpm |
 | 状态管理 | Pinia + persistedstate | 支持本地持久化 |
 | UI 组件 | @wot-ui/ui 2.x | 主 UI 库，自动按需引入 |
-| 业务组件 | yudao-ui（Yd 前缀） | EasyAIoT封装的上传、树选择、搜索等 |
+| 业务组件 | yudao-ui（Yd 前缀） | yFeiEye封装的上传、树选择、搜索等 |
 | 样式 | UnoCSS | 原子化 CSS，优先使用 utility class |
 | 分页 | z-paging | 列表页标准分页组件 |
 | 路由 | vite-plugin-uni-pages | 约定式路由，自动生成 pages.json |
@@ -77,7 +77,7 @@ APP/
 └── src/
     ├── api/                      # 按业务模块划分的 API 层（与后端 Controller 对应）
     ├── components/               # 全局组件
-    │   └── yudao-ui/             # EasyAIoT业务组件（YdUpload、YdTreeSelect 等）
+    │   └── yudao-ui/             # yFeiEye业务组件（YdUpload、YdTreeSelect 等）
     ├── hooks/                    # 组合式函数（useAccess、useDict 等）
     ├── http/                     # HTTP 封装、拦截器、类型定义
     ├── layouts/                  # 页面布局
@@ -128,7 +128,7 @@ subPackages: [
 
 | 变量 | 说明 | 示例 |
 |------|------|------|
-| `VITE_APP_TITLE` | 应用标题 | `EasyAIoT 管理系统` |
+| `VITE_APP_TITLE` | 应用标题 | `yFeiEye 管理系统` |
 | `VITE_APP_PORT` | H5 开发端口 | `9010` |
 | `VITE_SERVER_BASEURL` | 后端 API 地址 | `http://localhost:48080/admin-api` |
 | `VITE_APP_PROXY_ENABLE` | H5 是否走代理 | `true` |
@@ -142,7 +142,7 @@ subPackages: [
 ### 4.2 本地开发前置条件
 
 1. **Node.js** ≥ 20，**pnpm** ≥ 9
-2. EasyAIoT 后端已启动（网关默认 `48080`）
+2. yFeiEye 后端已启动（网关默认 `48080`）
 3. 安装依赖并启动：
 
 ```bash
@@ -540,7 +540,7 @@ subPackages: [
 - 尺寸单位使用 `rpx` 适配多端
 - 自定义样式放 `<style lang="scss" scoped>`，尽量少写
 
-### 8.4 可用EasyAIoT业务组件
+### 8.4 可用yFeiEye业务组件
 
 | 组件 | 用途 |
 |------|------|
@@ -694,7 +694,7 @@ docs: 补充二次开发设计文档
 
 ## 14. 上游框架合并策略
 
-APP 基于 [unibest](https://unibest.tech) 模板，并叠加EasyAIoT业务代码。后续若需同步 unibest 上游更新，请参考 `docs/merge/README.md`：
+APP 基于 [unibest](https://unibest.tech) 模板，并叠加yFeiEye业务代码。后续若需同步 unibest 上游更新，请参考 `docs/merge/README.md`：
 
 - **不建议**整库 merge，按月份 cherry-pick 低风险改动
 - 重点关注：`vite.config.ts`、`router/interceptor.ts`、`store/token.ts`、`tabbar/*` 的冲突

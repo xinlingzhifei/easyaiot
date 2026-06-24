@@ -1,5 +1,5 @@
 #!/bin/bash
-# EasyAIoT 部署形态配置
+# yFeiEye 部署形态配置
 #
 # EASYAIOT_DEPLOY_PROFILE 取值（默认 full）：
 #   mini     | 1  — 边缘精简版，推荐宿主机内存 ≥ 4 GB

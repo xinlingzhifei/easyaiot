@@ -268,7 +268,7 @@ public class NodeStorageServiceImpl implements NodeStorageService {
         probe.osdStep = stepFromToken("OSD 状态", out, "OSD_UP", "OSD_DOWN", "无在线 OSD");
         boolean poolOk = out.contains("POOL_PLAYBACKS_OK") && out.contains("POOL_SNAPS_OK");
         probe.poolStep = runStep("存储池", poolOk ? "success" : "failed",
-                poolOk ? "easyaiot-playbacks / easyaiot-snaps 已创建" : "存储池未完整创建");
+                poolOk ? "yFeiEye-playbacks / yFeiEye-snaps 已创建" : "存储池未完整创建");
         probe.cephfsStep = stepFromToken("CephFS", out, "CEPHFS_OK", "CEPHFS_MISSING", "CephFS 未创建");
         boolean mountOk = out.contains("MOUNT_ROOT_OK");
         probe.mountStep = runStep("CephFS 挂载", mountOk ? "success" : "failed",

@@ -46,7 +46,7 @@ function WotResolver(): ComponentResolver {
   }
 }
 
-/** EasyAIoT UI 组件解析器：本地 @/components/yudao-ui/* 的组件 */
+/** yFeiEye UI 组件解析器：本地 @/components/yudao-ui/* 的组件 */
 function YudaoUiResolver(): ComponentResolver {
   return {
     type: 'component',
