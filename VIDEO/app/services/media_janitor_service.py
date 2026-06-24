@@ -71,11 +71,14 @@ def iter_jpg_files(root: str) -> List[JpgEntry]:
 
 
 def _parse_device_from_playback_path(file_path: str) -> str:
+    from app.services.dvr_device_resolver import parse_infer_stream_device_id
+
     parts = [p for p in file_path.replace('\\', '/').split('/') if p]
     if 'playbacks' in parts:
         pi = parts.index('playbacks')
         if pi + 2 < len(parts):
-            return parts[pi + 2]
+            segment = parts[pi + 2]
+            return parse_infer_stream_device_id(segment) or segment
     return ''
 
 
@@ -106,6 +109,11 @@ def _is_snap_already_uploaded(device_id: str, absolute_path: str) -> bool:
     return SnapImage.query.filter_by(device_id=device_id, object_name=object_name).first() is not None
 
 
+def _device_exists(device_id: str) -> bool:
+    from models import Device
+    return bool(device_id and Device.query.get(device_id))
+
+
 def scan_orphan_dvr_files() -> List[Dict]:
     min_age_min = _env_int('JANITOR_ORPHAN_MIN_AGE_MINUTES', 10)
     cutoff = time.time() - min_age_min * 60
@@ -119,6 +127,9 @@ def scan_orphan_dvr_files() -> List[Dict]:
             continue
         if _is_dvr_already_uploaded(device_id, abs_path):
             remove_playback_file(abs_path, reason='Janitor-已上传')
+            continue
+        if not _device_exists(device_id):
+            remove_playback_file(abs_path, reason='Janitor-设备已删除')
             continue
         orphans.append({
             'device_id': device_id,
@@ -142,6 +153,9 @@ def scan_orphan_snap_files() -> List[Dict]:
             continue
         if _is_snap_already_uploaded(device_id, abs_path):
             remove_playback_file(abs_path, reason='Janitor-抓拍已上传')
+            continue
+        if not _device_exists(device_id):
+            remove_playback_file(abs_path, reason='Janitor-设备已删除')
             continue
         orphans.append({
             'device_id': device_id,

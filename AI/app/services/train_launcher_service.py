@@ -1,5 +1,5 @@
 """
-模型训练集群调度：将训练任务下发到 GPU 计算节点。
+模型训练集群调度：将训练任务下发到计算节点（优先 GPU，可回落 CPU）。
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import socket
 from typing import Optional
 
 from db_models import db, TrainTask
-from app.utils.node_remote_python import resolve_ai_bundle_python
+from app.utils.node_remote_python import resolve_ai_bundle_python, resolve_ai_root_for_deploy
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +28,14 @@ def _is_cluster_mode() -> bool:
 
 def resolve_schedule_policy(explicit: str | None) -> str:
     policy = (explicit or '').strip().lower()
-    if policy in ('local', 'auto', 'node'):
+    from app.utils.node_client import is_remote_deploy_enabled
+    remote_enabled = is_remote_deploy_enabled()
+    if policy == 'local' and remote_enabled:
+        return 'auto'
+    if policy in ('auto', 'node'):
         return policy
-    if _is_cluster_mode():
-        from app.utils.node_client import is_remote_deploy_enabled
-        if is_remote_deploy_enabled():
-            return 'auto'
+    if remote_enabled:
+        return 'auto'
     return 'local'
 
 
@@ -62,6 +64,7 @@ def _control_plane_base_url() -> str:
 def _build_train_deploy_env(
     train_task: TrainTask,
     *,
+    ai_root: str,
     epochs: int,
     model_arch: str,
     img_size: int,
@@ -87,7 +90,7 @@ def _build_train_deploy_env(
             env[key] = val
 
     env['PYTHONUNBUFFERED'] = '1'
-    env['AI_ROOT'] = os.getenv('NODE_REMOTE_AI_ROOT', '/opt/easyaiot/AI')
+    env['AI_ROOT'] = ai_root
     env['AI_CONTROL_URL'] = _control_plane_base_url()
     env['LOG_PATH'] = log_dir
     env['POD_IP'] = server_host
@@ -120,7 +123,7 @@ def dispatch_train_to_node(
     resume_mode: bool,
     gpu_ids: list | None = None,
 ) -> tuple[bool, str]:
-    """将训练任务调度到集群节点并下发 Worker。"""
+    """将训练任务调度到集群节点并下发 Worker（优先 GPU，无 GPU 时回落 CPU）。"""
     from app.utils import node_client
 
     policy = resolve_schedule_policy(train_task.schedule_policy)
@@ -134,7 +137,7 @@ def dispatch_train_to_node(
             WORKLOAD_TYPE_MODEL_TRAIN,
             workload_id,
             capabilities=['model_train'],
-            gpu_count=1,
+            gpu_count=0,
             prefer_gpu=True,
             target_node_id=int(target_node_id) if policy == 'node' and target_node_id else None,
             sticky=True,
@@ -148,15 +151,21 @@ def dispatch_train_to_node(
     host = allocation.get('host') or ''
     allocated_gpu_ids = allocation.get('gpuIds')
 
-    ai_root_remote = os.getenv('NODE_REMOTE_AI_ROOT', '/opt/easyaiot/AI')
-    work_dir = os.path.join(ai_root_remote, 'services', 'train_worker')
-    log_dir = os.path.join(ai_root_remote, 'logs', 'train', str(train_task.id))
-    python_exec = resolve_ai_bundle_python(ai_root_remote, BUNDLE_MODEL_TRAIN)
-    worker_script = os.path.join(ai_root_remote, 'services', 'train_worker', 'run_worker.py')
+    node = node_client.get_node(node_id)
+    ai_root = resolve_ai_root_for_deploy(node)
+    work_dir = os.path.join(ai_root, 'services', 'train_worker')
+    log_dir = os.path.join(ai_root, 'logs', 'train', str(train_task.id))
+    worker_script = os.path.join(ai_root, 'services', 'train_worker', 'run_worker.py')
+    if not os.path.isfile(worker_script):
+        node_client.release_binding(WORKLOAD_TYPE_MODEL_TRAIN, workload_id)
+        return False, f'训练 Worker 脚本不存在: {worker_script}'
+
+    python_exec = resolve_ai_bundle_python(ai_root, BUNDLE_MODEL_TRAIN)
     command = [python_exec, worker_script]
 
     env = _build_train_deploy_env(
         train_task,
+        ai_root=ai_root,
         epochs=epochs,
         model_arch=model_arch,
         img_size=img_size,
@@ -179,7 +188,7 @@ def dispatch_train_to_node(
             work_dir=work_dir,
             log_dir=log_dir,
             env=env,
-            gpu_ids=allocated_gpu_ids,
+            gpu_ids=allocated_gpu_ids if use_gpu else None,
         )
     except Exception as e:
         node_client.release_binding(WORKLOAD_TYPE_MODEL_TRAIN, workload_id)

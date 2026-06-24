@@ -14,10 +14,12 @@ import shutil
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+
+from app.utils.ffmpeg_compat import ffmpeg_rtsp_timeout_args
 
 from .frame_queue import FrameQueue
 from .shared_memory import FrameHeader, SharedMemoryManager, create_shared_memory
@@ -110,9 +112,9 @@ def build_ffmpeg_decode_cmd(config: DecoderConfig) -> List[str]:
             transport = (config.rtsp_transport or "tcp").strip().lower()
             if transport not in ("tcp", "udp"):
                 transport = "tcp"
+            cmd.extend(["-rtsp_transport", transport])
+            cmd.extend(ffmpeg_rtsp_timeout_args(10_000_000, 10_000_000))
             cmd.extend([
-                "-rtsp_transport", transport,
-                "-stimeout", "10000000",
                 "-analyzeduration", "1000000",
                 "-probesize", "1000000",
             ])
@@ -130,7 +132,11 @@ def build_ffmpeg_decode_cmd(config: DecoderConfig) -> List[str]:
             ])
         elif hw == "vaapi":
             render = os.getenv("AI_VAAPI_DEVICE", "/dev/dri/renderD128")
-            cmd.extend(["-hwaccel", "vaapi", "-hwaccel_device", render])
+            cmd.extend([
+                "-hwaccel", "vaapi",
+                "-hwaccel_device", render,
+                "-hwaccel_output_format", "vaapi",
+            ])
         elif hw == "qsv":
             cmd.extend(["-hwaccel", "qsv", "-hwaccel_output_format", "qsv"])
 
@@ -173,6 +179,9 @@ class VideoDecoder:
         self.read_failed = False
         self.sequence_num = 0
         self._thread: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
+        self._stderr_lines: List[str] = []
+        self._stderr_lock = threading.Lock()
         self._width = max(0, int(config.width))
         self._height = max(0, int(config.height))
         self.ffmpeg_args = build_ffmpeg_decode_cmd(config)
@@ -180,6 +189,7 @@ class VideoDecoder:
             "frames_decoded": 0,
             "decode_errors": 0,
             "reconnect_count": 0,
+            "hwaccel_failures": 0,
             "start_time": None,
             "last_frame_time": None,
             "hwaccel": detect_hwaccel(config.hwaccel),
@@ -209,6 +219,9 @@ class VideoDecoder:
             return False
         if self.read_failed:
             return False
+        # reconnect 模式下由解码线程负责拉起 FFmpeg，避免瞬时退出触发上层整路重连
+        if self.config.reconnect:
+            return True
         if self.process is not None and self.process.poll() is not None:
             return False
         return True
@@ -256,15 +269,8 @@ class VideoDecoder:
 
     def stop(self) -> None:
         self.is_running = False
-        if self.process:
-            try:
-                self.process.terminate()
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-            except Exception:
-                pass
-            self.process = None
+        self._terminate_ffmpeg()
+        self._join_stderr_thread()
 
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3)
@@ -310,41 +316,111 @@ class VideoDecoder:
 
     def _start_ffmpeg(self) -> bool:
         try:
+            self._join_stderr_thread()
+            with self._stderr_lock:
+                self._stderr_lines.clear()
             self.process = subprocess.Popen(
                 self.ffmpeg_args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=self.config.read_buffer_size,
             )
+            self._start_stderr_reader()
             time.sleep(0.3)
             if self.process.poll() is not None:
-                err = self._read_stderr()
-                logger.error("FFmpeg 启动失败 rc=%s err=%s", self.process.returncode, err[:500])
+                err = self._tail_stderr(20)
+                logger.error(
+                    "FFmpeg 启动失败 rc=%s err=%s",
+                    self.process.returncode,
+                    err[:500],
+                )
+                self._terminate_ffmpeg()
                 return False
             return True
         except Exception as exc:
             raise DecoderError(f"启动 FFmpeg 失败: {exc}") from exc
 
-    def _read_stderr(self) -> str:
-        if not self.process or not self.process.stderr:
-            return ""
-        try:
-            return self.process.stderr.read().decode("utf-8", errors="replace")
-        except Exception:
-            return ""
+    def _start_stderr_reader(self) -> None:
+        stderr = self.process.stderr if self.process else None
+        if stderr is None:
+            return
 
-    def _restart_ffmpeg(self) -> None:
-        if self.process:
+        def _read_loop() -> None:
             try:
-                self.process.terminate()
-                self.process.wait(timeout=3)
+                for line in iter(stderr.readline, b""):
+                    if not line:
+                        break
+                    text = line.decode("utf-8", errors="replace").strip()
+                    if not text:
+                        continue
+                    with self._stderr_lock:
+                        self._stderr_lines.append(text)
+                        if len(self._stderr_lines) > 100:
+                            self._stderr_lines.pop(0)
             except Exception:
+                pass
+            finally:
                 try:
-                    self.process.kill()
+                    stderr.close()
                 except Exception:
                     pass
+
+        self._stderr_thread = threading.Thread(
+            target=_read_loop, name="ffmpeg-stderr", daemon=True,
+        )
+        self._stderr_thread.start()
+
+    def _join_stderr_thread(self) -> None:
+        thread = self._stderr_thread
+        self._stderr_thread = None
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+
+    def _tail_stderr(self, max_lines: int = 10) -> str:
+        with self._stderr_lock:
+            lines = self._stderr_lines[-max(1, max_lines):]
+        return "\n".join(lines)
+
+    def _terminate_ffmpeg(self) -> None:
+        if not self.process:
+            return
+        try:
+            self.process.terminate()
+            self.process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                self.process.kill()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        self.process = None
+        self._join_stderr_thread()
+
+    def _maybe_downgrade_hwaccel(self) -> bool:
+        hw = (self.stats.get("hwaccel") or "none").strip().lower()
+        if hw in ("", "none"):
+            return False
+        failures = int(self.stats.get("hwaccel_failures") or 0) + 1
+        self.stats["hwaccel_failures"] = failures
+        if failures < 3:
+            return False
+        logger.warning(
+            "FFmpeg 硬件解码连续失败 %d 次，回退软件解码 hwaccel=none",
+            failures,
+        )
+        self.config = replace(self.config, hwaccel="none")
+        self.stats["hwaccel"] = "none"
+        self.stats["hwaccel_failures"] = 0
+        self.ffmpeg_args = build_ffmpeg_decode_cmd(self.config)
+        return True
+
+    def _restart_ffmpeg(self) -> bool:
+        self._terminate_ffmpeg()
         self.stats["reconnect_count"] += 1
-        self._start_ffmpeg()
+        if self._maybe_downgrade_hwaccel():
+            logger.info("已切换 FFmpeg 软件解码，重试拉流")
+        return self._start_ffmpeg()
 
     def _decode_loop(self) -> None:
         frame_size = self.frame_byte_size
@@ -355,11 +431,16 @@ class VideoDecoder:
             try:
                 if not self.process or self.process.poll() is not None:
                     rc = self.process.returncode if self.process else -1
-                    logger.warning("FFmpeg 退出 rc=%s", rc)
+                    err = self._tail_stderr(12)
+                    if err:
+                        logger.warning("FFmpeg 退出 rc=%s err=%s", rc, err[:800])
+                    else:
+                        logger.warning("FFmpeg 退出 rc=%s", rc)
                     self.read_failed = not self.config.reconnect
                     if self.config.reconnect:
                         time.sleep(self.config.reconnect_delay)
-                        self._restart_ffmpeg()
+                        if not self._restart_ffmpeg():
+                            continue
                         stdout = self.process.stdout if self.process else None
                         buffer.clear()
                         continue
@@ -385,9 +466,9 @@ class VideoDecoder:
                 logger.error("解码循环异常: %s", exc)
                 if self.config.reconnect:
                     time.sleep(self.config.reconnect_delay)
-                    self._restart_ffmpeg()
-                    stdout = self.process.stdout if self.process else None
-                    buffer.clear()
+                    if self._restart_ffmpeg():
+                        stdout = self.process.stdout if self.process else None
+                        buffer.clear()
                 else:
                     break
 

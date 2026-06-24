@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timezone
 import pytz
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable
 import zlib
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -82,6 +82,12 @@ from app.utils.plate_capture_queue_service import (
     stop_plate_capture_workers,
     PLATE_CAPTURE_QUEUE_SIZE,
     PLATE_CAPTURE_WORKER_THREADS,
+)
+from app.utils.service_urls import (
+    is_mini_deploy_profile,
+    resolve_alert_hook_url,
+    resolve_face_matching_publish_url,
+    resolve_plate_matching_publish_url,
 )
 
 
@@ -305,23 +311,10 @@ BEIJING_TZ = pytz.timezone('Asia/Shanghai')
 TASK_ID = int(os.getenv('TASK_ID', '0'))
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/iot_video')
 VIDEO_SERVICE_PORT = os.getenv('VIDEO_SERVICE_PORT', '6000')
-# 网关地址（用于构建完整的告警hook URL）
-GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://localhost:48080')
-# 告警 hook URL：经网关须带 /admin-api 前缀（见 iot-gateway application.yaml video-admin-api 路由）
-_GATEWAY_BASE = (GATEWAY_URL or '').rstrip('/')
-_USE_GATEWAY = bool(_GATEWAY_BASE) and _GATEWAY_BASE not in (
-    'http://localhost:48080',
-    'http://127.0.0.1:48080',
-)
-if _USE_GATEWAY:
-    ALERT_HOOK_URL = f"{_GATEWAY_BASE}/admin-api/video/alert/hook"
-    FACE_MATCHING_PUBLISH_URL = f"{_GATEWAY_BASE}/admin-api/video/face/matching/publish"
-    PLATE_MATCHING_PUBLISH_URL = f"{_GATEWAY_BASE}/admin-api/video/plate/matching/publish"
-else:
-    # 本机网关地址或未配置时，直连 VIDEO 服务端口
-    ALERT_HOOK_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/alert/hook"
-    FACE_MATCHING_PUBLISH_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/face/matching/publish"
-    PLATE_MATCHING_PUBLISH_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/plate/matching/publish"
+# 告警/匹配回调：mini 形态直连 VIDEO；完整形态经 iot-gateway /admin-api/video
+ALERT_HOOK_URL = resolve_alert_hook_url()
+FACE_MATCHING_PUBLISH_URL = resolve_face_matching_publish_url()
+PLATE_MATCHING_PUBLISH_URL = resolve_plate_matching_publish_url()
 
 # 数据库会话
 engine = create_engine(DATABASE_URL)
@@ -587,8 +580,9 @@ INTERPOLATED_DETECTION_MAX_FRAME_GAP = int(
 # 主画面 overlay 队列：始终保留最新待检帧
 OVERLAY_KEEP_LATEST = os.getenv('OVERLAY_KEEP_LATEST', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
 OVERLAY_KEEP_LATEST_THRESHOLD = int(os.getenv('OVERLAY_KEEP_LATEST_THRESHOLD', '2'))
-# 告警检测队列：积压时可丢弃旧帧（默认 false，允许告警链路适当滞后）
-ALERT_KEEP_LATEST = os.getenv('ALERT_KEEP_LATEST', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+# 告警检测队列：积压时可丢弃旧帧；mini/多路摄像头默认保留最新待检帧，避免队列满丢帧
+_alert_keep_latest_default = 'true' if is_mini_deploy_profile() else 'false'
+ALERT_KEEP_LATEST = os.getenv('ALERT_KEEP_LATEST', _alert_keep_latest_default).strip().lower() in ('1', 'true', 'yes', 'on')
 ALERT_KEEP_LATEST_THRESHOLD = int(os.getenv('ALERT_KEEP_LATEST_THRESHOLD', str(max(2, ALERT_DETECTION_QUEUE_SIZE // 2))))
 # 兼容旧配置名
 DETECTION_KEEP_LATEST = OVERLAY_KEEP_LATEST
@@ -911,20 +905,78 @@ def _is_plate_class(class_name: str) -> bool:
     return any(keyword in normalized for keyword in PLATE_CLASS_KEYWORDS)
 
 
-def _should_keep_detection(class_name: str) -> bool:
+def _model_class_name_list(model) -> List[str]:
+    """提取模型声明的全部类别名（兼容 ONNXInference.classes_dict 与 Ultralytics .names）。"""
+    names = getattr(model, 'classes_dict', None)
+    if not names:
+        names = getattr(model, 'names', None)
+    if isinstance(names, dict):
+        return [str(v) for v in names.values()]
+    if isinstance(names, (list, tuple)):
+        return [str(v) for v in names]
+    return []
+
+
+def _model_is_dedicated_face(model) -> bool:
+    """模型是否为“专用人脸/口罩模型”（其声明的全部类别都是人脸类）。"""
+    names = _model_class_name_list(model)
+    return bool(names) and all(_is_face_class(name) for name in names)
+
+
+def _model_is_dedicated_plate(model) -> bool:
+    """模型是否为“专用车牌模型”（其声明的全部类别都是车牌类）。"""
+    names = _model_class_name_list(model)
+    return bool(names) and all(_is_plate_class(name) for name in names)
+
+
+def _should_keep_detection(
+    class_name: str,
+    *,
+    dedicated_face: bool = False,
+    dedicated_plate: bool = False,
+) -> bool:
     """
     根据任务配置过滤检测类别：
-    - 关闭人脸检测时，过滤人脸类结果
-    - 关闭车牌检测时，过滤车牌类结果
+    - 关闭人脸检测时，过滤通用模型“附带”输出的人脸类结果
+    - 关闭车牌检测时，过滤通用模型“附带”输出的车牌类结果
+
+    例外：当检测来自“专用人脸/口罩模型”或“专用车牌模型”（模型声明的全部
+    类别都是人脸/车牌类）时，说明用户是显式选了这个模型，应保留其结果，
+    不受 face_detection_enabled / plate_detection_enabled 开关影响。否则口罩
+    模型（类名 face/face_mask）等会因开关关闭而被整条过滤 → 永远 0 目标、
+    永不告警。
     """
     if not task_config:
         return True
 
-    if _is_face_class(class_name) and not bool(getattr(task_config, 'face_detection_enabled', True)):
+    if (
+        _is_face_class(class_name)
+        and not dedicated_face
+        and not bool(getattr(task_config, 'face_detection_enabled', True))
+    ):
         return False
-    if _is_plate_class(class_name) and not bool(getattr(task_config, 'plate_detection_enabled', True)):
+    if (
+        _is_plate_class(class_name)
+        and not dedicated_plate
+        and not bool(getattr(task_config, 'plate_detection_enabled', True))
+    ):
         return False
     return True
+
+
+def _make_detection_filter(model) -> Callable[[str], bool]:
+    """为单个模型构造检测过滤器，专用人脸/车牌模型的结果不受对应开关影响。"""
+    dedicated_face = _model_is_dedicated_face(model)
+    dedicated_plate = _model_is_dedicated_plate(model)
+
+    def _keep(class_name: str) -> bool:
+        return _should_keep_detection(
+            class_name,
+            dedicated_face=dedicated_face,
+            dedicated_plate=dedicated_plate,
+        )
+
+    return _keep
 
 
 def _is_valid_model_file(path: str) -> bool:
@@ -1522,6 +1574,45 @@ def load_task_config():
         return False
 
 
+def _ensure_alert_workers_started():
+    """告警事件启用后动态拉起告警检测线程（配置热更新）。"""
+    global alert_executor
+    if alert_executor is not None:
+        return
+    if not task_config or not task_config.alert_event_enabled:
+        return
+    logger.info(f"🔔 检测到告警事件已启用，启动 {ALERT_WORKER_THREADS} 个告警检测线程...")
+    alert_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=ALERT_WORKER_THREADS,
+        thread_name_prefix='alert_worker',
+    )
+    for worker_id in range(1, ALERT_WORKER_THREADS + 1):
+        alert_executor.submit(alert_detection_worker, worker_id)
+        logger.info(f"   ✅ 告警检测线程 {worker_id} 已启动（热更新）")
+
+
+def _task_config_reload_worker(interval_sec: int = 30):
+    """定期重载任务配置，使告警开关等变更在重启任务后无需杀进程即可生效。"""
+    while not stop_event.is_set():
+        for _ in range(max(5, interval_sec)):
+            if stop_event.is_set():
+                return
+            time.sleep(1)
+        try:
+            prev_alert_enabled = bool(task_config and task_config.alert_event_enabled)
+            if not load_task_config():
+                continue
+            now_alert_enabled = bool(task_config and task_config.alert_event_enabled)
+            if now_alert_enabled and not prev_alert_enabled:
+                _ensure_alert_workers_started()
+            elif now_alert_enabled != prev_alert_enabled:
+                logger.info(
+                    f"任务配置已热更新: alert_event_enabled {prev_alert_enabled} -> {now_alert_enabled}"
+                )
+        except Exception as exc:
+            logger.warning(f"任务配置热更新失败: {exc}")
+
+
 def send_alert_event_async(alert_data: Dict):
     """异步发送告警事件到 sink hook 接口（后台线程）"""
 
@@ -1553,11 +1644,34 @@ def send_alert_event_async(alert_data: Dict):
                     timeout=5,
                     headers={'Content-Type': 'application/json'}
                 )
-                if response.status_code == 200:
-                    logger.info(f"✅ 告警事件已成功发送到 sink hook: device_id={alert_data.get('device_id')}, object={alert_data.get('object')}, event={alert_data.get('event')}")
+                hook_result = {}
+                try:
+                    body = response.json()
+                    if isinstance(body, dict):
+                        hook_result = body.get('data') if isinstance(body.get('data'), dict) else body
+                except Exception:
+                    hook_result = {}
+
+                hook_status = hook_result.get('status')
+                if response.status_code == 200 and hook_status in (None, 'success'):
+                    mode = hook_result.get('mode', 'kafka')
+                    alert_id = hook_result.get('alert_id')
+                    logger.info(
+                        f"✅ 告警事件已成功处理: device_id={alert_data.get('device_id')}, "
+                        f"object={alert_data.get('object')}, mode={mode}"
+                        + (f", alert_id={alert_id}" if alert_id else "")
+                    )
+                elif response.status_code == 200 and hook_status in ('skipped', 'suppressed'):
+                    logger.warning(
+                        f"⚠️ 告警被 hook 跳过: device_id={alert_data.get('device_id')}, "
+                        f"status={hook_status}, reason={hook_result.get('reason')}"
+                    )
                 else:
                     logger.warning(
-                        f"❌ 发送告警事件到 sink hook 失败: status_code={response.status_code}, response={response.text}, device_id={alert_data.get('device_id')}")
+                        f"❌ 发送告警事件到 hook 失败: status_code={response.status_code}, "
+                        f"hook_status={hook_status}, response={response.text}, "
+                        f"device_id={alert_data.get('device_id')}"
+                    )
             except requests.exceptions.RequestException as e:
                 logger.warning(f"❌ 发送告警事件到 sink hook 异常: {str(e)}, URL={ALERT_HOOK_URL}, device_id={alert_data.get('device_id')}")
         except Exception as e:
@@ -3702,9 +3816,9 @@ def signal_handler(sig, frame):
     # 清理所有资源（FFmpeg进程、VideoCapture等）
     cleanup_all_resources()
 
-    # 等待所有线程结束（增加等待时间）
+    # 等待工作线程收尾（缩短等待，避免外部 SIGKILL 与优雅退出竞态）
     logger.info("⏳ 等待所有线程结束...")
-    time.sleep(3)
+    time.sleep(0.5)
 
     logger.info("✅ 所有服务已停止")
     sys.exit(0)
@@ -3730,7 +3844,9 @@ def main():
     )
     logger.info(f"   告警队列大小: {ALERT_DETECTION_QUEUE_SIZE}, Worker: {ALERT_WORKER_THREADS}, 抽帧间隔: {ALERT_EXTRACT_INTERVAL}")
     logger.info(f"   Overlay保留最新帧: {OVERLAY_KEEP_LATEST} (阈值: {OVERLAY_KEEP_LATEST_THRESHOLD})")
+    logger.info(f"   告警保留最新帧: {ALERT_KEEP_LATEST} (阈值: {ALERT_KEEP_LATEST_THRESHOLD})")
     logger.info(f"   主画面 overlay 最大复用: {LATEST_OVERLAY_MAX_AGE_SEC:.1f}s")
+    logger.info(f"   告警 Hook URL: {ALERT_HOOK_URL}")
     logger.info("=" * 60)
 
     # 注册信号处理器
@@ -3806,6 +3922,16 @@ def main():
     logger.info("💓 启动心跳上报线程...")
     heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
     heartbeat_thread.start()
+
+    reload_interval = int(os.getenv('TASK_CONFIG_RELOAD_INTERVAL', '30'))
+    logger.info(f"🔄 启动任务配置热更新线程（间隔 {reload_interval}s）...")
+    config_reload_thread = threading.Thread(
+        target=_task_config_reload_worker,
+        args=(reload_interval,),
+        daemon=True,
+        name='task_config_reload',
+    )
+    config_reload_thread.start()
 
     # 启动SRS录像清理线程
     logger.info("🧹 启动SRS录像清理线程...")

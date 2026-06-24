@@ -967,6 +967,51 @@ clean_all() {
     fi
 }
 
+# 卸载并清理所有服务和系统级配置
+uninstall_all() {
+    print_warning "这将删除所有容器、镜像、数据卷，并清理 --install 直接安装到系统中的相关操作（如 Docker 镜像源配置），确定要继续吗？(y/N)"
+    read -r response
+    
+    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        print_section "卸载所有服务及系统配置"
+        
+        check_macos
+        check_docker "$@"
+        check_docker_compose
+        
+        # 逆序清理容器与卷
+        for ((idx=${#MODULES[@]}-1 ; idx>=0 ; idx--)); do
+            execute_module_command "${MODULES[idx]}" "clean"
+            echo ""
+        done
+        
+        # 清理网络
+        print_info "清理网络..."
+        docker network rm easyaiot-network 2>/dev/null || true
+        
+        # 清理 --install 时写入系统的配置
+        local docker_config_file="/etc/docker/daemon.json"
+        if [ -f "$docker_config_file" ]; then
+            print_info "清理 Docker 镜像源配置 ($docker_config_file)..."
+            if [ "$EUID" -ne 0 ]; then
+                if sudo rm -f "$docker_config_file" 2>/dev/null; then
+                    print_success "已删除 Docker 镜像源配置"
+                else
+                    print_warning "清理 Docker 镜像源配置失败，请手动执行: sudo rm -f $docker_config_file"
+                fi
+            else
+                rm -f "$docker_config_file" 2>/dev/null
+                print_success "已删除 Docker 镜像源配置"
+            fi
+            print_info "提示：请重启 Docker Desktop 以使配置清理生效"
+        fi
+        
+        print_success "卸载完成！"
+    else
+        print_info "已取消卸载操作"
+    fi
+}
+
 # 更新所有服务
 update_all() {
     print_section "更新所有服务"
@@ -1038,7 +1083,8 @@ show_help() {
     echo "  ./install_mac.sh [命令] [模块]"
     echo ""
     echo "可用命令:"
-    echo "  install         - 安装并启动所有服务（首次运行）"
+    echo "  install, --install  - 安装并启动所有服务（首次运行），会配置系统级 Docker 镜像源"
+    echo "  uninstall, --uninstall - 卸载所有服务，清理镜像、数据卷及系统级配置"
     echo "  start           - 启动所有服务"
     echo "  stop            - 停止所有服务"
     echo "  restart         - 重启所有服务"
@@ -1071,8 +1117,11 @@ main() {
     fi
     
     case "${1:-help}" in
-        install)
+        install|--install)
             install_mac
+            ;;
+        uninstall|--uninstall)
+            uninstall_all
             ;;
         start)
             start_all

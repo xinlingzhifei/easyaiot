@@ -123,3 +123,25 @@ export function resolveTaskBaseNameFromRecord(record: Record<string, unknown>): 
   }
   return base || 'train';
 }
+
+const UPLOAD_STORAGE_STEM_RE = /^[0-9a-f]{32}$/i;
+
+export function isUploadStorageStem(name: string): boolean {
+  return UPLOAD_STORAGE_STEM_RE.test((name || '').trim());
+}
+
+/** 本地上传数据集展示名：优先可读 dataset_name，避免使用 UUID 存储文件名。 */
+export function resolveLocalDatasetDisplayName(
+  datasetPath: string,
+  datasetName?: string,
+): string {
+  const stored = (datasetName || '').trim().replace(/\.zip$/i, '');
+  if (stored && !isUploadStorageStem(stored)) {
+    return stored;
+  }
+  const pathBase = (datasetPath.split('/').pop() || '').replace(/\.zip$/i, '');
+  if (pathBase && !isUploadStorageStem(pathBase)) {
+    return pathBase;
+  }
+  return stored || pathBase || '本地数据集';
+}

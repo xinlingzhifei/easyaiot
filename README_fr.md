@@ -33,6 +33,41 @@ Mon souhait est que ce système soit utilisé dans le monde entier, rendant l'IA
 yFeiEye est une plateforme intelligente d'Internet des Objets (IoT) à intégration cloud-bord-périphérique, se concentrant sur l'intégration profonde de l'IA et de l'IoT. Grâce à des capacités fondamentales telles que la gestion des tâches algorithmiques, l'analyse de flux en temps réel et le raisonnement en cluster de services de modèles, la plateforme réalise une boucle fermée complète allant de la connexion des appareils à la collecte de données, l'analyse par IA et la prise de décision intelligente, atteignant véritablement l'interconnexion et le contrôle intelligent de toutes choses.
 </p>
 
+### 🎯 Trois profils matériels, une plateforme
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+Beaucoup de projets IoT intelligents butent au déploiement : <strong>les fonctionnalités complètes ne tiennent pas sur de petites machines ; pour les faire tenir, on réduit les capacités, on scinde les versions et on maintient plusieurs packages de déploiement.</strong> yFeiEye résout ce dilemme avec une seule plateforme — <strong>boîtier edge pour l'intelligence ponctuelle, caméra tout-en-un IA pour l'analyse au mur, tout-en-un full-stack AIoT pour la chaîne complète en une seule boîte</strong>. Choisissez le niveau adapté à votre matériel terrain ; le même logiciel couvre le pilote mono-site, la couverture d'un bâtiment et la livraison full-stack — sans versions séparées.
+</p>
+
+| Niveau | Matériel typique (exemples) | RAM recommandée | Ce que vous pouvez faire | Vérifié |
+| :-- | :-- | :--: | :-- | :--: |
+| **mini** Edge Lite | <strong>Boîtier edge</strong> (PC industriel 4 GB, tout-en-un sécurité magasin, passerelle de site) | ≥ 4 GB | <strong>Intelligence à un point</strong> : accès caméras, analyse temps réel, alertes intelligentes, inférence de modèles — IA visuelle au coût minimal | ~2 GB utilisés, marge confortable |
+| **standard** Standard | <strong>Caméra tout-en-un IA</strong> (terminal caméra intelligent, caméra de surveillance IA avec calcul, analyseur IA multi-capteurs) | ≥ 16 GB | <strong>Chaque caméra est un nœud intelligent</strong> : plusieurs caméras au mur couvrent un étage/campus ; appareils, règles et calcul orchestrés ensemble | ~10 GB, stable avec marge |
+| **full** Complet (défaut) | <strong>Tout-en-un full-stack AIoT</strong> (tout-en-un pilotage full-stack entreprise, hôte IoT full-stack sectoriel, plateforme intelligente cloud-bord-périphérique) | ≥ 20 GB | <strong>IoT + vidéo + IA en une boîte</strong> : gestion des appareils, accès massif, analyse intelligente, commandement unifié — capacités complètes à long terme | ~14 GB, pleine capacité avec marge |
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>Sélection du niveau et conformité des ressources (vérifié) :</strong>
+</p>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 0;">
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-menu.png" alt="Sélection du niveau de déploiement" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;">Un niveau selon le matériel terrain</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-mini.png" alt="mini conformité vérifiée" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>Boîtier edge (mini)</strong> : ~2 GB vérifiés — intelligence sur un point</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-standard.png" alt="standard conformité vérifiée" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>Caméra tout-en-un IA (standard)</strong> : ~10 GB vérifiés — couverture réseau avec marge</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-full.png" alt="full conformité vérifiée" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>Tout-en-un full-stack AIoT (full)</strong> : ~14 GB vérifiés — full-stack prêt pour la production</p>
+  </div>
+</div>
+
 #### 🧠 Capacités d'IA
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -43,9 +78,7 @@ yFeiEye est une plateforme intelligente d'Internet des Objets (IoT) à intégrat
   <li><strong>Pipeline d'orchestration d'annotation automatique SAM à démarrage zéro</strong> : Conçu pour les scénarios de démarrage à froid sans échantillons annotés ni modèle de détection utilisable, la plateforme intègre la segmentation SAM à vocabulaire ouvert et un moteur d'orchestration intelligent pour offrir un pipeline d'annotation sans surveillance en un clic. Selon la stratégie configurée, le système enchaîne automatiquement l'extraction d'images depuis les caméras, l'annotation initiale SAM par invites textuelles, le fine-tuning YOLO déclenché une fois les seuils atteints, l'inférence YOLO à haute vitesse en phase de production avec bascule intelligente vers SAM pour les détections manquées, l'entraînement itératif périodique et l'export automatique des jeux de données — bouclant la chaîne complète « capture — annotation — entraînement — export ». Le hub d'orchestration suit en temps réel la phase du pipeline et la progression de l'annotation, décide de manière autonome entre les modes SAM, YOLO et complément hybride, et détermine le moment de déclencher l'entraînement ; prend en charge la pause/reprise et la planification élastique sur files locales ou cluster. Avec configuration visuelle des stratégies et journaux d'exécution, les utilisateurs peuvent faire émerger une capacité de détection sur mesure à partir de zéro échantillon et zéro modèle — « définir les catégories en mots, laisser le modèle se construire » devient le chemin par défaut pour constituer des jeux de données</li>
   <li><strong>Cluster de calcul élastique à dizaines de milliers de nœuds et pool d'extension horizontale</strong> : Conçu pour les charges de travail IA et vidéo à très grande échelle, la plateforme constitue une base de calcul distribuée cloud-bord-périphérique qui regroupe tâches algorithmiques, relais de flux, services algorithmiques, entraînement et inférence de modèles dans un même cadre d'équilibrage de charge horizontal et d'élasticité. Chaque nouveau serveur intégré en un clic rejoint immédiatement le pool de calcul programmable ; le planificateur répartit automatiquement les tâches selon les niveaux de ressources et la pression métier, permettant une montée en charge linéaire — de quelques centaines à des dizaines de milliers de caméras, d'une machine unique à un cluster de dizaines de milliers de nœuds — sans redéploiement ni réglage manuel. Ingestion massive de flux, inférence à haute concurrence et entraînement distribué coexistent dans un même pool : « extension à la demande, exécution stable, gouvernance maîtrisée »</li>
   <li><strong>Visualisation spatiale Tianditu et analyse sur carte</strong> : Intégration avec la carte nationale chinoise Tianditu pour rassembler caméras, alertes et reconnaissance personnes/véhicules sur une seule carte, faisant passer la surveillance de « regarder les flux » à « voir l'ensemble ». Les modules média en streaming et alertes proposent une vue « Distribution cartographique » avec arborescence des appareils pour un focus régional, offrant une visibilité immédiate sur la disposition des points de contrôle et l'état en ligne. Clic sur carte, recherche de lieu et import par lot de coordonnées permettent de géolocaliser rapidement les canaux GB, NVR et caméras directes, afin que chaque flux ait un contexte spatial clair. Les alertes sont automatiquement positionnées via les coordonnées des caméras ; filtres par heure, type d'événement, tâche et étiquettes métier, avec accès aux captures et enregistrements en un clic — pour passer rapidement de « où cela s'est-il produit » à l'action. Combiné aux bibliothèques faciales et de plaques, les correspondances sur plusieurs sites forment des fils spatiaux — <strong>recherche de traces par personne</strong> pour reconstituer trajets et présence dans la zone surveillée ; <strong>recherche de traces par véhicule</strong> pour relier les passages et localiser itinéraires et zones d'arrêt, pour retrouver personnes/véhicules, déployer la patrouille et analyser après incident. Les appareils mobiles supportent aussi la relecture de trajectoires sur une frise chronologique. Basculement libre entre fond vectoriel et imagerie satellite avec ajustement automatique de la vue, pour que les responsables utilisent la carte comme levier de détection, ciblage et coordination</li>
-  <li><strong>Intégration de l'orchestration d'agents Dify</strong> : Intégration de la plateforme LLM open source Dify, offrant l'orchestration visuelle de workflows, la construction d'agents (Agent), l'enrichissement par recherche RAG sur bases de connaissances et la publication d'applications conversationnelles/outils. Dify peut être déployé en un clic via le script middleware avec initialisation automatique. Fortement intégrée à la couche de calcul GPUStack, elle permet de connecter sans friction les modèles Qwen, DeepSeek et autres LLM déployés comme fournisseurs de modèles dans les chaînes d'agents, permettant aux métiers de construire rapidement des applications intelligentes sectorielles (patrouille de sécurité, analyse d'incidents, Q&R opérationnelle, etc.) en low-code, réduisant nettement le délai entre mise en production des modèles et déploiement métier</li>
   <li><strong>Déploiement multi-GPU Qwen / DeepSeek</strong> : Prend en charge le déploiement de grands modèles de langage tels que Qwen et DeepSeek en parallèle sur plusieurs GPU. Les ressources GPU peuvent être planifiées de manière flexible au niveau du cluster et des Workers, permettant la mise à l'échelle élastique et l'équilibrage de charge des instances de modèles pour fournir une inférence stable en cas de forte concurrence et de contextes longs</li>
-  <li><strong>Surveillance globale des ressources et de la puissance de calcul</strong> : Intégré avec GPUStack pour une gouvernance unifiée des ressources, collecte et visualise les indicateurs clés du serveur (GPU, CPU, mémoire, stockage). Offre une visibilité en temps réel sur l'utilisation du calcul, la marge de VRAM et l'usage disque/mémoire, fournissant une base opérationnelle observable et alertable pour le déploiement de modèles, les tâches d'entraînement et les pipelines d'analyse vidéo</li>
   <li><strong>Compréhension intelligente des grands modèles visuels</strong> : Intégré avec le grand modèle visuel QwenVL3, prend en charge le raisonnement visuel profond et la compréhension sémantique des images vidéo en temps réel, capable d'effectuer une analyse intelligente et une compréhension de scène du contenu des images, fournissant des capacités cognitives visuelles plus riches, réalisant un saut de la perception au niveau des pixels à la compréhension au niveau sémantique</li>
   <li><strong>Analyse IA en temps réel des flux vidéo des caméras</strong> : Pour les flux vidéo RTSP/RTMP en temps réel, construit un pipeline d'analyse complet « tirage et décodage → extraction intelligente d'images → inférence de modèle → sortie structurée → liaison d'alertes », transformant instantanément les changements de scène en événements de détection structurés consultables et analysables avec une réponse en millisecondes. La chaîne de visionnage et la chaîne algorithmique sont architecturalement découplées, avec des débits hiérarchisés et une planification collaborative multi-GPU, conciliant clarté de prévisualisation et débit concurrentiel élevé. Les résultats d'analyse s'intègrent sans friction aux régions de détection, périodes de défense, reconnaissance faciale/plaques et règles de post-traitement orchestrables, faisant évoluer le modèle de surveillance traditionnel « humain devant l'écran, revue a posteriori » vers « machine en veille permanente, anomalies poussées en secondes, preuves archivées automatiquement », transformant la vidéo en temps réel d'une visualisation passive en infrastructure de perception active et d'analyse intelligente</li>
   <li><strong>Patrouille intelligente des caméras</strong> : Pour les scénarios de surveillance à grand nombre de caméras et effectifs limités, la plateforme offre des patrouilles multi-écrans et par lot depuis l'arborescence des appareils, réalisant une analyse IA en rotation sur de larges parcs caméras avec un nombre limité de connexions simultanées. Trois modes de planification : rotation, pool de connexions et hybride — capture automatique à intervalle défini, exécution des modèles de détection et liaison avec alertes et reconnaissance faciale/plaques ; en mode hybride, les flux prioritaires restent en surveillance permanente tandis que les flux secondaires tournent en pool, conciliant ciblage et couverture globale. Progression en temps réel, archivage automatique des captures, lancement en un clic de sessions de patrouille sur des centaines de caméras depuis l'écran partagé ou le catalogue — « moins de connexions, plus de couverture, détection rapide », pour passer d'une surveillance manuelle écran par écran à une patrouille automatisée intelligente</li>
@@ -96,6 +129,23 @@ yFeiEye est une plateforme intelligente d'Internet des Objets (IoT) à intégrat
   <li><strong>Gestion des notifications</strong> : Prend en charge 7 méthodes de notification, notamment Feishu, DingTalk, Enterprise WeChat, Email, Tencent Cloud SMS, Alibaba Cloud SMS et Webhook, permettant des notifications d'alerte flexibles et multi-canaux.</li>
 </ul>
 
+#### 📱 APP mobile
+
+<ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>Accès multi-canal</strong> : Disponible sur téléphone, mini-programme et App — l'exploitation et la gestion ne sont plus liées au poste de travail ; agir sur le terrain en temps réel</li>
+  <li><strong>Parité des capacités</strong> : Les mêmes fonctions métier que la console PC ; changez d'appareil sans perdre le contrôle</li>
+  <li><strong>Gestion des appareils</strong> : Tous les modes d'accès unifiés ; listes et canaux en un coup d'œil, aperçu en direct en un clic — restez informé en tournée</li>
+  <li><strong>Relais de flux</strong> : Créez et arrêtez des tâches à tout moment ; suivez les nœuds de cluster et l'état des flux — planifiez les ressources vidéo à distance</li>
+  <li><strong>Tâches algorithmiques</strong> : Démarrez et arrêtez les tâches temps réel et instantané en mobilité ; suivez les résultats sans attendre le retour au bureau</li>
+  <li><strong>Centre d'alertes</strong> : Recherchez les alertes instantanément ; captures et enregistrements en un clic — vérifiez et suivez en astreinte mobile</li>
+  <li><strong>Gestion des modèles</strong> : Statut de déploiement visible d'un coup d'œil ; progressez en toute confiance</li>
+  <li><strong>Inférence de modèles</strong> : Envoyez une image sur le terrain et obtenez le résultat immédiatement — contrôles ponctuels sans retourner au PC</li>
+  <li><strong>Entraînement de modèles</strong> : Suivez la progression à tout moment ; arrêtez à distance si besoin pour éviter le gaspillage de calcul</li>
+  <li><strong>Centre personnel</strong> : Compte, locataire et préférences centralisés — pratique sur tous les terminaux</li>
+  <li><strong>Visionnage fluide</strong> : Flux en direct et enregistrements d'alerte fluides sur mobile — faible latence, sans saccades, expérience d'astreinte préservée</li>
+  <li><strong>Connexion continue</strong> : Session maintenue automatiquement, moins de reconnexions — le contrôle intelligent cloud-bord-périphérique atteint téléphone et mini-programme</li>
+</ul>
+
 ### 📦 Modèles IA intégrés
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -144,7 +194,7 @@ En s'appuyant de manière innovante sur les grands modèles, nous construisons u
 ### 🏗️ Caractéristiques de l'architecture du projet
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye n'est pas vraiment un seul projet, mais six projets distincts.
+yFeiEye n'est pas vraiment un seul projet, mais sept projets distincts.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -207,7 +257,7 @@ yFeiEye répond activement à la stratégie de localisation, prenant pleinement 
 ## 🧩 Structure du projet
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye est composé de six projets principaux :
+yFeiEye est composé de sept projets principaux :
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -218,6 +268,21 @@ yFeiEye est composé de six projets principaux :
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module WEB</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">Interface de gestion frontend basée sur Vue, offrant une expérience utilisateur unifiée.</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module APP</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Accès multi-canal</strong> : Un seul développement, plusieurs terminaux — téléphone, mini-programme et App</li>
+    <li><strong>Parité des capacités</strong> : Mêmes fonctions métier que la console PC, avec changement de locataire</li>
+    <li><strong>Gestion des appareils</strong> : Caméras directes, GB28181 et NVR unifiés ; statut en ligne, navigation des canaux et aperçu en direct en un clic</li>
+    <li><strong>Relais de flux</strong> : Création de tâches, démarrage/arrêt, état des nœuds de cluster et consultation des URL multi-flux</li>
+    <li><strong>Tâches algorithmiques</strong> : Liste temps réel/instantané, contrôle démarrage/arrêt et statistiques de détection/trames</li>
+    <li><strong>Centre d'alertes</strong> : Recherche d'alertes, aperçu des captures et relecture VOD des enregistrements d'alerte</li>
+    <li><strong>Modèles & IA</strong> : Liste et statut de déploiement, atelier d'inférence d'images mobile, suivi et arrêt des tâches d'entraînement</li>
+    <li><strong>Profil</strong> : Informations personnelles, sécurité du compte, FAQ, retours et paramètres de l'application</li>
+  </ul>
+</td>
 </tr>
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module DEVICE</strong></td>
@@ -606,6 +671,18 @@ yFeiEye est un projet d'apprentissage open source, sans lien avec des activités
 <div>
   <img src=".image/banner/banner1005.png" alt="Capture d'écran 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Capture d'écran 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Capture d'écran 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Capture d'écran 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Capture d'écran 1" width="49%">
 </div>
 
 ## 🛠️ Support de service

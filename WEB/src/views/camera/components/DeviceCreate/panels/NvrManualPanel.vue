@@ -15,6 +15,10 @@ import { BasicForm, useForm } from '@/components/Form';
 import { Button } from '@/components/Button';
 import { useMessage } from '@/hooks/web/useMessage';
 import { registerNvrWithChannels } from '@/api/device/camera';
+import {
+  formatNvrRegisterHint,
+  nvrRegisterRegisteredCount,
+} from '@/views/camera/utils/nvrRegisterMessage';
 import DeviceCreatePanelLayout from '../DeviceCreatePanelLayout.vue';
 import {
   DEVICE_CREATE_FORM_GRID,
@@ -69,6 +73,7 @@ const [registerForm, { validate, getFieldsValue }] = useForm({
       field: 'password',
       label: '密码',
       component: 'InputPassword',
+      required: true,
       componentProps: { allowClear: true },
     },
     {
@@ -103,11 +108,15 @@ async function handleSubmit() {
       vendor: values.vendor,
       name: values.name || undefined,
       scheme: port === 443 || port === 8443 ? 'https' : 'http',
+      timeout: 15,
     });
-    const stats = (res as { stats?: { registered?: number } })?.stats;
-    const n = stats?.registered ?? (res as { camera_count?: number })?.camera_count ?? 0;
-    createMessage.success(`NVR 已登记，已挂载 ${n} 路通道`);
-    emit('success');
+    const n = nvrRegisterRegisteredCount(res);
+    if (n > 0) {
+      createMessage.success(`NVR 已登记，已挂载 ${n} 路通道`);
+      emit('success');
+    } else {
+      createMessage.warning(`NVR 登记失败：${formatNvrRegisterHint(res)}`);
+    }
   } catch (e: unknown) {
     const err = e as { msg?: string; message?: string };
     createMessage.error(err?.msg || err?.message || 'NVR 登记失败');

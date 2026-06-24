@@ -50,6 +50,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { Empty, List, PageHeader, Spin } from 'ant-design-vue';
 import { getNvrDetail, registerNvrWithChannels, type DeviceInfo, type NvrInfo } from '@/api/device/camera';
+import { nvrRegisterRegisteredCount } from '@/views/camera/utils/nvrRegisterMessage';
 import NvrChannelCard from '@/views/camera/components/NvrChannelCard/index.vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button'
@@ -134,6 +135,10 @@ async function handleSyncChannels() {
     createMessage.warning('请先在 NVR 编辑中填写 Web 登录用户名与密码');
     return;
   }
+  if (!nvr.password) {
+    createMessage.warning('请先在 NVR 编辑中填写 Web 登录密码后再同步通道');
+    return;
+  }
   syncing.value = true;
   try {
     const res = await registerNvrWithChannels({
@@ -147,11 +152,9 @@ async function handleSyncChannels() {
       serial_number: nvr.serial_number,
       scheme: nvr.scheme,
     });
-    const data = (res as NvrInfo) || (res as { data?: NvrInfo })?.data;
-    const stats = (res as { stats?: { registered?: number; skipped?: number } })?.stats;
-    nvrInfo.value = data || nvr;
-    cameras.value = mapCameras(data || null);
-    const n = stats?.registered ?? cameras.value.length;
+    nvrInfo.value = res || nvr;
+    cameras.value = mapCameras(res || null);
+    const n = nvrRegisterRegisteredCount(res);
     createMessage.success(`已同步 ${n} 路通道`);
   } catch (e: unknown) {
     const err = e as { msg?: string; message?: string };

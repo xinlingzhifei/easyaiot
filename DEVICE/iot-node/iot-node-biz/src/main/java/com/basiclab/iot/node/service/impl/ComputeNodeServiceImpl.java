@@ -192,10 +192,13 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                     ? new HashMap<>(platformNode.getCapabilities()) : defaultCapabilities(platformNode.getNodeRole());
             if (!Boolean.TRUE.equals(caps.get(PLATFORM_CAPABILITY_KEY))) {
                 caps.put(PLATFORM_CAPABILITY_KEY, true);
-                platformNode.setCapabilities(caps);
+                changed = true;
+            }
+            if (mergeDefaultCapabilities(caps, platformNode.getNodeRole())) {
                 changed = true;
             }
             if (changed) {
+                platformNode.setCapabilities(caps);
                 computeNodeMapper.updateById(platformNode);
             }
             return;
@@ -207,6 +210,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
                     ? new HashMap<>(byHost.getCapabilities())
                     : defaultCapabilities(byHost.getNodeRole());
             caps.put(PLATFORM_CAPABILITY_KEY, true);
+            mergeDefaultCapabilities(caps, byHost.getNodeRole());
             byHost.setCapabilities(caps);
             computeNodeMapper.updateById(byHost);
             return;
@@ -896,6 +900,19 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         return Comparator.comparing((ComputeNodeRespVO node) -> !Boolean.TRUE.equals(node.getIsPlatform()));
     }
 
+    /** 将角色默认能力合并进已有 map，返回是否有变更（用于升级历史节点能力字段）。 */
+    private boolean mergeDefaultCapabilities(Map<String, Boolean> caps, String nodeRole) {
+        Map<String, Boolean> defaults = defaultCapabilities(nodeRole);
+        boolean changed = false;
+        for (Map.Entry<String, Boolean> entry : defaults.entrySet()) {
+            if (Boolean.TRUE.equals(entry.getValue()) && !Boolean.TRUE.equals(caps.get(entry.getKey()))) {
+                caps.put(entry.getKey(), true);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     private Map<String, Boolean> defaultCapabilities(String nodeRole) {
         Map<String, Boolean> caps = new HashMap<>();
         if (NodeRoleEnum.COMPUTE.getRole().equals(nodeRole)
@@ -906,6 +923,12 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             caps.put("algorithm_snap", true);
             caps.put("algorithm_patrol", true);
             caps.put("stream_forward", true);
+            caps.put("auto_label", true);
+            caps.put("model_train", true);
+        }
+        if (NodeRoleEnum.GPU.getRole().equals(nodeRole)
+                || NodeRoleEnum.HYBRID.getRole().equals(nodeRole)) {
+            caps.put("llm_inference", true);
         }
         if (NodeRoleEnum.MEDIA.getRole().equals(nodeRole) || NodeRoleEnum.HYBRID.getRole().equals(nodeRole)) {
             caps.put("srs_live", true);

@@ -48,7 +48,8 @@ MC_IMAGE="minio/mc:latest"
 
 BUCKET_LIST=(
     "dataset" "datasets" "export-bucket" "inference-inputs"
-    "inference-results" "models" "snap-space" "alert-images"
+    "inference-results" "models" "snap-space" "record-space" "alert-images"
+    "plate-models" "plate-train-results" "plate-train-logs" "plate-inference-results"
 )
 
 # 初始化日志文件
@@ -628,6 +629,10 @@ init_minio() {
         "inference-results:inference-results:"
         "models:models:"
         "snap-space:snap-space:"
+        "plate-models:plate-models:"
+        "plate-train-results:plate-train-results:"
+        "plate-train-logs:plate-train-logs:"
+        "plate-inference-results:plate-inference-results:"
         # alert-images 存储桶用于存储告警图片（不需要上传初始数据）
     )
     

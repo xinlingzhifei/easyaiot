@@ -58,6 +58,16 @@ public class TenantController {
         return success(BeanUtils.toBean(tenant, TenantSimpleRespVO.class));
     }
 
+    @GetMapping({"/get-simple-list", "/simple-list"})
+    @PermitAll
+    @Operation(summary = "获取租户精简信息列表", description = "登录界面，获得租户列表")
+    public CommonResult<List<TenantSimpleRespVO>> getTenantSimpleList() {
+        TenantPageReqVO pageReqVO = new TenantPageReqVO();
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        List<TenantDO> list = tenantService.getTenantPage(pageReqVO).getList();
+        return success(BeanUtils.toBean(list, TenantSimpleRespVO.class));
+    }
+
     @PostMapping("/create")
     @Operation(summary = "创建租户")
     //@PreAuthorize("@ss.hasPermission('system:tenant:create')")

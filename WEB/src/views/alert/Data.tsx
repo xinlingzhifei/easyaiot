@@ -126,12 +126,23 @@ export function getBasicColumns(): BasicColumn[] {
   ];
 }
 
+/** 告警筛选：重置/查询占第三列，与上方表单项对齐 */
+export const alertFilterActionColOptions = {
+  span: 8,
+  style: {
+    textAlign: 'left' as const,
+    paddingLeft: '120px',
+    boxSizing: 'border-box' as const,
+  },
+};
+
 export function getFormConfig(): Partial<FormProps> {
   return {
     labelWidth: 120,
     baseColProps: {span: 8},
-    actionColOptions: { span: 8, style: { textAlign: 'left' } },
+    actionColOptions: alertFilterActionColOptions,
     showAdvancedButton: false,
+    alwaysShowLines: 2,
     schemas: [
       {
         field: 'task_name',

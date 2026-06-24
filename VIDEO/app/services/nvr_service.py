@@ -7,7 +7,6 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-from sqlalchemy import or_
 from models import Device, Nvr, db
 
 logger = logging.getLogger(__name__)
@@ -169,6 +168,56 @@ def _apply_nvr_fields(nvr: Nvr, info: dict[str, Any]) -> None:
         if isinstance(val, str) and val.strip() == '':
             continue
         setattr(nvr, field, val)
+
+
+def find_nvr_by_ip_port(ip: str, port: int | None = None) -> Nvr | None:
+    """按 IP+端口查找 NVR，端口不匹配时回退到同 IP 首条记录。"""
+    ip = (ip or '').strip()
+    if not ip:
+        return None
+    try:
+        p = int(port or 80)
+    except (TypeError, ValueError):
+        p = 80
+    nvr = Nvr.query.filter_by(ip=ip, port=p).first()
+    if nvr:
+        return nvr
+    return Nvr.query.filter_by(ip=ip).order_by(Nvr.id).first()
+
+
+def merge_nvr_enum_credentials(
+    ip: str,
+    port: int,
+    *,
+    username: str | None,
+    password: str | None,
+    credentials: list[dict[str, Any]] | None,
+) -> tuple[str | None, str | None, list[dict[str, Any]] | None]:
+    """枚举通道前合并请求凭证与库中已登记 NVR 凭证（请求未填密码时使用库内值）。"""
+    existing = find_nvr_by_ip_port(ip, port)
+    user = (username or '').strip() or None
+    pwd = password
+    creds = list(credentials) if credentials else None
+
+    if existing:
+        if not user and existing.username:
+            user = existing.username.strip() or None
+        if (pwd is None or pwd == '') and existing.password:
+            pwd = existing.password
+        if existing.username and existing.password:
+            pair = {'username': existing.username, 'password': existing.password}
+            if creds is None:
+                creds = [pair]
+            elif not any(
+                (c.get('username') or '').strip() == existing.username
+                for c in creds
+                if isinstance(c, dict)
+            ):
+                creds.insert(0, pair)
+
+    if not user and not creds:
+        return None, pwd, creds
+    return user, pwd, creds
 
 
 def get_or_create_nvr(info: dict[str, Any]) -> int:
@@ -384,18 +433,19 @@ def _upsert_nvr_channel_device(
 
 
 def _link_channels_to_nvr(nvr_id: int, nvr_ip: str | None = None) -> int:
-    """登记后兜底：同 NVR 取流地址或 NVR-Channel 记录必须带上 nvr_id。"""
+    """登记后兜底：RTSP 源指向本 NVR 但未写 nvr_id 的通道补全关联（不跨 NVR 抢占）。"""
     nvr = Nvr.query.get(nvr_id)
     if not nvr:
         return 0
     host = (nvr_ip or nvr.ip or '').strip()
+    if not host:
+        return 0
     fixed = 0
-    for cam in Device.query.filter(
-        or_(Device.nvr_id.is_(None), Device.nvr_id != nvr_id),
-    ).all():
-        if not is_nvr_channel_device(cam) and not (host and host in (cam.source or '')):
+    for cam in Device.query.filter(Device.nvr_id.is_(None)).all():
+        src = cam.source or ''
+        if host not in src:
             continue
-        if int(cam.nvr_channel or 0) <= 0 and host and host not in (cam.source or ''):
+        if not is_nvr_channel_device(cam):
             continue
         cam.nvr_id = nvr_id
         fixed += 1

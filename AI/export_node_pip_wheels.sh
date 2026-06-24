@@ -16,6 +16,9 @@ case "${BUNDLE_TYPE}" in
   model_train)
     REQ_FILE="${ROOT}/requirements-node-model-train.txt"
     ;;
+  llm_service)
+    REQ_FILE="${ROOT}/requirements-node-llm-service.txt"
+    ;;
 esac
 
 if [[ ! -f "${REQ_FILE}" ]]; then

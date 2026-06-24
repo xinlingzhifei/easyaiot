@@ -58,7 +58,7 @@ export function renderNodeReadinessBadge(ready: boolean) {
 }
 
 export function renderPlatformNodeBadge() {
-  return h('span', { class: 'node-meta-badge node-meta-badge--scope-control-plane' }, NODE_TERM.controlPlaneNode);
+  return h('span', { class: 'node-meta-badge node-meta-badge--xs node-meta-badge--scope-control-plane' }, NODE_TERM.controlPlaneNode);
 }
 
 function cephBadgeClass(status: CephMountStatus): string {

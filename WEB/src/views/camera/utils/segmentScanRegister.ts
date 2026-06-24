@@ -1,4 +1,5 @@
 import type { CredentialPair, SegmentScanDeviceRow } from '@/api/device/camera';
+import { buildBrandRtspUrl } from '@/views/camera/utils/rtspUrl';
 
 /** 按品牌拼装 IPC 主码流 RTSP（与 VideoModal 海康/大华规则一致） */
 export function buildSegmentScanRtspUrl(
@@ -8,17 +9,26 @@ export function buildSegmentScanRtspUrl(
 ): string | undefined {
   const ip = record.ip?.trim();
   if (!ip || !cred.username?.trim()) return undefined;
-  const user = encodeURIComponent(cred.username.trim());
-  const pw = encodeURIComponent(cred.password || '');
-  const port = 554;
   const vendor = record.vendor;
   if (vendor === 'hikvision' || vendor === 'ezviz') {
-    const subtype = stream === 0 ? 1 : 2;
-    return `rtsp://${user}:${pw}@${ip}:${port}/Streaming/Channels/10${subtype}`;
+    return buildBrandRtspUrl({
+      cameraType: 'hikvision',
+      ip,
+      port: 554,
+      username: cred.username,
+      password: cred.password || '',
+      stream,
+    });
   }
   if (vendor === 'dahua') {
-    const subtype = stream === 0 ? 0 : 1;
-    return `rtsp://${user}:${pw}@${ip}:${port}/cam/realmonitor?channel=1&subtype=${subtype}`;
+    return buildBrandRtspUrl({
+      cameraType: 'dahua',
+      ip,
+      port: 554,
+      username: cred.username,
+      password: cred.password || '',
+      stream,
+    });
   }
   return undefined;
 }

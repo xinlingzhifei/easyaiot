@@ -31,7 +31,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { resolveAdminEntryTarget } from '../adminEntry'
+import { getAdminHomeRoute } from '@/utils/deployProfile'
 
 defineOptions({
   name: 'MonitorHeader'
@@ -50,7 +50,8 @@ const adminEntryLabel = '管理后台'
 
 const handleGoToAdmin = () => {
   emit('admin-entry')
-  router.push(resolveAdminEntryTarget(router))
+  const target = getAdminHomeRoute()
+  router.push(target.query ? { path: target.path, query: target.query } : target.path)
 }
 
 const currentDate = ref('')

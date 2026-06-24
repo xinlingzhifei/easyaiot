@@ -1,6 +1,6 @@
 <template>
   <div class="sam-inference-page">
-    <GpuStackMonitorTip class="page-monitor-tip" />
+<!--    <GpuStackMonitorTip class="page-monitor-tip" />-->
     <div class="sam-layout">
       <div class="sam-panel sam-input-panel">
         <div class="panel-title">

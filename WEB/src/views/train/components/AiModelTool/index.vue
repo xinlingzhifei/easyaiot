@@ -43,7 +43,7 @@
           <div class="config-options">
             <div v-if="state.classesLoading" class="class-tags-status">正在加载检测类别...</div>
             <div v-else-if="state.availableClassNames.length === 0" class="class-tags-status class-tags-status--warn">
-              未能读取检测类别，请先在「模型管理」中上传有效的 YOLO 权重（.pt）
+              未能读取检测类别，请确认模型已上传有效 YOLO 权重（.pt），或点击上方刷新后重试
             </div>
             <template v-else>
               <ApiSelect

@@ -27,7 +27,14 @@ class AlgorithmTaskDaemon:
     所有必要的信息都通过参数传入。
     """
 
-    def __init__(self, task_id: int, log_path: str, task_type: str = 'realtime', llm_enabled: bool = False):
+    def __init__(
+        self,
+        task_id: int,
+        log_path: str,
+        task_type: str = 'realtime',
+        llm_enabled: bool = False,
+        extra_env: dict = None,
+    ):
         """
         初始化守护进程
         
@@ -36,14 +43,17 @@ class AlgorithmTaskDaemon:
             log_path: 日志文件路径（目录）
             task_type: 任务类型 ('realtime' 实时算法任务, 'snap' 抓拍算法任务)
             llm_enabled: 是否启用LLM
+            extra_env: 启动时注入子进程的额外环境变量（如 SAM 配置，避免守护进程查库）
         """
         self._process = None
         self._task_id = task_id
         self._log_path = log_path
         self._task_type = task_type
+        self._extra_env = extra_env or {}
         self._running = True  # 守护线程是否继续运行
         self._restart = False  # 手动重启标志
-        threading.Thread(target=self._daemon, daemon=True).start()
+        self._daemon_thread = threading.Thread(target=self._daemon, daemon=True)
+        self._daemon_thread.start()
 
     def _log(self, message: str, level: str = 'INFO', to_file: bool = True, to_app: bool = True):
         """统一的日志记录方法"""
@@ -101,6 +111,10 @@ class AlgorithmTaskDaemon:
                         f_log.flush()
                         time.sleep(10)  # 等待10秒后重试
                         continue
+
+                    if not self._running:
+                        self._log('守护进程收到停止信号，取消启动子进程', 'INFO')
+                        break
                     
                     # 记录启动信息
                     self._log(f'准备启动算法任务服务，任务ID: {self._task_id}', 'INFO')
@@ -205,11 +219,17 @@ class AlgorithmTaskDaemon:
                     
                     # 等待进程结束
                     return_code = self._process.wait()
-                    self._log(f'进程已退出，返回码: {return_code}', 'INFO' if return_code == 0 else 'WARNING')
+                    # SIGTERM(-15) 来自 stop()/restart() 时为预期行为，勿当作异常崩溃
+                    graceful_stop = (
+                        return_code in (-15, 15)
+                        and (not self._running or self._restart)
+                    )
+                    log_level = 'INFO' if return_code == 0 or graceful_stop else 'WARNING'
+                    self._log(f'进程已退出，返回码: {return_code}', log_level)
                     f_log.write(f'\n# 进程退出，返回码: {return_code}\n')
                     
                     # 如果进程异常退出，记录所有输出用于诊断，并输出到控制台
-                    if return_code != 0:
+                    if return_code != 0 and not graceful_stop:
                         error_summary = []
                         error_summary.append(f'\n# ========== 进程异常退出，完整输出 ==========')
                         f_log.write(f'\n# ========== 进程异常退出，完整输出 ==========\n')
@@ -275,8 +295,20 @@ class AlgorithmTaskDaemon:
                             f_log.flush()
                             f_log.close()
                             return
-                        self._log(f'算法任务服务异常退出（返回码: {return_code}），将在5秒后重启', 'WARNING')
-                        f_log.write(f'\n# [{datetime.now().isoformat()}] 算法任务服务异常退出（返回码: {return_code}），将在5秒后重启......\n')
+                        # run_deploy 收到 SIGTERM 后 signal_handler 以 0 退出，属预期停机，勿自动重启
+                        if return_code == 0:
+                            self._log('算法任务服务已正常退出，守护进程结束', 'INFO')
+                            f_log.write(
+                                f'\n# [{datetime.now().isoformat()}] 算法任务服务已正常退出，守护进程结束\n'
+                            )
+                            f_log.flush()
+                            f_log.close()
+                            return
+                        restart_msg = f'算法任务服务异常退出（返回码: {return_code}），将在5秒后重启'
+                        self._log(restart_msg, 'WARNING')
+                        f_log.write(
+                            f'\n# [{datetime.now().isoformat()}] {restart_msg}......\n'
+                        )
                         f_log.flush()
                         # 在等待期间，定期检查是否收到停止信号
                         for _ in range(50):  # 5秒 = 50 * 0.1秒
@@ -316,6 +348,14 @@ class AlgorithmTaskDaemon:
         finally:
             if f_log:
                 f_log.close()
+
+    def join_daemon_thread(self, timeout: float = 15.0) -> bool:
+        """等待守护线程结束（替换守护进程时避免遗留线程继续拉起子进程）"""
+        thread = getattr(self, '_daemon_thread', None)
+        if not thread or not thread.is_alive():
+            return True
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
 
     def restart(self):
         """手动重启服务"""
@@ -434,6 +474,9 @@ class AlgorithmTaskDaemon:
             'KAFKA_BOOTSTRAP_SERVERS', 'SAM_SUPPLEMENT_ENABLED', 'SAM_SUPPLEMENT_CONFIG',
             'SAM_PIPELINE_MODE', 'SAM_TEXT_PROMPTS', 'SAM_CONF', 'SAM_TRIGGER',
             'SAM_INTERVAL_FRAMES', 'SAM_MERGE_IOU', 'SAM_RETURN_MASKS',
+            'IOT_SINK_API_URL', 'IOT_SINK_USE_GATEWAY', 'IOT_SINK_HOST', 'IOT_SINK_PORT',
+            'EASYAIOT_DEPLOY_PROFILE', 'ALERT_HOOK_URL', 'ALERT_KEEP_LATEST',
+            'VIDEO_SERVICE_HOST', 'VIDEO_SERVICE_URL', 'VIDEO_API_USE_GATEWAY',
         ):
             val = os.getenv(key)
             if val is not None and val != '':
@@ -454,10 +497,12 @@ class AlgorithmTaskDaemon:
         env['VIDEO_SERVICE_PORT'] = video_service_port
         gateway = os.getenv('JAVA_BACKEND_URL', os.getenv('GATEWAY_URL', 'http://localhost:48080')).rstrip('/')
         env['VIDEO_CONTROL_URL'] = f'{gateway}/admin-api/video'
+        # 心跳直连本机 VIDEO 服务（host 网络 / 同机部署），避免经网关鉴权导致 500
+        video_host = (os.getenv('POD_IP') or os.getenv('HOST_IP') or '127.0.0.1').strip()
         if self._task_type == 'patrol':
-            env['VIDEO_HEARTBEAT_URL'] = f'{env["VIDEO_CONTROL_URL"]}/algorithm/heartbeat/patrol'
+            env['VIDEO_HEARTBEAT_URL'] = f'http://{video_host}:{video_service_port}/video/algorithm/heartbeat/patrol'
         else:
-            env['VIDEO_HEARTBEAT_URL'] = f'{env["VIDEO_CONTROL_URL"]}/algorithm/heartbeat/realtime'
+            env['VIDEO_HEARTBEAT_URL'] = f'http://{video_host}:{video_service_port}/video/algorithm/heartbeat/realtime'
         
         # 重要：realtime_algorithm_service 使用 host 网络模式，必须使用 localhost 访问 Kafka
         # 如果环境变量中配置了容器名（如 Kafka:9092），需要强制覆盖为 EXTERNAL listener
@@ -474,15 +519,9 @@ class AlgorithmTaskDaemon:
         # 设置日志路径
         env['LOG_PATH'] = self._log_path
 
-        try:
-            from models import AlgorithmTask
-            from app.services.algorithm_task_launcher_service import _inject_sam_supplement_env
-            task = AlgorithmTask.query.get(self._task_id)
-            if task:
-                _inject_sam_supplement_env(env, task)
-        except Exception as e:
-            self._log(f'加载 SAM 补充配置失败: {e}', 'WARNING')
-        
+        if self._extra_env:
+            env.update(self._extra_env)
+
         self._log(
             f'环境变量已设置: TASK_ID={env["TASK_ID"]}, VIDEO_SERVICE_PORT={env["VIDEO_SERVICE_PORT"]}, '
             f'KAFKA_BOOTSTRAP_SERVERS={env["KAFKA_BOOTSTRAP_SERVERS"]}, '

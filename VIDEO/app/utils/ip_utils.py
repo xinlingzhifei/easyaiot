@@ -6,7 +6,6 @@ import concurrent
 import subprocess
 import sys
 import threading
-import time
 from typing import Optional
 
 # 虚拟网桥 / 容器接口：Docker host 网络上仍存在 docker0、br-*、veth 等，不适合作为给摄像机 / 浏览器的拉流地址
@@ -114,6 +113,8 @@ class IpReachabilityMonitor:
     def __init__(self, interval_seconds: Optional[int] = 10):
         self._monitors: dict[str, IpReachabilityMonitor._Monitor] = {}
         self._alive = True
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
         # 确保 interval_seconds 是整数类型
         if isinstance(interval_seconds, str):
             self._interval_sec = int(interval_seconds)
@@ -125,10 +126,21 @@ class IpReachabilityMonitor:
                 monitor.online = check_ip_reachable(monitor.ip)
 
             while self._alive:
-                wait_muti_run(test_online, self._monitors.values())
-                time.sleep(self._interval_sec)
+                monitors = list(self._monitors.values())
+                if monitors:
+                    try:
+                        wait_muti_run(test_online, monitors)
+                    except RuntimeError:
+                        break
+                if self._stop_event.wait(self._interval_sec):
+                    break
 
-        threading.Thread(target=monitor_online_thread, daemon=True).start()
+        self._thread = threading.Thread(
+            target=monitor_online_thread,
+            daemon=True,
+            name='ip-reachability-monitor',
+        )
+        self._thread.start()
 
     def update(self, name: str, ip: str, default_online: bool = True) -> bool:
         """更新或添加设备监控
@@ -157,8 +169,14 @@ class IpReachabilityMonitor:
         return name in self._monitors
 
     def stop(self):
+        if not self._alive:
+            return
         self._alive = False
-        del self._monitors
+        self._stop_event.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=5)
+        self._monitors.clear()
 
     def set_interval_time(self, sec: int):
         # 确保 sec 是整数类型
@@ -175,5 +193,11 @@ def check_ip_reachable(ip: str) -> bool:
 
 
 def wait_muti_run(func, items):
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        executor.map(func, items)
+    if not items:
+        return
+    try:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            executor.map(func, items)
+    except RuntimeError:
+        # 解释器关闭阶段线程池已不可用，忽略即可
+        pass

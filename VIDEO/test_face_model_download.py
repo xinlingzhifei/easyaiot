@@ -33,26 +33,46 @@ class TestFaceModelDownloadHelpers(unittest.TestCase):
             self.assertEqual(status['downloaded_bytes'], 50 * 1024 * 1024)
             self.assertGreater(status['progress'], 0)
 
-    def test_prepare_model_target_rejects_nonempty_directory(self):
+    def test_prepare_model_target_clears_nonempty_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             model_path = os.path.join(tmp, 'face_rec.onnx')
             os.makedirs(model_path)
             with open(os.path.join(model_path, 'stale'), 'wb') as f:
                 f.write(b'x')
             with mock.patch.object(fmd, 'FACE_MATCH_MODEL_PATH', model_path):
-                with self.assertRaises(RuntimeError) as ctx:
-                    fmd._prepare_model_target()
-            self.assertIn('目录而非文件', str(ctx.exception))
-
-    def test_prepare_model_target_clears_empty_directory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            model_path = os.path.join(tmp, 'face_rec.onnx')
-            os.makedirs(model_path)
-            with mock.patch.object(fmd, 'FACE_MATCH_MODEL_PATH', model_path):
                 fmd._prepare_model_target()
             self.assertFalse(os.path.exists(model_path))
 
-    def test_is_zip_complete(self):
+    def test_prepare_model_target_clears_downloading_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = os.path.join(tmp, 'face_rec.onnx')
+            downloading_path = f'{model_path}.downloading'
+            os.makedirs(downloading_path)
+            with mock.patch.object(fmd, 'FACE_MATCH_MODEL_PATH', model_path):
+                fmd._prepare_model_target()
+            self.assertFalse(os.path.exists(downloading_path))
+
+    def test_extract_and_replace_clears_target_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = os.path.join(tmp, 'face_rec.onnx')
+            zip_path = os.path.join(tmp, 'buffalo_l.zip')
+            onnx_member = os.path.join(tmp, 'w600k_r50.onnx')
+            with open(onnx_member, 'wb') as f:
+                f.write(b'0' * 1024)
+            with zipfile.ZipFile(zip_path, 'w') as zf:
+                zf.write(onnx_member, arcname='w600k_r50.onnx')
+            os.makedirs(model_path)
+            onnx_partial = f'{model_path}.downloading'
+
+            with mock.patch.object(fmd, 'FACE_MATCH_MODEL_PATH', model_path), mock.patch.object(
+                fmd, '_zip_partial_path', return_value=zip_path
+            ), mock.patch.object(
+                fmd, '_onnx_partial_path', return_value=onnx_partial
+            ), mock.patch.object(fmd, '_is_zip_complete', return_value=True):
+                fmd._do_download()
+
+            self.assertTrue(os.path.isfile(model_path))
+            self.assertGreater(os.path.getsize(model_path), 0)
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, 'buffalo_l.zip')
             onnx_path = os.path.join(tmp, 'w600k_r50.onnx')

@@ -119,6 +119,16 @@ export function getBasicColumns(): BasicColumn[] {
       },
     },
     {
+      title: '后处理',
+      dataIndex: 'post_process_enabled',
+      width: 90,
+      customRender: ({ text }) => (
+        <Tag color={text ? 'purple' : 'default'}>
+          {text ? '已开启' : '未开启'}
+        </Tag>
+      ),
+    },
+    {
       width: 200,
       title: '操作',
       dataIndex: 'action',

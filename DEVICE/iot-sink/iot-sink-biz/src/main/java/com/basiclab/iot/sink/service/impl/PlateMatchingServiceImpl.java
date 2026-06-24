@@ -33,6 +33,9 @@ public class PlateMatchingServiceImpl implements PlateMatchingService {
     @Value("${basiclab.video.service-url:http://localhost:48080}")
     private String videoServiceUrl;
 
+    @Value("${basiclab.video.api-prefix:/admin-api/video}")
+    private String videoApiPrefix;
+
     @Value("${spring.kafka.plate-matching.result-topic:iot-plate-matching-result}")
     private String resultTopic;
 
@@ -69,7 +72,7 @@ public class PlateMatchingServiceImpl implements PlateMatchingService {
         payload.put("rect", message.getRect());
         payload.put("landmarks", message.getLandmarks());
 
-        String url = normalizeBaseUrl(videoServiceUrl) + "/video/plate/matching/process";
+        String url = normalizeBaseUrl(videoServiceUrl) + normalizeApiPrefix(videoApiPrefix) + "/plate/matching/process";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
@@ -115,5 +118,12 @@ public class PlateMatchingServiceImpl implements PlateMatchingService {
             return "http://localhost:48080";
         }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private static String normalizeApiPrefix(String apiPrefix) {
+        if (apiPrefix == null || apiPrefix.isEmpty()) {
+            return "/admin-api/video";
+        }
+        return apiPrefix.startsWith("/") ? apiPrefix : "/" + apiPrefix;
     }
 }

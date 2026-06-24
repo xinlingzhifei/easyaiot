@@ -11,22 +11,33 @@
     <div class="ant-modal-content">
       <div class="ant-modal-body" style="padding: 0px;">
         <div style="min-height: 200px; max-height: 680px;">
-          <!-- 播放器 -->
-          <div style="height: 420px">
+          <!-- 播放器：有 URL 再挂载，避免 destroyOnClose + 快速二次 openModal 时 vodMode/playUrl 竞态 -->
+          <div class="player-stage">
             <RtcPlayer
-              v-if="state.playerEngine === 'webrtc'"
+              v-if="state.currentUrl && state.playerEngine === 'webrtc'"
               :videoUrl="state.currentUrl"
               :hasaudio="state.hasAudio"
               @stream-error="handleStreamError"
             />
             <Jessibuca
-              v-else
+              v-else-if="state.currentUrl"
+              :key="`${playerKey}-${state.currentUrl}`"
               ref="jessibuca"
               :playUrl="state.currentUrl"
               :hasAudio="false"
               :playerEngine="state.playerEngine"
               :videoCodec="state.videoCodec"
+              :vodMode="state.vodMode"
             />
+            <div v-else-if="state.playLoading" class="player-stage__loading">
+              <div class="ant-spin ant-spin-lg">
+                <span class="ant-spin-dot ant-spin-dot-spin">
+                  <i class="ant-spin-dot-item"></i><i class="ant-spin-dot-item"></i>
+                  <i class="ant-spin-dot-item"></i><i class="ant-spin-dot-item"></i>
+                </span>
+              </div>
+              <div class="player-stage__loading-text">录像加载中...</div>
+            </div>
           </div>
           <!-- 控制台 -->
           <div class="tabs">
@@ -112,7 +123,7 @@
 import {useModalInner} from "@/components/Modal";
 import BasicModal from "@/components/Modal/src/BasicModal.vue";
 
-import {reactive, ref} from "vue";
+import {nextTick, reactive, ref} from "vue";
 import {Select, TabPane, Tabs} from 'ant-design-vue';
 import Jessibuca from "@/components/Player/module/jessibuca.vue";
 import RtcPlayer from "@/components/VideoPlayer/rtcPlayer.vue";
@@ -123,6 +134,7 @@ import {controlPTZ} from "@/api/device/camera";
 import {controlGbPtz, playByDeviceAndChannel} from "@/api/device/gb28181";
 import { getGb28181PlayIds, shouldPlayViaGb28181 } from '@/views/camera/utils/deviceLabel';
 import { pickWvpPlaySources } from '@/views/camera/utils/devicePlay';
+import { isVodPlaybackUrl } from '@/utils/alertRecord';
 
 interface DialogPlaySource {
   label: string;
@@ -134,6 +146,7 @@ interface DialogPlaySource {
 const {createMessage} = useMessage()
 
 let jessibuca = ref()
+const playerKey = ref(0)
 //state.videoUrl
 const state = reactive({
   video: 'http://lndxyj.iqilu.com/public/upload/2019/10/14/8c001ea0c09cdc59a57829dabc8010fa.mp4',
@@ -157,6 +170,7 @@ const state = reactive({
   deviceId: '',
   activeKey: 'info',
   playLoading: false,
+  vodMode: false,
   playerOptions: {
     aspectRatio: '16:5',
     controls: true,
@@ -175,6 +189,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.videoUrlList = [];
   state.playSources = [];
   state.playLoading = false;
+  state.vodMode = false;
 
   const gbIds = getGb28181PlayIds(record);
   const sipDeviceId = gbIds?.sipDeviceId ?? '';
@@ -186,6 +201,9 @@ const [register, {closeModal}] = useModalInner(async (record) => {
 
   // 国标通道：一律走 WVP 点播（忽略同步到 device 表的占位 http_stream）
   if (gbRecord) {
+    state.currentUrl = '';
+    state.iframeUrl = '';
+    state.vodMode = false;
     state.playLoading = true;
     try {
       const res = await playByDeviceAndChannel(sipDeviceId, channelId);
@@ -213,19 +231,36 @@ const [register, {closeModal}] = useModalInner(async (record) => {
     return;
   }
 
-  // 已有播放地址（如摄像头等）
+  // 已有播放地址（如摄像头、告警录像等）
   state.deviceId = record['id'];
-  state.currentUrl = record['http_stream'] ?? '';
+  const streamUrl = String(record['http_stream'] ?? '').trim();
+
+  // 告警录像解析中：仅展示加载占位，不挂载 Jessibuca
+  if (!streamUrl && record['_pendingRecord']) {
+    state.currentUrl = '';
+    state.iframeUrl = '';
+    state.vodMode = false;
+    state.playLoading = true;
+    return;
+  }
+
+  state.playLoading = false;
+  state.vodMode = isVodPlaybackUrl(streamUrl);
+  await nextTick();
+  state.currentUrl = streamUrl;
   state.playerEngine = '';
   state.videoCodec = '';
-  state.iframeUrl = record['http_stream'] ? '<iframe src="' + record['http_stream'] + '"></iframe>' : '';
-  state.playSources = record['http_stream']
-    ? [{ label: 'http_stream', url: record['http_stream'], playerEngine: '', videoCodec: '' }]
+  state.iframeUrl = streamUrl ? '<iframe src="' + streamUrl + '"></iframe>' : '';
+  state.playSources = streamUrl
+    ? [{ label: state.vodMode ? 'record' : 'http_stream', url: streamUrl, playerEngine: '', videoCodec: '' }]
     : [];
-  state.videoUrlList = record['http_stream']
-    ? [{ label: 'http_stream', value: record['http_stream'] }]
+  state.videoUrlList = streamUrl
+    ? [{ label: state.vodMode ? 'record' : 'http_stream', value: streamUrl }]
     : [{ label: 'flv', value: '1' }];
-  state.mediaType = state.currentUrl;
+  state.mediaType = streamUrl;
+  if (streamUrl) {
+    playerKey.value += 1;
+  }
 });
 
 const handleChange = (value: string) => {
@@ -238,7 +273,9 @@ const handleChange = (value: string) => {
   state.mediaType = value;
   state.playerEngine = '';
   state.videoCodec = '';
+  state.vodMode = isVodPlaybackUrl(value);
   state.iframeUrl = value ? '<iframe src="' + value + '"></iframe>' : '';
+  if (value) playerKey.value += 1;
 };
 
 const handleCopy = (value: string) => {
@@ -249,8 +286,10 @@ const applyPlaySource = (source: DialogPlaySource) => {
   state.currentUrl = source.url;
   state.playerEngine = source.playerEngine ?? '';
   state.videoCodec = source.videoCodec ?? '';
+  state.vodMode = false;
   state.mediaType = source.url;
   state.iframeUrl = '<iframe src="' + source.url + '"></iframe>';
+  playerKey.value += 1;
 };
 
 const handleStreamError = () => {
@@ -304,11 +343,33 @@ const handlePtzCamera = async (command: string, speed: number) => {
 
 function handleCancel() {
   state.currentUrl = '';
+  state.playLoading = false;
   closeModal();
 }
 </script>
 
 <style>
+.player-stage {
+  height: 420px;
+  position: relative;
+  background: #000c17;
+}
+
+.player-stage__loading {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #fff;
+}
+
+.player-stage__loading-text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .ant-modal-content {
 
   .ant-modal-body {

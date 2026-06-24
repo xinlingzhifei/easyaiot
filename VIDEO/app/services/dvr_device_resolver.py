@@ -10,6 +10,18 @@ from models import Device
 logger = logging.getLogger(__name__)
 
 
+def parse_infer_stream_device_id(stream: str) -> Optional[str]:
+    """AI 推理输出流 infer_{device_id}_m{model_suffix} → device_id。"""
+    if not stream or not stream.startswith('infer_'):
+        return None
+    rest = stream[6:]
+    sep = rest.rfind('_m')
+    if sep <= 0:
+        return None
+    device_id = rest[:sep]
+    return device_id or None
+
+
 def resolve_device_from_hook(
     stream: str,
     file_path: str = '',
@@ -20,6 +32,13 @@ def resolve_device_from_hook(
 
     device_id = stream or ''
     device = Device.query.get(device_id) if device_id else None
+
+    if not device and stream:
+        infer_device_id = parse_infer_stream_device_id(stream)
+        if infer_device_id:
+            device = Device.query.get(infer_device_id)
+            if device:
+                device_id = infer_device_id
 
     if not device and stream.startswith('live/'):
         potential_id = stream[5:]
@@ -57,6 +76,11 @@ def _resolve_from_file_path(file_path: str, fallback_id: str) -> Tuple[Optional[
         if pi + 2 >= len(path_parts):
             return None, None
         potential_id = path_parts[pi + 2]
+        infer_device_id = parse_infer_stream_device_id(potential_id)
+        if infer_device_id:
+            device = Device.query.get(infer_device_id)
+            if device:
+                return infer_device_id, device
         device = Device.query.get(potential_id)
         if device:
             return potential_id, device

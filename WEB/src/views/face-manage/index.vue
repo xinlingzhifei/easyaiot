@@ -49,7 +49,7 @@
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'cover_image_url'">
-          <a-avatar :size="48" :src="record.cover_image_url" shape="square">
+          <a-avatar :size="48" :src="faceImageUrl(record.cover_image_url)" shape="square">
             <template #icon><UserOutlined /></template>
           </a-avatar>
         </template>
@@ -124,7 +124,7 @@
                   <div class="person-card-cover" @click="openPersonDetail(item)">
                     <div class="person-card-cover-inner">
                       <img
-                        :src="item.cover_image_url || defaultFaceImg"
+                        :src="faceImageUrl(item.cover_image_url) || defaultFaceImg"
                         alt="封面"
                         class="person-card-image"
                         @error="onImageError"
@@ -201,6 +201,8 @@ import {
   deleteFacePerson,
   getFaceLibrary,
   listFacePersons,
+  unwrapFaceApiEntity,
+  resolveFaceImageDisplayUrl,
   type FaceLibrary,
   type FacePerson,
 } from '@/api/device/face_library';
@@ -230,6 +232,10 @@ const pageSize = ref(18);
 const searchText = ref('');
 
 const defaultFaceImg = DEFAULT_FACE_IMAGE;
+
+function faceImageUrl(url?: string | null) {
+  return resolveFaceImageDisplayUrl(url);
+}
 
 const [registerEntryModal, { openDrawer: openEntryModal }] = useDrawer();
 const [registerPersonDrawer, { openDrawer: openPersonDrawer }] = useDrawer();
@@ -341,7 +347,7 @@ async function loadLibrary() {
   if (!libraryId.value) return;
   try {
     const res = await getFaceLibrary(libraryId.value);
-    library.value = res.data || null;
+    library.value = unwrapFaceApiEntity(res);
   } catch (e: any) {
     createMessage.error(e?.message || '加载人脸库失败');
   }
@@ -402,13 +408,15 @@ function handleSuccess() {
 }
 
 function handleAddPerson() {
-  openEntryModal(true, { type: 'create', library: library.value });
+  const lib = library.value ?? ({ id: libraryId.value } as FaceLibrary);
+  openEntryModal(true, { type: 'create', library: lib });
 }
 
 function handleAddPhoto(person: FacePerson) {
+  const lib = library.value ?? ({ id: libraryId.value } as FaceLibrary);
   openEntryModal(true, {
     type: 'create',
-    library: library.value,
+    library: lib,
     person,
     addToPerson: true,
   });

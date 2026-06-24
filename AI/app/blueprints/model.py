@@ -292,7 +292,10 @@ def upload_custom_model():
         else:
             # 验证YOLO模型版本（必须是 yolov8、yolov11 或 yolov26）
             try:
-                yolo_version, detection_method = validate_yolo_model(temp_path)
+                yolo_version, detection_method = validate_yolo_model(
+                    temp_path,
+                    original_filename=file.filename,
+                )
                 if yolo_version is None:
                     return jsonify({
                         'code': 400,
@@ -316,7 +319,11 @@ def upload_custom_model():
                 logger.error(f"模型验证失败: {error_msg}")
                 
                 # 检查是否是YOLOv5或其他不兼容模型的明确错误
-                if '检测到YOLOv5模型' in error_msg or '检测到YOLOv' in error_msg:
+                if (
+                    '检测到YOLOv5' in error_msg
+                    or 'models.yolo' in error_msg
+                    or '检测到YOLOv' in error_msg
+                ):
                     # 直接返回明确的错误信息（已经包含了详细的说明）
                     return jsonify({
                         'code': 400,
@@ -795,6 +802,32 @@ def parse_minio_url(url: str):
         return None, None
 
 
+def resolve_minio_bucket_key(path: str):
+    """
+    将模型存储路径解析为 MinIO bucket 与 object_key。
+    支持 API 下载 URL 与 bucket/object 相对路径（如 exports/model_3/onnx/model.onnx）。
+    """
+    if not path or not str(path).strip():
+        return None, None
+    path = str(path).strip()
+    bucket_name, object_key = parse_minio_url(path)
+    if bucket_name and object_key:
+        return bucket_name, object_key
+    if '/' in path:
+        parts = path.split('/', 1)
+        return parts[0], parts[1]
+    return None, None
+
+
+def _iter_model_storage_paths(model: Model):
+    """按优先级返回可用于解析类别的模型文件路径（优先 .pt 权重）。"""
+    seen = set()
+    for path in (model.model_path, model.onnx_model_path):
+        if path and path not in seen:
+            seen.add(path)
+            yield path
+
+
 @model_bp.route('/<int:model_id>/download', methods=['GET'])
 def download_model(model_id):
     """下载模型文件"""
@@ -810,21 +843,12 @@ def download_model(model_id):
                 'msg': '该模型没有可下载的文件'
             }), 404
 
-        # 解析MinIO URL
-        bucket_name, object_key = parse_minio_url(model_path)
-        
+        bucket_name, object_key = resolve_minio_bucket_key(model_path)
         if not bucket_name or not object_key:
-            # 如果不是MinIO URL格式，尝试直接使用路径
-            # 假设格式为 bucket_name/object_key
-            if '/' in model_path:
-                parts = model_path.split('/', 1)
-                bucket_name = parts[0]
-                object_key = parts[1]
-            else:
-                return jsonify({
-                    'code': 400,
-                    'msg': '无法解析模型文件路径'
-                }), 400
+            return jsonify({
+                'code': 400,
+                'msg': '无法解析模型文件路径'
+            }), 400
 
         # 创建临时文件
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pt')
@@ -877,28 +901,45 @@ def get_model_classes(model_id):
                 }
             })
 
-        model_path = model.onnx_model_path or model.model_path
-        if not model_path:
+        candidate_paths = list(_iter_model_storage_paths(model))
+        if not candidate_paths:
             return jsonify({'code': 404, 'msg': '该模型没有可解析的模型文件'}), 404
 
-        bucket_name, object_key = parse_minio_url(model_path)
-        if not bucket_name or not object_key:
-            return jsonify({'code': 400, 'msg': '无法解析模型文件路径'}), 400
+        class_names = []
+        last_error = '无法解析模型文件路径'
+        for model_path in candidate_paths:
+            bucket_name, object_key = resolve_minio_bucket_key(model_path)
+            if not bucket_name or not object_key:
+                last_error = f'无法解析模型文件路径: {model_path}'
+                continue
 
-        ext = os.path.splitext(object_key)[1] or '.pt'
-        temp_fd, temp_path = tempfile.mkstemp(suffix=ext)
-        os.close(temp_fd)
-        success, error_msg = ModelService.download_from_minio(bucket_name, object_key, temp_path)
-        if not success:
-            return jsonify({'code': 500, 'msg': error_msg or '下载模型文件失败'}), 500
+            ext = os.path.splitext(object_key)[1] or '.pt'
+            temp_fd, temp_path = tempfile.mkstemp(suffix=ext)
+            os.close(temp_fd)
+            try:
+                success, error_msg = ModelService.download_from_minio(bucket_name, object_key, temp_path)
+                if not success:
+                    last_error = error_msg or '下载模型文件失败'
+                    continue
+                class_names = extract_class_names_from_model(temp_path)
+                if class_names:
+                    break
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except OSError:
+                        pass
+                temp_path = None
 
-        class_names = extract_class_names_from_model(temp_path)
+        if not class_names:
+            return jsonify({'code': 404, 'msg': last_error or '未能从模型文件中提取检测类别'}), 404
+
         selected = parse_class_names_json(model.selected_class_names) or class_names
-        if class_names:
-            model.class_names = dump_class_names_json(class_names)
-            if not model.selected_class_names:
-                model.selected_class_names = dump_class_names_json(class_names)
-            db.session.commit()
+        model.class_names = dump_class_names_json(class_names)
+        if not model.selected_class_names:
+            model.selected_class_names = dump_class_names_json(class_names)
+        db.session.commit()
 
         return jsonify({
             'code': 0,

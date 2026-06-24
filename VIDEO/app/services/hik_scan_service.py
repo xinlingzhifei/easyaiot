@@ -208,6 +208,7 @@ async def _run_nvr_enumerate(
     vendor: str | None = None,
     probe_cameras: bool = True,
     only_mounted: bool = True,
+    channel_filter: str | None = None,
 ) -> dict[str, Any]:
     creds = _parse_credentials(username, password, credentials)
     if not creds:
@@ -220,6 +221,7 @@ async def _run_nvr_enumerate(
         probe_cameras=probe_cameras,
         vendor=vendor,
         only_mounted=only_mounted,
+        channel_filter=channel_filter,
     )
     result = inv.to_dict()
     if inv.auth_username:
@@ -238,6 +240,7 @@ def enumerate_nvr_channels(
     vendor: str | None = None,
     probe_cameras: bool = True,
     only_mounted: bool = True,
+    channel_filter: str | None = None,
 ) -> dict[str, Any]:
     return asyncio.run(
         _run_nvr_enumerate(
@@ -250,5 +253,6 @@ def enumerate_nvr_channels(
             vendor=vendor,
             probe_cameras=probe_cameras,
             only_mounted=only_mounted,
+            channel_filter=channel_filter,
         )
     )

@@ -170,6 +170,16 @@ export const upsertNvr = (data: NvrInfo) => {
   return commonApi('post', `${CAMERA_PREFIX}/nvr/upsert`, data);
 };
 
+export interface NvrRegisterChannelsResult extends NvrInfo {
+  msg?: string;
+  stats?: {
+    registered?: number;
+    skipped?: number;
+    pruned?: number;
+    errors?: string[];
+  };
+}
+
 /** 登记 NVR 并批量挂载通道；未传 channels 时由服务端枚举 */
 export const registerNvrWithChannels = (data: {
   ip: string;
@@ -185,16 +195,29 @@ export const registerNvrWithChannels = (data: {
   rtsp_url?: string;
   scheme?: string;
   channels?: NvrChannelRow[];
-}) => {
+}): Promise<NvrRegisterChannelsResult> => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
-  return defHttp.post(
-    {
-      url: `${CAMERA_PREFIX}/nvr/register-channels`,
-      data,
-      timeout: 300 * 1000,
-    },
-    { isTransformResponse: true },
-  );
+  return defHttp
+    .post(
+      {
+        url: `${CAMERA_PREFIX}/nvr/register-channels`,
+        data,
+        timeout: 300 * 1000,
+      },
+      { isTransformResponse: false, errorMessageMode: 'none' },
+    )
+    .then((res: { data?: { code?: number; msg?: string; data?: NvrInfo; stats?: NvrRegisterChannelsResult['stats'] } }) => {
+      const body = res?.data ?? {};
+      const code = body.code;
+      if (code !== 0 && code !== 200) {
+        throw { msg: body.msg || 'NVR 登记失败' };
+      }
+      return {
+        ...(body.data || {}),
+        msg: body.msg,
+        stats: body.stats,
+      } as NvrRegisterChannelsResult;
+    });
 };
 
 export const deleteNvr = (nvrId: number) => {

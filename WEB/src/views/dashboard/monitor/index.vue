@@ -30,6 +30,7 @@
       <AlarmPanel 
         :alarm-list="alarmList"
         :today-alarm-count="todayAlarmCount"
+        @play-alarm="handlePlayAlarm"
       />
     </div>
   </div>
@@ -300,6 +301,13 @@ const handleDeviceChange = (device: any) => {
 const handleDevicePlay = (device: any) => {
   if (videoMonitorRef.value) {
     videoMonitorRef.value.playDeviceStream(device)
+  }
+}
+
+// 告警事件点击播放录像
+const handlePlayAlarm = (alarm: any) => {
+  if (videoMonitorRef.value) {
+    videoMonitorRef.value.playAlertRecord(alarm)
   }
 }
 

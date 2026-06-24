@@ -6,7 +6,9 @@ import concurrent.futures
 import logging
 import os
 import re
+import signal
 import socket
+import threading
 import time
 import tzlocal
 from datetime import datetime
@@ -25,6 +27,7 @@ from app.services.nvr_service import (
 )
 from app.services.onvif_service import OnvifCamera
 from app.utils.gb28181_source import GB28181_SOURCE_PREFIX
+from app.utils.rtsp_url import parse_rtsp_auth
 from app.utils.ip_utils import IpReachabilityMonitor, resolve_ipv4_for_stream_urls
 from models import Device, db, DeviceDetectionRegion, DeviceDirectory, DeviceTrackSession, DeviceTrackPoint
 
@@ -153,6 +156,94 @@ _monitor = IpReachabilityMonitor(int(os.getenv('CAMERA_ONLINE_INTERVAL', 20)))
 logger = logging.getLogger(__name__)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 scheduler = BackgroundScheduler(timezone=tzlocal.get_localzone_name())
+
+_scheduler_lock = threading.Lock()
+_scheduler_shutdown_registered = False
+_scheduler_stopped = False
+_background_stopped = False
+
+
+def ensure_scheduler_running() -> bool:
+    """启动全局 APScheduler（幂等）。"""
+    global _scheduler_stopped
+    with _scheduler_lock:
+        if _scheduler_stopped:
+            logger.warning('APScheduler 已关闭，跳过启动')
+            return False
+        if not scheduler.running:
+            scheduler.start()
+        return True
+
+
+def shutdown_scheduler(wait: bool = True) -> None:
+    """安全关闭全局 APScheduler（幂等）。"""
+    global _scheduler_stopped
+    with _scheduler_lock:
+        if _scheduler_stopped:
+            return
+        if scheduler.running:
+            try:
+                scheduler.shutdown(wait=wait)
+            except Exception as exc:
+                logger.debug('关闭 APScheduler 失败: %s', exc)
+        _scheduler_stopped = True
+
+
+def shutdown_background_services(wait: bool = True) -> None:
+    """停止 IP 监控、线程池与调度器，避免进程退出时后台线程继续提交任务。"""
+    global _background_stopped
+    with _scheduler_lock:
+        if _background_stopped:
+            return
+        _background_stopped = True
+
+    try:
+        _monitor.stop()
+    except Exception as exc:
+        logger.debug('停止 IP 可达性监控失败: %s', exc)
+
+    shutdown_scheduler(wait=wait)
+
+    try:
+        from app.services.snap_task_service import shutdown_snap_scheduler
+        shutdown_snap_scheduler(wait=wait)
+    except Exception as exc:
+        logger.debug('关闭抓拍任务调度器失败: %s', exc)
+
+    try:
+        executor.shutdown(wait=wait, cancel_futures=True)
+    except TypeError:
+        try:
+            executor.shutdown(wait=wait)
+        except Exception as exc:
+            logger.debug('关闭 camera executor 失败: %s', exc)
+    except Exception as exc:
+        logger.debug('关闭 camera executor 失败: %s', exc)
+
+
+def register_scheduler_shutdown() -> None:
+    """注册进程退出与信号处理，确保后台服务先于解释器关闭线程池。"""
+    global _scheduler_shutdown_registered
+    with _scheduler_lock:
+        if _scheduler_shutdown_registered:
+            return
+        _scheduler_shutdown_registered = True
+
+    import atexit
+
+    def _on_exit():
+        shutdown_background_services(wait=True)
+
+    atexit.register(_on_exit)
+
+    def _signal_handler(signum, frame):
+        shutdown_background_services(wait=True)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _signal_handler)
+        except Exception:
+            pass
 
 
 def is_default_directory(directory) -> bool:
@@ -338,18 +429,29 @@ def find_existing_device_for_register(
         if existing:
             return existing
 
+    nvr_scope = bool(nvr_id)
+
     if mac:
-        existing = Device.query.filter(Device.mac == mac).first()
+        q = Device.query.filter(Device.mac == mac)
+        if nvr_scope:
+            q = q.filter(or_(Device.nvr_id.is_(None), Device.nvr_id == nvr_id))
+        existing = q.first()
         if existing:
             return existing
 
     if serial:
-        existing = Device.query.filter(Device.serial_number == serial).first()
+        q = Device.query.filter(Device.serial_number == serial)
+        if nvr_scope:
+            q = q.filter(or_(Device.nvr_id.is_(None), Device.nvr_id == nvr_id))
+        existing = q.first()
         if existing:
             return existing
 
     if normalized_source:
-        existing = Device.query.filter(Device.source == normalized_source).first()
+        q = Device.query.filter(Device.source == normalized_source)
+        if nvr_scope:
+            q = q.filter(or_(Device.nvr_id.is_(None), Device.nvr_id == nvr_id))
+        existing = q.first()
         if existing:
             return existing
         # 已提供完整取流地址时，同一 IP 不同路径视为不同设备，不再按 IP 兜底
@@ -360,11 +462,12 @@ def find_existing_device_for_register(
             Device.ip == ip,
             or_(Device.nvr_id.is_(None), Device.nvr_channel == 0),
         ).first()
-        if existing:
+        if existing and (not nvr_scope or existing.nvr_id in (None, nvr_id)):
             return existing
-        existing = Device.query.filter_by(ip=ip).first()
-        if existing:
-            return existing
+        if not nvr_scope:
+            existing = Device.query.filter_by(ip=ip).first()
+            if existing:
+                return existing
 
     return None
 
@@ -1071,26 +1174,19 @@ def register_camera(register_info: dict) -> str:
                         port = 1935  # RTMP默认端口
             logger.info(f'设备 {id} 是RTMP流，从地址中提取IP: {ip}, 端口: {port}')
         else:
-            # RTSP地址格式：rtsp://username:password@ip:port/path 或 rtsp://ip:port/path
-            rtsp_pattern = r'rtsp://(?:([^:]+):([^@]+)@)?([^:/]+)(?::(\d+))?(?:/.*)?'
-            match = re.match(rtsp_pattern, source)
-            if match:
-                extracted_username = match.group(1)
-                extracted_password = match.group(2)
-                extracted_ip = match.group(3)
-                extracted_port = match.group(4)
-                if not ip:
-                    ip = extracted_ip
-                if not port:
-                    if extracted_port:
-                        port = int(extracted_port)
-                    else:
-                        port = 554  # RTSP默认端口
-                # 如果地址中包含用户名密码，且用户未提供，则使用地址中的
-                if not username and extracted_username:
-                    username = extracted_username
-                if not password and extracted_password:
-                    password = extracted_password
+            auth = parse_rtsp_auth(source)
+            extracted_ip = auth.get("hostname")
+            extracted_port = auth.get("port")
+            extracted_username = auth.get("username")
+            extracted_password = auth.get("password")
+            if not ip and extracted_ip:
+                ip = extracted_ip
+            if not port and extracted_port:
+                port = int(extracted_port)
+            if not username and extracted_username:
+                username = extracted_username
+            if not password and extracted_password:
+                password = extracted_password
         
         # NVR 挂载通道或显式 skip_onvif：仅用枚举/表单字段，不逐台 ONVIF
         camera_info = {}

@@ -586,6 +586,7 @@ export type WorkloadBundleTypeKey =
   | 'algorithm_patrol'
   | 'post_process'
   | 'ai_service'
+  | 'llm_service'
   | 'auto_label'
   | 'model_train';
 

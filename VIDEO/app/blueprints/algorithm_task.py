@@ -123,6 +123,8 @@ def create_task():
             focus_device_id=data.get('focus_device_id'),
             sam_supplement_enabled=data.get('sam_supplement_enabled', False),
             sam_supplement_config=data.get('sam_supplement_config'),
+            post_process_enabled=data.get('post_process_enabled', False),
+            post_process_replicas=data.get('post_process_replicas', 1),
         )
         
         return jsonify({

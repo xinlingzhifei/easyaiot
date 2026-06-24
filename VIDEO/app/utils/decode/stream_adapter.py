@@ -66,7 +66,7 @@ class FfmpegVideoStream:
         return self
 
     def read(self):
-        if not self.isOpened():
+        if self._decoder.read_failed or not self._decoder.is_running:
             self.read_failed = True
             return False, None
         item = self._decoder.get_frame(latest=(self.queue_max <= 1))

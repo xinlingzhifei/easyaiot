@@ -4,7 +4,6 @@ import { Progress, Spin } from 'ant-design-vue';
 import type { ComputeNodeVO } from '@/api/device/node';
 import {
   aggregateGpuVram,
-  formatCpuQuantity,
   formatPercent,
   formatStorageRange,
   getProgressColor,
@@ -35,6 +34,12 @@ function progressPercent(value?: number | null): number {
   return Math.min(Number(value), 100);
 }
 
+function formatCapacityText(item: { key: string; capacity?: string | null }): string {
+  if (item.capacity && item.capacity !== '-') return item.capacity;
+  if (item.key === 'cpu') return '';
+  return '—';
+}
+
 const metricCards = computed(() => {
   const node = props.node;
   return [
@@ -42,30 +47,25 @@ const metricCards = computed(() => {
       key: 'cpu',
       label: NODE_METRIC.cpu,
       percent: node?.cpuPercent,
-      capacity: node?.cpuPercent != null ? formatCpuQuantity(node.cpuPercent) : null,
-      capacityFirst: true,
-      hideSub: true,
+      capacity: null,
     },
     {
       key: 'mem',
       label: NODE_DASHBOARD.statMemCapacity,
       percent: node?.memPercent,
       capacity: formatStorageRange(node?.memUsedBytes, node?.memTotalBytes),
-      capacityFirst: true,
     },
     {
       key: 'vram',
       label: NODE_DASHBOARD.statVramCapacity,
       percent: gpuVram.value.totalBytes > 0 ? gpuVram.value.avgPercent : null,
       capacity: formatStorageRange(gpuVram.value.usedBytes, gpuVram.value.totalBytes),
-      capacityFirst: true,
     },
     {
       key: 'disk',
       label: NODE_DASHBOARD.statDiskCapacity,
       percent: node?.diskPercent,
       capacity: formatStorageRange(node?.diskUsedBytes, node?.diskTotalBytes),
-      capacityFirst: true,
     },
   ];
 });
@@ -80,40 +80,30 @@ const metricCards = computed(() => {
 
       <template v-else-if="hasMetrics || !loading">
       <div class="metric-grid">
-        <div
-          v-for="item in metricCards"
-          :key="item.key"
-          class="metric-card"
-          :class="{ 'metric-card--capacity': item.capacityFirst }"
-        >
-          <template v-if="item.capacityFirst">
-            <span class="metric-card__label">{{ item.label }}</span>
-            <strong class="metric-card__value">
-              {{ item.capacity && item.capacity !== '-' ? item.capacity : '—' }}
+        <div v-for="item in metricCards" :key="item.key" class="metric-card">
+          <span class="metric-card__label">{{ item.label }}</span>
+          <div class="metric-card__body">
+            <strong
+              class="metric-card__capacity"
+              :class="{ 'metric-card__capacity--empty': !formatCapacityText(item) }"
+            >
+              {{ formatCapacityText(item) }}
             </strong>
-            <span v-if="!item.hideSub && item.percent != null" class="metric-card__sub">
-              {{ formatPercent(item.percent) }}
+            <span
+              class="metric-card__percent"
+              :class="{ 'metric-card__percent--empty': item.percent == null }"
+            >
+              {{ item.percent != null ? formatPercent(item.percent) : '—' }}
             </span>
-            <Progress
-              class="metric-card__progress"
-              :percent="progressPercent(item.percent)"
-              :stroke-color="getProgressColor(progressPercent(item.percent))"
-              :show-info="false"
-            />
-          </template>
-          <template v-else>
-            <div class="metric-card__head">
-              <span>{{ item.label }}</span>
-              <strong>{{ formatCpuQuantity(item.percent) }}</strong>
-            </div>
-            <Progress
-              :percent="progressPercent(item.percent)"
-              :stroke-color="getProgressColor(progressPercent(item.percent))"
-              :show-info="false"
-            />
-          </template>
+          </div>
+          <Progress
+            class="metric-card__progress"
+            :percent="progressPercent(item.percent)"
+            :stroke-color="getProgressColor(progressPercent(item.percent))"
+            :show-info="false"
+            size="small"
+          />
         </div>
-
       </div>
 
       <div v-if="gpuList.length" class="gpu-block">
@@ -167,54 +157,80 @@ const metricCards = computed(() => {
 }
 
 .metric-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 88px;
   padding: 14px 16px;
   background: #fafafa;
   border: 1px solid #f0f0f0;
   border-radius: 8px;
 }
 
-.metric-card--capacity {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 .metric-card__label {
+  flex-shrink: 0;
   font-size: 12px;
   color: #8c8c8c;
+  line-height: 1.4;
 }
 
-.metric-card__value {
+.metric-card__body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-height: 24px;
+  margin-top: 6px;
+}
+
+.metric-card__capacity {
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
   color: #262626;
   font-variant-numeric: tabular-nums;
-  line-height: 1.3;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.metric-card__sub {
+.metric-card__capacity--empty {
+  visibility: hidden;
+}
+
+.metric-card__percent {
+  flex-shrink: 0;
+  min-width: 52px;
   font-size: 14px;
   font-weight: 600;
   color: #262626;
   font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.metric-card__percent--empty {
+  color: #bfbfbf;
 }
 
 .metric-card__progress {
-  margin-top: 4px;
-}
+  flex-shrink: 0;
+  margin-top: 10px;
+  line-height: 0;
 
-.metric-card__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  color: #8c8c8c;
-  margin-bottom: 8px;
+  :deep(.ant-progress) {
+    margin: 0;
+    line-height: 0;
+  }
 
-  strong {
-    font-size: 16px;
-    color: #262626;
-    font-variant-numeric: tabular-nums;
+  :deep(.ant-progress-outer) {
+    display: block;
+  }
+
+  :deep(.ant-progress-inner) {
+    vertical-align: top;
   }
 }
 

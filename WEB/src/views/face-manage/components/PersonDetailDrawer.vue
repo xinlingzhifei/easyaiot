@@ -47,7 +47,7 @@
                 :class="{ 'is-cover': entry.id === person.cover_entry_id }"
               >
                 <div class="photo-thumb" @click="previewImage(entry.image_url)">
-                  <img :src="entry.image_url || fallbackImg" alt="" @error="onThumbError" />
+                  <img :src="faceImageUrl(entry.image_url) || fallbackImg" alt="" @error="onThumbError" />
                   <a-tag v-if="entry.id === person.cover_entry_id" color="blue" class="cover-tag">封面</a-tag>
                 </div>
                 <div class="photo-info">
@@ -90,6 +90,8 @@ import {
   deleteFaceEntry,
   getFacePerson,
   setFacePersonCover,
+  unwrapFaceApiEntity,
+  resolveFaceImageDisplayUrl,
   type FaceEntry,
   type FaceLibrary,
   type FacePerson,
@@ -117,8 +119,16 @@ const [registerEntryModal, { openDrawer: openEntryModal }] = useDrawer();
 const coverUrl = computed(() => {
   const coverId = person.value?.cover_entry_id;
   const cover = entries.value.find((e) => e.id === coverId);
-  return cover?.image_url || person.value?.cover_image_url || DEFAULT_FACE_IMAGE;
+  return (
+    faceImageUrl(cover?.image_url)
+    || faceImageUrl(person.value?.cover_image_url)
+    || DEFAULT_FACE_IMAGE
+  );
 });
+
+function faceImageUrl(url?: string | null) {
+  return resolveFaceImageDisplayUrl(url);
+}
 
 const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) => {
   library.value = data?.library || null;
@@ -132,8 +142,11 @@ async function loadDetail() {
   loading.value = true;
   try {
     const res = await getFacePerson(person.value.id, true);
-    person.value = res.data;
-    entries.value = res.data?.entries || [];
+    const data = unwrapFaceApiEntity(res);
+    if (data) {
+      person.value = data;
+      entries.value = data.entries || [];
+    }
   } catch (e: any) {
     createMessage.error(e?.message || '加载人员详情失败');
     entries.value = [];
@@ -151,7 +164,8 @@ function onThumbError(e: Event) {
 }
 
 function previewImage(url?: string) {
-  if (url) window.open(url, '_blank');
+  const resolved = faceImageUrl(url);
+  if (resolved) window.open(resolved, '_blank');
 }
 
 async function handleSetCover(entryId: number) {
@@ -159,7 +173,8 @@ async function handleSetCover(entryId: number) {
   settingCoverId.value = entryId;
   try {
     const res = await setFacePersonCover(person.value.id, entryId);
-    person.value = res.data;
+    const data = unwrapFaceApiEntity(res);
+    if (data) person.value = data;
     createMessage.success('封面已更新');
     emit('success');
   } catch (e: any) {

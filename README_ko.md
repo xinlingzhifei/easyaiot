@@ -33,6 +33,41 @@
 yFeiEye는 AI와 IoT의 심층적 융합에 초점을 맞춘 클라우드-엣지-디바이스 통합 지능형 사물인터넷 플랫폼입니다. 플랫폼은 알고리즘 태스크 관리, 실시간 스트림 분석, 모델 서비스 클러스터 추론 등의 핵심 기능을 통해, 디바이스 접속부터 데이터 수집, AI 분석, 지능형 의사결정에 이르는 전 과정의 폐쇄 루프를 실현하여 진정한 만물 인터넷화, 만물 지능화 제어를 실현합니다.
 </p>
 
+### 🎯 세 가지 하드웨어, 하나의 플랫폼
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+많은 지능형 IoT 프로젝트가 배포 단계에서 막힙니다. <strong>기능을 모두 넣으면 작은 기기에 안 들어가고, 들어가게 하려면 기능을 줄이고 버전을 나누고 여러 배포 패키지를 유지해야 합니다.</strong> yFeiEye는 하나의 플랫폼으로 이 딜레마를 해결합니다 — <strong>엣지 박스로 점 단위 지능, AI 일체형 카메라로 벽면 즉시 분석, AIoT 풀스택 일체기로 한 박스에 전체 스택</strong>. 현장 하드웨어에 맞는 등급을 선택하면, 단일 지점 시범부터 층면 커버리지, 풀스택 납품까지 동일 소프트웨어로 진행 — 버전 분리 없음.
+</p>
+
+| 등급 | 대표 하드웨어 (예) | 권장 메모리 | 할 수 있는 것 | 실측 검증 |
+| :-- | :-- | :--: | :-- | :--: |
+| **mini** 엣지 경량판 | <strong>엣지 박스</strong> (4 GB 산업용 PC, 매장 보안 일체기, 현장 게이트웨이) | ≥ 4 GB | <strong>한 지점에 지능 설치</strong>: 카메라 접속·실시간 분석·스마트 경보·모델 추론, 최저 비용 시각 AI | 약 2 GB만 사용, 여유 충분 |
+| **standard** 표준판 | <strong>AI 일체형 카메라</strong> (스마트 카메라 단말, 연산 내장 AI 감시 카메라, 다목 AI 분석 일체기) | ≥ 16 GB | <strong>각 카메라가 스마트 노드</strong>: 다수 카메라 벽면 배치로 층/단지 커버, 장치·규칙·연산 통합 오케스트레이션 | 약 10 GB, 안정적 여유 |
+| **full** 완전판 (기본) | <strong>AIoT 풀스택 일체기</strong> (엔터프라이즈 풀스택 지능관제 일체기, 산업 IoT 풀스택 호스트, 클라우드-엣지-디바이스 통합 플랫폼) | ≥ 20 GB | <strong>한 박스에 IoT + 영상 + AI</strong>: 장치 통합관리·대량 접속·지능 분석·지휘 판단 일체화, 전량 역량 장기 안정 | 약 14 GB, 전 기능 여유 확보 |
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>설치 등급 선택 및 리소스 적합성 (실측):</strong>
+</p>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 0;">
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-menu.png" alt="배포 등급 선택" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;">현장 하드웨어 형태에 맞게 한 등급 선택</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-mini.png" alt="mini 실측 적합성" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>엣지 박스 (mini)</strong>: 실측 약 2 GB, 단일 지점 지능 가동</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-standard.png" alt="standard 실측 적합성" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>AI 일체형 카메라 (standard)</strong>: 실측 약 10 GB, 네트워크 커버 여유</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-full.png" alt="full 실측 적합성" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>AIoT 풀스택 일체기 (full)</strong>: 실측 약 14 GB, 풀스택 완비 안심 가동</p>
+  </div>
+</div>
+
 #### 🧠 AI 기능
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -43,9 +78,7 @@ yFeiEye는 AI와 IoT의 심층적 융합에 초점을 맞춘 클라우드-엣지
   <li><strong>SAM 제로 스타트 자동 라벨링 오케스트레이션 파이프라인</strong>: 라벨링 샘플과 사용 가능한 검출 모델이 없는 콜드 스타트 시나리오를 위해, 플랫폼은 SAM 개방 어휘 분할 기능과 지능형 오케스트레이션 엔진을 통합하여 원클릭 무인 라벨링 파이프라인을 제공합니다. 전략에 따라 시스템은 카메라 프레임 추출, SAM 텍스트 프롬프트 초기 라벨링, 기준 달성 시 YOLO 미세 조정 학습 자동 트리거, 양산 단계에서 YOLO 고속 추론을 주력으로 하되 누락 검출에 SAM 지능 보완, 주기적 반복 학습 및 데이터셋 자동 패키징·보내기를 자동으로 연결하여 「수집—라벨링—학습—보내기」 전 과정을 완결합니다. 오케스트레이션 허브는 파이프라인 단계와 라벨링 진행을 실시간으로 감지하며, SAM / YOLO / 혼합 보완 등 라벨링 모드와 학습 트리거 시점을 자율 결정하고, 작업 일시정지·재개 및 로컬/클러스터 컴퓨팅 큐 탄력 스케줄링을 지원합니다. 시각적 전략 설정과 실행 로그와 함께, 사용자는 제로 샘플·제로 모델에서 출발하여 맞춤형 검출 역량을 빠르게 축적할 수 있으며, 「카테고리를 말로 정의하고 모델이 완성되기를 기다리기」가 데이터셋 구축의 기본 경로가 됩니다</li>
   <li><strong>만 노드급 탄력적 컴퓨팅 클러스터 및 수평 확장 풀</strong>: 초대규모 AI·영상 비즈니스를 위해 클라우드-엣지-디바이스 통합 분산 컴퓨팅 기반을 구축하고, 알고리즘 태스크·스트림 릴레이·알고리즘 서비스·모델 학습·추론을 수평 부하 분산과 탄력적 확장 체계로 통합합니다. 신규 서버는 원클릭으로 등록·연동되어 즉시 스케줄 가능한 컴퓨팅 단위가 되며, 스케줄러가 자원 수위와 업무 부하에 따라 작업을 자동 분배·균형 조정합니다. 수백~수만 대 카메라, 단일 머신~만 노드급까지 선형 확장이 가능하며, 재배포나 수동 튜닝 없이 대량 스트림 접속·고동시성 추론·분산 학습이 동일 컴퓨팅 풀에서 협력 실행되어 「확장 가능, 안정 운영, 통합 관리」를 실현합니다</li>
   <li><strong>천지도 공간 시각화 및 지도 기반 분석</strong>: 국가 천지도를 연동하여 카메라, 알람, 인·차량 인식 역량을 한 장의 지도에 모았습니다. 감시를 「화면 보기」에서 「전체 보기」로 업그레이드합니다. 스트리밍 미디어와 알람 모듈 모두 「지도 분포」 뷰를 제공하며, 장치 디렉터리 트리와 연동해 구역별로 집중 조회할 수 있어 검문소 배치와 온라인 상태를 한눈에 파악합니다. 지도 클릭, 장소 검색, 좌표 일괄 가져오기를 지원하여 GB 채널, NVR 채널, 직접 연결 카메라를 빠르게 배치할 수 있으며, 모든 영상에 명확한 공간 소속을 부여합니다. 알람 이벤트는 카메라 좌표와 자동 연계되어 지도에 표시되며, 시간·이벤트 유형·작업·업무 태그로 필터링하고 선택하면 스냅샷과 녹화를 바로 확인할 수 있어, 「어디서 발생했는지」에서 신속한 대응으로 이어집니다. 얼굴·번호판 라이브러리 인식과 결합하면 동일 대상의 다중 지점 적중 기록을 공간적 맥락으로 연결할 수 있습니다 — <strong>인물 추적</strong>으로 중점 인물의 출현 경로와 활동 범위를 복원하고, <strong>차량 추적</strong>으로 통과 기록을 연결해 차량 경로와 체류 구역을 빠르게 파악하여, 인·차량 수색, 순찰 배치, 사후 복기에 직관적 단서를 제공합니다. 이동형 장치는 궤적 재생을 지원하여 순찰·이동 경로를 시간축으로 재현합니다. 벡터 지도와 위성 영상을 자유롭게 전환하고 시야를 자동 맞춤하여, 관리자가 지도를 중심으로 이상 징후를 발견하고 목표를 잠금하며 지휘·조정할 수 있습니다</li>
-  <li><strong>Dify 에이전트 오케스트레이션 통합</strong>: 오픈소스 LLM 애플리케이션 플랫폼 Dify를 통합하여 시각적 워크플로 오케스트레이션, 에이전트(Agent) 구축, 지식베이스 RAG 검색 증강 및 대화/도구형 애플리케이션 게시 기능을 제공합니다. 미들웨어 설치 스크립트로 Dify 서비스를 원클릭 배포하고 초기화를 자동 완료하며, GPUStack 연산 계층과 깊이 연동하여 배포된 Qwen, DeepSeek 등 대규모 언어 모델을 모델 공급자로 에이전트 파이프라인에 원활하게 연결합니다. 이를 통해 업무 담당자는 로우코드 방식으로 보안 순찰, 사건 분석, 운영 Q&A 등 시나리오에 맞는 산업용 지능형 애플리케이션을 신속히 구축할 수 있어, 모델 배포에서 업무 적용까지의 기간을 크게 단축합니다</li>
   <li><strong>Qwen / DeepSeek 다중 GPU 배포</strong>: Qwen, DeepSeek 등 대규모 언어 모델을 다중 GPU 병렬 방식으로 배포할 수 있습니다. 클러스터 및 Worker 단위로 GPU 자원을 유연하게 스케줄링하여 모델 인스턴스의 탄력적 확장 및 로드 밸런싱을 실현하고, 고동시성 추론 및 긴 컨텍스트 시나리오에서 안정적인 서비스를 제공합니다</li>
-  <li><strong>연산 자원 및 인프라 통합 모니터링</strong>: GPUStack 리소스 관리 기능을 통합하여 서버의 GPU, CPU, 메모리, 스토리지 등 핵심 지표를 통합 수집 및 시각화합니다. 연산 사용률, VRAM 여유, 디스크 및 메모리 사용 현황을 실시간으로 파악하여 모델 배포, 학습 작업, 비디오 분석 파이프라인에 관측 가능하고 경보 가능한 운영 기반을 제공합니다</li>
   <li><strong>비전 대규모 모델 지능형 이해</strong>: QwenVL3 비전 대규모 모델을 통합하여 실시간 비디오 프레임에 대한 심층 비전 추론 및 의미론적 이해를 지원하며, 프레임 내용에 대한 지능형 분석 및 장면 이해를 수행할 수 있어 더 풍부한 시각적 인지 능력을 제공하며, 픽셀 수준의 인식에서 의미론적 수준의 이해로의 도약을 실현합니다</li>
   <li><strong>카메라 실시간 영상 AI 분석</strong>: RTSP/RTMP 실시간 비디오 스트림을 대상으로 「스트림 수신·디코딩 → 지능형 프레임 추출 → 모델 추론 → 구조화 출력 → 경보 연동」 전 과정 분석 파이프라인을 구축하여, 화면 변화를 밀리초 단위로 검색·판단 가능한 구조화된 감지 이벤트로 즉시 전환합니다. 시청 체인과 알고리즘 체인을 아키텍처적으로 분리하고, 계층형 비트레이트와 다중 GPU 협업 스케줄링을 병행하여 미리보기 선명도와 고채널 동시 처리량을 모두 확보합니다. 분석 결과는 감지 영역, 방어 시간대, 얼굴/번호판 인식 및 오케스트레이션 가능한 후처리 규칙과 원활하게 연결되어, 기존 「사람이 화면을 주시하고 사후에 확인」하는 감시 모드를 「기계가 24시간 감시, 이상 즉시 푸시, 증거 자동 보관」으로 업그레이드하고, 실시간 영상을 수동 시청에서 능동적 인지와 지능형 판단의 인프라로 전환합니다</li>
   <li><strong>카메라 지능형 순찰</strong>: 카메라 대수는 많지만 인력이 부족한 감시 시나리오를 위해, 플랫폼은 분할 화면 순찰과 장치 디렉터리 일괄 순찰 기능을 제공하여 제한된 동시 연결로 대규모 카메라에 대한 순환식 AI 분석을 수행합니다. 순환·연결 풀·혼합 세 가지 스케줄링 모드를 지원하며, 설정 간격으로 자동 캡처·검출 모델 실행·경보 및 얼굴/번호판 인식 연동이 가능합니다. 혼합 모드에서는 중점 채널을 상시 감시하고 배경 채널은 풀 방식으로 순환하여 중점 배치와 전역 커버를 모두 충족합니다. 순찰 진행 상황을 실시간으로 전송하고 캡처 프레임을 자동 보관하며, 분할 화면 또는 장치 디렉터리에서 수백 대 카메라 순찰 세션을 원클릭으로 시작할 수 있어, 「적은 연결, 넓은 커버, 빠른 발견」으로 기존의 수동 화면 전환 감시를 지능형 자동 순찰로 업그레이드합니다</li>
@@ -96,6 +129,23 @@ yFeiEye는 AI와 IoT의 심층적 융합에 초점을 맞춘 클라우드-엣지
   <li><strong>알림 관리</strong>: Feishu, DingTalk, Enterprise WeChat, Email, Tencent Cloud SMS, Alibaba Cloud SMS, Webhook 등 7가지 알림 방식을 지원하여 유연한 다채널 경보 알림을 구현합니다.</li>
 </ul>
 
+#### 📱 모바일 APP
+
+<ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>멀티 채널 접근</strong>: 스마트폰, 미니 프로그램, App에서 이용 가능 — 운영·관리가 책상에 묶이지 않고, 현장에서도 즉시 확인·조치</li>
+  <li><strong>기능 일치</strong>: PC 관리 콘솔과 동일한 업무 기능, 기기를 바꿔도 제어 끊기지 않음</li>
+  <li><strong>디바이스 관리</strong>: 다양한 접속 방식을 통합 관리, 목록·채널 한눈에 파악, 탭 한 번으로 실시간 화면 — 외부 순찰도 상황 파악</li>
+  <li><strong>스트림 전달</strong>: 언제든 작업 생성·중지, 클러스터 노드·스트림 상태 파악 — 원격에서도 영상 자원 스케줄링</li>
+  <li><strong>알고리즘 작업</strong>: 실시간·스냅샷 작업을 이동 중에도 즉시 시작·중지, 검출 성과 실시간 확인 — 이상 발견을 사무실 복귀까지 미루지 않음</li>
+  <li><strong>경보 센터</strong>: 경보 즉시 검색, 캡처·녹화 즉시 확인 — 모바일 근무 중에도 빠른 검증·후속 조치</li>
+  <li><strong>모델 관리</strong>: 모델 배포 상태 한눈에 확인, 진행 상황 명확히 파악</li>
+  <li><strong>모델 추론</strong>: 현장에서 이미지 업로드 즉시 결과 확인 — PC 복귀 없이 현장 검증·샘플링</li>
+  <li><strong>모델 훈련</strong>: 훈련 진행률 실시간 모니터링, 필요 시 원격 일괄 중지 — 불필요한 연산 낭비 방지</li>
+  <li><strong>개인 센터</strong>: 계정·테넌트·앱 설정 일원 관리 — 여러 단말에서 편리하게 이용</li>
+  <li><strong>원활한 시청</strong>: 실시간 화면·경보 녹화를 모바일에서 끊김 없이 재생 — 저지연·부드러운 근무 경험</li>
+  <li><strong>지속 연결</strong>: 로그인 상태 자동 유지, 재로그인 최소화 — 클라우드-엣지-디바이스 지능형 제어를 스마트폰·미니 프로그램까지</li>
+</ul>
+
 ### 📦 내장 AI 모델
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -144,7 +194,7 @@ Java는 안정적이고 신뢰할 수 있는 플랫폼 아키텍처 구축에 �
 ### 🏗️ 프로젝트 아키텍처 특징
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye는 사실 하나의 프로젝트가 아닌, 여섯 개의 프로젝트입니다.
+yFeiEye는 사실 하나의 프로젝트가 아닌, 일곱 개의 프로젝트입니다.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -207,7 +257,7 @@ yFeiEye는 현지화 전략에 적극적으로 대응하며, 현지화 하드웨
 ## 🧩 프로젝트 구조
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye는 여섯 개의 핵심 프로젝트로 구성됩니다:
+yFeiEye는 일곱 개의 핵심 프로젝트로 구성됩니다:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -218,6 +268,21 @@ yFeiEye는 여섯 개의 핵심 프로젝트로 구성됩니다:
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>WEB 모듈</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">Vue 기반의 프론트엔드 관리 인터페이스로, 통일된 사용자 상호작용 경험을 제공합니다.</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>APP 모듈</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>멀티 채널 접근</strong>: 한 번 구축, 여러 단말 — 스마트폰, 미니 프로그램, App</li>
+    <li><strong>기능 일치</strong>: PC 관리 콘솔과 동일한 업무 기능, 멀티 테넌트 전환 지원</li>
+    <li><strong>디바이스 관리</strong>: 직접 연결 카메라, GB28181, NVR 등 통합 관리, 온라인 상태·채널 탐색, 상세에서 원터치 실시간 미리보기</li>
+    <li><strong>스트림 전달</strong>: 작업 생성, 시작/중지, 클러스터 노드 상태 및 다중 스트림 URL 조회</li>
+    <li><strong>알고리즘 작업</strong>: 실시간/스냅샷 알고리즘 작업 목록, 시작/중지 제어 및 검출/프레임 통계</li>
+    <li><strong>경보 센터</strong>: 경보 이벤트 검색, 스냅샷 미리보기, 경보 녹화 VOD 재생</li>
+    <li><strong>모델 & AI</strong>: 모델 목록 및 배포 상태, 모바일 이미지 추론 워크벤치, 훈련 작업 진행률 모니터링 및 중지</li>
+    <li><strong>개인 센터</strong>: 개인 프로필, 계정 보안, FAQ, 피드백 및 앱 설정</li>
+  </ul>
+</td>
 </tr>
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>DEVICE 모듈</strong></td>
@@ -606,6 +671,18 @@ yFeiEye는 오픈소스 학습 프로젝트이며 상업적 행위와 무관합�
 <div>
   <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
 </div>
 
 ## 🛠️ 서비스 지원

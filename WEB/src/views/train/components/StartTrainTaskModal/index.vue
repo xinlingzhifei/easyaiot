@@ -174,6 +174,7 @@ import {
   getCompletedEpochs,
   isCloudDatasetPath,
   parseTrainHyperparameters,
+  resolveLocalDatasetDisplayName,
   resolveTaskBaseNameFromRecord,
 } from '../TrainTaskList/trainTaskUtils';
 import { formatModelVersionDisplay } from '../../utils/modelVersionUtils';
@@ -218,8 +219,7 @@ const presetModelOptions: CustomWeightOption[] = [
 ];
 
 const schedulePolicyOptions = [
-  { label: '本机训练', value: 'local' },
-  { label: '自动调度 GPU 节点', value: 'auto' },
+  { label: '自动调度', value: 'auto' },
   { label: '指定节点', value: 'node' },
 ];
 
@@ -508,7 +508,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         options: schedulePolicyOptions,
       },
       helpMessage:
-        '自动调度：通过 iot-node 将训练下发到 GPU 节点（需 CephFS 与 model_train Bundle）；本机：在当前 AI 控制面执行',
+        '优先调度 GPU 节点；无可用 GPU 时自动回落到 CPU 节点（含中心节点）。集群模式需 CephFS 与 model_train Bundle',
     },
     {
       field: 'target_node_id',
@@ -593,9 +593,12 @@ async function initTrainDrawer(data: Record<string, unknown> = {}) {
 
     if (datasetSource === 'local' && datasetPath) {
       localDatasetPath.value = datasetPath;
-      const fileName = datasetPath.split('/').pop() || String(record.dataset_name || '本地数据集');
-      localDatasetDisplayName.value = fileName;
-      localFileList.value = [{ uid: '-1', name: fileName, status: 'done' }];
+      const displayName = resolveLocalDatasetDisplayName(
+        datasetPath,
+        String(record.dataset_name || ''),
+      );
+      localDatasetDisplayName.value = displayName;
+      localFileList.value = [{ uid: '-1', name: displayName, status: 'done' }];
     } else if (datasetSource === 'cloud') {
       await loadDatasets();
       cloudDatasetsLoaded.value = true;

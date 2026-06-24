@@ -15,6 +15,7 @@ public enum WorkloadBundleTypeEnum {
     ALGORITHM_SNAP("algorithm_snap", "抓拍算法", "VIDEO"),
     ALGORITHM_PATROL("algorithm_patrol", "轮巡算法", "VIDEO"),
     AI_SERVICE("ai_service", "模型服务", "AI"),
+    LLM_SERVICE("llm_service", "大模型推理", "AI"),
     AUTO_LABEL("auto_label", "自动标注 Worker", "AI"),
     MODEL_TRAIN("model_train", "模型训练", "AI"),
     POST_PROCESS("post_process", "AI 后处理", "VIDEO");

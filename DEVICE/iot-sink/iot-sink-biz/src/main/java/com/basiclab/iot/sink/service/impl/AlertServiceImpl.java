@@ -1,6 +1,7 @@
 package com.basiclab.iot.sink.service.impl;
 
 import com.baomidou.dynamic.datasource.toolkit.DynamicDataSourceContextHolder;
+import com.basiclab.iot.common.core.util.TenantUtils;
 import com.basiclab.iot.sink.dal.dataobject.AlertDO;
 import com.basiclab.iot.sink.dal.mapper.AlertMapper;
 import com.basiclab.iot.sink.domain.model.AlertNotificationMessage;
@@ -91,6 +92,13 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     public Integer processAlert(AlertNotificationMessage notificationMessage) {
+        // Kafka 消费线程无 HTTP 租户上下文；alert 表在 VIDEO 库且无 tenant_id 列
+        final Integer[] result = new Integer[1];
+        TenantUtils.executeIgnore(() -> result[0] = processAlertInternal(notificationMessage));
+        return result[0];
+    }
+
+    private Integer processAlertInternal(AlertNotificationMessage notificationMessage) {
         try {
             if (notificationMessage == null || notificationMessage.getAlert() == null) {
                 log.warn("告警消息为空，跳过处理");
@@ -167,6 +175,12 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     public Integer processSnapshotAlert(AlertNotificationMessage notificationMessage) {
+        final Integer[] result = new Integer[1];
+        TenantUtils.executeIgnore(() -> result[0] = processSnapshotAlertInternal(notificationMessage));
+        return result[0];
+    }
+
+    private Integer processSnapshotAlertInternal(AlertNotificationMessage notificationMessage) {
         try {
             if (notificationMessage == null || notificationMessage.getAlert() == null) {
                 log.warn("抓拍算法任务告警消息为空，跳过处理");

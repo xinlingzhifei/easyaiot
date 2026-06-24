@@ -123,7 +123,7 @@ def send_heartbeat(client, ip, port, stop_event):
         time.sleep(5)
 
 
-def create_app():
+def create_app(start_background_tasks=None):
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
     
@@ -175,15 +175,6 @@ def create_app():
     app.config['KAFKA_FACE_MATCHING_RESULT_TOPIC'] = os.environ.get('KAFKA_FACE_MATCHING_RESULT_TOPIC', 'iot-face-matching-result')
     app.config['KAFKA_PLATE_MATCHING_TOPIC'] = os.environ.get('KAFKA_PLATE_MATCHING_TOPIC', 'iot-plate-matching')
     app.config['KAFKA_PLATE_MATCHING_RESULT_TOPIC'] = os.environ.get('KAFKA_PLATE_MATCHING_RESULT_TOPIC', 'iot-plate-matching-result')
-    app.config['KAFKA_POST_PROCESS_REQUEST_TOPIC'] = os.environ.get(
-        'KAFKA_POST_PROCESS_REQUEST_TOPIC', 'iot-post-process-request',
-    )
-    app.config['KAFKA_POST_PROCESS_RESULT_TOPIC'] = os.environ.get(
-        'KAFKA_POST_PROCESS_RESULT_TOPIC', 'iot-post-process-result',
-    )
-    app.config['KAFKA_POST_PROCESS_SINK_GROUP'] = os.environ.get(
-        'KAFKA_POST_PROCESS_SINK_GROUP', 'video-post-process-sink',
-    )
     app.config['KAFKA_REQUEST_TIMEOUT_MS'] = int(os.environ.get('KAFKA_REQUEST_TIMEOUT_MS', '5000'))
     app.config['KAFKA_RETRIES'] = int(os.environ.get('KAFKA_RETRIES', '1'))
     app.config['KAFKA_RETRY_BACKOFF_MS'] = int(os.environ.get('KAFKA_RETRY_BACKOFF_MS', '100'))
@@ -440,8 +431,8 @@ def create_app():
 
                 # 目录/空间保存时间字段
                 for table_name, col_name, col_def in (
-                    ('device_directory', 'snap_save_time', 'INTEGER NOT NULL DEFAULT 7'),
-                    ('device_directory', 'record_save_time', 'INTEGER NOT NULL DEFAULT 7'),
+                    ('device_directory', 'snap_save_time', 'INTEGER NOT NULL DEFAULT 168'),
+                    ('device_directory', 'record_save_time', 'INTEGER NOT NULL DEFAULT 168'),
                     ('snap_space', 'save_time_custom', 'BOOLEAN NOT NULL DEFAULT FALSE'),
                     ('record_space', 'save_time_custom', 'BOOLEAN NOT NULL DEFAULT FALSE'),
                 ):
@@ -457,29 +448,6 @@ def create_app():
                         db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def};'))
                         db.session.commit()
                         print(f"✅ {table_name}.{col_name} 列添加成功")
-
-                # 将历史非自定义空间的永久保存(0)迁移为目录默认 7 天
-                try:
-                    db.session.execute(text("""
-                        UPDATE snap_space SET save_time = 7
-                        WHERE save_time = 0 AND (save_time_custom IS NULL OR save_time_custom = FALSE);
-                    """))
-                    db.session.execute(text("""
-                        UPDATE record_space SET save_time = 7
-                        WHERE save_time = 0 AND (save_time_custom IS NULL OR save_time_custom = FALSE);
-                    """))
-                    db.session.execute(text("""
-                        UPDATE device_directory SET snap_save_time = 7
-                        WHERE snap_save_time IS NULL OR snap_save_time = 0;
-                    """))
-                    db.session.execute(text("""
-                        UPDATE device_directory SET record_save_time = 7
-                        WHERE record_save_time IS NULL OR record_save_time = 0;
-                    """))
-                    db.session.commit()
-                except Exception as migrate_save_err:
-                    db.session.rollback()
-                    print(f"⚠️  空间保存时间数据迁移跳过: {migrate_save_err}")
 
                 if directory_id_exists and auto_snap_enabled_exists and cover_image_path_exists and device_detection_region_exists:
                     print("✅ 数据库迁移检查完成，所有列和表已存在")
@@ -966,6 +934,13 @@ def create_app():
 
     init_health_check(app)
 
+    if start_background_tasks is None:
+        skip = os.getenv('VIDEO_SKIP_BACKGROUND_TASKS', '').strip().lower()
+        start_background_tasks = skip not in ('1', 'true', 'yes', 'on')
+
+    if not start_background_tasks:
+        return app
+
     # Nacos registration must survive slow Nacos startup after host reboots.
     nacos_server = os.getenv('NACOS_SERVER', 'Nacos:8848')
     namespace = os.getenv('NACOS_NAMESPACE', '')
@@ -1062,21 +1037,11 @@ def create_app():
 
     # 启动摄像头搜索服务
     with app.app_context():
-        from app.services.camera_service import _start_search, scheduler
+        from app.services.camera_service import (
+            _start_search,
+            scheduler,
+        )
         _start_search(app)
-        import atexit
-        # 安全关闭调度器：检查调度器是否正在运行
-        def safe_shutdown_scheduler():
-            try:
-                if scheduler.running:
-                    scheduler.shutdown(wait=False)
-                    print('✅ 调度器已安全关闭')
-            except Exception as e:
-                # 忽略调度器未运行或已关闭的异常
-                pass
-        atexit.register(safe_shutdown_scheduler)
-        
-        
         # 安全关闭所有算法任务守护进程
         def safe_shutdown_daemons():
             try:
@@ -1099,11 +1064,10 @@ def create_app():
     # 启动抓拍空间自动清理任务（每天凌晨2点执行）
     with app.app_context():
         try:
-            from app.services.camera_service import scheduler
+            from app.services.camera_service import ensure_scheduler_running, scheduler
             from app.services.snap_space_service import auto_cleanup_all_spaces
             
-            if scheduler and not scheduler.running:
-                scheduler.start()
+            ensure_scheduler_running()
             
             # 创建包装函数，确保在应用上下文中执行
             def cleanup_wrapper():
@@ -1140,6 +1104,13 @@ def create_app():
             import traceback
             traceback.print_exc()
 
+        # 周期任务通用参数：合并错过的触发、避免并发堆积
+        _interval_job_kwargs = {
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 30,
+        }
+
         # SRS 本地回放磁盘守护（默认每 10 分钟；磁盘紧张时可配合紧急阈值自动删最旧文件）
         try:
             from app.services.playback_disk_guard_service import run_playback_disk_guard
@@ -1155,6 +1126,7 @@ def create_app():
                 minutes=guard_interval_min,
                 id='playback_disk_guard',
                 replace_existing=True,
+                **_interval_job_kwargs,
             )
             print(f'✅ SRS回放磁盘守护任务已启动（每 {guard_interval_min} 分钟执行）')
             try:
@@ -1184,6 +1156,7 @@ def create_app():
                     seconds=janitor_interval,
                     id='media_janitor',
                     replace_existing=True,
+                    **_interval_job_kwargs,
                 )
                 print(f'✅ 媒体 Janitor 已启动（每 {janitor_interval} 秒）')
         except Exception as e:
@@ -1211,6 +1184,7 @@ def create_app():
                     seconds=health_interval,
                     id='stream_forward_health',
                     replace_existing=True,
+                    **_interval_job_kwargs,
                 )
                 print(f'✅ 推流转发健康监控已启动（每 {health_interval} 秒）')
         except Exception as e:
@@ -1241,11 +1215,10 @@ def create_app():
         
         # 启动心跳超时检查任务（每分钟检查一次）
         try:
-            from app.services.camera_service import scheduler
+            from app.services.camera_service import ensure_scheduler_running, scheduler
             from models import FrameExtractor, Sorter, Pusher
             
-            if scheduler and not scheduler.running:
-                scheduler.start()
+            ensure_scheduler_running()
             
             def check_heartbeat_timeout():
                 """定时检查心跳超时，超过1分钟没上报则更新状态为stopped"""
@@ -1341,7 +1314,10 @@ def create_app():
                 'interval',
                 minutes=1,
                 id='check_heartbeat_timeout',
-                replace_existing=True
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=30,
             )
             print('✅ 心跳超时检查任务已启动（每分钟执行一次）')
 
@@ -1377,15 +1353,9 @@ def create_app():
             import traceback
             traceback.print_exc()
 
-        # 启动后处理 Sink 集群（结果落库 + 告警派发）
-        try:
-            from app.services.post_process_launcher_service import ensure_post_process_sink_workers
-            ensure_post_process_sink_workers()
-            print('✅ 后处理 Sink 集群已启动')
-        except Exception as e:
-            print(f'❌ 启动后处理 Sink 集群失败: {str(e)}')
-            import traceback
-            traceback.print_exc()
+    # 最后注册退出钩子，确保 LIFO 下最先执行：停止监控线程与调度器
+    from app.services.camera_service import register_scheduler_shutdown
+    register_scheduler_shutdown()
 
     return app
 
@@ -1407,10 +1377,24 @@ def check_port_available(host, port):
 
 
 if __name__ == '__main__':
+    import signal
+
     app = create_app()
     # 从环境变量读取主机和端口配置
     host = os.getenv('FLASK_RUN_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_RUN_PORT', 6000))
+
+    def _graceful_shutdown(signum, frame):
+        from app.services.camera_service import shutdown_background_services
+        shutdown_background_services(wait=True)
+        sys.exit(0)
+
+    # Flask 启动后会覆盖信号处理，因此在 run 前注册并在退出路径上依赖 atexit
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(_sig, _graceful_shutdown)
+        except Exception:
+            pass
     
     # 检查端口是否可用
     if not check_port_available(host, port):

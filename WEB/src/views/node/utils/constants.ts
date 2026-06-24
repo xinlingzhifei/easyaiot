@@ -74,6 +74,7 @@ export const NODE_TERM = {
   clusterEnvFfmpeg: '音视频转码',
   clusterEnvVideo: '视频分析运行时',
   clusterEnvAi: '模型推理与训练',
+  clusterEnvLlm: '大模型推理',
   pendingTitle: '节点待纳管',
   offlineTitle: '节点离线',
   maintenanceTitle: '维护模式',
@@ -109,6 +110,7 @@ export const NODE_TERM = {
   laneBatchFfmpeg: '批量分发音视频转码',
   laneBatchVideo: '批量分发视频分析',
   laneBatchAi: '批量分发模型训练',
+  laneBatchLlm: '批量分发大模型推理',
   laneScrollLeft: '向左滚动',
   laneScrollRight: '向右滚动',
   laneRemoteHint: '远程中心节点（只读展示，操控请在对端操作）',
@@ -295,6 +297,7 @@ export const NODE_PAGE = {
   clusterEnvFfmpeg: NODE_TERM.clusterEnvFfmpeg,
   clusterEnvVideo: NODE_TERM.clusterEnvVideo,
   clusterEnvAi: NODE_TERM.clusterEnvAi,
+  clusterEnvLlm: NODE_TERM.clusterEnvLlm,
 } as const;
 
 /** 服务部署 Tab 键（与 index.vue TabPane key 一致） */
@@ -305,6 +308,7 @@ export const NODE_SERVICE_TAB = {
   ffmpeg: '6',
   video: '7',
   ai: '8',
+  llm: '9',
 } as const;
 
 /** 泳道批量「组件分发」跳转（按部署链路排序） */
@@ -315,6 +319,7 @@ export const LANE_BATCH_DEPLOY_ACTIONS = [
   { tab: NODE_SERVICE_TAB.ffmpeg, label: NODE_TERM.laneBatchFfmpeg, icon: 'ant-design:video-camera-outlined' },
   { tab: NODE_SERVICE_TAB.video, label: NODE_TERM.laneBatchVideo, icon: 'ant-design:deployment-unit-outlined' },
   { tab: NODE_SERVICE_TAB.ai, label: NODE_TERM.laneBatchAi, icon: 'ant-design:experiment-outlined' },
+  { tab: NODE_SERVICE_TAB.llm, label: NODE_TERM.laneBatchLlm, icon: 'ant-design:robot-outlined' },
 ] as const;
 
 export type NodeServiceTabKey = keyof typeof NODE_SERVICE_TAB;
@@ -330,6 +335,8 @@ export function resolveOnboardServiceTab(nodeRole?: string | null): string {
 export const CLUSTER_NODE_ROLE_FILTERS = {
   /** 计算/推理工作负载节点 */
   computeWorkload: ['compute', 'gpu', 'hybrid'] as const,
+  /** GPU 大模型推理节点 */
+  gpuWorkload: ['gpu', 'hybrid'] as const,
   /** 需部署监测代理的全部角色（不含平台节点） */
   allManaged: ['compute', 'gpu', 'hybrid', 'media', 'storage'] as const,
   /** 流媒体引擎节点 */
@@ -416,6 +423,15 @@ export const WORKLOAD_BUNDLE_TYPES = [
     scriptMarker: 'services/train_worker/run_worker.py',
     desc: '分发模型训练运行时（YOLO 训练 + CephFS 共享数据集/输出目录）',
   },
+  {
+    key: 'llm_service',
+    label: '大模型推理',
+    module: 'AI',
+    remoteRoot: '/opt/easyaiot/AI',
+    pythonLauncher: '/opt/easyaiot/AI/.bundles/llm_service/run-python.sh',
+    scriptMarker: 'services/llm_service/run_deploy.py',
+    desc: '分发 Qwen 大模型 vLLM 运行时与部署脚本（transformers/vllm/torch 等）',
+  },
 ] as const;
 
 export const VIDEO_WORKLOAD_BUNDLE_TYPES = WORKLOAD_BUNDLE_TYPES.filter((b) => b.module === 'VIDEO');
@@ -424,7 +440,8 @@ export const AI_WORKLOAD_BUNDLE_TYPES = WORKLOAD_BUNDLE_TYPES.filter((b) => b.mo
 export type WorkloadBundleType = (typeof WORKLOAD_BUNDLE_TYPES)[number]['key'];
 
 /** 旧版「运行时分发」Tab 跳转：按 bundle 类型映射到新 Tab key */
-export function resolveLegacyWorkloadTab(bundleKey?: string): '7' | '8' {
+export function resolveLegacyWorkloadTab(bundleKey?: string): '7' | '8' | '9' {
+  if (bundleKey === 'llm_service') return '9';
   if (bundleKey && AI_WORKLOAD_BUNDLE_TYPES.some((b) => b.key === bundleKey)) return '8';
   return '7';
 }

@@ -163,6 +163,46 @@ def filter_mounted_channel_rows(rows: list[dict[str, Any]]) -> list[dict[str, An
     return [row for row in rows if is_mounted_channel_row(row)]
 
 
+def is_registerable_channel_row(row: dict[str, Any]) -> bool:
+    """登记挂载时判断通道是否有效（比预览宽松：含暂离线但有 IP 的通道）。"""
+    try:
+        cid = int(row.get('channel_id') or 0)
+    except (TypeError, ValueError):
+        return False
+    if cid <= 0:
+        return False
+
+    ip = (row.get('ip') or row.get('camera_ip') or '').strip()
+    device_id = (row.get('device_id') or '').strip()
+    if ip or device_id:
+        return True
+    if row.get('online') is True:
+        return True
+
+    name = (row.get('name') or '').strip()
+    if name and not _GENERIC_CAMERA_NAME.match(name):
+        return True
+    return False
+
+
+def filter_registerable_channel_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """登记 NVR 时保留已配置通道，过滤空槽位。"""
+    return [row for row in rows if is_registerable_channel_row(row)]
+
+
+def filter_channel_rows(
+    rows: list[dict[str, Any]],
+    *,
+    mode: str = 'mounted',
+) -> list[dict[str, Any]]:
+    """按场景过滤通道：mounted=仅在线可用，registerable=登记挂载，all=不过滤。"""
+    if mode == 'all':
+        return list(rows)
+    if mode == 'registerable':
+        return filter_registerable_channel_rows(rows)
+    return filter_mounted_channel_rows(rows)
+
+
 def parse_input_proxy_channels(xml_text: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for block in _split_channel_blocks(xml_text):
@@ -333,26 +373,41 @@ async def _fetch_hikvision_channels(
     timeout: float,
 ) -> tuple[list[dict[str, Any]], str | None]:
     errors: list[str] = []
-    list_xml: str | None = None
+    proxy_rows: list[dict[str, Any]] = []
+    video_rows: list[dict[str, Any]] = []
 
-    for path in (INPUT_PROXY_CHANNELS, VIDEO_INPUT_CHANNELS):
-        res = await fetch_isapi_path(client, base_url, path, credentials, timeout)
-        if res.status == 200 and res.body:
-            list_xml = res.body
-            break
-        if res.error:
-            errors.append(f"{path}: {res.error}")
-        elif res.status:
-            errors.append(f"{path}: HTTP {res.status}")
+    proxy_res = await fetch_isapi_path(
+        client, base_url, INPUT_PROXY_CHANNELS, credentials, timeout
+    )
+    if proxy_res.status == 200 and proxy_res.body:
+        proxy_rows = parse_input_proxy_channels(proxy_res.body)
+    elif proxy_res.error:
+        errors.append(f"{INPUT_PROXY_CHANNELS}: {proxy_res.error}")
+    elif proxy_res.status:
+        errors.append(f"{INPUT_PROXY_CHANNELS}: HTTP {proxy_res.status}")
 
-    if not list_xml:
+    if not proxy_rows:
+        video_res = await fetch_isapi_path(
+            client, base_url, VIDEO_INPUT_CHANNELS, credentials, timeout
+        )
+        if video_res.status == 200 and video_res.body:
+            video_rows = parse_input_proxy_channels(video_res.body)
+        elif video_res.error:
+            errors.append(f"{VIDEO_INPUT_CHANNELS}: {video_res.error}")
+        elif video_res.status:
+            errors.append(f"{VIDEO_INPUT_CHANNELS}: HTTP {video_res.status}")
+
+    rows = proxy_rows or video_rows
+    if not rows:
         return [], "; ".join(errors) if errors else "channel list unavailable (auth?)"
 
-    status_res = await fetch_isapi_path(
-        client, base_url, INPUT_PROXY_STATUS, credentials, timeout
-    )
-    status_xml = status_res.body if status_res.status == 200 else None
-    return merge_channel_status(parse_input_proxy_channels(list_xml), status_xml), None
+    if proxy_rows:
+        status_res = await fetch_isapi_path(
+            client, base_url, INPUT_PROXY_STATUS, credentials, timeout
+        )
+        status_xml = status_res.body if status_res.status == 200 else None
+        rows = merge_channel_status(proxy_rows, status_xml)
+    return rows, None
 
 
 async def _fetch_dahua_channels(
@@ -512,6 +567,7 @@ async def inventory_nvr(
     camera_concurrency: int = 20,
     vendor: str | None = None,
     only_mounted: bool = True,
+    channel_filter: str | None = None,
 ) -> NvrInventory:
     """List cameras under a Hikvision or Dahua NVR."""
     scheme = _scheme_for_port(port)
@@ -578,8 +634,10 @@ async def inventory_nvr(
             inv.error = err
             if not rows:
                 return inv
-        if only_mounted:
-            rows = filter_mounted_channel_rows(rows)
+        filter_mode = channel_filter
+        if filter_mode is None:
+            filter_mode = 'mounted' if only_mounted else 'all'
+        rows = filter_channel_rows(rows, mode=filter_mode)
         inv.channels = _rows_to_channels(rows)
 
         if probe_cameras and inv.channels:

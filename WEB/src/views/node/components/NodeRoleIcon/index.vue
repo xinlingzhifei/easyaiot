@@ -16,15 +16,22 @@ defineOptions({ name: 'NodeRoleIcon' });
 const props = withDefaults(
   defineProps<{
     role?: string;
-    size?: 'md' | 'lg';
+    size?: 'md' | 'ml' | 'lg';
   }>(),
   { size: 'lg' },
 );
 
 const visual = computed(() => getNodeRoleVisual(props.role));
 const sizeClass = computed(() => `node-server-icon--${props.size}`);
-const bodySize = computed(() => (props.size === 'lg' ? 88 : 54));
-const markSize = computed(() => (props.size === 'lg' ? 20 : 16));
+
+const SIZE_MAP = {
+  md: { body: 54, mark: 16 },
+  ml: { body: 72, mark: 18 },
+  lg: { body: 88, mark: 20 },
+} as const;
+
+const bodySize = computed(() => SIZE_MAP[props.size].body);
+const markSize = computed(() => SIZE_MAP[props.size].mark);
 </script>
 
 <style lang="less" scoped>
@@ -39,6 +46,11 @@ const markSize = computed(() => (props.size === 'lg' ? 20 : 16));
   &--md {
     width: 64px;
     height: 56px;
+  }
+
+  &--ml {
+    width: 84px;
+    height: 74px;
   }
 
   &--lg {

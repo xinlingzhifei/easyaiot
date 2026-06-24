@@ -213,7 +213,7 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
         return "ai_service".equals(workloadType) || "algorithm_task".equals(workloadType)
                 || "stream_forward".equals(workloadType) || "auto_label".equals(workloadType)
                 || "model_train".equals(workloadType) || "post_process".equals(workloadType)
-                || "post_process_sink".equals(workloadType);
+                || "llm_service".equals(workloadType);
     }
 
     private List<String> resolveRequiredCapabilities(NodeSchedulerAllocateReqVO reqVO) {
@@ -237,7 +237,7 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
         }
         String workloadType = reqVO.getWorkloadType();
         if ("model_train".equals(workloadType)) {
-            return true;
+            return req != null && Boolean.TRUE.equals(req.getRequireCephMount());
         }
         if (!"algorithm_task".equals(workloadType)) {
             return false;

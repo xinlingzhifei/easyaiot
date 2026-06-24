@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # 全局任务调度器
 _scheduler = None
 _running_tasks = {}  # 存储运行中的任务ID
+_snap_scheduler_stopped = False
 
 
 def get_scheduler():
@@ -30,6 +31,19 @@ def get_scheduler():
         _scheduler.start()
         logger.info("抓拍任务调度器已启动")
     return _scheduler
+
+
+def shutdown_snap_scheduler(wait: bool = True) -> None:
+    """安全关闭抓拍任务调度器（幂等）。"""
+    global _scheduler, _snap_scheduler_stopped
+    if _snap_scheduler_stopped:
+        return
+    _snap_scheduler_stopped = True
+    if _scheduler is not None and _scheduler.running:
+        try:
+            _scheduler.shutdown(wait=wait)
+        except Exception as exc:
+            logger.debug('关闭抓拍任务调度器失败: %s', exc)
 
 
 def create_snap_task(

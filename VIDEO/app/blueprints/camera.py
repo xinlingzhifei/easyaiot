@@ -32,7 +32,13 @@ from app.services.camera_service import (
     get_snapshot_uri, refresh_camera, _to_dict
 )
 import app.services.camera_service as camera_service
+from app.utils.ffmpeg_compat import (
+    ffmpeg_rtsp_open_timeout_flag as _ffmpeg_rtsp_open_timeout_flag,
+    ffmpeg_rtsp_timeout_args as _ffmpeg_rtsp_timeout_args,
+    ffmpeg_supports_rw_timeout as _ffmpeg_supports_rw_timeout,
+)
 from app.utils.gb28181_source import resolve_gb28181_source
+from app.utils.node_client import resolve_java_backend_url
 from models import Device, db, Image, DeviceDirectory, DetectionRegion, StreamForwardTask, AlgorithmTask
 from sqlalchemy import and_
 
@@ -41,10 +47,16 @@ logger = logging.getLogger(__name__)
 
 # 受保护的流路径前缀（SRS http-flv: /ai /live；ZLMediaKit ws-flv: /rtp）
 _STREAM_PATH_RE = re.compile(r'^/(ai|live|rtp)/')
-# 网关登录校验地址（host 网络下走宿主机网关 48080）；可用 AUTH_CHECK_URL 覆盖
-_AUTH_CHECK_URL = os.environ.get(
-    'AUTH_CHECK_URL', 'http://127.0.0.1:48080/admin-api/system/auth/get-permission-info'
-)
+_AUTH_CHECK_PATH = '/admin-api/system/auth/get-permission-info'
+
+
+def _resolve_auth_check_url() -> str:
+    """登录校验地址：优先 AUTH_CHECK_URL，否则跟随 JAVA_BACKEND_URL / GATEWAY_URL（mini 为 48099）。"""
+    explicit = (os.environ.get('AUTH_CHECK_URL') or '').strip()
+    if explicit:
+        return explicit
+    base = resolve_java_backend_url().rstrip('/')
+    return f'{base}{_AUTH_CHECK_PATH}'
 
 
 def _check_login(req) -> bool:
@@ -57,7 +69,7 @@ def _check_login(req) -> bool:
         return False
     try:
         r = requests.get(
-            _AUTH_CHECK_URL,
+            _resolve_auth_check_url(),
             headers={
                 'Authorization': auth,
                 'tenant-id': req.headers.get('tenant-id', '') or req.headers.get('Tenant-Id', ''),
@@ -136,81 +148,6 @@ onvif_tasks = {}
 # 全局进程管理
 ffmpeg_processes = {}
 ffmpeg_lock = threading.Lock()
-
-# FFmpeg 8+：-stimeout/-rw_timeout 已移除，统一为 -timeout（单位仍为微秒）
-_FFMPEG_RTSP_OPEN_TIMEOUT_FLAG: Optional[str] = None
-_FFMPEG_SUPPORTS_RW_TIMEOUT: Optional[bool] = None
-
-
-def _ffmpeg_option_missing(stderr: bytes, option: str = "") -> bool:
-    err = (stderr or b"").decode(errors="replace")
-    if "Unrecognized option" in err or "Option not found" in err:
-        return True
-    if option and f"Option {option} not found" in err:
-        return True
-    return False
-
-
-def _ffmpeg_rtsp_open_timeout_flag() -> str:
-    """返回当前 ffmpeg 支持的 RTSP 连接超时参数名。"""
-    global _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
-    if _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG is not None:
-        return _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
-    try:
-        probe = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-stimeout", "1"],
-            capture_output=True,
-            timeout=5,
-        )
-        if _ffmpeg_option_missing(probe.stderr, "stimeout"):
-            _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-timeout"
-        else:
-            _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-stimeout"
-    except Exception:
-        _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-timeout"
-    return _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
-
-
-def _ffmpeg_supports_rw_timeout() -> bool:
-    """FFmpeg 8+ 已移除 -rw_timeout，仅保留 -timeout 覆盖 socket I/O。"""
-    global _FFMPEG_SUPPORTS_RW_TIMEOUT
-    if _FFMPEG_SUPPORTS_RW_TIMEOUT is not None:
-        return _FFMPEG_SUPPORTS_RW_TIMEOUT
-    try:
-        # 必须带 -i，否则部分版本会把未知选项当作 trailing option 静默忽略，导致误判为支持
-        probe = subprocess.run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-rw_timeout",
-                "1",
-                "-f",
-                "lavfi",
-                "-i",
-                "testsrc=duration=0.01:size=16x16:rate=1",
-                "-frames:v",
-                "1",
-                "-f",
-                "null",
-                "-",
-            ],
-            capture_output=True,
-            timeout=10,
-        )
-        _FFMPEG_SUPPORTS_RW_TIMEOUT = not _ffmpeg_option_missing(probe.stderr, "rw_timeout")
-    except Exception:
-        _FFMPEG_SUPPORTS_RW_TIMEOUT = False
-    return _FFMPEG_SUPPORTS_RW_TIMEOUT
-
-
-def _ffmpeg_rtsp_timeout_args(open_us: int, io_us: int) -> list:
-    """按当前 ffmpeg 版本组装 RTSP 超时参数。"""
-    open_flag = _ffmpeg_rtsp_open_timeout_flag()
-    if _ffmpeg_supports_rw_timeout():
-        return [open_flag, str(open_us), "-rw_timeout", str(io_us)]
-    # FFmpeg 8：-timeout 同时覆盖连接与读写，取较大值
-    return [open_flag, str(max(open_us, io_us))]
-
 
 # HEVC 起播/丢包时解码器常见告警，推流通常仍可继续，不必刷屏
 _FFMPEG_DECODER_NOISE_PATTERNS = (
@@ -1532,10 +1469,33 @@ def register_nvr_channels_device():
             return jsonify({'code': 400, 'msg': 'credentials 须为数组'}), 400
 
         channels = data.get('channels')
+        enum_error: str | None = None
         if channels is None:
+            from app.services.nvr_service import merge_nvr_enum_credentials
+
+            username, password, credentials = merge_nvr_enum_credentials(
+                ip,
+                port,
+                username=username,
+                password=password,
+                credentials=credentials,
+            )
             if not credentials and not username:
                 return jsonify({'code': 400, 'msg': '请至少填写一组用户名和密码'}), 400
-            timeout = float(data.get('timeout') or 5.0)
+            has_password = bool(password) or any(
+                isinstance(c, dict) and c.get('password')
+                for c in (credentials or [])
+            )
+            if not has_password:
+                return jsonify({
+                    'code': 400,
+                    'msg': '请填写 NVR Web 登录密码（枚举通道需 ISAPI 认证）',
+                }), 400
+            if password and not data.get('password'):
+                data['password'] = password
+            if username and not data.get('username'):
+                data['username'] = username
+            timeout = max(float(data.get('timeout') or 5.0), 10.0)
             vendor = (data.get('vendor') or '').strip() or None
             inv = enumerate_nvr_channels(
                 ip,
@@ -1546,8 +1506,10 @@ def register_nvr_channels_device():
                 timeout=timeout,
                 vendor=vendor,
                 probe_cameras=False,
+                channel_filter='registerable',
             )
             channels = inv.get('channels') or []
+            enum_error = inv.get('error')
             if inv.get('auth_username') and not username:
                 username = inv.get('auth_username')
             if not data.get('name') and inv.get('nvr_device_name'):
@@ -1574,6 +1536,17 @@ def register_nvr_channels_device():
             msg += f"，跳过 {stats['skipped']} 路（无 RTSP）"
         if stats.get('errors'):
             msg += f"，{len(stats['errors'])} 路失败"
+        if stats.get('registered', 0) == 0 and not channels:
+            if enum_error:
+                msg += f"（枚举失败：{enum_error}）"
+            else:
+                msg += "（未枚举到可登记通道，请确认 NVR 已添加摄像头且凭证正确）"
+            detail = enum_error or '未枚举到可登记通道，请确认 NVR 已添加摄像头且凭证正确'
+            if ';' in detail:
+                detail = detail.split(';', 1)[0].strip()
+            if ': ' in detail:
+                detail = detail.split(': ', 1)[1].strip()
+            return jsonify({'code': 400, 'msg': detail, 'data': row, 'stats': stats}), 400
         return jsonify({'code': 0, 'msg': msg, 'data': row, 'stats': stats})
     except ValueError as e:
         return jsonify({'code': 400, 'msg': str(e)}), 400
@@ -2158,8 +2131,8 @@ def list_directories():
                     'parent_id': directory.parent_id,
                     'description': directory.description,
                     'sort_order': directory.sort_order,
-                    'snap_save_time': getattr(directory, 'snap_save_time', 7),
-                    'record_save_time': getattr(directory, 'record_save_time', 7),
+                    'snap_save_time': getattr(directory, 'snap_save_time', 168),
+                    'record_save_time': getattr(directory, 'record_save_time', 168),
                     'is_default': camera_service.is_default_directory(directory),
                     'device_count': device_count_by_dir.get(directory.id, 0),
                     'created_at': directory.created_at.isoformat() if directory.created_at else None,
@@ -2257,8 +2230,8 @@ def get_directory_monitor_tree():
                     'name': directory.name,
                     'parent_id': directory.parent_id,
                     'sort_order': directory.sort_order,
-                    'snap_save_time': getattr(directory, 'snap_save_time', 7),
-                    'record_save_time': getattr(directory, 'record_save_time', 7),
+                    'snap_save_time': getattr(directory, 'snap_save_time', 168),
+                    'record_save_time': getattr(directory, 'record_save_time', 168),
                     'is_default': camera_service.is_default_directory(directory),
                     'device_count': len(devices),
                     'children': build_tree(directory.id),
@@ -2520,8 +2493,8 @@ def update_directory(directory_id):
                 'parent_id': directory.parent_id,
                 'description': directory.description,
                 'sort_order': directory.sort_order,
-                'snap_save_time': getattr(directory, 'snap_save_time', 7),
-                'record_save_time': getattr(directory, 'record_save_time', 7),
+                'snap_save_time': getattr(directory, 'snap_save_time', 168),
+                'record_save_time': getattr(directory, 'record_save_time', 168),
                 **propagated,
             }
         })

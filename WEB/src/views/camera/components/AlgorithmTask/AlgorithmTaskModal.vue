@@ -870,6 +870,26 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       ifShow: ({ values }) => !!values.sam_supplement_enabled,
     },
     {
+      field: 'post_process_enabled',
+      label: '启用 AI 后处理',
+      component: 'Switch',
+      defaultValue: false,
+      componentProps: { checkedChildren: '开', unCheckedChildren: '关' },
+      helpMessage: '开启后检测结果将投递至后处理脚本进行业务判断；关闭时走默认告警逻辑',
+      ifShow: ({ values }) => values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol',
+    },
+    {
+      field: 'post_process_replicas',
+      label: '后处理副本数',
+      component: 'InputNumber',
+      defaultValue: 1,
+      componentProps: { min: 1, max: 8, style: { width: '100%' } },
+      helpMessage: '后处理 Worker 水平扩展副本数，多副本可提升并发处理能力',
+      ifShow: ({ values }) =>
+        (values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol') &&
+        !!values.post_process_enabled,
+    },
+    {
       field: 'alert_notification_enabled',
       label: '启用告警通知',
       component: 'Switch',
@@ -1147,6 +1167,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       sam_trigger: record.sam_supplement_config?.trigger || 'on_interval',
       sam_interval_frames: record.sam_supplement_config?.interval_frames ?? 25,
       sam_conf: record.sam_supplement_config?.conf ?? 0.45,
+      post_process_enabled: record.post_process_enabled === true,
+      post_process_replicas: record.post_process_replicas ?? 1,
       alarm_suppress_time: record.alarm_suppress_time ?? 300,
       alert_notification_enabled: record.alert_notification_enabled !== undefined ? record.alert_notification_enabled : false,
       notification_channels: notificationChannels.value,
@@ -1177,6 +1199,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
         { field: 'tracking_smooth_alpha', componentProps: { disabled: true } },
         { field: 'alert_event_enabled', componentProps: { disabled: true } },
         { field: 'alert_event_suppress_time', componentProps: { disabled: true } },
+        { field: 'post_process_enabled', componentProps: { disabled: true } },
+        { field: 'post_process_replicas', componentProps: { disabled: true } },
         { field: 'alarm_suppress_time', componentProps: { disabled: true } },
         { field: 'alert_notification_enabled', componentProps: { disabled: true } },
         { field: 'notification_channels', componentProps: { disabled: true } },
@@ -1202,6 +1226,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
         { field: 'tracking_smooth_alpha', componentProps: { disabled: false } },
         { field: 'alert_event_enabled', componentProps: { disabled: false } },
         { field: 'alert_event_suppress_time', componentProps: { disabled: false } },
+        { field: 'post_process_enabled', componentProps: { disabled: false } },
+        { field: 'post_process_replicas', componentProps: { disabled: false } },
         { field: 'alarm_suppress_time', componentProps: { disabled: false } },
         { field: 'alert_notification_enabled', componentProps: { disabled: false } },
         { field: 'notification_channels', componentProps: { disabled: false } },
@@ -1229,6 +1255,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       { field: 'tracking_smooth_alpha', componentProps: { disabled: false } },
       { field: 'alert_event_enabled', componentProps: { disabled: false } },
       { field: 'alert_event_suppress_time', componentProps: { disabled: false } },
+      { field: 'post_process_enabled', componentProps: { disabled: false } },
+      { field: 'post_process_replicas', componentProps: { disabled: false } },
       { field: 'alarm_suppress_time', componentProps: { disabled: false } },
       { field: 'alert_notification_enabled', componentProps: { disabled: false } },
       { field: 'notification_channels', componentProps: { disabled: false } },
@@ -1251,6 +1279,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       alert_event_suppress_time: 5,
       face_matching_enabled: false,
       plate_matching_enabled: false,
+      post_process_enabled: false,
+      post_process_replicas: 1,
       alarm_suppress_time: 300,
       notification_channels: [],
       is_full_day_defense: true, // 默认全天布防
@@ -1511,6 +1541,13 @@ const handleSubmit = async () => {
     delete values.sam_interval_frames;
     delete values.sam_conf;
 
+    values.post_process_enabled = !!values.post_process_enabled;
+    if (values.post_process_enabled) {
+      values.post_process_replicas = Math.max(1, Number(values.post_process_replicas) || 1);
+    } else {
+      values.post_process_replicas = 1;
+    }
+
     if (values.task_type === 'snap' && values.cron_expression) {
       const cronCheck = validateSnapCronMinInterval(values.cron_expression);
       if (!cronCheck.valid) {
@@ -1597,6 +1634,8 @@ const handleReset = () => {
       alert_event_suppress_time: 5,
       face_matching_enabled: false,
       plate_matching_enabled: false,
+      post_process_enabled: false,
+      post_process_replicas: 1,
       alarm_suppress_time: 300,
       is_full_day_defense: true, // 默认全天布防
     });
@@ -1645,6 +1684,8 @@ const handleReset = () => {
       tracking_smooth_alpha: record.tracking_smooth_alpha || 0.25,
       alert_event_enabled: record.alert_event_enabled !== undefined ? record.alert_event_enabled : false,
       alert_event_suppress_time: record.alert_event_suppress_time ?? 5,
+      post_process_enabled: record.post_process_enabled === true,
+      post_process_replicas: record.post_process_replicas ?? 1,
       alarm_suppress_time: record.alarm_suppress_time ?? 300,
       alert_notification_enabled: record.alert_notification_enabled !== undefined ? record.alert_notification_enabled : false,
       is_full_day_defense: fullDayDefense,

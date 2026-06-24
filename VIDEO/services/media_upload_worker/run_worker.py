@@ -27,7 +27,7 @@ if 'Kafka' in BOOTSTRAP or 'kafka-server' in BOOTSTRAP:
 
 def _create_app():
     from run import create_app
-    return create_app()
+    return create_app(start_background_tasks=False)
 
 
 def run():

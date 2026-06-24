@@ -26,7 +26,7 @@ def run():
         logger.info('Janitor 已关闭 (MEDIA_JANITOR_ENABLED=false)')
         return
 
-    app = create_app()
+    app = create_app(start_background_tasks=False)
     logger.info('Janitor 启动，间隔 %ss', INTERVAL)
     with app.app_context():
         while True:

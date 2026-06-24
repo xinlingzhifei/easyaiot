@@ -21,11 +21,15 @@
   import { useTabs } from '/@/hooks/web/useTabs';
 
   const route = useRoute();
-  const index = route.params?.id ?? '';
+  const index = route.params?.taskId ?? route.params?.id ?? '';
   const code = route.query?.code ?? '';
   const path = route.query?.path ?? '';
+  const folder = route.query?.folder ?? '';
+  const titleQuery = route.query?.title ?? '';
   const { setTitle } = useTabs();
-  setTitle(decodeURIComponent(String(index)) || 'NodeRed');
+  setTitle(
+    decodeURIComponent(String(titleQuery || index)) || 'NodeRed',
+  );
   
   // 构建完整的 iframe 路径
   const _initPath = computed(() => {
@@ -34,7 +38,14 @@
       const basePath = String(path).startsWith('/') ? path : `/${path}`;
       // 拼接 code 到路径末尾
       return `${basePath}${code}`;
-    } else if (path) {
+    }
+    if (path && folder) {
+      const basePath = String(path).startsWith('/') ? path : `/${path}`;
+      const folderValue = decodeURIComponent(String(folder));
+      const separator = basePath.includes('?') ? '&' : '?';
+      return `${basePath}${separator}folder=${encodeURIComponent(folderValue)}`;
+    }
+    if (path) {
       return String(path).startsWith('/') ? path : `/${path}`;
     }
     return '';

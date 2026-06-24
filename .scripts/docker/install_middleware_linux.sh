@@ -33,6 +33,9 @@ cd "$SCRIPT_DIR"
 
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 
+# shellcheck source=deploy_profile.sh
+source "${SCRIPT_DIR}/deploy_profile.sh"
+COMPOSE_PROFILE_ARGS=()
 
 # GPUStack Worker（本机算力节点，与 compose 中的 gpustack-server 配合）
 GPUSTACK_WORKER_NAME="${GPUSTACK_WORKER_NAME:-gpustack-worker}"
@@ -46,30 +49,49 @@ GPUSTACK_API_COOKIE_FILE="${SCRIPT_DIR}/logs/.gpustack_api_cookie"
 # 导出 SKIP_GPUSTACK=true 可避免 gpustack_data 大目录的递归 777 卡顿、加速部署。
 SKIP_GPUSTACK="${SKIP_GPUSTACK:-false}"
 
-# Dify 1.14.2（LLM 应用平台，独立 compose 部署）
-DIFY_VERSION="${DIFY_VERSION:-1.14.2}"
-DIFY_DIR="${SCRIPT_DIR}/dify_data"
-DIFY_COMPOSE_FILE="${DIFY_DIR}/docker-compose.yaml"
-DIFY_OVERRIDE_FILE="${DIFY_DIR}/docker-compose.override.yml"
-DIFY_PROJECT_NAME="${DIFY_PROJECT_NAME:-dify}"
-DIFY_HTTP_PORT="${DIFY_HTTP_PORT:-10190}"
-# 跳过 Dify（独立 compose 部署、镜像拉取、dify_data 目录递归权限）。
-# 导出 SKIP_DIFY=true 可避免 dify_data/volumes 大目录的递归 777 卡顿、加速部署。
-SKIP_DIFY="${SKIP_DIFY:-false}"
+refresh_compose_profile_args() {
+    apply_deploy_profile
+    COMPOSE_PROFILE_ARGS=()
+    local flags
+    flags=$(compose_profile_flags)
+    if [ -n "$flags" ]; then
+        # shellcheck disable=SC2206
+        COMPOSE_PROFILE_ARGS=($flags)
+    fi
+}
+
+prepare_kafka_if_enabled() {
+    if ! middleware_service_enabled "Kafka"; then
+        print_info "当前部署形态未启用 Kafka，跳过 Kafka 目录与 hosts 配置"
+        return 0
+    fi
+    create_kafka_directories
+    configure_kafka_hosts
+}
+
+init_kafka_topics_if_enabled() {
+    if ! middleware_service_enabled "Kafka"; then
+        print_info "当前部署形态未启用 Kafka，跳过 Kafka 主题初始化"
+        return 0
+    fi
+    init_kafka_iot_topics || print_warning "IoT Kafka 主题初始化未完成，可稍后手动执行: init_kafka_iot_topics"
+}
+
+mw_compose() {
+    $COMPOSE_CMD -f "$COMPOSE_FILE" ${COMPOSE_PROFILE_ARGS[@]+"${COMPOSE_PROFILE_ARGS[@]}"} "$@"
+}
 
 # 强制对所有已存在的存储目录做完整递归 chmod/chown（兜底用）。
 # 默认 false：已存在目录只设顶层权限，避免对海量数据文件递归导致卡顿（容器自身写的数据权限本就正确）。
 # 仅当怀疑既有数据目录权限损坏、容器读写报错时，导出 FORCE_CHMOD=true 跑一次强制修复。
 FORCE_CHMOD="${FORCE_CHMOD:-false}"
 
-# 日志文件配置（主日志 / GPUStack / Dify 各自独立，互不混写）
+# 日志文件配置
 LOG_DIR="${SCRIPT_DIR}/logs"
 _LOG_TS="$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
 chmod -R 777 "$LOG_DIR" 2>/dev/null || sudo chmod -R 777 "$LOG_DIR" 2>/dev/null || true
 LOG_FILE="${LOG_DIR}/install_middleware_${_LOG_TS}.log"
-GPUSTACK_LOG_FILE="${LOG_DIR}/gpustack_${_LOG_TS}.log"
-DIFY_LOG_FILE="${LOG_DIR}/dify_${_LOG_TS}.log"
 
 # 初始化日志文件
 echo "=========================================" >> "$LOG_FILE"
@@ -79,36 +101,29 @@ echo "命令: $*" >> "$LOG_FILE"
 echo "=========================================" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"
 
-echo "=========================================" >> "$GPUSTACK_LOG_FILE"
-echo "GPUStack 部署日志" >> "$GPUSTACK_LOG_FILE"
-echo "开始时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$GPUSTACK_LOG_FILE"
-echo "命令: $*" >> "$GPUSTACK_LOG_FILE"
-echo "=========================================" >> "$GPUSTACK_LOG_FILE"
-echo "" >> "$GPUSTACK_LOG_FILE"
-
-echo "=========================================" >> "$DIFY_LOG_FILE"
-echo "Dify 部署日志" >> "$DIFY_LOG_FILE"
-echo "开始时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$DIFY_LOG_FILE"
-echo "命令: $*" >> "$DIFY_LOG_FILE"
-echo "=========================================" >> "$DIFY_LOG_FILE"
-echo "" >> "$DIFY_LOG_FILE"
 
 # 中间件服务列表
 MIDDLEWARE_SERVICES=(
     "Nacos"
     "PostgresSQL"
-    "TDengine"
     "Redis"
     "Kafka"
     "MinIO"
     "Milvus"
     "SRS"
     "NodeRED"
-    "VSCode"
-    "EMQX"
     "ZLMediaKit"
-    "GPUStack"
-    "Dify"
+)
+
+# 默认不启动（省内存）；需要时设置 EASYAIOT_ENABLE_TDENGINE=1 / EASYAIOT_ENABLE_EMQX=1
+DISABLED_BY_DEFAULT_MIDDLEWARE_SERVICES=(
+    "TDengine"
+    "TDengine-init"
+    "EMQX"
+)
+
+# 可选中间件：镜像拉取失败时不阻塞其余核心服务启动
+OPTIONAL_MIDDLEWARE_SERVICES=(
 )
 
 # 中间件端口映射
@@ -122,11 +137,8 @@ MIDDLEWARE_PORTS["MinIO"]="9000"
 MIDDLEWARE_PORTS["Milvus"]="9091"
 MIDDLEWARE_PORTS["SRS"]="1935"
 MIDDLEWARE_PORTS["NodeRED"]="1880"
-MIDDLEWARE_PORTS["VSCode"]="10192"
 MIDDLEWARE_PORTS["EMQX"]="1883"
 MIDDLEWARE_PORTS["ZLMediaKit"]="6080"
-MIDDLEWARE_PORTS["GPUStack"]="10180"
-MIDDLEWARE_PORTS["Dify"]="${DIFY_HTTP_PORT}"
 
 # 中间件健康检查端点
 declare -A MIDDLEWARE_HEALTH_ENDPOINTS
@@ -139,34 +151,9 @@ MIDDLEWARE_HEALTH_ENDPOINTS["MinIO"]="/minio/health/live"
 MIDDLEWARE_HEALTH_ENDPOINTS["Milvus"]="/healthz"
 MIDDLEWARE_HEALTH_ENDPOINTS["SRS"]="/api/v1/versions"
 MIDDLEWARE_HEALTH_ENDPOINTS["NodeRED"]="/"
-MIDDLEWARE_HEALTH_ENDPOINTS["VSCode"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["EMQX"]="/api/v5/status"
 MIDDLEWARE_HEALTH_ENDPOINTS["ZLMediaKit"]="/index/api/getServerConfig"
-MIDDLEWARE_HEALTH_ENDPOINTS["GPUStack"]="/"
-MIDDLEWARE_HEALTH_ENDPOINTS["Dify"]="/"
 
-# 跳过 GPUStack / Dify 时，从中间件列表中移除，避免后续的容器检测/健康检查/端口清理
-if [ "$SKIP_GPUSTACK" = "true" ] || [ "$SKIP_DIFY" = "true" ]; then
-    _filtered_services=()
-    for _svc in "${MIDDLEWARE_SERVICES[@]}"; do
-        [ "$SKIP_GPUSTACK" = "true" ] && [ "$_svc" = "GPUStack" ] && continue
-        [ "$SKIP_DIFY" = "true" ] && [ "$_svc" = "Dify" ] && continue
-        _filtered_services+=("$_svc")
-    done
-    MIDDLEWARE_SERVICES=("${_filtered_services[@]}")
-    unset _filtered_services _svc
-fi
-
-# 计算 compose up/pull 需要操作的服务列表。
-# 未跳过 GPUStack 时返回空（表示操作全部服务）；跳过时返回除 GPUStack 外的所有 compose 服务名。
-# 结果进程内缓存：`compose config` 要解析整个 compose 文件（约 1~2s），一次运行内不会变化
-compose_service_args() {
-    [ "$SKIP_GPUSTACK" != "true" ] && return 0
-    if [ -z "${_COMPOSE_SVC_ARGS:-}" ]; then
-        _COMPOSE_SVC_ARGS=$($COMPOSE_CMD -f "$COMPOSE_FILE" config --services 2>/dev/null | grep -vx "GPUStack" | tr '\n' ' ')
-    fi
-    printf '%s' "$_COMPOSE_SVC_ARGS"
-}
 
 # 以特权执行命令：root 直接执行；非 root 且有 sudo 走 sudo；两者皆无则原样尝试。
 # 统一全文反复出现的 EUID/sudo 三分支样板（语义与原三分支完全一致）。
@@ -228,101 +215,6 @@ print_section() {
     log_to_file ""
 }
 
-# GPUStack 独立日志（仅写入 GPUSTACK_LOG_FILE，不写入主日志）
-_gpustack_log_to_file() {
-    local message="$1"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    local clean_message
-    clean_message=$(echo "$message" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g")
-    echo "[$timestamp] $clean_message" >> "$GPUSTACK_LOG_FILE"
-}
-
-print_gpustack_info() {
-    local message="${BLUE}[GPUStack][INFO]${NC} $1"
-    echo -e "$message"
-    _gpustack_log_to_file "[INFO] $1"
-}
-
-print_gpustack_success() {
-    local message="${GREEN}[GPUStack][SUCCESS]${NC} $1"
-    echo -e "$message"
-    _gpustack_log_to_file "[SUCCESS] $1"
-}
-
-print_gpustack_warning() {
-    local message="${YELLOW}[GPUStack][WARNING]${NC} $1"
-    echo -e "$message"
-    _gpustack_log_to_file "[WARNING] $1"
-}
-
-print_gpustack_error() {
-    local message="${RED}[GPUStack][ERROR]${NC} $1"
-    echo -e "$message"
-    _gpustack_log_to_file "[ERROR] $1"
-}
-
-print_gpustack_section() {
-    local section="$1"
-    echo ""
-    echo -e "${YELLOW}========================================${NC}"
-    echo -e "${YELLOW}  [GPUStack] $section${NC}"
-    echo -e "${YELLOW}========================================${NC}"
-    echo ""
-    _gpustack_log_to_file ""
-    _gpustack_log_to_file "========================================="
-    _gpustack_log_to_file "  $section"
-    _gpustack_log_to_file "========================================="
-    _gpustack_log_to_file ""
-}
-
-# Dify 独立日志（仅写入 DIFY_LOG_FILE，不写入主日志）
-_dify_log_to_file() {
-    local message="$1"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    local clean_message
-    clean_message=$(echo "$message" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g")
-    echo "[$timestamp] $clean_message" >> "$DIFY_LOG_FILE"
-}
-
-print_dify_info() {
-    local message="${BLUE}[Dify][INFO]${NC} $1"
-    echo -e "$message"
-    _dify_log_to_file "[INFO] $1"
-}
-
-print_dify_success() {
-    local message="${GREEN}[Dify][SUCCESS]${NC} $1"
-    echo -e "$message"
-    _dify_log_to_file "[SUCCESS] $1"
-}
-
-print_dify_warning() {
-    local message="${YELLOW}[Dify][WARNING]${NC} $1"
-    echo -e "$message"
-    _dify_log_to_file "[WARNING] $1"
-}
-
-print_dify_error() {
-    local message="${RED}[Dify][ERROR]${NC} $1"
-    echo -e "$message"
-    _dify_log_to_file "[ERROR] $1"
-}
-
-print_dify_section() {
-    local section="$1"
-    echo ""
-    echo -e "${YELLOW}========================================${NC}"
-    echo -e "${YELLOW}  [Dify] $section${NC}"
-    echo -e "${YELLOW}========================================${NC}"
-    echo ""
-    _dify_log_to_file ""
-    _dify_log_to_file "========================================="
-    _dify_log_to_file "  $section"
-    _dify_log_to_file "========================================="
-    _dify_log_to_file ""
-}
 
 # 检查命令是否存在
 check_command() {
@@ -1948,17 +1840,6 @@ create_nodered_directories() {
     fi
 }
 
-# 创建并设置 VSCode（OpenVSCode Server）工作区目录权限
-create_vscode_directories() {
-    local vscode_workspace_dir="${SCRIPT_DIR}/vscode_data/workspaces"
-    print_info "创建 VSCode 后处理工作区目录并设置权限..."
-    if set_data_dir_perms "1000:1000" "$vscode_workspace_dir"; then
-        print_success "VSCode 工作区目录权限已设置 (UID 1000:1000, 777)"
-    else
-        print_warning "无法设置 VSCode 目录权限，请手动执行: sudo chmod -R 777 $vscode_workspace_dir"
-    fi
-}
-
 # 创建并设置 PostgreSQL 数据目录权限
 create_postgresql_directories() {
     local postgresql_data_dir="${SCRIPT_DIR}/db_data/data"
@@ -2079,90 +1960,6 @@ check_filesystem_mount_status() {
     return 0  # 可写
 }
 
-# GPUStack 容器内 SSL 私钥权限检测修复（先检测再修改）。
-# 内嵌 postgres 开启 ssl，要求 /etc/ssl/private/ssl-cert-snakeoil.key 为
-# 0600(属主为数据库用户) 或 0640(属主 root)；该文件在容器可写层（非宿主机挂载），
-# 层被污染（如容器内调试时 chmod 过）后 docker restart 不会复原，需 exec 修复。
-# 彻底复原方式是重建容器（rw 层重置、gpustack_data 数据不受影响）：
-#   $COMPOSE_CMD -f docker-compose.yml up -d --force-recreate GPUStack
-fix_gpustack_ssl_key_permissions() {
-    local key="/etc/ssl/private/ssl-cert-snakeoil.key"
-
-    docker ps --format '{{.Names}}' | grep -q '^gpustack-server$' || return 0
-
-    local mode
-    mode=$(docker exec gpustack-server stat -c '%a' "$key" 2>/dev/null || echo "")
-    [ -z "$mode" ] && return 0   # 文件不存在或容器暂不可 exec：交给重建容器处理
-    case "$mode" in
-        600|640) return 0 ;;     # 已合规，零操作
-    esac
-
-    print_warning "GPUStack 容器内 SSL 私钥权限为 $mode（要求 600/640），正在修复..."
-    # 还原为 Debian 镜像默认：root:ssl-cert 0640（postgres 经 ssl-cert 组读取）
-    docker exec gpustack-server chown root:ssl-cert "$key" 2>/dev/null || true
-    docker exec gpustack-server chmod 640 "$key" 2>/dev/null || true
-    print_success "GPUStack SSL 私钥权限已修复（仍异常时可重建容器: up -d --force-recreate GPUStack）"
-}
-
-# GPUStack 内嵌 PostgreSQL 要求 PGDATA 为 0700/0750，777 会导致 postgres 拒绝启动。
-# 注意：此操作又快又是正确性关键，即使 SKIP_GPUSTACK=true 也必须执行（仅在目录存在时生效），
-# 否则残留的 777 权限会让 gpustack-server 的内嵌 PG 一直拒绝启动。
-fix_gpustack_postgresql_permissions() {
-    # SSL 私钥与 PGDATA 同为内嵌 PG 的启动阻断项，且互相独立（PGDATA 正常时私钥也可能被污染），
-    # 借同一调用链一并检测（检测式，正常时零开销）
-    fix_gpustack_ssl_key_permissions
-
-    local gpustack_pg_root="${SCRIPT_DIR}/gpustack_data/postgresql"
-    local gpustack_pg_data="${gpustack_pg_root}/data"
-
-    if [ ! -d "$gpustack_pg_data" ]; then
-        return 0
-    fi
-
-    # 先检测再修改：PGDATA 已是 0700/0750（postgres 接受的两种模式）则零操作、零日志，
-    # 仅在权限确实不对（如被旧版脚本递归 777 过）时才 chmod 修复
-    local data_mode
-    data_mode=$(stat -c '%a' "$gpustack_pg_data" 2>/dev/null || echo "")
-    if [ "$data_mode" = "700" ] || [ "$data_mode" = "750" ]; then
-        return 0
-    fi
-
-    print_warning "GPUStack 内嵌 PostgreSQL 数据目录权限为 ${data_mode:-未知}（要求 0700/0750），正在修复为 0750..."
-
-    run_priv chmod 750 "$gpustack_pg_root" "$gpustack_pg_data" 2>/dev/null || true
-
-    print_success "GPUStack PostgreSQL 数据目录权限已修复为 0750"
-}
-
-# GPUStack 数据目录：除内嵌 PostgreSQL 外其余子目录用 777
-# 参数1（可选）：目录在本次运行前是否已存在（true/false，默认 false=新建）
-# 与全局「已存在目录仅顶层 chmod」策略一致：已存在且未开 FORCE_CHMOD 时，
-# 跳过对模型缓存等大目录的递归 777（每次 update 全量递归正是卡顿来源）；
-# 内嵌 PG 权限始终走 fix_gpustack_postgresql_permissions 的"先检测再修复"。
-set_gpustack_data_permissions() {
-    local pre_existing="${1:-false}"
-    # SKIP_GPUSTACK=true 时只跳过慢的 777 递归，仍必须修正内嵌 PG 权限（否则 gpustack-server 起不来）
-    if [ "$SKIP_GPUSTACK" = "true" ]; then
-        fix_gpustack_postgresql_permissions
-        return 0
-    fi
-    local gpustack_dir="${SCRIPT_DIR}/gpustack_data"
-
-    mkdir -p "$gpustack_dir"
-
-    local recurse="true"
-    if [ "$pre_existing" = "true" ] && [ "$FORCE_CHMOD" != "true" ]; then
-        recurse="false"
-    fi
-
-    run_priv chmod 777 "$gpustack_dir" 2>/dev/null || true
-    if [ "$recurse" = "true" ]; then
-        run_priv find "$gpustack_dir" -mindepth 1 -maxdepth 1 ! -name postgresql -exec chmod -R 777 {} + 2>/dev/null || true
-    fi
-
-    fix_gpustack_postgresql_permissions
-}
-
 # 创建所有中间件的存储目录
 create_all_storage_directories() {
     print_info "创建所有中间件存储目录..."
@@ -2221,15 +2018,10 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/srs_data/data:::"              # SRS 数据（使用默认权限）
         "${SCRIPT_DIR}/srs_data/playbacks:::"          # SRS 回放（使用默认权限）
         "${SCRIPT_DIR}/nodered_data/data:1000:1000:777" # NodeRED 数据
-        "${SCRIPT_DIR}/vscode_data/workspaces:1000:1000:777" # VSCode 后处理工作区
         "${SCRIPT_DIR}/../zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
-        "${SCRIPT_DIR}/gpustack_data:::"             # GPUStack 数据（配置、内嵌库等）
     )
-    # Dify 卷目录（SKIP_DIFY=true 时跳过创建与递归 chmod，避免大目录卡顿）
-    [ "$SKIP_DIFY" != "true" ] && storage_dirs+=("${DIFY_DIR}/volumes:::")  # Dify 应用/数据库/向量库等
-
     local created_count=0
     local total_count=${#storage_dirs[@]}
     local failed_dirs=()
@@ -2272,12 +2064,8 @@ create_all_storage_directories() {
                 run_priv chown $R "${uid}:${gid}" "$dir_path" 2>/dev/null || true
                 run_priv chmod $R 777 "$dir_path" 2>/dev/null || true
             else
-                # 即使没有指定 UID/GID，也设置777权限（GPUStack 内嵌 PG 除外）
-                if [ "$dir_path" = "${SCRIPT_DIR}/gpustack_data" ]; then
-                    set_gpustack_data_permissions "$pre_existing"
-                else
-                    run_priv chmod $R 777 "$dir_path" 2>/dev/null || true
-                fi
+                # 即使没有指定 UID/GID，也设置777权限
+                run_priv chmod $R 777 "$dir_path" 2>/dev/null || true
             fi
             created_count=$((created_count + 1))
         else
@@ -2316,10 +2104,6 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/../zlmediakit"
         "${SCRIPT_DIR}/logs"
     )
-    # 注：gpustack_data 不在此列——它已在上面的存储目录循环中由
-    # set_gpustack_data_permissions 处理过，重复处理会再次递归扫描大模型缓存目录。
-    # Dify 父目录（SKIP_DIFY=true 时跳过递归 chmod）
-    [ "$SKIP_DIFY" != "true" ] && parent_dirs+=("${DIFY_DIR}")
     # 默认只设父目录顶层权限；FORCE_CHMOD=true 时递归兜底修复
     local PR=""
     [ "$FORCE_CHMOD" = "true" ] && PR="-R"
@@ -2454,6 +2238,15 @@ prepare_zlmediakit_config() {
     # 检查配置文件是否已存在
     if [ -f "$zlm_config_file" ]; then
         print_success "ZLMediaKit 配置文件已存在: $zlm_config_file"
+        # 确保关闭 ZLM 录像（录像由 SRS 负责）
+        if grep -q '^enableFmp4=1' "$zlm_config_file" 2>/dev/null; then
+            sed -i 's/^enableFmp4=1/enableFmp4=0/' "$zlm_config_file"
+            print_info "已关闭 ZLMediaKit fmp4 录像: enableFmp4=0"
+        fi
+        if grep -q '^enable_mp4=1' "$zlm_config_file" 2>/dev/null; then
+            sed -i 's/^enable_mp4=1/enable_mp4=0/' "$zlm_config_file"
+            print_info "已关闭 ZLMediaKit mp4 录像: enable_mp4=0"
+        fi
         return 0
     else
         print_warning "ZLMediaKit 配置文件不存在，将创建默认配置"
@@ -2580,7 +2373,7 @@ ts_demand=0
 
 [record]
 appName=record
-enableFmp4=1
+enableFmp4=0
 fastStart=0
 fileBufSize=65536
 fileRepeat=0
@@ -3334,6 +3127,27 @@ ensure_host_data_directory_before_srs() {
     fi
 }
 
+# 按部署形态写入 SRS http_hooks（SRS 使用 host 网络）
+_apply_srs_http_hooks() {
+    local srs_config_file="$1"
+    local gateway_ip="$2"
+    local on_publish_url on_dvr_url
+
+    if is_mini_deploy_profile; then
+        local video_port="${FLASK_RUN_PORT:-6000}"
+        on_publish_url="http://localhost:${video_port}/video/camera/callback/on_publish"
+        on_dvr_url="http://localhost:${video_port}/video/camera/callback/on_dvr"
+        print_info "mini 形态：SRS Hook 直连 VIDEO 服务 ${on_publish_url}（无 Gateway）"
+    else
+        on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
+        on_dvr_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr"
+        print_info "SRS Hook 经 Gateway: http://${gateway_ip}:48080/admin-api/video/camera/callback/*"
+    fi
+
+    sed -i -E "s|on_dvr[[:space:]]+http://[^;]+;|on_dvr              ${on_dvr_url};|g" "$srs_config_file"
+    sed -i -E "s|on_publish[[:space:]]+http://[^;]+;|on_publish          ${on_publish_url};|g" "$srs_config_file"
+}
+
 # 准备 SRS 配置文件
 # 强制更新模式：无论配置文件是否存在，都重新生成并自动替换 IP 地址
 prepare_srs_config() {
@@ -3373,12 +3187,7 @@ prepare_srs_config() {
     if [ -d "$srs_config_source" ] && [ -f "$srs_config_source/docker.conf" ]; then
         print_info "从源目录复制 SRS 配置文件..."
         if cp -f "$srs_config_source/docker.conf" "$srs_config_file" 2>/dev/null; then
-            # 替换配置文件中的 Gateway 地址（48080端口）- 用于访问宿主机上的Gateway服务
-            sed -i -E "s|http://([0-9]{1,3}\.){3}[0-9]{1,3}:48080|http://${gateway_ip}:48080|g" "$srs_config_file"
-            # 替换配置文件中的 VIDEO 地址（6000端口）- 用于访问宿主机上的VIDEO服务
-            sed -i -E "s|http://([0-9]{1,3}\.){3}[0-9]{1,3}:6000|http://${host_ip}:6000|g" "$srs_config_file"
-            print_info "已将配置文件中的 Gateway 地址更新为: $gateway_ip:48080"
-            print_info "已将配置文件中的 VIDEO 地址更新为: $host_ip:6000"
+            _apply_srs_http_hooks "$srs_config_file" "$gateway_ip"
             print_success "SRS 配置文件已复制并更新: $srs_config_source/docker.conf -> $srs_config_file"
             # 验证文件确实存在
             if [ -f "$srs_config_file" ]; then
@@ -3393,6 +3202,15 @@ prepare_srs_config() {
     
     # 如果复制失败或源文件不存在，创建默认配置文件
     print_info "创建默认 SRS 配置文件..."
+    local on_publish_url on_dvr_url
+    if is_mini_deploy_profile; then
+        local video_port="${FLASK_RUN_PORT:-6000}"
+        on_publish_url="http://localhost:${video_port}/video/camera/callback/on_publish"
+        on_dvr_url="http://localhost:${video_port}/video/camera/callback/on_dvr"
+    else
+        on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
+        on_dvr_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr"
+    fi
     cat > "$srs_config_file" << EOF
 # SRS Docker 配置文件
 # 用于 Docker 容器部署的 SRS 配置
@@ -3445,8 +3263,8 @@ vhost __defaultVhost__ {
     }
     http_hooks {
         enabled             on;
-        on_dvr              http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr;
-        on_publish          http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish;
+        on_dvr              ${on_dvr_url};
+        on_publish          ${on_publish_url};
     }
 }
 EOF
@@ -3454,7 +3272,11 @@ EOF
     # 验证文件是否创建成功
     if [ -f "$srs_config_file" ]; then
         print_success "默认 SRS 配置文件已创建: $srs_config_file"
-        print_info "  - Gateway 回调地址: http://${gateway_ip}:48080/admin-api/video/camera/callback/*"
+        if is_mini_deploy_profile; then
+            print_info "  - VIDEO 回调地址: ${on_publish_url}"
+        else
+            print_info "  - Gateway 回调地址: http://${gateway_ip}:48080/admin-api/video/camera/callback/*"
+        fi
         return 0
     else
         print_error "无法创建 SRS 配置文件: $srs_config_file"
@@ -3939,25 +3761,6 @@ wait_for_milvus() {
     print_info "1. 查看完整日志: docker logs milvus-server"
     print_info "2. 或: ./install_middleware_linux.sh logs Milvus"
     print_info "3. 确认 docker-compose.yml 含 DEPLOY_MODE=STANDALONE 与 milvus_config 挂载"
-    return 1
-}
-
-# 等待 MinIO 服务就绪
-wait_for_minio() {
-    local max_attempts=60
-    local attempt=0
-    
-    print_info "等待 MinIO 服务就绪..."
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -s --connect-timeout 2 "http://localhost:9000/minio/health/live" > /dev/null 2>&1; then
-            print_success "MinIO 服务已就绪"
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        sleep 2
-    done
-    
-    print_error "MinIO 服务未就绪"
     return 1
 }
 
@@ -4527,428 +4330,24 @@ execute_sql_script() {
 }
 
 
-# 初始化 MinIO 的 Python 脚本（临时文件）
-create_minio_init_script() {
-    local script_file=$(mktemp)
-    cat > "$script_file" << 'PYTHON_SCRIPT'
-#!/usr/bin/env python3
-import sys
-import os
-from minio import Minio
-from minio.error import S3Error
-import mimetypes
-
-def init_minio_buckets_and_upload():
-    # MinIO 配置
-    minio_endpoint = "localhost:9000"
-    minio_access_key = "minioadmin"
-    minio_secret_key = "basiclab@iot975248395"
-    minio_secure = False
-    
-    # 存储桶列表
-    buckets = [
-        "dataset", "datasets", "export-bucket", "inference-inputs", "inference-results", "models", "snap-space", "record-space", "alert-images",
-        "plate-models", "plate-train-results", "plate-train-logs", "plate-inference-results"
-    ]
-    
-    # 数据集目录映射: (bucket_name, directory_path, object_prefix)
-    # 参数格式: bucket1:dir1:prefix1 bucket2:dir2:prefix2 ...
-    upload_tasks = []
-    if len(sys.argv) > 1:
-        for arg in sys.argv[1:]:
-            if ':' in arg:
-                parts = arg.split(':')
-                if len(parts) >= 2:
-                    bucket_name = parts[0]
-                    dir_path = parts[1]
-                    prefix = parts[2] if len(parts) > 2 else ""
-                    upload_tasks.append((bucket_name, dir_path, prefix))
-    
-    try:
-        # 创建 MinIO 客户端
-        client = Minio(
-            minio_endpoint,
-            access_key=minio_access_key,
-            secret_key=minio_secret_key,
-            secure=minio_secure
-        )
-        
-        # 创建存储桶并统一设置公开读写策略（桶已存在时也必须补齐，否则 download API 返回 500）
-        import json
-        created_buckets = 0
-        public_policy = lambda bucket_name: {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": ["*"]},
-                    "Action": [
-                        "s3:GetBucketLocation",
-                        "s3:ListBucket",
-                        "s3:ListBucketMultipartUploads"
-                    ],
-                    "Resource": [f"arn:aws:s3:::{bucket_name}"]
-                },
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": ["*"]},
-                    "Action": [
-                        "s3:ListMultipartUploadParts",
-                        "s3:PutObject",
-                        "s3:GetObject",
-                        "s3:DeleteObject",
-                        "s3:AbortMultipartUpload"
-                    ],
-                    "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
-                }
-            ]
-        }
-        for bucket_name in buckets:
-            try:
-                if client.bucket_exists(bucket_name):
-                    print(f"BUCKET_EXISTS:{bucket_name}")
-                else:
-                    client.make_bucket(bucket_name)
-                    print(f"BUCKET_CREATED:{bucket_name}")
-                    created_buckets += 1
-                client.set_bucket_policy(bucket_name, json.dumps(public_policy(bucket_name)))
-                print(f"BUCKET_POLICY_PUBLIC:{bucket_name}")
-            except S3Error as e:
-                print(f"BUCKET_ERROR:{bucket_name}:{str(e)}")
-                sys.exit(1)
-        
-        print(f"BUCKETS_SUCCESS:{created_buckets}/{len(buckets)}")
-        
-        # 检查存储桶是否已有数据
-        def bucket_has_objects(bucket_name, prefix=""):
-            """检查存储桶是否已有对象（可选前缀）"""
-            try:
-                if prefix:
-                    objects = list(client.list_objects(bucket_name, prefix=prefix, recursive=False))
-                else:
-                    objects = list(client.list_objects(bucket_name, recursive=False))
-                return len(objects) > 0
-            except:
-                return False
-        
-        # 上传数据集（支持递归上传）
-        total_upload_count = 0
-        total_upload_success = 0
-        
-        def upload_file_recursive(bucket_name, local_path, object_prefix, root_dir):
-            """递归上传文件"""
-            upload_count = 0
-            upload_success = 0
-            
-            if os.path.isfile(local_path):
-                # 计算相对路径
-                rel_path = os.path.relpath(local_path, root_dir)
-                # 构建对象名称
-                if object_prefix:
-                    object_name = f"{object_prefix}/{rel_path}" if not object_prefix.endswith('/') else f"{object_prefix}{rel_path}"
-                else:
-                    object_name = rel_path
-                
-                # 统一路径分隔符为 /
-                object_name = object_name.replace('\\', '/')
-                
-                try:
-                    # 获取文件 MIME 类型
-                    content_type, _ = mimetypes.guess_type(local_path)
-                    if not content_type:
-                        content_type = "application/octet-stream"
-                    
-                    # 上传文件
-                    client.fput_object(
-                        bucket_name,
-                        object_name,
-                        local_path,
-                        content_type=content_type
-                    )
-                    print(f"UPLOAD_SUCCESS:{bucket_name}:{object_name}")
-                    upload_success += 1
-                except S3Error as e:
-                    print(f"UPLOAD_ERROR:{bucket_name}:{object_name}:{str(e)}")
-                upload_count += 1
-            elif os.path.isdir(local_path):
-                # 递归处理子目录
-                for item in os.listdir(local_path):
-                    item_path = os.path.join(local_path, item)
-                    sub_count, sub_success = upload_file_recursive(bucket_name, item_path, object_prefix, root_dir)
-                    upload_count += sub_count
-                    upload_success += sub_success
-            
-            return upload_count, upload_success
-        
-        for bucket_name, dataset_dir, object_prefix in upload_tasks:
-            if dataset_dir and os.path.isdir(dataset_dir):
-                # 检查存储桶是否已有数据（检查特定前缀）
-                if bucket_has_objects(bucket_name, object_prefix):
-                    print(f"UPLOAD_SKIP:{bucket_name}:存储桶已存在且已有数据（前缀: {object_prefix if object_prefix else '根目录'}），跳过上传")
-                else:
-                    upload_count, upload_success = upload_file_recursive(bucket_name, dataset_dir, object_prefix, dataset_dir)
-                    
-                    print(f"UPLOAD_RESULT:{bucket_name}:{upload_success}/{upload_count}")
-                    total_upload_count += upload_count
-                    total_upload_success += upload_success
-            else:
-                print(f"UPLOAD_SKIP:{bucket_name}:数据集目录不存在或无效: {dataset_dir}")
-        
-        if total_upload_count > 0:
-            print(f"UPLOAD_TOTAL:{total_upload_success}/{total_upload_count}")
-        
-        print("INIT_SUCCESS")
-        sys.exit(0)
-        
-    except Exception as e:
-        print(f"INIT_ERROR:{str(e)}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    init_minio_buckets_and_upload()
-PYTHON_SCRIPT
-    echo "$script_file"
-}
-
-# 初始化 MinIO 存储桶和数据
-init_minio_with_python() {
-    local python_script=$(create_minio_init_script)
-    local output_file=$(mktemp)
-    
-    # 检查 Python 和 minio 库
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python3 未安装，无法初始化 MinIO"
-        rm -f "$python_script" "$output_file"
-        return 1
-    fi
-    
-    # 检查 minio 库是否安装
-    if ! python3 -c "import minio" 2>/dev/null; then
-        print_info "正在配置 pip 以允许安装系统包..."
-        # 配置 pip 允许安装系统包，避免某些系统上的权限错误
-        python3 -m pip config set global.break-system-packages true > /dev/null 2>&1 || true
-        
-        print_info "正在安装 minio Python 库..."
-        pip3 install minio > /dev/null 2>&1 || {
-            print_error "无法安装 minio Python 库，请手动安装: pip3 install minio"
-            rm -f "$python_script" "$output_file"
-            return 1
-        }
-    fi
-    
-    # 执行 Python 脚本，传递所有参数（只给所有者添加执行权限，避免需要 root 权限）
-    chmod u+x "$python_script"
-    python3 "$python_script" "$@" > "$output_file" 2>&1
-    local exit_code=$?
-    
-    # 解析输出
-    local buckets_created=0
-    local buckets_total=0
-    local upload_success=0
-    local upload_total=0
-    
-    while IFS= read -r line || [ -n "$line" ]; do
-        if [[ $line == BUCKET_EXISTS:* ]]; then
-            local bucket_name="${line#BUCKET_EXISTS:}"
-            print_info "存储桶 $bucket_name 已存在，跳过创建"
-        elif [[ $line == BUCKET_CREATED:* ]]; then
-            local bucket_name="${line#BUCKET_CREATED:}"
-            print_success "存储桶 $bucket_name 创建成功"
-            buckets_created=$((buckets_created + 1))
-        elif [[ $line == BUCKET_ERROR:* ]]; then
-            local error="${line#BUCKET_ERROR:}"
-            print_error "存储桶创建失败: $error"
-        elif [[ $line == BUCKETS_SUCCESS:* ]]; then
-            local result="${line#BUCKETS_SUCCESS:}"
-            IFS='/' read -r created_count total_count <<< "$result"
-            buckets_total=$total_count
-            # 只在没有单独计算时使用汇总数据
-            if [ $buckets_created -eq 0 ]; then
-                buckets_created=$created_count
-            fi
-        elif [[ $line == UPLOAD_SUCCESS:* ]]; then
-            local upload_info="${line#UPLOAD_SUCCESS:}"
-            # 格式可能是 bucket:object_name 或 object_name
-            if [[ $upload_info == *:* ]]; then
-                local bucket_name="${upload_info%%:*}"
-                local object_name="${upload_info#*:}"
-                print_info "文件上传成功 [$bucket_name]: $object_name"
-            else
-                print_info "文件上传成功: $upload_info"
-            fi
-            upload_success=$((upload_success + 1))
-        elif [[ $line == UPLOAD_ERROR:* ]]; then
-            local error_info="${line#UPLOAD_ERROR:}"
-            # 格式可能是 bucket:object_name:error 或 object_name:error
-            if [[ $error_info == *:*:* ]]; then
-                local parts=(${error_info//:/ })
-                local bucket_name="${parts[0]}"
-                local object_name="${parts[1]}"
-                local error_msg="${error_info#${bucket_name}:${object_name}:}"
-                print_warning "文件上传失败 [$bucket_name]: $object_name - $error_msg"
-            else
-                print_warning "文件上传失败: $error_info"
-            fi
-        elif [[ $line == UPLOAD_RESULT:* ]]; then
-            local result="${line#UPLOAD_RESULT:}"
-            # 格式可能是 bucket:success/total 或 success/total
-            if [[ $result == *:* ]]; then
-                local bucket_result="${result#*:}"
-                IFS='/' read -r success_count total_count <<< "$bucket_result"
-                upload_total=$((upload_total + total_count))
-                upload_success=$((upload_success + success_count))
-            else
-                IFS='/' read -r success_count total_count <<< "$result"
-                upload_total=$total_count
-                if [ $upload_success -eq 0 ]; then
-                    upload_success=$success_count
-                fi
-            fi
-        elif [[ $line == UPLOAD_TOTAL:* ]]; then
-            local result="${line#UPLOAD_TOTAL:}"
-            IFS='/' read -r success_count total_count <<< "$result"
-            upload_total=$total_count
-            upload_success=$success_count
-        elif [[ $line == UPLOAD_SKIP:* ]]; then
-            local reason="${line#UPLOAD_SKIP:}"
-            print_warning "跳过上传: $reason"
-        elif [[ $line == INIT_ERROR:* ]]; then
-            local error="${line#INIT_ERROR:}"
-            print_error "MinIO 初始化失败: $error"
-        fi
-    done < "$output_file"
-    
-    # 清理临时文件
-    rm -f "$python_script" "$output_file"
-    
-    if [ $exit_code -eq 0 ]; then
-        if [ $buckets_total -gt 0 ]; then
-            print_info "存储桶创建: ${GREEN}$buckets_created${NC} / $buckets_total"
-        fi
-        if [ $upload_total -gt 0 ]; then
-            print_info "文件上传: ${GREEN}$upload_success${NC} / $upload_total"
-        fi
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 初始化 MinIO 存储桶和数据
+# 初始化 MinIO 存储桶和数据（统一走 Docker mc，不依赖宿主机 Python/minio 包）
 init_minio() {
+    if ! middleware_service_enabled "MinIO"; then
+        print_info "MinIO 未启用（当前部署形态: ${EASYAIOT_DEPLOY_PROFILE:-full}），跳过 MinIO 初始化"
+        return 0
+    fi
+
     print_section "初始化 MinIO 存储桶和数据"
-    
-    # 等待 MinIO 就绪
-    if ! wait_for_minio; then
-        print_error "MinIO 未就绪，无法初始化存储桶"
-        return 1
-    fi
-    
-    # MinIO 数据源目录
-    local minio_base_dir="${SCRIPT_DIR}/../minio"
-    
-    # 定义存储桶和目录映射关系
-    # 格式: "bucket_name:relative_path:object_prefix"
-    # relative_path 相对于 minio_base_dir
-    # object_prefix 是上传到存储桶时的对象前缀（可选）
-    local bucket_mappings=(
-        # 格式: "bucket_name:relative_path:object_prefix"
-        # dataset/3 目录的内容上传到 dataset 存储桶，对象路径前缀为 "3"
-        # 例如: dataset/3/xxx.jpg -> dataset 存储桶中的 3/xxx.jpg
-        "dataset:dataset/3:3"
-        # 其他目录直接上传到对应的存储桶，保持原有目录结构
-        "datasets:datasets:"
-        "export-bucket:export-bucket:"
-        "inference-inputs:inference-inputs:"
-        "inference-results:inference-results:"
-        "models:models:"
-        "snap-space:snap-space:"
-        # 车牌模型专用存储桶（plate-*）
-        "plate-models:plate-models:"
-        "plate-train-results:plate-train-results:"
-        "plate-train-logs:plate-train-logs:"
-        "plate-inference-results:plate-inference-results:"
-        # alert-images 存储桶用于存储告警图片（不需要上传初始数据）
-    )
-    
-    # 构建上传任务参数
-    local upload_args=()
-    
-    for mapping in "${bucket_mappings[@]}"; do
-        IFS=':' read -r bucket_name relative_path object_prefix <<< "$mapping"
-        
-        # 构建完整目录路径
-        local full_dir_path="${minio_base_dir}/${relative_path}"
-        
-        # 检查目录是否存在
-        if [ -d "$full_dir_path" ]; then
-            # 如果 object_prefix 为空，则使用空字符串
-            if [ -z "$object_prefix" ]; then
-                upload_args+=("${bucket_name}:${full_dir_path}:")
-            else
-                upload_args+=("${bucket_name}:${full_dir_path}:${object_prefix}")
-            fi
-            print_info "找到目录: $full_dir_path -> 存储桶: $bucket_name${object_prefix:+ (前缀: $object_prefix)}"
-        else
-            print_warning "目录不存在，跳过: $full_dir_path"
-        fi
-    done
-    
-    # 使用 Python 脚本初始化 MinIO
+
     local init_result=0
-    if [ ${#upload_args[@]} -gt 0 ]; then
-        if init_minio_with_python "${upload_args[@]}"; then
-            print_success "MinIO 初始化完成！"
-            init_result=0
-        else
-            print_warning "MinIO 初始化可能存在问题"
-            init_result=1
-        fi
+    if bash "${SCRIPT_DIR}/upload_minio_data.sh" --non-interactive --force-mc; then
+        print_success "MinIO 初始化完成（Docker mc）！"
+        init_result=0
     else
-        print_warning "没有可用的数据集目录，跳过文件上传"
-        # 仍然需要创建 bucket
-        if init_minio_with_python; then
-            print_success "MinIO 存储桶创建完成！"
-            init_result=0
-        else
-            init_result=1
-        fi
+        print_warning "MinIO 初始化可能存在问题（Docker mc）"
+        init_result=1
     fi
-    
-    # 如果初始化成功，提示用户登录 MinIO 管理平台
-    if [ $init_result -eq 0 ]; then
-        echo ""
-        print_section "MinIO 管理平台登录提示"
-        echo ""
-        print_warning "重要提示：为了确保图像数据能够正常显示，请登录一次 MinIO 管理平台"
-        print_info "  访问地址: http://localhost:9001"
-        print_info "  用户名: minioadmin"
-        print_info "  密码: basiclab@iot975248395"
-        echo ""
-        print_info "登录后，系统会自动完成必要的初始化配置，图像数据才能正常显示"
-        echo ""
-        
-        while true; do
-            echo -ne "${YELLOW}[提示]${NC} 是否已经登录过 MinIO 管理平台？(y/N): "
-            read -r response
-            case "$response" in
-                [yY][eE][sS]|[yY])
-                    print_success "确认已登录 MinIO 管理平台，继续执行..."
-                    break
-                    ;;
-                [nN][oO]|[nN]|"")
-                    print_warning "建议稍后登录 MinIO 管理平台以确保图像数据正常显示"
-                    print_info "您可以稍后访问: http://localhost:9001"
-                    break
-                    ;;
-                *)
-                    print_warning "请输入 y 或 N"
-                    ;;
-            esac
-        done
-        echo ""
-    fi
-    
+
     return $init_result
 }
 
@@ -4962,9 +4361,13 @@ init_databases() {
         return 1
     fi
     
-    # 等待 Nacos 就绪
-    if ! wait_for_nacos; then
-        print_warning "Nacos 未就绪，将跳过 Nacos 密码重置确认步骤"
+    # 等待 Nacos 就绪（mini 形态跳过 Nacos）
+    if middleware_service_enabled Nacos; then
+        if ! wait_for_nacos; then
+            print_warning "Nacos 未就绪，将跳过 Nacos 密码重置确认步骤"
+        fi
+    else
+        print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过 Nacos，不等待注册中心"
     fi
     
     # 数据库清单按命名规约自动发现：<名字>10.sql -> 库 <名字>20
@@ -5010,7 +4413,7 @@ init_databases() {
     # Nacos 账号配置：先自动初始化 admin（新库无内置账号），再用 API 实测登录验证；
     # 全部通过则零人工介入。仅当验证失败（已有 admin 但密码与预期不一致）才回退人工确认。
     echo ""
-    if wait_for_nacos; then
+    if middleware_service_enabled Nacos && wait_for_nacos; then
         ensure_nacos_admin_user
         if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
             --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
@@ -5056,12 +4459,88 @@ init_databases() {
     fi
 }
 
+# 从 docker-compose 配置中提取指定服务的镜像名
+_get_service_image_from_compose() {
+    local service_name="$1"
+    mw_compose config 2>/dev/null | awk -v svc="$service_name" '
+        $0 ~ "^  " svc ":" { found=1 }
+        found && /^\s+image:/ {
+            gsub(/^\s+image:\s*/, "")
+            gsub(/["'\'']/, "")
+            print
+            exit
+        }
+    '
+}
+
+# 启动中间件容器；可选服务镜像缺失时自动跳过，避免阻塞核心中间件
+compose_up_middleware() {
+    local -a skip_services=("$@")
+    local -a up_services=()
+    local svc should_skip
+
+    while IFS= read -r svc; do
+        [ -z "$svc" ] && continue
+        should_skip=0
+        for skip in "${skip_services[@]}"; do
+            if [ "$svc" = "$skip" ]; then
+                should_skip=1
+                break
+            fi
+        done
+        if [ "$should_skip" -eq 0 ]; then
+            up_services+=("$svc")
+        fi
+    done < <(mw_compose config --services 2>/dev/null)
+
+    if [ ${#up_services[@]} -eq 0 ]; then
+        print_error "没有可启动的中间件服务"
+        return 1
+    fi
+
+    if [ ${#skip_services[@]} -gt 0 ]; then
+        print_warning "以下服务已跳过: ${skip_services[*]}"
+    fi
+    print_info "启动服务 (${EASYAIOT_DEPLOY_PROFILE:-full}): ${up_services[*]}"
+    mw_compose up -d "${up_services[@]}" 2>&1 | tee -a "$LOG_FILE"
+    return "${PIPESTATUS[0]}"
+}
+
+# 收集默认不启动 / 镜像不可用的服务列表（供 compose_up_middleware 跳过）
+collect_skippable_optional_services() {
+    local -a skip_services=()
+    local svc img
+    for svc in "${DISABLED_BY_DEFAULT_MIDDLEWARE_SERVICES[@]}"; do
+        case "$svc" in
+            TDengine|TDengine-init)
+                [ "${EASYAIOT_ENABLE_TDENGINE:-0}" = "1" ] && continue
+                ;;
+            EMQX)
+                [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ] && continue
+                ;;
+        esac
+        skip_services+=("$svc")
+    done
+    for svc in "${OPTIONAL_MIDDLEWARE_SERVICES[@]}"; do
+        img="$(_get_service_image_from_compose "$svc")"
+        if [ -n "$img" ] && ! docker image inspect "$img" &>/dev/null; then
+            print_warning "可选服务 $svc 镜像不可用 ($img)，将跳过启动"
+            skip_services+=("$svc")
+        fi
+    done
+    local profile_skip
+    for profile_skip in $(middleware_skipped_services); do
+        skip_services+=("$profile_skip")
+    done
+    echo "${skip_services[@]}"
+}
+
 # 检查并拉取缺失的镜像
 check_and_pull_images() {
     print_info "检查所需镜像是否存在..."
     
     # 获取 docker-compose.yml 中定义的所有服务
-    local services=$($COMPOSE_CMD -f "$COMPOSE_FILE" config --services 2>/dev/null || echo "")
+    local services=$(mw_compose config --services 2>/dev/null || echo "")
     
     if [ -z "$services" ]; then
         print_warning "无法获取服务列表，将直接启动服务（会自动拉取缺失镜像）"
@@ -5073,7 +4552,7 @@ check_and_pull_images() {
     local images_to_check=()
     
     # 从 docker-compose 配置中提取所有镜像信息
-    local compose_config=$($COMPOSE_CMD -f "$COMPOSE_FILE" config 2>/dev/null || echo "")
+    local compose_config=$(mw_compose config 2>/dev/null || echo "")
     
     if [ -z "$compose_config" ]; then
         print_warning "无法读取 docker-compose 配置，将直接启动服务"
@@ -5085,10 +4564,6 @@ check_and_pull_images() {
         # 匹配 image: 行，支持多种格式
         if echo "$line" | grep -qE "^\s*image:"; then
             local image=$(echo "$line" | sed -E 's/^\s*image:\s*//' | sed -E "s/^['\"]//" | sed -E "s/['\"]$//" | tr -d ' ')
-            # 跳过 GPUStack 时不检查/拉取其镜像（镜像较大，避免无谓拉取）
-            if [ "$SKIP_GPUSTACK" = "true" ] && echo "$image" | grep -qi "gpustack"; then
-                continue
-            fi
             if [ -n "$image" ] && [[ ! " ${images_to_check[@]} " =~ " ${image} " ]]; then
                 images_to_check+=("$image")
             fi
@@ -5114,7 +4589,9 @@ check_and_pull_images() {
         local _pull_img _pull_fail=0
         for _pull_img in "${missing_list[@]}"; do
             docker pull "$_pull_img" 2>&1 | tee -a "$LOG_FILE"
-            [ "${PIPESTATUS[0]}" -ne 0 ] && _pull_fail=1
+            if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+                _pull_fail=1
+            fi
         done
         if [ "$_pull_fail" -eq 0 ]; then
             print_success "缺失镜像拉取完成"
@@ -5182,12 +4659,6 @@ extract_ports_from_compose() {
             "Milvus")
                 ports=("19530" "9091")
                 ;;
-            "GPUStack")
-                ports=("10180" "10161")
-                ;;
-            "Dify")
-                ports=("${DIFY_HTTP_PORT}")
-                ;;
         esac
     fi
     
@@ -5219,12 +4690,9 @@ check_and_clean_ports() {
             "MinIO") container_name="minio-server" ;;
             "SRS") container_name="srs-server" ;;
             "NodeRED") container_name="nodered-server" ;;
-            "VSCode") container_name="openvscode-server" ;;
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
-            "GPUStack") container_name="gpustack-server" ;;
-            "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
         esac
         
         if [ -n "$container_name" ]; then
@@ -5809,12 +5277,9 @@ check_and_clean_ports() {
                                     "MinIO") container_name="minio-server" ;;
                                     "SRS") container_name="srs-server" ;;
                                     "NodeRED") container_name="nodered-server" ;;
-            "VSCode") container_name="openvscode-server" ;;
                                     "EMQX") container_name="emqx-server" ;;
                                     "ZLMediaKit") container_name="zlmediakit-server" ;;
                                     "Milvus") container_name="milvus-server" ;;
-                                                                                                                                    "GPUStack") container_name="gpustack-server" ;;
-                                    "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
                                 esac
                                 
                                 if [ -n "$container_name" ]; then
@@ -5934,17 +5399,14 @@ cleanup_stale_containers() {
                 "Milvus") container_names+=("milvus-server") ;;
                 "SRS") container_names+=("srs-server") ;;
                 "NodeRED") container_names+=("nodered-server") ;;
-                "VSCode") container_names+=("openvscode-server") ;;
                 "EMQX") container_names+=("emqx-server") ;;
                 "ZLMediaKit") container_names+=("zlmediakit-server") ;;
-                "GPUStack") container_names+=("gpustack-server") ;;
-                "Dify") container_names+=("${DIFY_PROJECT_NAME}-nginx-1") ;;
             esac
         fi
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|openvscode-server|emqx-server|zlmediakit-server|gpustack-server|gpustack-worker|${DIFY_PROJECT_NAME}-)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -6059,9 +5521,7 @@ install_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
-    create_vscode_directories
-    create_kafka_directories
-    configure_kafka_hosts
+    prepare_kafka_if_enabled
     
     # 强制更新 SRS 配置文件（重新获取宿主机 IP）
     prepare_srs_config
@@ -6070,9 +5530,6 @@ install_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
-
-    # GPUStack Worker 注册地址
-    prepare_gpustack_env
 
     
     # 检查并拉取缺失的镜像（如果镜像已存在则跳过拉取）
@@ -6088,8 +5545,10 @@ install_middleware() {
     print_section "启动 Milvus 等中间件容器"
     print_info "启动所有中间件服务..."
     # 取 PIPESTATUS[0] 判定（tee 恒 0，`if 管道` 永远走成功分支，失败会被掩盖）
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d $(compose_service_args) 2>&1 | tee -a "$LOG_FILE"
-    _up_rc=${PIPESTATUS[0]}
+    local -a _skip_optional=()
+    read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
+    compose_up_middleware "${_skip_optional[@]}"
+    _up_rc=$?
     if [ "${_up_rc}" -eq 0 ]; then
         print_success "容器启动命令执行完成"
     else
@@ -6112,6 +5571,7 @@ install_middleware() {
     print_info "检查容器启动状态..."
     local failed_containers=()
     for service in "${MIDDLEWARE_SERVICES[@]}"; do
+        middleware_service_enabled "$service" || continue
         local container_name=""
         case "$service" in
             "Nacos") container_name="nacos-server" ;;
@@ -6122,12 +5582,9 @@ install_middleware() {
             "MinIO") container_name="minio-server" ;;
             "SRS") container_name="srs-server" ;;
             "NodeRED") container_name="nodered-server" ;;
-            "VSCode") container_name="openvscode-server" ;;
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
-            "GPUStack") container_name="gpustack-server" ;;
-            "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
         esac
         
         if [ -n "$container_name" ]; then
@@ -6149,9 +5606,7 @@ install_middleware() {
             case "$service" in
                 "TDengine") print_info "  docker logs tdengine-server" ;;
                 "Redis") print_info "  docker logs redis-server" ;;
-                "GPUStack") print_info "  docker logs gpustack-server" ;;
                 "Milvus") print_info "  docker logs milvus-server" ;;
-                "Dify") print_info "  cd ${DIFY_DIR} && docker compose -p ${DIFY_PROJECT_NAME} logs" ;;
                 *) print_info "  docker-compose logs $service" ;;
             esac
         done
@@ -6160,30 +5615,17 @@ install_middleware() {
 
     # 等待 Milvus 就绪并输出部署日志
     echo ""
-    print_section "部署 Milvus 向量数据库"
-    wait_for_milvus || print_warning "Milvus 未就绪，人脸识别等向量检索功能可能不可用"
+    if middleware_service_enabled "Milvus"; then
+        print_section "部署 Milvus 向量数据库"
+        wait_for_milvus || print_warning "Milvus 未就绪，人脸识别等向量检索功能可能不可用"
+        print_info "Milvus 向量库: http://localhost:9091/healthz, gRPC localhost:19530"
+        print_info "  查看日志: ./install_middleware_linux.sh logs Milvus"
+    else
+        print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过 Milvus"
+    fi
 
-    # 部署 GPUStack Worker（本机算力节点）
-    echo ""
-    wait_for_gpustack_server || true
-    deploy_gpustack_worker || print_gpustack_warning "GPUStack Worker 部署失败，可稍后手动部署 Worker"
-
-    # 部署 Dify（独立 compose）
-    echo ""
-    deploy_dify || print_dify_warning "Dify 部署失败，可稍后重新执行: ./install_middleware_linux.sh start"
-    
     print_success "中间件安装完成"
     echo ""
-    print_info "Milvus 向量库: http://localhost:9091/healthz, gRPC localhost:19530"
-    print_info "  查看日志: ./install_middleware_linux.sh logs Milvus"
-    print_gpustack_info "GPUStack 资源管控: http://localhost:10180"
-    print_gpustack_info "  用户: admin"
-    print_gpustack_info "  密码: ${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}"
-    print_gpustack_info "  部署日志: ${GPUSTACK_LOG_FILE}"
-    print_dify_info "Dify LLM 平台: http://localhost:${DIFY_HTTP_PORT}"
-    print_dify_info "  首次安装: http://localhost:${DIFY_HTTP_PORT}/install"
-    print_dify_info "  部署日志: ${DIFY_LOG_FILE}"
-    print_info "VSCode 后处理 IDE: http://localhost:10192"
     echo ""
     # 不再固定 sleep 10：下方 ensure_postgresql_password 内部自带 wait_for_postgresql 精确等待
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
@@ -6202,9 +5644,13 @@ install_middleware() {
     echo ""
     init_databases
     
-    # 初始化 TDengine
+    # 初始化 TDengine（仅启用 TDengine 中间件时）
     echo ""
-    init_tdengine
+    if [ "${EASYAIOT_ENABLE_TDENGINE:-0}" = "1" ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'tdengine-server'; then
+        init_tdengine
+    else
+        print_info "TDengine 未启用，跳过 TDengine 初始化（需要时: EASYAIOT_ENABLE_TDENGINE=1）"
+    fi
     
     # 初始化 MinIO
     echo ""
@@ -6212,7 +5658,7 @@ install_middleware() {
 
     # 初始化/扩容 IoT Kafka 主题（64 分区：告警、人脸匹配、车牌匹配）
     echo ""
-    init_kafka_iot_topics || print_warning "IoT Kafka 主题初始化未完成，可稍后手动执行: init_kafka_iot_topics"
+    init_kafka_topics_if_enabled
 
     
     sleep 5
@@ -6235,9 +5681,7 @@ start_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
-    create_vscode_directories
-    create_kafka_directories
-    configure_kafka_hosts
+    prepare_kafka_if_enabled
     
     prepare_srs_config
     prepare_emqx_volumes
@@ -6245,9 +5689,6 @@ start_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
-
-    # GPUStack Worker 注册地址
-    prepare_gpustack_env
 
     
     # 清理残留容器
@@ -6257,7 +5698,9 @@ start_middleware() {
     check_and_clean_ports
     
     print_info "启动所有中间件服务..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1 | tee -a "$LOG_FILE"
+    local -a _skip_optional=()
+    read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
+    compose_up_middleware "${_skip_optional[@]}"
     _up_rc=${PIPESTATUS[0]}
     ensure_nacos_admin_user
     
@@ -6268,10 +5711,14 @@ start_middleware() {
         show_unhealthy_containers
     fi
     echo ""
-    init_kafka_iot_topics || print_warning "IoT Kafka 主题初始化未完成"
+    init_kafka_topics_if_enabled
     echo ""
-    print_section "检查 Milvus 向量数据库"
-    wait_for_milvus || print_warning "Milvus 未就绪"
+    if middleware_service_enabled "Milvus"; then
+        print_section "检查 Milvus 向量数据库"
+        wait_for_milvus || print_warning "Milvus 未就绪"
+    else
+        print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过 Milvus"
+    fi
     
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
     echo ""
@@ -6286,15 +5733,6 @@ start_middleware() {
     configure_postgresql_max_connections
 
 
-    # 部署 GPUStack Worker（本机算力节点）
-    echo ""
-    wait_for_gpustack_server || true
-    deploy_gpustack_worker || print_gpustack_warning "GPUStack Worker 部署失败"
-
-    # 启动 Dify
-    echo ""
-    deploy_dify || print_dify_warning "Dify 启动失败"
-    
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
 }
@@ -6308,8 +5746,6 @@ stop_middleware() {
     check_compose_file
     
     print_info "停止所有中间件服务..."
-    stop_gpustack_worker
-    stop_dify
     $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>&1 | tee -a "$LOG_FILE"
     
     print_success "所有中间件已停止"
@@ -6331,21 +5767,13 @@ restart_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
-    create_vscode_directories
-    create_kafka_directories
-    configure_kafka_hosts
+    prepare_kafka_if_enabled
     
     prepare_srs_config
     prepare_emqx_volumes
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
-
-    # GPUStack Worker 注册地址
-    prepare_gpustack_env
-
-    # 再次确保内嵌 PostgreSQL 目录权限正确（避免 777 导致 gpustack-server 无法启动）
-    fix_gpustack_postgresql_permissions
 
     print_info "重启所有中间件服务..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" restart 2>&1 | tee -a "$LOG_FILE"
@@ -6355,7 +5783,7 @@ restart_middleware() {
     # 不再固定 sleep 15：下方 init_kafka_iot_topics / ensure_postgresql_password
     # 各自带就绪轮询（Kafka while 重试、PG wait_for_postgresql），按需精确等待
     echo ""
-    init_kafka_iot_topics || print_warning "IoT Kafka 主题初始化未完成"
+    init_kafka_topics_if_enabled
     
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
     echo ""
@@ -6370,15 +5798,6 @@ restart_middleware() {
     configure_postgresql_max_connections
 
 
-    # 重新部署 GPUStack Worker
-    echo ""
-    wait_for_gpustack_server || true
-    deploy_gpustack_worker || print_gpustack_warning "GPUStack Worker 部署失败"
-
-    # 重启 Dify
-    echo ""
-    deploy_dify || print_dify_warning "Dify 重启失败"
-    
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
 }
@@ -6393,19 +5812,6 @@ status_middleware() {
     
     $COMPOSE_CMD -f "$COMPOSE_FILE" ps 2>&1 | tee -a "$LOG_FILE"
 
-    echo ""
-    print_gpustack_section "GPUStack 状态"
-    $COMPOSE_CMD -f "$COMPOSE_FILE" ps GPUStack 2>&1 | tee -a "$GPUSTACK_LOG_FILE" || true
-    if docker_cli ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$GPUSTACK_WORKER_NAME"; then
-        print_gpustack_info "Worker 容器:"
-        docker_cli ps -a --filter "name=^${GPUSTACK_WORKER_NAME}$" 2>&1 | tee -a "$GPUSTACK_LOG_FILE" || true
-    fi
-
-    if [ -f "$DIFY_COMPOSE_FILE" ]; then
-        echo ""
-        print_dify_section "Dify 服务状态"
-        dify_compose ps 2>&1 | tee -a "$DIFY_LOG_FILE" || true
-    fi
 }
 
 # 查看日志
@@ -6416,43 +5822,9 @@ view_logs() {
     check_docker_compose
     check_compose_file
 
-    if [ "$service" = "GPUStack" ] || [ "$service" = "gpustack" ]; then
-        print_gpustack_section "GPUStack 容器日志"
-        $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 GPUStack 2>&1 | tee -a "$GPUSTACK_LOG_FILE"
-        if docker_cli ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$GPUSTACK_WORKER_NAME"; then
-            echo ""
-            print_gpustack_info "GPUStack Worker 日志:"
-            docker_cli logs --tail=100 "$GPUSTACK_WORKER_NAME" 2>&1 | tee -a "$GPUSTACK_LOG_FILE"
-        fi
-        print_gpustack_info "日志文件: ${GPUSTACK_LOG_FILE}"
-        return
-    fi
-    
-    if [ "$service" = "Dify" ] || [ "$service" = "dify" ]; then
-        if [ -f "$DIFY_COMPOSE_FILE" ]; then
-            print_dify_section "Dify 容器日志"
-            dify_compose logs --tail=100 2>&1 | tee -a "$DIFY_LOG_FILE"
-            print_dify_info "日志文件: ${DIFY_LOG_FILE}"
-        else
-            print_dify_error "Dify 尚未部署"
-        fi
-        return
-    fi
-
     if [ -z "$service" ]; then
         print_info "查看主中间件 compose 日志..."
         $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 2>&1 | tee -a "$LOG_FILE"
-        echo ""
-        print_gpustack_section "GPUStack 日志"
-        $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=50 GPUStack 2>&1 | tee -a "$GPUSTACK_LOG_FILE" || true
-        if docker_cli ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$GPUSTACK_WORKER_NAME"; then
-            docker_cli logs --tail=50 "$GPUSTACK_WORKER_NAME" 2>&1 | tee -a "$GPUSTACK_LOG_FILE" || true
-        fi
-        if [ -f "$DIFY_COMPOSE_FILE" ]; then
-            echo ""
-            print_dify_section "Dify 日志"
-            dify_compose logs --tail=50 2>&1 | tee -a "$DIFY_LOG_FILE" || true
-        fi
     else
         print_info "查看 $service 服务日志..."
         $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 "$service" 2>&1 | tee -a "$LOG_FILE"
@@ -6533,8 +5905,6 @@ clean_middleware() {
         
         # 第一步：先停止所有容器（正常停止）
         print_info "正在停止所有中间件服务..."
-        stop_gpustack_worker
-        stop_dify
         $COMPOSE_CMD -f "$COMPOSE_FILE" stop 2>&1 | tee -a "$LOG_FILE"
         
         # 等待容器停止
@@ -6589,19 +5959,6 @@ clean_middleware() {
             echo "$zlmediakit_containers" | xargs -r docker rm -f 2>&1 | tee -a "$LOG_FILE"
         fi
 
-        # 删除 GPUStack Worker（独立容器，不在 compose 中）
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$GPUSTACK_WORKER_NAME"; then
-            print_info "删除 GPUStack Worker 容器: $GPUSTACK_WORKER_NAME"
-            docker_cli rm -f "$GPUSTACK_WORKER_NAME" 2>&1 | tee -a "$GPUSTACK_LOG_FILE" || true
-        fi
-
-        # 删除 Dify 容器与卷
-        if [ -f "$DIFY_COMPOSE_FILE" ]; then
-            print_info "删除 Dify 容器与数据卷..."
-            dify_compose down -v 2>&1 | tee -a "$DIFY_LOG_FILE" || true
-        fi
-        rm -f "$DIFY_GPUSTACK_API_KEY_FILE" 2>/dev/null || true
-        
         # 第五步：删除所有 bind mount 的宿主机存储目录
         print_info "删除所有 bind mount 存储目录..."
         
@@ -6615,8 +5972,6 @@ clean_middleware() {
             "minio_data"                # MinIO 数据和配置
             "milvus_data"               # Milvus 数据
             "milvus_config"             # Milvus 嵌入式 etcd 配置
-            "gpustack_data"             # GPUStack 数据
-            "dify_data"                 # Dify 部署目录（含 volumes、compose 与 .env）
             "srs_data"                  # SRS 配置、数据和回放
             "nodered_data"              # NodeRED 数据
         )
@@ -6738,9 +6093,7 @@ update_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
-    create_vscode_directories
-    create_kafka_directories
-    configure_kafka_hosts
+    prepare_kafka_if_enabled
     
     prepare_srs_config
     prepare_emqx_volumes
@@ -6748,9 +6101,6 @@ update_middleware() {
     
     # 准备 ZLMediaKit 配置文件
     prepare_zlmediakit_config
-
-    # GPUStack Worker 注册地址
-    prepare_gpustack_env
 
     
     # 检查并拉取缺失的镜像（如果镜像已存在则跳过拉取）
@@ -6760,8 +6110,10 @@ update_middleware() {
     cleanup_renamed_containers
     fix_nacos_derby_corruption
     print_info "重启所有中间件服务..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d $(compose_service_args) 2>&1 | tee -a "$LOG_FILE"
-    _up_rc=${PIPESTATUS[0]}   # 必须紧跟管道取退出码：tee 恒 0，直接判管道会把失败误报成成功
+    local -a _skip_optional=()
+    read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
+    compose_up_middleware "${_skip_optional[@]}"
+    _up_rc=$?
     ensure_nacos_admin_user
 
     if [ "${_up_rc}" -eq 0 ]; then
@@ -6771,18 +6123,14 @@ update_middleware() {
         show_unhealthy_containers
     fi
     echo ""
-    print_section "检查 Milvus 向量数据库"
-    wait_for_milvus || print_warning "Milvus 未就绪"
+    if middleware_service_enabled "Milvus"; then
+        print_section "检查 Milvus 向量数据库"
+        wait_for_milvus || print_warning "Milvus 未就绪"
+    else
+        print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过 Milvus"
+    fi
 
 
-    # 部署 GPUStack Worker（本机算力节点）
-    echo ""
-    wait_for_gpustack_server || true
-    deploy_gpustack_worker || print_gpustack_warning "GPUStack Worker 部署失败"
-
-    # 更新 Dify
-    echo ""
-    deploy_dify || print_dify_warning "Dify 更新失败"
 }
 
 # 显示帮助信息
@@ -6803,15 +6151,18 @@ show_help() {
     echo "  build           - 重新构建所有镜像"
     echo "  clean           - 清理所有容器和镜像"
     echo "  update          - 更新并重启所有中间件"
+    echo "  profile         - 显示当前部署规格与服务范围"
+    echo "  analyze-memory  - 分析运行中容器内存占用与规格符合性（见 analyze_deploy_memory.sh）"
     echo "  fix-postgresql  - 修复 PostgreSQL 密码问题"
     echo "  help            - 显示此帮助信息"
     echo ""
     echo "环境变量:"
-    echo "  SKIP_GPUSTACK=true  - 跳过 GPUStack（Server/Worker/镜像/数据目录递归权限），加速部署"
-    echo "  SKIP_DIFY=true      - 跳过 Dify（独立 compose 部署/镜像/数据目录递归权限），加速部署"
+    echo "  EASYAIOT_DEPLOY_PROFILE   - 部署规格: mini(1,≥4GB) | standard(2,≥16GB) | full(3,≥20GB，默认)"
+    echo "  EASYAIOT_ENABLE_TDENGINE  - 完整版自动为 1；mini/standard 为 0"
+    echo "  EASYAIOT_ENABLE_EMQX      - 完整版自动为 1；mini/standard 为 0"
     echo "  FORCE_CHMOD=true    - 对已存在的数据目录强制完整递归 chmod 修复（默认只设顶层，数据量大时慢）"
     echo "                        仅在怀疑既有目录权限损坏、容器读写报错时使用一次"
-    echo "                        示例: SKIP_GPUSTACK=true SKIP_DIFY=true ./install_middleware_linux.sh update"
+    echo "                        示例: FORCE_CHMOD=true ./install_middleware_linux.sh update"
     echo "                        修复示例: FORCE_CHMOD=true ./install_middleware_linux.sh update"
     echo ""
     echo "中间件服务列表:"
@@ -6824,38 +6175,42 @@ show_help() {
     echo "  gRPC: localhost:19530"
     echo "  日志: ./install_middleware_linux.sh logs Milvus"
     echo ""
-    echo "GPUStack 资源管控:"
-    echo "  访问: http://localhost:10180"
-    echo "  日志: ./install_middleware_linux.sh logs GPUStack"
-    echo ""
-    echo "Dify LLM 平台（${DIFY_VERSION}）:"
-    echo "  访问: http://localhost:${DIFY_HTTP_PORT}"
-    echo "  首次安装: http://localhost:${DIFY_HTTP_PORT}/install"
-    echo "  日志: ./install_middleware_linux.sh logs Dify"
-    echo ""
 }
 
 # 主函数
 main() {
-    # 在执行任何命令之前（除了 help），先检查 Git
-    if [ "${1:-help}" != "help" ] && [ "${1:-help}" != "--help" ] && [ "${1:-help}" != "-h" ]; then
+    local cmd="${1:-help}"
+
+    # 在执行任何命令之前（除了 help/profile），先检查 Git
+    if [ "$cmd" != "help" ] && [ "$cmd" != "--help" ] && [ "$cmd" != "-h" ] && [ "$cmd" != "profile" ]; then
         check_and_require_git
     fi
-    
-    case "${1:-help}" in
+
+    case "$cmd" in
         install)
+            select_deploy_profile_for_install
+            refresh_compose_profile_args
+            print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             install_middleware
             ;;
         start)
+            ensure_deploy_profile
+            refresh_compose_profile_args
+            print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             start_middleware
             ;;
         stop)
             stop_middleware
             ;;
         restart)
+            ensure_deploy_profile
+            refresh_compose_profile_args
+            print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             restart_middleware
             ;;
         status)
+            ensure_deploy_profile
+            refresh_compose_profile_args
             status_middleware
             ;;
         logs)
@@ -6868,12 +6223,23 @@ main() {
             clean_middleware
             ;;
         update)
+            ensure_deploy_profile
+            refresh_compose_profile_args
+            print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             update_middleware
             ;;
         fix-postgresql)
             ensure_postgresql_password
             configure_postgresql_pg_hba
             configure_postgresql_max_connections
+            ;;
+        profile)
+            ensure_deploy_profile
+            print_deploy_profile_summary
+            ;;
+        analyze-memory)
+            shift
+            exec bash "${SCRIPT_DIR}/analyze_deploy_memory.sh" "$@"
             ;;
         help|--help|-h)
             show_help
@@ -6897,19 +6263,5 @@ if [ -n "$LOG_FILE" ] && [ -f "$LOG_FILE" ]; then
     echo "脚本结束时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
     echo "=========================================" >> "$LOG_FILE"
 fi
-if [ -n "$GPUSTACK_LOG_FILE" ] && [ -f "$GPUSTACK_LOG_FILE" ]; then
-    echo "" >> "$GPUSTACK_LOG_FILE"
-    echo "=========================================" >> "$GPUSTACK_LOG_FILE"
-    echo "脚本结束时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$GPUSTACK_LOG_FILE"
-    echo "=========================================" >> "$GPUSTACK_LOG_FILE"
-fi
-if [ -n "$DIFY_LOG_FILE" ] && [ -f "$DIFY_LOG_FILE" ]; then
-    echo "" >> "$DIFY_LOG_FILE"
-    echo "=========================================" >> "$DIFY_LOG_FILE"
-    echo "脚本结束时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$DIFY_LOG_FILE"
-    echo "=========================================" >> "$DIFY_LOG_FILE"
-fi
 echo ""
 print_info "主日志: $LOG_FILE"
-[ -f "$GPUSTACK_LOG_FILE" ] && print_gpustack_info "GPUStack 日志: $GPUSTACK_LOG_FILE"
-[ -f "$DIFY_LOG_FILE" ] && print_dify_info "Dify 日志: $DIFY_LOG_FILE"

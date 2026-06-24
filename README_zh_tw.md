@@ -33,6 +33,41 @@
 yFeiEye是一個雲邊端一體化的智能物聯網平臺，專註於AI與IoT的深度融合。平臺通過算法任務管理、實時流分析、模型服務集群推理等核心能力，實現從設備接入到數據采集、AI分析、智能決策的全鏈路閉環，真正實現萬物互聯、萬物智控。
 </p>
 
+### 🎯 三檔硬體，一套平臺
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+很多智能物聯網項目走到落地時都會卡住：<strong>功能做全了，小機器裝不下；為了裝得下，又得砍能力、拆版本、維護多套部署包。</strong> yFeiEye 用同一套平臺化解這一矛盾——<strong>邊緣盒子點上智能、AI 一體攝像頭上牆即分析、AIoT 智能全棧一體機一箱配齊全鏈路</strong>，三類最常見的現場硬件各選一檔即可，同一套軟件貫穿從單點試點到樓面覆蓋再到全棧交付，不必拆版本。
+</p>
+
+| 選型 | 典型硬件（舉例） | 推薦內存 | 你能做到什麼 | 實測驗證 |
+| :-- | :-- | :--: | :-- | :--: |
+| **mini** 邊緣精簡版 | <strong>邊緣盒子</strong>（4 GB 工控機、門店安防一體機、工地現場網關） | ≥ 4 GB | <strong>一個點位裝上就有智能</strong>：攝像頭接入、實時分析、智能告警、模型推理，最低成本落地視覺能力 | 僅需約 2 GB，餘量充足 |
+| **standard** 標準版 | <strong>AI 一體攝像頭</strong>（智能攝像終端、帶算力 AI 監控攝像頭、多目 AI 分析一體機） | ≥ 16 GB | <strong>每路攝像頭即智能節點</strong>：多路攝像頭上牆即可樓面/園區級覆蓋，設備、規則、算力統一編排，多場景並行運營 | 約 10 GB，運行平穩有餘量 |
+| **full** 完整版（默認） | <strong>AIoT 智能全棧一體機</strong>（企業級全棧智控一體機、行業物聯網全棧主機、雲邊端一體智能平臺一體機） | ≥ 20 GB | <strong>一箱配齊 IoT + 視頻 + AI</strong>：設備納管、海量接入、智能分析、指揮研判一體化，全量能力長期穩跑 | 約 14 GB，全能力開啟仍留足餘量 |
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>安裝選型與資源符合性（實測）：</strong>
+</p>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 0;">
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-menu.png" alt="部署選型" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;">按現場硬件形態選一檔</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-mini.png" alt="mini 實測符合性" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>邊緣盒子（mini）</strong>：實測約 2 GB，單點可安心跑智能</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-standard.png" alt="standard 實測符合性" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>AI 一體攝像頭（standard）</strong>：實測約 10 GB，組網覆蓋仍有餘量</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-full.png" alt="full 實測符合性" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>AIoT 智能全棧一體機（full）</strong>：實測約 14 GB，全棧配齊可放心投產</p>
+  </div>
+</div>
+
 #### 🧠 AI能力
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -43,9 +78,7 @@ yFeiEye是一個雲邊端一體化的智能物聯網平臺，專註於AI與IoT�
   <li><strong>SAM 零啟動自動標註編排流水線</strong>：面向「尚無標註樣本、尚無可用檢測模型」的冷啟動場景，平台集成 SAM 開放詞彙分割能力與智能編排引擎，提供一鍵無人值守標註流水線。系統按策略自動串聯攝像頭抽幀採集、SAM 文本提示首批標註、達標後自動觸發 YOLO 微調訓練、量產階段以 YOLO 高速推理為主並對漏檢樣本智能切換 SAM 回補、按進度週期性迭代訓練及數據集自動打包導出，完整貫通「採—標—訓—導」閉環。編排中樞即時感知流水線階段與標註進度，自主決策 SAM / YOLO / 混合補充等標註模式及訓練觸發時機，支持任務暫停恢復與本地/集群算力隊列彈性調度；配合可視化策略配置與運行日誌，幫助用戶從零樣本、零模型起步快速沉澱專屬檢測能力，讓「開口定義類別、坐等模型成型」成為數據集建設的默認可用路徑</li>
   <li><strong>萬級彈性算力集群與橫向擴容池</strong>：面向超大規模 AI 與視頻業務，構建雲邊端一體的分散式算力底座，將演算法任務、推流轉發、演算法服務、模型訓練與推理統一納入橫向負載均衡與彈性伸縮體系。新增伺服器一鍵納管入網即可成為可調度算力單元，調度中樞按資源水位與業務壓力自動分發任務、平衡負載，實現從百路到萬路攝影機、從單機到萬級節點的線性擴容——無需重複部署與手工調參，讓海量路數接入、高併發推理與分散式訓練在同一算力池中協同運行，真正做到「擴得動、跑得穩、管得住」</li>
   <li><strong>天地圖空間可視化與以圖研判</strong>：接入國家天地圖，將攝像頭、告警與人車識別能力匯聚到一張地圖，讓監控從「看畫面」升級為「看全局」。流媒體與告警模組均提供「地圖分布」視圖，配合設備目錄樹按區域聚焦，一眼掌握卡口佈局與在線狀態；支持地圖點選、地點搜索與批量導入坐標，國標通道、NVR 通道與直連攝像頭均可快速完成布點，讓每路畫面都有清晰的空間歸屬。告警事件自動關聯攝像頭坐標上圖展示，可按時間、事件類型、任務與業務標籤篩選，選中即可查看抓拍與錄像，幫助值守人員從「哪裡出事」快速切入處置。結合人臉庫與車牌庫識別能力，可將同一目標在多個點位上的命中記錄串聯成空間脈絡——<strong>以人尋跡</strong>，還原重點人員在布控範圍內的出現路線與活動範圍；<strong>以車尋跡</strong>，串聯過車記錄，快速定位車輛行經路徑與停留區域，為尋人找車、巡防布控與事後復盤提供直觀線索。移動類設備還支持軌跡回放，按時間軸重現巡邏與行進路線；矢量地圖與衛星影像隨心切換，自動適應視野，讓管理者以地圖為綱、以圖為媒，更快發現異常、鎖定目標、指揮調度</li>
-  <li><strong>Dify 智能體編排集成</strong>：集成開源 LLM 應用平台 Dify，提供可視化工作流編排、智能體（Agent）構建、知識庫 RAG 檢索增強及對話/工具型應用發布等能力。平台通過中間件腳本一鍵部署 Dify 服務，並自動完成初始化配置；同時與 GPUStack 算力層深度打通，支持將已部署的 Qwen、DeepSeek 等大語言模型作為模型供應商無縫接入智能體鏈路，使業務人員以低代碼方式快速搭建面向安防巡檢、事件研判、運維問答等場景的行業智能應用，顯著縮短從模型上線到業務落地的週期</li>
   <li><strong>Qwen / DeepSeek 多卡部署</strong>：支持將 Qwen、DeepSeek 等大語言模型以多卡並行方式部署上線，可按集群與 Worker 維度靈活調度 GPU 算力，實現模型實例的彈性擴縮與負載均衡，滿足高並發推理與長上下文場景下的穩定服務能力</li>
-  <li><strong>算力與資源全景監測</strong>：集成 GPUStack 資源管控能力，對服務器 GPU、CPU、內存、存儲等關鍵指標進行統一採集與可視化展示，實時掌握算力佔用、顯存餘量、磁盤與內存使用情況，為模型部署、訓練任務與視頻分析鏈路提供可觀測、可預警的運維底座</li>
   <li><strong>視覺大模型智能理解</strong>：集成QwenVL3視覺大模型，支持對實時視頻畫面進行深度視覺推理與語義理解，能夠對畫面內容進行智能分析與場景理解，提供更豐富的視覺認知能力，實現從像素級感知到語義級理解的跨越</li>
   <li><strong>攝像頭即時畫面 AI 分析</strong>：面向 RTSP/RTMP 即時視頻流構建「拉流解碼 → 智能抽幀 → 模型推理 → 結構化出數 → 告警聯動」全鏈路分析管線，以毫秒級響應將畫面變化即時轉化為可檢索、可研判的結構化檢測事件。觀看鏈路與演算法鏈路架構解耦、分級碼率與多卡 GPU 協同調度並重，兼顧預覽清晰度與高路數併發吞吐；分析結果可無縫銜接檢測區域、布防時段、人臉/車牌識別及可編排後處理規則，將傳統「人盯屏、事後翻」的值守模式升級為「機器全時盯、異常秒推送、證據自動留」，讓即時視頻從被動觀看真正變為主動感知與智能研判的基礎設施</li>
   <li><strong>攝像頭智能巡檢</strong>：面向路數多、值守人力有限的監控場景，提供分屏巡檢與設備目錄批量巡檢能力，在有限併發連接下對大規模攝像頭進行輪巡式 AI 分析。支持輪詢、連接池、混合三種調度模式——可按設定間隔自動抓拍、運行檢測模型並聯動告警與人臉/車牌識別；混合模式下焦點路常駐盯防、背景路池化輪巡，兼顧重點佈控與全域覆蓋。巡檢進度實時推送，抓拍幀自動入庫留存，支持從分屏畫面或設備目錄一鍵拉起數百路巡檢會話，以「少連接、廣覆蓋、快發現」的方式，將傳統人工逐屏翻看的值守模式升級為智能化自動巡檢</li>
@@ -96,6 +129,23 @@ yFeiEye是一個雲邊端一體化的智能物聯網平臺，專註於AI與IoT�
   <li><strong>通知管理</strong>：支持7種通知方式，包括飛書、釘釘、企業微信、郵件、騰訊雲短信、阿里雲短信、Webhook，實現靈活的多渠道告警通知</li>
 </ul>
 
+#### 📱 移動端APP
+
+<ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>跨端覆蓋</strong>：手機、小程序與 App 多端可用，運維與管理不必綁在工位前，現場也能即時查看與處置</li>
+  <li><strong>能力對齊</strong>：移動端與 PC 管控台業務能力一致，換端不換功，管控體驗無縫銜接</li>
+  <li><strong>設備管理</strong>：多種接入方式統一納管，列表與通道一目了然，點開即可實時看圖，外出巡檢同樣心中有數</li>
+  <li><strong>推流轉發</strong>：隨時創建與啟停轉發任務，掌握集群節點與各路流狀態，遠程也能調度視頻資源</li>
+  <li><strong>算法任務</strong>：實時與抓拍算法任務隨手啟停，檢測成效隨時掌握，異常發現不必等回辦公室</li>
+  <li><strong>告警中心</strong>：告警隨手檢索，抓拍與錄像即點即看，移動值守也能快速核實與跟進</li>
+  <li><strong>模型管理</strong>：模型上線狀態一眼可查，部署進展心中有數</li>
+  <li><strong>模型推理</strong>：現場傳圖即得識別結果，臨時核驗與抽檢不必回 PC</li>
+  <li><strong>模型訓練</strong>：訓練進度隨時盯，必要時遠程一鍵叫停，避免無效算力空轉</li>
+  <li><strong>個人中心</strong>：賬號、租戶與應用偏好集中管理，多端使用各得其便</li>
+  <li><strong>流暢觀看</strong>：實時畫面與告警錄像在移動端流暢回放，低延時、不卡頓，移動值守體驗不打折</li>
+  <li><strong>持續在線</strong>：登錄狀態自動保持，少被打斷、少重複登錄，讓「雲邊端智能管控」真正觸達手機與小程序</li>
+</ul>
+
 ### 📦 內置 AI 模型
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -144,7 +194,7 @@ Java擅長構建穩定可靠的平臺架構，但不適合網絡編程和AI編�
 ### 🏗️ 項目架構特點
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye其實不是一個項目，而是六個項目。
+yFeiEye其實不是一個項目，而是七個項目。
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -207,7 +257,7 @@ yFeiEye積極響應本土化戰略，全面支持本土化硬件和操作系統�
 ## 🧩 項目結構
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye由六個核心項目組成：
+yFeiEye由七個核心項目組成：
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -218,6 +268,21 @@ yFeiEye由六個核心項目組成：
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>WEB模塊</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">基於Vue的前端管理界面，提供統一的用戶交互體驗</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>APP模塊</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>跨端覆蓋</strong>：一套建設、多端觸達，手機、小程序與 App 均可使用</li>
+    <li><strong>能力對齊</strong>：與 PC 管控台業務能力一致，支持多租戶切換</li>
+    <li><strong>設備管理</strong>：直連攝像頭、GB28181、NVR 等多協議統一納管，在線狀態與通道瀏覽，設備詳情內一鍵實時預覽</li>
+    <li><strong>推流轉發</strong>：推流任務創建、啟停、集群節點狀態與多路流地址查看</li>
+    <li><strong>算法任務</strong>：實時/抓拍算法任務列表、啟停控制與檢測/幀數統計</li>
+    <li><strong>告警中心</strong>：告警事件檢索、抓拍圖預覽、告警錄像點播回放</li>
+    <li><strong>模型與 AI</strong>：模型列表與部署狀態、移動端圖片推理工作台、訓練任務進度監控與停止</li>
+    <li><strong>個人中心</strong>：個人資料、賬號安全、常見問題、意見反饋與應用設置</li>
+  </ul>
+</td>
 </tr>
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>DEVICE模塊</strong></td>
@@ -606,6 +671,18 @@ yFeiEye是一個開源學習項目，與商業行為無關。用戶在使用該�
 <div>
   <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
 </div>
 
 ## 🛠️ 服務支持

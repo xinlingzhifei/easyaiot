@@ -63,8 +63,8 @@ class TrainTask(db.Model):
     metrics_path = db.Column(db.Text)
     minio_model_path = db.Column(db.String(500))
     train_results_path = db.Column(db.String(500))
-    schedule_policy = db.Column(db.String(20), default='local', nullable=True,
-                               comment='调度策略: local/auto/node')
+    schedule_policy = db.Column(db.String(20), default='auto', nullable=True,
+                               comment='调度策略: auto/node（local 已废弃，兼容旧数据）')
     target_node_id = db.Column(db.BigInteger, nullable=True, comment='指定部署节点ID')
     node_id = db.Column(db.BigInteger, nullable=True, comment='实际运行节点ID')
     service_server_ip = db.Column(db.String(128), nullable=True, comment='实际运行节点 IP/主机')
@@ -431,6 +431,56 @@ class AIService(db.Model):
     
     def __repr__(self):
         return f'<AIService {self.service_name} ({self.status})>'
+
+
+class LLMDeployService(db.Model):
+    """GPU 节点大模型部署实例（Qwen / vLLM）"""
+    __tablename__ = 'llm_deploy_service'
+
+    id = db.Column(db.Integer, primary_key=True)
+    service_name = db.Column(db.String(100), nullable=False)
+    qwen_model_key = db.Column(db.String(50), nullable=False)
+    hf_model_id = db.Column(db.String(200), nullable=False)
+    node_id = db.Column(db.BigInteger)
+    server_ip = db.Column(db.String(50))
+    port = db.Column(db.Integer)
+    api_endpoint = db.Column(db.String(300))
+    tensor_parallel_size = db.Column(db.Integer, default=1)
+    max_model_len = db.Column(db.Integer, default=8192)
+    status = db.Column(db.String(20), default='deploying')
+    llm_config_id = db.Column(db.Integer, db.ForeignKey('llm_config.id'), nullable=True)
+    process_id = db.Column(db.Integer)
+    log_path = db.Column(db.String(500))
+    error_message = db.Column(db.Text)
+    deploy_time = db.Column(db.DateTime, default=beijing_now)
+    last_heartbeat = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=beijing_now)
+    updated_at = db.Column(db.DateTime, default=beijing_now, onupdate=beijing_now)
+
+    llm_config = db.relationship('LLMModel', backref=db.backref('deploy_services', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'service_name': self.service_name,
+            'qwen_model_key': self.qwen_model_key,
+            'hf_model_id': self.hf_model_id,
+            'node_id': self.node_id,
+            'server_ip': self.server_ip,
+            'port': self.port,
+            'api_endpoint': self.api_endpoint,
+            'tensor_parallel_size': self.tensor_parallel_size,
+            'max_model_len': self.max_model_len,
+            'status': self.status,
+            'llm_config_id': self.llm_config_id,
+            'process_id': self.process_id,
+            'log_path': self.log_path,
+            'error_message': self.error_message,
+            'deploy_time': self.deploy_time.isoformat() if self.deploy_time else None,
+            'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 
 class SAMInferenceResult(db.Model):

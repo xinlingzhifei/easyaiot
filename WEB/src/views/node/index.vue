@@ -16,6 +16,7 @@
         <TabPane key="6" :tab="NODE_PAGE.clusterEnvFfmpeg" />
         <TabPane key="7" :tab="NODE_PAGE.clusterEnvVideo" />
         <TabPane key="8" :tab="NODE_PAGE.clusterEnvAi" />
+        <TabPane key="9" :tab="NODE_PAGE.clusterEnvLlm" />
       </Tabs>
 
       <div class="node-tab-content">
@@ -53,6 +54,11 @@
           v-show="state.activeKey === '8'"
           :initial-node-ids="selectedNodeIds"
         />
+        <LlmDeployInit
+          v-if="tabMounted['9']"
+          v-show="state.activeKey === '9'"
+          :initial-node-ids="selectedNodeIds"
+        />
       </div>
     </div>
   </div>
@@ -66,6 +72,7 @@ import AgentEnvBatch from './components/AgentEnvBatch/index.vue';
 import AiWorkloadInit from './components/AiWorkloadInit/index.vue';
 import ClusterDashboard from './components/ClusterDashboard/index.vue';
 import FfmpegEnvTab from './components/FfmpegEnvTab/index.vue';
+import LlmDeployInit from './components/LlmDeployInit/index.vue';
 import MediaEnvBatch from './components/MediaEnvBatch/index.vue';
 import NodeManage from './components/NodeManage/index.vue';
 import StorageEnvBatch from './components/StorageEnvBatch/index.vue';
@@ -75,7 +82,7 @@ import { useNodePageTabRequest } from './utils/useNodePageTab';
 
 defineOptions({ name: 'ComputeNodeIndex' });
 
-const NODE_TAB_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8'] as const;
+const NODE_TAB_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 
 const route = useRoute();
 const tabRequest = useNodePageTabRequest();

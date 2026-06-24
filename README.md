@@ -33,6 +33,41 @@ My vision is for this system to be accessible worldwide, achieving truly zero ba
 yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses on the deep integration of AI and IoT. Through core capabilities such as algorithm task management, real-time stream analysis, and model service cluster inference, the platform achieves a complete closed-loop from device access to data collection, AI analysis, and intelligent decision-making, truly realizing interconnected everything and intelligent control of everything.
 </p>
 
+### 🎯 Three Tiers, One Platform
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+Many intelligent IoT projects stall at deployment: <strong>full features won't fit on small machines; to make them fit, you cut capabilities, split versions, and maintain multiple deployment packages.</strong> yFeiEye resolves this with one platform—<strong>edge boxes for point intelligence, AI all-in-one cameras for on-wall analysis, AIoT full-stack all-in-ones for the complete stack in one box</strong>. Pick the tier that matches your field hardware; the same software runs from single-site pilots through floor coverage to full-stack delivery—no split versions.
+</p>
+
+| Tier | Typical hardware (examples) | Recommended RAM | What you can do | Verified |
+| :-- | :-- | :--: | :-- | :--: |
+| **mini** Edge Lite | <strong>Edge box</strong> (4 GB industrial PC, store security all-in-one, site gateway) | ≥ 4 GB | <strong>Intelligence at one point</strong>: camera access, real-time analysis, smart alerts, model inference—visual AI at lowest cost | ~2 GB used, ample headroom |
+| **standard** Standard | <strong>AI all-in-one camera</strong> (smart camera terminal, AI surveillance camera with compute, multi-sensor AI analyzer) | ≥ 16 GB | <strong>Each camera is a smart node</strong>: multiple cameras on the wall cover a floor/campus; devices, rules, and compute orchestrated together | ~10 GB, stable with headroom |
+| **full** Full (default) | <strong>AIoT full-stack all-in-one</strong> (enterprise full-stack control all-in-one, industry IoT full-stack host, cloud-edge-device smart platform all-in-one) | ≥ 20 GB | <strong>IoT + video + AI in one box</strong>: device management, massive access, intelligent analysis, command and judgment unified—full capabilities long-term | ~14 GB, full features with headroom |
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>Install tier selection and resource compliance (verified):</strong>
+</p>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 0;">
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-menu.png" alt="Deploy tier selection" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;">Pick one tier for your field hardware</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-mini.png" alt="mini verified compliance" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>Edge box (mini)</strong>: ~2 GB verified—intelligence at one point</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-standard.png" alt="standard verified compliance" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>AI all-in-one camera (standard)</strong>: ~10 GB verified—network coverage with headroom</p>
+  </div>
+  <div style="flex: 1 1 22%; min-width: 160px; text-align: center;">
+    <img src=".image/deploy-profile-full.png" alt="full verified compliance" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <p style="font-size: 12px; color: #888; margin: 8px 4px 0;"><strong>AIoT full-stack all-in-one (full)</strong>: ~14 GB verified—full stack ready for production</p>
+  </div>
+</div>
+
 #### 🧠 AI Capabilities
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -43,9 +78,7 @@ yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses 
   <li><strong>SAM Zero-Start Auto-Labeling Orchestration Pipeline</strong>: Built for cold-start scenarios with no annotated samples and no usable detection model, the platform integrates SAM open-vocabulary segmentation with an intelligent orchestration engine to deliver a one-click, unattended labeling pipeline. Per strategy, the system automatically chains camera frame extraction, SAM text-prompt bootstrap labeling, YOLO fine-tuning once thresholds are met, production-phase YOLO high-speed inference with intelligent SAM fallback for missed detections, periodic iterative training, and automatic dataset packaging and export—closing the full "capture-annotate-train-export" loop. The orchestration hub continuously tracks pipeline phase and labeling progress, autonomously deciding among SAM, YOLO, and hybrid supplement modes and when to trigger training; supports pause/resume and elastic scheduling on local or cluster compute queues. With visual strategy configuration and run logs, users can grow a custom detection capability from zero samples and zero models, making "define categories in words, watch the model take shape" the default path for dataset building</li>
   <li><strong>Ten-Thousand-Node Elastic Compute Cluster & Horizontal Scaling Pool</strong>: Built for hyperscale AI and video workloads, the platform provides a cloud-edge-end distributed compute foundation that unifies algorithm tasks, stream relay, algorithm services, model training, and inference under one horizontal load-balancing and elastic scaling fabric. New servers join the fleet with one-click onboarding and immediately become schedulable compute units—the control plane automatically dispatches work and balances load based on resource levels and business pressure, enabling linear scaling from hundreds to tens of thousands of camera streams and from a single machine to ten-thousand-node clusters without redeployment or manual tuning. Massive stream ingestion, high-concurrency inference, and distributed training run together in a shared compute pool—truly delivering "scale on demand, run reliably, govern with confidence"</li>
   <li><strong>Tianditu Spatial Visualization & Map-Based Analysis</strong>: Integrated with China's national Tianditu map service, the platform brings cameras, alerts, and person/vehicle recognition onto a single map—upgrading surveillance from "watching feeds" to "seeing the big picture." Both the streaming media and alert modules offer a "Map Distribution" view with a device directory tree for regional focus, giving instant visibility into checkpoint layout and online status. Map click-to-pin, location search, and batch coordinate import help GB channels, NVR channels, and direct-connect cameras get mapped quickly so every feed has clear spatial context. Alerts are automatically placed on the map via linked camera coordinates; filter by time, event type, task, and business tags, then open snapshots and recordings in one click—helping operators move fast from "where did it happen" to action. Combined with face and plate libraries, hits across multiple sites can be woven into spatial trails—<strong>trace by person</strong> to reconstruct movement and presence within a monitored area; <strong>trace by vehicle</strong> to link passing records and pinpoint routes and stop zones for find-person/find-vehicle, patrol deployment, and post-incident review. Mobile devices also support track playback to replay patrol and travel paths on a timeline. Switch freely between vector and satellite basemaps with auto-fit view, so managers use the map as the anchor to spot anomalies, lock onto targets, and coordinate response faster</li>
-  <li><strong>Dify Agent Orchestration Integration</strong>: Integrated with the open-source LLM application platform Dify, providing visual workflow orchestration, Agent building, knowledge-base RAG retrieval augmentation, and publishing of conversational and tool-type applications. Dify can be deployed in one click via the middleware installation script with automatic initialization. Deeply integrated with the GPUStack compute layer, it seamlessly connects deployed Qwen, DeepSeek, and other large language models as model providers into agent pipelines, enabling business users to rapidly build industry intelligent applications for scenarios such as security patrol, incident analysis, and operations Q&A—significantly accelerating the journey from model deployment to production</li>
   <li><strong>Qwen / DeepSeek Multi-GPU Deployment</strong>: Supports deploying Qwen, DeepSeek, and other large language models across multiple GPUs in parallel. GPU resources can be scheduled flexibly at the cluster and Worker level, enabling elastic scaling and load balancing of model instances to deliver stable inference under high concurrency and long-context workloads</li>
-  <li><strong>Full-Stack Compute and Resource Monitoring</strong>: Integrated with GPUStack for unified resource governance, collecting and visualizing key server metrics including GPU, CPU, memory, and storage. Provides real-time visibility into compute utilization, VRAM headroom, and disk/memory usage, offering an observable and alert-ready operations foundation for model deployment, training tasks, and video analytics pipelines</li>
   <li><strong>Vision Large Model Intelligent Understanding</strong>: Integrated with QwenVL3 vision large model, supports deep visual reasoning and semantic understanding of real-time video frames, enabling intelligent analysis and scene comprehension of frame content, providing richer visual cognitive capabilities, achieving a leap from pixel-level perception to semantic-level understanding</li>
   <li><strong>Real-Time Camera Feed AI Analysis</strong>: For RTSP/RTMP real-time video streams, builds a full-chain analysis pipeline of "stream pull & decode → intelligent frame extraction → model inference → structured output → alert linkage", converting frame changes into searchable, analyzable structured detection events with millisecond response. Viewing chain and algorithm chain are architecturally decoupled, with tiered bitrates and multi-GPU collaborative scheduling balanced together, balancing preview clarity and high-concurrency throughput. Analysis results seamlessly connect with detection regions, defense time periods, face/plate recognition, and orchestrable post-processing rules, upgrading the traditional "human staring at screens, reviewing after the fact" duty model to "machines monitor 24/7, anomalies pushed in seconds, evidence auto-archived", turning real-time video from passive viewing into infrastructure for active perception and intelligent judgment</li>
   <li><strong>Intelligent Camera Patrol</strong>: Designed for monitoring scenarios with many camera streams but limited staffing, the platform provides split-screen patrol and device-directory batch patrol capabilities, performing rotational AI analysis across large-scale camera fleets under limited concurrent connections. Supports three scheduling modes—rotation, connection pool, and hybrid—automatically capturing frames at set intervals, running detection models, and linking alerts with face/plate recognition. In hybrid mode, focus streams stay permanently monitored while background streams rotate via pooled connections, balancing priority surveillance and full-area coverage. Patrol progress is pushed in real time, captured frames are automatically archived, and patrol sessions for hundreds of cameras can be launched in one click from split-screen views or device directories—upgrading traditional manual screen-by-screen monitoring to intelligent automated patrol with "fewer connections, broader coverage, faster discovery"</li>
@@ -96,6 +129,23 @@ yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses 
   <li><strong>Notification Management</strong>: Supports 7 notification methods including Feishu, DingTalk, Enterprise WeChat, Email, Tencent Cloud SMS, Alibaba Cloud SMS, and Webhook, enabling flexible and multi-channel alert notifications</li>
 </ul>
 
+#### 📱 Mobile APP
+
+<ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>Multi-Channel Access</strong>: Available on phones, mini programs, and apps—ops and management are no longer tied to a desk; handle issues on-site in real time</li>
+  <li><strong>Capability Parity</strong>: Mobile matches the PC admin console feature-for-feature; switch devices without losing control</li>
+  <li><strong>Device Management</strong>: Unified management across access methods; browse channels at a glance and tap for live view—stay informed during field inspections</li>
+  <li><strong>Stream Forwarding</strong>: Create and stop forwarding tasks anytime; monitor cluster nodes and stream status—schedule video resources remotely</li>
+  <li><strong>Algorithm Tasks</strong>: Start and stop real-time and snapshot tasks on the go; track detection results without waiting to get back to the office</li>
+  <li><strong>Alert Center</strong>: Search alerts instantly; tap to view snapshots and recordings—verify and follow up while on mobile duty</li>
+  <li><strong>Model Management</strong>: Deployment status at a glance; always know what's live</li>
+  <li><strong>Model Inference</strong>: Upload an image on-site and get results immediately—spot checks without returning to PC</li>
+  <li><strong>Model Training</strong>: Monitor training progress anytime; stop remotely when needed to avoid wasted compute</li>
+  <li><strong>Personal Center</strong>: Account, tenant, and app preferences in one place—convenient across devices</li>
+  <li><strong>Smooth Viewing</strong>: Live feeds and alarm recordings play smoothly on mobile—low latency, no stutter, uncompromised duty experience</li>
+  <li><strong>Stay Connected</strong>: Sessions stay active with less re-login—bringing cloud-edge-device intelligent control to phones and mini programs</li>
+</ul>
+
 ### 📦 Built-in AI Models
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -144,7 +194,7 @@ Innovatively leveraging large models to construct a zero-shot labeling technical
 ### 🏗️ Project Architecture Features
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye is not actually one project; it is six distinct projects.
+yFeiEye is not actually one project; it is seven distinct projects.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -207,7 +257,7 @@ yFeiEye actively responds to localization strategies, providing comprehensive su
 ## 🧩 Project Structure
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye consists of six core projects:
+yFeiEye consists of seven core projects:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -218,6 +268,21 @@ yFeiEye consists of six core projects:
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>WEB Module</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">Frontend management interface based on Vue, providing a unified user interaction experience</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>APP Module</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Multi-Channel Access</strong>: One build, multiple touchpoints—phones, mini programs, and apps</li>
+    <li><strong>Capability Parity</strong>: Matches PC admin console capabilities with multi-tenant switching</li>
+    <li><strong>Device Management</strong>: Unified management for direct cameras, GB28181, and NVR; online status and channel browsing with one-tap live preview in device details</li>
+    <li><strong>Stream Forwarding</strong>: Task creation, start/stop, cluster node status, and multi-stream URL viewing</li>
+    <li><strong>Algorithm Tasks</strong>: Real-time/snapshot algorithm task list, start/stop control, and detection/frame stats</li>
+    <li><strong>Alert Center</strong>: Alert search, snapshot preview, and alarm recording VOD playback</li>
+    <li><strong>Models & AI</strong>: Model list and deployment status, mobile image inference workbench, training task progress monitoring and stop</li>
+    <li><strong>Profile</strong>: Personal info, account security, FAQ, feedback, and app settings</li>
+  </ul>
+</td>
 </tr>
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>DEVICE Module</strong></td>
@@ -605,6 +670,18 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 <div>
   <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
 </div>
 
 ## 📞 Contact Information

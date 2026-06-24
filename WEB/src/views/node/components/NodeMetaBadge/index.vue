@@ -11,7 +11,7 @@ const props = withDefaults(
     role?: string;
     ready?: boolean;
     cephStatus?: 'ready' | 'not_ready' | 'unknown';
-    size?: 'md' | 'lg';
+    size?: 'xs' | 'sm' | 'md' | 'lg';
   }>(),
   {
     status: 'pending',
@@ -64,7 +64,15 @@ const showDot = computed(() => props.type === 'status');
 </script>
 
 <template>
-  <span class="node-meta-badge" :class="[badgeClass, size === 'lg' ? 'node-meta-badge--lg' : '']">
+  <span
+    class="node-meta-badge"
+    :class="[
+      badgeClass,
+      size === 'lg' ? 'node-meta-badge--lg' : '',
+      size === 'sm' ? 'node-meta-badge--sm' : '',
+      size === 'xs' ? 'node-meta-badge--xs' : '',
+    ]"
+  >
     <span v-if="showDot" class="node-meta-badge__dot" />
     {{ label }}
   </span>

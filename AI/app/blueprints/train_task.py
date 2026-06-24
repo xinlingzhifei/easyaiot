@@ -18,6 +18,7 @@ from sqlalchemy import desc, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.services.minio_service import ModelService
+from app.utils.train_dataset_name import is_upload_storage_stem, resolve_dataset_display_name
 from app.utils.image_utils import download_default_model_image
 from app.utils.model_class_utils import (
     dump_class_names_json,
@@ -187,6 +188,12 @@ def _enrich_task_metadata(task: TrainTask, dataset_map: dict) -> bool:
             changed = True
         if task.dataset_version in (None, '') and info.get('version'):
             task.dataset_version = info['version']
+            changed = True
+
+    resolved_name = resolve_dataset_display_name(task.dataset_path, task.dataset_name)
+    if resolved_name and resolved_name != (task.dataset_name or '').strip():
+        if not task.dataset_name or is_upload_storage_stem(task.dataset_name):
+            task.dataset_name = resolved_name
             changed = True
 
     new_name = build_train_task_name(

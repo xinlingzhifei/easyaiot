@@ -182,7 +182,7 @@ export const ALGORITHM_POST_PROCESS_IDE_ROUTE: AppRouteRecordRaw = {
   },
   children: [
     {
-      path: ':id',
+      path: ':taskId',
       name: 'AlgorithmPostProcessIde',
       component: () => import('@/views/system/iframe/FrameDynamic.vue'),
       meta: {

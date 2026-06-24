@@ -171,9 +171,12 @@ class OnvifCamera:
             'ProfileToken': self._media_token
         }).Uri
 
-        # 处理认证信息嵌入
+        # 处理认证信息嵌入（密码含 @/# 等需百分号编码）
         if self._username:
-            rtsp_url = f"rtsp://{self._username}:{self._password}@{stream_uri.split('//')[1]}"
+            from app.utils.rtsp_url import build_rtsp_auth_prefix
+
+            auth = build_rtsp_auth_prefix(self._username, self._password)
+            rtsp_url = f"rtsp://{auth}{stream_uri.split('//')[1]}"
         else:
             rtsp_url = stream_uri
 

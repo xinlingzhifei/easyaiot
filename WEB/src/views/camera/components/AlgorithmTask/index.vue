@@ -116,7 +116,7 @@
                     <div
                       class="btn"
                       @click="handleOpenPostProcess(item)"
-                      title="AI后处理"
+                      :title="item.post_process_enabled ? '编辑后处理脚本' : '编辑后处理脚本（需先在任务配置中开启后处理）'"
                     >
                       <Icon icon="ant-design:code-outlined" :size="15" color="#3B82F6" />
                     </div>
@@ -445,7 +445,7 @@ const getTableActions = (record: AlgorithmTask) => {
     },
     {
       icon: 'ant-design:code-outlined',
-      tooltip: 'AI后处理',
+      tooltip: record.post_process_enabled ? '编辑后处理脚本' : '编辑后处理脚本（需先在任务配置中开启后处理）',
       onClick: () => handleOpenPostProcess(record),
     },
     {
@@ -678,17 +678,31 @@ const handleOpenSnapSpace = (record: AlgorithmTask) => {
   });
 };
 
+const parsePostProcessIdeUrl = (ideUrl: string) => {
+  const normalized = ideUrl.startsWith('/') ? ideUrl : `/${ideUrl}`;
+  const qIndex = normalized.indexOf('?');
+  const basePath = qIndex >= 0 ? normalized.slice(0, qIndex) : normalized;
+  const search = qIndex >= 0 ? normalized.slice(qIndex + 1) : '';
+  const folder = search ? new URLSearchParams(search).get('folder') || '' : '';
+  return { basePath, folder };
+};
+
 const handleOpenPostProcess = async (record: AlgorithmTask) => {
   try {
     const response = await getPostProcessIdeUrl(record.id);
-    if (response.code !== 0 || !response.data?.ide_url) {
-      createMessage.error(response.msg || '获取后处理 IDE 地址失败');
+    const ideUrl = response?.ide_url;
+    if (!ideUrl) {
+      createMessage.error('获取后处理 IDE 地址失败');
       return;
     }
-    const title = encodeURIComponent(record.task_name || String(record.id));
+    const { basePath, folder } = parsePostProcessIdeUrl(ideUrl);
     go({
-      path: `/algorithm-post-process/${title}`,
-      query: { path: response.data.ide_url },
+      path: `/algorithm-post-process/${record.id}`,
+      query: {
+        path: basePath,
+        ...(folder ? { folder } : {}),
+        title: record.task_name || String(record.id),
+      },
     });
   } catch (error) {
     console.error('打开后处理 IDE 失败', error);

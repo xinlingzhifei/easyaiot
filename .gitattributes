@@ -15,6 +15,9 @@ WEB/docker-build-logs/** -diff
 .scripts/docker/milvus_config/** -diff
 .scripts/docker/milvus_data/** -diff
 
+# VSCode 容器配置与工作区：不参与 diff
+.scripts/docker/vscode_data/** -diff
+
 # ZLMediaKit 运行时配置：不参与 diff
 .scripts/zlmediakit/conf/config.ini -diff
 
@@ -65,5 +68,14 @@ VIDEO/face_rec.onnx binary -diff
 # AI 模型权重目录（体积大，ModelScope/本地下载，不参与 diff）
 AI/models/** -diff
 
+# APP 构建产物、依赖与 pnpm 缓存：不参与 diff
+APP/node_modules/** -diff
+APP/dist/** -diff
+APP/.pnpm-store/** -diff
+
+# IDE / 包管理器缓存 / 测试缓存：不参与 diff
+.vscode/** -diff
+.pnpm-store/** -diff
+**/.pytest_cache/** -diff
 
 .image/ binary

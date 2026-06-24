@@ -60,6 +60,27 @@ export function formatAlertListTitle(record: AlertPersonRecord & { event?: strin
   return formatAlertEvent(record.event);
 }
 
+/** 是否为抓拍类任务（无关联告警录像） */
+export function isSnapAlertTask(record: {
+  task_type?: string | null;
+  information?: unknown;
+}): boolean {
+  let taskType = record.task_type;
+  if (!taskType && record.information) {
+    if (typeof record.information === 'object' && record.information !== null) {
+      taskType = (record.information as { task_type?: string }).task_type;
+    } else if (typeof record.information === 'string') {
+      try {
+        const info = JSON.parse(record.information);
+        taskType = info?.task_type;
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return taskType === 'snap' || taskType === 'snapshot';
+}
+
 export function normalizeAlertBusinessTagsParam(tags: unknown): string | undefined {
   if (Array.isArray(tags)) {
     const normalized = tags.map((t) => String(t).trim()).filter(Boolean);

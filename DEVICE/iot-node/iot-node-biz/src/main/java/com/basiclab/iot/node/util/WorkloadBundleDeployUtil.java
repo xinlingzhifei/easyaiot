@@ -61,6 +61,8 @@ public final class WorkloadBundleDeployUtil {
                 return "requirements-node-algorithm-patrol.txt";
             case AI_SERVICE:
                 return "requirements-node-ai-service.txt";
+            case LLM_SERVICE:
+                return "requirements-node-llm-service.txt";
             case MODEL_TRAIN:
                 return "requirements-node-model-train.txt";
             case POST_PROCESS:
@@ -107,6 +109,13 @@ public final class WorkloadBundleDeployUtil {
                         "app",
                         "services/ai_service"
                 );
+            case LLM_SERVICE:
+                return Arrays.asList(
+                        "db_models.py",
+                        "app/config/qwen_models.py",
+                        "app",
+                        "services/llm_service"
+                );
             case AUTO_LABEL:
                 return syncAutoLabelRelativePaths();
             case MODEL_TRAIN:
@@ -115,8 +124,7 @@ public final class WorkloadBundleDeployUtil {
                 return Arrays.asList(
                         "models.py",
                         "app",
-                        "services/post_process_worker",
-                        "services/post_process_sink_worker"
+                        "services/post_process_worker"
                 );
             default:
                 return Collections.emptyList();
@@ -136,6 +144,8 @@ public final class WorkloadBundleDeployUtil {
                 return "services/patrol_algorithm_service/run_deploy.py";
             case AI_SERVICE:
                 return "services/ai_service/run_deploy.py";
+            case LLM_SERVICE:
+                return "services/llm_service/run_deploy.py";
             case AUTO_LABEL:
                 return "services/auto_label_worker/run_worker.py";
             case MODEL_TRAIN:
@@ -162,6 +172,8 @@ public final class WorkloadBundleDeployUtil {
                 return launcher + " -c \"import cv2, flask, sqlalchemy, onnxruntime; print('OK')\"";
             case AI_SERVICE:
                 return launcher + " -c \"import flask, cv2, numpy, onnxruntime; print('OK')\"";
+            case LLM_SERVICE:
+                return launcher + " -c \"import vllm, transformers; print('OK')\"";
             case MODEL_TRAIN:
                 return launcher + " -c \"import torch, ultralytics, yaml; print('OK')\"";
             case POST_PROCESS:
@@ -216,6 +228,7 @@ public final class WorkloadBundleDeployUtil {
     public static boolean requiresAiSync(String workloadType) {
         String t = workloadType == null ? "" : workloadType.trim().toLowerCase(Locale.ROOT);
         return WorkloadBundleTypeEnum.AI_SERVICE.getType().equals(t)
+                || WorkloadBundleTypeEnum.LLM_SERVICE.getType().equals(t)
                 || WorkloadBundleTypeEnum.AUTO_LABEL.getType().equals(t)
                 || WorkloadBundleTypeEnum.MODEL_TRAIN.getType().equals(t);
     }

@@ -16,6 +16,7 @@ import { Button } from '@/components/Button';
 import { useMessage } from '@/hooks/web/useMessage';
 import { registerDevice } from '@/api/device/camera';
 import { ensureDeviceStreamForwardTask } from '@/api/device/stream_forward';
+import { resolveRegisteredDeviceId } from '@/views/camera/utils/rtspUrl';
 import DeviceCreatePanelLayout from '../DeviceCreatePanelLayout.vue';
 import {
   DEVICE_CREATE_COL_LINE,
@@ -68,7 +69,7 @@ async function handleSubmit() {
       stream: 0,
       cameraType: 'custom',
     });
-    const deviceId = response?.data?.id;
+    const deviceId = resolveRegisteredDeviceId(response);
     createMessage.success('设备注册成功');
     if (deviceId) {
       try {

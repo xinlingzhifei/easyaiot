@@ -101,9 +101,10 @@ import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button'
 import {
-getFaceLibrary,
+  getFaceLibrary,
   mergeAllFaceNormalizeGroups,
   previewFaceNormalizeGroups,
+  unwrapFaceApiEntity,
   type FaceLibrary,
   type FaceNormalizeGroup,
 } from '@/api/device/face_library';
@@ -208,7 +209,7 @@ async function refreshLibraryStats() {
   if (!library.value?.id) return;
   try {
     const res = await getFaceLibrary(library.value.id);
-    const lib = res.data;
+    const lib = unwrapFaceApiEntity(res);
     if (lib) {
       library.value = { ...library.value, ...lib };
       libraryStats.value = {

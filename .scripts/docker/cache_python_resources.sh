@@ -27,12 +27,31 @@ source "${SCRIPT_DIR}/init-build-cache-dirs.sh"
 
 AI_DIR="${YFEIEYE_ROOT}/AI"
 VIDEO_DIR="${YFEIEYE_ROOT}/VIDEO"
-PYTORCH_BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel}"
+DEFAULT_PYTORCH_DEVEL_IMAGE="pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel"
+PYTORCH_BASE_IMAGE="${BASE_IMAGE:-$DEFAULT_PYTORCH_DEVEL_IMAGE}"
 
 # PyPI 仅提供 sdist、需在 devel 镜像中预编译为 wheel（runtime 无 gcc）
 SDIST_WHEEL_SPECS=(
     "netifaces==0.11.0"
 )
+
+# install_linux 等脚本会把 BASE_IMAGE 设为 runtime 供最终部署；sdist 编译须单独解析 devel 镜像
+resolve_sdist_wheel_build_image() {
+    if [ -n "${SDIST_WHEEL_BUILD_IMAGE:-}" ]; then
+        echo "$SDIST_WHEEL_BUILD_IMAGE"
+        return
+    fi
+    local base="$PYTORCH_BASE_IMAGE"
+    if [[ "$base" == *-runtime ]]; then
+        echo "${base%-runtime}-devel"
+        return
+    fi
+    if [[ "$base" == *-devel ]] || [[ "$base" == *builder* ]]; then
+        echo "$base"
+        return
+    fi
+    echo "$DEFAULT_PYTORCH_DEVEL_IMAGE"
+}
 
 # 参数: all（默认）| ai | video
 TARGET_MODULE="${1:-all}"
@@ -98,8 +117,8 @@ prepare_flattened_requirements() {
 # 将仅有 tar.gz 的 C 扩展预编译为 wheel，供 runtime 基础镜像离线/混合安装
 build_required_sdist_wheels() {
     local wheels_dir="$1"
-    local build_image="${SDIST_WHEEL_BUILD_IMAGE:-$PYTORCH_BASE_IMAGE}"
-    local spec pkg_name
+    local build_image spec pkg_name
+    build_image="$(resolve_sdist_wheel_build_image)"
 
     for spec in "${SDIST_WHEEL_SPECS[@]}"; do
         pkg_name="${spec%%==*}"

@@ -63,6 +63,7 @@ hs_err_pid*
 .scripts/docker/dify_data/
 .scripts/docker/milvus_config/
 .scripts/docker/milvus_data/
+.scripts/docker/vscode_data/
 
 # .scripts/nexus3 数据目录
 .scripts/nexus3/nexus_data/
@@ -105,6 +106,28 @@ VIDEO/face_capture_head_yolov8.onnx
 # AI 模型权重（大文件由 ModelScope 或安装脚本下载，不随仓库分发）
 AI/models/
 
+# APP 构建产物、依赖与 pnpm 缓存
+APP/node_modules/
+APP/dist/
+APP/.pnpm-store/
+APP/logs/
+APP/tmp/
+APP/.playwright-cli/
+APP/private.key
+APP/private.*.key
+APP/.hbuilderx
+APP/.stylelintcache
+APP/.eslintcache
+APP/docs/.vitepress/dist
+APP/docs/.vitepress/cache
+APP/src/types/*
+!APP/src/types/auto-import.d.ts
+
+# IDE / 包管理器缓存 / 测试缓存（仅本机，不随仓库分发）
+.vscode/
+.pnpm-store/
+**/.pytest_cache/
+
 # Claude Code 个人配置与本地钩子（仅本机，不随仓库分发）
 .claude/settings.local.json
 .claude/changed-files-hook.sh
@@ -115,3 +138,8 @@ AI/models/
 # 表结构同步产物（明文整库备份与差异 SQL，绝不可入库）
 .scripts/postgresql/schema-sync/backups/
 .scripts/postgresql/schema-sync/schema_diffs/
+
+venv
+*.pyc
+DEVICE/iot-gb28181/iot-gb28181-biz/snap
+VIDEO/data/models

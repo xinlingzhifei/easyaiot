@@ -108,9 +108,13 @@ public class NodeAgentServiceImpl implements NodeAgentService {
                 TimeUnit.SECONDS);
     }
 
-    /** GPU 节点：根据 Agent 上报的 gpu_info 同步 maxGpuCount */
+    /** GPU / 混合节点：根据 Agent 上报的 gpu_info 同步 maxGpuCount（含控制面 HYBRID 节点） */
     private void syncGpuCountFromHeartbeat(ComputeNodeDO node, java.util.List<java.util.Map<String, Object>> gpuInfo) {
-        if (!NodeRoleEnum.GPU.getRole().equals(node.getNodeRole()) || gpuInfo == null || gpuInfo.isEmpty()) {
+        String role = node.getNodeRole();
+        if (gpuInfo == null || gpuInfo.isEmpty()) {
+            return;
+        }
+        if (!NodeRoleEnum.GPU.getRole().equals(role) && !NodeRoleEnum.HYBRID.getRole().equals(role)) {
             return;
         }
         int detected = gpuInfo.size();

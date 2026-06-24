@@ -253,6 +253,7 @@ import {copyText} from '@/utils/copyTextToClipboard';
 import {discoverDevices, registerDevice, registerDeviceByOnvif, updateDevice} from "@/api/device/camera";
 import {getOnvifBasicColumns, getOnvifFormConfig} from './Data';
 import {ensureDeviceStreamForwardTask} from "@/api/device/stream_forward";
+import { buildBrandRtspUrl, resolveRegisteredDeviceId } from '@/views/camera/utils/rtspUrl';
 defineOptions({name: 'VideoModal'})
 
 const {createMessage} = useMessage();
@@ -607,31 +608,26 @@ function handleCameraTypeChange(value) {
 
 // 生成RTSP地址（海康/大华/宇视）
 function generateRtspUrl() {
-  if (modelRef.cameraType === 'hikvision') {
-    // 海康威视RTSP地址格式：rtsp://username:password@ip:port/Streaming/Channels/10X
-    // X: 1=主码流, 2=子码流
-    // 前端streamList: 0=主码流, 1=子码流
-    if (modelRef.ip && modelRef.port && modelRef.username && modelRef.password) {
-      const streamType = modelRef.stream === 0 ? 1 : (modelRef.stream === 1 ? 2 : 1);
-      modelRef.source = `rtsp://${modelRef.username}:${modelRef.password}@${modelRef.ip}:${modelRef.port}/Streaming/Channels/10${streamType}`;
-    }
-  } else if (modelRef.cameraType === 'dahua') {
-    // 大华RTSP地址格式：rtsp://username:password@ip:port/cam/realmonitor?channel=1&subtype=X
-    // X: 0=主码流, 1=辅码流
-    // 前端streamList: 0=主码流, 1=子码流
-    if (modelRef.ip && modelRef.port && modelRef.username && modelRef.password) {
-      const streamType = modelRef.stream === 0 ? 0 : (modelRef.stream === 1 ? 1 : 0);
-      modelRef.source = `rtsp://${modelRef.username}:${modelRef.password}@${modelRef.ip}:${modelRef.port}/cam/realmonitor?channel=1&subtype=${streamType}`;
-    }
-  } else if (modelRef.cameraType === 'uniview') {
-    // 宇视RTSP地址格式：rtsp://username:password@ip:port/unicast/c<通道号>/s<码流类型>/live
-    // 码流类型: 0=主码流, 1=辅码流
-    // 前端streamList: 0=主码流, 1=子码流
-    if (modelRef.ip && modelRef.port && modelRef.username && modelRef.password) {
-      const streamType = modelRef.stream === 0 ? 0 : (modelRef.stream === 1 ? 1 : 0);
-      const channel = 1; // 默认通道1
-      modelRef.source = `rtsp://${modelRef.username}:${modelRef.password}@${modelRef.ip}:${modelRef.port}/unicast/c${channel}/s${streamType}/live`;
-    }
+  if (
+    modelRef.cameraType !== 'hikvision'
+    && modelRef.cameraType !== 'dahua'
+    && modelRef.cameraType !== 'uniview'
+  ) {
+    return;
+  }
+  if (!modelRef.ip || !modelRef.port || !modelRef.username || !modelRef.password) {
+    return;
+  }
+  const url = buildBrandRtspUrl({
+    cameraType: modelRef.cameraType,
+    ip: modelRef.ip,
+    port: parseInt(String(modelRef.port), 10) || 554,
+    username: modelRef.username,
+    password: modelRef.password,
+    stream: modelRef.stream ?? 0,
+  });
+  if (url) {
+    modelRef.source = url;
   }
 }
 
@@ -807,7 +803,7 @@ function handleOk() {
 
         // 直接调用注册接口，传入source字段
         const response = await registerDevice(registerData);
-        const deviceId = response?.data?.id;
+        const deviceId = resolveRegisteredDeviceId(response);
         createMessage.success('设备注册成功');
         
         // 检查并确保推流转发任务存在
@@ -882,7 +878,7 @@ function handleOk() {
           await updateDevice(modelRef.id, updateData);
         } else {
           const response = await registerDevice(modelRef);
-          const deviceId = response?.data?.id;
+          const deviceId = resolveRegisteredDeviceId(response);
           
           // 检查并确保推流转发任务存在
           if (deviceId) {
@@ -897,7 +893,7 @@ function handleOk() {
       } else if (state.type === 'source') {
         // 独立摄像头处理
         const response = await registerDevice(modelRef);
-        const deviceId = response?.data?.id;
+        const deviceId = resolveRegisteredDeviceId(response);
         
         // 检查并确保推流转发任务存在
         if (deviceId) {
@@ -936,7 +932,7 @@ function handleOk() {
           }
         } else {
           const response = await registerDevice(modelRef);
-          const deviceId = response?.data?.id;
+          const deviceId = resolveRegisteredDeviceId(response);
           
           // 检查并确保推流转发任务存在
           if (deviceId) {

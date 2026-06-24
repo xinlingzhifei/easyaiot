@@ -22,11 +22,12 @@
       <div class="node-item-card__cover-inner">
         <NodeRoleIcon
           :role="item.nodeRole"
-          :size="central ? 'lg' : swimlane || compact ? 'md' : 'lg'"
+          :size="compact ? 'md' : central ? 'lg' : 'ml'"
         />
       </div>
-      <div class="node-item-card__status" @click.stop>
-        <component :is="renderNodeStatusBadge(item.status)" />
+      <div class="node-item-card__badges" @click.stop>
+        <NodeMetaBadge type="role" :role="item.nodeRole" size="sm" />
+        <NodeMetaBadge type="status" :status="item.status" size="sm" />
       </div>
       <div v-if="selectable" class="node-item-card__checkbox" @click.stop>
         <Checkbox
@@ -73,16 +74,19 @@
     <div class="node-item-card__body">
       <h3 class="node-item-card__title" :title="item.name" @click="emit('view', item)">
         <span>{{ item.name }}</span>
-        <NodeMetaBadge v-if="isPlatformNode(item)" type="scope" />
-        <NodeMetaBadge
-          v-if="isClusterComputeRole(item.nodeRole) && !isPlatformNode(item)"
-          type="ceph"
-          :ceph-status="readCephMountFromTags(item.tags).status"
-        />
       </h3>
       <p v-if="metaText" class="node-item-card__meta" :title="metaText">
         {{ metaText }}
       </p>
+      <div v-if="footerBadges.length" class="node-item-card__tags">
+        <NodeMetaBadge
+          v-for="badge in footerBadges"
+          :key="badge.key"
+          :type="badge.type"
+          :ceph-status="badge.cephStatus"
+          size="xs"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -93,13 +97,11 @@ import { Checkbox, Popconfirm, Tooltip } from 'ant-design-vue';
 import { DeleteOutlined, EditOutlined, EyeOutlined, RocketOutlined } from '@ant-design/icons-vue';
 import type { ComputeNodeVO } from '@/api/device/node';
 import {
-  NODE_ROLE_MAP,
   NODE_TERM,
   isClusterComputeRole,
   readCephMountFromTags,
 } from '../../utils/constants';
 import { getNodeRoleVisual } from '../../utils/nodeAssets';
-import { renderNodeStatusBadge } from '../../utils/nodeDisplay';
 import { isPlatformNode } from '../../utils/platformNode';
 import NodeMetaBadge from '../NodeMetaBadge/index.vue';
 import NodeRoleIcon from '../NodeRoleIcon/index.vue';
@@ -144,11 +146,27 @@ const hoverId = ref<number | null>(null);
 const metaText = computed(() => {
   if (props.metaText !== undefined) return props.metaText;
   const parts: string[] = [];
-  const roleLabel = NODE_ROLE_MAP[props.item.nodeRole || ''];
-  if (roleLabel) parts.push(roleLabel);
   if (props.item.host) parts.push(props.item.host);
   if (!parts.length) return props.item.id != null ? `ID: ${props.item.id}` : '';
   return parts.join('  |  ');
+});
+
+const footerBadges = computed(() => {
+  const badges: Array<{
+    key: string;
+    type: 'scope' | 'ceph';
+    cephStatus?: 'ready' | 'not_ready' | 'unknown';
+  }> = [];
+  if (isPlatformNode(props.item)) {
+    badges.push({ key: 'scope', type: 'scope' });
+  } else if (isClusterComputeRole(props.item.nodeRole)) {
+    badges.push({
+      key: 'ceph',
+      type: 'ceph',
+      cephStatus: readCephMountFromTags(props.item.tags).status,
+    });
+  }
+  return badges;
 });
 </script>
 
@@ -158,10 +176,10 @@ const metaText = computed(() => {
 
 @cover-height: 200px;
 @cover-height-compact: 140px;
-@cover-height-swimlane: 124px;
-@cover-height-swimlane-central: 136px;
-@body-min-height: 88px;
-@body-min-height-swimlane: 92px;
+@cover-height-swimlane: 132px;
+@cover-height-swimlane-central: 140px;
+@body-min-height: 86px;
+@body-min-height-swimlane: 90px;
 
 .node-item-card {
   position: relative;
@@ -204,23 +222,27 @@ const metaText = computed(() => {
     }
 
     .node-item-card__cover-inner {
-      padding: 16px;
+      padding: 0 14px 6px;
+
+      &::before {
+        min-height: 48px;
+      }
     }
 
     .node-item-card__body {
       min-height: @body-min-height-swimlane;
-      padding: 16px 16px 14px;
+      padding: 14px 14px 16px;
     }
 
     .node-item-card__title {
       font-size: 15px;
-      margin-bottom: 6px;
-      line-height: 1.45;
+      margin-bottom: 10px;
+      line-height: 1.4;
     }
 
     .node-item-card__meta {
       font-size: 12px;
-      line-height: 1.5;
+      line-height: 1.55;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -240,8 +262,16 @@ const metaText = computed(() => {
       height: @cover-height-swimlane-central;
     }
 
+    .node-item-card__cover-inner {
+      padding: 0 14px 8px;
+
+      &::before {
+        min-height: 52px;
+      }
+    }
+
     .node-item-card__body {
-      padding: 18px 16px 16px;
+      padding: 16px 14px 18px;
     }
 
     .node-item-card__title {
@@ -327,18 +357,43 @@ const metaText = computed(() => {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 16px;
+  justify-content: flex-end;
+  padding: 0 14px 6px;
   box-sizing: border-box;
   transition: opacity 0.2s ease, filter 0.2s ease;
+
+  &::before {
+    content: '';
+    display: block;
+    flex: 1 1 0;
+    min-height: 50px;
+    width: 100%;
+    pointer-events: none;
+  }
 }
 
-.node-item-card__status {
+.node-item-card__badges {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
+  left: 12px;
   z-index: 2;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 22px;
+  padding-bottom: 4px;
+  pointer-events: none;
+
+  :deep(.node-meta-badge) {
+    flex-shrink: 0;
+    pointer-events: auto;
+  }
 }
 
 .node-item-card__checkbox {
@@ -401,12 +456,12 @@ const metaText = computed(() => {
 .node-item-card__body {
   flex: 1;
   min-height: @body-min-height;
-  padding: 16px 14px 12px;
+  padding: 14px 14px 16px;
   box-sizing: border-box;
 }
 
 .node-item-card__title {
-  margin: 0 0 6px;
+  margin: 0 0 10px;
   font-size: 15px;
   font-weight: 600;
   line-height: 1.45;
@@ -430,9 +485,17 @@ const metaText = computed(() => {
 .node-item-card__meta {
   margin: 0;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: #999;
   white-space: normal;
   word-break: break-all;
+}
+
+.node-item-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
 }
 </style>

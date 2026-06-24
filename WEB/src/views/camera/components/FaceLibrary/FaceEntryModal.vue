@@ -176,8 +176,11 @@ import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button'
 import {
-addFaceEntriesBatch,
+  addFaceEntriesBatch,
   addFaceEntry,
+  isFaceLibraryApiOk,
+  parseFaceApiError,
+  resolveFaceImageDisplayUrl,
   updateFaceEntry,
   type FaceEntry,
   type FaceLibrary,
@@ -315,8 +318,9 @@ function onFileInputChange(e: Event) {
 
 function setExistingImage(url?: string) {
   resetUpload();
-  if (url) {
-    previewItems.value = [{ key: `existing-${url}`, url }];
+  const resolved = resolveFaceImageDisplayUrl(url);
+  if (resolved) {
+    previewItems.value = [{ key: `existing-${resolved}`, url: resolved }];
   }
 }
 
@@ -413,10 +417,15 @@ function onDrop(e: DragEvent) {
 
 async function handleSubmit() {
   const libraryId = modalData.value.library?.id;
-  if (!libraryId) return;
+  if (!libraryId) {
+    createMessage.error('未关联人脸库，请关闭后重新打开');
+    return;
+  }
 
   try {
-    const values = await validate();
+    const values = isAddToPerson.value
+      ? await validate(['remark', 'is_enabled'])
+      : await validate();
     if (!isEditMode.value && !uploadFiles.value.length) {
       createMessage.warning('请上传人脸照片');
       return;
@@ -426,8 +435,14 @@ async function handleSubmit() {
     setDrawerProps({ confirmLoading: true });
 
     const fd = new FormData();
-    fd.append('person_name', String(values.person_name || '').trim());
-    if (values.person_code) fd.append('person_code', String(values.person_code).trim());
+    const personName = isAddToPerson.value
+      ? String(modalData.value.person?.person_name || '').trim()
+      : String(values.person_name || '').trim();
+    fd.append('person_name', personName);
+    const personCode = isAddToPerson.value
+      ? modalData.value.person?.person_code
+      : values.person_code;
+    if (personCode) fd.append('person_code', String(personCode).trim());
     if (values.remark) fd.append('remark', String(values.remark).trim());
     fd.append('is_enabled', values.is_enabled ? 'true' : 'false');
     if (isAddToPerson.value && modalData.value.person?.id) {
@@ -439,40 +454,42 @@ async function handleSubmit() {
         fd.append('file', uploadFiles.value[0]);
       }
       const response = await updateFaceEntry(modalData.value.record.id, fd);
-      if (response.code === 0) {
+      if (isFaceLibraryApiOk(response)) {
         createMessage.success('保存成功');
         closeDrawer();
         emit('success');
       } else {
-        createMessage.error(response.msg || '保存失败');
+        createMessage.error(parseFaceApiError(response, '保存失败'));
       }
     } else if (uploadFiles.value.length > 1 || (isAddToPerson.value && uploadFiles.value.length >= 1)) {
       uploadFiles.value.forEach((f) => fd.append('files', f));
       const response = await addFaceEntriesBatch(libraryId, fd);
-      if (response.code === 0) {
-        const n = response.data?.success_count ?? uploadFiles.value.length;
-        createMessage.success(response.msg || `成功录入 ${n} 张人脸`);
+      if (isFaceLibraryApiOk(response)) {
+        const n = (response as { data?: { success_count?: number } }).data?.success_count
+          ?? uploadFiles.value.length;
+        createMessage.success(
+          (response as { msg?: string }).msg || `成功录入 ${n} 张人脸`,
+        );
         closeDrawer();
         emit('success');
       } else {
-        createMessage.error(response.msg || '录入失败');
+        createMessage.error(parseFaceApiError(response, '录入失败'));
       }
     } else {
       if (uploadFiles.value[0]) {
         fd.append('file', uploadFiles.value[0]);
       }
       const response = await addFaceEntry(libraryId, fd);
-      if (response.code === 0) {
+      if (isFaceLibraryApiOk(response)) {
         createMessage.success('录入成功');
         closeDrawer();
         emit('success');
       } else {
-        createMessage.error(response.msg || '录入失败');
+        createMessage.error(parseFaceApiError(response, '录入失败'));
       }
     }
-  } catch (error: any) {
-    const errorMsg = error?.response?.data?.msg || error?.message || error?.msg || '';
-    if (!errorMsg) createMessage.error('提交失败');
+  } catch (error: unknown) {
+    createMessage.error(parseFaceApiError(error, '提交失败'));
   } finally {
     confirmLoading.value = false;
     setDrawerProps({ confirmLoading: false });

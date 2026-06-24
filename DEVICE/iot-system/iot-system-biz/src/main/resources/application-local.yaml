@@ -1,3 +1,9 @@
+--- #################### BasicLab 本地开发配置 ####################
+
+iot:
+  captcha:
+    enable: false # 与 APP VITE_APP_CAPTCHA_ENABLE=false、docker-compose IOT_CAPTCHA_ENABLE 对齐
+
 --- #################### 数据库相关配置 ####################
 spring:
   # 数据源配置项

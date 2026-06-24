@@ -33,6 +33,9 @@ public class FaceMatchingServiceImpl implements FaceMatchingService {
     @Value("${basiclab.video.service-url:http://localhost:48080}")
     private String videoServiceUrl;
 
+    @Value("${basiclab.video.api-prefix:/admin-api/video}")
+    private String videoApiPrefix;
+
     @Value("${spring.kafka.face-matching.result-topic:iot-face-matching-result}")
     private String resultTopic;
 
@@ -68,7 +71,7 @@ public class FaceMatchingServiceImpl implements FaceMatchingService {
         payload.put("bbox", message.getBbox());
         payload.put("confidence", message.getConfidence());
 
-        String url = normalizeBaseUrl(videoServiceUrl) + "/video/face/matching/process";
+        String url = normalizeBaseUrl(videoServiceUrl) + normalizeApiPrefix(videoApiPrefix) + "/face/matching/process";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
@@ -112,5 +115,12 @@ public class FaceMatchingServiceImpl implements FaceMatchingService {
             return "http://localhost:48080";
         }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private static String normalizeApiPrefix(String apiPrefix) {
+        if (apiPrefix == null || apiPrefix.isEmpty()) {
+            return "/admin-api/video";
+        }
+        return apiPrefix.startsWith("/") ? apiPrefix : "/" + apiPrefix;
     }
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -10,6 +11,31 @@ from .models import Credential
 
 DEVICE_INFO_PATH = "/ISAPI/System/deviceInfo"
 _ISAPI_USER_AGENT = "hiktools/0.1"
+
+_LOCK_STATUS_RE = re.compile(
+    r"<lockStatus>\s*(\w+)\s*</lockStatus>",
+    re.IGNORECASE,
+)
+_UNLOCK_TIME_RE = re.compile(
+    r"<unlockTime>\s*(\d+)\s*</unlockTime>",
+    re.IGNORECASE,
+)
+
+
+def describe_isapi_auth_failure(status: int | None, body: str | None) -> str | None:
+    """将海康 ISAPI 401 / userCheck 响应转为可读错误（含账号锁定）。"""
+    if status != 401:
+        return None
+    text = body or ""
+    lock = _LOCK_STATUS_RE.search(text)
+    if lock and lock.group(1).strip().lower() == "lock":
+        unlock = _UNLOCK_TIME_RE.search(text)
+        sec = int(unlock.group(1)) if unlock else 0
+        mins = max(1, (sec + 59) // 60)
+        return f"NVR 账号已锁定，请约 {mins} 分钟后重试或在 NVR Web 界面解除锁定"
+    if "<userCheck>" in text or "Unauthorized" in text:
+        return "NVR 凭证认证失败（401），请检查用户名和密码"
+    return f"HTTP {status}"
 
 
 @dataclass
@@ -48,7 +74,8 @@ def _fetch_isapi_path_sync_requests(
         return IsapiResult(200, r.text, challenge, server, None)
 
     if r.status_code != 401:
-        return IsapiResult(r.status_code, r.text, challenge, server, None)
+        err = describe_isapi_auth_failure(r.status_code, r.text)
+        return IsapiResult(r.status_code, r.text, challenge, server, None, error=err)
 
     last = IsapiResult(r.status_code, r.text, challenge, server, None)
     for cred in cred_list:
@@ -78,6 +105,8 @@ def _fetch_isapi_path_sync_requests(
             ra.headers.get("Server") or server,
             cred,
         )
+    if last.status == 401:
+        last.error = describe_isapi_auth_failure(last.status, last.body)
     return last
 
 
@@ -155,6 +184,8 @@ async def fetch_isapi_path(
         if fb.status == 200 or (last.status == 401 and fb.status not in (None, 401)):
             return fb
 
+    if last.status == 401 and not last.error:
+        last.error = describe_isapi_auth_failure(last.status, last.body)
     return last
 
 

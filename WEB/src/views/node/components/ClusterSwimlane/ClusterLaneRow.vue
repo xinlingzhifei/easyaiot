@@ -316,7 +316,7 @@ onUnmounted(() => {
   background: #fff;
   border: 1px solid @node-border;
   box-shadow: inset 4px 0 0 @node-primary;
-  min-height: 228px;
+  min-height: 240px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {

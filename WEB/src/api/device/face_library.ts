@@ -2,6 +2,9 @@
  * 人脸库管理接口
  */
 import { defHttp } from '@/utils/http/axios';
+import { resolveLibraryImageDisplayUrl } from '@/utils/alertMinioImage';
+
+export { resolveLibraryImageDisplayUrl as resolveFaceImageDisplayUrl };
 
 const FACE_PREFIX = '/video/face';
 
@@ -12,7 +15,10 @@ export function isFaceLibraryApiOk(response: unknown): boolean {
   if (response == null || typeof response !== 'object') return false;
   const r = response as Record<string, unknown>;
   if (typeof r.code === 'number') return FACE_API_SUCCESS_CODES.has(r.code);
-  return typeof r.id === 'number';
+  if (typeof r.id === 'number') return true;
+  if (typeof r.success_count === 'number') return true;
+  if (Array.isArray(r.entries)) return true;
+  return false;
 }
 
 export function getFaceLibraryApiMsg(response: unknown, fallback = ''): string {
@@ -24,6 +30,18 @@ export function getFaceLibraryApiMsg(response: unknown, fallback = ''): string {
 }
 
 /** 从接口异常中解析业务提示（避免暴露 HTTP 状态码原文） */
+/** 兼容 axios transform 后直接返回实体 与 未 transform 的 { data } 包裹 */
+export function unwrapFaceApiEntity<T extends { id?: number }>(
+  response: T | { data?: T | null } | null | undefined,
+): T | null {
+  if (response == null) return null;
+  if (typeof response === 'object' && typeof (response as T).id === 'number') {
+    return response as T;
+  }
+  const nested = (response as { data?: T | null }).data;
+  return nested ?? null;
+}
+
 export function parseFaceApiError(error: unknown, fallback = '操作失败，请稍后重试'): string {
   if (error == null) return fallback;
   if (typeof error === 'string') {

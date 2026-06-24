@@ -26,14 +26,14 @@
 
           <template #renderItem="{ item }">
             <ListItem class="alert-item normal">
+              <span class="task-type-tag" :class="getTaskTypeClass(item)">
+                {{ getTaskTypeText(item) }}
+              </span>
               <div class="alert-info">
                 <div class="title-wrapper">
                   <div class="title o2">
                     <span class="event-name">{{ formatAlertEvent(item.event) }}</span>
                   </div>
-                  <span class="task-type-tag" :class="getTaskTypeClass(item)">
-                    {{ getTaskTypeText(item) }}
-                  </span>
                 </div>
                 <div v-if="item.business_tags?.length" class="alert-business-tags">
                   <a-tag v-for="tag in item.business_tags" :key="tag" color="blue" size="small">{{ tag }}</a-tag>
@@ -103,7 +103,7 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { Icon } from '@/components/Icon';
 import moment from 'moment';
 import ALERT from "@/assets/images/alert/alert.png";
-import { alertCameraSelectProps } from '@/views/alert/Data';
+import { alertCameraSelectProps, alertFilterActionColOptions } from '@/views/alert/Data';
 import { ALERT_EVENT_OPTIONS, formatAlertEvent, getAlertMatchedPersonName, getAlertSourceEvent, normalizeAlertBusinessTagsParam } from '@/views/alert/alertDisplay';
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage';
 
@@ -280,8 +280,9 @@ const [registerForm, { validate, setFieldsValue, getFieldsValue }] = useForm({
   ],
   labelWidth: 120,
   baseColProps: { span: 8 },
-  actionColOptions: { span: 8, style: { textAlign: 'left' } },
+  actionColOptions: alertFilterActionColOptions,
   showAdvancedButton: false,
+  alwaysShowLines: 2,
   autoSubmitOnEnter: true,
   submitFunc: handleSubmit,
   submitOnReset: true,
@@ -573,67 +574,73 @@ function thumbUrl(imageUrl: string | null | undefined): string {
       background-image: url('@/assets/images/product/red-bg.101af5ac.png');
     }
 
+    .task-type-tag {
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      border-radius: 0 11px 0 8px;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.2;
+      white-space: nowrap;
+      transition: all 0.3s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+      &.task-type-realtime {
+        background: #3B82F6;
+        color: #ffffff;
+        border: 1px solid #2563EB;
+        border-top: none;
+        border-right: none;
+
+        &:hover {
+          box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+          background: #2563EB;
+        }
+      }
+
+      &.task-type-snap {
+        background: #10B981;
+        color: #ffffff;
+        border: 1px solid #059669;
+        border-top: none;
+        border-right: none;
+
+        &:hover {
+          box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+          background: #059669;
+        }
+      }
+    }
+
     .alert-info {
       flex-direction: column;
-      max-width: calc(100% - 128px);
+      max-width: calc(100% - 108px);
       padding-left: 16px;
+      padding-right: 4px;
 
       .title-wrapper {
         display: flex;
         align-items: center;
-        gap: 8px;
         height: 40px;
         margin-bottom: 2px;
+        padding-right: 52px;
 
-      .title {
+        .title {
           flex: 1;
-        font-size: 16px;
-        font-weight: 600;
-        color: #050708;
-        line-height: 20px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-          min-width: 0; // 允许flex子元素收缩
-        }
-        
-        .task-type-tag {
-          flex-shrink: 0;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 3px 10px;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: 500;
-          line-height: 1.2;
+          font-size: 16px;
+          font-weight: 600;
+          color: #050708;
+          line-height: 20px;
+          overflow: hidden;
+          text-overflow: ellipsis;
           white-space: nowrap;
-          transition: all 0.3s ease;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          
-          &.task-type-realtime {
-            background: #3B82F6;
-            color: #ffffff;
-            border: 1px solid #2563EB;
-            
-            &:hover {
-              transform: translateY(-1px);
-              box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
-              background: #2563EB;
-            }
-          }
-          
-          &.task-type-snap {
-            background: #10B981;
-            color: #ffffff;
-            border: 1px solid #059669;
-            
-            &:hover {
-              transform: translateY(-1px);
-              box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
-              background: #059669;
-            }
-          }
+          min-width: 0;
         }
       }
 
@@ -768,16 +775,16 @@ function thumbUrl(imageUrl: string | null | undefined): string {
 
       img {
         cursor: pointer;
-        width: 120px;
-        height: 90px;
+        width: 80px;
+        height: 60px;
         object-fit: cover;
-        border-radius: 8px;
+        border-radius: 6px;
         transition: all 0.3s ease;
       }
 
       .no-image {
-        width: 120px;
-        height: 90px;
+        width: 80px;
+        height: 60px;
         display: flex;
         flex-direction: column;
         align-items: center;

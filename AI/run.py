@@ -350,7 +350,7 @@ def create_app():
 
     # 注册蓝图（延迟导入，避免在环境变量加载前就导入）
     try:
-        from app.blueprints import export, inference, model, train, train_task, llm, ocr, speech, deploy, auto_label, plate, minio_proxy, sam
+        from app.blueprints import export, inference, model, train, train_task, llm, llm_deploy, ocr, speech, deploy, auto_label, plate, minio_proxy, sam
         
         app.register_blueprint(minio_proxy.minio_proxy_bp)
         app.register_blueprint(export.export_bp, url_prefix='/model/export')
@@ -359,6 +359,7 @@ def create_app():
         app.register_blueprint(train.train_bp, url_prefix='/model/train_task')
         app.register_blueprint(train_task.train_task_bp, url_prefix='/model/train_task')
         app.register_blueprint(llm.llm_bp, url_prefix='/model/llm')
+        app.register_blueprint(llm_deploy.llm_deploy_bp, url_prefix='/model/llm_deploy')
         app.register_blueprint(ocr.ocr_bp, url_prefix='/model/ocr')
         app.register_blueprint(speech.speech_bp, url_prefix='/model/speech')
         app.register_blueprint(deploy.deploy_service_bp, url_prefix='/model/deploy_service')
@@ -386,6 +387,29 @@ def create_app():
                 print(f'✅ 已将 {recovered} 个因服务重启中断的训练任务标记为失败')
         except Exception as e:
             print(f'⚠️  恢复中断训练任务失败: {str(e)}')
+
+        # mini 形态：将 MinIO 磁盘历史数据同步到 flat 本地存储（模型封面/权重等）
+        try:
+            from app.utils.service_urls import is_mini_deploy_profile
+            if is_mini_deploy_profile():
+                from app.services.local_storage_service import (
+                    get_minio_seed_data_root,
+                    migrate_seed_data_to_local_storage,
+                )
+                seed_root = get_minio_seed_data_root()
+                if seed_root:
+                    copied, skipped = migrate_seed_data_to_local_storage(
+                        buckets=['models'],
+                        skip_existing=True,
+                    )
+                    if copied:
+                        print(f'✅ mini 形态：已从种子目录同步 {copied} 个 models 对象到本地存储')
+                    elif skipped:
+                        print(f'✅ mini 形态：models 本地存储已就绪（{skipped} 个对象）')
+                else:
+                    print('ℹ️  mini 形态：未找到 MinIO 种子数据目录，跳过历史对象同步')
+        except Exception as e:
+            print(f'⚠️  mini MinIO 历史数据同步失败: {str(e)}')
 
         # 启动自动标注队列调度器
         try:

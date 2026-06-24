@@ -3,8 +3,9 @@ GPU 探测与训练设备解析（与 VIDEO 算法任务多卡逻辑对齐）。
 """
 from __future__ import annotations
 
+import gc
 import os
-from typing import Any, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 YoloDevice = Union[str, int, List[int]]
 
@@ -172,3 +173,41 @@ def check_gpu_status() -> dict:
             status[f'device_{i}_capability'] = torch.cuda.get_device_capability(i)
 
     return status
+
+
+def release_cuda_memory(*, synchronize: bool = True, log_fn: Optional[Callable[[str], None]] = None) -> None:
+    """释放 PyTorch CUDA 缓存（训练异常或结束后调用，避免显存长期占用）。"""
+    gc.collect()
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return
+        if synchronize:
+            try:
+                torch.cuda.synchronize()
+            except Exception:
+                pass
+        torch.cuda.empty_cache()
+        ipc_collect = getattr(torch.cuda, 'ipc_collect', None)
+        if callable(ipc_collect):
+            ipc_collect()
+    except Exception as exc:
+        if log_fn:
+            log_fn(f'CUDA 显存释放失败: {exc}')
+
+
+def resolve_train_dataloader_workers(use_gpu: bool) -> int:
+    """
+    解析 YOLO 训练 DataLoader workers。
+    Windows + GPU 时默认降低 workers，减轻 pin_memory 线程导致的显存峰值/OOM。
+    可通过环境变量 TRAIN_DATALOADER_WORKERS 覆盖。
+    """
+    raw = os.environ.get('TRAIN_DATALOADER_WORKERS', '').strip()
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            pass
+    if use_gpu and os.name == 'nt':
+        return 2
+    return 4 if use_gpu else 8

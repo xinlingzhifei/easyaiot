@@ -29,7 +29,7 @@ def run():
     from app.services.media_kafka_service import publish_snap_dlq
     from run import create_app
 
-    app = create_app()
+    app = create_app(start_background_tasks=False)
     consumer = KafkaConsumer(
         TOPIC,
         bootstrap_servers=BOOTSTRAP.split(','),

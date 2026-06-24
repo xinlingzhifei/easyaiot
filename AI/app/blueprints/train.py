@@ -18,10 +18,13 @@ from ultralytics import YOLO
 
 from app.blueprints.train_task import build_train_task_name, resolve_task_base_name
 from app.services.minio_service import ModelService
+from app.utils.train_dataset_name import resolve_dataset_display_name, save_upload_meta
 from app.utils.gpu_utils import (
     check_gpu_status,
     format_device_for_log,
     normalize_request_gpu_ids,
+    release_cuda_memory,
+    resolve_train_dataloader_workers,
     resolve_yolo_train_device,
 )
 from db_models import db, TrainTask
@@ -40,11 +43,34 @@ ACTIVE_TRAIN_STATUSES = ('preparing', 'train', 'Train', 'running', 'stopping')
 
 
 def _is_stop_requested(task_id, train_task=None) -> bool:
-    if train_status.get(task_id, {}).get('stop_requested'):
+    """仅读内存态 stop 标志，避免后台线程访问已 detach 的 ORM 实例。"""
+    status_entry = train_status.get(task_id) or {}
+    if status_entry.get('stop_requested'):
         return True
-    if train_task is not None and (train_task.status or '').lower() == 'stopping':
+    if (status_entry.get('status') or '').lower() == 'stopping':
         return True
     return False
+
+
+def _release_train_model(yolo_model, log_fn=None) -> None:
+    """断开 YOLO/trainer 引用并释放 CUDA 显存。"""
+    if yolo_model is None:
+        release_cuda_memory(log_fn=log_fn)
+        return
+    try:
+        trainer = getattr(yolo_model, 'trainer', None)
+        if trainer is not None:
+            for attr in ('model', 'optimizer', 'ema', 'scaler', 'validator'):
+                if hasattr(trainer, attr):
+                    setattr(trainer, attr, None)
+            yolo_model.trainer = None
+    except Exception:
+        pass
+    try:
+        del yolo_model
+    except Exception:
+        pass
+    release_cuda_memory(log_fn=log_fn)
 
 
 def _apply_train_schedule_fields(train_task: TrainTask, data: dict) -> None:
@@ -608,6 +634,7 @@ def api_upload_train_dataset():
     unique_name = f'{uuid.uuid4().hex}.zip'
     local_path = os.path.join(upload_dir, unique_name)
     file.save(local_path)
+    save_upload_meta(local_path, file.filename)
 
     return jsonify({
         'success': True,
@@ -645,6 +672,7 @@ def api_start_train():
         elif dataset_source == 'cloud' and dataset_zip_path and not _is_cloud_dataset_path(dataset_zip_path):
             dataset_source = 'local'
         dataset_name = (data.get('datasetName') or data.get('dataset_name') or '').strip() or None
+        dataset_name = resolve_dataset_display_name(dataset_zip_path, dataset_name)
         dataset_version = (data.get('datasetVersion') or data.get('dataset_version') or '').strip() or None
         use_gpu = data.get('use_gpu', True)
         request_gpu_ids = normalize_request_gpu_ids(data.get('gpu_ids'))
@@ -1096,6 +1124,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
     model_dir_for_cleanup = None
     dataset_path_for_cleanup = dataset_zip_path
     dataset_cleaned = False
+    yolo_model = None
 
     try:
         from run import create_app
@@ -1268,7 +1297,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     db.session.refresh(train_task)
                 except Exception:
                     pass
-                if _is_stop_requested(task_id, train_task):
+                if _is_stop_requested(task_id):
                     raise RuntimeError('训练已被用户停止')
                 total_epochs_count = max(1, int(getattr(trainer, 'epochs', epochs)))
                 now_epoch = int(getattr(trainer, 'epoch', 0)) + 1
@@ -1296,7 +1325,12 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     except Exception as commit_err:
                         print(f'更新训练进度失败: {commit_err}')
 
+            def on_val_start(_trainer):
+                # 验证阶段 DataLoader pin_memory 容易触发显存峰值，先同步并释放训练残留缓存
+                release_cuda_memory(synchronize=True)
+
             yolo_model.add_callback('on_train_epoch_end', on_train_epoch_end)
+            yolo_model.add_callback('on_val_start', on_val_start)
 
             # 训练模型
             update_log_local(
@@ -1336,6 +1370,12 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 update_log_local(f"单卡 GPU 训练: GPU{device} ({gpu_name})")
 
             # 训练模型
+            train_workers = resolve_train_dataloader_workers(use_gpu)
+            use_amp = bool(use_gpu and device != 'cpu')
+            update_log_local(
+                f'DataLoader workers={train_workers}，AMP={use_amp} '
+                f'（workers 可通过 TRAIN_DATALOADER_WORKERS 覆盖）'
+            )
             yolo_model.train(
                 data=data_yaml_path,
                 epochs=epochs,
@@ -1347,6 +1387,9 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 device=device,
                 save_period=5,
                 resume=resume_train,
+                workers=train_workers,
+                cache=False,
+                amp=use_amp,
             )
 
             train_output_dir = _resolve_train_results_dir(model_dir)
@@ -1509,7 +1552,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
         from run import create_app
         user_stopped = (
             '训练已被用户停止' in str(e)
-            or _is_stop_requested(task_id, train_task)
+            or _is_stop_requested(task_id)
         )
         application = create_app()
         with application.app_context():
@@ -1560,18 +1603,24 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     + ('' if user_stopped else traceback.format_exc()),
                 })
     finally:
-        if task_id in train_processes:
-            del train_processes[task_id]
+        yolo_model_ref = train_processes.pop(task_id, None)
+        if yolo_model_ref is not None:
+            yolo_model = yolo_model_ref
+        try:
+            _release_train_model(
+                yolo_model,
+                log_fn=lambda msg: update_log(msg, task_id),
+            )
+        except Exception:
+            release_cuda_memory()
         # 异常时清理已解压的数据集；停止状态保留数据集供断点续训
         if not dataset_cleaned and model_dir_for_cleanup:
             terminal = train_status.get(task_id, {}).get('status')
             if terminal == 'error':
                 ds_path = dataset_path_for_cleanup
-                if train_task and train_task.dataset_path:
-                    ds_path = train_task.dataset_path
 
                 def _log_cleanup(msg):
-                    update_log(msg, task_id, train_task=train_task)
+                    update_log(msg, task_id)
 
                 try:
                     _cleanup_train_dataset_artifacts(

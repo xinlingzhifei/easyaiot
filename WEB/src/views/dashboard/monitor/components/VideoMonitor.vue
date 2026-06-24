@@ -52,12 +52,22 @@
       <!-- 根据当前布局渲染视频窗口 -->
       <div
         v-for="(video, index) in displayVideos"
-        :key="video.id || index"
-        :class="['video-window', getVideoClass(index)]"
+        :key="`slot-${index}`"
+        :class="[
+          'video-window',
+          getVideoClass(index),
+          {
+            'drag-over': dragOverIndex === index,
+            'is-dragging': dragSourceIndex === index,
+          },
+        ]"
         :data-testid="`monitor-video-window-${index}`"
         :style="getVideoStyle(index)"
         @click="handleVideoClick(index)"
-        @contextmenu.prevent="handleVideoRightClick(index, $event)"
+        @contextmenu.prevent="removeVideoAtIndex(index)"
+        @dragover.prevent="handleDragOver(index)"
+        @dragleave="handleDragLeave(index)"
+        @drop.prevent="handleDrop(index)"
       >
         <div class="video-container">
           <div v-if="!video.url" class="video-placeholder">
@@ -66,6 +76,7 @@
           </div>
           <Jessibuca
             v-else
+            :key="`player-${index}-${video.deviceId || video.url}`"
             :playUrl="video.url"
             :hasAudio="false"
             :playerEngine="video.playerEngine || ''"
@@ -73,7 +84,25 @@
             :ref="el => setVideoRef(el, index)"
             class="video-player"
           />
-          <div class="video-label" :title="displayVideoName(video, index)">{{ displayVideoName(video, index) }}</div>
+          <div
+            class="drag-zone"
+            draggable="true"
+            title="拖拽到目标通道交换位置"
+            @dragstart="handleDragStart(index, $event)"
+            @dragend="handleDragEnd"
+          />
+          <button
+            v-if="hasVideoContent(video)"
+            type="button"
+            class="video-close-btn"
+            title="移除通道"
+            @click.stop="removeVideoAtIndex(index)"
+          >
+            <Icon icon="ant-design:close-outlined" :size="14" />
+          </button>
+          <div class="video-label" :title="displayVideoName(video, index)">
+            {{ displayVideoName(video, index) }}
+          </div>
           <div v-if="index === activeVideoIndex" class="video-active-indicator"></div>
         </div>
       </div>
@@ -143,14 +172,14 @@ import { ref, computed, watch, onMounted, onUnmounted, onActivated, nextTick } f
 import { Checkbox as ACheckbox } from 'ant-design-vue'
 import { Icon } from '@/components/Icon'
 import { queryAlarmList } from '@/api/device/calculate'
-import { resolveAlertRecordVideoUrl } from '@/utils/alertRecord'
+import { playAlertRecordInModal } from '@/utils/alertRecordPlayback'
 import { useMessage } from '@/hooks/web/useMessage'
 import Jessibuca from '@/components/Player/module/jessibuca.vue'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
 import LayoutPresetPanel from './LayoutPresetPanel.vue'
 import { useModal } from '@/components/Modal'
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
-import { formatAlertListTitle } from '@/views/alert/alertDisplay'
+import { formatAlertListTitle, isSnapAlertTask } from '@/views/alert/alertDisplay'
 import { formatCameraDeviceLabel, formatCameraShortName, isGb28181Device } from '@/views/camera/utils/deviceLabel'
 import {
   AI_PLAY_FALLBACK_MS,
@@ -201,10 +230,12 @@ const emit = defineEmits<{
 const { createMessage, createConfirm } = useMessage()
 
 // 播放器弹窗
-const [registerPlayerModal, { openModal: openPlayerModal }] = useModal()
+const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal }] = useModal()
 
 const currentTime = ref('')
 const activeVideoIndex = ref(0)
+const dragSourceIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
 const currentLayout = ref('1')
 /** 勾选后点播 AI 流（检测框由算法任务烧录在此路流上） */
 const AI_TOGGLE_STORAGE_KEY = 'yfeieye.dashboard.monitor.enableAi'
@@ -939,42 +970,127 @@ const getVideoStyle = (index: number) => {
 const handleVideoClick = (index: number) => {
   activeVideoIndex.value = index
   persistDashboardVideoState()
-  // 可以在这里添加全屏或其他操作
 }
 
-// 处理视频右键点击
-const handleVideoRightClick = (index: number, event: MouseEvent) => {
-  // 移除该位置的视频流
-  if (internalVideoList.value[index]) {
-    // 先清理视频元素
-    if (videoRefs.value[index]) {
-      const jessibucaInstance = videoRefs.value[index]
-      try {
-        // 检查实例是否存在且有效
-        if (jessibucaInstance && typeof jessibucaInstance.destroy === 'function') {
-          // 检查 jessibuca 实例是否存在
-          if (jessibucaInstance.jessibuca) {
-            jessibucaInstance.destroy()
-          }
-        }
-      } catch (error) {
-        console.warn('销毁播放器实例时出错:', error)
-        // 即使销毁失败，也继续清理
-      }
-      // 清空引用
-      videoRefs.value[index] = null
-    }
-    
-    // 更新视频列表
-    internalVideoList.value[index] = {
-      id: `placeholder-${index}`,
-      url: '',
-      name: `视频${index + 1}`
-    }
-    persistDashboardVideoState()
-    
-    createMessage.success('已移除视频流')
+function hasVideoContent(video: { url?: string } | null | undefined) {
+  return !!(video?.url && video.url.trim())
+}
+
+function createPlaceholderSlot(index: number) {
+  return {
+    id: `placeholder-${index}`,
+    url: '',
+    name: `视频${index + 1}`,
   }
+}
+
+function destroyPlayerAtIndex(index: number) {
+  clearAiFallbackTimer(index)
+  const jessibucaInstance = videoRefs.value[index]
+  if (!jessibucaInstance) return
+  try {
+    if (typeof jessibucaInstance.destroy === 'function' && jessibucaInstance.jessibuca) {
+      jessibucaInstance.destroy()
+    }
+  } catch (error) {
+    console.warn('销毁播放器实例时出错:', error)
+  }
+  videoRefs.value[index] = null
+}
+
+function removeVideoAtIndex(index: number) {
+  if (!hasVideoContent(internalVideoList.value[index])) return
+
+  destroyPlayerAtIndex(index)
+  internalVideoList.value[index] = createPlaceholderSlot(index)
+  persistDashboardVideoState()
+  createMessage.success('已移除视频流')
+}
+
+function handleDragStart(index: number, event: DragEvent) {
+  dragSourceIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function handleDragEnd() {
+  dragSourceIndex.value = null
+  dragOverIndex.value = null
+}
+
+function handleDragOver(index: number) {
+  if (dragSourceIndex.value === null || dragSourceIndex.value === index) return
+  dragOverIndex.value = index
+}
+
+function handleDragLeave(index: number) {
+  if (dragOverIndex.value === index) {
+    dragOverIndex.value = null
+  }
+}
+
+async function replayVideoAtIndex(index: number, retryCount = 0) {
+  const slot = internalVideoList.value[index]
+  if (!hasVideoContent(slot)) return
+
+  const jessibucaInstance = videoRefs.value[index]
+  if (jessibucaInstance?.play) {
+    try {
+      jessibucaInstance.play()
+    } catch (error) {
+      console.error('播放失败:', error)
+      createMessage.error('播放失败，请重试')
+    }
+    return
+  }
+  if (retryCount < 15) {
+    setTimeout(() => replayVideoAtIndex(index, retryCount + 1), 150)
+  }
+}
+
+async function swapVideoChannels(fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex) return
+
+  const fromSlot = { ...internalVideoList.value[fromIndex] }
+  const toSlot = { ...internalVideoList.value[toIndex] }
+
+  destroyPlayerAtIndex(fromIndex)
+  destroyPlayerAtIndex(toIndex)
+
+  internalVideoList.value[fromIndex] = hasVideoContent(toSlot)
+    ? { ...toSlot, id: `video-${toSlot.deviceId || 'slot'}-${fromIndex}` }
+    : createPlaceholderSlot(fromIndex)
+  internalVideoList.value[toIndex] = hasVideoContent(fromSlot)
+    ? { ...fromSlot, id: `video-${fromSlot.deviceId || 'slot'}-${toIndex}` }
+    : createPlaceholderSlot(toIndex)
+
+  if (activeVideoIndex.value === fromIndex) {
+    activeVideoIndex.value = toIndex
+  } else if (activeVideoIndex.value === toIndex) {
+    activeVideoIndex.value = fromIndex
+  }
+
+  await nextTick()
+  await Promise.all([
+    replayVideoAtIndex(fromIndex),
+    replayVideoAtIndex(toIndex),
+  ])
+
+  persistDashboardVideoState()
+  const moved = hasVideoContent(fromSlot) || hasVideoContent(toSlot)
+  if (moved) {
+    createMessage.success('已调整通道位置')
+  }
+}
+
+async function handleDrop(targetIndex: number) {
+  const sourceIndex = dragSourceIndex.value
+  dragSourceIndex.value = null
+  dragOverIndex.value = null
+  if (sourceIndex === null || sourceIndex === targetIndex) return
+  await swapVideoChannels(sourceIndex, targetIndex)
 }
 
 // 查找空屏幕
@@ -1165,7 +1281,7 @@ const playDeviceStream = async (device: any) => {
 
   const targetIndex = resolveTargetScreenIndex()
   if (targetIndex === null) {
-    createMessage.warning('当前没有空屏幕，请右键点击占用屏幕移除后再试')
+    createMessage.warning('当前没有空屏幕，请先移除占用通道后再试')
     return
   }
 
@@ -1244,11 +1360,6 @@ const playDeviceStream = async (device: any) => {
     preferAi,
   })
 }
-
-// 暴露方法给父组件
-defineExpose({
-  playDeviceStream,
-})
 
 // 更新时间
 const updateTime = () => {
@@ -1361,7 +1472,8 @@ const loadAlertRecords = async () => {
         return {
           ...item,
           image: imageUrl,
-          level: level
+          level: level,
+          time: item.time || item.alert_time || item.created_at || '',
         }
       })
     }
@@ -1385,24 +1497,28 @@ const formatTime = (timeStr: string) => {
 }
 
 // 处理录像点击
-const handleRecordClick = async (record: any) => {
+const playAlertRecord = async (record: any) => {
+  if (!openPlayerModal || typeof openPlayerModal !== 'function') {
+    createMessage.error('播放器未初始化，请刷新页面重试')
+    return
+  }
+
+  if (isSnapAlertTask(record)) {
+    createMessage.warn('抓拍任务无告警录像')
+    return
+  }
+
   if (!record.device_id || !record.time) {
     createMessage.warn('缺少必要信息：设备ID或告警时间')
     return
   }
 
   try {
-    const videoUrl = await resolveAlertRecordVideoUrl({
-      id: record.id,
-      device_id: record.device_id,
-      time: record.time,
-      record_path: record.record_path,
-    })
-    if (videoUrl) {
-      openPlayerModal(true, {
-        id: record.device_id,
-        http_stream: videoUrl,
-      })
+    const ok = await playAlertRecordInModal(
+      { openModal: openPlayerModal, closeModal: closePlayerModal },
+      record,
+    )
+    if (ok) {
       lastVideoErrorTime = 0
       lastVideoErrorMsg = ''
     } else {
@@ -1414,6 +1530,14 @@ const handleRecordClick = async (record: any) => {
     showVideoErrorOnce(errorData?.message || error?.message || '查询录像失败，请稍后重试')
   }
 }
+
+const handleRecordClick = playAlertRecord
+
+// 暴露方法给父组件
+defineExpose({
+  playDeviceStream,
+  playAlertRecord,
+})
 
 let timeTimer: any = null
 let recordTimer: any = null
@@ -1861,6 +1985,17 @@ watch(() => alertRecordList.value, () => {
     z-index: 5;
   }
 
+  &.drag-over {
+    border-color: #52c41a;
+    box-shadow: 0 0 12px rgba(82, 196, 26, 0.55);
+    z-index: 12;
+  }
+
+  &.is-dragging {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
   .video-container {
     width: 100%;
     height: 100%;
@@ -1901,26 +2036,70 @@ watch(() => alertRecordList.value, () => {
       height: 100%;
     }
 
+    .drag-zone {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 72px;
+      height: 56px;
+      max-width: 32%;
+      max-height: 28%;
+      z-index: 1;
+      cursor: grab;
+      border-radius: 4px;
+
+      &:active {
+        cursor: grabbing;
+      }
+    }
+
     .video-label {
       position: absolute;
-      bottom: 0;
+      top: 0;
       left: 0;
-      right: 0;
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+      right: 32px;
       color: #ffffff;
       font-size: 12px;
       padding: 4px 8px;
       text-align: left;
-      pointer-events: none;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .video-close-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      border-radius: 2px;
+      color: #fff;
+      background: rgba(255, 77, 79, 0.55);
+      cursor: pointer;
+      opacity: 0.75;
+      transition: opacity 0.2s, background 0.2s;
+
+      &:hover {
+        opacity: 1;
+        background: rgba(255, 77, 79, 0.85);
+      }
     }
 
     .video-active-indicator {
       position: absolute;
       top: 4px;
-      right: 4px;
+      left: 4px;
       width: 8px;
       height: 8px;
       background: #3486da;
@@ -1939,6 +2118,8 @@ watch(() => alertRecordList.value, () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  z-index: 2;
 }
 
 .alert-record-header {
@@ -2173,6 +2354,7 @@ watch(() => alertRecordList.value, () => {
   bottom: 0;
   width: 100%;
   left: 0;
+  pointer-events: none;
 
   &:before, &:after {
     position: absolute;

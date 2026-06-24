@@ -24,6 +24,48 @@ ALARM_SUPPRESS_MAX = 86400
 _USERLESS_NOTIFY_METHODS = frozenset({'http', 'webhook'})
 
 
+def _full_defense_schedule_json() -> str:
+    return json.dumps([[1] * 24 for _ in range(7)])
+
+
+def _parse_defense_schedule_matrix(defense_schedule) -> Optional[list]:
+    if not defense_schedule:
+        return None
+    try:
+        matrix = json.loads(defense_schedule) if isinstance(defense_schedule, str) else defense_schedule
+        if isinstance(matrix, list) and len(matrix) == 7:
+            return matrix
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def _is_defense_schedule_empty(schedule_matrix: list) -> bool:
+    return all(int(h or 0) != 1 for day in schedule_matrix for h in (day or []))
+
+
+def _normalize_defense_for_alert_event(
+        defense_mode: Optional[str],
+        defense_schedule: Optional[str],
+        alert_event_enabled: bool,
+) -> tuple:
+    """
+    启用告警事件时，若布防时段全为 0，iot-sink 会丢弃全部告警，自动升级为全防。
+    """
+    mode = (defense_mode or 'full').strip() or 'full'
+    if not alert_event_enabled:
+        return mode, defense_schedule
+
+    if mode == 'full':
+        return 'full', defense_schedule or _full_defense_schedule_json()
+
+    schedule_matrix = _parse_defense_schedule_matrix(defense_schedule)
+    if schedule_matrix and _is_defense_schedule_empty(schedule_matrix):
+        logger.info('启用告警事件且布防时段为空，自动切换为全防模式')
+        return 'full', _full_defense_schedule_json()
+    return mode, defense_schedule
+
+
 def _serialize_matching_business_tags(tags) -> Optional[str]:
     from app.services.library_matching_service import parse_business_tags
     parsed = parse_business_tags(tags)
@@ -434,7 +476,9 @@ def create_algorithm_task(task_name: str,
                          patrol_pool_size: int = 4,
                          focus_device_id: Optional[str] = None,
                          sam_supplement_enabled: bool = False,
-                         sam_supplement_config=None) -> AlgorithmTask:
+                         sam_supplement_config=None,
+                         post_process_enabled: bool = False,
+                         post_process_replicas: int = 1) -> AlgorithmTask:
     """创建算法任务"""
     try:
         # 验证任务类型
@@ -565,7 +609,7 @@ def create_algorithm_task(task_name: str,
             if defense_mode not in ['full', 'half', 'day', 'night']:
                 raise ValueError(f"无效的布防模式: {defense_mode}，必须是 'full', 'half', 'day' 或 'night'")
         else:
-            defense_mode = 'half'  # 默认半防模式
+            defense_mode = 'full'  # 默认全防，避免半防空时段导致告警全部被 iot-sink 丢弃
         
         # 如果未提供defense_schedule，根据模式生成默认值
         if not defense_schedule:
@@ -585,7 +629,10 @@ def create_algorithm_task(task_name: str,
                 # 半防模式：全部清空
                 schedule = [[0] * 24 for _ in range(7)]
                 defense_schedule = json.dumps(schedule)
-        
+
+        defense_mode, defense_schedule = _normalize_defense_for_alert_event(
+            defense_mode, defense_schedule, alert_event_enabled
+        )
         interval_fields = _normalize_alert_interval_fields(
             alert_event_suppress_time=alert_event_suppress_time,
             alarm_suppress_time=alarm_suppress_time,
@@ -692,6 +739,8 @@ def create_algorithm_task(task_name: str,
             target_node_id=target_node_id,
             sam_supplement_enabled=bool(sam_supplement_enabled),
             sam_supplement_config=_serialize_sam_supplement_config(sam_supplement_config),
+            post_process_enabled=bool(post_process_enabled),
+            post_process_replicas=max(1, int(post_process_replicas or 1)),
         )
         
         db.session.add(task)
@@ -864,6 +913,7 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             'defense_mode', 'defense_schedule',
             'schedule_policy', 'prefer_gpu', 'target_node_id',
             'sam_supplement_enabled', 'sam_supplement_config',
+            'post_process_enabled', 'post_process_script', 'post_process_replicas',
         ]
         
         if 'sam_supplement_config' in kwargs:
@@ -979,6 +1029,15 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             else:
                 logger.warning(f"⚠️  告警通知配置解析后不是字典类型（更新）: {type(config_dict)}")
                 kwargs['alert_notification_config'] = None
+
+        alert_event_on = kwargs.get('alert_event_enabled', task.alert_event_enabled)
+        merged_defense_mode = kwargs.get('defense_mode', task.defense_mode)
+        merged_defense_schedule = kwargs.get('defense_schedule', task.defense_schedule)
+        merged_defense_mode, merged_defense_schedule = _normalize_defense_for_alert_event(
+            merged_defense_mode, merged_defense_schedule, bool(alert_event_on)
+        )
+        kwargs['defense_mode'] = merged_defense_mode
+        kwargs['defense_schedule'] = merged_defense_schedule
         
         for field in updatable_fields:
             if field in kwargs:
@@ -1195,20 +1254,37 @@ def stop_algorithm_task(task_id: int):
         # 进程清理（daemon.stop 的 SIGTERM 等待最长 10s + 孤儿进程 cleanup）耗时较长，
         # 若同步执行会阻塞 HTTP 请求超过前端 10s 超时，导致前端报超时但后端仍在停止。
         # 任务状态此处已提交（is_enabled=False / run_status=stopped），故清理可异步完成。
-        # 该线程只做进程管理，不访问数据库/Flask 上下文，无需 app context。
         import threading
+        from flask import current_app
 
-        def _teardown(tid: int):
+        from app.services.algorithm_task_launcher_service import (
+            _issue_stop_request,
+            _is_stop_request_current,
+            stop_all_task_services,
+        )
+
+        stop_request_id = _issue_stop_request(task_id)
+        app = current_app._get_current_object()
+
+        def _teardown(tid: int, request_id: int, flask_app):
             try:
-                from app.services.algorithm_task_launcher_service import stop_all_task_services
-                stop_all_task_services(tid)
+                with flask_app.app_context():
+                    latest = AlgorithmTask.query.get(tid)
+                    if latest and latest.is_enabled:
+                        logger.info(
+                            '任务 %s 已重新启用，跳过过期异步停止', tid
+                        )
+                        return
+                if not _is_stop_request_current(tid, request_id):
+                    logger.info('任务 %s 停止请求已过期，跳过', tid)
+                    return
+                stop_all_task_services(tid, stop_request_id=request_id)
             except Exception as e:
                 logger.warning(f"停止任务 {tid} 的服务时出错: {str(e)}", exc_info=True)
-                # 不抛出异常，允许任务停止但服务可能未停止
 
         threading.Thread(
             target=_teardown,
-            args=(task_id,),
+            args=(task_id, stop_request_id, app),
             daemon=True,
             name=f"stop-task-{task_id}",
         ).start()

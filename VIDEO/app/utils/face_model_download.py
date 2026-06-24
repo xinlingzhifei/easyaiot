@@ -1,6 +1,7 @@
 """人脸特征提取模型 face_rec.onnx 下载与状态查询"""
 import os
 import re
+import shutil
 import threading
 import urllib.error
 import urllib.request
@@ -42,20 +43,20 @@ def _onnx_partial_path() -> str:
     return f'{FACE_MATCH_MODEL_PATH}.downloading'
 
 
+def _ensure_writable_file_path(path: str) -> None:
+    """移除误建为目录的路径（Docker 单独挂载不存在的文件时会建成目录）。"""
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+
+
 def _prepare_model_target() -> None:
-    """确保模型目标为可写文件路径，修复 Docker 文件挂载误建目录的情况。"""
-    if os.path.isdir(FACE_MATCH_MODEL_PATH):
-        try:
-            os.rmdir(FACE_MATCH_MODEL_PATH)
-        except OSError as exc:
-            raise RuntimeError(
-                f'模型目标 {FACE_MATCH_MODEL_PATH} 是目录而非文件（多为 Docker 将 '
-                f'{os.path.basename(FACE_MATCH_MODEL_PATH)} 单独挂载为卷时宿主机文件不存在导致）。'
-                f'请在宿主机 VIDEO 目录执行: rm -rf {os.path.basename(FACE_MATCH_MODEL_PATH)}，'
-                '然后重新下载模型。'
-            ) from exc
+    """确保模型目标与临时路径均为可写文件路径。"""
     parent = os.path.dirname(FACE_MATCH_MODEL_PATH) or '.'
     os.makedirs(parent, exist_ok=True)
+    _ensure_writable_file_path(FACE_MATCH_MODEL_PATH)
+    _ensure_writable_file_path(_onnx_partial_path())
+    if os.path.isdir(_zip_partial_path()):
+        _ensure_writable_file_path(_zip_partial_path())
 
 
 def _get_zip_partial_bytes() -> int:
@@ -331,7 +332,9 @@ def _do_download() -> None:
         with _lock:
             _state['progress'] = max(int(_state['progress']), 85)
 
+        _ensure_writable_file_path(onnx_partial)
         _extract_onnx(zip_path, onnx_partial)
+        _ensure_writable_file_path(FACE_MATCH_MODEL_PATH)
         os.replace(onnx_partial, FACE_MATCH_MODEL_PATH)
         _cleanup_zip_partial()
 

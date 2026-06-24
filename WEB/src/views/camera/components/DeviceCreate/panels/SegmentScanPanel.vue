@@ -25,7 +25,7 @@
                 />
                 <Input.Password
                   v-model:value="cred.password"
-                  placeholder="密码"
+                  :placeholder="state.mode === 'nvr' ? '密码（必填）' : '密码'"
                   :disabled="state.scanning"
                   class="cred-pass"
                   allow-clear
@@ -130,6 +130,10 @@ import {
   type SegmentScanHistoryEntry,
 } from '@/views/camera/utils/segmentScanHistory';
 import {
+  formatNvrRegisterHint,
+  nvrRegisterRegisteredCount,
+} from '@/views/camera/utils/nvrRegisterMessage';
+import {
   computeSegmentScanWallSeconds,
   segmentScanTargetsFormRule,
   validateSegmentScanTargets,
@@ -226,6 +230,17 @@ watch(
     state.devices = [];
     resetCredentials();
     resetRegisterStatus();
+    updateSchema([
+      {
+        field: '_credentials',
+        label: state.mode === 'nvr' ? 'Web 登录凭证' : '登录凭证',
+        required: state.mode === 'nvr',
+        helpMessage:
+          state.mode === 'nvr'
+            ? '登记 NVR 及枚举通道须填写正确密码；按列表顺序依次尝试'
+            : undefined,
+      },
+    ]);
   },
   { immediate: true },
 );
@@ -270,6 +285,10 @@ function getValidCredentials(): CredentialPair[] {
   return credentials
     .map((c) => ({ username: (c.username || '').trim(), password: c.password || '' }))
     .filter((c) => c.username);
+}
+
+function hasNvrRegisterPassword(): boolean {
+  return getValidCredentials().some((c) => !!c.password);
 }
 
 function resetCredentials() {
@@ -358,6 +377,8 @@ function canRegisterRecord(record: SegmentScanDeviceRow): boolean {
 function warnCannotRegisterNvr(record: SegmentScanDeviceRow) {
   if (!hasFormCredentials()) {
     createMessage.warning('请至少填写一组登录凭证');
+  } else if (state.mode === 'nvr' && !hasNvrRegisterPassword()) {
+    createMessage.warning('登记 NVR 须填写 Web 登录密码');
   } else if (isAlreadyRegistered(record.ip)) {
     createMessage.warning('该 NVR 已登记');
   } else if (!record.is_nvr && !record.is_recognized && !record.vendor) {
@@ -431,6 +452,10 @@ async function handleScan() {
     createMessage.warning('请至少填写一组登录凭证');
     return;
   }
+  if (state.mode === 'nvr' && !hasNvrRegisterPassword()) {
+    createMessage.warning('NVR 模式请填写 Web 登录密码后再扫描/登记');
+    return;
+  }
   state.scanning = true;
   const scanPayload = {
     targets: String(values.targets || '').trim(),
@@ -471,6 +496,11 @@ async function registerOneNvr(record: SegmentScanDeviceRow, credentials: Credent
     return false;
   }
   const cred = resolveCredential(record.auth_username, credentials);
+  if (!cred.password) {
+    if (!silent) createMessage.warning('登记 NVR 须填写 Web 登录密码');
+    return false;
+  }
+  const nvrTimeout = Math.max(timeout, 15);
   state.registeringIp = record.ip;
   if (!state.batchRegistering) state.registering = true;
   try {
@@ -480,7 +510,7 @@ async function registerOneNvr(record: SegmentScanDeviceRow, credentials: Credent
       username: cred.username,
       password: cred.password,
       credentials,
-      timeout,
+      timeout: nvrTimeout,
       vendor: record.vendor,
       name: record.device_name,
       model: record.model,
@@ -488,11 +518,19 @@ async function registerOneNvr(record: SegmentScanDeviceRow, credentials: Credent
       rtsp_url: record.rtsp_url,
       scheme: record.port && [443, 8443].includes(record.port) ? 'https' : 'http',
     });
-    const stats = (res as { stats?: { registered?: number } })?.stats;
-    const n = stats?.registered ?? (res as NvrInfo)?.camera_count ?? 0;
-    state.registerStatusMap[record.ip] = 'success';
-    if (!silent) createMessage.success(`NVR ${record.ip} 已登记，已挂载 ${n} 路通道`);
-    return true;
+    const n = nvrRegisterRegisteredCount(res);
+    if (n > 0) {
+      state.registerStatusMap[record.ip] = 'success';
+      if (!silent) {
+        createMessage.success(`NVR ${record.ip} 已登记，已挂载 ${n} 路通道`);
+      }
+      return true;
+    }
+    state.registerStatusMap[record.ip] = 'failed';
+    if (!silent) {
+      createMessage.warning(`NVR ${record.ip} 登记失败：${formatNvrRegisterHint(res)}`);
+    }
+    return false;
   } catch (e: unknown) {
     state.registerStatusMap[record.ip] = 'failed';
     if (!silent) {

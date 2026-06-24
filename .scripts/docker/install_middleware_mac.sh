@@ -125,14 +125,13 @@ ensure_dirs() {
     "minio_data" "srs_data" "nodered_data"
   )
   for d in "${dirs[@]}"; do mkdir -p "${SCRIPT_DIR}/${d}"; done
-  # SRS 容器绑定宿主机 /data -> 容器 /data（见 docker-compose.yml）；若失败请 sudo mkdir -p /data/playbacks，并在 Docker Desktop 中将 /data 加入 File Sharing
-  # 只设 /data 与 playbacks 顶层 777，绝不递归整个 /data（避免扫描海量文件卡顿）
-  if mkdir -p /data/playbacks 2>/dev/null; then
-    chmod 777 /data /data/playbacks 2>/dev/null || true
-  elif command -v sudo &>/dev/null && sudo mkdir -p /data/playbacks 2>/dev/null; then
-    sudo chmod 777 /data /data/playbacks 2>/dev/null || true
+  # SRS 容器绑定宿主机数据目录 -> 容器 /data（见 docker-compose.yml）；若失败请手动创建
+  # Mac 上 / 默认只读，故使用 ~/easyaiot/data
+  local MAC_DATA_DIR="$HOME/easyaiot/data"
+  if mkdir -p "$MAC_DATA_DIR/playbacks" 2>/dev/null; then
+    chmod 777 "$MAC_DATA_DIR" "$MAC_DATA_DIR/playbacks" 2>/dev/null || true
   else
-    warn "无法创建 /data，请执行: sudo mkdir -p /data/playbacks && sudo chmod 777 /data /data/playbacks（Docker Desktop 需共享 /data）"
+    warn "无法创建数据目录 $MAC_DATA_DIR，请手动创建并赋予权限"
   fi
 }
 

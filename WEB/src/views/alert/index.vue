@@ -111,11 +111,12 @@ import DeviceLocationDrawer from '@/views/camera/components/DeviceLocationDrawer
 import { canSetDeviceLocation } from '@/views/camera/utils/deviceLocation';
 import { getDeviceInfo } from '@/api/device/camera';
 import { openDeviceInDialogPlayer } from '@/views/camera/utils/devicePlay';
-import { navigateToAlertRecord } from '@/views/camera/utils/alertRecordNavigate';
+import { playAlertRecordInModal } from '@/utils/alertRecordPlayback';
+import { isSnapAlertTask } from '@/views/alert/alertDisplay';
 
 const router = useRouter();
 const [registerImageModal, { openModal: openImageModal }] = useModal();
-const [registerVideoModal, { openModal: openVideoModal }] = useModal();
+const [registerVideoModal, { openModal: openVideoModal, closeModal: closeVideoModal }] = useModal();
 const [registerLocationDrawer, { openModal: openLocationModal }] = useModal();
 
 defineOptions({ name: 'Alarm' });
@@ -303,28 +304,35 @@ let lastVideoErrorTime = 0;
 let lastVideoErrorMsg = '';
 
 const handleViewVideo = async (record) => {
+  if (isSnapAlertTask(record)) {
+    createMessage.warn('抓拍任务无告警录像');
+    return;
+  }
   if (!record['device_id'] || !record['time']) {
     createMessage.warn('缺少必要信息：设备ID或告警时间');
     return;
   }
 
   try {
-    const ok = await navigateToAlertRecord(router, {
-      id: record['id'],
-      device_id: record['device_id'],
-      time: record['time'],
-      record_path: record['record_path'],
-    });
+    const ok = await playAlertRecordInModal(
+      { openModal: openVideoModal, closeModal: closeVideoModal },
+      {
+        id: record['id'],
+        device_id: record['device_id'],
+        time: record['time'],
+        record_path: record['record_path'],
+      },
+    );
     if (ok) {
       lastVideoErrorTime = 0;
       lastVideoErrorMsg = '';
-      return;
+    } else {
+      showVideoErrorOnce('暂未找到该时间段的录像文件，请稍后再试');
     }
-    showVideoErrorOnce('未找到该设备关联的录像空间，请确认设备已创建录像空间');
   } catch (error: any) {
-    console.error('跳转录像回放失败:', error);
+    console.error('查询录像失败:', error);
     const errorData = error?.response?.data || error?.data;
-    const errorMsg = errorData?.message || error?.message || '跳转录像回放失败，请稍后重试';
+    const errorMsg = errorData?.message || error?.message || '查询录像失败，请稍后重试';
     showVideoErrorOnce(errorMsg);
   }
 };
