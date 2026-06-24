@@ -14,6 +14,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionServ
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskRecheckRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskSubmitRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -74,6 +75,44 @@ class SupervisionTaskControllerTest {
                 "confirmed_violation",
                 "Handled according to SOP"
         ), applicationService.submitRequest());
+    }
+
+    @Test
+    void approveRecheckMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(post("/system/supervision/tasks/recheck/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": 2001
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(true));
+
+        assertEquals(new TaskRecheckRequest(2001L), applicationService.approveRecheckRequest());
+    }
+
+    @Test
+    void rejectRecheckMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(post("/system/supervision/tasks/recheck/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": 2001
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(true));
+
+        assertEquals(new TaskRecheckRequest(2001L), applicationService.rejectRecheckRequest());
     }
 
     @Test
@@ -181,6 +220,8 @@ class SupervisionTaskControllerTest {
 
         private TaskAcceptRequest request;
         private TaskSubmitRequest submitRequest;
+        private TaskRecheckRequest approveRecheckRequest;
+        private TaskRecheckRequest rejectRecheckRequest;
 
         private CapturingWorkflowApplicationService() {
             super(
@@ -214,12 +255,32 @@ class SupervisionTaskControllerTest {
             return new OperationResponse(true);
         }
 
+        @Override
+        public OperationResponse approveRecheck(TaskRecheckRequest request) {
+            this.approveRecheckRequest = request;
+            return new OperationResponse(true);
+        }
+
+        @Override
+        public OperationResponse rejectRecheck(TaskRecheckRequest request) {
+            this.rejectRecheckRequest = request;
+            return new OperationResponse(true);
+        }
+
         private TaskAcceptRequest request() {
             return request;
         }
 
         private TaskSubmitRequest submitRequest() {
             return submitRequest;
+        }
+
+        private TaskRecheckRequest approveRecheckRequest() {
+            return approveRecheckRequest;
+        }
+
+        private TaskRecheckRequest rejectRecheckRequest() {
+            return rejectRecheckRequest;
         }
 
     }

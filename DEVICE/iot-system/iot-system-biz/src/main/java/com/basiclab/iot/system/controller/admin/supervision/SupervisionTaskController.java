@@ -3,10 +3,12 @@ package com.basiclab.iot.system.controller.admin.supervision;
 import com.basiclab.iot.common.domain.CommonResult;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskAcceptReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskOperationRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskRecheckReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskSubmitReqVO;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskRecheckRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskSubmitRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -49,6 +51,24 @@ public class SupervisionTaskController {
                 reqVO.getTaskId(),
                 reqVO.getResultCategory(),
                 reqVO.getHandlingNote()
+        ));
+        return success(TaskOperationRespVO.from(response));
+    }
+
+    @PostMapping("/recheck/approve")
+    @Operation(summary = "Approve supervision task recheck")
+    public CommonResult<TaskOperationRespVO> approveRecheck(@Valid @RequestBody TaskRecheckReqVO reqVO) {
+        OperationResponse response = supervisionWorkflowApplicationService.approveRecheck(new TaskRecheckRequest(
+                reqVO.getTaskId()
+        ));
+        return success(TaskOperationRespVO.from(response));
+    }
+
+    @PostMapping("/recheck/reject")
+    @Operation(summary = "Reject supervision task recheck")
+    public CommonResult<TaskOperationRespVO> rejectRecheck(@Valid @RequestBody TaskRecheckReqVO reqVO) {
+        OperationResponse response = supervisionWorkflowApplicationService.rejectRecheck(new TaskRecheckRequest(
+                reqVO.getTaskId()
         ));
         return success(TaskOperationRespVO.from(response));
     }
