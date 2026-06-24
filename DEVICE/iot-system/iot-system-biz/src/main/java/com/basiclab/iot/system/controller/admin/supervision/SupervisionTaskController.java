@@ -3,9 +3,11 @@ package com.basiclab.iot.system.controller.admin.supervision;
 import com.basiclab.iot.common.domain.CommonResult;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskAcceptReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskOperationRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskSubmitReqVO;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskSubmitRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.validation.annotation.Validated;
@@ -36,6 +38,17 @@ public class SupervisionTaskController {
         OperationResponse response = supervisionWorkflowApplicationService.acceptTask(new TaskAcceptRequest(
                 reqVO.getTaskId(),
                 reqVO.getAcceptedUserId()
+        ));
+        return success(TaskOperationRespVO.from(response));
+    }
+
+    @PostMapping("/submit")
+    @Operation(summary = "Submit supervision task handling result")
+    public CommonResult<TaskOperationRespVO> submitTask(@Valid @RequestBody TaskSubmitReqVO reqVO) {
+        OperationResponse response = supervisionWorkflowApplicationService.submitTask(new TaskSubmitRequest(
+                reqVO.getTaskId(),
+                reqVO.getResultCategory(),
+                reqVO.getHandlingNote()
         ));
         return success(TaskOperationRespVO.from(response));
     }

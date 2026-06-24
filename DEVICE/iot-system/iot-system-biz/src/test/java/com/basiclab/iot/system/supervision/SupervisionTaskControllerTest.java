@@ -14,6 +14,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionServ
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskSubmitRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -48,6 +49,31 @@ class SupervisionTaskControllerTest {
                 .andExpect(jsonPath("$.data.success").value(true));
 
         assertEquals(new TaskAcceptRequest(2001L, 3001L), applicationService.request());
+    }
+
+    @Test
+    void submitTaskMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(post("/system/supervision/tasks/submit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": 2001,
+                                  "resultCategory": "confirmed_violation",
+                                  "handlingNote": "Handled according to SOP"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(true));
+
+        assertEquals(new TaskSubmitRequest(
+                2001L,
+                "confirmed_violation",
+                "Handled according to SOP"
+        ), applicationService.submitRequest());
     }
 
     @Test
@@ -101,6 +127,7 @@ class SupervisionTaskControllerTest {
     private static final class CapturingWorkflowApplicationService extends SupervisionWorkflowApplicationService {
 
         private TaskAcceptRequest request;
+        private TaskSubmitRequest submitRequest;
 
         private CapturingWorkflowApplicationService() {
             super(
@@ -128,8 +155,18 @@ class SupervisionTaskControllerTest {
             return new OperationResponse(true);
         }
 
+        @Override
+        public OperationResponse submitTask(TaskSubmitRequest request) {
+            this.submitRequest = request;
+            return new OperationResponse(true);
+        }
+
         private TaskAcceptRequest request() {
             return request;
+        }
+
+        private TaskSubmitRequest submitRequest() {
+            return submitRequest;
         }
 
     }
