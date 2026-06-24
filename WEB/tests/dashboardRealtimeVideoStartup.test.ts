@@ -16,32 +16,32 @@ const sharedPlayer = readFileSync(
 
 assert.match(
   videoMonitor,
-  /function readPersistedEnableAi\(\)[\s\S]*return false/,
-  'Dashboard live video should still default to the original stream when no persisted AI choice exists.',
-)
-
-assert.match(
-  videoMonitor,
-  /const AI_TOGGLE_STORAGE_KEY = 'yfeieye\.dashboard\.monitor\.enableAi'/,
-  'Dashboard AI toggle should use a stable storage key so route navigation can restore the user choice.',
-)
-
-assert.match(
-  videoMonitor,
   /const VIDEO_STATE_STORAGE_KEY = 'yfeieye\.dashboard\.monitor\.videoState'/,
   'Dashboard live video should keep a stable storage key for restoring visible streams after route navigation.',
 )
 
-assert.match(
+assert.doesNotMatch(
   videoMonitor,
-  /const enableAi = ref\(readPersistedEnableAi\(\)\)/,
-  'Dashboard AI toggle should initialize from the persisted session value when the user returns to the page.',
+  /AI_TOGGLE_STORAGE_KEY|readPersistedEnableAi|persistEnableAi|const enableAi/,
+  'Dashboard live video should no longer restore a hidden AI choice when the user returns to the page.',
 )
 
 assert.match(
   videoMonitor,
-  /window\.sessionStorage\.setItem\(AI_TOGGLE_STORAGE_KEY, String\(checked\)\)/,
-  'Dashboard AI toggle should persist user changes before route navigation destroys the component.',
+  /return pickDirectPlayUrls\(dev,\s*false\)/,
+  'Dashboard direct camera playback should always resolve the original stream after route navigation.',
+)
+
+assert.match(
+  videoMonitor,
+  /resolveGbChannelPlayUrls\([\s\S]*\{\s*enableAi:\s*false,/,
+  'Dashboard GB28181 playback should always resolve the raw WVP stream after route navigation.',
+)
+
+assert.match(
+  videoMonitor,
+  /async function playSavedSlot[\s\S]*const \{ url, playerEngine, videoCodec \} = await resolveGbChannelPlayUrls[\s\S]*playerEngine,[\s\S]*videoCodec,/,
+  'Restored GB28181 dashboard slots should keep player engine and codec metadata so H265/WVP streams render.',
 )
 
 assert.match(

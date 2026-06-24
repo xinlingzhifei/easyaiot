@@ -48,7 +48,8 @@ test('big-screen admin entry releases the overlay so normal navigation can be cl
   assert.match(topHeader, /@click="handleGoToAdmin"/)
   assert.match(topHeader, /adminEntryLabel/)
   assert.match(topHeader, /emit\('admin-entry'\)/)
-  assert.match(topHeader, /router\.push\('\/device'\)/)
+  assert.match(topHeader, /getAdminHomeRoute/)
+  assert.match(topHeader, /router\.push\(target\.query \? \{ path: target\.path, query: target\.query \} : target\.path\)/)
 })
 
 test('dashboard controls expose stable selectors and keep text rendering crisp', () => {
@@ -62,7 +63,7 @@ test('dashboard controls expose stable selectors and keep text rendering crisp',
   assert.match(sidebar, /data-testid="monitor-sidebar"/)
   assert.match(videoMonitor, /data-testid="monitor-split-toolbar"/)
   assert.match(videoMonitor, /:data-testid="`monitor-split-\$\{layout\.value\}`"/)
-  assert.match(videoMonitor, /data-testid="monitor-ai-toggle"/)
+  assert.doesNotMatch(videoMonitor, /data-testid="monitor-ai-toggle"/)
 
   assert.match(dashboard, /text-rendering:\s*geometricPrecision;/)
   assert.match(dashboard, /-webkit-font-smoothing:\s*antialiased;/)

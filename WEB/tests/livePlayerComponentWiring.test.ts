@@ -107,7 +107,7 @@ assert.match(
 )
 assert.match(
   dialogPlayer,
-  /<RtcPlayer[\s\S]*v-if="state\.playerEngine === 'webrtc'"/,
+  /<RtcPlayer[\s\S]*v-if="[^"]*state\.playerEngine === 'webrtc'"/,
   'DialogPlayer should render the WebRTC player when the selected source is rtcs/rtc.',
 )
 assert.match(
