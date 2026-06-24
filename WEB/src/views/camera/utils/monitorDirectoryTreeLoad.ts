@@ -16,9 +16,9 @@ import {
 import { fetchNvrListBrief } from './nvrDeviceGroup';
 import {
   isGb28181ChannelRecord,
-  resolveWvpSipDeviceId,
   wvpDeviceToTableRow,
 } from './gb28181DeviceGroup';
+import { filterValidWvpDevices, resolveWvpSipDeviceId } from './gb28181DeviceId';
 import { parseGb28181Source } from './deviceLabel';
 import {
   getCachedMonitorDirectoryTreeBundle,
@@ -204,7 +204,7 @@ export function buildDirectoryDevicesForTable(
     const parsed = parseGb28181Source(d.source);
     if (parsed?.deviceId) seenSip.add(parsed.deviceId);
   }
-  for (const wvp of wvpDevices) {
+  for (const wvp of filterValidWvpDevices(wvpDevices)) {
     const sipId = resolveWvpSipDeviceId(wvp);
     if (!sipId || seenSip.has(sipId)) continue;
     seenSip.add(sipId);

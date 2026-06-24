@@ -9,6 +9,7 @@ import {
   nvrToTableRow,
 } from './nvrDeviceGroup';
 import { formatGb28181DeviceDisplayName } from './gb28181DeviceLabel';
+import { filterValidWvpDevices, resolveWvpSipDeviceId } from './gb28181DeviceId';
 import type { Gb28181CardItem } from '@/views/camera/components/Gb28181DeviceCard/index.vue';
 
 /** 国标 SIP 设备（WVP 或本地聚合） */
@@ -41,12 +42,6 @@ export function filterDirectDevices(devices: DeviceInfo[]): DeviceInfo[] {
 
 /** WVP 国标设备 → 卡片数据（与 gb28181/VideoCardList 字段一致） */
 /** 从 WVP 设备记录解析 SIP 国标编号（兼容多种字段名） */
-export function resolveWvpSipDeviceId(wvp: Record<string, any>): string {
-  return String(
-    wvp.deviceIdentification ?? wvp.deviceId ?? wvp.id ?? wvp.gbId ?? '',
-  ).trim();
-}
-
 export function wvpDeviceToSummary(wvp: Record<string, any>): GbSipDeviceSummary {
   const sipDeviceId = resolveWvpSipDeviceId(wvp);
   return {
@@ -120,7 +115,7 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
     allDevices.filter((d) => !isGb28181ChannelRecord(d) && !isGb28181SipListRow(d)),
     nvrs,
   );
-  const gbRows = (gbRes?.data ?? []).map((wvp) => wvpDeviceToTableRow(wvp));
+  const gbRows = filterValidWvpDevices(gbRes?.data ?? []).map((wvp) => wvpDeviceToTableRow(wvp));
   const nvrRows = nvrs.map((n) => nvrToTableRow(n));
 
   return {
@@ -144,7 +139,7 @@ export function buildMergedCardRows(
 ): DeviceListDisplayItem[] {
   const gbItems: DeviceListDisplayItem[] = [];
   const seenSip = new Set<string>();
-  for (const wvp of wvpDevices || []) {
+  for (const wvp of filterValidWvpDevices(wvpDevices)) {
     const sipId = resolveWvpSipDeviceId(wvp);
     if (!sipId || seenSip.has(sipId)) continue;
     seenSip.add(sipId);

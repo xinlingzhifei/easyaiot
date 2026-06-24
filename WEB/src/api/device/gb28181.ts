@@ -1,5 +1,6 @@
 import {defHttp} from '@/utils/http/axios';
 import { normalizeWvpChannelItem } from '@/views/camera/utils/gb28181Channel';
+import { filterValidWvpDevices } from '@/views/camera/utils/gb28181DeviceId';
 import { isGb28181Enabled } from '@/utils/deployProfile';
 
 // GB28181 通过网关转发到 WVP：Path=/admin-api/gb28181/** -> RewritePath -> /api/${segment}
@@ -63,12 +64,18 @@ const normalizeDeviceList = (list: any[]) => (list || []).map((item) => ({
 /** 设备列表：统一返回 { data, list, total }，并补齐页面依赖字段 */
 const normalizeGbDeviceList = (res: any) => {
   const { data, total } = normalizePageResponse(res);
-  const list = normalizeDeviceList(data).map((item) => ({
+  const rawList = Array.isArray(data) ? data : [];
+  const validData = filterValidWvpDevices(rawList);
+  const removedCount = rawList.length - validData.length;
+  const normalizedTotal = Number(total) > rawList.length
+    ? Math.max(0, Number(total) - removedCount)
+    : validData.length;
+  const list = normalizeDeviceList(validData).map((item) => ({
     ...item,
     localIp: item.localIp ?? item.ip,
     updatedTime: item.updatedTime ?? item.updateTime,
   }));
-  return { data: list, list, total };
+  return { data: list, list, total: normalizedTotal, rawCount: rawList.length };
 };
 
 /** 通道列表：统一返回 { data, list, total }，并补齐页面依赖字段 */
@@ -141,7 +148,8 @@ export const queryAllVideoList = async (
     if (!batch.length) break;
     total = res.total ?? all.length + batch.length;
     all = all.concat(batch);
-    if (batch.length < pageSize || all.length >= total) break;
+    const rawCount = Number((res as any).rawCount ?? batch.length);
+    if (rawCount < pageSize || all.length >= total) break;
     page += 1;
   } while (page <= maxPages);
   return { data: all, total: all.length };
