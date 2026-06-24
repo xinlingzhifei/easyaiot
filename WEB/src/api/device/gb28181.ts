@@ -13,6 +13,7 @@ const PROXY_PREFIX = '/gb28181/proxy';
 const PLAYBACK_PREFIX = '/gb28181/playback';
 const GB_RECORD_PREFIX = '/gb28181/gb_record';
 const CLOUD_RECORD_PREFIX = '/gb28181/cloud/record';
+const GB28181_PLAY_REQUEST_TIMEOUT_MS = 60 * 1000;
 
 /**
  * 通用请求封装
@@ -20,7 +21,13 @@ const CLOUD_RECORD_PREFIX = '/gb28181/cloud/record';
  */
 const GB28181_DISABLED_PAGE_BODY = { data: { list: [], total: 0 } };
 
-const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url: string, params: any = {}, isTransformResponse = true) => {
+const commonApi = (
+  method: 'get' | 'post' | 'delete' | 'put',
+  url: string,
+  params: any = {},
+  isTransformResponse = true,
+  requestConfig: Record<string, any> = {},
+) => {
   if (!isGb28181Enabled()) {
     if (isTransformResponse) {
       return Promise.resolve(null);
@@ -34,6 +41,7 @@ const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url: string, param
       url,
       ...(isGet || isDelete ? { params } : { data: params }),
       ...(isGet && url.includes('/devices') ? { timeout: 60 * 1000 } : {}),
+      ...requestConfig,
     },
     {
       isTransformResponse,
@@ -348,7 +356,9 @@ export const play = (channelId: number) => {
  * @param channelId 通道国标编号
  */
 export const playByDeviceAndChannel = (deviceId: string, channelId: string) => {
-  return commonApi('get', `/gb28181/play/start/${deviceId}/${channelId}`, {}, false);
+  return commonApi('get', `/gb28181/play/start/${deviceId}/${channelId}`, {}, false, {
+    timeout: GB28181_PLAY_REQUEST_TIMEOUT_MS,
+  });
 };
 
 /**
