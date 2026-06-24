@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.supervision;
 
+import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionTaskController;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
@@ -20,7 +21,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Proxy;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -30,9 +33,7 @@ class SupervisionTaskControllerTest {
     @Test
     void acceptTaskMapsHttpRequestToApplicationFacade() throws Exception {
         CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
-        MockMvc mockMvc = MockMvcBuilders
-                .standaloneSetup(new SupervisionTaskController(applicationService))
-                .build();
+        MockMvc mockMvc = mockMvc(applicationService);
 
         mockMvc.perform(post("/system/supervision/tasks/accept")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -47,6 +48,54 @@ class SupervisionTaskControllerTest {
                 .andExpect(jsonPath("$.data.success").value(true));
 
         assertEquals(new TaskAcceptRequest(2001L, 3001L), applicationService.request());
+    }
+
+    @Test
+    void acceptTaskRejectsInvalidRequiredFieldsBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        assertInvalidAcceptFieldRejected(
+                mockMvc,
+                applicationService,
+                0,
+                3001,
+                "taskId must be positive"
+        );
+        assertInvalidAcceptFieldRejected(
+                mockMvc,
+                applicationService,
+                2001,
+                0,
+                "acceptedUserId must be positive"
+        );
+    }
+
+    private static void assertInvalidAcceptFieldRejected(MockMvc mockMvc,
+                                                         CapturingWorkflowApplicationService applicationService,
+                                                         long taskId,
+                                                         long acceptedUserId,
+                                                         String expectedMessage) throws Exception {
+        mockMvc.perform(post("/system/supervision/tasks/accept")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": %d,
+                                  "acceptedUserId": %d
+                                }
+                                """.formatted(taskId, acceptedUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
+
+        assertNull(applicationService.request());
+    }
+
+    private static MockMvc mockMvc(SupervisionWorkflowApplicationService applicationService) {
+        return MockMvcBuilders
+                .standaloneSetup(new SupervisionTaskController(applicationService))
+                .setControllerAdvice(new GlobalExceptionHandler("iot-system-biz"))
+                .build();
     }
 
     private static final class CapturingWorkflowApplicationService extends SupervisionWorkflowApplicationService {
