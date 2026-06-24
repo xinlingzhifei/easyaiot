@@ -53,6 +53,26 @@ class SupervisionTaskControllerTest {
     }
 
     @Test
+    void restartReworkMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(post("/system/supervision/tasks/rework/restart")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": 2001,
+                                  "acceptedUserId": 3001
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(true));
+
+        assertEquals(new TaskAcceptRequest(2001L, 3001L), applicationService.restartReworkRequest());
+    }
+
+    @Test
     void submitTaskMapsHttpRequestToApplicationFacade() throws Exception {
         CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
         MockMvc mockMvc = mockMvc(applicationService);
@@ -219,6 +239,7 @@ class SupervisionTaskControllerTest {
     private static final class CapturingWorkflowApplicationService extends SupervisionWorkflowApplicationService {
 
         private TaskAcceptRequest request;
+        private TaskAcceptRequest restartReworkRequest;
         private TaskSubmitRequest submitRequest;
         private TaskRecheckRequest approveRecheckRequest;
         private TaskRecheckRequest rejectRecheckRequest;
@@ -250,6 +271,12 @@ class SupervisionTaskControllerTest {
         }
 
         @Override
+        public OperationResponse restartRework(TaskAcceptRequest request) {
+            this.restartReworkRequest = request;
+            return new OperationResponse(true);
+        }
+
+        @Override
         public OperationResponse submitTask(TaskSubmitRequest request) {
             this.submitRequest = request;
             return new OperationResponse(true);
@@ -269,6 +296,10 @@ class SupervisionTaskControllerTest {
 
         private TaskAcceptRequest request() {
             return request;
+        }
+
+        private TaskAcceptRequest restartReworkRequest() {
+            return restartReworkRequest;
         }
 
         private TaskSubmitRequest submitRequest() {

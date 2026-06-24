@@ -44,6 +44,16 @@ public class SupervisionTaskController {
         return success(TaskOperationRespVO.from(response));
     }
 
+    @PostMapping("/rework/restart")
+    @Operation(summary = "Restart supervision task rework")
+    public CommonResult<TaskOperationRespVO> restartRework(@Valid @RequestBody TaskAcceptReqVO reqVO) {
+        OperationResponse response = supervisionWorkflowApplicationService.restartRework(new TaskAcceptRequest(
+                reqVO.getTaskId(),
+                reqVO.getAcceptedUserId()
+        ));
+        return success(TaskOperationRespVO.from(response));
+    }
+
     @PostMapping("/submit")
     @Operation(summary = "Submit supervision task handling result")
     public CommonResult<TaskOperationRespVO> submitTask(@Valid @RequestBody TaskSubmitReqVO reqVO) {
