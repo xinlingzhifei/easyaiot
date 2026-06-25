@@ -10,6 +10,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskReworkService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
@@ -253,7 +254,8 @@ class SupervisionEventControllerTest {
                     unusedSubmissionService(),
                     unusedRecheckService(),
                     unusedCloseCheckService(),
-                    unusedReworkService()
+                    unusedReworkService(),
+                    unusedTaskQueryService()
             );
         }
 
@@ -369,6 +371,15 @@ class SupervisionEventControllerTest {
         return new SupervisionTaskReworkService(unusedTaskMapper(), eventId -> {
             throw new AssertionError("unused event rework store");
         }) {
+        };
+    }
+
+    private static SupervisionTaskQueryService unusedTaskQueryService() {
+        return new SupervisionTaskQueryService(unusedTaskMapper()) {
+            @Override
+            public java.util.Optional<SupervisionTaskQueryService.TaskDetail> getTaskDetail(Long taskId) {
+                throw new AssertionError("unused task query service");
+            }
         };
     }
 

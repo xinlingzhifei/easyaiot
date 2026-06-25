@@ -3,6 +3,7 @@ package com.basiclab.iot.system.service.supervision;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventDetail;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService.TaskDetail;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -17,19 +18,22 @@ public class SupervisionWorkflowApplicationService {
     private final SupervisionTaskRecheckService supervisionTaskRecheckService;
     private final SupervisionEventCloseCheckService supervisionEventCloseCheckService;
     private final SupervisionTaskReworkService supervisionTaskReworkService;
+    private final SupervisionTaskQueryService supervisionTaskQueryService;
 
     public SupervisionWorkflowApplicationService(SupervisionEventService supervisionEventService,
                                                  SupervisionTaskAcceptanceService supervisionTaskAcceptanceService,
                                                  SupervisionTaskSubmissionService supervisionTaskSubmissionService,
                                                  SupervisionTaskRecheckService supervisionTaskRecheckService,
                                                  SupervisionEventCloseCheckService supervisionEventCloseCheckService,
-                                                 SupervisionTaskReworkService supervisionTaskReworkService) {
+                                                 SupervisionTaskReworkService supervisionTaskReworkService,
+                                                 SupervisionTaskQueryService supervisionTaskQueryService) {
         this.supervisionEventService = Objects.requireNonNull(supervisionEventService, "supervisionEventService");
         this.supervisionTaskAcceptanceService = Objects.requireNonNull(supervisionTaskAcceptanceService, "supervisionTaskAcceptanceService");
         this.supervisionTaskSubmissionService = Objects.requireNonNull(supervisionTaskSubmissionService, "supervisionTaskSubmissionService");
         this.supervisionTaskRecheckService = Objects.requireNonNull(supervisionTaskRecheckService, "supervisionTaskRecheckService");
         this.supervisionEventCloseCheckService = Objects.requireNonNull(supervisionEventCloseCheckService, "supervisionEventCloseCheckService");
         this.supervisionTaskReworkService = Objects.requireNonNull(supervisionTaskReworkService, "supervisionTaskReworkService");
+        this.supervisionTaskQueryService = Objects.requireNonNull(supervisionTaskQueryService, "supervisionTaskQueryService");
     }
 
     public AlertEventResponse createEventFromAlert(AlertEventRequest request) {
@@ -52,6 +56,14 @@ public class SupervisionWorkflowApplicationService {
         Objects.requireNonNull(request, "request");
         requirePositive(request.eventId(), "eventId");
         return supervisionEventService.getEventDetail(request.eventId())
+                .map(this::toResponse)
+                .orElse(null);
+    }
+
+    public TaskDetailResponse getTaskDetail(TaskDetailRequest request) {
+        Objects.requireNonNull(request, "request");
+        requirePositive(request.taskId(), "taskId");
+        return supervisionTaskQueryService.getTaskDetail(request.taskId())
                 .map(this::toResponse)
                 .orElse(null);
     }
@@ -154,6 +166,20 @@ public class SupervisionWorkflowApplicationService {
         );
     }
 
+    private TaskDetailResponse toResponse(TaskDetail detail) {
+        return new TaskDetailResponse(
+                detail.taskId(),
+                detail.eventId(),
+                detail.taskStatus(),
+                detail.acceptedUserId(),
+                detail.acceptedAt(),
+                detail.submittedAt(),
+                detail.resultCategory(),
+                detail.handlingNote(),
+                detail.reworkCount()
+        );
+    }
+
     public record AlertEventRequest(String sourceSystem,
                                     String sourceAlertId,
                                     String ruleCode,
@@ -187,6 +213,20 @@ public class SupervisionWorkflowApplicationService {
                                       LocalDateTime acceptedAt,
                                       LocalDateTime handledAt,
                                       LocalDateTime closedAt) {
+    }
+
+    public record TaskDetailRequest(Long taskId) {
+    }
+
+    public record TaskDetailResponse(Long taskId,
+                                     Long eventId,
+                                     String taskStatus,
+                                     Long acceptedUserId,
+                                     LocalDateTime acceptedAt,
+                                     LocalDateTime submittedAt,
+                                     String resultCategory,
+                                     String handlingNote,
+                                     Integer reworkCount) {
     }
 
     public record TaskAcceptRequest(Long taskId,

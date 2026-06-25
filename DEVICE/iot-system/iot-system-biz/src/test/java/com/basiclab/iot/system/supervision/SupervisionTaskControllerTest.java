@@ -5,15 +5,19 @@ import com.basiclab.iot.system.controller.admin.supervision.SupervisionTaskContr
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
+import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskReworkService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskDetailRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskRecheckRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskSubmitRequest;
 import org.junit.jupiter.api.Test;
@@ -22,15 +26,39 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Proxy;
+import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SupervisionTaskControllerTest {
+
+    @Test
+    void getTaskDetailMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/tasks/get")
+                        .param("id", "2001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.taskId").value(2001))
+                .andExpect(jsonPath("$.data.eventId").value(1001))
+                .andExpect(jsonPath("$.data.taskStatus").value(SupervisionTaskStatusEnum.SUBMITTED.getCode()))
+                .andExpect(jsonPath("$.data.acceptedUserId").value(3001))
+                .andExpect(jsonPath("$.data.acceptedAt").value("2026-06-11T09:35:00"))
+                .andExpect(jsonPath("$.data.submittedAt").value("2026-06-11T09:50:00"))
+                .andExpect(jsonPath("$.data.resultCategory").value("confirmed_violation"))
+                .andExpect(jsonPath("$.data.handlingNote").value("Handled according to SOP"))
+                .andExpect(jsonPath("$.data.reworkCount").value(1));
+
+        assertEquals(new TaskDetailRequest(2001L), applicationService.detailRequest());
+    }
 
     @Test
     void acceptTaskMapsHttpRequestToApplicationFacade() throws Exception {
@@ -240,6 +268,7 @@ class SupervisionTaskControllerTest {
 
         private TaskAcceptRequest request;
         private TaskAcceptRequest restartReworkRequest;
+        private TaskDetailRequest detailRequest;
         private TaskSubmitRequest submitRequest;
         private TaskRecheckRequest approveRecheckRequest;
         private TaskRecheckRequest rejectRecheckRequest;
@@ -260,7 +289,24 @@ class SupervisionTaskControllerTest {
                     unusedSubmissionService(),
                     unusedRecheckService(),
                     unusedCloseCheckService(),
-                    unusedReworkService()
+                    unusedReworkService(),
+                    unusedTaskQueryService()
+            );
+        }
+
+        @Override
+        public TaskDetailResponse getTaskDetail(TaskDetailRequest request) {
+            this.detailRequest = request;
+            return new TaskDetailResponse(
+                    2001L,
+                    1001L,
+                    SupervisionTaskStatusEnum.SUBMITTED.getCode(),
+                    3001L,
+                    LocalDateTime.of(2026, 6, 11, 9, 35),
+                    LocalDateTime.of(2026, 6, 11, 9, 50),
+                    "confirmed_violation",
+                    "Handled according to SOP",
+                    1
             );
         }
 
@@ -300,6 +346,10 @@ class SupervisionTaskControllerTest {
 
         private TaskAcceptRequest restartReworkRequest() {
             return restartReworkRequest;
+        }
+
+        private TaskDetailRequest detailRequest() {
+            return detailRequest;
         }
 
         private TaskSubmitRequest submitRequest() {
@@ -364,6 +414,15 @@ class SupervisionTaskControllerTest {
         return new SupervisionTaskReworkService(unusedTaskMapper(), eventId -> {
             throw new AssertionError("unused event rework store");
         }) {
+        };
+    }
+
+    private static SupervisionTaskQueryService unusedTaskQueryService() {
+        return new SupervisionTaskQueryService(unusedTaskMapper()) {
+            @Override
+            public java.util.Optional<SupervisionTaskQueryService.TaskDetail> getTaskDetail(Long taskId) {
+                throw new AssertionError("unused task query service");
+            }
         };
     }
 

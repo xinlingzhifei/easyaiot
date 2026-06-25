@@ -9,6 +9,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Alert
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskReworkService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
@@ -88,7 +89,8 @@ class SupervisionWorkflowApplicationServiceTest {
                 submissionService(calls, false),
                 recheckService(calls, true, false),
                 closeCheckService(calls, true, false),
-                reworkService(calls, true)
+                reworkService(calls, true),
+                unusedTaskQueryService()
         );
 
         assertTrue(service.acceptTask(new TaskAcceptRequest(2001L, 3001L)).success());
@@ -188,7 +190,8 @@ class SupervisionWorkflowApplicationServiceTest {
                 submissionService(calls, true),
                 recheckService(calls, true, true),
                 closeCheckService(calls, true, true),
-                reworkService(calls, true)
+                reworkService(calls, true),
+                unusedTaskQueryService()
         );
     }
 
@@ -202,7 +205,8 @@ class SupervisionWorkflowApplicationServiceTest {
                 submissionService(calls, true),
                 recheckService(calls, true, true),
                 closeCheckService(calls, true, true),
-                reworkService(calls, true)
+                reworkService(calls, true),
+                unusedTaskQueryService()
         );
     }
 
@@ -299,6 +303,15 @@ class SupervisionWorkflowApplicationServiceTest {
             public boolean restartReworkTask(Long taskId, Long acceptedUserId) {
                 calls.add("restartRework:" + taskId + ":" + acceptedUserId);
                 return result;
+            }
+        };
+    }
+
+    private static SupervisionTaskQueryService unusedTaskQueryService() {
+        return new SupervisionTaskQueryService(unusedTaskMapper()) {
+            @Override
+            public java.util.Optional<SupervisionTaskQueryService.TaskDetail> getTaskDetail(Long taskId) {
+                throw new AssertionError("unused task query service");
             }
         };
     }
