@@ -4,6 +4,7 @@ import com.basiclab.iot.common.domain.CommonResult;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventCreateReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.CloseCheckReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.ClosureSummaryRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventDetailReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventDetailRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventOperationRespVO;
@@ -11,6 +12,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
@@ -46,6 +49,15 @@ public class SupervisionEventController {
     public CommonResult<EventDetailRespVO> getEventDetail(@Valid EventDetailReqVO reqVO) {
         EventDetailResponse response = supervisionWorkflowApplicationService.getEventDetail(new EventDetailRequest(reqVO.getId()));
         return success(EventDetailRespVO.from(response));
+    }
+
+    @GetMapping("/closure-summary")
+    @Operation(summary = "Get supervision event closure summary")
+    public CommonResult<ClosureSummaryRespVO> getClosureSummary(@Valid EventDetailReqVO reqVO) {
+        ClosureSummaryResponse response = supervisionWorkflowApplicationService.getClosureSummary(
+                new ClosureSummaryRequest(reqVO.getId())
+        );
+        return success(ClosureSummaryRespVO.from(response));
     }
 
     @PostMapping("/from-alert")

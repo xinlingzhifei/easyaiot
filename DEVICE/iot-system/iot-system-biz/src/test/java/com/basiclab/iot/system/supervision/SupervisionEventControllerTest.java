@@ -5,6 +5,7 @@ import com.basiclab.iot.system.controller.admin.supervision.SupervisionEventCont
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
+import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
@@ -17,6 +18,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
@@ -90,6 +93,28 @@ class SupervisionEventControllerTest {
                 .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
 
         assertNull(applicationService.detailRequest());
+    }
+
+    @Test
+    void getClosureSummaryMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/events/closure-summary")
+                        .param("id", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.eventId").value(1001))
+                .andExpect(jsonPath("$.data.eventStatus").value(SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode()))
+                .andExpect(jsonPath("$.data.taskId").value(2002))
+                .andExpect(jsonPath("$.data.taskStatus").value(SupervisionTaskStatusEnum.APPROVED.getCode()))
+                .andExpect(jsonPath("$.data.reworkCount").value(2))
+                .andExpect(jsonPath("$.data.closeResult").value("normal_closed"))
+                .andExpect(jsonPath("$.data.acceptedAt").value("2026-06-11T09:35:00"))
+                .andExpect(jsonPath("$.data.handledAt").value("2026-06-11T09:50:00"))
+                .andExpect(jsonPath("$.data.closedAt").value("2026-06-11T10:10:00"));
+
+        assertEquals(new ClosureSummaryRequest(1001L), applicationService.closureSummaryRequest());
     }
 
     @Test
@@ -235,6 +260,7 @@ class SupervisionEventControllerTest {
 
         private AlertEventRequest request;
         private EventDetailRequest detailRequest;
+        private ClosureSummaryRequest closureSummaryRequest;
         private CloseCheckRequest approveCloseCheckRequest;
         private CloseCheckRequest rejectCloseCheckRequest;
 
@@ -256,6 +282,22 @@ class SupervisionEventControllerTest {
                     unusedCloseCheckService(),
                     unusedReworkService(),
                     unusedTaskQueryService()
+            );
+        }
+
+        @Override
+        public ClosureSummaryResponse getClosureSummary(ClosureSummaryRequest request) {
+            this.closureSummaryRequest = request;
+            return new ClosureSummaryResponse(
+                    1001L,
+                    SupervisionEventStatusEnum.PENDING_CLOSE_CHECK.getCode(),
+                    2002L,
+                    SupervisionTaskStatusEnum.APPROVED.getCode(),
+                    2,
+                    "normal_closed",
+                    LocalDateTime.of(2026, 6, 11, 9, 35),
+                    LocalDateTime.of(2026, 6, 11, 9, 50),
+                    LocalDateTime.of(2026, 6, 11, 10, 10)
             );
         }
 
@@ -311,6 +353,10 @@ class SupervisionEventControllerTest {
 
         private EventDetailRequest detailRequest() {
             return detailRequest;
+        }
+
+        private ClosureSummaryRequest closureSummaryRequest() {
+            return closureSummaryRequest;
         }
 
         private CloseCheckRequest approveCloseCheckRequest() {

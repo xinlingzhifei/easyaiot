@@ -76,6 +76,14 @@ public class SupervisionWorkflowApplicationService {
                 .orElse(null);
     }
 
+    public ClosureSummaryResponse getClosureSummary(ClosureSummaryRequest request) {
+        Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
+        return supervisionEventService.getEventDetail(request.eventId())
+                .map(event -> toClosureSummary(event, supervisionTaskQueryService.getCurrentTaskByEvent(request.eventId()).orElse(null)))
+                .orElse(null);
+    }
+
     public OperationResponse acceptTask(TaskAcceptRequest request) {
         Objects.requireNonNull(request, "request");
         requirePositive(request.taskId(), "taskId");
@@ -188,6 +196,20 @@ public class SupervisionWorkflowApplicationService {
         );
     }
 
+    private ClosureSummaryResponse toClosureSummary(EventDetail event, TaskDetail task) {
+        return new ClosureSummaryResponse(
+                event.eventId(),
+                event.eventStatus(),
+                task == null ? null : task.taskId(),
+                task == null ? null : task.taskStatus(),
+                task == null ? null : task.reworkCount(),
+                event.closeResult(),
+                event.acceptedAt(),
+                event.handledAt(),
+                event.closedAt()
+        );
+    }
+
     public record AlertEventRequest(String sourceSystem,
                                     String sourceAlertId,
                                     String ruleCode,
@@ -253,6 +275,20 @@ public class SupervisionWorkflowApplicationService {
     }
 
     public record CloseCheckRequest(Long eventId) {
+    }
+
+    public record ClosureSummaryRequest(Long eventId) {
+    }
+
+    public record ClosureSummaryResponse(Long eventId,
+                                         String eventStatus,
+                                         Long taskId,
+                                         String taskStatus,
+                                         Integer reworkCount,
+                                         String closeResult,
+                                         LocalDateTime acceptedAt,
+                                         LocalDateTime handledAt,
+                                         LocalDateTime closedAt) {
     }
 
     public record OperationResponse(boolean success) {
