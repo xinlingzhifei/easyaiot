@@ -68,6 +68,14 @@ public class SupervisionWorkflowApplicationService {
                 .orElse(null);
     }
 
+    public TaskDetailResponse getCurrentTaskByEvent(TaskByEventRequest request) {
+        Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
+        return supervisionTaskQueryService.getCurrentTaskByEvent(request.eventId())
+                .map(this::toResponse)
+                .orElse(null);
+    }
+
     public OperationResponse acceptTask(TaskAcceptRequest request) {
         Objects.requireNonNull(request, "request");
         requirePositive(request.taskId(), "taskId");
@@ -216,6 +224,9 @@ public class SupervisionWorkflowApplicationService {
     }
 
     public record TaskDetailRequest(Long taskId) {
+    }
+
+    public record TaskByEventRequest(Long eventId) {
     }
 
     public record TaskDetailResponse(Long taskId,

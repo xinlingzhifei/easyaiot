@@ -4,6 +4,7 @@ import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionTaskDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,6 +21,13 @@ public class SupervisionTaskQueryService {
     public Optional<TaskDetail> getTaskDetail(Long taskId) {
         Objects.requireNonNull(taskId, "taskId");
         return Optional.ofNullable(supervisionTaskMapper.selectById(taskId))
+                .map(this::toDetail);
+    }
+
+    public Optional<TaskDetail> getCurrentTaskByEvent(Long eventId) {
+        Objects.requireNonNull(eventId, "eventId");
+        return supervisionTaskMapper.selectList(SupervisionTaskDO::getEventId, eventId).stream()
+                .max(Comparator.comparing(SupervisionTaskDO::getId))
                 .map(this::toDetail);
     }
 

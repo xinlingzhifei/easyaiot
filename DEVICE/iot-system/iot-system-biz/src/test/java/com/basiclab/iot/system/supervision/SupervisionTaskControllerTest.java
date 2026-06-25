@@ -16,6 +16,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionTaskSubmissionServ
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskByEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskRecheckRequest;
@@ -58,6 +59,25 @@ class SupervisionTaskControllerTest {
                 .andExpect(jsonPath("$.data.reworkCount").value(1));
 
         assertEquals(new TaskDetailRequest(2001L), applicationService.detailRequest());
+    }
+
+    @Test
+    void getCurrentTaskByEventMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/tasks/by-event")
+                        .param("eventId", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.taskId").value(2002))
+                .andExpect(jsonPath("$.data.eventId").value(1001))
+                .andExpect(jsonPath("$.data.taskStatus").value(SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode()))
+                .andExpect(jsonPath("$.data.acceptedUserId").value(3002))
+                .andExpect(jsonPath("$.data.acceptedAt").value("2026-06-11T10:20:00"))
+                .andExpect(jsonPath("$.data.reworkCount").value(2));
+
+        assertEquals(new TaskByEventRequest(1001L), applicationService.taskByEventRequest());
     }
 
     @Test
@@ -269,6 +289,7 @@ class SupervisionTaskControllerTest {
         private TaskAcceptRequest request;
         private TaskAcceptRequest restartReworkRequest;
         private TaskDetailRequest detailRequest;
+        private TaskByEventRequest taskByEventRequest;
         private TaskSubmitRequest submitRequest;
         private TaskRecheckRequest approveRecheckRequest;
         private TaskRecheckRequest rejectRecheckRequest;
@@ -291,6 +312,22 @@ class SupervisionTaskControllerTest {
                     unusedCloseCheckService(),
                     unusedReworkService(),
                     unusedTaskQueryService()
+            );
+        }
+
+        @Override
+        public TaskDetailResponse getCurrentTaskByEvent(TaskByEventRequest request) {
+            this.taskByEventRequest = request;
+            return new TaskDetailResponse(
+                    2002L,
+                    1001L,
+                    SupervisionTaskStatusEnum.ACKNOWLEDGED.getCode(),
+                    3002L,
+                    LocalDateTime.of(2026, 6, 11, 10, 20),
+                    null,
+                    null,
+                    null,
+                    2
             );
         }
 
@@ -350,6 +387,10 @@ class SupervisionTaskControllerTest {
 
         private TaskDetailRequest detailRequest() {
             return detailRequest;
+        }
+
+        private TaskByEventRequest taskByEventRequest() {
+            return taskByEventRequest;
         }
 
         private TaskSubmitRequest submitRequest() {

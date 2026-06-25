@@ -9,6 +9,7 @@ import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskSubmitRe
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskByEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskRecheckRequest;
@@ -43,6 +44,13 @@ public class SupervisionTaskController {
     @Operation(summary = "Get supervision task detail")
     public CommonResult<TaskDetailRespVO> getTaskDetail(@RequestParam("id") Long id) {
         TaskDetailResponse response = supervisionWorkflowApplicationService.getTaskDetail(new TaskDetailRequest(id));
+        return success(TaskDetailRespVO.from(response));
+    }
+
+    @GetMapping("/by-event")
+    @Operation(summary = "Get current supervision task by event")
+    public CommonResult<TaskDetailRespVO> getCurrentTaskByEvent(@RequestParam("eventId") Long eventId) {
+        TaskDetailResponse response = supervisionWorkflowApplicationService.getCurrentTaskByEvent(new TaskByEventRequest(eventId));
         return success(TaskDetailRespVO.from(response));
     }
 
