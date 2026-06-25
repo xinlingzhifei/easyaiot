@@ -51,7 +51,7 @@ export interface DirectPlayUrlResult {
 /** 探测 AI 流是否在 ZLM 上就绪（毫秒） */
 export const AI_STREAM_PROBE_MS = 2000;
 /** AI 流播放超时后回退原始流（毫秒，仅 preferAi 时生效） */
-export const AI_PLAY_FALLBACK_MS = 60000;
+export const AI_PLAY_FALLBACK_MS = 10000;
 
 /** 将服务端生成的 127.0.0.1/localhost 流地址改写为当前页面主机名，便于浏览器拉流 */
 export function rewriteStreamUrlForBrowser(url: string): string {
@@ -183,6 +183,10 @@ export async function pickDirectPlayUrls(
 
   if (!videoUrl) {
     return { url: aiUrl };
+  }
+  const aiPlayable = await probeStreamPlayable(aiUrl);
+  if (!aiPlayable) {
+    return { url: videoUrl };
   }
   return { url: aiUrl, fallbackUrl: videoUrl, preferAi: true };
 }
