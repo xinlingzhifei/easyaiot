@@ -8,6 +8,12 @@ const videoMonitor = readFileSync(
   ),
   'utf8',
 )
+const splitScreenMonitor = readFileSync(
+  fileURLToPath(
+    new URL('../src/views/camera/components/SplitScreenMonitor/MonitorPanel.vue', import.meta.url),
+  ),
+  'utf8',
+)
 
 const algorithmTaskApi = readFileSync(
   fileURLToPath(new URL('../src/api/device/algorithm_task.ts', import.meta.url)),
@@ -78,4 +84,34 @@ assert.match(
   videoMonitor,
   /AI_PLAY_FALLBACK_MS|preferAi|fallbackUrl/,
   'Dashboard AI playback should keep the original stream fallback while the algorithm stream warms up.',
+)
+
+assert.match(
+  splitScreenMonitor,
+  /const enableAi = ref\(false\)/,
+  'Split-screen monitoring should not enable AI streams by default; original live video must be the safe default.',
+)
+
+assert.match(
+  splitScreenMonitor,
+  /startDashboardGuardTask|stopDashboardGuardTask|listAlgorithmTasks|createAlgorithmTask/,
+  'Enabling AI from split-screen monitoring should start or stop backend recognition tasks.',
+)
+
+assert.match(
+  splitScreenMonitor,
+  /async function ensureSplitScreenAiRecognitionForDevices[\s\S]*await startDashboardGuardTask\(\{ scope, api: splitScreenGuardApi \}\)/,
+  'Split-screen AI toggle should call the shared backend recognition task starter.',
+)
+
+assert.match(
+  splitScreenMonitor,
+  /watch\(enableAi,[\s\S]*ensureSplitScreenAiRecognitionForVisibleDevices\(\)[\s\S]*reloadAllPlayCellsForAiToggle\(\)/,
+  'Toggling AI on in split-screen should start recognition for visible cells and then reload them through the AI stream path.',
+)
+
+assert.match(
+  splitScreenMonitor,
+  /loadGbChannelSyncedDevice[\s\S]*if \(!id \|\| id\.startsWith\('gb_ch_'\)\) return ''/,
+  'Split-screen GB28181 AI recognition should resolve the synced camera device and never start tasks against gb_ch_* UI ids.',
 )

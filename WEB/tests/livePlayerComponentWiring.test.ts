@@ -6,6 +6,10 @@ const sharedPlayer = readFileSync(
   fileURLToPath(new URL('../src/components/Player/module/jessibuca.vue', import.meta.url)),
   'utf8',
 )
+const appIndex = readFileSync(
+  fileURLToPath(new URL('../index.html', import.meta.url)),
+  'utf8',
+)
 const dialogPlayer = readFileSync(
   fileURLToPath(new URL('../src/components/VideoPlayer/DialogPlayer.vue', import.meta.url)),
   'utf8',
@@ -73,6 +77,11 @@ assert.match(
   sharedPlayer,
   /<RtcPlayer[\s\S]*v-if="useWebRtc"[\s\S]*@stream-error="\$emit\('stream-error', \$event\)"/,
   'The shared live player wrapper should render RtcPlayer when fallback selects a WebRTC source.',
+)
+assert.match(
+  appIndex,
+  /<script[^>]+src=["']\/static\/js\/ZLMRTCClient\.js["'][^>]*><\/script>/,
+  'The app shell must load ZLMRTCClient before realtime WebRTC playback is selected.',
 )
 assert.match(
   sharedPlayer,
