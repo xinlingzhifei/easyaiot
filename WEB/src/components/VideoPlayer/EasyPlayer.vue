@@ -5,7 +5,7 @@
 <script>
 export default {
   name: 'EasyWasmPlayer',
-  emits: ['stream-error'],
+  emits: ['stream-error', 'playing'],
   props: {
     videoUrl: {
       type: String,
@@ -31,6 +31,9 @@ export default {
   data() {
     return {
       easyPlayer: null,
+      firstFrameTimer: null,
+      firstFrameTimeoutMs: 10000,
+      hasStarted: false,
       playerId: `easyplayer-${Math.random().toString(36).slice(2)}`,
     };
   },
@@ -70,6 +73,8 @@ export default {
       });
     },
     destroyPlayer() {
+      this.clearFirstFrameTimer();
+      this.hasStarted = false;
       if (this.easyPlayer && typeof this.easyPlayer.destroy === 'function') {
         this.easyPlayer.destroy();
       }
@@ -82,14 +87,64 @@ export default {
       const player = this.createPlayer();
       if (!player) return;
       this.easyPlayer = player;
-      this.easyPlayer.play(target, 1);
+      this.startFirstFrameTimer();
+      try {
+        this.easyPlayer.play(target, 1);
+      } catch (error) {
+        this.emitStreamError('play-exception', error);
+      }
     },
     pause() {
       this.destroyPlayer();
     },
+    startFirstFrameTimer() {
+      this.clearFirstFrameTimer();
+      this.hasStarted = false;
+      this.firstFrameTimer = window.setTimeout(() => {
+        this.emitStreamError('first-frame-timeout');
+      }, this.firstFrameTimeoutMs);
+    },
+    clearFirstFrameTimer() {
+      if (this.firstFrameTimer) {
+        window.clearTimeout(this.firstFrameTimer);
+        this.firstFrameTimer = null;
+      }
+    },
+    emitStreamError(type, detail) {
+      this.clearFirstFrameTimer();
+      this.hasStarted = false;
+      this.$emit('stream-error', { type, detail });
+    },
+    markPlaying() {
+      if (this.hasStarted) return;
+      this.hasStarted = true;
+      this.clearFirstFrameTimer();
+      this.$emit('playing');
+    },
+    isPlayingEvent(type) {
+      return [
+        'play',
+        'playing',
+        'loadedmetadata',
+        'loadeddata',
+        'canplay',
+        'media_info',
+        'mediainfo',
+        'video_info',
+        'videoinfo',
+        'frame',
+        'render',
+        'rendered',
+      ].includes(type);
+    },
     eventCallback(type, message) {
-      if (type === 'error' || type === 'timeout') {
-        this.$emit('stream-error', { type, detail: message });
+      const eventType = String(type ?? '').toLowerCase();
+      if (eventType === 'error' || eventType === 'timeout') {
+        this.emitStreamError(eventType, message);
+        return;
+      }
+      if (this.isPlayingEvent(eventType)) {
+        this.markPlaying();
       }
     },
   },

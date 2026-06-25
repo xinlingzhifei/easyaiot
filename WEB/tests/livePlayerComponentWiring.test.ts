@@ -57,7 +57,17 @@ assert.match(
 assert.match(
   sharedPlayer,
   /<EasyPlayer[\s\S]*v-(?:else-)?if="useEasyWasm"/,
-  'The shared live player wrapper should render EasyPlayer for H265/H264-style WASM playback.',
+  'The shared live player wrapper should render EasyPlayer for codecs that require WASM playback.',
+)
+assert.match(
+  sharedPlayer,
+  /@playing="onEasyWasmPlaying"/,
+  'The shared live player wrapper should wait for EasyPlayer to report real playback before marking the slot as playing.',
+)
+assert.match(
+  sharedPlayer,
+  /onEasyWasmPlaying\(\)[\s\S]*this\.playing = true/,
+  'The shared live player wrapper should expose EasyWasm playback only after the first frame path starts.',
 )
 assert.match(
   sharedPlayer,
@@ -247,6 +257,21 @@ assert.match(
   easyPlayer,
   /decodeType/,
   'EasyPlayer should expose EasyWasmPlayer decodeType so H265 can force software decoding.',
+)
+assert.match(
+  easyPlayer,
+  /emits: \['stream-error', 'playing'\]/,
+  'EasyPlayer should emit a playback event when WASM starts producing media.',
+)
+assert.match(
+  easyPlayer,
+  /firstFrameTimer: null/,
+  'EasyPlayer should keep a per-instance first-frame timeout timer.',
+)
+assert.match(
+  easyPlayer,
+  /emitStreamError\('first-frame-timeout'/,
+  'EasyPlayer should surface no-first-frame stalls instead of leaving split-screen cells loading forever.',
 )
 
 assert.match(

@@ -9,6 +9,7 @@ import {
   pickLivePlayerEngine,
   pickWvpPlaySource,
   pickWvpPlaySources,
+  shouldUseWasmLivePlayer,
 } from '../src/views/camera/utils/livePlayer'
 
 assert.equal(normalizeVideoCodec('H.265'), 'h265')
@@ -43,7 +44,7 @@ assert.equal(
 )
 
 assert.equal(pickLivePlayerEngine({ videoCodec: 'H265' }), 'easywasm')
-assert.equal(pickLivePlayerEngine({ videoCodec: 'H264' }), 'easywasm')
+assert.equal(pickLivePlayerEngine({ videoCodec: 'H264' }), 'jessibuca')
 assert.equal(pickLivePlayerEngine({ videoCodec: 'MPEG4' }), 'easywasm')
 assert.equal(pickLivePlayerEngine({ videoCodec: 'MJPEG' }), 'easywasm')
 assert.equal(
@@ -53,6 +54,22 @@ assert.equal(
   'easywasm',
 )
 assert.equal(pickLivePlayerEngine({ videoCodec: 'VP9' }), 'jessibuca')
+assert.equal(
+  shouldUseWasmLivePlayer({
+    playerEngine: 'easywasm',
+    videoCodec: 'H264',
+    url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+  }),
+  false,
+)
+assert.equal(
+  shouldUseWasmLivePlayer({
+    playerEngine: 'easywasm',
+    videoCodec: 'H265',
+    url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H265',
+  }),
+  true,
+)
 
 const source = pickWvpPlaySource({
   flv: 'http://eye.yfeiai.com:6080/rtp/demo.live.flv?videoCodec=H265',
@@ -84,13 +101,13 @@ assert.deepEqual(h264WebRtcSources, [
     label: 'https_flv',
     url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
     videoCodec: 'h264',
-    playerEngine: 'easywasm',
+    playerEngine: 'jessibuca',
   },
   {
     label: 'wss_flv',
     url: 'wss://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
     videoCodec: 'h264',
-    playerEngine: 'easywasm',
+    playerEngine: 'jessibuca',
   },
   {
     label: 'rtcs',
@@ -109,7 +126,7 @@ assert.deepEqual(pickWvpPlaySource({
 }), {
   url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
   videoCodec: 'h264',
-  playerEngine: 'easywasm',
+  playerEngine: 'jessibuca',
 })
 
 assert.deepEqual(pickWvpPlaySource({

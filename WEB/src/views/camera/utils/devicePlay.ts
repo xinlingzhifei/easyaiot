@@ -17,7 +17,6 @@ import {
 } from './livePlayer';
 import {
   convertRtmpToHttp as convertRtmpToHttpForBrowser,
-  isLocalOrPrivateStreamHost,
   rewriteStreamUrlForBrowser as rewriteStreamUrlForBrowserForBrowser,
 } from './streamUrlRewrite';
 
@@ -54,17 +53,6 @@ export const AI_STREAM_PROBE_MS = 2000;
 /** AI 流播放超时后回退原始流（毫秒，仅 preferAi 时生效） */
 export const AI_PLAY_FALLBACK_MS = 60000;
 
-const LOCAL_STREAM_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
-/** SRS HTTP-FLV / ZLM ws-flv 端口：mini 形态经 nginx 同页代理，浏览器不应直连 */
-const MEDIA_PROXY_PORTS = new Set(['8080', '6080']);
-
-/** 流是否在远端集群 SRS/ZLM 节点（页面 nginx 无法代理，须保留原 host） */
-function isRemoteClusterStreamHost(streamHost: string, pageHostname: string): boolean {
-  if (!streamHost || !pageHostname) return false;
-  if (LOCAL_STREAM_HOSTS.has(streamHost) || LOCAL_STREAM_HOSTS.has(pageHostname)) return false;
-  return streamHost !== pageHostname;
-}
-
 /** 将服务端生成的 127.0.0.1/localhost 流地址改写为当前页面主机名，便于浏览器拉流 */
 export function rewriteStreamUrlForBrowser(url: string): string {
   return rewriteStreamUrlForBrowserForBrowser(url);
@@ -77,34 +65,7 @@ export function rewriteStreamUrlForBrowser(url: string): string {
  * 仅替换 host，协议与路径保持不变。
  */
 export function rewriteStreamHostToPageHost(url: string): string {
-  const trimmed = url?.trim();
-  if (!trimmed || typeof window === 'undefined') return trimmed;
-
-  try {
-    const parsed = new URL(trimmed);
-    const pageHost = window.location.host;
-    const pageHostname = window.location.hostname;
-    if (!pageHost || isLocalOrPrivateStreamHost(pageHostname)) return trimmed;
-
-    const streamHost = parsed.hostname;
-    const streamPort = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
-
-    // 集群模式：流在远端 SRS/ZLM 节点，nginx 仅代理本机 srs-host，不应改写为页面 host
-    if (isRemoteClusterStreamHost(streamHost, pageHostname)) {
-      return trimmed;
-    }
-
-    // mini/单机：SRS(8080)/ZLM(6080) 由页面 nginx 反代，统一改为当前页面 host:port
-    if (MEDIA_PROXY_PORTS.has(streamPort)) {
-      parsed.host = pageHost;
-      return parsed.toString();
-    }
-
-    parsed.host = pageHost;
-    return parsed.toString();
-  } catch {
-    return trimmed;
-  }
+  return rewriteStreamUrlForBrowserForBrowser(url);
 }
 
 /** RTMP 转 HTTP-FLV（Jessibuca 浏览器端需 HTTP/WS 地址） */
@@ -351,7 +312,7 @@ export async function resolveGbChannelPlayUrls(
     if (url) {
       return {
         url,
-        fallbackUrl: fallbackUrl ?? wvpSource.url,
+        fallbackUrl: preferAi ? wvpSource.url : fallbackUrl ?? wvpSource.url,
         preferAi,
         playerEngine: wvpSource.playerEngine,
         videoCodec: wvpSource.videoCodec,

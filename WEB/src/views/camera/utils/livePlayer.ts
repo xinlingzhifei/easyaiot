@@ -16,7 +16,7 @@ export interface WvpPlaySourceOption extends WvpPlaySource {
   label: string;
 }
 
-const WASM_VIDEO_CODECS = new Set<NormalizedVideoCodec>(['h265', 'h264', 'mpeg4', 'mjpeg']);
+const WASM_VIDEO_CODECS = new Set<NormalizedVideoCodec>(['h265', 'mpeg4', 'mjpeg']);
 const NATIVE_HEVC_CODECS = [
   'video/mp4; codecs="hev1.1.6.L123.B0"',
   'video/mp4; codecs="hvc1.1.6.L123.B0"',
@@ -93,9 +93,8 @@ export function pickLivePlayerEngine(options: {
   videoCodec?: string | null;
   url?: string | null;
 }): LivePlayerEngine {
-  const codec = normalizeVideoCodec(options.videoCodec);
-  const urlCodec = codec === 'unknown' ? detectVideoCodecFromUrl(options.url) : codec;
-  return WASM_VIDEO_CODECS.has(urlCodec) ? 'easywasm' : 'jessibuca';
+  const codec = resolveLiveVideoCodec(options);
+  return WASM_VIDEO_CODECS.has(codec) ? 'easywasm' : 'jessibuca';
 }
 
 export function shouldUseWasmLivePlayer(options: {
@@ -103,10 +102,19 @@ export function shouldUseWasmLivePlayer(options: {
   videoCodec?: string | null;
   url?: string | null;
 }): boolean {
-  if (options.playerEngine === 'easywasm') return true;
+  const codec = resolveLiveVideoCodec(options);
+  if (options.playerEngine === 'easywasm') return codec !== 'h264';
   if (options.playerEngine === 'jessibuca') return false;
   if (options.playerEngine === 'webrtc') return false;
-  return pickLivePlayerEngine(options) === 'easywasm';
+  return WASM_VIDEO_CODECS.has(codec);
+}
+
+function resolveLiveVideoCodec(options: {
+  videoCodec?: string | null;
+  url?: string | null;
+}): NormalizedVideoCodec {
+  const codec = normalizeVideoCodec(options.videoCodec);
+  return codec === 'unknown' ? detectVideoCodecFromUrl(options.url) : codec;
 }
 
 export function pickWvpPlaySources(

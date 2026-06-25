@@ -27,7 +27,8 @@
       :hasaudio="hasAudio"
       height="100%"
       :decodeType="easyWasmDecodeType"
-      @stream-error="$emit('stream-error', $event)"
+      @playing="onEasyWasmPlaying"
+      @stream-error="onEasyWasmStreamError"
     />
     <div v-else ref="container" class="jessibuca-container" @dblclick="fullscreen" @mousemove="mouseenter">
       <transition name="toolBtn">
@@ -436,7 +437,8 @@ export default {
       }
       if (this.useEasyWasm) {
         this.easyWasmUrl = target;
-        this.playing = true;
+        this.playing = false;
+        this.loaded = false;
         this.protectedRetries = 0;
         return;
       }
@@ -495,6 +497,16 @@ export default {
     onNativeVideoError(event) {
       if (this.maybeRenewOnError()) return;
       this.$emit("stream-error", { type: "native-video-error", detail: event });
+    },
+    onEasyWasmPlaying() {
+      this.playing = true;
+      this.loaded = true;
+      this.performance = "";
+      this.protectedRetries = 0;
+    },
+    onEasyWasmStreamError(event) {
+      if (this.maybeRenewOnError()) return;
+      this.$emit("stream-error", event);
     },
     mute() {
       if (!this.jessibuca) return;
