@@ -237,6 +237,7 @@ import {
   parseGbChannelKey,
   type GbChannelRef} from '@/views/camera/utils/gb28181Tree';
 import { getDeviceChannels } from '@/api/device/gb28181';
+import type { WvpPlaySourceOption } from '@/views/camera/utils/livePlayer';
 import { collectWvpGbChannelsForSync } from '@/views/camera/utils/wvpGbSync';
 import {
   enrichWvpChannelTreeNodes,
@@ -270,6 +271,7 @@ interface PlayCell {
   fallbackUrl?: string | null;
   playerEngine?: string | null;
   videoCodec?: string | null;
+  playSources?: WvpPlaySourceOption[] | null;
 }
 
 const { createMessage } = useMessage();
@@ -524,6 +526,7 @@ async function startPlayAtCell(
     preferAi?: boolean;
     playerEngine?: string | null;
     videoCodec?: string | null;
+    playSources?: WvpPlaySourceOption[] | null;
   },
 ) {
   clearAiFallbackTimer(cellIdx);
@@ -534,6 +537,7 @@ async function startPlayAtCell(
 
   const fallbackUrl = payload.fallbackUrl?.trim();
   const hasFallback = !!(payload.preferAi && fallbackUrl && fallbackUrl !== payload.url);
+  const playSources = payload.playSources?.filter((source) => source.url?.trim()) ?? null;
 
   state.playerIdx = cellIdx;
   state.playCells[cellIdx] = {
@@ -542,7 +546,8 @@ async function startPlayAtCell(
     url: payload.url,
     fallbackUrl: hasFallback ? fallbackUrl : null,
     playerEngine: payload.playerEngine ?? null,
-    videoCodec: payload.videoCodec ?? null};
+    videoCodec: payload.videoCodec ?? null,
+    playSources};
 
   await nextTick();
   const player = playerRefs.value[cellIdx];
@@ -569,15 +574,37 @@ async function startPlayAtCell(
   aiFallbackTimers.set(cellIdx, timerId);
 }
 
-/** AI 流播放后中断（timeout/error）：回退到原始流，避免无限"疯狂加载中" */
+function findNextPlaySource(cell: PlayCell): WvpPlaySourceOption | null {
+  const sources = cell.playSources?.filter((source) => source.url?.trim()) ?? [];
+  if (!sources.length) return null;
+  const currentUrl = cell.url.trim();
+  const currentIndex = sources.findIndex((source) => source.url.trim() === currentUrl);
+  return sources.find((_, index) => index > currentIndex) ?? null;
+}
+
+/** 播放中断（timeout/error）：AI 流先回退原始流，原始流失败继续尝试备用播放源 */
 function handleCellStreamError(cellIdx: number) {
   const cell = state.playCells[cellIdx];
   if (!cell) return;
   const fb = cell.fallbackUrl?.trim();
-  if (!fb || fb === cell.url) return;
   clearAiFallbackTimer(cellIdx);
-  createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）');
-  state.playCells[cellIdx] = { ...cell, url: fb, fallbackUrl: null };
+  if (fb && fb !== cell.url) {
+    createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）');
+    state.playCells[cellIdx] = { ...cell, url: fb, fallbackUrl: null };
+    nextTick(() => playerRefs.value[cellIdx]?.play?.());
+    return;
+  }
+
+  const nextSource = findNextPlaySource(cell);
+  if (!nextSource) return;
+  createMessage.warning('当前视频流播放失败，正在尝试备用播放源');
+  state.playCells[cellIdx] = {
+    ...cell,
+    url: nextSource.url,
+    fallbackUrl: null,
+    playerEngine: nextSource.playerEngine,
+    videoCodec: nextSource.videoCodec,
+  };
   nextTick(() => playerRefs.value[cellIdx]?.play?.());
 }
 
@@ -590,7 +617,7 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
     const gb = parseGbChannelKey(playId);
     if (gb) {
       const synced = findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId);
-      const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+      const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
         gb.sipDeviceId,
         gb.channelId,
         { enableAi: enableAi.value, synced },
@@ -603,7 +630,8 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
           fallbackUrl,
           preferAi,
           playerEngine,
-          videoCodec});
+          videoCodec,
+          playSources});
       }
     }
     return;
@@ -757,7 +785,7 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
     const synced =
       findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId) ??
       ((node as any)?.device as MonitorTreeDeviceNode | undefined);
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced },
@@ -778,7 +806,8 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
       fallbackUrl,
       preferAi,
       playerEngine,
-      videoCodec});
+      videoCodec,
+      playSources});
   } catch (e) {
     console.error(e);
     createMessage.error('播放失败，请检查设备连接');

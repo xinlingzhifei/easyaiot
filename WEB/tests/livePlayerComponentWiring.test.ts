@@ -156,6 +156,21 @@ assert.match(
   /videoCodec\?: string \| null/,
   'Split-screen monitor cells should persist codec metadata across reloads.',
 )
+assert.match(
+  monitorPanel,
+  /playSources\?: WvpPlaySourceOption\[\] \| null/,
+  'Split-screen monitor cells should retain GB28181 candidate sources for stream-error fallback.',
+)
+assert.match(
+  monitorPanel,
+  /payload\.playSources/,
+  'Split-screen monitor should store WVP candidate sources returned by GB28181 play/start.',
+)
+assert.match(
+  monitorPanel,
+  /findNextPlaySource\(cell\)/,
+  'Split-screen monitor should try the next GB28181 source when the active stream errors.',
+)
 
 assert.match(
   videoMonitor,
@@ -166,6 +181,21 @@ assert.match(
   videoMonitor,
   /:videoCodec="video\.videoCodec \|\| ''"/,
   'Dashboard monitor cells should pass codec metadata to the shared player.',
+)
+assert.match(
+  videoMonitor,
+  /@stream-error="handleVideoStreamError\(index\)"/,
+  'Dashboard monitor cells should listen for player failures instead of leaving videos loading forever.',
+)
+assert.match(
+  videoMonitor,
+  /playSources\?: WvpPlaySourceOption\[\] \| null/,
+  'Dashboard monitor cells should retain GB28181 candidate sources for stream-error fallback.',
+)
+assert.match(
+  videoMonitor,
+  /findNextPlaySource\(slot\)/,
+  'Dashboard monitor should try the next GB28181 source when the active stream errors.',
 )
 
 assert.match(

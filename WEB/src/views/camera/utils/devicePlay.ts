@@ -258,9 +258,16 @@ export async function resolveGb28181StreamSource(
   sipDeviceId: string,
   channelId: string,
 ): Promise<WvpPlaySource | null> {
+  return (await resolveGb28181StreamSources(sipDeviceId, channelId))[0] ?? null;
+}
+
+export async function resolveGb28181StreamSources(
+  sipDeviceId: string,
+  channelId: string,
+): Promise<WvpPlaySourceOption[]> {
   const res = await playByDeviceAndChannel(sipDeviceId, channelId);
   const streamContent = (res as any)?.data?.data ?? (res as any)?.data;
-  return pickWvpPlaySource(streamContent);
+  return pickWvpPlaySources(streamContent);
 }
 
 export interface GbChannelPlayUrlResult {
@@ -269,6 +276,7 @@ export interface GbChannelPlayUrlResult {
   preferAi?: boolean;
   playerEngine?: WvpPlaySource['playerEngine'] | null;
   videoCodec?: WvpPlaySource['videoCodec'] | null;
+  playSources?: WvpPlaySourceOption[] | null;
 }
 
 function buildManualWvpPlaySource(url?: string | null): GbChannelPlayUrlResult {
@@ -315,7 +323,16 @@ export async function resolveGbChannelPlayUrls(
   const wvpSourcePromise: Promise<GbChannelPlayUrlResult> =
     options?.wvpUrl != null
       ? Promise.resolve(buildManualWvpPlaySource(options.wvpUrl))
-      : resolveGb28181StreamSource(sipDeviceId, channelId).then((source) => source ?? { url: null });
+      : resolveGb28181StreamSources(sipDeviceId, channelId).then((sources) => {
+          const source = sources[0];
+          if (!source) return { url: null, playSources: sources };
+          return {
+            url: source.url,
+            playerEngine: source.playerEngine,
+            videoCodec: source.videoCodec,
+            playSources: sources,
+          };
+        });
 
   if (!enableAi) {
     return wvpSourcePromise;
@@ -338,6 +355,7 @@ export async function resolveGbChannelPlayUrls(
         preferAi,
         playerEngine: wvpSource.playerEngine,
         videoCodec: wvpSource.videoCodec,
+        playSources: wvpSource.playSources,
       };
     }
   }

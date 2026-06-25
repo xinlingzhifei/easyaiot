@@ -83,6 +83,7 @@
             :videoCodec="video.videoCodec || ''"
             :ref="el => setVideoRef(el, index)"
             class="video-player"
+            @stream-error="handleVideoStreamError(index)"
           />
           <div
             class="drag-zone"
@@ -188,6 +189,7 @@ import {
   resolveGbChannelPlayUrls,
 } from '@/views/camera/utils/devicePlay'
 import { parseGbChannelKey } from '@/views/camera/utils/gb28181Tree'
+import type { WvpPlaySourceOption } from '@/views/camera/utils/livePlayer'
 import type { MonitorTreeDeviceNode } from '@/api/device/camera'
 import {
   createAlgorithmTask,
@@ -258,6 +260,20 @@ type PersistedDashboardVideoState = {
   videos: PersistedDashboardVideoSlot[]
 }
 
+type DashboardVideoSlot = {
+  id: string
+  name: string
+  url: string
+  deviceId?: string
+  location?: string
+  device?: MonitorTreeDeviceNode
+  playerEngine?: string
+  videoCodec?: string
+  fallbackUrl?: string | null
+  playSources?: WvpPlaySourceOption[] | null
+  pendingRestore?: boolean
+}
+
 function readPersistedEnableAi() {
   if (typeof window === 'undefined') return false
   try {
@@ -295,7 +311,7 @@ const loadingRecords = ref(false)
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
-const internalVideoList = ref<any[]>([])
+const internalVideoList = ref<DashboardVideoSlot[]>([])
 
 const dashboardGuardApi: DashboardGuardTaskApi = {
   listAlgorithmTasks: (params) => listAlgorithmTasks(params, { errorMessageMode: 'none' }),
@@ -655,7 +671,7 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
         enableAi.value = false
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -675,6 +691,7 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
       preferAi,
       playerEngine,
       videoCodec,
+      playSources,
     })
     return
   }
@@ -1121,6 +1138,7 @@ async function startPlayAtScreen(
     preferAi?: boolean
     playerEngine?: string | null
     videoCodec?: string | null
+    playSources?: WvpPlaySourceOption[] | null
   },
 ) {
   clearAiFallbackTimer(targetIndex)
@@ -1136,6 +1154,10 @@ async function startPlayAtScreen(
     videoRefs.value[targetIndex] = null
   }
 
+  const fallbackUrl = payload.fallbackUrl?.trim()
+  const hasFallback = !!(payload.preferAi && fallbackUrl && fallbackUrl !== payload.url)
+  const playSources = payload.playSources?.filter((source) => source.url?.trim()) ?? null
+
   internalVideoList.value[targetIndex] = {
     id: payload.id,
     url: payload.url,
@@ -1145,11 +1167,12 @@ async function startPlayAtScreen(
     device: payload.device,
     playerEngine: payload.playerEngine || '',
     videoCodec: payload.videoCodec || '',
+    fallbackUrl: hasFallback ? fallbackUrl : null,
+    playSources,
   }
   persistDashboardVideoState()
 
-  const fallbackUrl = payload.fallbackUrl?.trim()
-  if (!payload.preferAi || !fallbackUrl || fallbackUrl === payload.url) return
+  if (!hasFallback) return
 
   const primaryUrl = payload.url
   const timerId = window.setTimeout(async () => {
@@ -1161,10 +1184,46 @@ async function startPlayAtScreen(
     createMessage.warning(
       'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
     )
-    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl }
+    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl, fallbackUrl: null }
     persistDashboardVideoState()
   }, AI_PLAY_FALLBACK_MS)
   aiFallbackTimers.set(targetIndex, timerId)
+}
+
+function findNextPlaySource(slot: DashboardVideoSlot): WvpPlaySourceOption | null {
+  const sources = slot.playSources?.filter((source) => source.url?.trim()) ?? []
+  if (!sources.length || !slot.url) return null
+  const currentUrl = slot.url.trim()
+  const currentIndex = sources.findIndex((source) => source.url.trim() === currentUrl)
+  return sources.find((_, index) => index > currentIndex) ?? null
+}
+
+function handleVideoStreamError(index: number) {
+  const slot = internalVideoList.value[index]
+  if (!slot?.url) return
+  clearAiFallbackTimer(index)
+
+  const fallbackUrl = slot.fallbackUrl?.trim()
+  if (fallbackUrl && fallbackUrl !== slot.url) {
+    createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）')
+    internalVideoList.value[index] = { ...slot, url: fallbackUrl, fallbackUrl: null }
+    persistDashboardVideoState()
+    nextTick(() => videoRefs.value[index]?.play?.())
+    return
+  }
+
+  const nextSource = findNextPlaySource(slot)
+  if (!nextSource) return
+  createMessage.warning('当前视频流播放失败，正在尝试备用播放源')
+  internalVideoList.value[index] = {
+    ...slot,
+    url: nextSource.url,
+    fallbackUrl: null,
+    playerEngine: nextSource.playerEngine,
+    videoCodec: nextSource.videoCodec,
+  }
+  persistDashboardVideoState()
+  nextTick(() => videoRefs.value[index]?.play?.())
 }
 
 async function resolvePlayUrlsForDevice(dev: MonitorTreeDeviceNode) {
@@ -1191,7 +1250,7 @@ async function reloadVideoAtIndex(index: number) {
         enableAi.value = false
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -1207,6 +1266,7 @@ async function reloadVideoAtIndex(index: number) {
         preferAi,
         playerEngine,
         videoCodec,
+        playSources,
         device: playDevice ?? undefined,
       })
     }
@@ -1291,7 +1351,7 @@ const playDeviceStream = async (device: any) => {
         enableAi.value = false
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -1315,6 +1375,7 @@ const playDeviceStream = async (device: any) => {
       preferAi,
       playerEngine,
       videoCodec,
+      playSources,
     })
     return
   }
