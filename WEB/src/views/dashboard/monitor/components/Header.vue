@@ -8,7 +8,7 @@
     
     <div class="header-center">
       <h1 class="platform-title" data-testid="monitor-platform-title">
-        逸飞 AI 智眼管控平台
+        逸飞AI智眼系统
       </h1>
     </div>
     
