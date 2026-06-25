@@ -1,12 +1,17 @@
 package com.basiclab.iot.system.service.supervision;
 
+import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventDetail;
+import com.basiclab.iot.system.service.supervision.SupervisionEvidenceQueryService.EvidenceItem;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService.TaskDetail;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 @Service
@@ -19,6 +24,7 @@ public class SupervisionWorkflowApplicationService {
     private final SupervisionEventCloseCheckService supervisionEventCloseCheckService;
     private final SupervisionTaskReworkService supervisionTaskReworkService;
     private final SupervisionTaskQueryService supervisionTaskQueryService;
+    private final SupervisionEvidenceQueryService supervisionEvidenceQueryService;
 
     public SupervisionWorkflowApplicationService(SupervisionEventService supervisionEventService,
                                                  SupervisionTaskAcceptanceService supervisionTaskAcceptanceService,
@@ -26,7 +32,8 @@ public class SupervisionWorkflowApplicationService {
                                                  SupervisionTaskRecheckService supervisionTaskRecheckService,
                                                  SupervisionEventCloseCheckService supervisionEventCloseCheckService,
                                                  SupervisionTaskReworkService supervisionTaskReworkService,
-                                                 SupervisionTaskQueryService supervisionTaskQueryService) {
+                                                 SupervisionTaskQueryService supervisionTaskQueryService,
+                                                 SupervisionEvidenceQueryService supervisionEvidenceQueryService) {
         this.supervisionEventService = Objects.requireNonNull(supervisionEventService, "supervisionEventService");
         this.supervisionTaskAcceptanceService = Objects.requireNonNull(supervisionTaskAcceptanceService, "supervisionTaskAcceptanceService");
         this.supervisionTaskSubmissionService = Objects.requireNonNull(supervisionTaskSubmissionService, "supervisionTaskSubmissionService");
@@ -34,6 +41,7 @@ public class SupervisionWorkflowApplicationService {
         this.supervisionEventCloseCheckService = Objects.requireNonNull(supervisionEventCloseCheckService, "supervisionEventCloseCheckService");
         this.supervisionTaskReworkService = Objects.requireNonNull(supervisionTaskReworkService, "supervisionTaskReworkService");
         this.supervisionTaskQueryService = Objects.requireNonNull(supervisionTaskQueryService, "supervisionTaskQueryService");
+        this.supervisionEvidenceQueryService = Objects.requireNonNull(supervisionEvidenceQueryService, "supervisionEvidenceQueryService");
     }
 
     public AlertEventResponse createEventFromAlert(AlertEventRequest request) {
@@ -82,6 +90,22 @@ public class SupervisionWorkflowApplicationService {
         return supervisionEventService.getEventDetail(request.eventId())
                 .map(event -> toClosureSummary(event, supervisionTaskQueryService.getCurrentTaskByEvent(request.eventId()).orElse(null)))
                 .orElse(null);
+    }
+
+    public List<EventEvidenceItemResponse> getEventEvidence(EventEvidenceRequest request) {
+        Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
+        return supervisionEvidenceQueryService.listByEventId(request.eventId()).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    public List<EventTimelineItemResponse> getEventTimeline(EventTimelineRequest request) {
+        Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
+        return supervisionEventService.getEventDetail(request.eventId())
+                .map(event -> toTimeline(event, supervisionEvidenceQueryService.listByEventId(request.eventId())))
+                .orElse(List.of());
     }
 
     public OperationResponse acceptTask(TaskAcceptRequest request) {
@@ -210,6 +234,62 @@ public class SupervisionWorkflowApplicationService {
         );
     }
 
+    private EventEvidenceItemResponse toResponse(EvidenceItem evidenceItem) {
+        return new EventEvidenceItemResponse(
+                evidenceItem.evidenceId(),
+                evidenceItem.eventId(),
+                evidenceItem.sourceType(),
+                evidenceItem.materialType(),
+                evidenceItem.materialUri(),
+                evidenceItem.relatedRecordId(),
+                evidenceItem.isRequired(),
+                evidenceItem.requiredForLevel(),
+                evidenceItem.collectStatus(),
+                evidenceItem.missingReason(),
+                evidenceItem.sensitivityLevel(),
+                evidenceItem.createdAt()
+        );
+    }
+
+    private List<EventTimelineItemResponse> toTimeline(EventDetail event, List<EvidenceItem> evidenceItems) {
+        List<EventTimelineItemResponse> timeline = new ArrayList<>();
+        addTimelineItem(timeline, event.eventId(), "event_created", SupervisionEventStatusEnum.CREATED.getCode(), String.valueOf(event.eventId()), event.createdAt());
+        evidenceItems.forEach(evidenceItem -> addTimelineItem(
+                timeline,
+                evidenceItem.eventId(),
+                evidenceTimelineType(evidenceItem),
+                evidenceItem.collectStatus(),
+                evidenceItem.relatedRecordId(),
+                evidenceItem.createdAt()
+        ));
+        addTimelineItem(timeline, event.eventId(), "event_accepted", SupervisionEventStatusEnum.ACCEPTED.getCode(), String.valueOf(event.eventId()), event.acceptedAt());
+        addTimelineItem(timeline, event.eventId(), "event_handled", SupervisionEventStatusEnum.PENDING_RECHECK.getCode(), String.valueOf(event.eventId()), event.handledAt());
+        addTimelineItem(timeline, event.eventId(), "event_closed", SupervisionEventStatusEnum.CLOSED.getCode(), String.valueOf(event.eventId()), event.closedAt());
+        return timeline.stream()
+                .sorted(Comparator.comparing(EventTimelineItemResponse::occurredAt)
+                        .thenComparing(EventTimelineItemResponse::timelineType))
+                .toList();
+    }
+
+    private void addTimelineItem(List<EventTimelineItemResponse> timeline,
+                                 Long eventId,
+                                 String timelineType,
+                                 String timelineStatus,
+                                 String relatedRecordId,
+                                 LocalDateTime occurredAt) {
+        if (occurredAt == null) {
+            return;
+        }
+        timeline.add(new EventTimelineItemResponse(eventId, timelineType, timelineStatus, relatedRecordId, occurredAt));
+    }
+
+    private String evidenceTimelineType(EvidenceItem evidenceItem) {
+        if (evidenceItem.collectStatus() == null || evidenceItem.collectStatus().isBlank()) {
+            return "evidence_recorded";
+        }
+        return "evidence_" + evidenceItem.collectStatus();
+    }
+
     public record AlertEventRequest(String sourceSystem,
                                     String sourceAlertId,
                                     String ruleCode,
@@ -243,6 +323,33 @@ public class SupervisionWorkflowApplicationService {
                                       LocalDateTime acceptedAt,
                                       LocalDateTime handledAt,
                                       LocalDateTime closedAt) {
+    }
+
+    public record EventEvidenceRequest(Long eventId) {
+    }
+
+    public record EventEvidenceItemResponse(Long evidenceId,
+                                            Long eventId,
+                                            String sourceType,
+                                            String materialType,
+                                            String materialUri,
+                                            String relatedRecordId,
+                                            Boolean isRequired,
+                                            String requiredForLevel,
+                                            String collectStatus,
+                                            String missingReason,
+                                            String sensitivityLevel,
+                                            LocalDateTime createdAt) {
+    }
+
+    public record EventTimelineRequest(Long eventId) {
+    }
+
+    public record EventTimelineItemResponse(Long eventId,
+                                            String timelineType,
+                                            String timelineStatus,
+                                            String relatedRecordId,
+                                            LocalDateTime occurredAt) {
     }
 
     public record TaskDetailRequest(Long taskId) {

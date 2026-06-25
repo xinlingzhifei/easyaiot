@@ -2,11 +2,13 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionTaskController;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEvidenceItemMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionEvidenceQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
@@ -369,7 +371,8 @@ class SupervisionTaskControllerTest {
                     unusedRecheckService(),
                     unusedCloseCheckService(),
                     unusedReworkService(),
-                    unusedTaskQueryService()
+                    unusedTaskQueryService(),
+                    unusedEvidenceQueryService()
             );
         }
 
@@ -525,6 +528,15 @@ class SupervisionTaskControllerTest {
         };
     }
 
+    private static SupervisionEvidenceQueryService unusedEvidenceQueryService() {
+        return new SupervisionEvidenceQueryService(unusedEvidenceMapper()) {
+            @Override
+            public java.util.List<SupervisionEvidenceQueryService.EvidenceItem> listByEventId(Long eventId) {
+                throw new AssertionError("unused evidence query service");
+            }
+        };
+    }
+
     private static SupervisionTaskMapper unusedTaskMapper() {
         Object target = new Object();
         return (SupervisionTaskMapper) Proxy.newProxyInstance(
@@ -535,6 +547,20 @@ class SupervisionTaskControllerTest {
                         return method.invoke(target, args);
                     }
                     throw new AssertionError("unused task mapper");
+                }
+        );
+    }
+
+    private static SupervisionEvidenceItemMapper unusedEvidenceMapper() {
+        Object target = new Object();
+        return (SupervisionEvidenceItemMapper) Proxy.newProxyInstance(
+                SupervisionEvidenceItemMapper.class.getClassLoader(),
+                new Class<?>[]{SupervisionEvidenceItemMapper.class},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() == Object.class) {
+                        return method.invoke(target, args);
+                    }
+                    throw new AssertionError("unused evidence mapper");
                 }
         );
     }

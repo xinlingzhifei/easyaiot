@@ -2,11 +2,13 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionEventController;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEvidenceItemMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionEvidenceQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
@@ -22,6 +24,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceItemResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineItemResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -30,6 +36,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -144,6 +151,52 @@ class SupervisionEventControllerTest {
                 .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
 
         assertNull(applicationService.closureSummaryRequest());
+    }
+
+    @Test
+    void getEventEvidenceMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/events/evidence")
+                        .param("id", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].evidenceId").value(3001))
+                .andExpect(jsonPath("$.data[0].eventId").value(1001))
+                .andExpect(jsonPath("$.data[0].sourceType").value("video"))
+                .andExpect(jsonPath("$.data[0].materialType").value("snapshot"))
+                .andExpect(jsonPath("$.data[0].materialUri").value("/media/alarm/snapshot-001.jpg"))
+                .andExpect(jsonPath("$.data[0].relatedRecordId").value("alarm-image-001"))
+                .andExpect(jsonPath("$.data[0].isRequired").value(true))
+                .andExpect(jsonPath("$.data[0].requiredForLevel").value("L3"))
+                .andExpect(jsonPath("$.data[0].collectStatus").value("collected"))
+                .andExpect(jsonPath("$.data[0].sensitivityLevel").value("normal"))
+                .andExpect(jsonPath("$.data[0].createdAt").value("2026-06-11T09:31:00"));
+
+        assertEquals(new EventEvidenceRequest(1001L), applicationService.evidenceRequest());
+    }
+
+    @Test
+    void getEventTimelineMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/events/timeline")
+                        .param("id", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].eventId").value(1001))
+                .andExpect(jsonPath("$.data[0].timelineType").value("event_created"))
+                .andExpect(jsonPath("$.data[0].timelineStatus").value(SupervisionEventStatusEnum.CREATED.getCode()))
+                .andExpect(jsonPath("$.data[0].relatedRecordId").value("1001"))
+                .andExpect(jsonPath("$.data[0].occurredAt").value("2026-06-11T09:30:00"))
+                .andExpect(jsonPath("$.data[1].timelineType").value("evidence_collected"))
+                .andExpect(jsonPath("$.data[1].timelineStatus").value("collected"))
+                .andExpect(jsonPath("$.data[1].relatedRecordId").value("alarm-image-001"))
+                .andExpect(jsonPath("$.data[1].occurredAt").value("2026-06-11T09:31:00"));
+
+        assertEquals(new EventTimelineRequest(1001L), applicationService.timelineRequest());
     }
 
     @Test
@@ -290,6 +343,8 @@ class SupervisionEventControllerTest {
         private AlertEventRequest request;
         private EventDetailRequest detailRequest;
         private ClosureSummaryRequest closureSummaryRequest;
+        private EventEvidenceRequest evidenceRequest;
+        private EventTimelineRequest timelineRequest;
         private CloseCheckRequest approveCloseCheckRequest;
         private CloseCheckRequest rejectCloseCheckRequest;
 
@@ -310,7 +365,8 @@ class SupervisionEventControllerTest {
                     unusedRecheckService(),
                     unusedCloseCheckService(),
                     unusedReworkService(),
-                    unusedTaskQueryService()
+                    unusedTaskQueryService(),
+                    unusedEvidenceQueryService()
             );
         }
 
@@ -346,6 +402,46 @@ class SupervisionEventControllerTest {
                     LocalDateTime.of(2026, 6, 11, 9, 35),
                     LocalDateTime.of(2026, 6, 11, 9, 50),
                     LocalDateTime.of(2026, 6, 11, 10, 10)
+            );
+        }
+
+        @Override
+        public List<EventEvidenceItemResponse> getEventEvidence(EventEvidenceRequest request) {
+            this.evidenceRequest = request;
+            return List.of(new EventEvidenceItemResponse(
+                    3001L,
+                    1001L,
+                    "video",
+                    "snapshot",
+                    "/media/alarm/snapshot-001.jpg",
+                    "alarm-image-001",
+                    true,
+                    "L3",
+                    "collected",
+                    null,
+                    "normal",
+                    LocalDateTime.of(2026, 6, 11, 9, 31)
+            ));
+        }
+
+        @Override
+        public List<EventTimelineItemResponse> getEventTimeline(EventTimelineRequest request) {
+            this.timelineRequest = request;
+            return List.of(
+                    new EventTimelineItemResponse(
+                            1001L,
+                            "event_created",
+                            SupervisionEventStatusEnum.CREATED.getCode(),
+                            "1001",
+                            LocalDateTime.of(2026, 6, 11, 9, 30)
+                    ),
+                    new EventTimelineItemResponse(
+                            1001L,
+                            "evidence_collected",
+                            "collected",
+                            "alarm-image-001",
+                            LocalDateTime.of(2026, 6, 11, 9, 31)
+                    )
             );
         }
 
@@ -386,6 +482,14 @@ class SupervisionEventControllerTest {
 
         private ClosureSummaryRequest closureSummaryRequest() {
             return closureSummaryRequest;
+        }
+
+        private EventEvidenceRequest evidenceRequest() {
+            return evidenceRequest;
+        }
+
+        private EventTimelineRequest timelineRequest() {
+            return timelineRequest;
         }
 
         private CloseCheckRequest approveCloseCheckRequest() {
@@ -458,6 +562,15 @@ class SupervisionEventControllerTest {
         };
     }
 
+    private static SupervisionEvidenceQueryService unusedEvidenceQueryService() {
+        return new SupervisionEvidenceQueryService(unusedEvidenceMapper()) {
+            @Override
+            public java.util.List<SupervisionEvidenceQueryService.EvidenceItem> listByEventId(Long eventId) {
+                throw new AssertionError("unused evidence query service");
+            }
+        };
+    }
+
     private static SupervisionTaskMapper unusedTaskMapper() {
         Object target = new Object();
         return (SupervisionTaskMapper) Proxy.newProxyInstance(
@@ -468,6 +581,20 @@ class SupervisionEventControllerTest {
                         return method.invoke(target, args);
                     }
                     throw new AssertionError("unused task mapper");
+                }
+        );
+    }
+
+    private static SupervisionEvidenceItemMapper unusedEvidenceMapper() {
+        Object target = new Object();
+        return (SupervisionEvidenceItemMapper) Proxy.newProxyInstance(
+                SupervisionEvidenceItemMapper.class.getClassLoader(),
+                new Class<?>[]{SupervisionEvidenceItemMapper.class},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() == Object.class) {
+                        return method.invoke(target, args);
+                    }
+                    throw new AssertionError("unused evidence mapper");
                 }
         );
     }

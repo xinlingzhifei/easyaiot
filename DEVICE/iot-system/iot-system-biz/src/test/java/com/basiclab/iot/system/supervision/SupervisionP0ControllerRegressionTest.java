@@ -3,10 +3,12 @@ package com.basiclab.iot.system.supervision;
 import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionEventController;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionTaskController;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEvidenceItemMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionTaskStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionEvidenceQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
@@ -20,6 +22,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceItemResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineItemResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskByEventRequest;
@@ -34,6 +40,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -168,6 +175,18 @@ class SupervisionP0ControllerRegressionTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.eventId").value(1001))
                 .andExpect(jsonPath("$.data.taskId").value(2002));
+
+        mockMvc.perform(get("/system/supervision/events/evidence")
+                        .param("id", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].evidenceId").value(3001));
+
+        mockMvc.perform(get("/system/supervision/events/timeline")
+                        .param("id", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].timelineType").value("event_created"));
     }
 
     private static MockMvc mockMvc(SupervisionWorkflowApplicationService applicationService) {
@@ -192,7 +211,8 @@ class SupervisionP0ControllerRegressionTest {
                     unusedRecheckService(),
                     unusedCloseCheckService(),
                     unusedReworkService(),
-                    new SupervisionTaskQueryService(unusedTaskMapper())
+                    new SupervisionTaskQueryService(unusedTaskMapper()),
+                    unusedEvidenceQueryService()
             );
         }
 
@@ -308,6 +328,35 @@ class SupervisionP0ControllerRegressionTest {
             );
         }
 
+        @Override
+        public List<EventEvidenceItemResponse> getEventEvidence(EventEvidenceRequest request) {
+            return List.of(new EventEvidenceItemResponse(
+                    3001L,
+                    1001L,
+                    "video",
+                    "snapshot",
+                    "/media/alarm/snapshot-001.jpg",
+                    "alarm-image-001",
+                    true,
+                    "L3",
+                    "collected",
+                    null,
+                    "normal",
+                    LocalDateTime.of(2026, 6, 11, 9, 31)
+            ));
+        }
+
+        @Override
+        public List<EventTimelineItemResponse> getEventTimeline(EventTimelineRequest request) {
+            return List.of(new EventTimelineItemResponse(
+                    1001L,
+                    "event_created",
+                    SupervisionEventStatusEnum.CLOSED.getCode(),
+                    "1001",
+                    LocalDateTime.of(2026, 6, 11, 9, 30)
+            ));
+        }
+
     }
 
     private static SupervisionTaskAcceptanceService unusedAcceptanceService() {
@@ -361,6 +410,15 @@ class SupervisionP0ControllerRegressionTest {
         };
     }
 
+    private static SupervisionEvidenceQueryService unusedEvidenceQueryService() {
+        return new SupervisionEvidenceQueryService(unusedEvidenceMapper()) {
+            @Override
+            public List<SupervisionEvidenceQueryService.EvidenceItem> listByEventId(Long eventId) {
+                throw new AssertionError("unused evidence query service");
+            }
+        };
+    }
+
     private static SupervisionTaskMapper unusedTaskMapper() {
         Object target = new Object();
         return (SupervisionTaskMapper) Proxy.newProxyInstance(
@@ -371,6 +429,20 @@ class SupervisionP0ControllerRegressionTest {
                         return method.invoke(target, args);
                     }
                     throw new AssertionError("unused task mapper");
+                }
+        );
+    }
+
+    private static SupervisionEvidenceItemMapper unusedEvidenceMapper() {
+        Object target = new Object();
+        return (SupervisionEvidenceItemMapper) Proxy.newProxyInstance(
+                SupervisionEvidenceItemMapper.class.getClassLoader(),
+                new Class<?>[]{SupervisionEvidenceItemMapper.class},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() == Object.class) {
+                        return method.invoke(target, args);
+                    }
+                    throw new AssertionError("unused evidence mapper");
                 }
         );
     }

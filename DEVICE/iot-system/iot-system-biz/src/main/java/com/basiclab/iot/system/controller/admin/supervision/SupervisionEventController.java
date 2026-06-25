@@ -7,7 +7,9 @@ import com.basiclab.iot.system.controller.admin.supervision.vo.event.CloseCheckR
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.ClosureSummaryRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventDetailReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventDetailRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventEvidenceRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventOperationRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventTimelineRespVO;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
@@ -16,6 +18,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.ClosureSummaryResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.Valid;
+import java.util.List;
 
 import static com.basiclab.iot.common.domain.CommonResult.success;
 
@@ -58,6 +63,24 @@ public class SupervisionEventController {
                 new ClosureSummaryRequest(reqVO.getId())
         );
         return success(ClosureSummaryRespVO.from(response));
+    }
+
+    @GetMapping("/evidence")
+    @Operation(summary = "Get supervision event evidence chain")
+    public CommonResult<List<EventEvidenceRespVO>> getEventEvidence(@Valid EventDetailReqVO reqVO) {
+        return success(supervisionWorkflowApplicationService.getEventEvidence(new EventEvidenceRequest(reqVO.getId()))
+                .stream()
+                .map(EventEvidenceRespVO::from)
+                .toList());
+    }
+
+    @GetMapping("/timeline")
+    @Operation(summary = "Get supervision event timeline")
+    public CommonResult<List<EventTimelineRespVO>> getEventTimeline(@Valid EventDetailReqVO reqVO) {
+        return success(supervisionWorkflowApplicationService.getEventTimeline(new EventTimelineRequest(reqVO.getId()))
+                .stream()
+                .map(EventTimelineRespVO::from)
+                .toList());
     }
 
     @PostMapping("/from-alert")

@@ -1,12 +1,16 @@
 package com.basiclab.iot.system.supervision;
 
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEvidenceItemMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService;
+import com.basiclab.iot.system.service.supervision.SupervisionEvidenceQueryService;
+import com.basiclab.iot.system.service.supervision.SupervisionEvidenceQueryService.EvidenceItem;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventDetail;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskRecheckService;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskQueryService;
@@ -16,6 +20,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceItemResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventEvidenceRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineItemResponse;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventTimelineRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskAcceptRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskRecheckRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.TaskSubmitRequest;
@@ -25,6 +33,7 @@ import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -90,7 +99,8 @@ class SupervisionWorkflowApplicationServiceTest {
                 recheckService(calls, true, false),
                 closeCheckService(calls, true, false),
                 reworkService(calls, true),
-                unusedTaskQueryService()
+                unusedTaskQueryService(),
+                unusedEvidenceQueryService()
         );
 
         assertTrue(service.acceptTask(new TaskAcceptRequest(2001L, 3001L)).success());
@@ -110,6 +120,55 @@ class SupervisionWorkflowApplicationServiceTest {
                 "rejectCloseCheck:1002",
                 "restartRework:2005:3005"
         ), calls);
+    }
+
+    @Test
+    void eventEvidenceAndTimelineQueriesMapReadModels() {
+        SupervisionWorkflowApplicationService service = newApplicationService(
+                eventServiceWithDetail(new EventDetail(
+                        1001L,
+                        "video",
+                        "alert-001",
+                        "RULE_ABNORMAL_GATHERING",
+                        "crowd_gathering",
+                        "L3",
+                        SupervisionEventStatusEnum.CLOSED.getCode(),
+                        "normal_closed",
+                        LocalDateTime.of(2026, 6, 11, 9, 30),
+                        LocalDateTime.of(2026, 6, 11, 9, 35),
+                        LocalDateTime.of(2026, 6, 11, 9, 50),
+                        LocalDateTime.of(2026, 6, 11, 10, 10)
+                )),
+                evidenceQueryService(List.of(new EvidenceItem(
+                        3001L,
+                        1001L,
+                        "video",
+                        "snapshot",
+                        "/media/alarm/snapshot-001.jpg",
+                        "alarm-image-001",
+                        true,
+                        "L3",
+                        "collected",
+                        null,
+                        "normal",
+                        LocalDateTime.of(2026, 6, 11, 9, 31)
+                )))
+        );
+
+        List<EventEvidenceItemResponse> evidence = service.getEventEvidence(new EventEvidenceRequest(1001L));
+        List<EventTimelineItemResponse> timeline = service.getEventTimeline(new EventTimelineRequest(1001L));
+
+        assertEquals(1, evidence.size());
+        assertEquals(3001L, evidence.get(0).evidenceId());
+        assertEquals("snapshot", evidence.get(0).materialType());
+        assertEquals("alarm-image-001", evidence.get(0).relatedRecordId());
+        assertEquals(5, timeline.size());
+        assertEquals("event_created", timeline.get(0).timelineType());
+        assertEquals(LocalDateTime.of(2026, 6, 11, 9, 30), timeline.get(0).occurredAt());
+        assertEquals("evidence_collected", timeline.get(1).timelineType());
+        assertEquals("event_accepted", timeline.get(2).timelineType());
+        assertEquals("event_handled", timeline.get(3).timelineType());
+        assertEquals("event_closed", timeline.get(4).timelineType());
     }
 
     @Test
@@ -183,6 +242,11 @@ class SupervisionWorkflowApplicationServiceTest {
     }
 
     private static SupervisionWorkflowApplicationService newApplicationService(SupervisionEventService eventService) {
+        return newApplicationService(eventService, unusedEvidenceQueryService());
+    }
+
+    private static SupervisionWorkflowApplicationService newApplicationService(SupervisionEventService eventService,
+                                                                              SupervisionEvidenceQueryService evidenceQueryService) {
         List<String> calls = new ArrayList<>();
         return new SupervisionWorkflowApplicationService(
                 eventService,
@@ -191,7 +255,8 @@ class SupervisionWorkflowApplicationServiceTest {
                 recheckService(calls, true, true),
                 closeCheckService(calls, true, true),
                 reworkService(calls, true),
-                unusedTaskQueryService()
+                unusedTaskQueryService(),
+                evidenceQueryService
         );
     }
 
@@ -206,7 +271,8 @@ class SupervisionWorkflowApplicationServiceTest {
                 recheckService(calls, true, true),
                 closeCheckService(calls, true, true),
                 reworkService(calls, true),
-                unusedTaskQueryService()
+                unusedTaskQueryService(),
+                unusedEvidenceQueryService()
         );
     }
 
@@ -316,6 +382,33 @@ class SupervisionWorkflowApplicationServiceTest {
         };
     }
 
+    private static SupervisionEvidenceQueryService evidenceQueryService(List<EvidenceItem> evidenceItems) {
+        return new SupervisionEvidenceQueryService(unusedEvidenceMapper()) {
+            @Override
+            public List<EvidenceItem> listByEventId(Long eventId) {
+                return evidenceItems;
+            }
+        };
+    }
+
+    private static SupervisionEvidenceQueryService unusedEvidenceQueryService() {
+        return evidenceQueryService(List.of());
+    }
+
+    private static SupervisionEventService eventServiceWithDetail(EventDetail detail) {
+        return new SupervisionEventService() {
+            @Override
+            public AlertToEventResult createFromAlert(AlertToEventCommand command) {
+                throw new AssertionError("unused event creation");
+            }
+
+            @Override
+            public Optional<EventDetail> getEventDetail(Long eventId) {
+                return Optional.of(detail);
+            }
+        };
+    }
+
     private static SupervisionTaskMapper unusedTaskMapper() {
         Object target = new Object();
         return (SupervisionTaskMapper) Proxy.newProxyInstance(
@@ -326,6 +419,20 @@ class SupervisionWorkflowApplicationServiceTest {
                         return method.invoke(target, args);
                     }
                     throw new AssertionError("unused task mapper");
+                }
+        );
+    }
+
+    private static SupervisionEvidenceItemMapper unusedEvidenceMapper() {
+        Object target = new Object();
+        return (SupervisionEvidenceItemMapper) Proxy.newProxyInstance(
+                SupervisionEvidenceItemMapper.class.getClassLoader(),
+                new Class<?>[]{SupervisionEvidenceItemMapper.class},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() == Object.class) {
+                        return method.invoke(target, args);
+                    }
+                    throw new AssertionError("unused evidence mapper");
                 }
         );
     }
