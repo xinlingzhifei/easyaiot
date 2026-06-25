@@ -46,6 +46,11 @@ assert.match(
 )
 assert.match(
   sharedPlayer,
+  /import RtcPlayer from ["']@\/components\/VideoPlayer\/rtcPlayer\.vue["']/,
+  'The shared live player wrapper should import RtcPlayer for WebRTC fallback sources.',
+)
+assert.match(
+  sharedPlayer,
   /shouldUseWasmLivePlayer/,
   'The shared live player wrapper should use the codec/player strategy.',
 )
@@ -56,13 +61,23 @@ assert.match(
 )
 assert.match(
   sharedPlayer,
-  /<video[\s\S]*v-if="useNativeVideo"[\s\S]*class="native-video-player"/,
+  /<RtcPlayer[\s\S]*v-if="useWebRtc"[\s\S]*@stream-error="\$emit\('stream-error', \$event\)"/,
+  'The shared live player wrapper should render RtcPlayer when fallback selects a WebRTC source.',
+)
+assert.match(
+  sharedPlayer,
+  /<video[\s\S]*v-(?:else-)?if="useNativeVideo"[\s\S]*class="native-video-player"/,
   'The shared live player wrapper should render a native video element for HEVC fMP4 when the browser supports it.',
 )
 assert.match(
   sharedPlayer,
   /useNativeVideo\(\)[\s\S]*playerEngine === 'native'/,
   'The shared live player wrapper should honor the native player engine selected by the stream strategy.',
+)
+assert.match(
+  sharedPlayer,
+  /useWebRtc\(\)[\s\S]*playerEngine === 'webrtc'/,
+  'The shared live player wrapper should honor the WebRTC player engine selected by the stream strategy.',
 )
 assert.match(
   sharedPlayer,
@@ -88,6 +103,11 @@ assert.match(
   sharedPlayer,
   /nativeVideoUrl = target/,
   'The shared live player wrapper should pass the signed stream URL to the native video element.',
+)
+assert.doesNotMatch(
+  sharedPlayer,
+  /this\.playUrl !== originalPlayUrl \|\| !this\.jessibuca/,
+  'The shared live player wrapper must not abort signed EasyWasm/native playback just because there is no Jessibuca instance.',
 )
 
 assert.match(
@@ -134,6 +154,21 @@ assert.match(
   rtcPlayer,
   /first-frame-timeout/,
   'RtcPlayer should surface a no-first-frame timeout so DialogPlayer can fall back to FLV.',
+)
+assert.match(
+  rtcPlayer,
+  /ref="video"/,
+  'RtcPlayer should bind ZLMRTCClient to its own video element so dashboard cells do not fight over one global id.',
+)
+assert.match(
+  rtcPlayer,
+  /webrtcPlayer: null/,
+  'RtcPlayer should keep the WebRTC endpoint on the component instance.',
+)
+assert.doesNotMatch(
+  rtcPlayer,
+  /let webrtcPlayer = null/,
+  'RtcPlayer should not share one module-level WebRTC endpoint across all video cells.',
 )
 
 assert.match(

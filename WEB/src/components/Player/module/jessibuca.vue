@@ -1,7 +1,14 @@
 <template>
   <div style="width: 100%; height: 100%; background-color: #000c17">
+    <RtcPlayer
+      v-if="useWebRtc"
+      ref="rtcPlayer"
+      :videoUrl="webRtcUrl"
+      :hasaudio="hasAudio"
+      @stream-error="$emit('stream-error', $event)"
+    />
     <video
-      v-if="useNativeVideo"
+      v-else-if="useNativeVideo"
       ref="nativeVideo"
       class="native-video-player"
       :src="nativeVideoUrl"
@@ -113,12 +120,13 @@
 import {Icon} from "@/components/Icon";
 import {signStreamUrl, isProtectedStreamUrl, clearTicketForUrl} from "@/views/camera/utils/streamTicket";
 import EasyPlayer from "@/components/VideoPlayer/EasyPlayer.vue";
+import RtcPlayer from "@/components/VideoPlayer/rtcPlayer.vue";
 import {detectVideoCodecFromUrl, normalizeVideoCodec, shouldUseWasmLivePlayer} from "@/views/camera/utils/livePlayer";
 import {rewriteStreamHostToPageHost} from "@/views/camera/utils/devicePlay";
 
 export default {
   name: "Player",
-  components: {EasyPlayer, Icon},
+  components: {EasyPlayer, RtcPlayer, Icon},
   emits: ["stream-error"],
   props: {
     playUrl: {
@@ -148,6 +156,7 @@ export default {
       jessibuca: null,
       easyWasmUrl: '',
       nativeVideoUrl: '',
+      webRtcUrl: '',
       version: '',
       wasm: false,
       vc: "ff",
@@ -178,11 +187,17 @@ export default {
     };
   },
   computed: {
+    useWebRtc() {
+      return this.playerEngine === 'webrtc';
+    },
     useNativeVideo() {
       return this.playerEngine === 'native';
     },
+    requiresJessibucaInstance() {
+      return !this.useWebRtc && !this.useEasyWasm && !this.useNativeVideo;
+    },
     useEasyWasm() {
-      if (this.useNativeVideo) return false;
+      if (this.useWebRtc || this.useNativeVideo) return false;
       return shouldUseWasmLivePlayer({
         playerEngine: this.playerEngine,
         videoCodec: this.videoCodec,
@@ -196,7 +211,7 @@ export default {
     },
   },
   mounted() {
-    if (!this.useEasyWasm && !this.useNativeVideo) {
+    if (this.requiresJessibucaInstance) {
       this.create();
     }
     window.onerror = (msg) => (this.err = msg);
@@ -209,18 +224,21 @@ export default {
       this.protectedRetries = 0; // 切换地址，重置续票重试计数
       this.easyWasmUrl = '';
       this.nativeVideoUrl = '';
+      this.webRtcUrl = '';
       if (url) this.switchPlayerAndPlay();
     },
     playerEngine() {
       this.protectedRetries = 0;
       this.easyWasmUrl = '';
       this.nativeVideoUrl = '';
+      this.webRtcUrl = '';
       if (this.playUrl) this.switchPlayerAndPlay();
     },
     videoCodec() {
       this.protectedRetries = 0;
       this.easyWasmUrl = '';
       this.nativeVideoUrl = '';
+      this.webRtcUrl = '';
       if (this.playUrl) this.switchPlayerAndPlay();
     },
     vodMode() {
@@ -234,6 +252,7 @@ export default {
   },
   async unmounted() {
     this.resetNativeVideo();
+    this.resetRtcPlayer();
     if(this.jessibuca){
       await this.jessibuca.destroy();
       this.jessibuca = null;
@@ -241,7 +260,7 @@ export default {
   },
   methods: {
     async switchPlayerAndPlay() {
-      if (this.useEasyWasm || this.useNativeVideo) {
+      if (!this.requiresJessibucaInstance) {
         if (this.jessibuca) {
           await this.jessibuca.destroy();
           this.jessibuca = null;
@@ -252,7 +271,7 @@ export default {
       this.$nextTick(() => this.play());
     },
     create(options) {
-      if (this.useEasyWasm) return;
+      if (!this.requiresJessibucaInstance) return;
       options = options || {};
       const pageHttps =
         typeof window !== 'undefined' && window.location.protocol === 'https:';
@@ -378,7 +397,7 @@ export default {
     async play(forceRefresh = false) {
       // 模板 @click="play" 会把鼠标事件当参数传入，这里归一为布尔，避免手动点播时被误判为强制续票
       const force = forceRefresh === true;
-      if (!this.useEasyWasm && !this.useNativeVideo && !this.jessibuca && this.$refs.container) {
+      if (this.requiresJessibucaInstance && !this.jessibuca && this.$refs.container) {
         this.create();
       }
       if (!this.playUrl) return;
@@ -398,7 +417,14 @@ export default {
           target = rewriteStreamHostToPageHost(this.playUrl);
         }
         // 防竞态：等待签发期间地址已切换/组件已销毁则放弃
-        if (this.playUrl !== originalPlayUrl || !this.jessibuca) return;
+        if (this.playUrl !== originalPlayUrl) return;
+        if (this.requiresJessibucaInstance && !this.jessibuca) return;
+      }
+      if (this.useWebRtc) {
+        this.webRtcUrl = target;
+        this.playing = true;
+        this.protectedRetries = 0;
+        return;
       }
       if (this.useNativeVideo) {
         this.nativeVideoUrl = target;
@@ -453,6 +479,10 @@ export default {
       }
       this.nativeVideoUrl = '';
     },
+    resetRtcPlayer() {
+      this.$refs.rtcPlayer?.pause?.();
+      this.webRtcUrl = '';
+    },
     onNativeVideoPlaying() {
       this.playing = true;
       this.loaded = true;
@@ -475,6 +505,11 @@ export default {
       this.jessibuca.cancelMute();
     },
     pause() {
+      if (this.useWebRtc) {
+        this.$refs.rtcPlayer?.pause?.();
+        this.playing = false;
+        return;
+      }
       if (this.useNativeVideo) {
         this.$refs.nativeVideo?.pause?.();
         this.playing = false;
@@ -500,6 +535,13 @@ export default {
       this.jessibuca.setRotate(this.rotate);
     },
     async destroy() {
+      if (this.useWebRtc) {
+        this.resetRtcPlayer();
+        this.playing = false;
+        this.loaded = false;
+        this.performance = "";
+        return;
+      }
       if (this.useNativeVideo) {
         this.resetNativeVideo();
         this.playing = false;
@@ -528,6 +570,10 @@ export default {
       this.performance = "";
     },
     fullscreen() {
+      if (this.useWebRtc) {
+        this.$refs.rtcPlayer?.requestFullscreen?.();
+        return;
+      }
       if (this.useNativeVideo) {
         this.$refs.nativeVideo?.requestFullscreen?.();
         return;
@@ -572,6 +618,11 @@ export default {
       return document.fullscreenElement || false
     },
     async restartPlay(type) {
+      if (this.useWebRtc) {
+        await this.destroy();
+        setTimeout(() => this.play(), 100)
+        return
+      }
       if (this.useNativeVideo) {
         await this.destroy();
         setTimeout(() => this.play(), 100)
