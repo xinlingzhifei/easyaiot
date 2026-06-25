@@ -98,6 +98,12 @@ const h264WebRtcSources = pickWvpPlaySources({
 
 assert.deepEqual(h264WebRtcSources, [
   {
+    label: 'rtcs',
+    url: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
+    videoCodec: 'h264',
+    playerEngine: 'webrtc',
+  },
+  {
     label: 'https_flv',
     url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
     videoCodec: 'h264',
@@ -109,12 +115,6 @@ assert.deepEqual(h264WebRtcSources, [
     videoCodec: 'h264',
     playerEngine: 'jessibuca',
   },
-  {
-    label: 'rtcs',
-    url: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
-    videoCodec: 'h264',
-    playerEngine: 'webrtc',
-  },
 ])
 
 assert.deepEqual(pickWvpPlaySource({
@@ -124,9 +124,9 @@ assert.deepEqual(pickWvpPlaySource({
 }, {
   isHttps: true,
 }), {
-  url: 'https://eye.yfeiai.com/rtp/demo.live.flv?videoCodec=H264',
+  url: 'https://eye.yfeiai.com/index/api/webrtc?app=rtp&stream=demo&type=play&videoCodec=H264',
   videoCodec: 'h264',
-  playerEngine: 'jessibuca',
+  playerEngine: 'webrtc',
 })
 
 assert.deepEqual(pickWvpPlaySource({
