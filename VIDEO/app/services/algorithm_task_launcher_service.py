@@ -934,6 +934,15 @@ def _auto_start_all_tasks_internal():
 
 def cleanup_stopped_processes():
     """清理已停止的守护进程（守护进程会自动管理，此函数主要用于检查）"""
+    starting_task_ids = set()
+    with _starting_lock:
+        for task_id, task_lock in _starting_tasks.items():
+            try:
+                if task_lock.locked():
+                    starting_task_ids.add(task_id)
+            except Exception:
+                pass
+
     with _daemons_lock:
         tasks_to_remove = []
         for task_id, daemon in _running_daemons.items():
@@ -954,6 +963,31 @@ def cleanup_stopped_processes():
             except:
                 pass
             del _running_daemons[task_id]
+
+    try:
+        stopped_task_ids = [
+            task.id
+            for task in AlgorithmTask.query.filter(
+                AlgorithmTask.task_type == 'realtime',
+                AlgorithmTask.run_status == 'stopped',
+            ).all()
+        ]
+    except Exception as e:
+        logger.debug(f"查询已停止算法任务用于孤儿进程清理失败: {e}")
+        stopped_task_ids = []
+
+    with _daemons_lock:
+        active_task_ids = {
+            task_id
+            for task_id, daemon in _running_daemons.items()
+            if daemon._running and daemon._process and daemon._process.poll() is None
+        }
+
+    for task_id in stopped_task_ids:
+        if task_id in starting_task_ids or task_id in active_task_ids:
+            continue
+        logger.info(f"清理已停止任务的孤儿算法进程: task_id={task_id}")
+        cleanup_orphaned_processes(task_id)
 
 
 def stop_all_daemons():

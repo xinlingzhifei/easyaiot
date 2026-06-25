@@ -51,6 +51,26 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertIn("allowed_classes_include_person", source)
         self.assertIn("run_tiled_model_detection", source)
 
+    def test_realtime_ai_pusher_rejects_stale_output_frames(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("AI_OUTPUT_FRAME_STALE_SEC", source)
+        self.assertIn("'updated_at': current_timestamp", source)
+        self.assertIn("_is_output_frame_info_fresh", source)
+        self.assertIn("AI输出帧过期", source)
+
+    def test_stopped_realtime_tasks_cleanup_orphan_algorithm_processes(self):
+        source = (
+            VIDEO_ROOT / "app" / "services" / "algorithm_task_launcher_service.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("AlgorithmTask.run_status == 'stopped'", source)
+        self.assertIn("cleanup_orphaned_processes(task_id)", source)
+        self.assertIn("active_task_ids", source)
+        self.assertIn("starting_task_ids", source)
+
 
 if __name__ == "__main__":
     unittest.main()

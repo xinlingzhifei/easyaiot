@@ -341,7 +341,7 @@ device_caps = {}  # {device_id: FfmpegVideoStream | AsyncVideoStream | cv2.Video
 # 摄像头推送进程（FFmpeg进程）
 device_pushers = {}  # {device_id: subprocess.Popen}
 # 固定速率推帧线程：将推帧从主循环解耦，确保匀速推流
-device_output_frames = {}  # {device_id: {'frame': np.ndarray, 'w': int, 'h': int} or None}
+device_output_frames = {}  # {device_id: {'frame': np.ndarray, 'w': int, 'h': int, 'updated_at': float} or None}
 device_output_locks = {}  # {device_id: threading.Lock()}
 device_push_threads = {}  # {device_id: threading.Thread}
 device_push_running = {}  # {device_id: threading.Event()}
@@ -2488,13 +2488,62 @@ def _bgr_frame_to_ffmpeg_rgb24_bytes(frame: np.ndarray, expect_h: int, expect_w:
     except Exception:
         return None
 
+
+def _output_frame_stale_seconds() -> float:
+    try:
+        return max(0.5, float(os.getenv("AI_OUTPUT_FRAME_STALE_SEC", "3")))
+    except (TypeError, ValueError):
+        return 3.0
+
+
+def _is_output_frame_info_fresh(
+    output_frame_info: Optional[dict],
+    now: Optional[float] = None,
+    stale_seconds: Optional[float] = None,
+) -> bool:
+    if not output_frame_info or output_frame_info.get('frame') is None:
+        return False
+    updated_at = output_frame_info.get('updated_at')
+    if updated_at is None:
+        return False
+    try:
+        age = (time.time() if now is None else now) - float(updated_at)
+    except (TypeError, ValueError):
+        return False
+    return age <= (stale_seconds if stale_seconds is not None else _output_frame_stale_seconds())
+
+
+def _terminate_stale_pusher(device_id: str, pusher_process, reason: str) -> None:
+    if not pusher_process or pusher_process.poll() is not None:
+        device_pushers.pop(device_id, None)
+        return
+    try:
+        if pusher_process.stdin:
+            pusher_process.stdin.close()
+    except Exception:
+        pass
+    try:
+        pusher_process.terminate()
+        pusher_process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        try:
+            pusher_process.kill()
+            pusher_process.wait(timeout=1)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.debug(f"设备 {device_id} 关闭过期AI推流进程失败({reason}): {e}")
+    finally:
+        device_pushers.pop(device_id, None)
+
+
 def _fixed_rate_push_worker(device_id: str):
     """固定速率推帧线程：独立于主循环，以精确帧率间隔向 FFmpeg 推帧。
     
     核心思路：
     - 主循环负责读取帧、缓冲、AI处理，将待推帧写入 device_output_frames
     - 本线程以 steady clock 间隔读取 latest output frame 并写入 FFmpeg stdin
-    - 当 AI 处理慢、主循环未产出新帧时，重复推上一帧（保持流畅，避免卡顿快进）
+    - 当 AI 处理慢、主循环短时间未产出新帧时，重复推上一帧；超过新鲜度阈值则断开推流，避免旧画面伪装成直播
     - 当主循环产出帧过快时，只保留最新帧（丢旧帧追实时）
     """
     logger.info(f"📤 固定速率推帧线程启动 [设备: {device_id}]")
@@ -2507,8 +2556,10 @@ def _fixed_rate_push_worker(device_id: str):
     last_push_frame = None
     last_push_w = None
     last_push_h = None
+    last_push_frame_updated_at = None
     last_push_time = time.perf_counter()
     push_frame_count = 0
+    stale_seconds = _output_frame_stale_seconds()
     
     while push_running and not push_running.is_set() and not stop_event.is_set():
         try:
@@ -2545,8 +2596,31 @@ def _fixed_rate_push_worker(device_id: str):
             frame_to_push = None
             push_w = None
             push_h = None
+            now_wall = time.time()
             
             if output_frame_info is not None and output_frame_info.get('frame') is not None:
+                if not _is_output_frame_info_fresh(output_frame_info, now_wall, stale_seconds):
+                    updated_at = output_frame_info.get('updated_at')
+                    try:
+                        age = now_wall - float(updated_at)
+                    except (TypeError, ValueError):
+                        age = -1.0
+                    logger.warning(
+                        f"设备 {device_id} AI输出帧过期({age:.1f}s)，关闭AI推流并等待源流恢复"
+                    )
+                    _terminate_stale_pusher(device_id, pusher_process, "AI输出帧过期")
+                    if output_lock:
+                        with output_lock:
+                            if device_output_frames.get(device_id) is output_frame_info:
+                                device_output_frames[device_id] = None
+                    last_push_frame = None
+                    last_push_w = None
+                    last_push_h = None
+                    last_push_frame_updated_at = None
+                    _mark_quality_failure("AI输出帧过期")
+                    time.sleep(0.05)
+                    continue
+
                 frame_to_push = output_frame_info['frame']
                 push_w = output_frame_info['w']
                 push_h = output_frame_info['h']
@@ -2554,11 +2628,26 @@ def _fixed_rate_push_worker(device_id: str):
                 last_push_frame = frame_to_push
                 last_push_w = push_w
                 last_push_h = push_h
-            elif last_push_frame is not None:
-                # 没有新帧，重复上一帧（保持流畅）
+                last_push_frame_updated_at = float(output_frame_info.get('updated_at'))
+            elif (
+                last_push_frame is not None
+                and last_push_frame_updated_at is not None
+                and now_wall - last_push_frame_updated_at <= stale_seconds
+            ):
+                # 没有新帧，短时间重复上一帧（保持流畅）
                 frame_to_push = last_push_frame
                 push_w = last_push_w
                 push_h = last_push_h
+            elif last_push_frame is not None:
+                logger.warning(f"设备 {device_id} AI输出帧过期，停止重复旧帧")
+                _terminate_stale_pusher(device_id, pusher_process, "AI输出帧过期")
+                last_push_frame = None
+                last_push_w = None
+                last_push_h = None
+                last_push_frame_updated_at = None
+                _mark_quality_failure("AI输出帧过期")
+                time.sleep(0.05)
+                continue
             else:
                 # 首帧尚未就绪，等待
                 time.sleep(0.005)
@@ -3377,6 +3466,8 @@ def buffer_streamer_worker(device_id: str):
                             'frame': output_frame,
                             'w': frame_width,
                             'h': frame_height,
+                            'updated_at': current_timestamp,
+                            'frame_number': frame_count,
                         }
                 if overlay_applied and frame_count % 100 == 0:
                     logger.debug(
