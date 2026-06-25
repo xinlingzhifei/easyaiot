@@ -2,6 +2,8 @@ package com.basiclab.iot.system.controller.admin.supervision;
 
 import com.basiclab.iot.common.domain.CommonResult;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskAcceptReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskByEventReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskDetailReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskDetailRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskOperationRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.task.TaskRecheckReqVO;
@@ -21,7 +23,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.Valid;
@@ -42,15 +43,15 @@ public class SupervisionTaskController {
 
     @GetMapping("/get")
     @Operation(summary = "Get supervision task detail")
-    public CommonResult<TaskDetailRespVO> getTaskDetail(@RequestParam("id") Long id) {
-        TaskDetailResponse response = supervisionWorkflowApplicationService.getTaskDetail(new TaskDetailRequest(id));
+    public CommonResult<TaskDetailRespVO> getTaskDetail(@Valid TaskDetailReqVO reqVO) {
+        TaskDetailResponse response = supervisionWorkflowApplicationService.getTaskDetail(new TaskDetailRequest(reqVO.getId()));
         return success(TaskDetailRespVO.from(response));
     }
 
     @GetMapping("/by-event")
     @Operation(summary = "Get current supervision task by event")
-    public CommonResult<TaskDetailRespVO> getCurrentTaskByEvent(@RequestParam("eventId") Long eventId) {
-        TaskDetailResponse response = supervisionWorkflowApplicationService.getCurrentTaskByEvent(new TaskByEventRequest(eventId));
+    public CommonResult<TaskDetailRespVO> getCurrentTaskByEvent(@Valid TaskByEventReqVO reqVO) {
+        TaskDetailResponse response = supervisionWorkflowApplicationService.getCurrentTaskByEvent(new TaskByEventRequest(reqVO.getEventId()));
         return success(TaskDetailRespVO.from(response));
     }
 

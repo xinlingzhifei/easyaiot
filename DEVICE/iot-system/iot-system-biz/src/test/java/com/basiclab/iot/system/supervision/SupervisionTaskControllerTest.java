@@ -62,6 +62,35 @@ class SupervisionTaskControllerTest {
     }
 
     @Test
+    void getTaskDetailRejectsInvalidTaskIdBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/tasks/get"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString("taskId must not be null")));
+
+        assertNull(applicationService.detailRequest());
+
+        assertInvalidTaskDetailIdRejected(mockMvc, applicationService, "0", "taskId must be positive");
+        assertInvalidTaskDetailIdRejected(mockMvc, applicationService, "-1", "taskId must be positive");
+    }
+
+    private static void assertInvalidTaskDetailIdRejected(MockMvc mockMvc,
+                                                          CapturingWorkflowApplicationService applicationService,
+                                                          String taskId,
+                                                          String expectedMessage) throws Exception {
+        mockMvc.perform(get("/system/supervision/tasks/get")
+                        .param("id", taskId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
+
+        assertNull(applicationService.detailRequest());
+    }
+
+    @Test
     void getCurrentTaskByEventMapsHttpRequestToApplicationFacade() throws Exception {
         CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
         MockMvc mockMvc = mockMvc(applicationService);
@@ -78,6 +107,35 @@ class SupervisionTaskControllerTest {
                 .andExpect(jsonPath("$.data.reworkCount").value(2));
 
         assertEquals(new TaskByEventRequest(1001L), applicationService.taskByEventRequest());
+    }
+
+    @Test
+    void getCurrentTaskByEventRejectsInvalidEventIdBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/tasks/by-event"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString("eventId must not be null")));
+
+        assertNull(applicationService.taskByEventRequest());
+
+        assertInvalidTaskByEventIdRejected(mockMvc, applicationService, "0", "eventId must be positive");
+        assertInvalidTaskByEventIdRejected(mockMvc, applicationService, "-1", "eventId must be positive");
+    }
+
+    private static void assertInvalidTaskByEventIdRejected(MockMvc mockMvc,
+                                                           CapturingWorkflowApplicationService applicationService,
+                                                           String eventId,
+                                                           String expectedMessage) throws Exception {
+        mockMvc.perform(get("/system/supervision/tasks/by-event")
+                        .param("eventId", eventId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
+
+        assertNull(applicationService.taskByEventRequest());
     }
 
     @Test

@@ -118,6 +118,35 @@ class SupervisionEventControllerTest {
     }
 
     @Test
+    void getClosureSummaryRejectsInvalidEventIdBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/events/closure-summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString("eventId must not be null")));
+
+        assertNull(applicationService.closureSummaryRequest());
+
+        assertInvalidClosureSummaryEventIdRejected(mockMvc, applicationService, "0", "eventId must be positive");
+        assertInvalidClosureSummaryEventIdRejected(mockMvc, applicationService, "-1", "eventId must be positive");
+    }
+
+    private static void assertInvalidClosureSummaryEventIdRejected(MockMvc mockMvc,
+                                                                   CapturingWorkflowApplicationService applicationService,
+                                                                   String eventId,
+                                                                   String expectedMessage) throws Exception {
+        mockMvc.perform(get("/system/supervision/events/closure-summary")
+                        .param("id", eventId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
+
+        assertNull(applicationService.closureSummaryRequest());
+    }
+
+    @Test
     void createEventFromAlertMapsHttpRequestToApplicationFacade() throws Exception {
         CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
         MockMvc mockMvc = mockMvc(applicationService);
