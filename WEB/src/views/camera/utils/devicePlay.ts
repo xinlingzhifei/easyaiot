@@ -10,6 +10,7 @@ import {
 } from './deviceLabel';
 import { isProtectedStreamUrl, signStreamUrl } from './streamTicket';
 import {
+  pickLivePlayerEngine,
   pickWvpPlaySource as pickWvpLivePlayerSource,
   pickWvpPlaySources as pickWvpLivePlayerSources,
   type WvpPlaySource,
@@ -314,11 +315,18 @@ export async function resolveGbChannelPlayUrls(
       true,
     );
     if (url) {
+      if (!isAiStreamPlayUrl(url) && wvpSource.url) {
+        return wvpSource;
+      }
+      const aiPlayerEngine = pickLivePlayerEngine({
+        url,
+        videoCodec: wvpSource.videoCodec,
+      });
       return {
         url,
         fallbackUrl: preferAi ? wvpSource.url : fallbackUrl ?? wvpSource.url,
         preferAi,
-        playerEngine: wvpSource.playerEngine,
+        playerEngine: aiPlayerEngine,
         videoCodec: wvpSource.videoCodec,
         playSources: wvpSource.playSources,
       };

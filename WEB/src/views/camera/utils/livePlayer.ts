@@ -152,16 +152,6 @@ export function pickWvpPlaySources(
     }
   };
 
-  if (videoCodec === 'h264') {
-    if (isHttps) {
-      pushSource('rtcs', streamContent.rtcs, 'webrtc');
-      pushSource('rtc', streamContent.rtc, 'webrtc');
-    } else {
-      pushSource('rtc', streamContent.rtc, 'webrtc');
-      pushSource('rtcs', streamContent.rtcs, 'webrtc');
-    }
-  }
-
   const candidates = isHttps
     ? [
         ['https_flv', streamContent.https_flv],
@@ -183,6 +173,16 @@ export function pickWvpPlaySources(
 
   for (const [label, raw] of candidates) {
     pushSource(label, raw as string | null | undefined);
+  }
+
+  if (videoCodec === 'h264') {
+    if (isHttps) {
+      pushSource('rtcs', streamContent.rtcs, 'webrtc');
+      pushSource('rtc', streamContent.rtc, 'webrtc');
+    } else {
+      pushSource('rtc', streamContent.rtc, 'webrtc');
+      pushSource('rtcs', streamContent.rtcs, 'webrtc');
+    }
   }
 
   const rtmpUrl = toPlayableUrl(streamContent.rtmp);
