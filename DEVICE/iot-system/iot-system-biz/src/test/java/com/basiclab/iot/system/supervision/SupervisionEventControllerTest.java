@@ -16,6 +16,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -25,13 +27,69 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SupervisionEventControllerTest {
+
+    @Test
+    void getEventDetailMapsHttpRequestToApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/events/get")
+                        .param("id", "1001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.eventId").value(1001))
+                .andExpect(jsonPath("$.data.sourceSystem").value("video"))
+                .andExpect(jsonPath("$.data.sourceAlertId").value("alert-001"))
+                .andExpect(jsonPath("$.data.ruleCode").value("RULE_ABNORMAL_GATHERING"))
+                .andExpect(jsonPath("$.data.eventType").value("crowd_gathering"))
+                .andExpect(jsonPath("$.data.eventLevel").value("L3"))
+                .andExpect(jsonPath("$.data.eventStatus").value(SupervisionEventStatusEnum.CLOSED.getCode()))
+                .andExpect(jsonPath("$.data.closeResult").value("normal_closed"))
+                .andExpect(jsonPath("$.data.createdAt").value("2026-06-11T09:30:00"))
+                .andExpect(jsonPath("$.data.acceptedAt").value("2026-06-11T09:35:00"))
+                .andExpect(jsonPath("$.data.handledAt").value("2026-06-11T09:50:00"))
+                .andExpect(jsonPath("$.data.closedAt").value("2026-06-11T10:10:00"));
+
+        assertEquals(new EventDetailRequest(1001L), applicationService.detailRequest());
+    }
+
+    @Test
+    void getEventDetailRejectsInvalidEventIdBeforeApplicationFacade() throws Exception {
+        CapturingWorkflowApplicationService applicationService = new CapturingWorkflowApplicationService();
+        MockMvc mockMvc = mockMvc(applicationService);
+
+        mockMvc.perform(get("/system/supervision/events/get"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString("eventId must not be null")));
+
+        assertNull(applicationService.detailRequest());
+
+        assertInvalidEventIdRejected(mockMvc, applicationService, "0", "eventId must be positive");
+        assertInvalidEventIdRejected(mockMvc, applicationService, "-1", "eventId must be positive");
+    }
+
+    private static void assertInvalidEventIdRejected(MockMvc mockMvc,
+                                                     CapturingWorkflowApplicationService applicationService,
+                                                     String eventId,
+                                                     String expectedMessage) throws Exception {
+        mockMvc.perform(get("/system/supervision/events/get")
+                        .param("id", eventId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value(containsString(expectedMessage)));
+
+        assertNull(applicationService.detailRequest());
+    }
 
     @Test
     void createEventFromAlertMapsHttpRequestToApplicationFacade() throws Exception {
@@ -175,6 +233,7 @@ class SupervisionEventControllerTest {
     private static final class CapturingWorkflowApplicationService extends SupervisionWorkflowApplicationService {
 
         private AlertEventRequest request;
+        private EventDetailRequest detailRequest;
         private CloseCheckRequest approveCloseCheckRequest;
         private CloseCheckRequest rejectCloseCheckRequest;
 
@@ -195,6 +254,25 @@ class SupervisionEventControllerTest {
                     unusedRecheckService(),
                     unusedCloseCheckService(),
                     unusedReworkService()
+            );
+        }
+
+        @Override
+        public EventDetailResponse getEventDetail(EventDetailRequest request) {
+            this.detailRequest = request;
+            return new EventDetailResponse(
+                    1001L,
+                    "video",
+                    "alert-001",
+                    "RULE_ABNORMAL_GATHERING",
+                    "crowd_gathering",
+                    "L3",
+                    SupervisionEventStatusEnum.CLOSED.getCode(),
+                    "normal_closed",
+                    LocalDateTime.of(2026, 6, 11, 9, 30),
+                    LocalDateTime.of(2026, 6, 11, 9, 35),
+                    LocalDateTime.of(2026, 6, 11, 9, 50),
+                    LocalDateTime.of(2026, 6, 11, 10, 10)
             );
         }
 
@@ -227,6 +305,10 @@ class SupervisionEventControllerTest {
 
         private AlertEventRequest request() {
             return request;
+        }
+
+        private EventDetailRequest detailRequest() {
+            return detailRequest;
         }
 
         private CloseCheckRequest approveCloseCheckRequest() {

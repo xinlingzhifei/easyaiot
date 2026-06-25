@@ -3,6 +3,7 @@ package com.basiclab.iot.system.service.supervision;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventDetail;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.TaskDispatchCommand;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class SupervisionEventServiceImpl implements SupervisionEventService {
@@ -38,6 +40,14 @@ public class SupervisionEventServiceImpl implements SupervisionEventService {
         return eventStore.findOpenBySourceAlert(sourceSystem, sourceAlertId)
                 .map(AlertToEventResult::asReused)
                 .orElseGet(() -> createNewEvent(command, sourceSystem, sourceAlertId));
+    }
+
+    @Override
+    public Optional<EventDetail> getEventDetail(Long eventId) {
+        if (eventId == null || eventId <= 0) {
+            throw new IllegalArgumentException("eventId must be positive");
+        }
+        return eventStore.findById(eventId);
     }
 
     private AlertToEventResult createNewEvent(AlertToEventCommand command,

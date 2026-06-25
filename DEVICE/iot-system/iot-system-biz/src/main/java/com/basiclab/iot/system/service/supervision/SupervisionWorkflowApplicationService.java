@@ -2,6 +2,7 @@ package com.basiclab.iot.system.service.supervision;
 
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventDetail;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -45,6 +46,14 @@ public class SupervisionWorkflowApplicationService {
                 request.sourcePayloadHash()
         ));
         return toResponse(result);
+    }
+
+    public EventDetailResponse getEventDetail(EventDetailRequest request) {
+        Objects.requireNonNull(request, "request");
+        requirePositive(request.eventId(), "eventId");
+        return supervisionEventService.getEventDetail(request.eventId())
+                .map(this::toResponse)
+                .orElse(null);
     }
 
     public OperationResponse acceptTask(TaskAcceptRequest request) {
@@ -128,6 +137,23 @@ public class SupervisionWorkflowApplicationService {
         );
     }
 
+    private EventDetailResponse toResponse(EventDetail detail) {
+        return new EventDetailResponse(
+                detail.eventId(),
+                detail.sourceSystem(),
+                detail.sourceAlertId(),
+                detail.ruleCode(),
+                detail.eventType(),
+                detail.eventLevel(),
+                detail.eventStatus(),
+                detail.closeResult(),
+                detail.createdAt(),
+                detail.acceptedAt(),
+                detail.handledAt(),
+                detail.closedAt()
+        );
+    }
+
     public record AlertEventRequest(String sourceSystem,
                                     String sourceAlertId,
                                     String ruleCode,
@@ -144,6 +170,23 @@ public class SupervisionWorkflowApplicationService {
                                      String eventLevel,
                                      String eventStatus,
                                      boolean reused) {
+    }
+
+    public record EventDetailRequest(Long eventId) {
+    }
+
+    public record EventDetailResponse(Long eventId,
+                                      String sourceSystem,
+                                      String sourceAlertId,
+                                      String ruleCode,
+                                      String eventType,
+                                      String eventLevel,
+                                      String eventStatus,
+                                      String closeResult,
+                                      LocalDateTime createdAt,
+                                      LocalDateTime acceptedAt,
+                                      LocalDateTime handledAt,
+                                      LocalDateTime closedAt) {
     }
 
     public record TaskAcceptRequest(Long taskId,

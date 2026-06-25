@@ -12,6 +12,10 @@ public interface SupervisionEventService {
 
     AlertToEventResult createFromAlert(AlertToEventCommand command);
 
+    default Optional<EventDetail> getEventDetail(Long eventId) {
+        return Optional.empty();
+    }
+
     record AlertToEventCommand(String sourceSystem,
                                String sourceAlertId,
                                String ruleCode,
@@ -47,6 +51,20 @@ public interface SupervisionEventService {
 
     }
 
+    record EventDetail(Long eventId,
+                       String sourceSystem,
+                       String sourceAlertId,
+                       String ruleCode,
+                       String eventType,
+                       String eventLevel,
+                       String eventStatus,
+                       String closeResult,
+                       LocalDateTime createdAt,
+                       LocalDateTime acceptedAt,
+                       LocalDateTime handledAt,
+                       LocalDateTime closedAt) {
+    }
+
     record EventCreateDraft(String sourceSystem,
                             String sourceAlertId,
                             String sourceAlertType,
@@ -77,6 +95,10 @@ public interface SupervisionEventService {
         AlertToEventResult create(EventCreateDraft draft);
 
         void markDispatched(Long eventId);
+
+        default Optional<EventDetail> findById(Long eventId) {
+            return Optional.empty();
+        }
 
     }
 

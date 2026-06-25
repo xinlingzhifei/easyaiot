@@ -5,6 +5,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEventMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventCreateDraft;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventDetail;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.EventStore;
 import com.basiclab.iot.system.service.supervision.SupervisionEventCloseCheckService.EventCloseStore;
 import com.basiclab.iot.system.service.supervision.SupervisionTaskAcceptanceService.EventAcceptanceStore;
@@ -33,6 +34,12 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
     public Optional<AlertToEventResult> findOpenBySourceAlert(String sourceSystem, String sourceAlertId) {
         return Optional.ofNullable(supervisionEventMapper.selectOpenBySourceAlert(sourceSystem, sourceAlertId))
                 .map(this::toResult);
+    }
+
+    @Override
+    public Optional<EventDetail> findById(Long eventId) {
+        return Optional.ofNullable(supervisionEventMapper.selectById(eventId))
+                .map(this::toDetail);
     }
 
     @Override
@@ -121,6 +128,34 @@ public class SupervisionEventMapperEventStore implements EventStore, EventAccept
                 eventDO.getEventStatus(),
                 false
         );
+    }
+
+    private EventDetail toDetail(SupervisionEventDO eventDO) {
+        return new EventDetail(
+                eventDO.getId(),
+                eventDO.getSourceSystem(),
+                eventDO.getSourceAlertId(),
+                resolveRuleCode(eventDO),
+                eventDO.getEventType(),
+                eventDO.getEventLevel(),
+                eventDO.getEventStatus(),
+                eventDO.getCloseResult(),
+                eventDO.getCreateTime(),
+                eventDO.getAcceptedAt(),
+                eventDO.getHandledAt(),
+                eventDO.getClosedAt()
+        );
+    }
+
+    private String resolveRuleCode(SupervisionEventDO eventDO) {
+        return SupervisionRuleSeeds.listP0Rules().stream()
+                .filter(seed -> seed.getEventType().equals(eventDO.getEventType()))
+                .filter(seed -> eventDO.getSourceAlertType() == null
+                        || eventDO.getSourceAlertType().isBlank()
+                        || seed.getAlertType().equals(eventDO.getSourceAlertType()))
+                .map(SupervisionRuleSeeds.RuleSeed::getRuleCode)
+                .findFirst()
+                .orElse(null);
     }
 
     private String newEventNo() {

@@ -4,15 +4,21 @@ import com.basiclab.iot.common.domain.CommonResult;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventCreateReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.CloseCheckReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventDetailReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventDetailRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.event.EventOperationRespVO;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.CloseCheckRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.EventDetailResponse;
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.OperationResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +38,14 @@ public class SupervisionEventController {
 
     public SupervisionEventController(SupervisionWorkflowApplicationService supervisionWorkflowApplicationService) {
         this.supervisionWorkflowApplicationService = supervisionWorkflowApplicationService;
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "Get supervision event detail")
+    @Parameter(name = "id", description = "Event ID", required = true, example = "1001")
+    public CommonResult<EventDetailRespVO> getEventDetail(@Valid EventDetailReqVO reqVO) {
+        EventDetailResponse response = supervisionWorkflowApplicationService.getEventDetail(new EventDetailRequest(reqVO.getId()));
+        return success(EventDetailRespVO.from(response));
     }
 
     @PostMapping("/from-alert")
