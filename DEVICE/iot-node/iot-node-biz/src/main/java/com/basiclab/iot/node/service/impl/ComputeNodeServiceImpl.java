@@ -177,11 +177,12 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void ensurePlatformNode() {
+        boolean configuredPlatformHost = HostIpUtil.hasConfiguredPlatformHost();
         String hostIp = HostIpUtil.detectHostIp();
         ComputeNodeDO platformNode = computeNodeMapper.selectPlatformNode();
         if (platformNode != null) {
             boolean changed = false;
-            if (!hostIp.equals(platformNode.getHost())) {
+            if (shouldRefreshPlatformHost(platformNode.getHost(), hostIp, configuredPlatformHost)) {
                 ComputeNodeDO conflict = computeNodeMapper.selectByHost(hostIp);
                 if (conflict == null || conflict.getId().equals(platformNode.getId())) {
                     platformNode.setHost(hostIp);
@@ -896,6 +897,24 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         return node != null
                 && node.getCapabilities() != null
                 && Boolean.TRUE.equals(node.getCapabilities().get(PLATFORM_CAPABILITY_KEY));
+    }
+
+    static boolean shouldRefreshPlatformHost(String currentHost, String detectedHost, boolean configuredPlatformHost) {
+        if (detectedHost == null || detectedHost.isBlank()) {
+            return false;
+        }
+        String detected = detectedHost.trim();
+        String current = currentHost != null ? currentHost.trim() : "";
+        if (detected.equals(current)) {
+            return false;
+        }
+        if (configuredPlatformHost) {
+            return true;
+        }
+        return current.isEmpty()
+                || "127.0.0.1".equals(current)
+                || "localhost".equalsIgnoreCase(current)
+                || "::1".equals(current);
     }
 
     private Comparator<ComputeNodeRespVO> platformNodeFirstComparator() {
