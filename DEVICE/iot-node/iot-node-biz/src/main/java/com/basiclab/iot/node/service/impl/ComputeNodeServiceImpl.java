@@ -852,6 +852,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         resp.setIsPlatform(isPlatformNode(node));
         if (exposeToken) {
             resp.setAgentToken(node.getAgentToken());
+        } else {
+            resp.setAgentToken(null);
         }
         NodeSshCredentialDO credential = nodeSshCredentialMapper.selectByNodeId(node.getId());
         if (credential != null) {
