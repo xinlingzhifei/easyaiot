@@ -186,8 +186,8 @@ services:
       --tcp-backlog 511
       --maxmemory-policy allkeys-lru
     volumes:
-      - "./redis_data/data:/data:rw"
-      - "./redis_data/logs:/logs:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/redis_data/data:/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/redis_data/logs:/logs:rw"
     healthcheck:
       test:
         [
@@ -252,7 +252,7 @@ services:
       - KAFKA_LOG_RETENTION_HOURS=168
       - KAFKA_LOG_DIRS=/var/lib/kafka/data
     volumes:
-      - ./mq_data/data:/var/lib/kafka/data:rw
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/mq_data/data:/var/lib/kafka/data:rw"
     # 使用 extra_hosts 让 Kafka 容器内也能通过 hosts 解析服务
     # host.docker.internal 指向宿主机（Docker 20.10+ 支持）
     # 如果系统不支持，可以通过环境变量 HOST_IP 动态配置
