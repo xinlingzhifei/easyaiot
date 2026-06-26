@@ -83,6 +83,7 @@
             :videoCodec="video.videoCodec || ''"
             :ref="el => setVideoRef(el, index)"
             class="video-player"
+            @playing="handleVideoPlaying(index, $event)"
             @stream-error="handleVideoStreamError(index)"
           />
           <div
@@ -919,6 +920,7 @@ const currentLocation = computed(() => {
 })
 
 const aiFallbackTimers = new Map<number, number>()
+const aiFallbackPlayingUrls = new Map<number, string>()
 
 function clearAiFallbackTimer(screenIdx: number) {
   const timerId = aiFallbackTimers.get(screenIdx)
@@ -926,6 +928,15 @@ function clearAiFallbackTimer(screenIdx: number) {
     window.clearTimeout(timerId)
     aiFallbackTimers.delete(screenIdx)
   }
+}
+
+function handleVideoPlaying(index: number, playUrl?: string) {
+  const slot = internalVideoList.value[index]
+  const currentUrl = slot?.url?.trim()
+  const reportedUrl = playUrl?.trim()
+  if (!currentUrl || (reportedUrl && reportedUrl !== currentUrl)) return
+  aiFallbackPlayingUrls.set(index, currentUrl)
+  clearAiFallbackTimer(index)
 }
 
 // 切换布局
@@ -1142,6 +1153,7 @@ async function startPlayAtScreen(
   },
 ) {
   clearAiFallbackTimer(targetIndex)
+  aiFallbackPlayingUrls.delete(targetIndex)
   if (videoRefs.value[targetIndex]) {
     const existingInstance = videoRefs.value[targetIndex]
     try {
@@ -1179,10 +1191,11 @@ async function startPlayAtScreen(
     aiFallbackTimers.delete(targetIndex)
     const slot = internalVideoList.value[targetIndex]
     if (!slot || slot.url !== primaryUrl) return
+    if (aiFallbackPlayingUrls.get(targetIndex) === primaryUrl) return
     if (videoRefs.value[targetIndex]?.playing) return
 
     createMessage.warning(
-      'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
+      'AI 流暂不可用（请确认算法任务已启动且媒体服务器已收到 AI 推流），已切换为原始画面（无检测框）',
     )
     internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl, fallbackUrl: null }
     persistDashboardVideoState()
@@ -1202,6 +1215,7 @@ function handleVideoStreamError(index: number) {
   const slot = internalVideoList.value[index]
   if (!slot?.url) return
   clearAiFallbackTimer(index)
+  aiFallbackPlayingUrls.delete(index)
 
   const fallbackUrl = slot.fallbackUrl?.trim()
   if (fallbackUrl && fallbackUrl !== slot.url) {
@@ -1688,6 +1702,7 @@ onUnmounted(() => {
 
   aiFallbackTimers.forEach((id) => window.clearTimeout(id))
   aiFallbackTimers.clear()
+  aiFallbackPlayingUrls.clear()
 })
 
 // 监听告警列表变化，更新滚动状态

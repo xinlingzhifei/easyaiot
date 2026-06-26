@@ -173,6 +173,7 @@
                   :hasAudio="false"
                   :playerEngine="state.playCells[i - 1]!.playerEngine || ''"
                   :videoCodec="state.playCells[i - 1]!.videoCodec || ''"
+                  @playing="handleCellPlaying(i - 1, $event)"
                   @stream-error="handleCellStreamError(i - 1)"
                 />
                 <span class="cell-name" :title="state.playCells[i - 1]!.name">
@@ -592,6 +593,7 @@ async function resolveDirectPlayUrl(device: MonitorTreeDeviceNode) {
 }
 
 const aiFallbackTimers = new Map<number, number>();
+const aiFallbackPlayingUrls = new Map<number, string>();
 
 function clearAiFallbackTimer(cellIdx: number) {
   const timerId = aiFallbackTimers.get(cellIdx);
@@ -599,6 +601,15 @@ function clearAiFallbackTimer(cellIdx: number) {
     window.clearTimeout(timerId);
     aiFallbackTimers.delete(cellIdx);
   }
+}
+
+function handleCellPlaying(cellIdx: number, playUrl?: string) {
+  const cell = state.playCells[cellIdx];
+  const currentUrl = cell?.url?.trim();
+  const reportedUrl = playUrl?.trim();
+  if (!currentUrl || (reportedUrl && reportedUrl !== currentUrl)) return;
+  aiFallbackPlayingUrls.set(cellIdx, currentUrl);
+  clearAiFallbackTimer(cellIdx);
 }
 
 
@@ -626,6 +637,7 @@ async function startPlayAtCell(
   },
 ) {
   clearAiFallbackTimer(cellIdx);
+  aiFallbackPlayingUrls.delete(cellIdx);
   const existing = state.playCells[cellIdx];
   if (existing && playerRefs.value[cellIdx]?.destroy) {
     playerRefs.value[cellIdx].destroy();
@@ -658,10 +670,11 @@ async function startPlayAtCell(
     aiFallbackTimers.delete(cellIdx);
     const cell = state.playCells[cellIdx];
     if (!cell || cell.url !== primaryUrl) return;
+    if (aiFallbackPlayingUrls.get(cellIdx) === primaryUrl) return;
     if (playerRefs.value[cellIdx]?.playing) return;
 
     createMessage.warning(
-      'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
+      'AI 流暂不可用（请确认算法任务已启动且媒体服务器已收到 AI 推流），已切换为原始画面（无检测框）',
     );
     state.playCells[cellIdx] = { ...cell, url: fallbackUrl, fallbackUrl: null };
     await nextTick();
@@ -684,6 +697,7 @@ function handleCellStreamError(cellIdx: number) {
   if (!cell) return;
   const fb = cell.fallbackUrl?.trim();
   clearAiFallbackTimer(cellIdx);
+  aiFallbackPlayingUrls.delete(cellIdx);
   if (fb && fb !== cell.url) {
     createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）');
     state.playCells[cellIdx] = { ...cell, url: fb, fallbackUrl: null };
@@ -1111,6 +1125,7 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', handleFullscreenChange);
   aiFallbackTimers.forEach((id) => window.clearTimeout(id));
   aiFallbackTimers.clear();
+  aiFallbackPlayingUrls.clear();
   stopPatrolProgressStream();
   playerRefs.value.forEach((p) => p?.destroy?.());
 });

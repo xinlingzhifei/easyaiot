@@ -30,3 +30,29 @@ assert.match(
   /if \(!isAiStreamPlayUrl\(url\) && wvpSource\.url\) \{\s*return wvpSource;\s*\}/,
   'GB28181 AI fallback should use the fresh WVP play/start source instead of stale synced device http_stream values.',
 )
+
+const dashboardMonitorSource = readFileSync(
+  fileURLToPath(
+    new URL('../src/views/dashboard/monitor/components/VideoMonitor.vue', import.meta.url),
+  ),
+  'utf8',
+)
+const splitScreenMonitorSource = readFileSync(
+  fileURLToPath(
+    new URL('../src/views/camera/components/SplitScreenMonitor/MonitorPanel.vue', import.meta.url),
+  ),
+  'utf8',
+)
+
+for (const source of [dashboardMonitorSource, splitScreenMonitorSource]) {
+  assert.doesNotMatch(
+    source,
+    /ZLM 已收到推流/,
+    'AI fallback warning should not imply the AI stream must appear in ZLM when the AI output is served by the media server /ai path.',
+  )
+  assert.match(
+    source,
+    /媒体服务器已收到 AI 推流/,
+    'AI fallback warning should point operators to the actual AI media output path.',
+  )
+}

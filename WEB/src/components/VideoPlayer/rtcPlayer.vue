@@ -16,7 +16,7 @@
 <script>
 export default {
   name: 'rtcPlayer',
-  emits: ['stream-error'],
+  emits: ['stream-error', 'playing'],
   props: ['videoUrl', 'error', 'hasaudio'],
   data() {
     return {
@@ -82,6 +82,7 @@ export default {
       this.webrtcPlayer.on(events.WEBRTC_ON_REMOTE_STREAMS, (e) => {
         this.clearFirstFrameTimer();
         console.log('WebRTC playing', e.streams);
+        this.$emit('playing', this.videoUrl);
         this.eventcallbacK('playing', 'WebRTC playing');
       });
 

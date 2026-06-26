@@ -6,6 +6,7 @@
       :videoUrl="webRtcUrl"
       :hasaudio="hasAudio"
       @stream-error="$emit('stream-error', $event)"
+      @playing="onWebRtcPlaying"
     />
     <video
       v-else-if="useNativeVideo"
@@ -128,7 +129,7 @@ import {rewriteStreamHostToPageHost} from "@/views/camera/utils/devicePlay";
 export default {
   name: "Player",
   components: {EasyPlayer, RtcPlayer, Icon},
-  emits: ["stream-error"],
+  emits: ["stream-error", "playing"],
   props: {
     playUrl: {
       type: String,
@@ -162,6 +163,7 @@ export default {
       wasm: false,
       vc: "ff",
       playing: false,
+      lastPlayingUrl: '',
       quieting: true,
       loaded: false, // mute
       showOperateBtns: false,
@@ -223,6 +225,7 @@ export default {
   watch: {
     playUrl(url) {
       this.protectedRetries = 0; // 切换地址，重置续票重试计数
+      this.resetPlaybackState();
       this.easyWasmUrl = '';
       this.nativeVideoUrl = '';
       this.webRtcUrl = '';
@@ -230,6 +233,7 @@ export default {
     },
     playerEngine() {
       this.protectedRetries = 0;
+      this.resetPlaybackState();
       this.easyWasmUrl = '';
       this.nativeVideoUrl = '';
       this.webRtcUrl = '';
@@ -237,6 +241,7 @@ export default {
     },
     videoCodec() {
       this.protectedRetries = 0;
+      this.resetPlaybackState();
       this.easyWasmUrl = '';
       this.nativeVideoUrl = '';
       this.webRtcUrl = '';
@@ -260,6 +265,24 @@ export default {
     }
   },
   methods: {
+    resetPlaybackState() {
+      this.playing = false;
+      this.loaded = false;
+      this.lastPlayingUrl = '';
+      this.performance = "";
+    },
+    markPlaying() {
+      const currentUrl = this.playUrl || '';
+      const shouldEmit = this.lastPlayingUrl !== currentUrl || !this.playing || !this.loaded;
+      this.playing = true;
+      this.loaded = true;
+      this.lastPlayingUrl = currentUrl;
+      this.performance = "";
+      this.protectedRetries = 0;
+      if (shouldEmit) {
+        this.$emit("playing", currentUrl);
+      }
+    },
     async switchPlayerAndPlay() {
       if (!this.requiresJessibucaInstance) {
         if (this.jessibuca) {
@@ -327,8 +350,7 @@ export default {
       });
       this.jessibuca.on("play", function () {
         console.log("on play");
-        _this.playing = true;
-        _this.protectedRetries = 0; // 成功起播，重置续票重试计数
+        _this.markPlaying();
       });
       this.jessibuca.on("fullscreen", function (msg) {
         console.log("on fullscreen", msg);
@@ -386,8 +408,7 @@ export default {
         _this.kbs = Math.round(kBps)
       });
       this.jessibuca.on("play", () => {
-        this.playing = true;
-        this.loaded = true;
+        this.markPlaying();
         this.quieting = this.jessibuca.isMute();
       });
       this.jessibuca.on('recordingTimestamp', (ts) => {
@@ -423,14 +444,15 @@ export default {
       }
       if (this.useWebRtc) {
         this.webRtcUrl = target;
-        this.playing = true;
+        this.playing = false;
+        this.loaded = false;
         this.protectedRetries = 0;
         return;
       }
       if (this.useNativeVideo) {
         this.nativeVideoUrl = target;
-        this.playing = true;
-        this.loaded = true;
+        this.playing = false;
+        this.loaded = false;
         this.protectedRetries = 0;
         this.$nextTick(() => this.playNativeVideo());
         return;
@@ -486,10 +508,10 @@ export default {
       this.webRtcUrl = '';
     },
     onNativeVideoPlaying() {
-      this.playing = true;
-      this.loaded = true;
-      this.protectedRetries = 0;
-      this.performance = "";
+      this.markPlaying();
+    },
+    onWebRtcPlaying() {
+      this.markPlaying();
     },
     onNativeVideoWaiting() {
       this.performance = "buffering";
@@ -499,10 +521,7 @@ export default {
       this.$emit("stream-error", { type: "native-video-error", detail: event });
     },
     onEasyWasmPlaying() {
-      this.playing = true;
-      this.loaded = true;
-      this.performance = "";
-      this.protectedRetries = 0;
+      this.markPlaying();
     },
     onEasyWasmStreamError(event) {
       if (this.maybeRenewOnError()) return;

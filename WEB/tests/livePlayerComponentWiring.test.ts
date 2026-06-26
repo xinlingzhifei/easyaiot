@@ -70,7 +70,17 @@ assert.match(
 )
 assert.match(
   sharedPlayer,
-  /onEasyWasmPlaying\(\)[\s\S]*this\.playing = true/,
+  /emits: \["stream-error", "playing"\]/,
+  'The shared live player wrapper should emit playback success so monitor AI fallback timers do not rely on stale child refs.',
+)
+assert.match(
+  sharedPlayer,
+  /<RtcPlayer[\s\S]*@playing="onWebRtcPlaying"/,
+  'The shared live player wrapper should also surface WebRTC playback success.',
+)
+assert.match(
+  sharedPlayer,
+  /onEasyWasmPlaying\(\)[\s\S]*this\.markPlaying\(\)/,
   'The shared live player wrapper should expose EasyWasm playback only after the first frame path starts.',
 )
 assert.match(
@@ -202,6 +212,11 @@ assert.match(
 )
 assert.match(
   monitorPanel,
+  /@playing="handleCellPlaying\(i - 1, \$event\)"/,
+  'Split-screen monitor cells should cancel the AI warm-up fallback as soon as the active URL starts playing.',
+)
+assert.match(
+  monitorPanel,
   /playerEngine\?: string \| null/,
   'Split-screen monitor cells should persist player engine metadata across reloads.',
 )
@@ -243,6 +258,11 @@ assert.match(
 )
 assert.match(
   videoMonitor,
+  /@playing="handleVideoPlaying\(index, \$event\)"/,
+  'Dashboard monitor cells should cancel the AI warm-up fallback as soon as the active URL starts playing.',
+)
+assert.match(
+  videoMonitor,
   /playSources\?: WvpPlaySourceOption\[\] \| null/,
   'Dashboard monitor cells should retain GB28181 candidate sources for stream-error fallback.',
 )
@@ -281,6 +301,16 @@ assert.match(
   easyPlayer,
   /emitStreamError\('first-frame-timeout'/,
   'EasyPlayer should surface no-first-frame stalls instead of leaving split-screen cells loading forever.',
+)
+assert.match(
+  rtcPlayer,
+  /emits: \['stream-error', 'playing'\]/,
+  'RtcPlayer should emit playback success after receiving a remote WebRTC stream.',
+)
+assert.match(
+  rtcPlayer,
+  /WEBRTC_ON_REMOTE_STREAMS[\s\S]*this\.\$emit\('playing',/,
+  'RtcPlayer should surface WebRTC remote-stream readiness to the shared player wrapper.',
 )
 
 assert.match(
