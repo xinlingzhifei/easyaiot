@@ -225,6 +225,26 @@ agent_code_stale() {
   ! cmp -s "${SOURCE_DIR}/run_agent.py" "${INSTALL_DIR}/run_agent.py"
 }
 
+install_agent_runtime_if_needed() {
+  local work_dir="$1"
+  if [[ "$work_dir" == "$INSTALL_DIR" || -f "${INSTALL_DIR}/run_agent.py" ]]; then
+    echo "$INSTALL_DIR"
+    return 0
+  fi
+  if [[ ! -f "${SOURCE_DIR}/install.sh" ]]; then
+    echo "$work_dir"
+    return 0
+  fi
+
+  echo "[platform-agent] 安装目录不存在，使用 NODE/install.sh 初始化 Agent 运行时" >&2
+  EASYAIOT_AGENT_ALLOW_ONLINE_PIP="${EASYAIOT_AGENT_ALLOW_ONLINE_PIP:-1}" \
+    INSTALL_DIR="$INSTALL_DIR" \
+    PYTHON="$PYTHON" \
+    sudo -E bash "${SOURCE_DIR}/install.sh" install >&2
+  work_dir="$INSTALL_DIR"
+  echo "$work_dir"
+}
+
 restart_agent_service() {
   local work_dir="$1"
   sync_agent_runtime_files "$work_dir"
@@ -311,6 +331,8 @@ main() {
     write_agent_env "$work_dir" "$node_id" "$agent_token" "${port:-$AGENT_PORT}"
     echo "[platform-agent] 已写入 ${work_dir}/agent.env (nodeId=${node_id})"
   fi
+
+  work_dir="$(install_agent_runtime_if_needed "$work_dir")"
 
   if [[ "$needs_env_write" -eq 1 ]] || agent_code_stale; then
     restart_agent_service "$work_dir"

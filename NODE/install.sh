@@ -181,9 +181,11 @@ do_install() {
   resolved_install_dir="$(readlink -f "$INSTALL_DIR")"
   cd "$resolved_install_dir"
   local WHEELS_DIR="$resolved_install_dir/pip-wheels"
+  local HAS_OFFLINE_WHEELS=0
   if [ ! -d "$WHEELS_DIR" ] || ! compgen -G "$WHEELS_DIR"/*.{whl,tar.gz,zip} >/dev/null 2>&1; then
-    echo "INSTALL_FAIL: 缺少离线 pip 包目录 pip-wheels/" >&2
-    exit 1
+    echo "WARN: 缺少离线 pip 包目录 pip-wheels/，将尝试在线 pip 安装（可设置 EASYAIOT_AGENT_ALLOW_ONLINE_PIP=0 禁用）" >&2
+  else
+    HAS_OFFLINE_WHEELS=1
   fi
 
   python_minor_version() {
@@ -300,6 +302,28 @@ PY
     return 0
   }
 
+  setup_agent_online_site_packages() {
+    if [ "${EASYAIOT_AGENT_ALLOW_ONLINE_PIP:-1}" != "1" ]; then
+      return 1
+    fi
+    if ! sudo $PYTHON -m pip --version >/dev/null 2>&1; then
+      return 1
+    fi
+
+    echo "==> 在线 site-packages 安装（pip-wheels 不存在时的恢复路径）..."
+    sudo rm -rf "$SITE_PKG"
+    sudo mkdir -p "$SITE_PKG"
+    if ! sudo $PYTHON -m pip install --target="$SITE_PKG" -r requirements.txt -q; then
+      echo "INSTALL_FAIL: 在线依赖安装失败" >&2
+      return 1
+    fi
+
+    RUN_PYTHON="$PYTHON"
+    write_agent_launcher
+    echo "==> 在线 site-packages 已就绪: $SITE_PKG"
+    return 0
+  }
+
   try_install_python_venv() {
     if ! command -v apt-get >/dev/null 2>&1; then
       return 1
@@ -347,15 +371,17 @@ PY
     return 0
   }
 
-  if setup_agent_site_packages; then
+  if [ "$HAS_OFFLINE_WHEELS" -eq 1 ] && setup_agent_site_packages; then
     :
-  elif setup_agent_venv; then
+  elif setup_agent_online_site_packages; then
+    :
+  elif [ "$HAS_OFFLINE_WHEELS" -eq 1 ] && setup_agent_venv; then
     :
   else
     local py_ver
     py_ver="$(python_minor_version)"
     echo "INSTALL_FAIL: 离线安装失败" >&2
-    echo "INSTALL_FAIL: 请确认平台已同步完整 pip-wheels（含 pip/setuptools/wheel 及 Python ${py_ver} 依赖）" >&2
+    echo "INSTALL_FAIL: 请确认平台已同步完整 pip-wheels（含 pip/setuptools/wheel 及 Python ${py_ver} 依赖），或允许在线 pip 安装" >&2
     exit 1
   fi
 
