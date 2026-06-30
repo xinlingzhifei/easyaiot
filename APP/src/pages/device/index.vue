@@ -2,7 +2,12 @@
   <view class="yd-page-container yd-page-container-paging">
     <wd-navbar title="设备列表" placeholder safe-area-inset-top fixed>
       <template #right>
-        <AppNavUserButton />
+        <view class="flex items-center gap-16rpx pr-16rpx">
+          <view class="text-28rpx text-[#1890ff]" @click="handleCreate">
+            添加
+          </view>
+          <AppNavUserButton />
+        </view>
       </template>
     </wd-navbar>
 
@@ -61,17 +66,22 @@
       </view>
     </z-paging>
 
-    <DetailPopup ref="detailPopupRef" />
+    <DetailPopup ref="detailPopupRef" @refresh="handleRefresh" @edit="handleEdit" />
+    <CreatePopup ref="createPopupRef" @success="handleRefresh" />
+    <EditPopup ref="editPopupRef" @success="handleRefresh" />
   </view>
 </template>
 
 <script lang="ts" setup>
+import type { DeviceInfo } from '@/api/video/camera'
 import { ref } from 'vue'
 import { getDeviceKindText } from '@/api/video/camera'
 import AppNavUserButton from '@/components/app-nav-user-button.vue'
 import type { DeviceRootRow } from '@/utils/video/deviceList'
 import { fetchRootDeviceList } from '@/utils/video/deviceList'
+import CreatePopup from './components/create-popup.vue'
 import DetailPopup from './components/detail-popup.vue'
+import EditPopup from './components/edit-popup.vue'
 import SearchForm from './components/search-form.vue'
 
 definePage({
@@ -85,6 +95,8 @@ const list = ref<DeviceRootRow[]>([])
 const pagingRef = ref<any>()
 const queryParams = ref<Record<string, any>>({})
 const detailPopupRef = ref<InstanceType<typeof DetailPopup>>()
+const createPopupRef = ref<InstanceType<typeof CreatePopup>>()
+const editPopupRef = ref<InstanceType<typeof EditPopup>>()
 const cachedRows = ref<DeviceRootRow[]>([])
 
 async function loadAllRows() {
@@ -115,6 +127,19 @@ function handleQuery(data?: Record<string, any>) {
 
 function handleReset() {
   handleQuery()
+}
+
+function handleRefresh() {
+  cachedRows.value = []
+  pagingRef.value?.reload()
+}
+
+function handleCreate() {
+  createPopupRef.value?.openCreate()
+}
+
+function handleEdit(device: DeviceInfo) {
+  editPopupRef.value?.openEdit(device)
 }
 
 function handleItemClick(item: DeviceRootRow) {

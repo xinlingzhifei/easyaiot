@@ -43,6 +43,15 @@ public class TMsgDing implements Serializable {
 
     private String userGroupName;
 
+    /** 0=模板 1=推送 */
+    private Integer recordType;
+
+    /** 推送记录关联的消息模板ID */
+    private String refTemplateId;
+
+    /** 关联模板名称（查询展示用） */
+    private String templateName;
+
     private static final long serialVersionUID = 1L;
 
     public String getId() {

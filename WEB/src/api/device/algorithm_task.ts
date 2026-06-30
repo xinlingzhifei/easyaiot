@@ -44,6 +44,8 @@ export interface AlgorithmTask {
   model_names?: string; // 关联的模型名称列表（逗号分隔，冗余字段，用于快速显示）
   // 实时算法任务配置
   extract_interval?: number; // 抽帧间隔（每N帧抽一次）
+  motion_gate_enabled?: boolean;
+  motion_gate_config?: { preset?: string; [key: string]: unknown };
   // 追踪配置
   tracking_enabled?: boolean; // 是否启用目标追踪
   tracking_similarity_threshold?: number; // 追踪相似度阈值
@@ -52,6 +54,8 @@ export interface AlgorithmTask {
   // 告警配置
   alert_event_enabled?: boolean; // 是否启用告警事件
   alert_event_suppress_time?: number; // 告警事件抑制时间（秒），减轻 Kafka 积压
+  /** 告警触发类别标签：仅检测到所选标签时才触发告警 */
+  alert_class_names?: string[];
   face_detection_enabled?: boolean; // 是否启用人脸检测
   plate_detection_enabled?: boolean; // 是否启用车牌检测
   face_matching_enabled?: boolean; // 是否启用人脸匹配（默认关闭）
@@ -162,6 +166,7 @@ export const createAlgorithmTask = (data: {
   // 告警配置
   alert_event_enabled?: boolean;
   alert_event_suppress_time?: number;
+  alert_class_names?: string[];
   face_detection_enabled?: boolean;
   plate_detection_enabled?: boolean;
   face_matching_enabled?: boolean;

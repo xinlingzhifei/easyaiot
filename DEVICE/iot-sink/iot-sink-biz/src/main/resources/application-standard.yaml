@@ -1,0 +1,8 @@
+--- #################### standard 形态：无 TDengine 中间件，数据源延迟初始化 ####################
+
+spring:
+  datasource:
+    dynamic:
+      datasource:
+        tdengine:
+          lazy: true

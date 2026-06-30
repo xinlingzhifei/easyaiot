@@ -129,9 +129,12 @@
         <view class="mb-24rpx text-center text-30rpx font-semibold">
           选择摄像头
         </view>
+        <view class="mb-16rpx">
+          <wd-input v-model="deviceSearch" placeholder="搜索设备名称" clearable />
+        </view>
         <scroll-view scroll-y class="max-h-50vh">
           <view
-            v-for="device in deviceOptions"
+            v-for="device in filteredDeviceOptions"
             :key="device.value"
             class="mb-16rpx flex items-center justify-between rounded-8rpx px-24rpx py-20rpx"
             :class="isDeviceSelected(device.value) ? 'bg-[#e6f4ff]' : 'bg-[#f7f8f9]'"
@@ -186,6 +189,14 @@ const devicePickerVisible = ref(false)
 const nodePickerVisible = ref(false)
 const deviceOptions = ref<Array<{ label: string, value: string }>>([])
 const nodeOptions = ref<Array<{ label: string, value: number }>>([])
+const deviceSearch = ref('')
+
+const filteredDeviceOptions = computed(() => {
+  const q = deviceSearch.value.trim().toLowerCase()
+  if (!q)
+    return deviceOptions.value
+  return deviceOptions.value.filter(d => d.label.toLowerCase().includes(q))
+})
 
 const form = reactive({
   task_name: '',

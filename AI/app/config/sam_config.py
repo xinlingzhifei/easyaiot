@@ -16,7 +16,7 @@ def get_sam_config() -> dict:
     return {
         'enabled': _env_bool('SAM_ENABLED', False),
         'model_type': os.getenv('SAM_MODEL_TYPE', 'vit_b'),
-        'checkpoint_path': os.getenv('SAM_CHECKPOINT_PATH', default_checkpoint),
+        'checkpoint_path': os.getenv('SAM_CHECKPOINT_PATH', '').strip() or default_checkpoint,
         'device': os.getenv('SAM_DEVICE', 'cuda'),
         'auto_mask_points_per_side': int(os.getenv('SAM_AUTO_MASK_POINTS_PER_SIDE', '32')),
         'min_mask_region_area': int(os.getenv('SAM_MIN_MASK_REGION_AREA', '100')),

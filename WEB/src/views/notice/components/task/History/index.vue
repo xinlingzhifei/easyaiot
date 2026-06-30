@@ -11,45 +11,44 @@
                   title: '详情',
                   placement: 'top',
                 },
-                onClick: () => {
-                  console.log(record);
-                },
-              },
-              {
-                tooltip: {
-                  title: '删除',
-                  placement: 'top',
-                },
-                icon: 'material-symbols:delete-outline-rounded',
-                popConfirm: {
-                  placement: 'topRight',
-                  title: '是否确认删除？',
-                  confirm: () => {},
-                },
+                onClick: openDetailDrawer.bind(null, true, { record }),
               },
             ]"
           />
         </template>
       </template>
     </BasicTable>
+    <HistoryDetailDrawer @register="registerDetailDrawer" />
   </div>
 </template>
 <script lang="ts" setup name="History">
-import {defineProps, watch} from 'vue';
-import {BasicTable, TableAction, useTable} from '/@/components/Table';
-import {getColumns, getFormConfig} from './Data.tsx';
-import {historyQuery} from '/@/api/modules/task';
+import { defineProps, watch } from 'vue';
+import { BasicTable, TableAction, useTable } from '/@/components/Table';
+import { useDrawer } from '/@/components/Drawer';
+import { getColumns, getFormConfig } from './Data.tsx';
+import { historyQuery } from '/@/api/modules/task';
+import HistoryDetailDrawer from './HistoryDetailDrawer.vue';
 
 const props = defineProps({
-  msgType: {type: String}
+  msgType: { type: String },
 });
 
-const [registerTable, {getForm, reload}] = useTable({
+const [registerDetailDrawer, { openDrawer: openDetailDrawer }] = useDrawer();
+
+const [registerTable, { getForm, reload }] = useTable({
   canResize: true,
   showIndexColumn: false,
   title: '推送历史',
   api: historyQuery,
-  columns: getColumns(),
+  columns: [
+    ...getColumns(),
+    {
+      width: 80,
+      title: '操作',
+      dataIndex: 'action',
+      fixed: 'right',
+    },
+  ],
   useSearchForm: true,
   formConfig: getFormConfig(),
   rowKey: 'id',
@@ -59,14 +58,20 @@ const [registerTable, {getForm, reload}] = useTable({
   },
   beforeFetch(ext) {
     const form = getForm();
-    // 防止点击重置按钮后 通知类型没有值
-    form.setFieldsValue({msgType: props.msgType || '1'});
+    form.setFieldsValue({ msgType: props.msgType || '1' });
     return {
       ...ext,
       msgType: props.msgType || '1',
     };
   },
 });
+
+watch(
+  () => props.msgType,
+  () => {
+    reload();
+  },
+);
 </script>
 
 <style lang="less" scoped></style>

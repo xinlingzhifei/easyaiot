@@ -42,7 +42,7 @@ def _find_record_space_by_device_id(device_id):
     return RecordSpace.query.filter_by(device_id=device_id).first()
 
 
-def create_record_space(space_name, save_mode=0, save_time=168, description=None, device_id=None, save_time_custom=False):
+def create_record_space(space_name, save_mode=0, save_time=1, description=None, device_id=None, save_time_custom=False):
     """创建监控录像空间
     
     Args:

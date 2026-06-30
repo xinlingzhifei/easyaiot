@@ -18,6 +18,14 @@ enum Api {
   // 消息推送
   message_send = '/message/send',
   message_send_body = '/message/messageSend',
+
+  // 消息模板（与推送分离）
+  message_template_add = '/message/template/add',
+  message_template_update = '/message/template/update',
+  message_template_delete = '/message/template/delete',
+  message_template_query = '/message/template/query',
+  message_template_queryByType = '/message/template/queryByType',
+  message_template_get = '/message/template/get',
 }
 
 const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params, headers = {}, isTransformResponse = true) => {
@@ -182,6 +190,38 @@ export const messageSendByParam = ({ msgId, msgType }, headers = {}, cookies = {
 // 消息推送 - 兼容旧接口（保持向后兼容）
 export const messageSend = ({ msgId, msgType }) => {
   return messageSendByParam({ msgId, msgType });
+};
+
+// 消息模板
+export const messageTemplateAdd = (data) => {
+  return commonApi('post', Api.message_template_add, { data });
+};
+
+export const messageTemplateUpdate = (data) => {
+  return commonApi('post', Api.message_template_update, { data });
+};
+
+export const messageTemplateDelete = (params) => {
+  return commonApi('get', Api.message_template_delete, { params });
+};
+
+export const messageTemplateQuery = (data) => {
+  const { pageNo, pageSize, ...res } = data;
+  return commonApi('get', Api.message_template_query, {
+    params: {
+      page: pageNo,
+      pageSize: pageSize,
+      ...res,
+    },
+  });
+};
+
+export const messageTemplateQueryByType = (params) => {
+  return commonApi('get', Api.message_template_queryByType, { params });
+};
+
+export const messageTemplateGet = (params) => {
+  return commonApi('get', Api.message_template_get, { params });
 };
 
 // import {messageFileUpload} from '/@/api/modules/notice';

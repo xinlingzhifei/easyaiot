@@ -2,6 +2,7 @@ package com.basiclab.iot.message.sendlogic.msgmaker;
 
 import com.basiclab.iot.message.domain.entity.TMsgWxCp;
 import com.basiclab.iot.message.mapper.TMsgWxCpMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import me.chanjar.weixin.cp.bean.article.NewArticle;
 import me.chanjar.weixin.cp.bean.message.WxCpMessage;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ public class WxCpMsgMaker extends BaseMsgMaker implements IMsgMaker {
     @Autowired
     private TMsgWxCpMapper tMsgWxCpMapper;
 
+    @Autowired
+    private MessageRecordResolver messageRecordResolver;
+
     /**
      * 准备(界面字段等)
      */
@@ -65,47 +69,47 @@ public class WxCpMsgMaker extends BaseMsgMaker implements IMsgMaker {
      */
     @Override
     public WxCpMessage makeMsg(String msgId) {
+        TMsgWxCp tMsgWxCp = messageRecordResolver.resolveWxCp(msgId);
+        if (tMsgWxCp == null) {
+            return null;
+        }
+        return buildMessage(tMsgWxCp);
+    }
 
-        WxCpMessage wxCpMessage = null;
-
-        TMsgWxCp tMsgWxCp = tMsgWxCpMapper.selectByPrimaryKey(msgId);
-        wxCpMessage.setToUser(tMsgWxCp.getPreviewUser());
+    /**
+     * 根据模板实体构建企业微信应用消息（手动推送与告警共用）
+     */
+    public WxCpMessage buildMessage(TMsgWxCp tMsgWxCp) {
+        if (tMsgWxCp == null || tMsgWxCp.getAgentId() == null || tMsgWxCp.getAgentId().trim().isEmpty()) {
+            return null;
+        }
+        int agentId = Integer.parseInt(tMsgWxCp.getAgentId().trim());
+        String toUser = tMsgWxCp.getPreviewUser() != null ? tMsgWxCp.getPreviewUser() : "";
         String msgType = tMsgWxCp.getCpMsgType();
         if ("图文消息".equals(msgType)) {
             NewArticle article = new NewArticle();
-
-            // 标题
-            String title = tMsgWxCp.getTitle();
-            article.setTitle(title);
-
-            // 图片url
+            article.setTitle(tMsgWxCp.getTitle());
             article.setPicUrl(tMsgWxCp.getImgUrl());
-
-            // 描述
-            String description = tMsgWxCp.getDescribe();
-            article.setDescription(description);
-
-            // 跳转url
+            article.setDescription(tMsgWxCp.getDescribe());
             article.setUrl(tMsgWxCp.getUrl());
-
-            wxCpMessage = WxCpMessage.NEWS().addArticle(article).build();
-        } else if ("文本消息".equals(msgType)) {
-            String content = tMsgWxCp.getContent();
-            wxCpMessage = WxCpMessage.TEXT().agentId(Integer.valueOf(tMsgWxCp.getAgentId())).toUser(tMsgWxCp.getPreviewUser()).content(content).build();
-        } else if ("markdown消息".equals(msgType)) {
-            String content = tMsgWxCp.getContent();
-            wxCpMessage = WxCpMessage.MARKDOWN().agentId(Integer.valueOf(tMsgWxCp.getAgentId())).toUser(tMsgWxCp.getPreviewUser()).content(content).build();
-        } else if ("文本卡片消息".equals(msgType)) {
-            // 标题
-            String title = tMsgWxCp.getTitle();
-            // 描述
-            String description = tMsgWxCp.getDescribe();
-            // 跳转url
-            String urlLink = tMsgWxCp.getUrl();
-            wxCpMessage = WxCpMessage.TEXTCARD().agentId(Integer.valueOf(tMsgWxCp.getAgentId())).toUser(tMsgWxCp.getPreviewUser()).title(title)
-                    .description(description).url(urlLink).btnTxt(tMsgWxCp.getBtnTxt()).build();
+            return WxCpMessage.NEWS().agentId(agentId).toUser(toUser).addArticle(article).build();
         }
-
-        return wxCpMessage;
+        if ("文本消息".equals(msgType)) {
+            return WxCpMessage.TEXT().agentId(agentId).toUser(toUser)
+                    .content(tMsgWxCp.getContent()).build();
+        }
+        if ("markdown消息".equals(msgType)) {
+            return WxCpMessage.MARKDOWN().agentId(agentId).toUser(toUser)
+                    .content(tMsgWxCp.getContent()).build();
+        }
+        if ("文本卡片消息".equals(msgType)) {
+            return WxCpMessage.TEXTCARD().agentId(agentId).toUser(toUser)
+                    .title(tMsgWxCp.getTitle())
+                    .description(tMsgWxCp.getDescribe())
+                    .url(tMsgWxCp.getUrl())
+                    .btnTxt(tMsgWxCp.getBtnTxt())
+                    .build();
+        }
+        return null;
     }
 }

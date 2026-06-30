@@ -25,6 +25,28 @@ Mon souhait est que ce système soit utilisé dans le monde entier, rendant l'IA
   <a href="./README_ko.md">한국어</a>
 </h4>
 
+## 📖 Présentation du projet
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+<strong>EasyAIoT</strong> (Easy AI Internet of Things) est une <strong>plateforme d'application d'algorithmes intelligents à intégration cloud-bord-périphérique</strong>, dédiée à la fusion profonde de l'intelligence artificielle et de l'Internet des objets — permettant aux caméras, capteurs et ressources de calcul en périphérie de collaborer sur le terrain. De la connexion des appareils et la collecte de données à l'analyse visuelle en temps réel, l'évaluation intelligente et l'orchestration des alertes, l'ensemble de la chaîne s'accomplit au sein d'une seule pile logicielle.
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+De nombreux projets IoT intelligents se heurtent au même obstacle lors du déploiement : systèmes vidéo, plateformes d'appareils et services algorithmiques fonctionnent en silos — l'intégration est coûteuse, l'exploitation fragmentée et la montée en charge difficile. <strong>EasyAIoT résout ce problème avec une plateforme unique</strong> — le même logiciel se déploie sur une box edge de 4 Go pour l'intelligence ponctuelle, sur des caméras IA tout-en-un pour une couverture à l'échelle d'un étage, ou dans un appliance full-stack d'entreprise regroupant gestion IoT, accès vidéo massif et analyse IA — sans maintenir plusieurs versions ni réintégrer des systèmes hétérogènes.
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+La plateforme comprend sept modules principaux — <strong>WEB, APP, DEVICE, NODE, VIDEO, AI et TASK</strong> — avec Java comme socle de contrôle stable, Python pour l'IA et le réseau, et C++ pour les tâches de calcul haute performance, chaque langage exploitant ses forces. Côté capacités : accès caméra multi-protocoles GB28181 / ONVIF, tâches algorithmiques temps réel et par capture, détection d'objets YOLO et annotation automatique SAM zero-shot, reconnaissance faciale/plaques, post-traitement métier orchestrable, planification de clusters de calcul fédérés, et gestion du cycle de vie des appareils IoT MQTT / TCP / HTTP. Côté expérience : la console Web et l'App mobile / mini-programme sont alignées en capacités — centres de commande et inspections terrain partagent la même logique métier, partout et à tout moment.
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>En une phrase :</strong> EasyAIoT = IA + IoT — interconnecter toutes choses tout en leur donnant une vision et un contrôle intelligents.
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+📄 Pour une présentation illustrée plus complète, consultez <a href=".doc/项目介绍/EasyAIoT项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">Présentation du projet EasyAIoT V2.0 (PPT)</a>.
+</p>
+
 ## 🌟 Réflexions sur le projet
 
 ### 📍 Positionnement du projet

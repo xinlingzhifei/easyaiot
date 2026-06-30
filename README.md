@@ -25,6 +25,28 @@ My vision is for this system to be accessible worldwide, achieving truly zero ba
   <a href="./README_ko.md">한국어</a>
 </h4>
 
+## 📖 Project Overview
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+<strong>EasyAIoT</strong> (Easy AI Internet of Things) is a <strong>cloud-edge-device integrated intelligent algorithm application platform</strong> dedicated to deeply fusing artificial intelligence with the Internet of Things—enabling cameras, sensors, and edge compute to work together on site. From device onboarding and data collection to real-time visual analysis, intelligent assessment, and alert orchestration, the entire chain runs on a single software stack.
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+Many smart IoT projects hit the same wall at deployment: video systems, device platforms, and algorithm services live in silos—integration is costly, operations are fragmented, and scaling is painful. <strong>EasyAIoT resolves this with one platform</strong>—the same software deploys on a 4 GB edge box for single-point intelligence, on AI all-in-one cameras for floor-level coverage, or inside an enterprise full-stack appliance that packs IoT management, massive video access, and AI analysis into one box—no multiple versions to maintain, no repeated integration across heterogeneous systems.
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+The platform comprises seven core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, and TASK</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side: GB28181 / ONVIF multi-protocol camera access, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and MQTT / TCP / HTTP IoT device lifecycle management. On the experience side: the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>In one sentence:</strong> EasyAIoT = AI + IoT—interconnect everything while enabling intelligent vision and intelligent control for everything.
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+📄 For a more complete illustrated introduction, see <a href=".doc/项目介绍/EasyAIoT项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">EasyAIoT Project Introduction V2.0 (PPT)</a>.
+</p>
+
 ## 🌟 Some Thoughts on the Project
 
 ### 📍 Project Positioning

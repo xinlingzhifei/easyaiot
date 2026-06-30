@@ -3,7 +3,7 @@
     @register="registerModal"
     @cancel="handleCancel"
     @ok="handleOk"
-    width="800px"
+    width="1100px"
     :canFullscreen="false"
   >
     <div class="config-modal-box">
@@ -29,6 +29,7 @@
           </FormItemRest>
         </template>
       </BasicForm>
+      <Describe ref="describeRef" />
     </div>
   </BasicModal>
 </template>
@@ -51,11 +52,23 @@ import {
 } from '../../Data';
 import {messageConfigAdd, messageConfigUpdate} from '/@/api/modules/notice';
 import EditTable from './EditTable.vue';
+import Describe from '../msgPush/PushTemplate/components/Describe.vue';
 import {FormItemRest} from 'ant-design-vue';
 
 const emits = defineEmits(['success']);
 const {createMessage} = useMessage();
 const opertionType = ref('add');
+const describeRef = ref(null);
+
+const CONFIG_DESCRIBE_MAP: Record<number, string> = {
+  1: 'sms',
+  2: 'sms',
+  3: 'email',
+  4: 'weixin',
+  5: 'webhook',
+  6: 'weixin',
+  7: 'webhook',
+};
 
 const formData = ref({
   configuration: {
@@ -66,8 +79,8 @@ const formData = ref({
 
 const [registerModal, {setModalProps, closeModal}] = useModalInner((data) => {
   if (data.type == 'add') {
-    //  默认邮件
     changeNoticeType(3);
+    setTimeout(() => describeRef.value?.setNoticeType('email'), 0);
   } else {
     editConfigModal(data.record);
   }
@@ -112,11 +125,13 @@ function editConfigModal(record) {
   setTimeout(() => {
     setFieldsValue({id, ...configurationMap});
     formData.value.configuration[configValue[_msgType]] = configurationMap[configKey[_msgType]];
+    describeRef.value?.setNoticeType(CONFIG_DESCRIBE_MAP[_msgType] || 'email');
   });
 }
 
 function handleNoticeType(type) {
   changeNoticeType(type);
+  describeRef.value?.setNoticeType(CONFIG_DESCRIBE_MAP[type] || 'email');
   reset();
 }
 
@@ -259,6 +274,23 @@ const handleOk = () => {
     .ant-form-item-control {
       flex: 1;
     }
+  }
+}
+</style>
+<style lang="less" scoped>
+.config-modal-box {
+  display: flex;
+
+  form {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .describe-wapper {
+    flex: 0 0 320px;
+    margin-left: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
   }
 }
 </style>

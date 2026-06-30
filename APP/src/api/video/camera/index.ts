@@ -107,6 +107,77 @@ export function getDeviceInfo(deviceId: string) {
   return http.get<DeviceInfo>(`/video/camera/device/${deviceId}`)
 }
 
+export interface RegisterDevicePayload {
+  id?: string
+  name: string
+  ip?: string
+  port?: number
+  username?: string
+  password?: string
+  source?: string
+  cameraType?: string
+  stream?: number
+  manufacturer?: string
+  model?: string
+}
+
+/** 注册直连设备（手动 RTSP 等） */
+export function registerDevice(data: RegisterDevicePayload) {
+  return http.post<DeviceInfo>('/video/camera/register/device', data)
+}
+
+/** ONVIF 自动注册 */
+export function registerDeviceByOnvif(data: {
+  ip: string
+  port: number
+  username?: string
+  password: string
+}) {
+  return http.post<DeviceInfo>('/video/camera/register/device/onvif', data)
+}
+
+export interface DiscoveredDevice {
+  ip: string
+  port?: number
+  name?: string
+  manufacturer?: string
+  model?: string
+}
+
+/** 局域网 ONVIF 发现（约 120s） */
+export function discoverDevices() {
+  return http.get<DiscoveredDevice[]>('/video/camera/discovery', undefined, undefined, { timeout: 120000 })
+}
+
+/** 登记 NVR 并批量挂载通道 */
+export function registerNvrWithChannels(data: {
+  ip: string
+  port?: number
+  username?: string
+  password?: string
+  vendor?: string
+  name?: string
+  scheme?: string
+  timeout?: number
+}) {
+  return http.post<NvrInfo>('/video/camera/nvr/register-channels', data, undefined, undefined, { timeout: 300000, hideErrorToast: true })
+}
+
+/** 更新设备 */
+export function updateDevice(deviceId: string, data: Partial<RegisterDevicePayload>) {
+  return http.put<DeviceInfo>(`/video/camera/device/${encodeURIComponent(deviceId)}`, data)
+}
+
+/** 删除设备 */
+export function deleteDevice(deviceId: string) {
+  return http.delete(`/video/camera/device/${encodeURIComponent(deviceId)}`)
+}
+
+/** 删除 NVR */
+export function deleteNvr(nvrId: number) {
+  return http.delete(`/video/camera/nvr/${nvrId}`)
+}
+
 /** 启动流媒体转发 */
 export function startStreamForwarding(deviceId: string) {
   return http.post(`/video/camera/device/${deviceId}/stream/start`, {}, undefined, undefined, { hideErrorToast: true })

@@ -367,6 +367,24 @@ def create_app():
         app.register_blueprint(plate.plate_bp, url_prefix='/model/plate')
         app.register_blueprint(sam.sam_bp, url_prefix='/model/sam')
         
+        # SAM 模型预热：在后台线程加载模型，避免首请求因冷加载（3.26GB）超时
+        if os.getenv('SAM_ENABLED', 'false').lower() in ('1', 'true', 'yes'):
+            try:
+                import threading as _sam_warmup_threading
+                def _sam_warmup():
+                    try:
+                        from app.services.sam_service import get_sam_service
+                        svc = get_sam_service()
+                        svc.warmup_if_needed()
+                        print('✅ SAM 模型预热完成')
+                    except Exception as _e:
+                        print(f'⚠️  SAM 模型预热失败（不影响后续请求，首次推理将冷加载）: {_e}')
+                _t = _sam_warmup_threading.Thread(target=_sam_warmup, daemon=True)
+                _t.start()
+                print('🔄 SAM 模型预热已启动（后台加载中…）')
+            except Exception as _e:
+                print(f'⚠️  SAM 预热线程启动失败: {_e}')
+        
         # 注册集群推理接口（使用不同的路由，不影响原有推理接口）
         from app.blueprints import cluster
         app.register_blueprint(cluster.cluster_inference_bp, url_prefix='/model/cluster')

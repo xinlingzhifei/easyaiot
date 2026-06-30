@@ -13,9 +13,11 @@
         <result column="modified_time" jdbcType="TIMESTAMP" property="modifiedTime"/>
         <result column="preview_user" jdbcType="VARCHAR" property="previewUser"/>
         <result column="user_group_id" jdbcType="VARCHAR" property="userGroupId"/>
+        <result column="record_type" jdbcType="INTEGER" property="recordType"/>
+        <result column="ref_template_id" jdbcType="VARCHAR" property="refTemplateId"/>
     </resultMap>
     <sql id="Base_Column_List">
-        id, msg_type, msg_name, title, Cc, files, content, create_time, modified_time, preview_user,user_group_id
+        id, msg_type, msg_name, title, Cc, files, content, create_time, modified_time, preview_user, user_group_id, record_type, ref_template_id
     </sql>
     <select id="selectByPrimaryKey" parameterType="java.lang.String" resultMap="BaseResultMap">
         select
@@ -31,12 +33,12 @@
     <insert id="insert" parameterType="com.basiclab.iot.message.domain.entity.TMsgMail">
         insert into t_msg_mail (id, msg_type, msg_name,
                                 title, Cc, files, content,
-                                create_time, modified_time, preview_user,user_group_id)
+                                create_time, modified_time, preview_user, user_group_id, record_type, ref_template_id)
         values (#{id,jdbcType=INTEGER}, #{msgType,jdbcType=INTEGER}, #{msgName,jdbcType=VARCHAR},
                 #{title,jdbcType=VARCHAR}, #{cc,jdbcType=VARCHAR}, #{files,jdbcType=VARCHAR},
                 #{content,jdbcType=VARCHAR},
                 #{createTime,jdbcType=TIMESTAMP}, #{modifiedTime,jdbcType=TIMESTAMP}, #{previewUser,jdbcType=VARCHAR},
-                #{userGroupId,jdbcType=VARCHAR})
+                #{userGroupId,jdbcType=VARCHAR}, #{recordType,jdbcType=INTEGER}, #{refTemplateId,jdbcType=VARCHAR})
     </insert>
     <insert id="insertSelective" parameterType="com.basiclab.iot.message.domain.entity.TMsgMail" useGeneratedKeys="true"
             keyColumn="id" keyProperty="id">
@@ -139,6 +141,12 @@
             <if test="userGroupId != null">
                 user_group_id = #{userGroupId,jdbcType=VARCHAR},
             </if>
+            <if test="recordType != null">
+                record_type = #{recordType,jdbcType=INTEGER},
+            </if>
+            <if test="refTemplateId != null">
+                ref_template_id = #{refTemplateId,jdbcType=VARCHAR},
+            </if>
         </set>
         where id = #{id,jdbcType=VARCHAR}
     </update>
@@ -183,6 +191,17 @@
         <include refid="Base_Column_List"/>
         from t_msg_mail
         where msg_type = #{msgType,jdbcType=INTEGER}
+          and (record_type = 0 or record_type is null)
+    </select>
+    <select id="countByTitleAndMsgType" resultType="int">
+        select count(1)
+        from t_msg_mail
+        where msg_type = #{msgType,jdbcType=INTEGER}
+          and title = #{title,jdbcType=VARCHAR}
+          and (record_type = 0 or record_type is null)
+        <if test="excludeId != null and excludeId != ''">
+            and id != #{excludeId,jdbcType=VARCHAR}
+        </if>
     </select>
     <delete id="deleteByMsgTypeAndName">
         delete

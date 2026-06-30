@@ -1345,6 +1345,12 @@ def try_send_snapshot_detection_alert(
     frame_timestamp: float,
 ) -> None:
     """有真实检测目标时上报告警（带检测框的图），无检测不调用。"""
+    from app.utils.alert_class_filter import filter_detections_for_alert, get_task_alert_class_names
+
+    detections = filter_detections_for_alert(
+        detections,
+        get_task_alert_class_names(task_config),
+    )
     if not detections or not task_config or not task_config.alert_event_enabled:
         return
 

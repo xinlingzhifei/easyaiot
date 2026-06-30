@@ -12,9 +12,9 @@ export const getTableColumns = () => {
           2: '腾讯云短信',
           3: 'EMail',
           4: '企业微信',
-          5: '钉钉',
-          6: '飞书',
-          7: 'Webhook',
+          5: 'Webhook',
+          6: '钉钉',
+          7: '飞书',
         }[text];
       },
     },

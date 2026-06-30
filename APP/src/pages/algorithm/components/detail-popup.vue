@@ -53,6 +53,15 @@
             重启
           </wd-button>
         </view>
+
+        <view class="mt-16rpx flex gap-16rpx">
+          <wd-button class="flex-1" plain :disabled="task.is_enabled" @click="handleEdit">
+            编辑
+          </wd-button>
+          <wd-button class="flex-1" type="danger" plain :disabled="task.is_enabled" @click="handleDelete">
+            删除
+          </wd-button>
+        </view>
       </view>
     </view>
   </wd-popup>
@@ -63,6 +72,7 @@ import type { AlgorithmTask } from '@/api/video/algorithm'
 import { computed, ref } from 'vue'
 import { useToast } from '@wot-ui/ui/components/wd-toast'
 import {
+  deleteAlgorithmTask,
   getAlgorithmTask,
   getAlgorithmTaskTypeText,
   restartAlgorithmTask,
@@ -70,7 +80,7 @@ import {
   stopAlgorithmTask,
 } from '@/api/video/algorithm'
 
-const emit = defineEmits<{ refresh: [] }>()
+const emit = defineEmits<{ refresh: [], edit: [task: AlgorithmTask] }>()
 const toast = useToast()
 const visible = ref(false)
 const task = ref<AlgorithmTask | null>(null)
@@ -156,6 +166,47 @@ async function handleRestart() {
   finally {
     actionLoading.value = false
   }
+}
+
+function handleEdit() {
+  if (!task.value)
+    return
+  if (task.value.is_enabled) {
+    toast.warning('请先停止任务再编辑')
+    return
+  }
+  visible.value = false
+  emit('edit', task.value)
+}
+
+function handleDelete() {
+  if (!task.value)
+    return
+  if (task.value.is_enabled) {
+    toast.warning('请先停止任务再删除')
+    return
+  }
+  uni.showModal({
+    title: '确认删除',
+    content: `确定删除任务「${task.value.task_name}」吗？`,
+    success: async (res) => {
+      if (!res.confirm || !task.value)
+        return
+      actionLoading.value = true
+      try {
+        await deleteAlgorithmTask(task.value.id)
+        toast.success('删除成功')
+        visible.value = false
+        emit('refresh')
+      }
+      catch {
+        toast.error('删除失败')
+      }
+      finally {
+        actionLoading.value = false
+      }
+    },
+  })
 }
 
 async function open(item: AlgorithmTask) {

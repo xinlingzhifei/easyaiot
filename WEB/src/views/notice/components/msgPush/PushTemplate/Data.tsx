@@ -3,6 +3,73 @@ import type { Rule } from 'ant-design-vue/es/form';
 import corpMessage from '@/assets/images/corp-message.png';
 import feishuLogo from '@/assets/images/notice/feishu.png';
 
+/** 模板元信息（用于判断推送是否需要用户分组） */
+export type PushTemplateMeta = {
+  radioType?: string;
+  webHook?: string;
+};
+
+/**
+ * 推送任务是否需要选择用户分组
+ * - 短信/邮件：必须
+ * - HTTP/飞书：Webhook 在模板中，不需要
+ * - 企微/钉钉：仅「工作通知方式」需要；群机器人不需要
+ */
+export function needsPushUserGroup(
+  msgType: number | string | null | undefined,
+  templateMeta?: PushTemplateMeta | null,
+): boolean {
+  const t = String(msgType ?? '');
+  if (t === '5' || t === '7') return false;
+  if (t === '1' || t === '2' || t === '3') return true;
+  if (t === '4' || t === '6') {
+    if (!templateMeta) return false;
+    const { radioType, webHook } = templateMeta;
+    if (radioType === '群机器人消息') return false;
+    if (webHook && String(webHook).trim()) return false;
+    return radioType === '工作通知方式';
+  }
+  return true;
+}
+
+// 消息模板表单（不含推送专用字段）
+export const templateFormSchemas = ({ isVariable }) => {
+  return [
+    {
+      field: 'id',
+      component: 'Input',
+      colProps: { span: 0 },
+    },
+    {
+      field: 'msgName',
+      component: 'Input',
+      required: true,
+      label: '模板名称',
+    },
+    {
+      field: 'userGroupId',
+      component: 'Input',
+      label: '默认用户分组',
+      slot: 'userGroupId',
+      helpMessage: '算法任务告警通知时从此分组解析默认通知人（可选）',
+      ifShow: ({ values }) => {
+        const msgType = String(values?.msgType ?? '');
+        if (msgType === '5' || msgType === '7') return false;
+        if (values?.radioType === '群机器人消息') return false;
+        return true;
+      },
+    },
+    {
+      field: 'variableDefinitions',
+      label: '变量列表',
+      component: 'Input',
+      slot: 'variableDefinitions',
+      colProps: { span: 24 },
+      show: () => isVariable?.value,
+    },
+  ];
+};
+
 // 表单
 export const formSchemas = ({ isVariable }) => {
   return [
@@ -14,20 +81,57 @@ export const formSchemas = ({ isVariable }) => {
       },
     },
     {
+      field: 'msgType',
+      component: 'Input',
+      colProps: {
+        span: 0,
+      },
+    },
+    {
+      field: 'templateRadioType',
+      component: 'Input',
+      colProps: { span: 0 },
+    },
+    {
+      field: 'templateWebHook',
+      component: 'Input',
+      colProps: { span: 0 },
+    },
+    {
       field: 'msgName',
       component: 'Input',
       required: true,
-      label: '消息名称',
+      label: '推送名称',
+    },
+    {
+      field: 'refTemplateId',
+      component: 'Select',
+      required: true,
+      label: '消息模板',
+      slot: 'refTemplateId',
     },
     {
       field: 'userGroupId',
       component: 'Input',
-      required: true,
       label: '用户分组',
       slot: 'userGroupId',
-      ifShow: ({ values }) => {
-        return values?.msgType != '5';
+      helpMessage: '工作通知、短信、邮件需选择收件人分组；群机器人/Webhook 类模板无需分组',
+      dynamicRules: ({ values }) => {
+        if (
+          !needsPushUserGroup(values?.msgType, {
+            radioType: values?.templateRadioType,
+            webHook: values?.templateWebHook,
+          })
+        ) {
+          return [];
+        }
+        return [{ required: true, message: '请选择用户分组', trigger: ['change', 'blur'] }];
       },
+      ifShow: ({ values }) =>
+        needsPushUserGroup(values?.msgType, {
+          radioType: values?.templateRadioType,
+          webHook: values?.templateWebHook,
+        }),
     },
     {
       field: 'variableDefinitions',
@@ -241,7 +345,8 @@ const commonConfigFileds = [
       return (
         [values.cpMsgType, values.dingMsgType].includes('文本消息') ||
         ['链接消息', '卡片消息'].includes(values.dingMsgType) ||
-        [(values.cpMsgType, values.dingMsgType)].includes('markdown消息')
+        values.cpMsgType === 'markdown消息' ||
+        values.dingMsgType === 'markdown消息'
       );
     },
   },
@@ -265,12 +370,41 @@ export const weixinSchemas = () => {
         return renderProvider('img', corpMessage, '企业消息');
       },
     },
+    ...msgTypeFiled,
+    {
+      field: 'radioType',
+      component: 'RadioGroup',
+      label: '消息通知方式',
+      componentProps: {
+        options: [
+          { label: '工作通知方式', value: '工作通知方式' },
+          { label: '群机器人消息', value: '群机器人消息' },
+        ],
+      },
+      defaultValue: '工作通知方式',
+    },
     {
       field: 'agentId',
       component: 'Select',
       label: '应用',
       slot: 'agentId',
       required: true,
+      ifShow: ({ values }) => {
+        return values.radioType == '工作通知方式';
+      },
+    },
+    {
+      field: 'webHook',
+      component: 'Input',
+      label: 'Webhook地址',
+      required: true,
+      helpMessage: '在企业微信群中添加机器人后获取，群机器人模式无需用户分组',
+      componentProps: {
+        placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...',
+      },
+      ifShow: ({ values }) => {
+        return values.radioType == '群机器人消息';
+      },
     },
     {
       field: 'cpMsgType',
@@ -284,6 +418,7 @@ export const weixinSchemas = () => {
           { value: 'markdown消息', label: 'markdown消息' },
         ],
       },
+      defaultValue: '文本消息',
     },
     ...commonConfigFileds,
   ];
@@ -316,7 +451,9 @@ export const dindinSchemas = () => {
     {
       field: 'webHook',
       component: 'Input',
-      label: 'webHook',
+      label: 'Webhook地址',
+      required: true,
+      helpMessage: '在钉钉群中添加自定义机器人后获取',
       ifShow: ({ values }) => {
         return values.radioType == '群机器人消息';
       },
@@ -365,6 +502,10 @@ export const feishuSchemas = () => {
       component: 'Input',
       label: 'Webhook地址',
       required: true,
+      helpMessage: '在飞书群中添加自定义机器人后获取，无需用户分组',
+      componentProps: {
+        placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...',
+      },
       ifShow: ({ values }) => {
         return values.radioType == '群机器人消息';
       },
@@ -544,12 +685,26 @@ export const smsDetailSchemas = [
 export const weixinDetailSchemas = [
   ...commonDetailSchema,
   {
+    field: 'radioType',
+    label: '通知方式',
+  },
+  {
     field: 'cpMsgType',
     label: '消息类型',
   },
   {
     field: 'agentId',
     label: '应用',
+    show: (data) => {
+      return data?.radioType == '工作通知方式';
+    },
+  },
+  {
+    field: 'webHook',
+    label: 'Webhook地址',
+    show: (data) => {
+      return data?.radioType == '群机器人消息';
+    },
   },
   {
     field: 'title',
@@ -587,14 +742,14 @@ export const dingDetailSchemas = [
     field: 'agentId',
     label: '应用',
     show: (data) => {
-      return data?.dingMsgType == '工作通知方式';
+      return data?.radioType == '工作通知方式';
     },
   },
   {
     field: 'webHook',
-    label: 'webHook',
+    label: 'Webhook地址',
     show: (data) => {
-      return data?.dingMsgType == '群机器人消息';
+      return data?.radioType == '群机器人消息';
     },
   },
   {
@@ -633,6 +788,28 @@ export const httpDetailSchemas = [
   {
     field: 'url',
     label: 'URL',
+    span: 3,
+  },
+];
+
+export const feishuDetailSchemas = [
+  ...commonDetailSchema,
+  {
+    field: 'radioType',
+    label: '通知方式',
+  },
+  {
+    field: 'feishuMsgType',
+    label: '消息类型',
+  },
+  {
+    field: 'webHook',
+    label: 'Webhook地址',
+    span: 3,
+  },
+  {
+    field: 'content',
+    label: '内容',
     span: 3,
   },
 ];

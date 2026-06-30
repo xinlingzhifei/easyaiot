@@ -4,7 +4,7 @@
     @register="registerModal"
     @cancel="handleCancel"
     @ok="handleOk"
-    width="900px"
+    width="1100px"
     :canFullscreen="false"
   >
     <div class="config-modal-box">
@@ -32,6 +32,20 @@
               :options="formData.userGroupList"
               @focus="getUserGroupQueryByMsgType"
               placeholder="请选择"
+            />
+          </FormItemRest>
+        </template>
+        <!-- 消息模板 -->
+        <template #refTemplateId="{ model, field }">
+          <FormItemRest>
+            <Select
+              v-model:value="model[field]"
+              :options="formData.templateList"
+              @focus="loadTemplateOptions"
+              @change="onTemplateChange"
+              placeholder="请选择消息模板"
+              show-search
+              option-filter-prop="label"
             />
           </FormItemRest>
         </template>
@@ -74,6 +88,7 @@
           </FormItemRest>
         </template>
       </BasicForm>
+      <Describe ref="describeRef" />
     </div>
   </BasicModal>
 </template>
@@ -85,19 +100,16 @@
   import { useMessage } from '/@/hooks/web/useMessage';
   import {
     formSchemas,
-    emailSchemas,
-    smsSchemas,
-    weixinSchemas,
-    dindinSchemas,
-    httpSchemas,
-    feishuSchemas,
     templateColumns,
+    needsPushUserGroup,
   } from '../Data';
   import VariableDefinitions from './VariableDefinitions.vue';
+  import Describe from './Describe.vue';
   import {
     messagePrepareAdd,
     messagePrepareUpdate,
-    messageConfigQuery,
+    messageTemplateQueryByType,
+    messageTemplateGet,
   } from '/@/api/modules/notice';
   import { userGroupQueryByMsgType } from '/@/api/modules/user';
   import { Select, Textarea, FormItemRest } from 'ant-design-vue';
@@ -115,15 +127,36 @@
   const emits = defineEmits(['success']);
   const { createMessage } = useMessage();
   const httpParamsRef = ref(null);
+  const describeRef = ref(null);
   const opertionType = ref('add');
+
+  const MSG_TYPE_MAP: Record<string, number> = {
+    sms: 1,
+    email: 3,
+    weixin: 4,
+    http: 5,
+    ding: 6,
+    feishu: 7,
+  };
+  const currentMsgType = ref<number | null>(null);
+
+  const DESCRIBE_TYPE_MAP: Record<string, string> = {
+    sms: 'sms',
+    email: 'email',
+    weixin: 'weixin',
+    http: 'webhook',
+    ding: 'ding',
+    feishu: 'feishu',
+  };
 
   const formData = ref({
     variableDefinitions: [],
     attachments: [],
-    // smsTemplate: [],
     templateDataList: [],
     userGroupList: [],
+    templateList: [],
     agent: [],
+    selectedTemplate: null as { radioType?: string; webHook?: string } | null,
   });
 
   const isVariable = computed(() => {
@@ -144,15 +177,10 @@
   const [
     registerForm,
     {
-      appendSchemaByField,
-      // validateFields,
-      // updateSchema,
-      removeSchemaByField,
       getFieldsValue,
       validate,
       setFieldsValue,
       resetFields,
-      // setProps,
     },
   ] = useForm({
     schemas: formSchemas({ isVariable }),
@@ -162,87 +190,35 @@
   });
 
   function editConfigModal(record) {
-    const { files, templateDataList, cookies, params, headers, ...ret } = record;
-    const _msgType = +ret.msgType;
-    // email
-    if ([3].includes(_msgType)) {
-      if (files) {
-        let _file = JSON.parse(files) || [];
-        if (!Array.isArray(_file)) {
-          _file = [{ id: '0', ..._file }];
-        }
-        formData.value.attachments = _file;
-      }
-      ret.cc = ret.cc ? ret.cc?.split(',') : '';
+    const { refTemplateId, msgName, userGroupId, previewUser, msgType, id } = record;
+    if (msgType != null) {
+      currentMsgType.value = +msgType;
     }
-
-    // sms
-    if ([1, 2].includes(_msgType)) {
-      formData.value.templateDataList = templateDataList || [];
-    }
-
-    // console.log('record ret...', ret);
-    // console.log('record formData.value.attachments...', formData.value.attachments);
-    setTimeout(() => {
-      setFieldsValue({ ...ret });
-      // http
-      if ([5].includes(_msgType)) {
-        httpParamsRef.value && httpParamsRef.value.setTabList({ cookies, params, headers });
+    setTimeout(async () => {
+      setFieldsValue({ id, msgType, refTemplateId, msgName, userGroupId, previewUser });
+      await syncTemplateMeta(refTemplateId, +msgType);
+      if (needsPushUserGroup(msgType, formData.value.selectedTemplate)) {
+        getUserGroupQueryByMsgType();
       }
-      getUserGroupQueryByMsgType();
+      loadTemplateOptions();
     });
   }
 
   // 类型
-  function handleNoticeType(type) {
-    const msgType = {
-      sms: 1,
-      email: 3,
-      weixin: 4,
-      http: 5,
-      ding: 6,
-      feishu: 7,
-    };
+  function handleNoticeType(type: string) {
+    const msgType = MSG_TYPE_MAP[type] ?? 3;
+    currentMsgType.value = msgType;
     changeNoticeType(type);
+    describeRef.value?.setNoticeType(DESCRIBE_TYPE_MAP[type] || 'email');
     setTimeout(() => {
-      setFieldsValue({
-        msgType: msgType[type],
-        // 消息通知方式
-        msgNoticeType: '0',
-        // http:请求方式
-        method: 'GET',
-        //
-        bodyType: 'text/plain',
-        // tab
-        tabActive: 'Params',
-        // 消息类型
-        messageType: 'textMsg',
-        // 钉钉通知方式
-        radioType: type === 'ding' ? '工作通知方式' : (type === 'feishu' ? '群机器人消息' : '工作通知方式'),
-      });
+      setFieldsValue({ msgType });
+      loadTemplateOptions();
     });
     reset();
   }
 
-  function changeNoticeType(type) {
-    const config = {
-      email: emailSchemas,
-      sms: smsSchemas,
-      weixin: weixinSchemas,
-      ding: dindinSchemas,
-      http: httpSchemas,
-      feishu: feishuSchemas,
-    };
-    const fields = Object.keys(config)
-      .map((c) => {
-        const item = config[c]({});
-        return item;
-      })
-      .reduce((p, c) => [...p, ...c], [])
-      .map((item) => item.field);
-    const schemas = config[type]({ getFieldsValue, setFieldsValue });
-    removeSchemaByField(fields);
-    appendSchemaByField(schemas, 'userGroupId');
+  function changeNoticeType(_type: string) {
+    // 推送仅配置：推送名称 + 消息模板 + 用户分组
   }
 
   // function changeMessage(value) {
@@ -284,10 +260,10 @@
     formData.value.variableDefinitions = [];
     formData.value.attachments = [];
     formData.value.templateDataList = [];
-    // http
-    if (getFieldsValue().msgType == 5) {
-      httpParamsRef.value.reset();
-    }
+    formData.value.templateList = [];
+    formData.value.userGroupList = [];
+    formData.value.selectedTemplate = null;
+    httpParamsRef.value?.reset?.();
   };
 
   const handleCancel = () => {
@@ -298,11 +274,6 @@
   const handleOk = () => {
     validate()
       .then(async () => {
-        const { attachments } = formData.value;
-        // // 变量
-        // const variableDefinitions = {
-        //   variableDefinitions: JSON.stringify(formData.value.variableDefinitions),
-        // };
         const configKey = {
           1: 't_Msg_Sms',
           2: 't_Msg_Sms',
@@ -312,93 +283,30 @@
           6: 't_Msg_Ding',
           7: 't_Msg_Feishu',
         };
-        const { id, msgType, ...t_Msg } = getFieldsValue();
+        const { id, msgType, refTemplateId, msgName, userGroupId, previewUser } = getFieldsValue();
         const _msgType = +msgType;
-        // msgType
-        t_Msg.msgType = _msgType;
-        // edit
+        const needUserGroup = needsPushUserGroup(_msgType, formData.value.selectedTemplate);
+        const t_Msg: Record<string, unknown> = {
+          msgType: _msgType,
+          msgName,
+          refTemplateId,
+          userGroupId: needUserGroup ? userGroupId || null : null,
+          previewUser: previewUser || null,
+        };
         if (opertionType.value == 'edit') {
           t_Msg.id = id;
         }
-        // email
-        if ([3].includes(_msgType)) {
-          const cc = t_Msg.cc || [];
-          t_Msg.cc = cc.length > 0 ? t_Msg.cc.join(',') : '';
-          t_Msg.files = attachments.length > 0 ? JSON.stringify({ ...attachments[0] }) : '';
-        }
-        // http
-        if ([5].includes(_msgType)) {
-          // 先保存body和bodyType，避免被httpParams覆盖
-          // 使用 getFieldsValue() 确保获取所有字段值，包括隐藏的 body 和 bodyType
-          const allFields = getFieldsValue();
-          // 优先使用 allFields 中的值，因为 formModel 中可能包含最新的值
-          let bodyValue = allFields.body !== undefined ? allFields.body : t_Msg.body;
-          let bodyTypeValue = allFields.bodyType !== undefined ? allFields.bodyType : (t_Msg.bodyType || 'application/json');
-          
-          // 如果 bodyValue 是 undefined 或 null，设置为空字符串，确保 MyBatis 会更新该字段
-          if (bodyValue === undefined || bodyValue === null) {
-            bodyValue = '';
-          }
-          
-          console.log('保存前 - allFields:', allFields, 't_Msg:', t_Msg, 'bodyValue:', bodyValue, 'bodyTypeValue:', bodyTypeValue);
-          
-          const httpParams = httpParamsRef.value.getParams();
-          console.log('httpParams:', httpParams);
-          
-          // 只覆盖params、headers、cookies，保留body和bodyType
-          Object.keys(httpParams).forEach((key) => {
-            // 确保不会覆盖 body 和 bodyType
-            if (key !== 'body' && key !== 'bodyType') {
-              t_Msg[key] = httpParams[key];
-            }
-          });
-          
-          // get请求不需要body
-          if (t_Msg.method == 'GET') {
-            delete t_Msg['bodyType'];
-            delete t_Msg['body'];
-          } else {
-            // POST/PUT/PATCH等请求，始终设置body和bodyType
-            // 即使body是空字符串，也要设置，确保MyBatis会更新该字段
-            t_Msg.body = bodyValue;
-            t_Msg.bodyType = bodyTypeValue || 'application/json';
-          }
-          
-          // 调试日志
-          console.log('保存HTTP消息 - 最终数据:', {
-            body: t_Msg.body,
-            bodyType: t_Msg.bodyType,
-            params: t_Msg.params,
-            headers: t_Msg.headers,
-            cookies: t_Msg.cookies,
-            method: t_Msg.method,
-            url: t_Msg.url
-          });
-        }
-
-        // templateDataList
-        const templateDataList = formData.value.templateDataList.map((item) => {
-          item.msgType = _msgType;
-          return item;
-        });
-
         const params = {
           msgType: _msgType,
           [configKey[_msgType]]: t_Msg,
-          // sms
-          templateDataList,
         };
-
-        const ret =
-          opertionType.value == 'add'
-            ? await messagePrepareAdd(params)
-            : await messagePrepareUpdate(params);
+        opertionType.value == 'add'
+          ? await messagePrepareAdd(params)
+          : await messagePrepareUpdate(params);
         createMessage.success(opertionType.value == 'add' ? '添加成功' : '编辑成功');
         closeModal();
         emits('success');
         handleCancel();
-        console.log(ret);
-        // console.log('getFieldsValue() ...', getFieldsValue(), params);
       })
       .catch((error) => {
         console.log(error);
@@ -406,20 +314,86 @@
       });
   };
 
+  function resolveMsgType(): number | null {
+    const fromForm = getFieldsValue()?.msgType;
+    const raw = currentMsgType.value ?? fromForm;
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  async function syncTemplateMeta(templateId: string | undefined, msgType: number) {
+    if (!templateId) {
+      formData.value.selectedTemplate = null;
+      setFieldsValue({ templateRadioType: undefined, templateWebHook: undefined, userGroupId: undefined });
+      return;
+    }
+    try {
+      const ret = await messageTemplateGet({ id: templateId, msgType });
+      const tpl = (ret && typeof ret === 'object' && 'radioType' in ret ? ret : (ret as { data?: object })?.data) as
+        | { radioType?: string; webHook?: string }
+        | undefined;
+      const meta = {
+        radioType: tpl?.radioType,
+        webHook: tpl?.webHook,
+      };
+      formData.value.selectedTemplate = meta;
+      setFieldsValue({
+        templateRadioType: meta.radioType,
+        templateWebHook: meta.webHook,
+      });
+      if (!needsPushUserGroup(msgType, meta)) {
+        setFieldsValue({ userGroupId: undefined });
+      }
+    } catch (e) {
+      console.error(e);
+      formData.value.selectedTemplate = null;
+    }
+  }
+
+  async function onTemplateChange(templateId: string) {
+    const msgType = resolveMsgType();
+    if (msgType == null) return;
+    await syncTemplateMeta(templateId, msgType);
+    if (needsPushUserGroup(msgType, formData.value.selectedTemplate)) {
+      getUserGroupQueryByMsgType();
+    }
+  }
+
+  async function loadTemplateOptions() {
+    try {
+      const msgType = resolveMsgType();
+      if (msgType == null) return;
+      const ret = await messageTemplateQueryByType({ msgType });
+      let list: Array<Record<string, unknown>> = [];
+      if (Array.isArray(ret)) {
+        list = ret;
+      } else if (ret && typeof ret === 'object') {
+        const data = (ret as { data?: unknown }).data;
+        list = Array.isArray(data) ? data : [];
+      }
+      formData.value.templateList = list.map((item) => ({
+        label: String(item.name || item.title || item.msgName || item.id || ''),
+        value: item.id,
+      }));
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   // 目标用户
   async function getUserGroupQueryByMsgType() {
     try {
-      const { msgType } = getFieldsValue();
-      const ret = await userGroupQueryByMsgType({ msgType: +msgType });
-      console.log('ret', ret);
-      formData.value.userGroupList = ret.map((item) => {
-        item.label = item.userGroupName;
-        item.value = item.id;
-        return item;
-      });
-    }catch (error) {
-    console.error(error)
-      console.log(error);
+      const msgType = resolveMsgType();
+      if (msgType == null) return;
+      const ret = await userGroupQueryByMsgType({ msgType });
+      const rows = Array.isArray(ret) ? ret : [];
+      formData.value.userGroupList = rows.map((item) => ({
+        label: item.userGroupName,
+        value: item.id,
+      }));
+    } catch (error) {
+      console.error(error);
     }
   }
 

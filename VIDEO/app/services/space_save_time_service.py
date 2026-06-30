@@ -8,8 +8,8 @@ from models import db, Device, DeviceDirectory, SnapSpace, RecordSpace
 
 logger = logging.getLogger(__name__)
 
-# 单位：小时。168 = 7 天
-DEFAULT_SAVE_TIME = 168
+# 单位：小时。默认每设备保留 1 小时
+DEFAULT_SAVE_TIME = 1
 MIN_SAVE_TIME_HOURS = 1
 SPACE_KIND_SNAP = 'snap'
 SPACE_KIND_RECORD = 'record'

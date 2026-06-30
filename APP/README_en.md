@@ -15,7 +15,6 @@ yFeiEye APP is a cross-platform mobile management console built with uni-app 3. 
 - 🏋️ Model Training: Training task progress monitoring and one-click stop
 - 🎬 Video Monitoring: Jessibuca low-latency player on H5 for FLV/HLS live streams and alert video playback
 - 👤 Personal Center: Profile, account security, FAQ, feedback, privacy settings, and app configuration
-- 📋 Workflow: BPM todo, done, copy, and my-process management
 - 💬 Notifications: In-app message search and detail view
 
 ## Tech Stack

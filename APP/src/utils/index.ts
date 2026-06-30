@@ -147,9 +147,18 @@ export function getEnvBaseUrl() {
  */
 export function getEnvBaseUrlRoot() {
   const baseUrl = getEnvBaseUrl()
-  // 提取根路径
-  const urlObj = new URL(baseUrl)
-  return urlObj.origin
+  if (!baseUrl || baseUrl.startsWith('/')) {
+    if (typeof window !== 'undefined' && window.location?.origin)
+      return window.location.origin
+    return ''
+  }
+  try {
+    const urlObj = new URL(baseUrl)
+    return urlObj.origin
+  }
+  catch {
+    return ''
+  }
 }
 
 /**

@@ -29,6 +29,15 @@
 
               {
                 tooltip: {
+                  title: '测试发送',
+                  placement: 'top',
+                },
+                icon: 'ant-design:experiment-outlined',
+                ifShow: () => canTestSend(record),
+                onClick: handleTestSend.bind(null, record),
+              },
+              {
+                tooltip: {
                   title: '开始推送',
                   placement: 'top',
                 },
@@ -118,16 +127,9 @@
     title: '消息推送',
     api: messagePrepareQuery,
     beforeFetch: (data) => {
-      const configKey = {
-        sms: 1,
-        email: 3,
-        weixin: 4,
-        http: 5,
-        ding: 6,
-      };
       let params = {
         ...data,
-        msgType: props.pushType == 'sms' ? data.msgType : configKey[props.pushType],
+        msgType: props.pushType == 'sms' ? data.msgType : MSG_TYPE_MAP[props.pushType],
       };
       return params;
     },
@@ -175,19 +177,21 @@
         },
       },
       {
-        title: '消息名称',
+        title: '推送名称',
         dataIndex: 'msgName',
+      },
+      {
+        title: '消息模板',
+        dataIndex: 'templateName',
       },
       {
         title: '用户组',
         dataIndex: 'userGroupName',
-        ifShow: () => {
-          return props.pushType != 'http';
-        },
+        ifShow: () => !['http', 'feishu'].includes(props.pushType),
       },
       ...props.columns,
       {
-        width: 230,
+        width: 280,
         title: '操作',
         dataIndex: 'action',
         fixed: 'right',
@@ -197,20 +201,12 @@
 
   const handleDelete = async ({ id }) => {
     try {
-      const configKey = {
-        sms: 1,
-        email: 3,
-        weixin: 4,
-        http: 5,
-        ding: 6,
-      };
-      await messagePrepareDelete({ id, msgType: configKey[props.pushType] });
+      await messagePrepareDelete({ id, msgType: MSG_TYPE_MAP[props.pushType] });
       createMessage.success('删除成功');
       reload();
-    }catch (error) {
-    console.error(error)
-      createMessage.success('删除失败');
-      console.log('handleDelete', error);
+    } catch (error) {
+      console.error(error);
+      createMessage.error('删除失败');
     }
   };
 
@@ -264,7 +260,34 @@
     }, {});
   };
 
-  const handleStartPush = async (record) => {
+  const MSG_TYPE_MAP = {
+    sms: 1,
+    email: 3,
+    weixin: 4,
+    http: 5,
+    ding: 6,
+    feishu: 7,
+  };
+
+  function canTestSend(record) {
+    if (!record?.refTemplateId && !record?.id) {
+      return false;
+    }
+    // Webhook / 飞书：无需用户分组
+    if (props.pushType === 'http' || props.pushType === 'feishu') {
+      return true;
+    }
+    // 企微/钉钉群机器人：推送记录无 userGroupId
+    if (['weixin', 'ding'].includes(props.pushType) && !record?.userGroupId) {
+      return true;
+    }
+    // 短信/邮件/工作通知：需有用户分组
+    return !!record?.userGroupId;
+  }
+
+  const handleTestSend = (record) => handleStartPush(record, true);
+
+  const handleStartPush = async (record, isTest = false) => {
     console.log('开始推送，完整 record 数据:', JSON.stringify(record, null, 2));
     
     try {
@@ -385,10 +408,10 @@
 
       // 处理推送结果
       if (sendResult && sendResult.success) {
-        createMessage.success('推送成功');
+        createMessage.success(isTest ? '测试发送成功' : '推送成功');
         reload();
       } else {
-        const errorMsg = sendResult?.info || sendResult?.message || '推送失败';
+        const errorMsg = sendResult?.info || sendResult?.message || (isTest ? '测试发送失败' : '推送失败');
         createMessage.error(errorMsg);
       }
     } catch (error) {

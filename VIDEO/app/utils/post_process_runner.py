@@ -67,6 +67,7 @@ def build_task_context(
     state = _STATE.setdefault(state_key, {})
 
     tracked = tracked_detections if tracked_detections is not None else detections
+    from app.utils.alert_class_filter import parse_alert_class_names
     return {
         'task_id': task_id,
         'task_name': getattr(task_config, 'task_name', ''),
@@ -82,6 +83,7 @@ def build_task_context(
         'regions': regions or [],
         'state': state,
         'model_ids': _parse_model_ids(getattr(task_config, 'model_ids', None)),
+        'alert_class_names': parse_alert_class_names(getattr(task_config, 'alert_class_names', None)),
     }
 
 
@@ -236,16 +238,25 @@ def apply_post_process(
 def resolve_post_process_outcome(
     pp_result: Optional[Dict[str, Any]],
     detections: List[Dict[str, Any]],
+    *,
+    alert_class_names: Any = None,
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """解析后处理返回值，得到用于默认告警的检测列表与自定义告警。"""
+    from app.utils.alert_class_filter import filter_detections_for_alert
+
     if not pp_result:
-        return detections, []
+        return filter_detections_for_alert(detections, alert_class_names), []
 
     detections_for_alert = detections
     if pp_result.get('suppress_default_alert'):
         detections_for_alert = []
     elif pp_result.get('detections') is not None:
         detections_for_alert = pp_result.get('detections') or []
+
+    detections_for_alert = filter_detections_for_alert(
+        detections_for_alert,
+        alert_class_names,
+    )
 
     custom_alerts = pp_result.get('alerts') or []
     if custom_alerts and not isinstance(custom_alerts, list):

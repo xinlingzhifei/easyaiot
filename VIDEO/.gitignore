@@ -36,6 +36,9 @@ hs_err_pid*
 /iot-visual/*/target
 *.iml
 
+# install 脚本自动生成的架构配置
+.env.arch
+
 .build-cache
 .offline-cache
 face_rec.onnx

@@ -74,6 +74,15 @@
             {{ ffmpegPreviewRunning ? '停止预览流' : '重新启动预览' }}
           </wd-button>
         </view>
+
+        <view v-if="canManage" class="mt-16rpx flex gap-16rpx">
+          <wd-button class="flex-1" plain @click="handleEdit">
+            编辑
+          </wd-button>
+          <wd-button class="flex-1" type="danger" plain @click="handleDelete">
+            删除
+          </wd-button>
+        </view>
       </view>
     </view>
   </wd-popup>
@@ -85,6 +94,7 @@ import { computed, ref, watch } from 'vue'
 import { useToast } from '@wot-ui/ui/components/wd-toast'
 import LiveStreamPlayer from '@/components/live-stream-player.vue'
 import {
+  deleteDevice,
   getDeviceKindText,
   getDeviceInfo,
   getStreamStatus,
@@ -95,6 +105,7 @@ import { playByDeviceAndChannel } from '@/api/video/gb28181'
 import { getGb28181PlayIds, shouldPlayViaGb28181 } from '@/utils/video/deviceLabel'
 import { hasDirectPlayStream, pickWvpPlayUrl, resolveDevicePlayUrl } from '@/utils/video/deviceStream'
 
+const emit = defineEmits<{ refresh: [], edit: [device: DeviceInfo] }>()
 const toast = useToast()
 const visible = ref(false)
 const device = ref<DeviceInfo | null>(null)
@@ -114,6 +125,11 @@ const supportsFfmpegPreview = computed(() => {
     return false
   const source = device.value?.source?.trim().toLowerCase() || ''
   return !source.startsWith('rtmp://')
+})
+
+const canManage = computed(() => {
+  const kind = device.value?.device_kind
+  return !kind || kind === 'direct' || kind === 'nvr_channel'
 })
 
 const detailRows = computed(() => {
@@ -250,6 +266,36 @@ async function handleToggleFfmpegPreview() {
     return
   }
   await handleStartFfmpegPreview()
+}
+
+function handleEdit() {
+  if (!device.value)
+    return
+  visible.value = false
+  emit('edit', device.value)
+}
+
+function handleDelete() {
+  if (!device.value)
+    return
+  const name = device.value.name || device.value.id
+  uni.showModal({
+    title: '确认删除',
+    content: `确定删除设备「${name}」吗？`,
+    success: async (res) => {
+      if (!res.confirm || !device.value)
+        return
+      try {
+        await deleteDevice(device.value.id)
+        toast.success('删除成功')
+        visible.value = false
+        emit('refresh')
+      }
+      catch {
+        toast.error('删除失败')
+      }
+    },
+  })
 }
 
 async function open(item: DeviceInfo) {

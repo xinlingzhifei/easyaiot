@@ -113,6 +113,8 @@ build_with_cache() {
         -t ai-service:latest \
         --pull=false \
         --build-arg OFFLINE_MODE=${OFFLINE_MODE:-0} \
+        --build-arg APT_MIRROR_URL="${APT_MIRROR_URL:-https://mirrors.cloud.tencent.com}" \
+        --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}" \
         $no_cache_flag \
         . 2>&1 | tee "$build_log"
     build_status=${PIPESTATUS[0]}
@@ -187,10 +189,26 @@ DOCKER_PLATFORM=""
 BASE_IMAGE=""
 
 # 检测服务器架构并验证是否支持
+# ★ 如果 DOCKER_PLATFORM 已由上层（runtime_image.sh 跨架构构建）导出，则信任外部设置
 detect_architecture() {
     print_info "检测服务器架构..."
     ARCH=$(uname -m)
-    
+
+    # ★ 跨架构构建：DOCKER_PLATFORM 已由 runtime_image.sh 预设，直接信任
+    if [ -n "${DOCKER_PLATFORM:-}" ]; then
+        case "$ARCH" in
+            x86_64|amd64) ARCH="x86_64" ;;
+            aarch64|arm64) ARCH="aarch64" ;;
+            *) ARCH="x86_64" ;;
+        esac
+        BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime}"
+        print_success "检测到宿主机架构: ${ARCH}，使用外部指定平台: ${DOCKER_PLATFORM}"
+        print_info "使用 PyTorch CUDA 镜像: $BASE_IMAGE"
+        export DOCKER_PLATFORM
+        export BASE_IMAGE
+        return 0
+    fi
+
     case "$ARCH" in
         x86_64|amd64)
             ARCH="x86_64"
@@ -600,7 +618,38 @@ create_env_file() {
 # 安装服务
 install_service() {
     print_info "开始安装 AI 服务..."
-    
+
+    # 镜像获取方式（install_business_linux.sh 已统一询问时跳过）
+    if [ "${EASYAIOT_SKIP_IMAGE_PROMPT:-0}" != "1" ]; then
+        local _do_local_build=0
+        if [ -t 0 ]; then
+            print_info "========================================"
+            print_info "  镜像获取方式"
+            print_info "========================================"
+            print_info "  1) 拉取预构建镜像：从远程仓库下载（快速，默认）"
+            print_info "  2) 本地构建：编译并制作 Docker 镜像（耗时较长）"
+            echo ""
+            read -r -p "是否从远程仓库下载预构建的镜像？(Y/n) " _pull_response
+            case "${_pull_response:-Y}" in
+                n|N|no|NO) _do_local_build=1 ;;
+                *) _do_local_build=0 ;;
+            esac
+        else
+            print_info "非交互模式，默认拉取预构建镜像"
+        fi
+
+        if [ "$_do_local_build" -eq 0 ]; then
+            print_info "正在拉取预构建镜像..."
+            if bash "${EASYAIOT_ROOT}/.scripts/docker/runtime_image.sh" pull; then
+                print_success "预构建镜像拉取成功"
+                export EASYAIOT_SKIP_BUILD=1
+            else
+                print_warning "预构建镜像拉取失败，将尝试本地构建"
+                _do_local_build=1
+            fi
+        fi
+    fi
+
     check_docker
     check_docker_compose
     detect_architecture
@@ -610,20 +659,23 @@ install_service() {
     configure_gpu
     create_directories
     create_env_file
-    prepare_cached_resources
-    
-    print_info "构建 Docker 镜像（优先复用离线 pip 缓存）..."
-    print_info "架构: $ARCH, 平台: $DOCKER_PLATFORM, 基础镜像: $BASE_IMAGE"
-    print_warning "首次构建可能需要较长时间（10-30分钟），请耐心等待..."
-    print_info "正在下载基础镜像和安装依赖..."
-    print_info "构建进度将实时显示，请勿中断..."
-    echo ""
-    
-    if ! build_with_cache ""; then
-        exit 1
+
+    if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect ai-service:latest >/dev/null 2>&1; then
+        print_success "镜像已从远程拉取 (ai-service:latest)，跳过 pip 离线包下载与 Docker 构建"
+    else
+        print_info "构建 Docker 镜像（优先复用离线 pip 缓存）..."
+        print_info "架构: $ARCH, 平台: $DOCKER_PLATFORM, 基础镜像: $BASE_IMAGE"
+        print_warning "首次构建可能需要较长时间（10-30分钟），请耐心等待..."
+        print_info "正在下载基础镜像和安装依赖..."
+        print_info "构建进度将实时显示，请勿中断..."
+        echo ""
+
+        if ! build_with_cache ""; then
+            exit 1
+        fi
+        echo ""
+        print_success "AI 服务镜像构建完成！"
     fi
-    echo ""
-    print_success "AI 服务镜像构建完成！"
     
     print_info "启动服务..."
     cleanup_renamed_containers
@@ -727,19 +779,26 @@ view_logs() {
 
 # 构建镜像
 build_image() {
-    print_info "重新构建 Docker 镜像..."
     check_docker
     check_docker_compose
     detect_architecture
     configure_architecture
-    
+
+    if [ "${FORCE_REBUILD:-0}" != "1" ] && docker image inspect ai-service:latest >/dev/null 2>&1; then
+        print_success "ai-service:latest 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        return 0
+    fi
+
+    print_info "重新构建 Docker 镜像..."
     print_info "架构: $ARCH, 平台: $DOCKER_PLATFORM, 基础镜像: $BASE_IMAGE"
     print_warning "重新构建可能需要较长时间（10-30分钟），请耐心等待..."
     print_info "正在重新下载基础镜像和安装依赖..."
     print_info "构建进度将实时显示，请勿中断..."
     echo ""
-    
-    if ! build_with_cache "--no-cache"; then
+
+    local cache_flag=""
+    [ "${FORCE_REBUILD:-0}" = "1" ] && cache_flag="--no-cache"
+    if ! build_with_cache "$cache_flag"; then
         exit 1
     fi
     echo ""

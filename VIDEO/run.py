@@ -221,9 +221,14 @@ def create_app(start_background_tasks=None):
                 DeviceTrackSession, DeviceTrackPoint, PatrolSession, AlgorithmPostProcessResult,
             )
             db.create_all()
-            from models import ensure_algorithm_task_sam_columns, ensure_algorithm_task_post_process_columns
+            from models import (
+                ensure_algorithm_task_sam_columns,
+                ensure_algorithm_task_post_process_columns,
+                ensure_algorithm_task_alert_class_columns,
+            )
             ensure_algorithm_task_sam_columns(db.engine)
             ensure_algorithm_task_post_process_columns(db.engine)
+            ensure_algorithm_task_alert_class_columns(db.engine)
             
             # 迁移：检查并添加缺失的列和表
             try:
@@ -431,8 +436,8 @@ def create_app(start_background_tasks=None):
 
                 # 目录/空间保存时间字段
                 for table_name, col_name, col_def in (
-                    ('device_directory', 'snap_save_time', 'INTEGER NOT NULL DEFAULT 168'),
-                    ('device_directory', 'record_save_time', 'INTEGER NOT NULL DEFAULT 168'),
+                    ('device_directory', 'snap_save_time', 'INTEGER NOT NULL DEFAULT 1'),
+                    ('device_directory', 'record_save_time', 'INTEGER NOT NULL DEFAULT 1'),
                     ('snap_space', 'save_time_custom', 'BOOLEAN NOT NULL DEFAULT FALSE'),
                     ('record_space', 'save_time_custom', 'BOOLEAN NOT NULL DEFAULT FALSE'),
                 ):
@@ -1061,8 +1066,15 @@ def create_app(start_background_tasks=None):
         except Exception as e:
             print(f"❌ 自动启动推流设备失败: {str(e)}")
     
-    # 启动抓拍空间自动清理任务（每天凌晨2点执行）
+    # 启动抓拍/录像空间自动清理任务
     with app.app_context():
+        # 周期任务通用参数：合并错过的触发、避免并发堆积
+        _interval_job_kwargs = {
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 30,
+        }
+
         try:
             from app.services.camera_service import ensure_scheduler_running, scheduler
             from app.services.snap_space_service import auto_cleanup_all_spaces
@@ -1074,16 +1086,16 @@ def create_app(start_background_tasks=None):
                 """包装函数，确保传入app参数"""
                 return auto_cleanup_all_spaces(app=app)
             
-            # 每天凌晨2点执行自动清理
+            # 每 30 分钟执行自动清理（默认保留 1 小时时需及时删除过期文件）
             scheduler.add_job(
                 cleanup_wrapper,
-                'cron',
-                hour=2,
-                minute=0,
+                'interval',
+                minutes=30,
                 id='auto_cleanup_snap_spaces',
-                replace_existing=True
+                replace_existing=True,
+                **_interval_job_kwargs,
             )
-            print('✅ 抓拍空间自动清理任务已启动（每天凌晨2点执行）')
+            print('✅ 抓拍空间自动清理任务已启动（每 30 分钟执行）')
 
             from app.services.record_space_service import auto_cleanup_all_record_spaces
 
@@ -1092,24 +1104,17 @@ def create_app(start_background_tasks=None):
 
             scheduler.add_job(
                 record_cleanup_wrapper,
-                'cron',
-                hour=2,
-                minute=30,
+                'interval',
+                minutes=30,
                 id='auto_cleanup_record_spaces',
                 replace_existing=True,
+                **_interval_job_kwargs,
             )
-            print('✅ 录像空间自动清理任务已启动（每天凌晨2点30分执行）')
+            print('✅ 录像空间自动清理任务已启动（每 30 分钟执行）')
         except Exception as e:
             print(f"❌ 启动空间自动清理任务失败: {str(e)}")
             import traceback
             traceback.print_exc()
-
-        # 周期任务通用参数：合并错过的触发、避免并发堆积
-        _interval_job_kwargs = {
-            'coalesce': True,
-            'max_instances': 1,
-            'misfire_grace_time': 30,
-        }
 
         # SRS 本地回放磁盘守护（默认每 10 分钟；磁盘紧张时可配合紧急阈值自动删最旧文件）
         try:
@@ -1118,7 +1123,8 @@ def create_app(start_background_tasks=None):
             guard_interval_min = int(os.getenv('PLAYBACK_GUARD_INTERVAL_MINUTES', '10'))
 
             def playback_disk_guard_wrapper():
-                return run_playback_disk_guard()
+                with app.app_context():
+                    return run_playback_disk_guard()
 
             scheduler.add_job(
                 playback_disk_guard_wrapper,

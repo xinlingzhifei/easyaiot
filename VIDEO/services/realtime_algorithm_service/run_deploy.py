@@ -380,7 +380,14 @@ SOURCE_FPS = int(os.getenv('AI_SOURCE_FPS', os.getenv('VIEW_SOURCE_FPS', os.gete
 TARGET_WIDTH = int(os.getenv('AI_TARGET_WIDTH', os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280'))))
 TARGET_HEIGHT = int(os.getenv('AI_TARGET_HEIGHT', os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720'))))
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
-EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '2'))
+EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '25'))
+# 运行时任务级抽帧间隔（load_task_config 后覆盖环境变量默认值）
+_runtime_extract_interval = EXTRACT_INTERVAL
+_runtime_alert_extract_interval = int(
+    os.getenv('ALERT_EXTRACT_INTERVAL', str(max(EXTRACT_INTERVAL * 2, EXTRACT_INTERVAL)))
+)
+# 运动检测门控
+motion_gate = None  # load_task_config 后初始化
 BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '70'))
 MIN_BUFFER_FRAMES = int(os.getenv('MIN_BUFFER_FRAMES', '15'))
 MAX_WAIT_TIME = float(os.getenv('MAX_WAIT_TIME', '0.08'))
@@ -417,8 +424,27 @@ EXTRACT_QUEUE_SIZE = int(os.getenv('EXTRACT_QUEUE_SIZE', '50'))  # 抽帧队列�
 _legacy_yolo_workers = int(os.getenv('YOLO_WORKER_THREADS', '2'))
 OVERLAY_WORKER_THREADS = int(os.getenv('OVERLAY_WORKER_THREADS', os.getenv('YOLO_WORKER_THREADS', '1')))
 ALERT_WORKER_THREADS = int(os.getenv('ALERT_WORKER_THREADS', '1'))
-# 告警抽帧间隔（默认比主画面更稀疏，减轻 GPU 压力）
-ALERT_EXTRACT_INTERVAL = int(os.getenv('ALERT_EXTRACT_INTERVAL', str(max(EXTRACT_INTERVAL * 5, EXTRACT_INTERVAL))))
+
+
+def _resolve_worker_thread_count(
+    device_count: int,
+    *,
+    thread_env: str,
+    legacy_env: str = 'YOLO_WORKER_THREADS',
+    auto_env: str,
+    max_env: str,
+    default_max: int,
+    default_fixed: int = 1,
+) -> int:
+    """按摄像头数量分配检测线程；可通过 *_AUTO=false 退回固定线程数。"""
+    auto = os.getenv(auto_env, 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+    if not auto:
+        raw = (os.getenv(thread_env) or os.getenv(legacy_env) or '').strip()
+        return max(1, int(raw or default_fixed))
+    max_workers = max(1, int(os.getenv(max_env, str(default_max))))
+    return max(1, min(max(1, device_count), max_workers))
+# 告警抽帧间隔（默认比主画面更稀疏，减轻 GPU 压力；运行时由 _runtime_alert_extract_interval 覆盖）
+ALERT_EXTRACT_INTERVAL = int(os.getenv('ALERT_EXTRACT_INTERVAL', str(max(EXTRACT_INTERVAL * 2, EXTRACT_INTERVAL))))
 # 主画面 overlay 推理分辨率（默认同 YOLO_IMG_SIZE，可单独调低以提速）
 OVERLAY_YOLO_IMG_SIZE = int(os.getenv('OVERLAY_YOLO_IMG_SIZE', os.getenv('YOLO_IMG_SIZE', '640')))
 PERSON_TILED_DETECTION_ENABLED = os.getenv('PERSON_TILED_DETECTION_ENABLED', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
@@ -580,8 +606,8 @@ INTERPOLATED_DETECTION_MAX_FRAME_GAP = int(
 # 主画面 overlay 队列：始终保留最新待检帧
 OVERLAY_KEEP_LATEST = os.getenv('OVERLAY_KEEP_LATEST', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
 OVERLAY_KEEP_LATEST_THRESHOLD = int(os.getenv('OVERLAY_KEEP_LATEST_THRESHOLD', '2'))
-# 告警检测队列：积压时可丢弃旧帧；mini/多路摄像头默认保留最新待检帧，避免队列满丢帧
-_alert_keep_latest_default = 'true' if is_mini_deploy_profile() else 'false'
+# 告警检测队列：默认保留最新帧，多路摄像头避免队列满丢帧
+_alert_keep_latest_default = 'true'
 ALERT_KEEP_LATEST = os.getenv('ALERT_KEEP_LATEST', _alert_keep_latest_default).strip().lower() in ('1', 'true', 'yes', 'on')
 ALERT_KEEP_LATEST_THRESHOLD = int(os.getenv('ALERT_KEEP_LATEST_THRESHOLD', str(max(2, ALERT_DETECTION_QUEUE_SIZE // 2))))
 # 兼容旧配置名
@@ -719,15 +745,52 @@ def _enqueue_keep_latest(
         return False
 
 
+# 多设备检测队列公平轮询（避免字典序第一路独占 Worker）
+_poll_rr_counters = {}
+_poll_rr_lock = threading.Lock()
+
+
 def _poll_device_detection_queue(queues_dict: dict, timeout: float = 0.1):
-    """从多设备检测队列中轮询取一帧。"""
-    for device_id, device_queue in queues_dict.items():
+    """从多设备检测队列中公平轮询取一帧，避免单路摄像头饿死其余路。"""
+    if not queues_dict:
+        return None, None, None
+
+    device_ids = sorted(queues_dict.keys())
+    n = len(device_ids)
+    dict_id = id(queues_dict)
+
+    with _poll_rr_lock:
+        start = _poll_rr_counters.get(dict_id, 0) % n
+
+    for attempt in range(n):
+        idx = (start + attempt) % n
+        device_id = device_ids[idx]
+        device_queue = queues_dict[device_id]
         try:
-            return device_queue.get(timeout=timeout), device_id, device_queue
+            item = device_queue.get_nowait()
+            with _poll_rr_lock:
+                _poll_rr_counters[dict_id] = (idx + 1) % n
+            return item, device_id, device_queue
         except queue.Empty:
             continue
         except Exception as e:
             logger.error(f"❌ 设备 {device_id} 队列获取异常: {str(e)}")
+
+    per_wait = max(0.01, timeout / max(n, 1))
+    for attempt in range(n):
+        idx = (start + attempt) % n
+        device_id = device_ids[idx]
+        device_queue = queues_dict[device_id]
+        try:
+            item = device_queue.get(timeout=per_wait)
+            with _poll_rr_lock:
+                _poll_rr_counters[dict_id] = (idx + 1) % n
+            return item, device_id, device_queue
+        except queue.Empty:
+            continue
+        except Exception as e:
+            logger.error(f"❌ 设备 {device_id} 队列获取异常: {str(e)}")
+
     return None, None, None
 
 
@@ -861,9 +924,69 @@ def _build_detection_payload(device_id: str, frame, frame_number: int, timestamp
     }
 
 
+def _resolve_runtime_extract_interval(task) -> int:
+    """解析有效抽帧间隔：任务 DB 显式配置 > 环境变量 EXTRACT_INTERVAL（默认 25）。"""
+    env_interval = max(1, int(os.getenv('EXTRACT_INTERVAL', str(EXTRACT_INTERVAL))))
+    if not task:
+        return env_interval
+    db_raw = getattr(task, 'extract_interval', None)
+    if db_raw is None or int(db_raw) <= 0:
+        return env_interval
+    return max(1, int(db_raw))
+
+
+def _apply_runtime_sampling_config(task):
+    """从任务配置 / 环境变量更新运行时抽帧间隔与运动门控。"""
+    global _runtime_extract_interval, _runtime_alert_extract_interval, motion_gate
+
+    _runtime_extract_interval = _resolve_runtime_extract_interval(task)
+
+    alert_env = os.getenv('ALERT_EXTRACT_INTERVAL', '').strip()
+    if alert_env:
+        _runtime_alert_extract_interval = max(_runtime_extract_interval, int(alert_env))
+    else:
+        _runtime_alert_extract_interval = _runtime_extract_interval * 2
+
+    try:
+        from app.utils.motion_gate import MotionGate, MotionGateConfig
+        base_cfg = MotionGateConfig.from_env()
+        cfg = MotionGateConfig.from_task(task, base=base_cfg)
+        motion_gate = MotionGate(cfg) if cfg.enabled else None
+        logger.info(
+            '检测采样已更新: extract_interval=%s (env=%s, db=%s), alert_interval=%s, motion_gate=%s, preset=%s',
+            _runtime_extract_interval,
+            os.getenv('EXTRACT_INTERVAL', str(EXTRACT_INTERVAL)),
+            getattr(task, 'extract_interval', None) if task else None,
+            _runtime_alert_extract_interval,
+            cfg.enabled,
+            cfg.preset,
+        )
+    except Exception as exc:
+        logger.warning('运动门控初始化失败: %s', exc)
+        motion_gate = None
+
+
 def _feed_stream_detection_queues(device_id: str, frame, frame_number: int, timestamp: float):
     """缓流器内直接投递 overlay/告警双队列（推流与检测完全分离）。"""
-    if frame_number % EXTRACT_INTERVAL == 0:
+    interval = max(1, _runtime_extract_interval)
+    alert_interval = max(1, _runtime_alert_extract_interval)
+    # 首帧立即采样，避免启动后长时间无检测框
+    is_sample = (frame_number == 1) or (frame_number % interval == 0)
+
+    motion_result = None
+    if is_sample and motion_gate is not None:
+        try:
+            motion_result = motion_gate.on_sample_frame(device_id, frame, frame_number)
+            if motion_result.triggered and frame_number % 25 == 0:
+                logger.debug(
+                    '设备 %s 运动门控命中: frame=%s score=%.4f area=%.4f reason=%s',
+                    device_id, frame_number, motion_result.score,
+                    motion_result.changed_area_ratio, motion_result.reason,
+                )
+        except Exception as exc:
+            logger.warning('设备 %s 运动门控评估失败: %s', device_id, exc)
+
+    if is_sample:
         _enqueue_keep_latest(
             overlay_detection_queues.get(device_id),
             device_id,
@@ -874,20 +997,28 @@ def _feed_stream_detection_queues(device_id: str, frame, frame_number: int, time
             queue_label='overlay',
         )
 
-    if (
-        task_config
-        and task_config.alert_event_enabled
-        and frame_number % ALERT_EXTRACT_INTERVAL == 0
-    ):
-        _enqueue_keep_latest(
-            alert_detection_queues.get(device_id),
-            device_id,
-            _build_detection_payload(device_id, frame, frame_number, timestamp),
-            queue_size=ALERT_DETECTION_QUEUE_SIZE,
-            keep_latest=ALERT_KEEP_LATEST,
-            keep_latest_threshold=ALERT_KEEP_LATEST_THRESHOLD,
-            queue_label='alert',
-        )
+    if task_config and task_config.alert_event_enabled and is_sample:
+        # 告警必须与 overlay 同频采样，禁止全帧率灌入告警队列（多路时会撑爆队列并饿死 overlay）
+        enqueue_alert = (frame_number % alert_interval == 0)
+        if (
+            not enqueue_alert
+            and is_sample
+            and motion_gate is not None
+            and motion_result is not None
+            and motion_result.triggered
+            and getattr(motion_gate.config, 'alert_motion_sync', False)
+        ):
+            enqueue_alert = True
+        if enqueue_alert:
+            _enqueue_keep_latest(
+                alert_detection_queues.get(device_id),
+                device_id,
+                _build_detection_payload(device_id, frame, frame_number, timestamp),
+                queue_size=ALERT_DETECTION_QUEUE_SIZE,
+                keep_latest=ALERT_KEEP_LATEST,
+                keep_latest_threshold=ALERT_KEEP_LATEST_THRESHOLD,
+                queue_label='alert',
+            )
 
 
 def _normalize_detection_class_name(class_name: str) -> str:
@@ -1433,6 +1564,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
 def load_task_config():
     """从数据库加载任务配置（重启时会重新加载，确保获取最新的摄像头信息）"""
     global task_config, yolo_models, yolo_model_devices, yolo_model_allowed_classes, tracker, _sam_config, _sam_client
+    global motion_gate
 
     try:
         logger.info(f"🔄 正在从数据库重新加载任务配置: task_id={TASK_ID}")
@@ -1445,6 +1577,8 @@ def load_task_config():
             return False
 
         task_config = task
+
+        _apply_runtime_sampling_config(task)
 
         # SAM 补充识别配置
         try:
@@ -1546,16 +1680,19 @@ def load_task_config():
         # 将设备流地址信息存储到task_config中（通过动态属性）
         task_config.device_streams = device_streams
 
-        # 为每个摄像头初始化独立的资源
+        # 为每个摄像头初始化独立资源（热更新时不重置帧计数与检测队列，避免检测中断）
         for device_id, stream_info in device_streams.items():
-            frame_counts[device_id] = 0
+            if device_id not in frame_counts:
+                frame_counts[device_id] = 0
+            if device_id not in overlay_detection_queues:
+                overlay_detection_queues[device_id] = queue.Queue(maxsize=OVERLAY_DETECTION_QUEUE_SIZE)
+            if device_id not in alert_detection_queues:
+                alert_detection_queues[device_id] = queue.Queue(maxsize=ALERT_DETECTION_QUEUE_SIZE)
+            if device_id not in device_latest_overlay_locks:
+                device_latest_overlay_locks[device_id] = threading.Lock()
 
-            overlay_detection_queues[device_id] = queue.Queue(maxsize=OVERLAY_DETECTION_QUEUE_SIZE)
-            alert_detection_queues[device_id] = queue.Queue(maxsize=ALERT_DETECTION_QUEUE_SIZE)
-            device_latest_overlay_locks[device_id] = threading.Lock()
-
-            # 初始化追踪器（如果启用）
-            if task.tracking_enabled:
+            # 初始化追踪器（如果启用且尚未存在）
+            if task.tracking_enabled and device_id not in trackers:
                 trackers[device_id] = SimpleTracker(
                     similarity_threshold=task.tracking_similarity_threshold,
                     max_age=task.tracking_max_age,
@@ -1693,6 +1830,12 @@ def try_send_alert_for_detections(
     log_suffix: str = "",
 ) -> None:
     """在具备真实检测结果时按抑制策略发送告警（用于输出帧或检测迟达补发）。"""
+    from app.utils.alert_class_filter import filter_detections_for_alert, get_task_alert_class_names
+
+    detections = filter_detections_for_alert(
+        detections,
+        get_task_alert_class_names(task_config),
+    )
     if not detections or not task_config or not task_config.alert_event_enabled:
         return
     current_time = time.time()
@@ -2914,6 +3057,8 @@ def buffer_streamer_worker(device_id: str):
                 logger.info(f"📌 设备 {device_id} {stream_mode_label(cap)}")
                 device_caps[device_id] = cap
                 logger.info(f"✅ 设备 {device_id} {stream_type} 流连接成功")
+                if motion_gate is not None:
+                    motion_gate.reset(device_id)
                 if rtsp_url.startswith("rtsp://"):
                     last_rtsp_connect_time = time.time()
 
@@ -3636,7 +3781,7 @@ def overlay_detection_worker(worker_id: int):
                         device_id_from_data,
                         frame_number=frame_number,
                         timestamp=timestamp,
-                        imgsz=OVERLAY_YOLO_IMG_SIZE,
+                        imgsz=YOLO_IMG_SIZE,
                         use_tracking=False,
                     )
                 except Exception as e:
@@ -3721,6 +3866,15 @@ def alert_detection_worker(worker_id: int):
                         consecutive_errors = 0
                     continue
 
+                fresh_detections = [d for d in detections if not d.get('is_cached')]
+                if fresh_detections:
+                    _update_device_latest_overlay(
+                        device_id_from_data,
+                        fresh_detections,
+                        timestamp,
+                        frame_number,
+                    )
+
                 if not detections:
                     continue
 
@@ -3779,7 +3933,12 @@ def alert_detection_worker(worker_id: int):
                 if frame_number % 10 == 0:
                     logger.info(
                         f"✅ [Alert {worker_id}] 检测完成: {frame_id} (帧号: {frame_number}), "
-                        f"检测到 {len(detections)} 个目标"
+                        f"本帧检出 {len(fresh_detections)} 个目标"
+                        + (
+                            f"（含缓存轨迹共 {len(detections)} 个）"
+                            if len(detections) != len(fresh_detections)
+                            else ""
+                        )
                     )
             else:
                 idle_count += 1
@@ -3917,6 +4076,8 @@ def signal_handler(sig, frame):
 
 def main():
     """主函数"""
+    global overlay_executor, alert_executor, OVERLAY_WORKER_THREADS, ALERT_WORKER_THREADS
+
     logger.info("=" * 60)
     logger.info("🚀 统一的实时算法任务服务启动（优化模式：低CPU占用）")
     logger.info("=" * 60)
@@ -3934,6 +4095,8 @@ def main():
         f"grid={PERSON_TILE_COLUMNS}x{PERSON_TILE_ROWS}, overlap={PERSON_TILE_OVERLAP}, conf={PERSON_TILE_CONF_THRESHOLD}"
     )
     logger.info(f"   告警队列大小: {ALERT_DETECTION_QUEUE_SIZE}, Worker: {ALERT_WORKER_THREADS}, 抽帧间隔: {ALERT_EXTRACT_INTERVAL}")
+    logger.info(f"   检测抽帧间隔(启动默认): overlay={EXTRACT_INTERVAL}, alert={ALERT_EXTRACT_INTERVAL} (任务加载后以 DB 为准)")
+    logger.info(f"   运动门控: MOTION_GATE_ENABLED={os.getenv('MOTION_GATE_ENABLED', 'false')}")
     logger.info(f"   Overlay保留最新帧: {OVERLAY_KEEP_LATEST} (阈值: {OVERLAY_KEEP_LATEST_THRESHOLD})")
     logger.info(f"   告警保留最新帧: {ALERT_KEEP_LATEST} (阈值: {ALERT_KEEP_LATEST_THRESHOLD})")
     logger.info(f"   主画面 overlay 最大复用: {LATEST_OVERLAY_MAX_AGE_SEC:.1f}s")
@@ -3961,15 +4124,38 @@ def main():
 
     # 为每个摄像头启动独立的缓流器线程
     buffer_threads = []
+    device_count = 0
     if hasattr(task_config, 'device_streams'):
+        device_count = len(task_config.device_streams)
         for device_id in task_config.device_streams.keys():
             logger.info(f"💾 启动设备 {device_id} 的缓流器线程...")
             buffer_thread = threading.Thread(target=buffer_streamer_worker, args=(device_id,), daemon=True)
             buffer_thread.start()
             buffer_threads.append(buffer_thread)
 
+    # 按摄像头数量分配检测线程（默认每路 1 线程，受上限约束）
+    OVERLAY_WORKER_THREADS = _resolve_worker_thread_count(
+        device_count,
+        thread_env='OVERLAY_WORKER_THREADS',
+        auto_env='OVERLAY_WORKER_THREADS_AUTO',
+        max_env='OVERLAY_WORKER_THREADS_MAX',
+        default_max=8,
+        default_fixed=1,
+    )
+    ALERT_WORKER_THREADS = _resolve_worker_thread_count(
+        device_count,
+        thread_env='ALERT_WORKER_THREADS',
+        auto_env='ALERT_WORKER_THREADS_AUTO',
+        max_env='ALERT_WORKER_THREADS_MAX',
+        default_max=4,
+        default_fixed=1,
+    )
+    logger.info(
+        f"📊 检测线程分配: 摄像头={device_count}, "
+        f"overlay_workers={OVERLAY_WORKER_THREADS}, alert_workers={ALERT_WORKER_THREADS}"
+    )
+
     # 启动双队列检测线程：主画面 overlay + 告警分离（缓流器直投队列，无抽帧器中转）
-    global overlay_executor, alert_executor
     logger.info(f"🖼️  启动 {OVERLAY_WORKER_THREADS} 个 Overlay 检测线程（主画面叠框）...")
     overlay_executor = concurrent.futures.ThreadPoolExecutor(
         max_workers=OVERLAY_WORKER_THREADS,

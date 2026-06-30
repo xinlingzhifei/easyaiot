@@ -105,6 +105,19 @@ export function getBasicColumns(): BasicColumn[] {
       },
     },
     {
+      title: '告警标签',
+      dataIndex: 'alert_class_names',
+      width: 160,
+      customRender: ({ text }) => {
+        if (!text || !Array.isArray(text) || text.length === 0) {
+          return '--';
+        }
+        return text.slice(0, 3).map((name: string) => (
+          <Tag key={name}>{name}</Tag>
+        ));
+      },
+    },
+    {
       title: '库匹配',
       dataIndex: 'matching_business_tags',
       width: 180,

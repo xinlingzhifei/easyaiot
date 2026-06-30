@@ -40,14 +40,6 @@
       }
     },
     {
-      "path": "pages/bpm/index",
-      "type": "page",
-      "style": {
-        "navigationBarTitleText": "",
-        "navigationStyle": "custom"
-      }
-    },
-    {
       "path": "pages/contact/index",
       "type": "page",
       "style": {

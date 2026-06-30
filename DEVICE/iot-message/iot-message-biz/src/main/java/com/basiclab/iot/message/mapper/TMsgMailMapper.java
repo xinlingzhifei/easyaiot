@@ -28,5 +28,7 @@ public interface TMsgMailMapper {
 
     List<TMsgMail> selectByMsgType(int msgType);
 
+    int countByTitleAndMsgType(@Param("msgType") int msgType, @Param("title") String title, @Param("excludeId") String excludeId);
+
     int deleteByMsgTypeAndName(@Param("msgType") int msgType, @Param("msgName") String msgName);
 }

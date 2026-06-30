@@ -8,6 +8,7 @@ import com.basiclab.iot.message.domain.entity.TMsgHttp;
 import com.basiclab.iot.message.domain.model.bean.HttpMsg;
 import com.basiclab.iot.message.mapper.MessageConfigMapper;
 import com.basiclab.iot.message.mapper.TMsgHttpMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,9 @@ public class HttpMsgMaker extends BaseMsgMaker implements IMsgMaker {
 
     @Autowired
     private TMsgHttpMapper tMsgHttpMapper;
+
+    @Autowired
+    private MessageRecordResolver messageRecordResolver;
 
     @Autowired
     private MessageConfigMapper messageConfigMapper;
@@ -123,7 +127,7 @@ public class HttpMsgMaker extends BaseMsgMaker implements IMsgMaker {
             log.debug("Configuration解析成功, msgId: {}, configKeys: {}", msgId, configMap.keySet());
             
             log.debug("查询TMsgHttp, msgId: {}", msgId);
-            TMsgHttp tMsgHttp = tMsgHttpMapper.selectByPrimaryKey(msgId);
+            TMsgHttp tMsgHttp = messageRecordResolver.resolveHttp(msgId);
             if (tMsgHttp == null) {
                 log.error("TMsgHttp未找到, msgId: {}", msgId);
                 throw new RuntimeException("TMsgHttp未找到, msgId: " + msgId);

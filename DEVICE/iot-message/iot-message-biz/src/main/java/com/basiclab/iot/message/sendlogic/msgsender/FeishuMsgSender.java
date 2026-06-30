@@ -34,39 +34,48 @@ public class FeishuMsgSender implements IMsgSender {
     @Override
     public SendResult send(String msgId) {
         log.info("飞书发送开始 params is:" + msgId);
-        SendResult sendResult = new SendResult();
-        
         try {
             TMsgFeishu feishuMsg = feishuMsgMaker.makeMsg(msgId);
+            return sendDirect(feishuMsg);
+        } catch (Exception e) {
+            SendResult sendResult = new SendResult();
+            sendResult.setSuccess(false);
+            sendResult.setInfo(e.getMessage());
+            log.error("飞书消息发送失败: {}", ExceptionUtils.getStackTrace(e));
+            return sendResult;
+        }
+    }
+
+    public SendResult sendDirect(TMsgFeishu feishuMsg) {
+        SendResult sendResult = new SendResult();
+
+        try {
             if (feishuMsg == null) {
                 sendResult.setSuccess(false);
-                sendResult.setInfo("飞书消息不存在: " + msgId);
+                sendResult.setInfo("飞书消息不存在");
                 return sendResult;
             }
-            
+
             sendResult.setMsgName(feishuMsg.getMsgName());
-            
+
             String webHook = feishuMsg.getWebHook();
             if (StringUtils.isEmpty(webHook)) {
                 sendResult.setSuccess(false);
                 sendResult.setInfo("飞书Webhook地址不能为空");
                 return sendResult;
             }
-            
-            // 构建飞书消息体
+
             JSONObject messageBody = buildFeishuMessage(feishuMsg);
-            
-            // 发送HTTP请求到飞书Webhook
+
             HttpResponse response = HttpRequest.post(webHook)
                     .header("Content-Type", "application/json")
                     .body(messageBody.toJSONString())
                     .timeout(10000)
                     .execute();
-            
+
             String responseBody = response.body();
             log.info("飞书消息发送响应: {}", responseBody);
-            
-            // 解析响应
+
             if (response.isOk()) {
                 JSONObject responseJson = JSONObject.parseObject(responseBody);
                 Integer code = responseJson.getInteger("code");
@@ -75,21 +84,20 @@ public class FeishuMsgSender implements IMsgSender {
                     sendResult.setInfo("发送成功");
                 } else {
                     sendResult.setSuccess(false);
-                    sendResult.setInfo(responseJson.getString("msg") != null ? 
+                    sendResult.setInfo(responseJson.getString("msg") != null ?
                             responseJson.getString("msg") : responseBody);
                 }
             } else {
                 sendResult.setSuccess(false);
                 sendResult.setInfo("HTTP请求失败: " + response.getStatus() + ", " + responseBody);
             }
-            
+
         } catch (Exception e) {
             sendResult.setSuccess(false);
             sendResult.setInfo(e.getMessage());
             log.error("飞书消息发送失败: {}", ExceptionUtils.getStackTrace(e));
-            return sendResult;
         }
-        
+
         return sendResult;
     }
 

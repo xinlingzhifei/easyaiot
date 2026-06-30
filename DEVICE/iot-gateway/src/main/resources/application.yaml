@@ -15,11 +15,13 @@ spring:
           filters:
             - StripPrefix=1
             - RewritePath=/admin-api/model/v3/api-docs, /v3/api-docs # 配置，保证转发到 /v3/api-docs
-        # AI模块
+        # AI模块（SAM 推理较慢，延长至 10 分钟）
         - id: model-admin-api
           uri: lb://model-server
           predicates: # 断言，作为路由的匹配条件，对应 RouteDefinition 数组
             - Path=/admin-api/model/**
+          metadata:
+            response-timeout: 600000
           filters:
             - StripPrefix=1
             - RewritePath=/admin-api/model/v3/api-docs, /v3/api-docs # 配置，保证转发到 /v3/api-docs
@@ -28,6 +30,8 @@ spring:
           uri: lb://model-server
           predicates: # 断言，作为路由的匹配条件，对应 RouteDefinition 数组
             - Path=/admin-api/admin-api/model/**
+          metadata:
+            response-timeout: 600000
           filters:
             - RewritePath=/admin-api/admin-api/(?<segment>.*), /admin-api/$\{segment} # 移除重复的 /admin-api 前缀
             - StripPrefix=1
@@ -148,11 +152,14 @@ spring:
             - Path=/admin-api/broker/**
           filters:
             - RewritePath=/admin-api/device/v3/api-docs, /v3/api-docs # 配置，保证转发到 /v3/api-docs
-        # GB28181服务
+        # GB28181服务（设备接入信息生成、设备注册、流媒体操作等）
         - id: gb28181-admin-api
           uri: lb://iot-gb28181
           predicates: # 断言，作为路由的匹配条件，对应 RouteDefinition 数组
             - Path=/admin-api/gb28181/**
+          metadata:
+            response-timeout: 120000
+            connect-timeout: 10000
           filters:
             - RewritePath=/admin-api/gb28181/(?<segment>.*), /api/$\{segment} # 将 /admin-api/gb28181 前缀重写为 /api
             - RewritePath=/admin-api/gb28181/v3/api-docs, /v3/api-docs # 配置，保证转发到 /v3/api-docs

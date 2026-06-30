@@ -66,6 +66,23 @@
             </NoficeCardList>
           </div>
         </TabPane>
+        <TabPane key="3" tab="消息模板">
+          <div style="padding: 12px; padding-top: 0">
+            <Tabs
+              :animated="{ inkBar: true, tabPane: true }"
+              :activeKey="state.templateActiveKey"
+              :tabBarGutter="60"
+              @tabClick="handleTemplateTabClick"
+            >
+              <TabPane key="1" tab="邮件"><tpl-email/></TabPane>
+              <TabPane key="2" tab="短信"><tpl-sms/></TabPane>
+              <TabPane key="3" tab="企业微信"><tpl-wechat/></TabPane>
+              <TabPane key="4" tab="钉钉"><tpl-ding/></TabPane>
+              <TabPane key="6" tab="飞书"><tpl-feishu/></TabPane>
+              <TabPane key="5" tab="Webhook"><tpl-http/></TabPane>
+            </Tabs>
+          </div>
+        </TabPane>
         <TabPane key="2" tab="消息推送">
           <div style="padding: 12px; padding-top: 0">
             <Tabs
@@ -80,7 +97,7 @@
               <TabPane key="2" tab="短信">
                 <sms/>
               </TabPane>
-              <TabPane key="3" tab="微信">
+              <TabPane key="3" tab="企业微信">
                 <wechat/>
               </TabPane>
               <TabPane key="4" tab="钉钉">
@@ -109,7 +126,7 @@
               <TabPane key="1" tab="短信">
                 <History :msgType="state.historyActiveKey"/>
               </TabPane>
-              <TabPane key="4" tab="微信">
+              <TabPane key="4" tab="企业微信">
                 <History :msgType="state.historyActiveKey"/>
               </TabPane>
               <TabPane key="6" tab="钉钉">
@@ -157,6 +174,13 @@ import sms from '@/views/notice/components/msgPush/sms/index.vue';
 import wechat from '@/views/notice/components/msgPush/wechat/index.vue';
 import feishu from '@/views/notice/components/msgPush/feishu/index.vue';
 
+import tplEmail from '@/views/notice/components/msgTemplate/email/index.vue';
+import tplSms from '@/views/notice/components/msgTemplate/sms/index.vue';
+import tplWechat from '@/views/notice/components/msgTemplate/wechat/index.vue';
+import tplDing from '@/views/notice/components/msgTemplate/ding/index.vue';
+import tplFeishu from '@/views/notice/components/msgTemplate/feishu/index.vue';
+import tplHttp from '@/views/notice/components/msgTemplate/http/index.vue';
+
 import History from '@/views/notice/components/task/History/index.vue';
 import Group from '@/views/notice/components/user/Group/index.vue';
 import Audience from '@/views/notice/components/user/Audience/index.vue';
@@ -171,6 +195,7 @@ const state = reactive({
   isTableMode: false,
   activeKey: '1',
   pushActiveKey: '1',
+  templateActiveKey: '1',
   historyActiveKey: '1',
   SmsActiveKey: '1',
 });
@@ -181,6 +206,10 @@ const handleTabClick = (activeKey) => {
 
 const handlePushTabClick = (activeKey) => {
   state.pushActiveKey = activeKey;
+};
+
+const handleTemplateTabClick = (activeKey) => {
+  state.templateActiveKey = activeKey;
 };
 
 const handleHistoryTabClick = (activeKey) => {

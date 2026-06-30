@@ -9,3 +9,9 @@ spring:
             system-server:
               - uri: http://127.0.0.1:48099
                 instance-id: system-server-local
+    openfeign:
+      client:
+        config:
+          # 双保险：Simple Discovery 未生效时避免回退到 system-server:80 导致超时
+          system-server:
+            url: http://127.0.0.1:48099

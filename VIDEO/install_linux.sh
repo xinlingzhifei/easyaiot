@@ -89,9 +89,14 @@ build_with_cache() {
     local no_cache_flag="$1"
     local build_log="/tmp/docker_build_$$.log"
     local build_status=0
+    local platform_opts=""
 
     init_yfeieye_build_cache_dirs "$YFEIEYE_ROOT"
     enable_docker_buildkit
+    if [ -n "${DOCKER_PLATFORM:-}" ]; then
+        platform_opts="--platform $DOCKER_PLATFORM"
+        print_info "构建目标平台: ${DOCKER_PLATFORM}"
+    fi
 
     print_info "docker build（.build-cache/video pip-cache/pip-wheels）..."
     set +e
@@ -100,8 +105,11 @@ build_with_cache() {
         --build-context "pip-wheels=$(pip_wheels_build_context_dir_for "$YFEIEYE_ROOT" video)" \
         --target runtime \
         -t video-service:latest \
+        $platform_opts \
         --pull=false \
         --build-arg OFFLINE_MODE=${OFFLINE_MODE:-0} \
+        --build-arg APT_MIRROR_URL="${APT_MIRROR_URL:-https://mirrors.cloud.tencent.com}" \
+        --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}" \
         $no_cache_flag \
         . 2>&1 | tee "$build_log"
     build_status=${PIPESTATUS[0]}
@@ -230,7 +238,7 @@ create_directories() {
     print_success "目录创建完成"
 }
 
-# 下载人脸特征提取模型（face_rec.onnx，约 167MB，不随仓库分发）
+# 检查人脸特征提取模型（face_rec.onnx，约 167MB；安装时不自动下载，请登录 WEB 人脸库页下载）
 download_face_rec_model() {
     local target="${SCRIPT_DIR}/face_rec.onnx"
     if [ -d "$target" ]; then
@@ -241,17 +249,8 @@ download_face_rec_model() {
         print_success "人脸特征模型 face_rec.onnx 已存在"
         return 0
     fi
-    local dl_script="${SCRIPT_DIR}/scripts/download_face_rec_model.sh"
-    if [ ! -f "$dl_script" ]; then
-        print_warning "未找到模型下载脚本，请在人脸库页面手动下载"
-        return 0
-    fi
-    print_info "下载人脸特征提取模型 face_rec.onnx（约 167MB，首次安装需联网）..."
-    if bash "$dl_script"; then
-        print_success "人脸特征模型下载完成"
-    else
-        print_warning "人脸特征模型下载失败，可在 WEB 人脸库页面手动下载"
-    fi
+    print_warning "人脸特征模型 face_rec.onnx 未安装（约 167MB），安装过程不自动下载"
+    print_info "请登录系统后进入「摄像头 → 人脸库」，按页面提示下载并安装模型"
 }
 
 # 清理 VIDEO 服务的 compose 容器网络缓存
@@ -423,7 +422,38 @@ create_env_file() {
 # 安装服务
 install_service() {
     print_info "开始安装 VIDEO 服务..."
-    
+
+    # 镜像获取方式（install_business_linux.sh 已统一询问时跳过）
+    if [ "${EASYAIOT_SKIP_IMAGE_PROMPT:-0}" != "1" ]; then
+        local _do_local_build=0
+        if [ -t 0 ]; then
+            print_info "========================================"
+            print_info "  镜像获取方式"
+            print_info "========================================"
+            print_info "  1) 拉取预构建镜像：从远程仓库下载（快速，默认）"
+            print_info "  2) 本地构建：编译并制作 Docker 镜像（耗时较长）"
+            echo ""
+            read -r -p "是否从远程仓库下载预构建的镜像？(Y/n) " _pull_response
+            case "${_pull_response:-Y}" in
+                n|N|no|NO) _do_local_build=1 ;;
+                *) _do_local_build=0 ;;
+            esac
+        else
+            print_info "非交互模式，默认拉取预构建镜像"
+        fi
+
+        if [ "$_do_local_build" -eq 0 ]; then
+            print_info "正在拉取预构建镜像..."
+            if bash "${EASYAIOT_ROOT}/.scripts/docker/runtime_image.sh" pull; then
+                print_success "预构建镜像拉取成功"
+                export EASYAIOT_SKIP_BUILD=1
+            else
+                print_warning "预构建镜像拉取失败，将尝试本地构建"
+                _do_local_build=1
+            fi
+        fi
+    fi
+
     check_docker
     check_docker_compose
     clean_compose_cache
@@ -433,11 +463,14 @@ install_service() {
     create_env_file
     check_gpu
     configure_compose_gpu "docker-compose.yaml" ".env.docker"
-    prepare_cached_resources
-    
-    print_info "构建 Docker 镜像（优先复用离线 pip 缓存）..."
-    if ! build_with_cache ""; then
-        exit 1
+
+    if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect video-service:latest >/dev/null 2>&1; then
+        print_success "镜像已从远程拉取 (video-service:latest)，跳过 pip 离线包下载与 Docker 构建"
+    else
+        print_info "构建 Docker 镜像（优先复用离线 pip 缓存）..."
+        if ! build_with_cache ""; then
+            exit 1
+        fi
     fi
     
     print_info "启动服务..."
@@ -550,11 +583,18 @@ view_logs() {
 
 # 构建镜像
 build_image() {
-    print_info "重新构建 Docker 镜像..."
     check_docker
     check_docker_compose
-    
-    if ! build_with_cache "--no-cache"; then
+
+    if [ "${FORCE_REBUILD:-0}" != "1" ] && docker image inspect video-service:latest >/dev/null 2>&1; then
+        print_success "video-service:latest 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        return 0
+    fi
+
+    print_info "重新构建 Docker 镜像..."
+    local cache_flag=""
+    [ "${FORCE_REBUILD:-0}" = "1" ] && cache_flag="--no-cache"
+    if ! build_with_cache "$cache_flag"; then
         exit 1
     fi
     print_success "镜像构建完成"

@@ -44,6 +44,8 @@ env.example    text eol=lf
 # 注意：eol=lf 只管行尾，不管 BOM —— Windows 上请用「UTF-8 无 BOM」保存（文件含中文注释，勿用记事本）
 .env           text eol=lf
 .env.*         text eol=lf
+# install 脚本自动生成的架构配置（AI/VIDEO 等），不参与 diff
+**/.env.arch   -diff
 *.conf         text eol=lf
 *.py           text eol=lf
 *.ts           text eol=lf
@@ -67,6 +69,9 @@ VIDEO/face_rec.onnx binary -diff
 
 # AI 模型权重目录（体积大，ModelScope/本地下载，不参与 diff）
 AI/models/** -diff
+
+# WEB 预构建前端缓存（runtime_image.sh 提取，体积大，不参与 diff）
+WEB/dist-prebuilt-mini/** -diff
 
 # APP 构建产物、依赖与 pnpm 缓存：不参与 diff
 APP/node_modules/** -diff

@@ -47,6 +47,42 @@
             停止训练
           </wd-button>
         </view>
+
+        <view v-if="!isTrainTaskActive(task.status)" class="mt-16rpx flex flex-wrap gap-16rpx">
+          <wd-button
+            v-if="canResume"
+            class="flex-1"
+            type="primary"
+            plain
+            @click="handleResume"
+          >
+            继续训练
+          </wd-button>
+          <wd-button
+            v-if="canRetrain"
+            class="flex-1"
+            plain
+            @click="handleRetrain"
+          >
+            重新训练
+          </wd-button>
+          <wd-button
+            v-if="canPublish"
+            class="flex-1"
+            type="primary"
+            @click="handlePublish"
+          >
+            发布模型
+          </wd-button>
+          <wd-button
+            class="flex-1"
+            type="danger"
+            plain
+            @click="handleDelete"
+          >
+            删除
+          </wd-button>
+        </view>
       </view>
     </view>
   </wd-popup>
@@ -56,16 +92,27 @@
 import type { TrainTask } from '@/api/model/train'
 import { computed, ref } from 'vue'
 import { useToast } from '@wot-ui/ui/components/wd-toast'
-import { getTrainLogs, getTrainTaskDetail, stopTrain } from '@/api/model/train'
-import { getTrainStatusTagType, getTrainStatusText, isTrainTaskActive } from '@/utils/model/trainTaskUtils'
+import { deleteTrainTask, getTrainLogs, getTrainTaskDetail, publishTrainTask, stopTrain } from '@/api/model/train'
+import {
+  canPublishTrainTask,
+  canResumeTrainTask,
+  canRetrainTrainTask,
+  getTrainStatusTagType,
+  getTrainStatusText,
+  isTrainTaskActive,
+} from '@/utils/model/trainTaskUtils'
 import { formatDateTime } from '@/utils/date'
 
-const emit = defineEmits<{ refresh: [] }>()
+const emit = defineEmits<{ refresh: [], resume: [task: TrainTask], retrain: [task: TrainTask] }>()
 const toast = useToast()
 const visible = ref(false)
 const task = ref<TrainTask | null>(null)
 const logs = ref('')
 const stopping = ref(false)
+
+const canResume = computed(() => task.value ? canResumeTrainTask(task.value) : false)
+const canRetrain = computed(() => task.value ? canRetrainTrainTask(task.value.status) : false)
+const canPublish = computed(() => task.value ? canPublishTrainTask(task.value) : false)
 
 const detailRows = computed(() => {
   if (!task.value)
@@ -118,6 +165,65 @@ async function handleStop() {
   finally {
     stopping.value = false
   }
+}
+
+function handleResume() {
+  if (!task.value)
+    return
+  visible.value = false
+  emit('resume', task.value)
+}
+
+function handleRetrain() {
+  if (!task.value)
+    return
+  visible.value = false
+  emit('retrain', task.value)
+}
+
+function handlePublish() {
+  if (!task.value)
+    return
+  const defaultName = task.value.dataset_name || '训练模型'
+  uni.showModal({
+    title: '发布模型',
+    content: `将训练权重发布为模型「${defaultName}」？`,
+    success: async (res) => {
+      if (!res.confirm || !task.value)
+        return
+      try {
+        await publishTrainTask(task.value.id, { name: defaultName, version: '1.0.0' })
+        toast.success('发布成功')
+        await loadDetail(task.value.id)
+        emit('refresh')
+      }
+      catch {
+        toast.error('发布失败')
+      }
+    },
+  })
+}
+
+function handleDelete() {
+  if (!task.value)
+    return
+  uni.showModal({
+    title: '确认删除',
+    content: `确定删除训练任务「${task.value.name || task.value.task_name}」吗？`,
+    success: async (res) => {
+      if (!res.confirm || !task.value)
+        return
+      try {
+        await deleteTrainTask(task.value.id)
+        toast.success('删除成功')
+        visible.value = false
+        emit('refresh')
+      }
+      catch {
+        toast.error('删除失败')
+      }
+    },
+  })
 }
 
 async function open(item: TrainTask) {

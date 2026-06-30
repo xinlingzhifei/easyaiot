@@ -95,10 +95,21 @@ class PatrolRuntimeConfig:
     model_ids: List[int]
     alert_event_enabled: bool
     alert_event_suppress_time: int
+    alert_class_names: List[str]
     face_detection_enabled: bool
     plate_detection_enabled: bool
     session_id: Optional[int] = None
     task_id: Optional[int] = None
+
+
+def _load_alert_class_names_from_task(task_id: Optional[int]) -> List[str]:
+    if not task_id:
+        return []
+    task = db_session.query(AlgorithmTask).filter_by(id=int(task_id)).first()
+    if not task:
+        return []
+    from app.utils.alert_class_filter import parse_alert_class_names
+    return parse_alert_class_names(task.alert_class_names)
 
 
 def _parse_json_list(raw) -> List:
@@ -125,6 +136,7 @@ def _config_from_session(session: PatrolSession) -> PatrolRuntimeConfig:
         model_ids=[int(x) for x in _parse_json_list(session.model_ids)],
         alert_event_enabled=bool(session.alert_event_enabled),
         alert_event_suppress_time=int(session.alert_event_suppress_time or 5),
+        alert_class_names=_load_alert_class_names_from_task(session.algorithm_task_id),
         face_detection_enabled=bool(session.face_detection_enabled),
         plate_detection_enabled=bool(session.plate_detection_enabled),
         session_id=session.id,
@@ -138,6 +150,7 @@ def _config_from_task(task: AlgorithmTask) -> PatrolRuntimeConfig:
             model_ids = [int(x) for x in json.loads(task.model_ids)]
         except Exception:
             pass
+    from app.utils.alert_class_filter import parse_alert_class_names
     return PatrolRuntimeConfig(
         name=task.task_name,
         patrol_mode=(task.patrol_mode or 'pool').lower(),
@@ -147,6 +160,7 @@ def _config_from_task(task: AlgorithmTask) -> PatrolRuntimeConfig:
         model_ids=model_ids,
         alert_event_enabled=bool(task.alert_event_enabled),
         alert_event_suppress_time=int(task.alert_event_suppress_time or 5),
+        alert_class_names=parse_alert_class_names(task.alert_class_names),
         face_detection_enabled=bool(task.face_detection_enabled),
         plate_detection_enabled=bool(task.plate_detection_enabled),
         task_id=task.id,
@@ -390,6 +404,12 @@ def _save_alert_image(frame: np.ndarray, device_id: str, detection: dict) -> Opt
 
 
 def _send_alert(device_id: str, device_name: str, frame: np.ndarray, detections: List[dict]):
+    from app.utils.alert_class_filter import filter_detections_for_alert
+
+    detections = filter_detections_for_alert(
+        detections,
+        session_config.alert_class_names if session_config else None,
+    )
     if not session_config or not session_config.alert_event_enabled or not detections:
         return
     now = time.time()

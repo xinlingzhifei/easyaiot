@@ -46,6 +46,12 @@ cd "$PROJECT_ROOT"
 # 脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=deploy_profile.sh
+source "${SCRIPT_DIR}/deploy_profile.sh"
+
+# shellcheck source=runtime_image_common.sh
+source "${SCRIPT_DIR}/runtime_image_common.sh"
+
 # 日志文件配置
 LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$LOG_DIR"
@@ -665,18 +671,29 @@ verify_service_health() {
 # 安装所有服务
 install_mac() {
     print_section "开始安装所有服务"
-    
+
+    select_deploy_profile_for_install
+    runtime_images_acquire
+
     check_macos
     check_docker "$@"
     check_docker_compose
     configure_docker_mirror
     create_network
     
+    local _skip_build=0
+    if runtime_images_should_skip_build; then
+        _skip_build=1
+    fi
+    
     local success_count=0
     local total_count=${#MODULES[@]}
     
     for module in "${MODULES[@]}"; do
         print_section "安装 $(get_module_name "$module")"
+        if [ "$_skip_build" -eq 1 ] && [ "$module" != ".scripts/docker" ]; then
+            print_info "镜像已从远程拉取，跳过 docker build，直接启动 $(get_module_name "$module")"
+        fi
         if execute_module_command "$module" "install"; then
             success_count=$((success_count + 1))
         else
@@ -870,6 +887,24 @@ build_all() {
     done
     
     print_success "所有镜像构建完成"
+}
+
+pull_runtime_images() {
+    check_macos
+    check_docker "$@"
+    runtime_images_prepare_pull_interactive
+    runtime_images_export_for_invoke
+    runtime_images_invoke pull || exit 1
+    export EASYAIOT_SKIP_BUILD=1
+    export EASYAIOT_SKIP_IMAGE_PROMPT=1
+}
+
+build_runtime_images() {
+    check_macos
+    check_docker "$@"
+    runtime_images_prepare_build_interactive
+    runtime_images_export_for_invoke
+    runtime_images_invoke build || exit 1
 }
 
 # 检查并重新加载环境变量（macOS 版本）
@@ -1140,6 +1175,12 @@ main() {
             ;;
         build)
             build_all
+            ;;
+        build-runtime|images-build)
+            build_runtime_images
+            ;;
+        pull|images-pull)
+            pull_runtime_images
             ;;
         clean)
             clean_all

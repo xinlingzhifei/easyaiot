@@ -1,21 +1,20 @@
 package com.basiclab.iot.message.controller;
 
-import com.basiclab.iot.common.web.controller.BaseController;
 import com.basiclab.iot.common.domain.AjaxResult;
-import com.basiclab.iot.message.domain.entity.*;
-import com.basiclab.iot.message.mapper.*;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.basiclab.iot.common.domain.TableDataInfo;
+import com.basiclab.iot.common.web.controller.BaseController;
+import com.basiclab.iot.message.domain.model.vo.MessagePrepareVO;
+import com.basiclab.iot.message.service.MessageTemplateService;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 消息模板控制层controller（查询iot-message服务的消息推送模板）
+ * 消息模板管理（与消息推送分离，record_type=0）
  *
  * @author reese
  * @email reese
@@ -26,254 +25,80 @@ import java.util.Map;
 @Tag(name = "消息模板管理")
 public class MessageTemplateController extends BaseController {
 
-    @Resource
-    private TMsgSmsMapper tMsgSmsMapper;
+    @Autowired
+    private MessageTemplateService messageTemplateService;
 
-    @Resource
-    private TMsgMailMapper tMsgMailMapper;
+    @PostMapping("/add")
+    @ApiOperation("新增消息模板")
+    public AjaxResult add(@RequestBody MessagePrepareVO vo) {
+        try {
+            return AjaxResult.success(messageTemplateService.add(vo));
+        } catch (IllegalArgumentException e) {
+            return AjaxResult.error(e.getMessage());
+        }
+    }
 
-    @Resource
-    private TMsgWxCpMapper tMsgWxCpMapper;
+    @PostMapping("/update")
+    @ApiOperation("更新消息模板")
+    public AjaxResult update(@RequestBody MessagePrepareVO vo) {
+        try {
+            return AjaxResult.success(messageTemplateService.update(vo));
+        } catch (IllegalArgumentException e) {
+            return AjaxResult.error(e.getMessage());
+        }
+    }
 
-    @Resource
-    private TMsgHttpMapper tMsgHttpMapper;
+    @GetMapping("/delete")
+    @ApiOperation("删除消息模板")
+    public AjaxResult delete(@RequestParam("msgType") int msgType, @RequestParam("id") String id) {
+        return AjaxResult.success(messageTemplateService.delete(msgType, id));
+    }
 
-    @Resource
-    private TMsgDingMapper tMsgDingMapper;
+    @GetMapping("/query")
+    @ApiOperation("分页查询消息模板")
+    public TableDataInfo query(@ModelAttribute MessagePrepareVO vo) {
+        startPage();
+        List<?> list = messageTemplateService.query(vo);
+        return getDataTable(list);
+    }
 
-    @Resource
-    private TMsgFeishuMapper tMsgFeishuMapper;
-
-    /**
-     * 根据消息类型查询模板列表
-     * 消息类型映射：
-     * 1: 短信（阿里云/腾讯云）
-     * 3: 邮件
-     * 4: 企业微信
-     * 5: HTTP
-     * 6: 钉钉
-     * 7: 飞书
-     * 
-     * 查询iot-message服务自己的消息推送模板数据
-     */
     @GetMapping("/queryByType")
     @ApiOperation("根据消息类型查询模板列表")
     public AjaxResult queryByType(@RequestParam("msgType") Integer msgType) {
+        if (msgType == null) {
+            return AjaxResult.error("消息类型不能为空");
+        }
         try {
-            List<Map<String, Object>> templates = new ArrayList<>();
-            
-            if (msgType == null) {
-                return AjaxResult.error("消息类型不能为空");
-            }
-            
-            // 根据消息类型查询不同的模板
-            switch (msgType) {
-                case 1:
-                    // 短信类型：查询TMsgSms
-                    List<TMsgSms> smsList = tMsgSmsMapper.selectByMsgType(msgType);
-                    for (TMsgSms sms : smsList) {
-                        Map<String, Object> template = new HashMap<>();
-                        template.put("id", sms.getId());
-                        template.put("name", sms.getMsgName());
-                        templates.add(template);
-                    }
-                    break;
-                case 3:
-                    // 邮件类型：查询TMsgMail
-                    List<TMsgMail> mailList = tMsgMailMapper.selectByMsgType(msgType);
-                    for (TMsgMail mail : mailList) {
-                        Map<String, Object> template = new HashMap<>();
-                        template.put("id", mail.getId());
-                        template.put("name", mail.getMsgName());
-                        templates.add(template);
-                    }
-                    break;
-                case 4:
-                    // 企业微信类型：查询TMsgWxCp
-                    List<TMsgWxCp> wxCpList = tMsgWxCpMapper.selectByMsgType(msgType);
-                    for (TMsgWxCp wxCp : wxCpList) {
-                        Map<String, Object> template = new HashMap<>();
-                        template.put("id", wxCp.getId());
-                        template.put("name", wxCp.getMsgName());
-                        templates.add(template);
-                    }
-                    break;
-                case 5:
-                    // HTTP类型：查询TMsgHttp
-                    List<TMsgHttp> httpList = tMsgHttpMapper.selectByMsgType(msgType);
-                    for (TMsgHttp http : httpList) {
-                        Map<String, Object> template = new HashMap<>();
-                        template.put("id", http.getId());
-                        template.put("name", http.getMsgName());
-                        templates.add(template);
-                    }
-                    break;
-                case 6:
-                    // 钉钉类型：查询TMsgDing
-                    List<TMsgDing> dingList = tMsgDingMapper.selectByMsgType(msgType);
-                    for (TMsgDing ding : dingList) {
-                        Map<String, Object> template = new HashMap<>();
-                        template.put("id", ding.getId());
-                        template.put("name", ding.getMsgName());
-                        templates.add(template);
-                    }
-                    break;
-                case 7:
-                    // 飞书类型：查询TMsgFeishu
-                    List<TMsgFeishu> feishuList = tMsgFeishuMapper.selectByMsgType(msgType);
-                    for (TMsgFeishu feishu : feishuList) {
-                        Map<String, Object> template = new HashMap<>();
-                        template.put("id", feishu.getId());
-                        template.put("name", feishu.getMsgName());
-                        templates.add(template);
-                    }
-                    break;
-                default:
-                    return AjaxResult.error("不支持的消息类型: " + msgType);
-            }
-            
+            List<Map<String, Object>> templates = messageTemplateService.queryByType(msgType);
             return AjaxResult.success(templates);
         } catch (Exception e) {
             return AjaxResult.error("查询模板列表失败: " + e.getMessage());
         }
     }
 
-    /**
-     * 根据ID和消息类型获取模板详情
-     * 消息类型映射：
-     * 1: 短信（阿里云/腾讯云）
-     * 3: 邮件
-     * 4: 企业微信
-     * 5: HTTP
-     * 6: 钉钉
-     * 7: 飞书
-     * 
-     * @param id 模板ID
-     * @param msgType 消息类型
-     * @return 模板详情，包含userGroupId等字段
-     */
     @GetMapping("/get")
     @ApiOperation("根据ID和消息类型获取模板详情")
     public AjaxResult get(@RequestParam("id") String id, @RequestParam("msgType") Integer msgType) {
+        if (id == null || id.trim().isEmpty()) {
+            return AjaxResult.error("模板ID不能为空");
+        }
+        if (msgType == null) {
+            return AjaxResult.error("消息类型不能为空");
+        }
         try {
-            if (id == null || id.trim().isEmpty()) {
-                return AjaxResult.error("模板ID不能为空");
+            Map<String, Object> template = messageTemplateService.getById(id, msgType);
+            if (template == null) {
+                return AjaxResult.error("模板不存在");
             }
-            
-            if (msgType == null) {
-                return AjaxResult.error("消息类型不能为空");
-            }
-            
-            Map<String, Object> template = new HashMap<>();
-            
-            // 根据消息类型查询不同的模板
-            switch (msgType) {
-                case 1:
-                    // 短信类型：查询TMsgSms
-                    TMsgSms sms = tMsgSmsMapper.selectByPrimaryKey(id);
-                    if (sms == null) {
-                        return AjaxResult.error("模板不存在");
-                    }
-                    template.put("id", sms.getId());
-                    template.put("msgType", sms.getMsgType());
-                    template.put("msgName", sms.getMsgName());
-                    template.put("templateId", sms.getTemplateId());
-                    template.put("content", sms.getContent());
-                    template.put("previewUser", sms.getPreviewUser());
-                    template.put("userGroupId", sms.getUserGroupId());
-                    break;
-                case 3:
-                    // 邮件类型：查询TMsgMail
-                    TMsgMail mail = tMsgMailMapper.selectByPrimaryKey(id);
-                    if (mail == null) {
-                        return AjaxResult.error("模板不存在");
-                    }
-                    template.put("id", mail.getId());
-                    template.put("msgType", mail.getMsgType());
-                    template.put("msgName", mail.getMsgName());
-                    template.put("title", mail.getTitle());
-                    template.put("cc", mail.getCc());
-                    template.put("files", mail.getFiles());
-                    template.put("content", mail.getContent());
-                    template.put("previewUser", mail.getPreviewUser());
-                    template.put("userGroupId", mail.getUserGroupId());
-                    break;
-                case 4:
-                    // 企业微信类型：查询TMsgWxCp
-                    TMsgWxCp wxCp = tMsgWxCpMapper.selectByPrimaryKey(id);
-                    if (wxCp == null) {
-                        return AjaxResult.error("模板不存在");
-                    }
-                    template.put("id", wxCp.getId());
-                    template.put("msgType", wxCp.getMsgType());
-                    template.put("msgName", wxCp.getMsgName());
-                    template.put("title", wxCp.getTitle());
-                    template.put("content", wxCp.getContent());
-                    template.put("url", wxCp.getUrl());
-                    template.put("btnTxt", wxCp.getBtnTxt());
-                    template.put("previewUser", wxCp.getPreviewUser());
-                    template.put("userGroupId", wxCp.getUserGroupId());
-                    break;
-                case 5:
-                    // HTTP类型：查询TMsgHttp
-                    TMsgHttp http = tMsgHttpMapper.selectByPrimaryKey(id);
-                    if (http == null) {
-                        return AjaxResult.error("模板不存在");
-                    }
-                    template.put("id", http.getId());
-                    template.put("msgType", http.getMsgType());
-                    template.put("msgName", http.getMsgName());
-                    template.put("url", http.getUrl());
-                    template.put("method", http.getMethod());
-                    template.put("headers", http.getHeaders());
-                    template.put("body", http.getBody());
-                    template.put("previewUser", http.getPreviewUser());
-                    template.put("userGroupId", http.getUserGroupId());
-                    break;
-                case 6:
-                    // 钉钉类型：查询TMsgDing
-                    TMsgDing ding = tMsgDingMapper.selectByPrimaryKey(id);
-                    if (ding == null) {
-                        return AjaxResult.error("模板不存在");
-                    }
-                    template.put("id", ding.getId());
-                    template.put("msgType", ding.getMsgType());
-                    template.put("msgName", ding.getMsgName());
-                    template.put("title", ding.getTitle());
-                    template.put("content", ding.getContent());
-                    template.put("imgUrl", ding.getImgUrl());
-                    template.put("btnTxt", ding.getBtnTxt());
-                    template.put("btnUrl", ding.getBtnUrl());
-                    template.put("url", ding.getUrl());
-                    template.put("previewUser", ding.getPreviewUser());
-                    template.put("userGroupId", ding.getUserGroupId());
-                    break;
-                case 7:
-                    // 飞书类型：查询TMsgFeishu
-                    TMsgFeishu feishu = tMsgFeishuMapper.selectByPrimaryKey(id);
-                    if (feishu == null) {
-                        return AjaxResult.error("模板不存在");
-                    }
-                    template.put("id", feishu.getId());
-                    template.put("msgType", feishu.getMsgType());
-                    template.put("msgName", feishu.getMsgName());
-                    template.put("title", feishu.getTitle());
-                    template.put("content", feishu.getContent());
-                    template.put("imgUrl", feishu.getImgUrl());
-                    template.put("btnTxt", feishu.getBtnTxt());
-                    template.put("btnUrl", feishu.getBtnUrl());
-                    template.put("url", feishu.getUrl());
-                    template.put("previewUser", feishu.getPreviewUser());
-                    template.put("userGroupId", feishu.getUserGroupId());
-                    break;
-                default:
-                    return AjaxResult.error("不支持的消息类型: " + msgType);
-            }
-            
             return AjaxResult.success(template);
         } catch (Exception e) {
             return AjaxResult.error("获取模板详情失败: " + e.getMessage());
         }
     }
-}
 
+    @GetMapping("/queryById")
+    @ApiOperation("根据ID和消息类型获取模板详情（兼容旧接口）")
+    public AjaxResult queryById(@RequestParam("id") String id, @RequestParam("msgType") Integer msgType) {
+        return get(id, msgType);
+    }
+}

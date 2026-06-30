@@ -2,7 +2,12 @@
   <view class="yd-page-container yd-page-container-paging">
     <wd-navbar title="模型训练" placeholder safe-area-inset-top fixed>
       <template #right>
-        <AppNavUserButton />
+        <view class="flex items-center gap-16rpx pr-16rpx">
+          <view class="text-28rpx text-[#1890ff]" @click="handleCreate">
+            新建
+          </view>
+          <AppNavUserButton />
+        </view>
       </template>
     </wd-navbar>
 
@@ -62,7 +67,8 @@
       </view>
     </z-paging>
 
-    <DetailPopup ref="detailPopupRef" @refresh="reload" />
+    <DetailPopup ref="detailPopupRef" @refresh="reload" @resume="handleResume" @retrain="handleRetrain" />
+    <EditPopup ref="editPopupRef" @success="reload" />
   </view>
 </template>
 
@@ -76,6 +82,7 @@ import { formatDateTime } from '@/utils/date'
 import { parseListResponse } from '@/utils/listResponse'
 import { getTrainStatusTagType, getTrainStatusText, isTrainTaskActive } from '@/utils/model/trainTaskUtils'
 import DetailPopup from './components/detail-popup.vue'
+import EditPopup from './components/edit-popup.vue'
 import SearchForm from './components/search-form.vue'
 
 definePage({
@@ -89,6 +96,7 @@ const list = ref<TrainTask[]>([])
 const pagingRef = ref<any>()
 const queryParams = ref<Record<string, any>>({})
 const detailPopupRef = ref<InstanceType<typeof DetailPopup>>()
+const editPopupRef = ref<InstanceType<typeof EditPopup>>()
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function queryList(pageNo: number, pageSize: number) {
@@ -132,6 +140,18 @@ function handleReset() {
 
 function reload() {
   pagingRef.value?.reload()
+}
+
+function handleCreate() {
+  editPopupRef.value?.openCreate()
+}
+
+function handleResume(item: TrainTask) {
+  editPopupRef.value?.openResume(item)
+}
+
+function handleRetrain(item: TrainTask) {
+  editPopupRef.value?.openRetrain(item)
 }
 
 function handleDetail(item: TrainTask) {

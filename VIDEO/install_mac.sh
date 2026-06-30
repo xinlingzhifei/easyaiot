@@ -146,7 +146,7 @@ create_directories() {
     print_success "目录创建完成"
 }
 
-# 下载人脸特征提取模型（face_rec.onnx，约 167MB，不随仓库分发）
+# 检查人脸特征提取模型（face_rec.onnx，约 167MB；安装时不自动下载，请登录 WEB 人脸库页下载）
 download_face_rec_model() {
     local target="${SCRIPT_DIR}/face_rec.onnx"
     if [ -d "$target" ]; then
@@ -157,17 +157,8 @@ download_face_rec_model() {
         print_success "人脸特征模型 face_rec.onnx 已存在"
         return 0
     fi
-    local dl_script="${SCRIPT_DIR}/scripts/download_face_rec_model.sh"
-    if [ ! -f "$dl_script" ]; then
-        print_warning "未找到模型下载脚本，请在人脸库页面手动下载"
-        return 0
-    fi
-    print_info "下载人脸特征提取模型 face_rec.onnx（约 167MB，首次安装需联网）..."
-    if bash "$dl_script"; then
-        print_success "人脸特征模型下载完成"
-    else
-        print_warning "人脸特征模型下载失败，可在 WEB 人脸库页面手动下载"
-    fi
+    print_warning "人脸特征模型 face_rec.onnx 未安装（约 167MB），安装过程不自动下载"
+    print_info "请登录系统后进入「摄像头 → 人脸库」，按页面提示下载并安装模型"
 }
 
 # 清理 VIDEO 服务的 compose 容器网络缓存
@@ -341,12 +332,16 @@ install_service() {
     download_face_rec_model
     create_env_file
     
-    print_info "构建 Docker 镜像（减少输出）..."
-    # 使用 --progress=plain 减少构建输出
-    if echo "$COMPOSE_CMD" | grep -q "docker compose"; then
-        $COMPOSE_CMD build --progress=plain 2>&1 | grep -E "(Step|Successfully|ERROR|WARNING|built)" || true
+    if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect video-service:latest >/dev/null 2>&1; then
+        print_success "镜像已从远程拉取 (video-service:latest)，跳过构建"
     else
-        $COMPOSE_CMD build --progress=plain 2>&1 | grep -E "(Step|Successfully|ERROR|WARNING|built)" || true
+        print_info "构建 Docker 镜像（减少输出）..."
+        # 使用 --progress=plain 减少构建输出
+        if echo "$COMPOSE_CMD" | grep -q "docker compose"; then
+            $COMPOSE_CMD build --progress=plain 2>&1 | grep -E "(Step|Successfully|ERROR|WARNING|built)" || true
+        else
+            $COMPOSE_CMD build --progress=plain 2>&1 | grep -E "(Step|Successfully|ERROR|WARNING|built)" || true
+        fi
     fi
     
     print_info "启动服务..."

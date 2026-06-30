@@ -19,10 +19,12 @@
         <result column="btnurl" jdbcType="VARCHAR" property="btnUrl"/>
         <result column="url" jdbcType="VARCHAR" property="url"/>
         <result column="user_group_id" jdbcType="VARCHAR" property="userGroupId"/>
+        <result column="record_type" jdbcType="INTEGER" property="recordType"/>
+        <result column="ref_template_id" jdbcType="VARCHAR" property="refTemplateId"/>
     </resultMap>
     <sql id="Base_Column_List">
         id, msg_type, msg_name, radio_type, ding_msg_type, agent_id, web_hook, content, create_time,
-    modified_time, preview_user,title,imgurl,btntxt,btnurl,url,user_group_id
+    modified_time, preview_user,title,imgurl,btntxt,btnurl,url,user_group_id, record_type, ref_template_id
     </sql>
     <select id="selectByPrimaryKey" parameterType="java.lang.String" resultMap="BaseResultMap">
         select
@@ -39,13 +41,14 @@
         insert into t_msg_ding (id, msg_type, msg_name,
                                 radio_type, ding_msg_type, agent_id,
                                 web_hook, content, create_time,
-                                modified_time, preview_user,title,imgurl,btntxt,btnurl,url,user_group_id)
+                                modified_time, preview_user,title,imgurl,btntxt,btnurl,url,user_group_id, record_type, ref_template_id)
         values (#{id,jdbcType=VARCHAR}, #{msgType,jdbcType=INTEGER}, #{msgName,jdbcType=VARCHAR},
                 #{radioType,jdbcType=VARCHAR}, #{dingMsgType,jdbcType=VARCHAR}, #{agentId,jdbcType=VARCHAR},
                 #{webHook,jdbcType=VARCHAR}, #{content,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP},
                 #{modifiedTime,jdbcType=TIMESTAMP}, #{previewUser,jdbcType=VARCHAR},#{title,jdbcType=VARCHAR},
                 #{imgUrl,jdbcType=VARCHAR},#{btnTxt,jdbcType=VARCHAR},#{btnUrl,jdbcType=VARCHAR},
-                #{url,jdbcType=VARCHAR},#{userGroupId,jdbcType=VARCHAR})
+                #{url,jdbcType=VARCHAR},#{userGroupId,jdbcType=VARCHAR},
+                #{recordType,jdbcType=INTEGER}, #{refTemplateId,jdbcType=VARCHAR})
     </insert>
     <insert id="insertSelective" parameterType="com.basiclab.iot.message.domain.entity.TMsgDing" useGeneratedKeys="true"
             keyColumn="id" keyProperty="id">
@@ -172,7 +175,13 @@
             <if test="userGroupId != null">
                 user_group_id = #{userGroupId,jdbcType=VARCHAR},
             </if>
-        </set>
+                    <if test="recordType != null">
+                record_type = #{recordType,jdbcType=INTEGER},
+            </if>
+            <if test="refTemplateId != null">
+                ref_template_id = #{refTemplateId,jdbcType=VARCHAR},
+            </if>
+</set>
         where id = #{id,jdbcType=VARCHAR}
     </update>
     <update id="updateByPrimaryKey" parameterType="com.basiclab.iot.message.domain.entity.TMsgDing">
@@ -219,5 +228,6 @@
         <include refid="Base_Column_List"/>
         from t_msg_ding
         where msg_type = #{msgType,jdbcType=INTEGER}
+          and (record_type = 0 or record_type is null)
     </select>
 </mapper>

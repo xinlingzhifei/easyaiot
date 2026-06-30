@@ -5,6 +5,7 @@
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from sqlalchemy.orm.query import Query
 from models import Alert, db
 
@@ -83,9 +84,10 @@ def _alert_to_dict(alert: Alert) -> dict:
         # 默认值：如果没有找到 task_type，默认为 'realtime'
         result['task_type'] = 'realtime'
     
-    # 处理 time 字段（转换为字符串格式）
+    # 处理 time 字段（东八区墙钟字符串，与算法上报 / 录像匹配一致）
     if alert.time is not None and hasattr(alert.time, 'strftime'):
-        result['time'] = alert.time.strftime('%Y-%m-%d %H:%M:%S')
+        sh_time = normalize_to_shanghai_naive(alert.time)
+        result['time'] = sh_time.strftime('%Y-%m-%d %H:%M:%S') if sh_time else alert.time
     else:
         result['time'] = alert.time
     
@@ -586,6 +588,141 @@ def find_playback_for_alert(device_id: str, alert_time, time_range: int = 300):
     if matched:
         matched.sort(key=lambda x: x[1])
         return matched[0][0]
+    return None
+
+
+def find_record_file_for_alert(device_id: str, alert_time, time_range: int = 300):
+    """在 RecordFile 元数据中查找与告警时间最匹配的录像片段（Playback 未命中时的兜底）。"""
+    from models import RecordFile, RecordSpace
+
+    alert_naive = normalize_to_shanghai_naive(alert_time)
+    if not alert_naive:
+        return None
+
+    space = RecordSpace.query.filter_by(device_id=device_id).first()
+    if not space:
+        return None
+
+    extended_range = max(time_range + 120, 300)
+    start_time = alert_naive - timedelta(seconds=extended_range)
+    end_time = alert_naive + timedelta(seconds=extended_range)
+
+    candidates = (
+        RecordFile.query.filter(
+            RecordFile.device_id == device_id,
+            RecordFile.space_id == space.id,
+            RecordFile.event_time >= start_time,
+            RecordFile.event_time <= end_time,
+        )
+        .order_by(RecordFile.event_time.asc())
+        .all()
+    )
+
+    best = None
+    best_score = None
+    for record in candidates:
+        duration = int(record.duration or 30)
+        seg_start = record.event_time
+        legacy_start = seg_start - timedelta(seconds=duration)
+        seg_end = seg_start + timedelta(seconds=duration)
+        if legacy_start <= alert_naive <= seg_end:
+            score = 0.0
+        else:
+            center = seg_start + timedelta(seconds=duration / 2)
+            score = abs((center - alert_naive).total_seconds())
+            if score > time_range:
+                continue
+        if best_score is None or score < best_score:
+            best = record
+            best_score = score
+    return best
+
+
+def _record_path_playback_payload(record_path: str, device_id: str) -> dict:
+    """将 alert.record_path 转为可播放响应。"""
+    from urllib.parse import quote
+
+    from app.utils.service_urls import is_local_filesystem_path, minio_storage_enabled
+
+    record_path = (record_path or '').strip()
+    if not record_path:
+        return {}
+    if is_minio_download_path(record_path):
+        return {
+            'video_url': record_path,
+            'file_path': record_path,
+            'device_id': device_id,
+            'source': 'alert_record_path',
+        }
+    if not minio_storage_enabled() and is_local_filesystem_path(record_path):
+        api_path = f'/video/alert/record?path={quote(record_path, safe="")}'
+        return {
+            'video_url': api_path,
+            'file_path': record_path,
+            'device_id': device_id,
+            'source': 'alert_record_path',
+        }
+    return {}
+
+
+def resolve_alert_record_video(
+    device_id: str,
+    alert_time,
+    time_range: int = 300,
+    alert_id=None,
+) -> Optional[dict]:
+    """解析告警录像播放地址：record_path → Playback → RecordFile。"""
+    alert_row = None
+    if alert_id is not None:
+        try:
+            alert_row = Alert.query.get(int(alert_id))
+        except (TypeError, ValueError):
+            alert_row = None
+
+    if alert_row:
+        device_id = device_id or alert_row.device_id
+        if alert_row.time is not None:
+            alert_time = alert_row.time
+        if not (alert_row.record_path or '').strip():
+            try:
+                try_backfill_alert_record_from_playback(alert_row)
+            except Exception as exc:
+                logger.debug('查询前回填 record_path 跳过 alert_id=%s: %s', alert_row.id, exc)
+        payload = _record_path_playback_payload(alert_row.record_path, alert_row.device_id)
+        if payload:
+            return payload
+
+    if not device_id or alert_time is None:
+        return None
+
+    playback = find_playback_for_alert(device_id, alert_time, time_range)
+    if playback and (playback.file_path or '').strip():
+        file_path = playback.file_path.strip()
+        return {
+            'playback_id': playback.id,
+            'file_path': file_path,
+            'video_url': file_path,
+            'event_time': playback.event_time.isoformat() if playback.event_time else None,
+            'duration': playback.duration,
+            'device_id': playback.device_id,
+            'device_name': playback.device_name,
+            'source': 'playback_match',
+        }
+
+    record_file = find_record_file_for_alert(device_id, alert_time, time_range)
+    if record_file:
+        item = record_file.to_list_item()
+        file_path = (item.get('url') or record_file.url or '').strip()
+        if file_path:
+            return {
+                'record_file_id': record_file.id,
+                'file_path': file_path,
+                'video_url': file_path,
+                'event_time': record_file.event_time.isoformat() if record_file.event_time else None,
+                'duration': record_file.duration,
+                'device_id': record_file.device_id,
+                'source': 'record_file_match',
+            }
     return None
 
 

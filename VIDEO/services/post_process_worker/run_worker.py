@@ -49,6 +49,7 @@ def _message_to_ctx(message: dict) -> dict:
         'regions': message.get('regions') or [],
         'state': message.get('state') or {},
         'model_ids': message.get('modelIds') or message.get('model_ids') or [],
+        'alert_class_names': message.get('alertClassNames') or message.get('alert_class_names') or [],
         'alert_image_path': message.get('alertImagePath') or message.get('alert_image_path'),
         'correlation_id': message.get('correlationId') or message.get('correlation_id'),
     }

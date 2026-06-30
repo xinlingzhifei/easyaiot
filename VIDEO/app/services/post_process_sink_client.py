@@ -57,6 +57,7 @@ def build_post_process_request_message(
         'trackingEnabled': bool(ctx.get('tracking_enabled')),
         'regions': ctx.get('regions') or [],
         'modelIds': ctx.get('model_ids') or [],
+        'alertClassNames': ctx.get('alert_class_names') or [],
         'alertImagePath': alert_image_path or ctx.get('alert_image_path'),
         'correlationId': correlation_id or ctx.get('correlation_id') or str(uuid.uuid4()),
     }

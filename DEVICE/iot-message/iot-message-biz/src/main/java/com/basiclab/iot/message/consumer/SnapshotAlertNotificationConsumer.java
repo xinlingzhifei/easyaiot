@@ -83,8 +83,7 @@ public class SnapshotAlertNotificationConsumer {
             List<String> notifyMethods = message.getNotifyMethods();
             Boolean shouldNotify = message.getShouldNotify();
             
-            boolean hasNotificationConfig = (channels != null && !channels.isEmpty()) 
-                    && (notifyUsers != null && !notifyUsers.isEmpty());
+            boolean hasNotificationConfig = alertNotificationService.hasNotificationConfig(channels, notifyUsers);
             
             // 优先使用shouldNotify字段，如果没有则根据配置判断
             if (shouldNotify == null) {
@@ -98,13 +97,17 @@ public class SnapshotAlertNotificationConsumer {
                     (notifyUsers != null ? notifyUsers.size() : 0),
                     notifyMethods);
             
-            if (!shouldNotify || !hasNotificationConfig) {
-                log.info("ℹ️  抓拍算法任务告警消息中没有通知配置或shouldNotify=false，跳过发送通知: " +
-                        "deviceId={}, alertId={}, shouldNotify={}, channels数量={}, notifyUsers数量={}", 
-                        message.getDeviceId(), message.getAlertId(), shouldNotify,
-                        (channels != null ? channels.size() : 0),
-                        (notifyUsers != null ? notifyUsers.size() : 0));
-                // 没有通知配置，直接确认消息
+            if (!shouldNotify) {
+                log.info("ℹ️  抓拍算法任务告警 shouldNotify=false，跳过发送通知: deviceId={}, alertId={}",
+                        message.getDeviceId(), message.getAlertId());
+                if (acknowledgment != null) {
+                    acknowledgment.acknowledge();
+                }
+                return;
+            }
+            if (channels == null || channels.isEmpty()) {
+                log.info("ℹ️  抓拍算法任务告警无通知渠道，跳过发送通知: deviceId={}, alertId={}",
+                        message.getDeviceId(), message.getAlertId());
                 if (acknowledgment != null) {
                     acknowledgment.acknowledge();
                 }

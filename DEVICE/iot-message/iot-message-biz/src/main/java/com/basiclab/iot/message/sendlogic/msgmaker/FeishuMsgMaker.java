@@ -2,6 +2,7 @@ package com.basiclab.iot.message.sendlogic.msgmaker;
 
 import com.basiclab.iot.message.domain.entity.TMsgFeishu;
 import com.basiclab.iot.message.mapper.TMsgFeishuMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,9 @@ public class FeishuMsgMaker extends BaseMsgMaker implements IMsgMaker {
 
     @Autowired
     private TMsgFeishuMapper tMsgFeishuMapper;
+
+    @Autowired
+    private MessageRecordResolver messageRecordResolver;
 
     /**
      * 准备(界面字段等)
@@ -34,7 +38,7 @@ public class FeishuMsgMaker extends BaseMsgMaker implements IMsgMaker {
      */
     @Override
     public TMsgFeishu makeMsg(String msgId) {
-        TMsgFeishu tMsgFeishu = tMsgFeishuMapper.selectByPrimaryKey(msgId);
+        TMsgFeishu tMsgFeishu = messageRecordResolver.resolveFeishu(msgId);
         return tMsgFeishu;
     }
 }

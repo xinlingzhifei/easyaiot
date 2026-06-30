@@ -167,6 +167,20 @@ def _inject_sam_supplement_env(env: dict, task) -> None:
         env['AI_SERVICE_URL'] = ai_url
 
 
+def _inject_realtime_sampling_env(env: dict, task) -> None:
+    """将实时任务的抽帧间隔与运动门控配置写入子进程环境变量。"""
+    if getattr(task, 'task_type', '') != 'realtime':
+        return
+    enabled = getattr(task, 'motion_gate_enabled', False)
+    env['MOTION_GATE_ENABLED'] = 'true' if enabled else 'false'
+    raw = getattr(task, 'motion_gate_config', None)
+    if raw:
+        if isinstance(raw, str):
+            env['MOTION_GATE_CONFIG'] = raw
+        else:
+            env['MOTION_GATE_CONFIG'] = json.dumps(raw, ensure_ascii=False)
+
+
 def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_host: str, task=None) -> dict:
     env = {}
     for key in (
@@ -210,6 +224,7 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
     apply_remote_toolchain_env(env)
     if task is not None:
         _inject_sam_supplement_env(env, task)
+        _inject_realtime_sampling_env(env, task)
     return env
 
 
@@ -770,6 +785,7 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
             logger.info(f'启动守护进程，任务ID: {task_id}, 任务类型: {task.task_type}')
             extra_env = {}
             _inject_sam_supplement_env(extra_env, task)
+            _inject_realtime_sampling_env(extra_env, task)
             daemon = None
             old_daemon_to_join = None
             with _daemons_lock:

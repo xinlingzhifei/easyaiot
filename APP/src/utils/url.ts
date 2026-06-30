@@ -19,7 +19,7 @@ export function parseUrl(url: string): { path: string, query: Record<string, str
 
 /**
  * 获取路由/路径的第一层（根段），兼容有无前导斜杠
- * 例：'/pages-crm/contract/detail' -> 'pages-crm'；'pages-bpm/x/y' -> 'pages-bpm'
+ * 例：'/pages/device/gb28181/index' -> 'pages'；'pages-core/auth/login' -> 'pages-core'
  * 本项目中根段即分包名，可用于判断两个页面是否同分包
  * @param path 路由或路径字符串
  * @returns 第一层路径段，空值兜底为空串

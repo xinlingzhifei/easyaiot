@@ -56,4 +56,7 @@ public class PostProcessRequestMessage {
 
     @JsonAlias("correlation_id")
     private String correlationId;
+
+    @JsonAlias("alert_class_names")
+    private List<String> alertClassNames;
 }

@@ -19,10 +19,10 @@ _DEFAULT_SAM_MODEL_PATH = os.path.join(_AI_ROOT, 'models', 'sam3', 'sam3.1_multi
 
 SAM_ENABLED = os.getenv('SAM_ENABLED', 'false').lower() in ('1', 'true', 'yes')
 SAM_ENGINE = os.getenv('SAM_ENGINE', 'sam3')
-SAM_MODEL_PATH = os.getenv('SAM_MODEL_PATH', _DEFAULT_SAM_MODEL_PATH)
+SAM_MODEL_PATH = os.getenv('SAM_MODEL_PATH', '').strip() or _DEFAULT_SAM_MODEL_PATH
 SAM_CONF = float(os.getenv('SAM_CONF', '0.45'))
 SAM_IMGSZ = int(os.getenv('SAM_IMGSZ', '1078'))
-SAM_TIMEOUT = float(os.getenv('SAM_TIMEOUT', '30'))
+SAM_TIMEOUT = float(os.getenv('SAM_TIMEOUT', '600'))
 SAM_MAX_IMAGE_BYTES = int(os.getenv('SAM_MAX_IMAGE_BYTES', str(10 * 1024 * 1024)))
 SAM_WORKER_URL = os.getenv('SAM_WORKER_URL', '').rstrip('/')
 SAM_WARMUP_IMAGE = os.getenv('SAM_WARMUP_IMAGE', '')

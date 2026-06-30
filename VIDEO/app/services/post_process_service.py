@@ -92,6 +92,7 @@ README_TEMPLATE = '''# 算法任务后处理工作区
 | tracked_detections | 带 track_id、duration 的追踪结果 |
 | regions | 设备检测区域（多边形/越线） |
 | state | 跨帧状态字典，可在脚本内读写 |
+| alert_class_names | 任务配置的告警触发标签；默认告警仅匹配这些类别 |
 
 ## 启用
 

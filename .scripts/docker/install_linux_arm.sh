@@ -46,6 +46,9 @@ cd "$PROJECT_ROOT"
 # shellcheck source=deploy_profile.sh
 source "${SCRIPT_DIR}/deploy_profile.sh"
 
+# shellcheck source=runtime_image_common.sh
+source "${SCRIPT_DIR}/runtime_image_common.sh"
+
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
 
@@ -80,6 +83,7 @@ MODULES=(
     "AI"               # AI服务
     "VIDEO"            # Video服务
     "WEB"              # Web前端服务
+    "APP"              # App移动端H5（仅 full 全量形态）
 )
 
 # 模块名称映射
@@ -89,6 +93,7 @@ MODULE_NAMES["DEVICE"]="Device服务"
 MODULE_NAMES["AI"]="AI服务"
 MODULE_NAMES["VIDEO"]="Video服务"
 MODULE_NAMES["WEB"]="Web前端服务"
+MODULE_NAMES["APP"]="App移动端H5"
 
 # 模块端口映射
 declare -A MODULE_PORTS
@@ -97,6 +102,7 @@ MODULE_PORTS["DEVICE"]="48080"           # Gateway端口
 MODULE_PORTS["AI"]="5000"
 MODULE_PORTS["VIDEO"]="6000"
 MODULE_PORTS["WEB"]="8888"
+MODULE_PORTS["APP"]="9010"
 
 # 模块健康检查端点
 declare -A MODULE_HEALTH_ENDPOINTS
@@ -105,6 +111,7 @@ MODULE_HEALTH_ENDPOINTS["DEVICE"]="/actuator/health"  # Gateway健康检查
 MODULE_HEALTH_ENDPOINTS["AI"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["VIDEO"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["WEB"]="/health"
+MODULE_HEALTH_ENDPOINTS["APP"]="/health"
 
 # 日志输出函数（去掉颜色代码后写入日志文件）
 log_to_file() {
@@ -628,7 +635,7 @@ execute_module_command() {
 
     local defer_agent_sync=0
     case "$module" in
-        DEVICE|AI|VIDEO|WEB) defer_agent_sync=1 ;;
+        DEVICE|AI|VIDEO|WEB|APP) defer_agent_sync=1 ;;
     esac
     if [ "$defer_agent_sync" -eq 1 ]; then
         export EASYAIOT_DEFER_PLATFORM_AGENT_SYNC=1
@@ -637,6 +644,8 @@ execute_module_command() {
     ensure_deploy_profile
     export EASYAIOT_DEPLOY_PROFILE
     export EASYAIOT_SKIP_PROFILE_PROMPT
+    export EASYAIOT_SKIP_IMAGE_PROMPT
+    export EASYAIOT_SKIP_BUILD
 
     # ⚠️ 失败判定必须取 PIPESTATUS[0]（子脚本退出码）：
     # 脚本未开 pipefail（全局开会让 `docker ps | grep -q` 类管道误报），
@@ -727,6 +736,9 @@ install_linux() {
     print_section "开始安装所有服务 (ARM架构)"
     
     select_deploy_profile_for_install
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux_arm.sh"
+    runtime_images_acquire
+
     detect_architecture
     check_docker "$@"
     check_docker_compose
@@ -734,19 +746,37 @@ install_linux() {
     configure_docker_mirror
     create_network
     
+    local _skip_build=0
+    if runtime_images_should_skip_build; then
+        _skip_build=1
+    else
+        print_info "将进行本地构建（各模块 docker build，耗时较长）"
+    fi
+    
     local success_count=0
     local total_count=${#MODULES[@]}
+    local -a failed_modules=()
+    local -a succeeded_modules=()
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            print_info "跳过 ${MODULE_NAMES[$module]}（当前部署形态 ${EASYAIOT_DEPLOY_PROFILE} 不包含此模块）"
+            continue
+        fi
         print_section "安装 ${MODULE_NAMES[$module]}"
+        if [ "$_skip_build" -eq 1 ] && [ "$module" != ".scripts/docker" ]; then
+            print_info "镜像已从远程拉取，跳过 docker build，直接启动 ${MODULE_NAMES[$module]}"
+        fi
         if execute_module_command "$module" "install"; then
             success_count=$((success_count + 1))
+            succeeded_modules+=("${MODULE_NAMES[$module]}")
             # 基础服务装完后精确等待 PostgreSQL/Nacos/Redis 就绪（取代原固定 sleep 5）
             if [ "$module" = ".scripts/docker" ]; then
                 wait_for_base_services
             fi
         else
             print_error "${MODULE_NAMES[$module]} 安装失败"
+            failed_modules+=("${MODULE_NAMES[$module]}")
         fi
         echo ""
     done
@@ -754,11 +784,49 @@ install_linux() {
     print_section "安装完成"
     echo "成功安装: $success_count / $total_count 个模块"
     
+    if [ ${#succeeded_modules[@]} -gt 0 ]; then
+        echo "  已成功: ${succeeded_modules[*]}"
+    fi
+    if [ ${#failed_modules[@]} -gt 0 ]; then
+        echo "  已失败: ${failed_modules[*]}"
+    fi
+    
     if [ $success_count -eq $total_count ]; then
         print_success "所有模块安装成功！"
         ensure_platform_agent_after_stack
     else
+        echo ""
         print_warning "部分模块安装失败，请检查日志"
+        echo ""
+        print_info "诊断建议："
+        for failed in "${failed_modules[@]}"; do
+            case "$failed" in
+                "基础服务")
+                    print_info "  - 基础服务：检查 Nacos/PostgreSQL/Redis 等中间件容器是否正常启动"
+                    print_info "    docker ps --filter 'name=nacos|postgres|redis'"
+                    ;;
+                "Device服务")
+                    print_info "  - Device服务：检查 Maven 编译是否成功、JAR 包是否生成"
+                    print_info "    ls DEVICE/target/jars/"
+                    print_info "    检查日志: cat ${LOG_DIR}/install_linux_arm_*.log | grep -i 'error\|failed\|失败'"
+                    ;;
+                "AI服务")
+                    print_info "  - AI服务：检查 PyTorch ARM 镜像拉取和 Python 依赖安装"
+                    print_info "    docker images | grep ai-service"
+                    ;;
+                "Video服务")
+                    print_info "  - Video服务：检查视频服务镜像构建"
+                    print_info "    docker images | grep video-service"
+                    ;;
+                "Web前端服务")
+                    print_info "  - Web前端服务：检查 pnpm install/build 和 nginx 镜像构建"
+                    print_info "    docker images | grep web-service"
+                    print_info "    cat WEB/docker-build-logs/pnpm-build.log | tail -50"
+                    ;;
+            esac
+        done
+        echo ""
+        print_info "完整日志文件: ${LOG_FILE}"
         exit 1
     fi
 }
@@ -769,6 +837,8 @@ wait_for_container_ready() {
     local name=$1 max_attempts=$2 interval=$3
     shift 3
     local attempt=0
+    local elapsed=0
+    local progress_interval=10  # 每 10 次检测输出一次友好提示
     print_info "等待 ${name} 服务就绪..."
     while [ $attempt -lt $max_attempts ]; do
         if "$@" > /dev/null 2>&1; then
@@ -777,8 +847,13 @@ wait_for_container_ready() {
         fi
         attempt=$((attempt + 1))
         sleep "$interval"
+        elapsed=$((elapsed + interval))
+        # 每 progress_interval 次检测输出友好提示，让用户知道没有卡死
+        if [ $((attempt % progress_interval)) -eq 0 ] && [ $attempt -lt $max_attempts ]; then
+            print_info "  ${name} 仍在启动中...（已等待 ${elapsed}s，将继续等待）"
+        fi
     done
-    print_warning "${name} 服务未在预期时间内就绪，继续执行..."
+    print_warning "${name} 服务未在预期时间内就绪（已等待 ${elapsed}s），继续执行..."
     return 1
 }
 
@@ -801,12 +876,15 @@ wait_for_base_services() {
     fi
 }
 
-# 业务模块清单（MODULES 去掉基础服务），结果写入全局数组 BIZ_MODULES
+# 业务模块清单（MODULES 去掉基础服务，并按部署形态过滤），结果写入全局数组 BIZ_MODULES
 collect_biz_modules() {
+    ensure_deploy_profile
     BIZ_MODULES=()
     local module
     for module in "${MODULES[@]}"; do
-        [ "$module" = ".scripts/docker" ] || BIZ_MODULES+=("$module")
+        [ "$module" = ".scripts/docker" ] && continue
+        module_enabled_for_deploy_profile "$module" || continue
+        BIZ_MODULES+=("$module")
     done
 }
 
@@ -913,6 +991,9 @@ restart_all() {
     create_network
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         if execute_module_command "$module" "restart"; then
             # 基础服务重启后精确等待就绪，再重启依赖它的业务模块（取代原固定 sleep 5）
             if [ "$module" = ".scripts/docker" ]; then
@@ -979,19 +1060,43 @@ build_all() {
 
     if [ "${PARALLEL_BUILD:-false}" = "true" ]; then
         print_info "并行构建模式（PARALLEL_BUILD=true），各模块日志将在结束后汇总展示"
-        if ! run_modules_parallel "build" "${MODULES[@]}"; then
+        local active_modules=()
+        local module
+        for module in "${MODULES[@]}"; do
+            module_enabled_for_deploy_profile "$module" && active_modules+=("$module")
+        done
+        if ! run_modules_parallel "build" "${active_modules[@]}"; then
             print_error "部分模块构建失败，请检查日志: $LOG_FILE"
             exit 1
         fi
     else
         local module
         for module in "${MODULES[@]}"; do
+            module_enabled_for_deploy_profile "$module" || continue
             execute_module_command "$module" "build" || print_warning "${MODULE_NAMES[$module]} 构建失败，继续其余模块"
             echo ""
         done
     fi
 
     print_success "所有镜像构建完成"
+}
+
+pull_runtime_images() {
+    detect_architecture
+    check_docker "$@"
+    runtime_images_prepare_pull_interactive
+    runtime_images_export_for_invoke
+    runtime_images_invoke pull || exit 1
+    export EASYAIOT_SKIP_BUILD=1
+    export EASYAIOT_SKIP_IMAGE_PROMPT=1
+}
+
+build_runtime_images() {
+    detect_architecture
+    check_docker "$@"
+    runtime_images_prepare_build_interactive
+    runtime_images_export_for_invoke
+    runtime_images_invoke build || exit 1
 }
 
 
@@ -1071,6 +1176,7 @@ verify_all() {
     local failed_modules=()
     
     for module in "${MODULES[@]}"; do
+        module_enabled_for_deploy_profile "$module" || continue
         if verify_service_health "$module"; then
             success_count=$((success_count + 1))
         else
@@ -1093,6 +1199,9 @@ verify_all() {
         echo -e "  AI服务:                http://localhost:5000"
         echo -e "  Video服务:             http://localhost:6000"
         echo -e "  Web前端:               http://localhost:8888"
+        if module_enabled_for_deploy_profile APP; then
+            echo -e "  App移动端H5:           http://localhost:9010"
+        fi
         echo ""
         return 0
     else
@@ -1185,7 +1294,9 @@ show_help() {
     echo "  status          - 查看所有服务状态"
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
-    echo "  build           - 重新构建所有镜像"
+    echo "  build           - 重新构建所有镜像（各模块本地构建）"
+    echo "  build-runtime   - 构建/推送运行时镜像到远程仓库"
+    echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
     echo "  update          - 更新并重启所有服务"
     echo "  verify          - 验证所有服务是否启动成功"
@@ -1200,8 +1311,8 @@ show_help() {
     echo ""
     echo "注意："
     echo "  - 本脚本专用于 ARM 架构（aarch64/arm64）"
-    echo "  - AI 和 VIDEO 模块将使用 install_linux_arm.sh 脚本"
-    echo "  - 其他模块使用标准 install_linux.sh 脚本"
+    echo "  - AI 和 VIDEO 模块使用 install_linux_arm.sh（ARM 基础镜像），DEVICE/WEB 使用 install_linux.sh"
+    echo "  - 支持与 x86 版本完全相同的部署形态: mini(1) / standard(2) / full(3)"
     echo "  - 如需在 x86_64 架构上部署，请使用 install_linux.sh"
     echo ""
     echo "可选环境变量:"
@@ -1210,6 +1321,7 @@ show_help() {
     echo "  PARALLEL_BUILD=true          - build 时并行构建各模块（默认串行，防小内存并行 OOM）"
     echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 easyaiot-network（宿主机 IP 变更后使用）"
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
+    echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
     echo ""
 }
 
@@ -1237,6 +1349,12 @@ main() {
             ;;
         build)
             build_all
+            ;;
+        build-runtime|images-build)
+            build_runtime_images
+            ;;
+        pull|images-pull)
+            pull_runtime_images
             ;;
         clean)
             clean_all

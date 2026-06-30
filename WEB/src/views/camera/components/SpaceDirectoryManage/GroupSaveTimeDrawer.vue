@@ -110,9 +110,9 @@ interface GroupPolicyDrawerData {
 }
 
 const SAVE_TIME_PRESETS = [
-  { key: '1h', label: '1 小时', value: 1, hint: '最短保留' },
+  { key: '1h', label: '1 小时', value: 1, hint: '推荐默认' },
   { key: '24h', label: '1 天', value: 24, hint: '' },
-  { key: '7d', label: '7 天', value: 168, hint: '推荐默认' },
+  { key: '7d', label: '7 天', value: 168, hint: '' },
   { key: '30d', label: '30 天', value: 720, hint: '约 1 个月' },
   { key: '90d', label: '90 天', value: 2160, hint: '约 3 个月' },
   { key: 'forever', label: '永久保存', value: 0, hint: '占用持续增长' },

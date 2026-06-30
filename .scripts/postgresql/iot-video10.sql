@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 6o639h8PAabpbCQX79jD0dysv1QxFhRmh2qoHQRAf5acsy9Hijg9ZX7uQdpxCqa
+\restrict wXM60PrMhNIuXawq89Q2VJdEfHBE41nfQov51aS8IymDHEIt1K8QLFPwECJgoGi
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-video20";
 CREATE DATABASE "iot-video20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict 6o639h8PAabpbCQX79jD0dysv1QxFhRmh2qoHQRAf5acsy9Hijg9ZX7uQdpxCqa
+\unrestrict wXM60PrMhNIuXawq89Q2VJdEfHBE41nfQov51aS8IymDHEIt1K8QLFPwECJgoGi
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-video20'"
-\restrict 6o639h8PAabpbCQX79jD0dysv1QxFhRmh2qoHQRAf5acsy9Hijg9ZX7uQdpxCqa
+\restrict wXM60PrMhNIuXawq89Q2VJdEfHBE41nfQov51aS8IymDHEIt1K8QLFPwECJgoGi
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -308,6 +308,140 @@ ALTER SEQUENCE public.algorithm_model_service_id_seq OWNED BY public.algorithm_m
 
 
 --
+-- Name: algorithm_post_process_result; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.algorithm_post_process_result (
+    id integer NOT NULL,
+    task_id integer NOT NULL,
+    task_name character varying(255),
+    task_code character varying(255),
+    task_type character varying(20),
+    device_id character varying(100) NOT NULL,
+    device_name character varying(100),
+    frame_number integer,
+    event_time timestamp with time zone,
+    counts text,
+    events text,
+    alerts text,
+    payload text,
+    correlation_id character varying(36),
+    created_at timestamp without time zone
+);
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.task_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.task_id IS '算法任务ID';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.task_name; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.task_name IS '任务名称';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.task_code; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.task_code IS '任务编号';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.task_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.task_type IS '任务类型[realtime,snap,patrol]';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.device_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.device_id IS '设备ID';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.device_name; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.device_name IS '设备名称';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.frame_number; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.frame_number IS '帧序号';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.event_time; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.event_time IS '帧事件时间';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.counts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.counts IS '计数结果 JSON';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.events; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.events IS '业务事件 JSON';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.alerts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.alerts IS '自定义告警 JSON';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.payload; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.payload IS '完整后处理结果 JSON';
+
+
+--
+-- Name: COLUMN algorithm_post_process_result.correlation_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_post_process_result.correlation_id IS '关联ID（去重/追溯）';
+
+
+--
+-- Name: algorithm_post_process_result_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.algorithm_post_process_result_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: algorithm_post_process_result_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.algorithm_post_process_result_id_seq OWNED BY public.algorithm_post_process_result.id;
+
+
+--
 -- Name: algorithm_task; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -318,7 +452,7 @@ CREATE TABLE public.algorithm_task (
     task_type character varying(20) NOT NULL,
     model_ids text,
     model_names text,
-    extract_interval integer NOT NULL,
+    extract_interval integer,
     rtmp_input_url character varying(500),
     rtmp_output_url character varying(500),
     tracking_enabled boolean NOT NULL,
@@ -327,6 +461,7 @@ CREATE TABLE public.algorithm_task (
     tracking_smooth_alpha double precision NOT NULL,
     alert_event_enabled boolean NOT NULL,
     alert_event_suppress_time integer NOT NULL,
+    alert_class_names text,
     face_detection_enabled boolean NOT NULL,
     plate_detection_enabled boolean NOT NULL,
     face_matching_enabled boolean NOT NULL,
@@ -342,10 +477,18 @@ CREATE TABLE public.algorithm_task (
     space_id integer,
     cron_expression character varying(255),
     frame_skip integer NOT NULL,
+    patrol_mode character varying(20),
+    patrol_interval_sec integer,
+    patrol_pool_size integer,
+    focus_device_id character varying(100),
     status smallint NOT NULL,
     is_enabled boolean NOT NULL,
     run_status character varying(20) NOT NULL,
     exception_reason character varying(500),
+    schedule_policy character varying(20) NOT NULL,
+    prefer_gpu boolean NOT NULL,
+    target_node_id bigint,
+    node_id bigint,
     service_server_ip character varying(512),
     service_port integer,
     service_process_id integer,
@@ -358,15 +501,19 @@ CREATE TABLE public.algorithm_task (
     last_success_time timestamp without time zone,
     last_capture_time timestamp without time zone,
     description character varying(500),
+    sam_supplement_enabled boolean NOT NULL,
+    sam_supplement_config text,
+    motion_gate_enabled boolean NOT NULL,
+    motion_gate_config text,
+    post_process_enabled boolean NOT NULL,
+    post_process_script character varying(255),
+    post_process_replicas integer NOT NULL,
     defense_mode character varying(20) NOT NULL,
     defense_schedule text,
     created_at timestamp without time zone,
     updated_at timestamp without time zone,
     face_library_id integer,
-    plate_library_id integer,
-    schedule_policy character varying(20) DEFAULT 'local'::character varying NOT NULL,
-    target_node_id bigint,
-    node_id bigint
+    plate_library_id integer
 );
 
 
@@ -388,7 +535,7 @@ COMMENT ON COLUMN public.algorithm_task.task_code IS '任务编号（唯一标�
 -- Name: COLUMN algorithm_task.task_type; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.algorithm_task.task_type IS '任务类型[realtime:实时算法任务,snap:抓拍算法任务]';
+COMMENT ON COLUMN public.algorithm_task.task_type IS '任务类型[realtime,snap,patrol]';
 
 
 --
@@ -409,7 +556,7 @@ COMMENT ON COLUMN public.algorithm_task.model_names IS '关联的模型名称列
 -- Name: COLUMN algorithm_task.extract_interval; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.algorithm_task.extract_interval IS '抽帧间隔（每N帧抽一次，仅实时算法任务）';
+COMMENT ON COLUMN public.algorithm_task.extract_interval IS '抽帧间隔（每N帧抽一次；NULL 表示沿用环境变量 EXTRACT_INTERVAL）';
 
 
 --
@@ -466,6 +613,13 @@ COMMENT ON COLUMN public.algorithm_task.alert_event_enabled IS '是否启用告�
 --
 
 COMMENT ON COLUMN public.algorithm_task.alert_event_suppress_time IS '告警事件抑制时间（秒），同一设备两次上报告警事件的最小间隔，减轻Kafka积压，默认5秒';
+
+
+--
+-- Name: COLUMN algorithm_task.alert_class_names; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.alert_class_names IS '告警触发类别标签（JSON数组，为空则任意检测均可触发告警）';
 
 
 --
@@ -574,6 +728,34 @@ COMMENT ON COLUMN public.algorithm_task.frame_skip IS '抽帧间隔（每N帧抓
 
 
 --
+-- Name: COLUMN algorithm_task.patrol_mode; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.patrol_mode IS '巡检模式[rotate,pool,hybrid]';
+
+
+--
+-- Name: COLUMN algorithm_task.patrol_interval_sec; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.patrol_interval_sec IS '巡检间隔（秒）';
+
+
+--
+-- Name: COLUMN algorithm_task.patrol_pool_size; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.patrol_pool_size IS '连接池大小';
+
+
+--
+-- Name: COLUMN algorithm_task.focus_device_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.focus_device_id IS '焦点设备ID（hybrid）';
+
+
+--
 -- Name: COLUMN algorithm_task.status; Type: COMMENT; Schema: public; Owner: -
 --
 
@@ -602,10 +784,38 @@ COMMENT ON COLUMN public.algorithm_task.exception_reason IS '异常原因';
 
 
 --
+-- Name: COLUMN algorithm_task.schedule_policy; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.schedule_policy IS '调度策略[local:本机,auto:自动节点,node:指定节点]';
+
+
+--
+-- Name: COLUMN algorithm_task.prefer_gpu; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.prefer_gpu IS '自动调度时是否优先 GPU 节点';
+
+
+--
+-- Name: COLUMN algorithm_task.target_node_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.target_node_id IS '指定部署节点ID';
+
+
+--
+-- Name: COLUMN algorithm_task.node_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.node_id IS '实际运行节点ID';
+
+
+--
 -- Name: COLUMN algorithm_task.service_server_ip; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.algorithm_task.service_server_ip IS '服务运行服务器IP';
+COMMENT ON COLUMN public.algorithm_task.service_server_ip IS '服务运行服务器IP（多节点时为逗号分隔）';
 
 
 --
@@ -683,6 +893,55 @@ COMMENT ON COLUMN public.algorithm_task.last_capture_time IS '最后抓拍时间
 --
 
 COMMENT ON COLUMN public.algorithm_task.description IS '任务描述';
+
+
+--
+-- Name: COLUMN algorithm_task.sam_supplement_enabled; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.sam_supplement_enabled IS '是否启用 SAM 补充识别';
+
+
+--
+-- Name: COLUMN algorithm_task.sam_supplement_config; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.sam_supplement_config IS 'SAM 补充配置 JSON';
+
+
+--
+-- Name: COLUMN algorithm_task.motion_gate_enabled; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.motion_gate_enabled IS '是否启用运动检测门控（仅实时算法任务）';
+
+
+--
+-- Name: COLUMN algorithm_task.motion_gate_config; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.motion_gate_config IS '运动门控配置 JSON';
+
+
+--
+-- Name: COLUMN algorithm_task.post_process_enabled; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.post_process_enabled IS '是否启用 AI 后处理脚本';
+
+
+--
+-- Name: COLUMN algorithm_task.post_process_script; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.post_process_script IS '后处理脚本文件名，默认 post_process.py';
+
+
+--
+-- Name: COLUMN algorithm_task.post_process_replicas; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.algorithm_task.post_process_replicas IS '后处理 Worker 副本数（集群水平扩展）';
 
 
 --
@@ -926,8 +1185,6 @@ CREATE TABLE public.device (
     address character varying(500),
     location_source character varying(20),
     location_updated_at timestamp without time zone,
-    created_at timestamp without time zone,
-    updated_at timestamp without time zone,
     heading double precision,
     ptz_type smallint,
     direction_type smallint,
@@ -935,7 +1192,9 @@ CREATE TABLE public.device (
     room_type smallint,
     use_type smallint,
     supply_light_type smallint,
-    resolution character varying(100)
+    resolution character varying(100),
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone
 );
 
 
@@ -1042,6 +1301,62 @@ COMMENT ON COLUMN public.device.location_source IS '位置来源: manual/gb28181
 --
 
 COMMENT ON COLUMN public.device.location_updated_at IS '位置信息最后更新时间';
+
+
+--
+-- Name: COLUMN device.heading; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.heading IS '安装朝向(度)，0=正北，顺时针';
+
+
+--
+-- Name: COLUMN device.ptz_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.ptz_type IS '摄像机结构: 1球机 2半球 3固定枪机 4遥控枪机 5遥控半球 6/7多目';
+
+
+--
+-- Name: COLUMN device.direction_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.direction_type IS '监视方位(光轴): 1东2西3南4北5东南6东北7西南8西北';
+
+
+--
+-- Name: COLUMN device.position_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.position_type IS '位置类型: 1检查站2党政3车站码头4中心广场5体育场馆6商业中心7宗教8校园周边9治安复杂10交通干线';
+
+
+--
+-- Name: COLUMN device.room_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.room_type IS '安装位置: 1室外 2室内';
+
+
+--
+-- Name: COLUMN device.use_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.use_type IS '用途: 1治安 2交通 3重点';
+
+
+--
+-- Name: COLUMN device.supply_light_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.supply_light_type IS '补光: 1无 2红外 3白光 4激光 9其他';
+
+
+--
+-- Name: COLUMN device.resolution; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device.resolution IS '支持的分辨率(可多值)';
 
 
 --
@@ -1165,10 +1480,10 @@ CREATE TABLE public.device_directory (
     parent_id integer,
     description character varying(500),
     sort_order integer NOT NULL,
+    snap_save_time integer NOT NULL,
+    record_save_time integer NOT NULL,
     created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    snap_save_time integer DEFAULT 7 NOT NULL,
-    record_save_time integer DEFAULT 7 NOT NULL
+    updated_at timestamp without time zone
 );
 
 
@@ -1198,6 +1513,20 @@ COMMENT ON COLUMN public.device_directory.description IS '目录描述';
 --
 
 COMMENT ON COLUMN public.device_directory.sort_order IS '排序顺序';
+
+
+--
+-- Name: COLUMN device_directory.snap_save_time; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_directory.snap_save_time IS '抓拍保存时长[0:永久,>=1:小时]，目录内非自定义设备继承此值';
+
+
+--
+-- Name: COLUMN device_directory.record_save_time; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_directory.record_save_time IS '录像保存时长[0:永久,>=1:小时]，目录内非自定义设备继承此值';
 
 
 --
@@ -2397,6 +2726,157 @@ ALTER SEQUENCE public.nvr_id_seq OWNED BY public.nvr.id;
 
 
 --
+-- Name: patrol_session; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.patrol_session (
+    id integer NOT NULL,
+    session_name character varying(255) NOT NULL,
+    patrol_mode character varying(20) NOT NULL,
+    interval_sec integer NOT NULL,
+    pool_size integer NOT NULL,
+    device_ids text NOT NULL,
+    model_ids text NOT NULL,
+    focus_device_id character varying(100),
+    algorithm_task_id integer,
+    alert_event_enabled boolean NOT NULL,
+    alert_event_suppress_time integer NOT NULL,
+    face_detection_enabled boolean NOT NULL,
+    plate_detection_enabled boolean NOT NULL,
+    status character varying(20) NOT NULL,
+    exception_reason character varying(500),
+    service_server_ip character varying(512),
+    service_process_id integer,
+    service_last_heartbeat timestamp without time zone,
+    service_log_path character varying(500),
+    progress_json text,
+    total_patrols integer NOT NULL,
+    total_detections integer NOT NULL,
+    last_patrol_time timestamp without time zone,
+    created_at timestamp without time zone,
+    updated_at timestamp without time zone
+);
+
+
+--
+-- Name: COLUMN patrol_session.session_name; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.session_name IS '会话名称';
+
+
+--
+-- Name: COLUMN patrol_session.patrol_mode; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.patrol_mode IS '巡检模式[rotate:轮询,pool:连接池,hybrid:混合]';
+
+
+--
+-- Name: COLUMN patrol_session.interval_sec; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.interval_sec IS '每路巡检间隔（秒）';
+
+
+--
+-- Name: COLUMN patrol_session.pool_size; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.pool_size IS '连接池并发拉流数（pool/hybrid）';
+
+
+--
+-- Name: COLUMN patrol_session.device_ids; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.device_ids IS '设备ID列表（JSON数组）';
+
+
+--
+-- Name: COLUMN patrol_session.model_ids; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.model_ids IS '模型ID列表（JSON数组）';
+
+
+--
+-- Name: COLUMN patrol_session.focus_device_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.focus_device_id IS '焦点设备ID（hybrid）';
+
+
+--
+-- Name: COLUMN patrol_session.algorithm_task_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.algorithm_task_id IS '关联算法任务模板ID';
+
+
+--
+-- Name: COLUMN patrol_session.alert_event_enabled; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.alert_event_enabled IS '是否启用告警';
+
+
+--
+-- Name: COLUMN patrol_session.alert_event_suppress_time; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.alert_event_suppress_time IS '告警抑制间隔（秒）';
+
+
+--
+-- Name: COLUMN patrol_session.status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.status IS '状态[running,stopped,error]';
+
+
+--
+-- Name: COLUMN patrol_session.progress_json; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.progress_json IS '每设备巡检进度（JSON）';
+
+
+--
+-- Name: COLUMN patrol_session.total_patrols; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.total_patrols IS '累计巡检次数';
+
+
+--
+-- Name: COLUMN patrol_session.total_detections; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.patrol_session.total_detections IS '累计检测次数';
+
+
+--
+-- Name: patrol_session_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.patrol_session_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: patrol_session_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.patrol_session_id_seq OWNED BY public.patrol_session.id;
+
+
+--
 -- Name: plate_auto_enroll_task; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3255,11 +3735,11 @@ CREATE TABLE public.record_space (
     bucket_name character varying(255) NOT NULL,
     save_mode smallint NOT NULL,
     save_time integer NOT NULL,
+    save_time_custom boolean NOT NULL,
     description character varying(500),
     device_id character varying(100),
     created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    save_time_custom boolean DEFAULT false NOT NULL
+    updated_at timestamp without time zone
 );
 
 
@@ -3295,7 +3775,14 @@ COMMENT ON COLUMN public.record_space.save_mode IS '文件保存模式[0:标准�
 -- Name: COLUMN record_space.save_time; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.record_space.save_time IS '文件保存时间[0:永久保存,>=7(单位:天)]';
+COMMENT ON COLUMN public.record_space.save_time IS '文件保存时长[0:永久保存,>=1(单位:小时)]';
+
+
+--
+-- Name: COLUMN record_space.save_time_custom; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.record_space.save_time_custom IS '是否自定义保存时间（False 时跟随目录默认值）';
 
 
 --
@@ -3589,11 +4076,11 @@ CREATE TABLE public.snap_space (
     bucket_name character varying(255) NOT NULL,
     save_mode smallint NOT NULL,
     save_time integer NOT NULL,
+    save_time_custom boolean NOT NULL,
     description character varying(500),
     device_id character varying(100),
     created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    save_time_custom boolean DEFAULT false NOT NULL
+    updated_at timestamp without time zone
 );
 
 
@@ -3629,7 +4116,14 @@ COMMENT ON COLUMN public.snap_space.save_mode IS '文件保存模式[0:标准存
 -- Name: COLUMN snap_space.save_time; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.snap_space.save_time IS '文件保存时间[0:永久保存,>=7(单位:天)]';
+COMMENT ON COLUMN public.snap_space.save_time IS '文件保存时长[0:永久保存,>=1(单位:小时)]';
+
+
+--
+-- Name: COLUMN snap_space.save_time_custom; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.snap_space.save_time_custom IS '是否自定义保存时间（False 时跟随目录默认值）';
 
 
 --
@@ -4105,14 +4599,14 @@ COMMENT ON COLUMN public.space_group_save_policy.group_key IS 'NVR ID 或国标 
 -- Name: COLUMN space_group_save_policy.snap_save_time; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.space_group_save_policy.snap_save_time IS '抓拍保存天数[0:永久,>=7:天]';
+COMMENT ON COLUMN public.space_group_save_policy.snap_save_time IS '抓拍保存时长[0:永久,>=1:小时]';
 
 
 --
 -- Name: COLUMN space_group_save_policy.record_save_time; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.space_group_save_policy.record_save_time IS '录像保存天数[0:永久,>=7:天]';
+COMMENT ON COLUMN public.space_group_save_policy.record_save_time IS '录像保存时长[0:永久,>=1:小时]';
 
 
 --
@@ -4154,16 +4648,17 @@ CREATE TABLE public.stream_forward_task (
     service_process_id integer,
     service_last_heartbeat timestamp without time zone,
     service_log_path character varying(500),
+    schedule_policy character varying(20) NOT NULL,
+    prefer_gpu boolean NOT NULL,
+    target_node_id bigint,
+    node_id bigint,
+    device_deployments text,
     total_streams integer NOT NULL,
     last_process_time timestamp without time zone,
     last_success_time timestamp without time zone,
     description character varying(500),
     created_at timestamp without time zone,
-    updated_at timestamp without time zone,
-    schedule_policy character varying(20) DEFAULT 'local'::character varying NOT NULL,
-    target_node_id bigint,
-    node_id bigint,
-    device_deployments text
+    updated_at timestamp without time zone
 );
 
 
@@ -4227,7 +4722,7 @@ COMMENT ON COLUMN public.stream_forward_task.exception_reason IS '异常原因';
 -- Name: COLUMN stream_forward_task.service_server_ip; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.stream_forward_task.service_server_ip IS '服务运行服务器IP';
+COMMENT ON COLUMN public.stream_forward_task.service_server_ip IS '服务运行服务器IP（多节点时为逗号分隔）';
 
 
 --
@@ -4256,6 +4751,41 @@ COMMENT ON COLUMN public.stream_forward_task.service_last_heartbeat IS '服务�
 --
 
 COMMENT ON COLUMN public.stream_forward_task.service_log_path IS '服务日志路径';
+
+
+--
+-- Name: COLUMN stream_forward_task.schedule_policy; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.stream_forward_task.schedule_policy IS '调度策略[local:本机,auto:自动节点,node:指定节点]';
+
+
+--
+-- Name: COLUMN stream_forward_task.prefer_gpu; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.stream_forward_task.prefer_gpu IS '自动调度时是否优先 GPU 节点';
+
+
+--
+-- Name: COLUMN stream_forward_task.target_node_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.stream_forward_task.target_node_id IS '指定部署节点ID';
+
+
+--
+-- Name: COLUMN stream_forward_task.node_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.stream_forward_task.node_id IS '实际运行节点ID（单节点部署）';
+
+
+--
+-- Name: COLUMN stream_forward_task.device_deployments; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.stream_forward_task.device_deployments IS '设备级远程部署明细 JSON：[{device_ids,node_id,host,workload_id,pid}]';
 
 
 --
@@ -4496,6 +5026,13 @@ ALTER TABLE ONLY public.algorithm_model_service ALTER COLUMN id SET DEFAULT next
 
 
 --
+-- Name: algorithm_post_process_result id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_post_process_result ALTER COLUMN id SET DEFAULT nextval('public.algorithm_post_process_result_id_seq'::regclass);
+
+
+--
 -- Name: algorithm_task id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4598,6 +5135,13 @@ ALTER TABLE ONLY public.image ALTER COLUMN id SET DEFAULT nextval('public.image_
 --
 
 ALTER TABLE ONLY public.nvr ALTER COLUMN id SET DEFAULT nextval('public.nvr_id_seq'::regclass);
+
+
+--
+-- Name: patrol_session id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.patrol_session ALTER COLUMN id SET DEFAULT nextval('public.patrol_session_id_seq'::regclass);
 
 
 --
@@ -4729,10 +5273,18 @@ COPY public.algorithm_model_service (id, task_id, service_name, service_url, ser
 
 
 --
+-- Data for Name: algorithm_post_process_result; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.algorithm_post_process_result (id, task_id, task_name, task_code, task_type, device_id, device_name, frame_number, event_time, counts, events, alerts, payload, correlation_id, created_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: algorithm_task; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.algorithm_task (id, task_name, task_code, task_type, model_ids, model_names, extract_interval, rtmp_input_url, rtmp_output_url, tracking_enabled, tracking_similarity_threshold, tracking_max_age, tracking_smooth_alpha, alert_event_enabled, alert_event_suppress_time, face_detection_enabled, plate_detection_enabled, face_matching_enabled, face_library_ids, face_matching_threshold, plate_matching_enabled, plate_library_ids, matching_business_tags, alert_notification_enabled, alert_notification_config, alarm_suppress_time, last_notify_time, space_id, cron_expression, frame_skip, status, is_enabled, run_status, exception_reason, service_server_ip, service_port, service_process_id, service_last_heartbeat, service_log_path, total_frames, total_detections, total_captures, last_process_time, last_success_time, last_capture_time, description, defense_mode, defense_schedule, created_at, updated_at, face_library_id, plate_library_id, schedule_policy, target_node_id, node_id) FROM stdin;
+COPY public.algorithm_task (id, task_name, task_code, task_type, model_ids, model_names, extract_interval, rtmp_input_url, rtmp_output_url, tracking_enabled, tracking_similarity_threshold, tracking_max_age, tracking_smooth_alpha, alert_event_enabled, alert_event_suppress_time, alert_class_names, face_detection_enabled, plate_detection_enabled, face_matching_enabled, face_library_ids, face_matching_threshold, plate_matching_enabled, plate_library_ids, matching_business_tags, alert_notification_enabled, alert_notification_config, alarm_suppress_time, last_notify_time, space_id, cron_expression, frame_skip, patrol_mode, patrol_interval_sec, patrol_pool_size, focus_device_id, status, is_enabled, run_status, exception_reason, schedule_policy, prefer_gpu, target_node_id, node_id, service_server_ip, service_port, service_process_id, service_last_heartbeat, service_log_path, total_frames, total_detections, total_captures, last_process_time, last_success_time, last_capture_time, description, sam_supplement_enabled, sam_supplement_config, motion_gate_enabled, motion_gate_config, post_process_enabled, post_process_script, post_process_replicas, defense_mode, defense_schedule, created_at, updated_at, face_library_id, plate_library_id) FROM stdin;
 \.
 
 
@@ -4756,7 +5308,7 @@ COPY public.detection_region (id, task_id, region_name, region_type, points, ima
 -- Data for Name: device; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.device (id, name, source, rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream, stream, ip, port, username, password, mac, manufacturer, model, firmware_version, serial_number, hardware_id, support_move, support_zoom, nvr_id, nvr_channel, rtsp_direct, channel_online, connection_status, enable_forward, auto_snap_enabled, directory_id, cover_image_path, longitude, latitude, altitude, address, location_source, location_updated_at, created_at, updated_at, heading) FROM stdin;
+COPY public.device (id, name, source, rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream, stream, ip, port, username, password, mac, manufacturer, model, firmware_version, serial_number, hardware_id, support_move, support_zoom, nvr_id, nvr_channel, rtsp_direct, channel_online, connection_status, enable_forward, auto_snap_enabled, directory_id, cover_image_path, longitude, latitude, altitude, address, location_source, location_updated_at, heading, ptz_type, direction_type, position_type, room_type, use_type, supply_light_type, resolution, created_at, updated_at) FROM stdin;
 \.
 
 
@@ -4772,8 +5324,8 @@ COPY public.device_detection_region (id, device_id, region_name, region_type, po
 -- Data for Name: device_directory; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.device_directory (id, name, parent_id, description, sort_order, created_at, updated_at, snap_save_time, record_save_time) FROM stdin;
-1	默认分组	\N	未手动分组的摄像头（含直连与国标）	-1000	2026-06-03 04:09:36.204543	2026-06-03 04:09:36.204548	7	7
+COPY public.device_directory (id, name, parent_id, description, sort_order, snap_save_time, record_save_time, created_at, updated_at) FROM stdin;
+1	默认分组	\N	未手动分组的摄像头（含直连与国标）	-1000	1	1	2026-06-30 06:37:32.777755	2026-06-30 06:37:32.777757
 \.
 
 
@@ -4866,6 +5418,14 @@ COPY public.nvr (id, ip, port, username, password, name, model, vendor, serial_n
 
 
 --
+-- Data for Name: patrol_session; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.patrol_session (id, session_name, patrol_mode, interval_sec, pool_size, device_ids, model_ids, focus_device_id, algorithm_task_id, alert_event_enabled, alert_event_suppress_time, face_detection_enabled, plate_detection_enabled, status, exception_reason, service_server_ip, service_process_id, service_last_heartbeat, service_log_path, progress_json, total_patrols, total_detections, last_patrol_time, created_at, updated_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: plate_auto_enroll_task; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -4925,7 +5485,7 @@ COPY public.record_file (id, space_id, device_id, object_name, bucket_name, file
 -- Data for Name: record_space; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.record_space (id, space_name, space_code, bucket_name, save_mode, save_time, description, device_id, created_at, updated_at, save_time_custom) FROM stdin;
+COPY public.record_space (id, space_name, space_code, bucket_name, save_mode, save_time, save_time_custom, description, device_id, created_at, updated_at) FROM stdin;
 \.
 
 
@@ -4949,7 +5509,7 @@ COPY public.snap_image (id, space_id, device_id, object_name, bucket_name, filen
 -- Data for Name: snap_space; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.snap_space (id, space_name, space_code, bucket_name, save_mode, save_time, description, device_id, created_at, updated_at, save_time_custom) FROM stdin;
+COPY public.snap_space (id, space_name, space_code, bucket_name, save_mode, save_time, save_time_custom, description, device_id, created_at, updated_at) FROM stdin;
 \.
 
 
@@ -4981,7 +5541,7 @@ COPY public.space_group_save_policy (id, group_type, group_key, snap_save_time, 
 -- Data for Name: stream_forward_task; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.stream_forward_task (id, task_name, task_code, output_format, output_quality, output_bitrate, status, is_enabled, exception_reason, service_server_ip, service_port, service_process_id, service_last_heartbeat, service_log_path, total_streams, last_process_time, last_success_time, description, created_at, updated_at) FROM stdin;
+COPY public.stream_forward_task (id, task_name, task_code, output_format, output_quality, output_bitrate, status, is_enabled, exception_reason, service_server_ip, service_port, service_process_id, service_last_heartbeat, service_log_path, schedule_policy, prefer_gpu, target_node_id, node_id, device_deployments, total_streams, last_process_time, last_success_time, description, created_at, updated_at) FROM stdin;
 \.
 
 
@@ -5013,6 +5573,13 @@ SELECT pg_catalog.setval('public.alert_id_seq', 1, false);
 --
 
 SELECT pg_catalog.setval('public.algorithm_model_service_id_seq', 1, false);
+
+
+--
+-- Name: algorithm_post_process_result_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.algorithm_post_process_result_id_seq', 1, false);
 
 
 --
@@ -5118,6 +5685,13 @@ SELECT pg_catalog.setval('public.image_id_seq', 1, false);
 --
 
 SELECT pg_catalog.setval('public.nvr_id_seq', 1, false);
+
+
+--
+-- Name: patrol_session_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.patrol_session_id_seq', 1, false);
 
 
 --
@@ -5246,6 +5820,14 @@ ALTER TABLE ONLY public.alert
 
 ALTER TABLE ONLY public.algorithm_model_service
     ADD CONSTRAINT algorithm_model_service_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: algorithm_post_process_result algorithm_post_process_result_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.algorithm_post_process_result
+    ADD CONSTRAINT algorithm_post_process_result_pkey PRIMARY KEY (id);
 
 
 --
@@ -5438,6 +6020,14 @@ ALTER TABLE ONLY public.image
 
 ALTER TABLE ONLY public.nvr
     ADD CONSTRAINT nvr_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: patrol_session patrol_session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.patrol_session
+    ADD CONSTRAINT patrol_session_pkey PRIMARY KEY (id);
 
 
 --
@@ -5688,13 +6278,6 @@ CREATE INDEX idx_alert_correlation_id ON public.alert USING btree (correlation_i
 
 
 --
--- Name: idx_algorithm_task_node_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_algorithm_task_node_id ON public.algorithm_task USING btree (node_id);
-
-
---
 -- Name: idx_face_match_record_correlation_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5713,6 +6296,41 @@ CREATE INDEX idx_plate_match_record_correlation_id ON public.plate_match_record 
 --
 
 CREATE INDEX ix_alert_correlation_id ON public.alert USING btree (correlation_id);
+
+
+--
+-- Name: ix_algorithm_post_process_result_correlation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_algorithm_post_process_result_correlation_id ON public.algorithm_post_process_result USING btree (correlation_id);
+
+
+--
+-- Name: ix_algorithm_post_process_result_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_algorithm_post_process_result_created_at ON public.algorithm_post_process_result USING btree (created_at);
+
+
+--
+-- Name: ix_algorithm_post_process_result_device_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_algorithm_post_process_result_device_id ON public.algorithm_post_process_result USING btree (device_id);
+
+
+--
+-- Name: ix_algorithm_post_process_result_event_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_algorithm_post_process_result_event_time ON public.algorithm_post_process_result USING btree (event_time);
+
+
+--
+-- Name: ix_algorithm_post_process_result_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_algorithm_post_process_result_task_id ON public.algorithm_post_process_result USING btree (task_id);
 
 
 --
@@ -6096,5 +6714,5 @@ ALTER TABLE ONLY public.tracking_target
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 6o639h8PAabpbCQX79jD0dysv1QxFhRmh2qoHQRAf5acsy9Hijg9ZX7uQdpxCqa
+\unrestrict wXM60PrMhNIuXawq89Q2VJdEfHBE41nfQov51aS8IymDHEIt1K8QLFPwECJgoGi
 

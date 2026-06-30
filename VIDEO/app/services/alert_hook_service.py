@@ -260,8 +260,16 @@ def _is_userless_notify_method(method: str) -> bool:
     return (method or '').lower() in _USERLESS_NOTIFY_METHODS
 
 
+def _is_userless_channel(channel: dict) -> bool:
+    if not channel:
+        return False
+    if channel.get('userless'):
+        return True
+    return _is_userless_notify_method(channel.get('method', ''))
+
+
 def _has_userless_channel(channels: list) -> bool:
-    return any(_is_userless_notify_method(ch.get('method', '')) for ch in (channels or []))
+    return any(_is_userless_channel(ch) for ch in (channels or []))
 
 
 def _query_alert_notification_config(device_id: str, task_type: str = None) -> Optional[Dict]:
@@ -1049,6 +1057,13 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
     if alert_notification_config and isinstance(alert_notification_config, dict):
         channels = alert_notification_config.get('channels', [])
         logger.debug(f"从alert_notification_config获取channels: {channels}")
+
+    if channels:
+        try:
+            from app.services.algorithm_task_service import _enrich_channels_userless_flags
+            channels = _enrich_channels_userless_flags(channels)
+        except Exception as e:
+            logger.debug(f"补充 userless 渠道标记失败: {e}")
     
     # 提取通知方式和模板信息
     notify_methods = [ch.get('method') for ch in channels if ch.get('method')]

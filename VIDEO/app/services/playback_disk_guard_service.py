@@ -266,6 +266,99 @@ def _delete_oldest_entries(
     return {'deleted': deleted, 'freed_bytes': freed_bytes}
 
 
+def cleanup_device_expired_recordings(
+    device_id: str,
+    max_age_hours: Optional[int] = None,
+) -> Dict[str, int]:
+    """按文件年龄清理单设备 live 目录下过期本地录像。"""
+    if not is_cleanup_enabled():
+        return {'skipped': 1}
+
+    max_age_hours = max_age_hours if max_age_hours is not None else _env_int('PLAYBACK_MAX_AGE_HOURS', 1)
+    if max_age_hours <= 0:
+        return {'skipped': 1, 'reason': 'max_age_disabled', 'device_id': device_id}
+
+    record_dir = get_srs_record_dir()
+    device_dir = os.path.join(record_dir, 'live', str(device_id))
+    entries = iter_flv_files(device_dir)
+    if not entries:
+        return {'device_id': device_id, 'total': 0, 'deleted': 0}
+
+    cutoff = datetime.now().timestamp() - max_age_hours * 3600
+    expired = [e for e in entries if e[1] < cutoff]
+    if not expired:
+        return {'device_id': device_id, 'total': len(entries), 'deleted': 0}
+
+    result = _delete_oldest_entries(expired, len(expired), reason=f'设备{device_id}超过{max_age_hours}小时')
+    result['device_id'] = device_id
+    result['total'] = len(entries)
+    if result['deleted'] > 0:
+        logger.info(
+            '设备回放录像过期清理: device_id=%s, 超过%s小时, 删除=%s',
+            device_id, max_age_hours, result['deleted'],
+        )
+    return result
+
+
+def _list_live_device_ids() -> List[str]:
+    live_dir = os.path.join(get_srs_record_dir(), 'live')
+    if not os.path.isdir(live_dir):
+        return []
+    return [
+        name for name in os.listdir(live_dir)
+        if os.path.isdir(os.path.join(live_dir, name))
+    ]
+
+
+def _resolve_device_playback_max_age_map() -> Dict[str, int]:
+    """返回 device_id -> 保留小时数；0 表示永久（跳过年龄清理）。"""
+    try:
+        from models import RecordSpace
+        from app.services.space_save_time_service import enrich_record_space_dict, DEFAULT_SAVE_TIME
+
+        result: Dict[str, int] = {}
+        for space in RecordSpace.query.filter(RecordSpace.device_id.isnot(None)).all():
+            info = enrich_record_space_dict({'save_time': space.save_time}, space)
+            hours = info.get('effective_save_time')
+            if hours is None:
+                hours = DEFAULT_SAVE_TIME
+            result[str(space.device_id)] = int(hours)
+        return result
+    except Exception as exc:
+        logger.debug('无法解析设备录像保留策略，将使用 PLAYBACK_MAX_AGE_HOURS: %s', exc)
+        return {}
+
+
+def cleanup_all_devices_expired_recordings() -> Dict[str, object]:
+    """按各设备录像空间 effective save_time 清理本地 SRS 录像。"""
+    if not is_cleanup_enabled():
+        return {'skipped': 1}
+
+    default_hours = _env_int('PLAYBACK_MAX_AGE_HOURS', 1)
+    device_hours = _resolve_device_playback_max_age_map()
+    device_ids = _list_live_device_ids()
+
+    total_deleted = 0
+    total_freed = 0
+    device_stats: Dict[str, Dict[str, int]] = {}
+    for device_id in device_ids:
+        max_age = device_hours.get(device_id, default_hours)
+        if max_age <= 0:
+            device_stats[device_id] = {'skipped': 1, 'reason': 'permanent'}
+            continue
+        result = cleanup_device_expired_recordings(device_id, max_age_hours=max_age)
+        device_stats[device_id] = result
+        total_deleted += result.get('deleted', 0)
+        total_freed += result.get('freed_bytes', 0)
+
+    return {
+        'devices_checked': len(device_ids),
+        'deleted': total_deleted,
+        'freed_bytes': total_freed,
+        'by_device': device_stats,
+    }
+
+
 def cleanup_device_recordings(
     device_id: str,
     max_recordings: Optional[int] = None,
@@ -332,7 +425,7 @@ def cleanup_expired_files(max_age_hours: Optional[int] = None) -> Dict[str, int]
     if not is_cleanup_enabled():
         return {'skipped': 1}
 
-    max_age_hours = max_age_hours if max_age_hours is not None else _env_int('PLAYBACK_MAX_AGE_HOURS', 48)
+    max_age_hours = max_age_hours if max_age_hours is not None else _env_int('PLAYBACK_MAX_AGE_HOURS', 1)
     if max_age_hours <= 0:
         return {'skipped': 1, 'reason': 'max_age_disabled'}
 
@@ -419,6 +512,7 @@ def run_playback_disk_guard() -> Dict[str, object]:
         'disk_percent': round(disk_pct, 2),
     }
 
+    stats['devices'] = cleanup_all_devices_expired_recordings()
     stats['expired'] = cleanup_expired_files()
     stats['global'] = cleanup_global_recordings()
 
@@ -428,7 +522,7 @@ def run_playback_disk_guard() -> Dict[str, object]:
         stats['emergency'] = {'skipped': 1, 'disk_percent': disk_pct}
 
     logger.info(
-        '回放磁盘守护完成: dir=%s, 磁盘=%.1f%%, expired=%s, global=%s, emergency=%s',
-        record_dir, disk_pct, stats.get('expired'), stats.get('global'), stats.get('emergency'),
+        '回放磁盘守护完成: dir=%s, 磁盘=%.1f%%, devices=%s, expired=%s, global=%s, emergency=%s',
+        record_dir, disk_pct, stats.get('devices'), stats.get('expired'), stats.get('global'), stats.get('emergency'),
     )
     return stats

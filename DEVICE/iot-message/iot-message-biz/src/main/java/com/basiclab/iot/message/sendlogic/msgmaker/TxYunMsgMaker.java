@@ -3,6 +3,7 @@ package com.basiclab.iot.message.sendlogic.msgmaker;
 import com.basiclab.iot.message.domain.entity.TMsgSms;
 import com.basiclab.iot.message.domain.entity.TTemplateData;
 import com.basiclab.iot.message.mapper.TMsgSmsMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import org.apache.commons.compress.utils.Lists;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,9 @@ public class TxYunMsgMaker extends BaseMsgMaker implements IMsgMaker{
 
     @Autowired
     private TMsgSmsMapper tMsgSmsMapper;
+
+    @Autowired
+    private MessageRecordResolver messageRecordResolver;
 
     /**
      * 准备(界面字段等)
@@ -54,7 +58,7 @@ public class TxYunMsgMaker extends BaseMsgMaker implements IMsgMaker{
     @Override
     public String[] makeMsg(String msgId) {
 
-        TMsgSms tMsgSms = tMsgSmsMapper.selectByPrimaryKey(msgId);
+        TMsgSms tMsgSms = messageRecordResolver.resolveSms(msgId);
         List<TTemplateData> templateDataList = tMsgSms.getTemplateDataList();
         for (int i = 0; i < templateDataList.size(); i++) {
             paramList.set(i, templateDataList.get(i).getValue());

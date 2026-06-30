@@ -122,8 +122,10 @@ DISABLED_BY_DEFAULT_MIDDLEWARE_SERVICES=(
     "EMQX"
 )
 
-# 可选中间件：镜像拉取失败时不阻塞其余核心服务启动
+# 可选中间件：镜像拉取失败或启动失败时不阻塞其余核心服务启动
+# ZLMediaKit 是流媒体服务器（用于视频推拉流），启动失败不影响核心业务
 OPTIONAL_MIDDLEWARE_SERVICES=(
+    "ZLMediaKit"
 )
 
 # 中间件端口映射
@@ -224,6 +226,18 @@ check_command() {
     return 0
 }
 
+# 容器运行状态检查（供 wait_for_postgresql / post-install 等待逻辑使用）
+container_running() {
+    docker ps --filter "name=$1" --format "{{.Names}}" 2>/dev/null | grep -q "$1"
+}
+
+container_exists() {
+    docker ps -a --filter "name=$1" --format "{{.Names}}" 2>/dev/null | grep -q "$1"
+}
+
+container_status() {
+    docker inspect --format '{{.State.Status}}' "$1" 2>/dev/null || echo ""
+}
 
 # 检查 Git 是否已安装
 check_git() {
@@ -290,7 +304,11 @@ check_nvidia_container_toolkit() {
     fi
     
     # 检查是否通过包管理器安装
-    if dpkg -l | grep -q nvidia-container-toolkit 2>/dev/null || rpm -qa | grep -q nvidia-container-toolkit 2>/dev/null; then
+    if dpkg -l 2>/dev/null | grep -q nvidia-container-toolkit 2>/dev/null; then
+        print_info "nvidia-container-toolkit 已通过包管理器安装"
+        return 0
+    fi
+    if command -v rpm >/dev/null 2>&1 && rpm -qa 2>/dev/null | grep -q nvidia-container-toolkit; then
         print_info "nvidia-container-toolkit 已通过包管理器安装"
         return 0
     fi
@@ -3292,35 +3310,100 @@ check_compose_file() {
     fi
 }
 
+# PostgreSQL 是否已结束 docker-entrypoint 首次初始化（空数据目录时会先跑 initdb.d 再重启）
+_postgresql_entrypoint_init_done() {
+    local logs
+    logs=$(docker logs postgres-server 2>&1 || true)
+    if echo "$logs" | grep -q "Skipping initialization"; then
+        return 0
+    fi
+    if echo "$logs" | grep -q "PostgreSQL init process complete"; then
+        return 0
+    fi
+    return 1
+}
+
+# 确认 PostgreSQL 可执行业务 SQL（非恢复中、非启动中）
+_postgresql_accepts_queries() {
+    docker exec postgres-server pg_isready -U postgres > /dev/null 2>&1 \
+        || return 1
+    docker exec postgres-server psql -U postgres -d postgres -tAc "SELECT 1" > /dev/null 2>&1 \
+        || return 1
+    # WAL 恢复或未达一致状态时 pg_isready 可能已通过，但查询会失败
+    local _in_recovery
+    _in_recovery=$(docker exec postgres-server psql -U postgres -d postgres -tAc "SELECT pg_is_in_recovery();" 2>/dev/null || echo "t")
+    [ "$_in_recovery" = "f" ]
+}
+
 # 等待 PostgreSQL 服务就绪
 wait_for_postgresql() {
-    local max_attempts=60
+    # 首次安装需导入约 20MB SQL，entrypoint init 可能超过 2 分钟
+    local max_attempts=180
     local attempt=0
+    local stable_checks=0
+    local required_stable=3
     
     print_info "等待 PostgreSQL 服务就绪..."
+
+    # 容器不存在 → 快速失败，不浪费轮询
+    if ! docker ps -a --filter "name=^postgres-server$" --format "{{.Names}}" | grep -q "^postgres-server$"; then
+        print_error "PostgreSQL 容器不存在（postgres-server），无法等待"
+        return 1
+    fi
+
     while [ $attempt -lt $max_attempts ]; do
         # 检查容器是否在运行
         if ! docker ps --filter "name=postgres-server" --format "{{.Names}}" | grep -q "postgres-server"; then
+            stable_checks=0
             if [ $attempt -eq 0 ]; then
                 print_warning "PostgreSQL 容器未运行，等待启动..."
+            fi
+            # 容器不存在（已退出）且重试超过 10 次 → 失败
+            if [ $attempt -gt 10 ]; then
+                local _pg_status; _pg_status=$(container_status postgres-server 2>/dev/null || echo "missing")
+                if [ "$_pg_status" = "exited" ] || [ "$_pg_status" = "dead" ]; then
+                    print_error "PostgreSQL 容器已退出/死亡（状态: ${_pg_status}），不会自动恢复"
+                    print_info "查看日志: docker logs postgres-server --tail 50"
+                    return 1
+                fi
+            fi
+            attempt=$((attempt + 1))
+            sleep 2
+            continue
+        fi
+
+        # 首次启动：entrypoint 仍在执行 initdb.d（含 init-databases.sh）时不可建库
+        if ! _postgresql_entrypoint_init_done; then
+            stable_checks=0
+            if [ $((attempt % 5)) -eq 0 ]; then
+                print_info "PostgreSQL 首次初始化中（entrypoint 正在执行 initdb.d 脚本），继续等待..."
             fi
             attempt=$((attempt + 1))
             sleep 2
             continue
         fi
         
-        # 检查服务是否就绪
-        if docker exec postgres-server pg_isready -U postgres > /dev/null 2>&1; then
-            # 额外等待一下，确保数据库完全初始化
-            sleep 2
-            print_success "PostgreSQL 服务已就绪"
-            return 0
+        # pg_isready 仅检查 socket 是否监听；需实际查询 + 非 recovery + 连续稳定
+        if _postgresql_accepts_queries; then
+            stable_checks=$((stable_checks + 1))
+            if [ $stable_checks -ge $required_stable ]; then
+                print_success "PostgreSQL 服务已就绪"
+                return 0
+            fi
+        else
+            if [ $stable_checks -gt 0 ]; then
+                print_info "PostgreSQL 连接不稳定（可能正在重启或 WAL 恢复），继续等待..."
+            elif docker exec postgres-server pg_isready -U postgres > /dev/null 2>&1; then
+                print_info "PostgreSQL 正在崩溃恢复或启动中（pg_isready 已通过但查询尚未可用），继续等待..."
+            fi
+            stable_checks=0
         fi
         attempt=$((attempt + 1))
         sleep 2
     done
     
-    print_error "PostgreSQL 服务未就绪"
+    print_error "PostgreSQL 服务未就绪（已等待 $((max_attempts * 2))s）"
+    print_info "查看日志: docker logs postgres-server --tail 80"
     return 1
 }
 
@@ -4273,24 +4356,35 @@ check_database_initialized() {
     fi
 }
 
-# 创建数据库
+# 创建数据库（带重试：entrypoint 重启或 WAL 恢复间隙可能短暂不可连）
 create_database() {
     local db_name=$1
+    local max_attempts=15
+    local attempt=0
     
     print_info "创建数据库: $db_name"
     
-    if docker exec postgres-server psql -U postgres -lqt | cut -d \| -f 1 | grep -qw "$db_name"; then
-        print_info "数据库 $db_name 已存在，跳过创建"
-        return 0
-    fi
+    while [ $attempt -lt $max_attempts ]; do
+        if docker exec postgres-server psql -U postgres -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$db_name"; then
+            print_info "数据库 $db_name 已存在，跳过创建"
+            return 0
+        fi
+        
+        if docker exec postgres-server psql -U postgres -c "CREATE DATABASE \"$db_name\";" > /dev/null 2>&1; then
+            print_success "数据库 $db_name 创建成功"
+            return 0
+        fi
+        
+        attempt=$((attempt + 1))
+        if [ $attempt -lt $max_attempts ]; then
+            print_info "数据库 $db_name 创建失败，等待 PostgreSQL 稳定后重试 ($attempt/$max_attempts)..."
+            sleep 3
+        fi
+    done
     
-    if docker exec postgres-server psql -U postgres -c "CREATE DATABASE \"$db_name\";" > /dev/null 2>&1; then
-        print_success "数据库 $db_name 创建成功"
-        return 0
-    else
-        print_error "数据库 $db_name 创建失败"
-        return 1
-    fi
+    print_error "数据库 $db_name 创建失败"
+    docker exec postgres-server psql -U postgres -c "CREATE DATABASE \"$db_name\";" 2>&1 | head -3 || true
+    return 1
 }
 
 # 执行 SQL 初始化脚本
@@ -4414,7 +4508,7 @@ init_databases() {
     # 全部通过则零人工介入。仅当验证失败（已有 admin 但密码与预期不一致）才回退人工确认。
     echo ""
     if middleware_service_enabled Nacos && wait_for_nacos; then
-        ensure_nacos_admin_user
+        ensure_nacos_admin_user || print_warning "Nacos 账号初始化未完成，继续尝试验证..."
         if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
             --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
             | grep -q '"accessToken"'; then
@@ -4473,7 +4567,24 @@ _get_service_image_from_compose() {
     '
 }
 
+# 判断 compose up 输出是否包含 OCI /dev/null 错误（rootless runc 间歇性失败）
+_is_dev_null_oci_error() {
+    grep -q "error reopening /dev/null inside container" "$1" 2>/dev/null
+}
+
+# 将服务名格式化为中文顿号分隔的可读列表
+_format_service_list() {
+    local -a services=("$@")
+    local result="" svc
+    for svc in "${services[@]}"; do
+        [ -n "$result" ] && result+="、"
+        result+="$svc"
+    done
+    echo "$result"
+}
+
 # 启动中间件容器；可选服务镜像缺失时自动跳过，避免阻塞核心中间件
+# 遇到 rootless Docker 的 /dev/null OCI 错误时自动重试（最多 3 次，退避 3/6/12s）
 compose_up_middleware() {
     local -a skip_services=("$@")
     local -a up_services=()
@@ -4499,11 +4610,139 @@ compose_up_middleware() {
     fi
 
     if [ ${#skip_services[@]} -gt 0 ]; then
-        print_warning "以下服务已跳过: ${skip_services[*]}"
+        print_warning "以下中间件因镜像缺失等原因暂不启动：$(_format_service_list "${skip_services[@]}")"
     fi
-    print_info "启动服务 (${EASYAIOT_DEPLOY_PROFILE:-full}): ${up_services[*]}"
-    mw_compose up -d "${up_services[@]}" 2>&1 | tee -a "$LOG_FILE"
-    return "${PIPESTATUS[0]}"
+
+    # ★ 自动检测并设置 NACOS_PLATFORM，避免 ARM/AMD64 跨架构问题
+    if [ -z "${NACOS_PLATFORM:-}" ]; then
+        local _host_arch
+        _host_arch=$(uname -m)
+        case "$_host_arch" in
+            x86_64)  export NACOS_PLATFORM="linux/amd64" ;;
+            aarch64) export NACOS_PLATFORM="linux/arm64" ;;
+        esac
+    fi
+
+    local _svc_count=${#up_services[@]} _svc_list
+    _svc_list=$(_format_service_list "${up_services[@]}")
+    print_info "正在启动 ${_svc_count} 个中间件容器：${_svc_list}"
+    local _up_log _up_rc _retry _delay
+    _up_log=$(mktemp)
+    mw_compose up -d "${up_services[@]}" > "$_up_log" 2>&1
+    _up_rc=$?
+    cat "$_up_log" >> "$LOG_FILE"
+
+    # rootless runc /dev/null 间歇性错误 → 退避重试（等待 Docker daemon 状态恢复）
+    for _retry in 1 2 3; do
+        [ "$_up_rc" -eq 0 ] && break
+        _is_dev_null_oci_error "$_up_log" || break
+        case $_retry in
+            1) _delay=3 ;;
+            2) _delay=6 ;;
+            3) _delay=12 ;;
+        esac
+        print_warning "检测到间歇性 OCI /dev/null 错误，${_delay}s 后重试（第 ${_retry}/3 次）..."
+        sleep "$_delay"
+        : > "$_up_log"
+        mw_compose up -d "${up_services[@]}" > "$_up_log" 2>&1
+        _up_rc=$?
+        cat "$_up_log" >> "$LOG_FILE"
+    done
+    rm -f "$_up_log"
+
+    # compose up 返回成功（exit 0）但部分容器可能处于 Created 状态（OCI 启动失败）。
+    # 这些容器存在于 Docker 但未运行，后续依赖它们的服务将无法解析 DNS 主机名。
+    # 如 Redis 处于 Created → iot-system 解析 "Redis" 失败 → UnknownHostException → unhealthy。
+    _repair_created_middleware_containers
+    local _repair_rc=$?
+
+    # 如果修复成功（没有 Created 容器或已全部修复），覆盖原始错误码
+    if [ $_repair_rc -eq 0 ] && [ "$_up_rc" -ne 0 ]; then
+        print_success "Created 容器已修复，中间件启动成功"
+        _up_rc=0
+    fi
+
+    return "$_up_rc"
+}
+
+# 检测并修复 Created 状态的中间件容器（compose up 成功但 OCI 启动失败）。
+# 关键容器（Redis/Nacos/PostgresSQL/Kafka 等）若 Created 会导致业务服务 DNS 解析失败。
+# 返回 0=无 Created 容器或已全部修复；1=仍有 Created 容器未修复。
+_repair_created_middleware_containers() {
+    local _created _n _status _svc _rc=0 _up_log _up_rc _retry _delay
+    _created=$(docker ps -a --filter "status=created" --format '{{.Names}}' 2>/dev/null || true)
+    [ -z "$_created" ] && return 0
+
+    for _n in $_created; do
+        _status=$(docker inspect --format '{{.State.Status}}' "$_n" 2>/dev/null || echo "")
+        [ "$_status" = "created" ] || continue
+        print_warning "中间件容器 $_n 处于 Created 状态（OCI 启动失败，如 /dev/null 错误），尝试修复..."
+
+        # 策略1：直接 docker start（简单重试，/dev/null 问题可能已自愈）
+        if docker start "$_n" >/dev/null 2>&1; then
+            print_success "容器 $_n 已重新启动"
+            continue
+        fi
+
+        # 策略2：docker rm + 单服务 compose up（重建 OCI 上下文）
+        # 对 compose up 也加入 OCI /dev/null 错误重试，因为重建时也可能遇到同样问题
+        print_warning "docker start $_n 失败，删除后通过 compose 重建..."
+        _svc=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$_n" 2>/dev/null || echo "")
+        docker rm -f "$_n" >/dev/null 2>&1 || true
+        sleep 1
+        if [ -n "$_svc" ]; then
+            _up_log=$(mktemp)
+            mw_compose up -d "$_svc" > "$_up_log" 2>&1
+            _up_rc=$?
+            cat "$_up_log" >> "$LOG_FILE"
+
+            # 对 OCI /dev/null 错误退避重试（与 compose_up_middleware 一致）
+            for _retry in 1 2 3; do
+                [ "$_up_rc" -eq 0 ] && break
+                _is_dev_null_oci_error "$_up_log" || break
+                case $_retry in
+                    1) _delay=3 ;;
+                    2) _delay=6 ;;
+                    3) _delay=12 ;;
+                esac
+                print_warning "修复 $_n ($_svc) 时检测到 OCI /dev/null 错误，${_delay}s 后重试..."
+                sleep "$_delay"
+                : > "$_up_log"
+                mw_compose up -d "$_svc" > "$_up_log" 2>&1
+                _up_rc=$?
+                cat "$_up_log" >> "$LOG_FILE"
+            done
+            rm -f "$_up_log"
+
+            if [ $_up_rc -eq 0 ]; then
+                # 等待容器进入 running 状态（OCI 启动需要一点时间）
+                local _wait=0
+                while [ $_wait -lt 10 ]; do
+                    if docker ps --filter "name=$_n" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "$_n"; then
+                        print_success "容器 $_n ($_svc) 已通过 compose 重建并运行"
+                        continue 2  # 跳出内层 if 和外层 for 的本次循环
+                    fi
+                    sleep 1
+                    _wait=$((_wait + 1))
+                done
+                # 超时：容器可能又进入了 Created 状态
+                local _new_status
+                _new_status=$(docker inspect --format '{{.State.Status}}' "$_n" 2>/dev/null || echo "")
+                if [ "$_new_status" = "created" ]; then
+                    print_warning "容器 $_n ($_svc) 重建后仍处于 Created 状态，OCI 启动持续失败"
+                else
+                    print_warning "容器 $_n ($_svc) 重建后状态: $_new_status（非 running）"
+                fi
+            else
+                print_warning "mw_compose up -d $_svc 返回错误码 $_up_rc"
+                cat "$_up_log" >> "$LOG_FILE" 2>/dev/null || true
+            fi
+        fi
+
+        print_error "容器 $_n 修复失败，后续业务服务可能无法解析其主机名"
+        _rc=1
+    done
+    return $_rc
 }
 
 # 收集默认不启动 / 镜像不可用的服务列表（供 compose_up_middleware 跳过）
@@ -4582,13 +4821,29 @@ check_and_pull_images() {
     done
     missing_images=${#missing_list[@]}
 
+    # ★ 检测本地架构，用于多架构镜像（如 nacos）的显式 platform 拉取
+    local _host_arch
+    _host_arch=$(uname -m)
+    case "$_host_arch" in
+        x86_64)  _host_arch="linux/amd64" ;;
+        aarch64) _host_arch="linux/arm64" ;;
+        armv7l)  _host_arch="linux/arm/v7" ;;
+        *)       _host_arch="" ;;  # 未知架构，不传 --platform，由 Docker 自动选择
+    esac
+
     # 只拉缺失的镜像：原先缺 1 个就全量 compose pull，会为已存在的十几个镜像逐一联源比对，
     # 慢且被镜像源网络质量绑架（源端一个 blob 超时即整体失败）
     if [ $missing_images -gt 0 ]; then
         print_info "已存在 $existing_images 个镜像；缺失 $missing_images 个，仅拉取缺失镜像: ${missing_list[*]}"
         local _pull_img _pull_fail=0
         for _pull_img in "${missing_list[@]}"; do
-            docker pull "$_pull_img" 2>&1 | tee -a "$LOG_FILE"
+            # ★ nacos 镜像显式指定 platform，避免在 ARM 主机上拉取 amd64 版本导致 QEMU 模拟性能极差
+            local _pull_args=()
+            if [ -n "$_host_arch" ] && echo "$_pull_img" | grep -q "nacos/nacos-server"; then
+                print_info "检测到 nacos 镜像，使用平台架构: ${_host_arch}"
+                _pull_args=(--platform "$_host_arch")
+            fi
+            docker pull "${_pull_args[@]}" "$_pull_img" 2>&1 | tee -a "$LOG_FILE"
             if [ "${PIPESTATUS[0]}" -ne 0 ]; then
                 _pull_fail=1
             fi
@@ -5418,7 +5673,7 @@ cleanup_stale_containers() {
     fi
 
     cleanup_renamed_containers
-    fix_nacos_derby_corruption
+    fix_nacos_startup_failure
 }
 
 # 清理 compose recreate 被中断后遗留的「改名孤儿容器」（形如 <12位hex>_postgres-server）。
@@ -5433,49 +5688,164 @@ cleanup_renamed_containers() {
     echo "$names" | xargs -r docker rm -f >/dev/null 2>&1 || true
 }
 
-# Nacos 单机内嵌 Derby 库「半成品损坏」自愈：首次建库中途被打断 → 缺 service.properties，
-# 容器 restart:always 死循环（重启的是同一容器，坏数据在可写层里永远修不好）。
-# nacos 的 /home/nacos/data 未挂载卷 → 强制重建容器即拿到干净可写层，自动恢复。
-# 仅当容器当前非 healthy 且日志命中特征串才介入；健康时开销 ≈ 一次 docker inspect（毫秒级）。
-fix_nacos_derby_corruption() {
-    local health
-    health=$(docker inspect -f '{{.State.Health.Status}}' nacos-server 2>/dev/null) || return 0
-    [ "$health" = "healthy" ] && return 0
-    docker logs --tail 200 nacos-server 2>&1 | grep -q "does not contain the expected 'service.properties'" || return 0
-    print_warning "检测到 Nacos 内嵌 Derby 半成品损坏（初始化曾被中断），删除容器及其匿名卷后重建..."
-    # 必须 docker rm -v 连匿名卷一起删：镜像若对 /home/nacos/data 声明了 VOLUME（匿名卷），
-    # compose --force-recreate 默认会把旧容器的匿名卷原样带给新容器（除非 --renew-anon-volumes），
-    # 坏的 derby-data 随卷复活——实测单纯重建容器修不掉，删容器+匿名卷才彻底。
+# Nacos 官方镜像（不用 slim：cgroup v2 宿主机上 slim 内嵌 Derby 会 NPE 崩溃）
+NACOS_IMAGE="${NACOS_IMAGE:-nacos/nacos-server:v2.5.1}"
+
+# 删除 nacos-server 及其匿名卷后按 compose 重建（Derby 损坏 / cgroup 崩溃等场景共用）
+_recreate_nacos_container() {
+    local reason="$1"
+    print_warning "$reason"
+    print_info "删除 nacos-server 容器及匿名数据卷并重建（镜像: ${NACOS_IMAGE}）..."
     docker rm -f -v nacos-server >/dev/null 2>&1 || true
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d Nacos 2>&1 | tee -a "$LOG_FILE" || true
+    local _host_arch _nacos_platform=""
+    _host_arch=$(uname -m)
+    case "$_host_arch" in
+        x86_64)  _nacos_platform="linux/amd64" ;;
+        aarch64) _nacos_platform="linux/arm64" ;;
+    esac
+    if [ -n "$_nacos_platform" ]; then
+        print_info "拉取 Nacos 镜像 (${NACOS_IMAGE}, ${_nacos_platform})..."
+        docker pull --platform "$_nacos_platform" "$NACOS_IMAGE" 2>&1 | tee -a "$LOG_FILE" || true
+        export NACOS_PLATFORM="$_nacos_platform"
+    fi
+    mw_compose up -d Nacos 2>&1 | tee -a "$LOG_FILE" || true
+    unset NACOS_PLATFORM
+}
+
+# Nacos 启动失败自愈：Derby 半成品损坏、cgroup v2 + slim 镜像崩溃、容器 Restarting 等
+fix_nacos_startup_failure() {
+    middleware_service_enabled Nacos || return 0
+    docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^nacos-server$' || return 0
+
+    local status health
+    status=$(container_status nacos-server)
+    health=$(docker inspect -f '{{.State.Health.Status}}' nacos-server 2>/dev/null) || health=""
+
+    if [ "$status" = "running" ]; then
+        if curl -s -m 2 "http://localhost:8848/nacos/actuator/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        [ "$health" = "healthy" ] && return 0
+    fi
+
+    local logs reason=""
+    logs=$(docker logs --tail 200 nacos-server 2>&1 || true)
+
+    if echo "$logs" | grep -q "does not contain the expected 'service.properties'"; then
+        reason="检测到 Nacos 内嵌 Derby 半成品损坏（初始化曾被中断）"
+    elif echo "$logs" | grep -qE "CgroupV2Subsystem\.getInstance|cgroupv2\.CgroupV2Subsystem"; then
+        reason="检测到 Nacos Derby 在 cgroup v2 宿主机启动失败（已切换为标准版镜像 ${NACOS_IMAGE}）"
+    elif echo "$status" | grep -qiE "restarting|exited|created"; then
+        reason="检测到 Nacos 容器状态异常: ${status}"
+    else
+        return 0
+    fi
+
+    _recreate_nacos_container "${reason}，正在自愈..."
+}
+
+fix_nacos_derby_corruption() {
+    fix_nacos_startup_failure
 }
 
 # Nacos 2.2.1+ 开启鉴权后不再内置默认账号：全新数据卷（首次安装或 Derby 修复重建后）里
 # 没有任何用户，业务服务登录会报 "User nacos not found"。
-# /v1/auth/users/admin 仅在尚无 admin 用户时可匿名调用；已有 admin 时返回错误且不做修改（幂等安全）。
+# Nacos 2.2+ 在 auth 开启后 /v1/auth/users/admin 可能不支持匿名调用，需用默认 nacos/nacos 登录后创建。
 # 密码必须与各服务 bootstrap-*.yaml 的 spring.cloud.nacos.*.password 一致。
 NACOS_INIT_PASSWORD="${NACOS_INIT_PASSWORD:-basiclab@iot78475418754}"
+NACOS_DEFAULT_PASSWORD="${NACOS_DEFAULT_PASSWORD:-nacos}"
 ensure_nacos_admin_user() {
     docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nacos-server$' || return 0
-    # 等待 nacos 就绪（新建容器约 30-60s；已就绪时首轮即通过，常态开销≈一次curl）
-    local i resp
-    for i in $(seq 1 45); do
-        curl -s -m 2 "http://localhost:8848/nacos/actuator/health" >/dev/null 2>&1 && break
-        sleep 2
-    done
+
+    print_info "初始化 Nacos 管理员账号与 dev 命名空间（用户 nacos，密码与各服务 bootstrap 一致）..."
+
+    if ! wait_for_nacos; then
+        print_error "Nacos 服务未就绪，无法自动初始化账号"
+        print_info "排查: docker logs nacos-server --tail 80"
+        return 1
+    fi
+
+    local resp token
+
+    # 先用目标密码尝试登录；成功说明 admin 已正确初始化
+    if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+        --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+        | grep -q '"accessToken"'; then
+        # admin 已存在且密码正确，确保 dev 命名空间存在
+        token=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+            --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+            | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+        if [ -n "$token" ]; then
+            curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/console/namespaces?accessToken=${token}" \
+                -d "customNamespaceId=dev&namespaceName=dev&namespaceDesc=dev" >/dev/null 2>&1 || true
+        fi
+        return 0
+    fi
+
+    # 目标密码登录失败，尝试旧版匿名 /v1/auth/users/admin 接口（兼容 Nacos <2.2）
     resp=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/users/admin" \
         --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null || true)
-    echo "$resp" | grep -q '"username"' || return 0   # 已有 admin（常态）→ 静默返回
-    print_success "Nacos admin 用户已初始化（用户 nacos，密码与服务 bootstrap 一致）"
-    # 业务服务的注册/配置均指向 namespace dev（ID 必须为 dev），新库须一并补建
-    local token
+    if echo "$resp" | grep -q '"username"'; then
+        print_success "Nacos admin 用户已初始化（匿名接口，用户 nacos，密码与服务 bootstrap 一致）"
+        token=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+            --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+            | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+        [ -n "$token" ] && curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/console/namespaces?accessToken=${token}" \
+            -d "customNamespaceId=dev&namespaceName=dev&namespaceDesc=dev" >/dev/null 2>&1 || true
+        print_info "Nacos 命名空间 dev 已创建"
+        return 0
+    fi
+
+    # 匿名接口也失败，尝试用默认密码 nacos/nacos 登录（Nacos 2.5 首次启动默认账号）
     token=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
-        --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+        --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_DEFAULT_PASSWORD}" 2>/dev/null \
         | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
-    [ -z "$token" ] && return 0
-    curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/console/namespaces?accessToken=${token}" \
-        -d "customNamespaceId=dev&namespaceName=dev&namespaceDesc=dev" >/dev/null 2>&1 || true
-    print_info "Nacos 命名空间 dev 已创建"
+    if [ -n "$token" ]; then
+        print_info "使用 Nacos 默认密码登录成功，正在修改密码..."
+        # 修改密码为目标密码
+        local change_resp
+        change_resp=$(curl -s -m 5 -X PUT "http://localhost:8848/nacos/v1/auth/users?accessToken=${token}" \
+            --data-urlencode "username=nacos" \
+            --data-urlencode "newPassword=${NACOS_INIT_PASSWORD}" 2>/dev/null || true)
+        if echo "$change_resp" | grep -qE '"code":200|"ok":true'; then
+            print_success "Nacos admin 密码已更新为目标密码"
+            # 确保 dev 命名空间
+            curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/console/namespaces?accessToken=${token}" \
+                -d "customNamespaceId=dev&namespaceName=dev&namespaceDesc=dev" >/dev/null 2>&1 || true
+            print_info "Nacos 命名空间 dev 已创建"
+            return 0
+        fi
+        print_warning "Nacos 密码修改失败（PUT 接口返回: ${change_resp}），尝试直接创建用户..."
+    fi
+
+    # 最后兜底：用默认密码登录后直接 POST 创建用户（覆盖已存在的）
+    if [ -z "$token" ]; then
+        token=$(curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+            --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_DEFAULT_PASSWORD}" 2>/dev/null \
+            | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+    fi
+    if [ -n "$token" ]; then
+        curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/users?accessToken=${token}" \
+            --data-urlencode "username=nacos" \
+            --data-urlencode "password=${NACOS_INIT_PASSWORD}" >/dev/null 2>&1 || true
+        # 再验证
+        if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
+            --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
+            | grep -q '"accessToken"'; then
+            print_success "Nacos admin 用户已创建并验证通过（用户 nacos，密码与服务 bootstrap 一致）"
+            curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/console/namespaces?accessToken=${token}" \
+                -d "customNamespaceId=dev&namespaceName=dev&namespaceDesc=dev" >/dev/null 2>&1 || true
+            print_info "Nacos 命名空间 dev 已创建"
+            return 0
+        fi
+    fi
+
+    print_error "Nacos admin 用户自动初始化失败，请手动配置"
+    print_info "1. 登录 http://localhost:8848/nacos（默认账号 nacos/nacos）"
+    print_info "2. 将 nacos 用户密码改为: ${NACOS_INIT_PASSWORD}"
+    print_info "3. 创建命名空间: namespaceId=dev, namespaceName=dev"
+    print_info "4. 配置完成后可重新运行: ./install_middleware_linux.sh install"
+    return 1
 }
 
 # up 失败时自动展示 unhealthy 容器：健康检查最后输出 + 容器日志尾部，免手动逐个排查。
@@ -5542,23 +5912,20 @@ install_middleware() {
     # 检查端口占用
     check_and_clean_ports
     
-    print_section "启动 Milvus 等中间件容器"
-    print_info "启动所有中间件服务..."
+    print_section "启动中间件容器"
     # 取 PIPESTATUS[0] 判定（tee 恒 0，`if 管道` 永远走成功分支，失败会被掩盖）
     local -a _skip_optional=()
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
-    compose_up_middleware "${_skip_optional[@]}"
-    _up_rc=$?
-    if [ "${_up_rc}" -eq 0 ]; then
+    # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
+    if compose_up_middleware "${_skip_optional[@]}"; then
+        _up_rc=0
         print_success "容器启动命令执行完成"
     else
+        _up_rc=$?
         print_error "容器启动过程中出现错误（compose 退出码 ${_up_rc}），unhealthy 容器自动诊断："
         show_unhealthy_containers
     fi
 
-    # Nacos 全新数据卷需初始化 admin 账号与 dev 命名空间（幂等，已初始化则瞬时跳过）
-    ensure_nacos_admin_user
-    
     # 如果 SRS 容器已经在运行，重启它以重新加载配置文件
     if docker ps --filter "name=srs-server" --format "{{.Names}}" | grep -q "srs-server"; then
         print_info "检测到 SRS 容器正在运行，重启以重新加载配置文件..."
@@ -5590,8 +5957,12 @@ install_middleware() {
         if [ -n "$container_name" ]; then
             local container_status=$(docker ps -a --filter "name=^${container_name}$" --format "{{.Status}}" 2>/dev/null | head -1 || echo "")
             if [ -n "$container_status" ]; then
-                if echo "$container_status" | grep -qE "Exited|Dead|Restarting"; then
-                    print_warning "$service ($container_name) 容器状态异常: $container_status"
+                if echo "$container_status" | grep -qE "Exited|Dead|Restarting|Created"; then
+                    if echo "$container_status" | grep -q "Created"; then
+                        print_warning "$service ($container_name) 容器处于 Created 状态（OCI 启动失败，如 /dev/null 错误）"
+                    else
+                        print_warning "$service ($container_name) 容器状态异常: $container_status"
+                    fi
                     failed_containers+=("$service")
                 fi
             fi
@@ -5611,6 +5982,21 @@ install_middleware() {
             esac
         done
         echo ""
+        # 二次修复：status 检查后可能有容器进入 Created 状态（compose_up 之后的延迟启动）
+        _repair_created_middleware_containers || true
+    fi
+
+    # Nacos 启动失败自愈 + 账号初始化（非致命：不中断后续 PostgreSQL/MinIO 等步骤）
+    if middleware_service_enabled Nacos; then
+        print_section "配置 Nacos 注册中心"
+        fix_nacos_startup_failure
+        if wait_for_nacos; then
+            ensure_nacos_admin_user || print_warning "Nacos 账号自动初始化未完成，init_databases 阶段将再次尝试"
+        else
+            print_error "Nacos 服务未就绪，业务服务将无法注册到配置中心"
+            print_info "排查命令: docker logs nacos-server --tail 80"
+            docker logs --tail 30 nacos-server 2>&1 | tee -a "$LOG_FILE" || true
+        fi
     fi
 
     # 等待 Milvus 就绪并输出部署日志
@@ -5626,35 +6012,56 @@ install_middleware() {
 
     print_success "中间件安装完成"
     echo ""
+
+    # 以下均为 post-install 初始配置：任意失败不中断整体流程（set -e 下 return 1 会杀死脚本）。
+    # 若此时 PostgreSQL/MinIO 仍未就绪，由外层 install_linux.sh 的 wait_for_base_services + _repair_created_containers 兜底修复后，
+    # 下次重启时会通过 restart/start 流程再次执行这些初始化。
+
+    # ★ 先等待关键基础服务就绪（PostgreSQL），再执行需要数据库连通的 post-install 步骤
+    #    避免 "容器未运行" 警告淹没真正的启动失败信号
     echo ""
-    # 不再固定 sleep 10：下方 ensure_postgresql_password 内部自带 wait_for_postgresql 精确等待
-    # 确保 PostgreSQL 密码正确（确保重启后密码正确）
+    if container_exists postgres-server; then
+        if container_running postgres-server; then
+            wait_for_postgresql || print_warning "PostgreSQL 未在预期时间内就绪，部分配置可能跳过"
+        else
+            local _pg_status; _pg_status=$(container_status postgres-server)
+            print_warning "PostgreSQL 容器存在但未运行（状态: ${_pg_status}），尝试修复..."
+            _repair_created_middleware_containers || true
+            # 修复后等待 PostgreSQL 就绪（最多 30s，给它启动时间）
+            if container_running postgres-server; then
+                wait_for_postgresql || print_warning "PostgreSQL 修复后仍未就绪"
+            else
+                print_error "PostgreSQL 容器无法启动，请检查: docker logs postgres-server --tail 50"
+                print_info "常见原因：数据目录权限、端口冲突、磁盘空间不足"
+            fi
+        fi
+    else
+        print_error "PostgreSQL 容器不存在！请检查 docker-compose.yml 及 compose up 日志"
+        print_info "手动检查: docker ps -a | grep postgres; docker compose -f ${COMPOSE_FILE} logs postgres"
+    fi
+
     echo ""
-    ensure_postgresql_password
-    
-    # 配置 PostgreSQL pg_hba.conf 允许从宿主机连接
+    ensure_postgresql_password     || print_warning "PostgreSQL 密码检查跳过（容器未就绪）"
+
     echo ""
-    configure_postgresql_pg_hba
-    
-    # 配置 PostgreSQL max_connections（最大连接数）
+    configure_postgresql_pg_hba    || print_warning "pg_hba.conf 配置跳过（容器未就绪）"
+
     echo ""
-    configure_postgresql_max_connections
-    
-    # 初始化数据库
+    configure_postgresql_max_connections || print_warning "max_connections 配置跳过（容器未就绪）"
+
     echo ""
-    init_databases
-    
+    init_databases                 || print_warning "数据库初始化跳过（容器未就绪）"
+
     # 初始化 TDengine（仅启用 TDengine 中间件时）
     echo ""
     if [ "${EASYAIOT_ENABLE_TDENGINE:-0}" = "1" ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'tdengine-server'; then
-        init_tdengine
+        init_tdengine || true
     else
         print_info "TDengine 未启用，跳过 TDengine 初始化（需要时: EASYAIOT_ENABLE_TDENGINE=1）"
     fi
-    
-    # 初始化 MinIO
+
     echo ""
-    init_minio
+    init_minio || print_warning "MinIO 初始化跳过"
 
     # 初始化/扩容 IoT Kafka 主题（64 分区：告警、人脸匹配、车牌匹配）
     echo ""
@@ -5697,13 +6104,21 @@ start_middleware() {
     # 检查端口占用
     check_and_clean_ports
     
-    print_info "启动所有中间件服务..."
     local -a _skip_optional=()
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
-    compose_up_middleware "${_skip_optional[@]}"
-    _up_rc=${PIPESTATUS[0]}
-    ensure_nacos_admin_user
-    
+    # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
+    if compose_up_middleware "${_skip_optional[@]}"; then
+        _up_rc=0
+    else
+        _up_rc=$?
+    fi
+    if middleware_service_enabled Nacos; then
+        print_section "配置 Nacos 注册中心"
+        fix_nacos_startup_failure
+        wait_for_nacos || print_warning "Nacos 未就绪"
+        ensure_nacos_admin_user || print_warning "Nacos 账号自动初始化未完成"
+    fi
+
     if [ "${_up_rc:-0}" -eq 0 ]; then
         print_success "所有中间件启动完成"
     else
@@ -5719,18 +6134,37 @@ start_middleware() {
     else
         print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过 Milvus"
     fi
+
+    # ★ 等待 PostgreSQL 就绪再执行需要数据库连通的 post-install 步骤
+    echo ""
+    if container_exists postgres-server; then
+        if container_running postgres-server; then
+            wait_for_postgresql || print_warning "PostgreSQL 未在预期时间内就绪，部分配置可能跳过"
+        else
+            local _pg_status; _pg_status=$(container_status postgres-server)
+            print_warning "PostgreSQL 容器存在但未运行（状态: ${_pg_status}），尝试修复..."
+            _repair_created_middleware_containers || true
+            if container_running postgres-server; then
+                wait_for_postgresql || print_warning "PostgreSQL 修复后仍未就绪"
+            else
+                print_error "PostgreSQL 容器无法启动，请检查: docker logs postgres-server --tail 50"
+            fi
+        fi
+    else
+        print_error "PostgreSQL 容器不存在！请检查 docker-compose.yml 及 compose up 日志"
+    fi
     
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
     echo ""
-    ensure_postgresql_password
-    
+    ensure_postgresql_password     || print_warning "PostgreSQL 密码检查跳过（容器未就绪）"
+
     # 配置 PostgreSQL pg_hba.conf 允许从宿主机连接
     echo ""
-    configure_postgresql_pg_hba
-    
+    configure_postgresql_pg_hba    || print_warning "pg_hba.conf 配置跳过（容器未就绪）"
+
     # 配置 PostgreSQL max_connections（最大连接数）
     echo ""
-    configure_postgresql_max_connections
+    configure_postgresql_max_connections || print_warning "max_connections 配置跳过（容器未就绪）"
 
 
     sleep 5
@@ -5782,20 +6216,40 @@ restart_middleware() {
     echo ""
     # 不再固定 sleep 15：下方 init_kafka_iot_topics / ensure_postgresql_password
     # 各自带就绪轮询（Kafka while 重试、PG wait_for_postgresql），按需精确等待
+
+    # ★ 等待 PostgreSQL 就绪再执行 post-restart 配置
+    echo ""
+    if container_exists postgres-server; then
+        if container_running postgres-server; then
+            wait_for_postgresql || print_warning "PostgreSQL 未在预期时间内就绪，部分配置可能跳过"
+        else
+            local _pg_status; _pg_status=$(container_status postgres-server)
+            print_warning "PostgreSQL 容器存在但未运行（状态: ${_pg_status}），尝试修复..."
+            _repair_created_middleware_containers || true
+            if container_running postgres-server; then
+                wait_for_postgresql || print_warning "PostgreSQL 修复后仍未就绪"
+            else
+                print_error "PostgreSQL 容器无法启动，请检查: docker logs postgres-server --tail 50"
+            fi
+        fi
+    else
+        print_error "PostgreSQL 容器不存在！请检查 docker-compose.yml 及 compose up 日志"
+    fi
+
     echo ""
     init_kafka_topics_if_enabled
     
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
     echo ""
-    ensure_postgresql_password
-    
+    ensure_postgresql_password     || print_warning "PostgreSQL 密码检查跳过（容器未就绪）"
+
     # 配置 PostgreSQL pg_hba.conf 允许从宿主机连接
     echo ""
-    configure_postgresql_pg_hba
-    
+    configure_postgresql_pg_hba    || print_warning "pg_hba.conf 配置跳过（容器未就绪）"
+
     # 配置 PostgreSQL max_connections（最大连接数）
     echo ""
-    configure_postgresql_max_connections
+    configure_postgresql_max_connections || print_warning "max_connections 配置跳过（容器未就绪）"
 
 
     sleep 5
@@ -6108,13 +6562,22 @@ update_middleware() {
     check_and_pull_images
     
     cleanup_renamed_containers
-    fix_nacos_derby_corruption
+    fix_nacos_startup_failure
     print_info "重启所有中间件服务..."
     local -a _skip_optional=()
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
-    compose_up_middleware "${_skip_optional[@]}"
-    _up_rc=$?
-    ensure_nacos_admin_user
+    # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
+    if compose_up_middleware "${_skip_optional[@]}"; then
+        _up_rc=0
+    else
+        _up_rc=$?
+    fi
+    if middleware_service_enabled Nacos; then
+        print_section "配置 Nacos 注册中心"
+        fix_nacos_startup_failure
+        wait_for_nacos || print_warning "Nacos 未就绪"
+        ensure_nacos_admin_user || print_warning "Nacos 账号自动初始化未完成"
+    fi
 
     if [ "${_up_rc}" -eq 0 ]; then
         print_success "所有中间件更新完成"

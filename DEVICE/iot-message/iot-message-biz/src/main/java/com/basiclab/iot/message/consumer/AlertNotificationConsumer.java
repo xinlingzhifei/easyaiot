@@ -73,7 +73,7 @@ public class AlertNotificationConsumer {
             List<String> notifyMethods = message.getNotifyMethods();
             Boolean shouldNotify = message.getShouldNotify();
             
-            boolean hasNotificationConfig = hasAlertNotificationConfig(channels, notifyUsers);
+            boolean hasNotificationConfig = alertNotificationService.hasNotificationConfig(channels, notifyUsers);
             
             // 优先使用shouldNotify字段，如果没有则根据配置判断
             if (shouldNotify == null) {
@@ -87,13 +87,17 @@ public class AlertNotificationConsumer {
                     (notifyUsers != null ? notifyUsers.size() : 0),
                     notifyMethods);
             
-            if (!shouldNotify || !hasNotificationConfig) {
-                log.info("ℹ️  告警消息中没有通知配置或shouldNotify=false，跳过发送通知: " +
-                        "deviceId={}, alertId={}, shouldNotify={}, channels数量={}, notifyUsers数量={}", 
-                        message.getDeviceId(), message.getAlertId(), shouldNotify,
-                        (channels != null ? channels.size() : 0),
-                        (notifyUsers != null ? notifyUsers.size() : 0));
-                // 没有通知配置，直接确认消息
+            if (!shouldNotify) {
+                log.info("ℹ️  告警消息 shouldNotify=false，跳过发送通知: deviceId={}, alertId={}",
+                        message.getDeviceId(), message.getAlertId());
+                if (acknowledgment != null) {
+                    acknowledgment.acknowledge();
+                }
+                return;
+            }
+            if (channels == null || channels.isEmpty()) {
+                log.info("ℹ️  告警消息无通知渠道，跳过发送通知: deviceId={}, alertId={}",
+                        message.getDeviceId(), message.getAlertId());
                 if (acknowledgment != null) {
                     acknowledgment.acknowledge();
                 }
@@ -133,25 +137,6 @@ public class AlertNotificationConsumer {
             //     acknowledgment.acknowledge();
             // }
         }
-    }
-
-    private static boolean hasAlertNotificationConfig(
-            List<Map<String, Object>> channels,
-            List<Map<String, Object>> notifyUsers) {
-        if (channels == null || channels.isEmpty()) {
-            return false;
-        }
-        if (notifyUsers != null && !notifyUsers.isEmpty()) {
-            return true;
-        }
-        return channels.stream().anyMatch(ch -> {
-            Object method = ch.get("method");
-            if (method == null) {
-                return false;
-            }
-            String m = method.toString().toLowerCase();
-            return "http".equals(m) || "webhook".equals(m);
-        });
     }
 }
 

@@ -7,14 +7,19 @@
       :tabBarGutter="80"
       @tabClick="handleTabClick"
     >
-      <TabPane v-for="item in tabs" :key="item.key" :tab="item.tab" :disabled="_disabled">
+      <TabPane
+        v-for="item in tabs"
+        :key="item.key"
+        :tab="item.tab"
+        :disabled="isTabDisabled(item)"
+      >
         <component :is="item.component" :record="record" :activeKey="activeKey" />
       </TabPane>
     </Tabs>
   </BasicDrawer>
 </template>
 <script lang="ts" setup>
-  import { ref, computed, shallowRef } from 'vue';
+  import { ref, shallowRef } from 'vue';
   import { BasicDrawer, useDrawerInner } from '/@/components/Drawer';
   import { Tabs, TabPane } from 'ant-design-vue';
   import TemplageDetail from './TemplageDetail.vue';
@@ -27,9 +32,15 @@
   const record = ref(null);
   const tabs = ref(null);
 
-  const _disabled = computed(() => {
-    return [3, 4, 6].includes(record.value?.msgType);
-  });
+  const isTabDisabled = (item) => {
+    if (item.key === 'detail') {
+      return false;
+    }
+    if (item.key === 'apply') {
+      return [3, 4, 6, 7].includes(+record.value?.msgType);
+    }
+    return false;
+  };
 
   const [register] = useDrawerInner((data) => {
     record.value = data.record;

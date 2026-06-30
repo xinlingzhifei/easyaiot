@@ -263,43 +263,13 @@ def query_alert_record():
         alert_id = request.args.get('alert_id')
         time_range = int(request.args.get('time_range', 300))  # 默认前后300秒（5分钟）
 
-        # 已回写 record_path 时直接返回（on_dvr -> patch_alerts_record）
-        if alert_id:
-            try:
-                from urllib.parse import quote
-
-                from models import Alert
-                from app.services.alert_service import is_minio_download_path
-                from app.utils.service_urls import is_local_filesystem_path, minio_storage_enabled
-
-                alert_row = Alert.query.get(int(alert_id))
-                record_path = (alert_row.record_path or '').strip() if alert_row else ''
-                if record_path:
-                    if is_minio_download_path(record_path):
-                        return api_response(200, 'success', {
-                            'video_url': record_path,
-                            'file_path': record_path,
-                            'device_id': alert_row.device_id,
-                            'source': 'alert_record_path',
-                        })
-                    if not minio_storage_enabled() and is_local_filesystem_path(record_path):
-                        api_path = f'/video/alert/record?path={quote(record_path, safe="")}'
-                        return api_response(200, 'success', {
-                            'video_url': api_path,
-                            'file_path': record_path,
-                            'device_id': alert_row.device_id,
-                            'source': 'alert_record_path',
-                        })
-            except (TypeError, ValueError):
-                pass
-        
-        if not device_id:
+        if not device_id and not alert_id:
             return api_response(400, '设备ID不能为空')
-        if not alert_time_str:
+        if not alert_time_str and not alert_id:
             return api_response(400, '告警时间不能为空')
         
         # 请求去重：检查是否在短时间内有相同的请求
-        cache_key = f"{device_id}:{alert_time_str}:{time_range}"
+        cache_key = f"{device_id}:{alert_id or ''}:{alert_time_str or ''}:{time_range}"
         current_time = time.time()
         
         with _cache_lock:
@@ -318,7 +288,7 @@ def query_alert_record():
         
         # 执行查询
         try:
-            result = _do_query_alert_record(device_id, alert_time_str, time_range)
+            result = _do_query_alert_record(device_id, alert_time_str, time_range, alert_id=alert_id)
             
             # 缓存结果（只缓存400错误，避免重复查询）
             if result[1] == 400:  # result是(Response, status_code)元组
@@ -334,19 +304,44 @@ def query_alert_record():
         return api_response(500, f'查询失败: {str(e)}')
 
 
-def _do_query_alert_record(device_id, alert_time_str, time_range):
+def _do_query_alert_record(device_id, alert_time_str, time_range, alert_id=None):
     """执行实际的查询逻辑"""
-    from app.services.alert_service import find_playback_for_alert
+    from app.services.alert_service import resolve_alert_record_video
+    from app.utils.service_urls import ensure_shanghai_aware
 
-    alert_time_aware, err = _parse_alert_time_str(alert_time_str)
-    if err:
-        return api_response(400, err)
+    alert_time = None
+    if alert_id:
+        try:
+            from models import Alert
 
-    playback = find_playback_for_alert(device_id, alert_time_aware, time_range)
-    if not playback:
+            alert_row = Alert.query.get(int(alert_id))
+            if alert_row:
+                device_id = device_id or alert_row.device_id
+                if alert_row.time is not None:
+                    alert_time = ensure_shanghai_aware(alert_row.time)
+        except (TypeError, ValueError):
+            pass
+
+    if alert_time is None and alert_time_str:
+        alert_time, err = _parse_alert_time_str(alert_time_str)
+        if err:
+            return api_response(400, err)
+
+    if not device_id:
+        return api_response(400, '设备ID不能为空')
+    if alert_time is None:
+        return api_response(400, '告警时间不能为空')
+
+    resolved = resolve_alert_record_video(
+        device_id,
+        alert_time,
+        time_range=time_range,
+        alert_id=alert_id,
+    )
+    if not resolved:
         logger.debug(
-            '未找到匹配的录像 device_id=%s, alert_time=%s, time_range=%s',
-            device_id, alert_time_str, time_range,
+            '未找到匹配的录像 device_id=%s, alert_time=%s, alert_id=%s, time_range=%s',
+            device_id, alert_time_str, alert_id, time_range,
         )
         return jsonify({
             "code": 400,
@@ -354,17 +349,7 @@ def _do_query_alert_record(device_id, alert_time_str, time_range):
             "data": None
         }), 200
 
-    file_path = playback.file_path
-    return api_response(200, 'success', {
-        'playback_id': playback.id,
-        'file_path': file_path,
-        'video_url': file_path,
-        'event_time': playback.event_time.isoformat() if playback.event_time else None,
-        'duration': playback.duration,
-        'device_id': playback.device_id,
-        'device_name': playback.device_name,
-        'source': 'playback_match',
-    })
+    return api_response(200, 'success', resolved)
 
 
 @alert_bp.route('/clear', methods=['DELETE'])

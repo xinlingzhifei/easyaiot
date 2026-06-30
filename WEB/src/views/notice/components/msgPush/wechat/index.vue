@@ -8,6 +8,10 @@
 
   const columns = [
     {
+      title: '通知方式',
+      dataIndex: 'radioType',
+    },
+    {
       title: '标题',
       dataIndex: 'title',
     },

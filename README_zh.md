@@ -25,6 +25,28 @@
   <a href="./README_ko.md">한국어</a>
 </h4>
 
+## 📖 项目介绍
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+<strong>EasyAIoT</strong>（Easy AI Internet of Things）是一款<strong>云边端一体化的智能算法应用平台</strong>，专注于将人工智能与物联网深度融合，让摄像头、传感器与边缘算力在现场即可协同运转——从设备接入、数据采集，到实时视觉分析、智能研判与告警联动，全链路在一套软件中贯通完成。
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+许多智能物联网项目落地时面临同一困境：视频系统、设备平台、算法服务各自为政，集成成本高、运维割裂、扩容困难。<strong>EasyAIoT 用一套平台化解这一矛盾</strong>——同一套软件既可部署在 4 GB 边缘盒子上实现单点智能，也可搭载于 AI 一体摄像头完成楼面级覆盖，还能装进企业级全栈一体机，一箱配齐 IoT 纳管、海量视频接入与 AI 分析研判，不必维护多套版本、不必反复对接异构系统。
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+平台由 <strong>WEB、APP、DEVICE、NODE、VIDEO、AI、TASK</strong> 七个核心模块组成，以 Java 构建稳定管控底座、Python 承载 AI 与网络能力、C++ 驱动高性能计算任务，三语言混编各取所长。在能力侧，平台覆盖 GB28181 / ONVIF 多协议摄像头接入、实时与抓拍算法任务、YOLO 目标检测与 SAM 零样本自动标注、人脸/车牌识别、可编排业务后处理、联邦算力集群调度，以及 MQTT / TCP / HTTP 物联网设备全生命周期管理；在体验侧，Web 管控台与移动 App / 小程序能力对齐，让指挥中心与现场巡检同一套业务逻辑、随时随地处置。
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>一句话概括：</strong>EasyAIoT = AI + IoT，让万物互联的同时实现万物智视、万物智控。
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+📄 如需更完整的图文介绍，请参阅 <a href=".doc/项目介绍/EasyAIoT项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">EasyAIoT项目介绍 V2.0（PPT）</a>。
+</p>
+
 ## 🌟 关于项目的一些思考
 
 ### 📍 项目定位

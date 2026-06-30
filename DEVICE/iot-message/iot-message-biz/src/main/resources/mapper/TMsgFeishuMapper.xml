@@ -13,15 +13,17 @@
         <result column="modified_time" jdbcType="TIMESTAMP" property="modifiedTime"/>
         <result column="preview_user" jdbcType="VARCHAR" property="previewUser"/>
         <result column="title" jdbcType="VARCHAR" property="title"/>
-        <result column="img_url" jdbcType="VARCHAR" property="imgUrl"/>
-        <result column="btn_txt" jdbcType="VARCHAR" property="btnTxt"/>
-        <result column="btn_url" jdbcType="VARCHAR" property="btnUrl"/>
+        <result column="imgUrl" jdbcType="VARCHAR" property="imgUrl"/>
+        <result column="btnTxt" jdbcType="VARCHAR" property="btnTxt"/>
+        <result column="btnUrl" jdbcType="VARCHAR" property="btnUrl"/>
         <result column="url" jdbcType="VARCHAR" property="url"/>
         <result column="user_group_id" jdbcType="VARCHAR" property="userGroupId"/>
+        <result column="record_type" jdbcType="INTEGER" property="recordType"/>
+        <result column="ref_template_id" jdbcType="VARCHAR" property="refTemplateId"/>
     </resultMap>
     <sql id="Base_Column_List">
         id, msg_type, msg_name, radio_type, feishu_msg_type, web_hook, content, create_time,
-        modified_time, preview_user, title, img_url, btn_txt, btn_url, url, user_group_id
+        modified_time, preview_user, title, "imgUrl", "btnTxt", "btnUrl", url, user_group_id, record_type, ref_template_id
     </sql>
     <select id="selectByPrimaryKey" parameterType="java.lang.String" resultMap="BaseResultMap">
         select
@@ -36,13 +38,14 @@
     <insert id="insert" parameterType="com.basiclab.iot.message.domain.entity.TMsgFeishu">
         insert into t_msg_feishu (id, msg_type, msg_name,
                                 radio_type, feishu_msg_type, web_hook, content, create_time,
-                                modified_time, preview_user, title, img_url, btn_txt, btn_url, url, user_group_id)
+                                modified_time, preview_user, title, "imgUrl", "btnTxt", "btnUrl", url, user_group_id, record_type, ref_template_id)
         values (#{id,jdbcType=VARCHAR}, #{msgType,jdbcType=INTEGER}, #{msgName,jdbcType=VARCHAR},
                 #{radioType,jdbcType=VARCHAR}, #{feishuMsgType,jdbcType=VARCHAR}, #{webHook,jdbcType=VARCHAR},
                 #{content,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP}, #{modifiedTime,jdbcType=TIMESTAMP},
                 #{previewUser,jdbcType=VARCHAR}, #{title,jdbcType=VARCHAR}, #{imgUrl,jdbcType=VARCHAR},
                 #{btnTxt,jdbcType=VARCHAR}, #{btnUrl,jdbcType=VARCHAR}, #{url,jdbcType=VARCHAR},
-                #{userGroupId,jdbcType=VARCHAR})
+                #{userGroupId,jdbcType=VARCHAR},
+                #{recordType,jdbcType=INTEGER}, #{refTemplateId,jdbcType=VARCHAR})
     </insert>
     <insert id="insertSelective" parameterType="com.basiclab.iot.message.domain.entity.TMsgFeishu">
         insert into t_msg_feishu
@@ -58,9 +61,9 @@
             <if test="modifiedTime != null">modified_time,</if>
             <if test="previewUser != null">preview_user,</if>
             <if test="title != null">title,</if>
-            <if test="imgUrl != null">img_url,</if>
-            <if test="btnTxt != null">btn_txt,</if>
-            <if test="btnUrl != null">btn_url,</if>
+            <if test="imgUrl != null">"imgUrl",</if>
+            <if test="btnTxt != null">"btnTxt",</if>
+            <if test="btnUrl != null">"btnUrl",</if>
             <if test="url != null">url,</if>
             <if test="userGroupId != null">user_group_id,</if>
         </trim>
@@ -96,12 +99,18 @@
             <if test="modifiedTime != null">modified_time = #{modifiedTime,jdbcType=TIMESTAMP},</if>
             <if test="previewUser != null">preview_user = #{previewUser,jdbcType=VARCHAR},</if>
             <if test="title != null">title = #{title,jdbcType=VARCHAR},</if>
-            <if test="imgUrl != null">img_url = #{imgUrl,jdbcType=VARCHAR},</if>
-            <if test="btnTxt != null">btn_txt = #{btnTxt,jdbcType=VARCHAR},</if>
-            <if test="btnUrl != null">btn_url = #{btnUrl,jdbcType=VARCHAR},</if>
+            <if test="imgUrl != null">"imgUrl" = #{imgUrl,jdbcType=VARCHAR},</if>
+            <if test="btnTxt != null">"btnTxt" = #{btnTxt,jdbcType=VARCHAR},</if>
+            <if test="btnUrl != null">"btnUrl" = #{btnUrl,jdbcType=VARCHAR},</if>
             <if test="url != null">url = #{url,jdbcType=VARCHAR},</if>
             <if test="userGroupId != null">user_group_id = #{userGroupId,jdbcType=VARCHAR},</if>
-        </set>
+                    <if test="recordType != null">
+                record_type = #{recordType,jdbcType=INTEGER},
+            </if>
+            <if test="refTemplateId != null">
+                ref_template_id = #{refTemplateId,jdbcType=VARCHAR},
+            </if>
+</set>
         where id = #{id,jdbcType=VARCHAR}
     </update>
     <update id="updateByPrimaryKey" parameterType="com.basiclab.iot.message.domain.entity.TMsgFeishu">
@@ -144,6 +153,7 @@
         select <include refid="Base_Column_List"/>
         from t_msg_feishu
         where msg_type = #{msgType,jdbcType=INTEGER}
+          and (record_type = 0 or record_type is null)
     </select>
 </mapper>
 

@@ -276,6 +276,10 @@ export class VAxios {
 
     conf = this.supportFormData(conf)
 
+    // 确保 per-request timeout 不会被 cloneDeep / beforeRequestHook / supportFormData 意外丢失
+    if (config.timeout != null)
+      conf.timeout = config.timeout
+
     return new Promise((resolve, reject) => {
       this.axiosInstance
         .request<any, AxiosResponse<Result>>(conf)
@@ -318,6 +322,10 @@ export class VAxios {
     conf.requestOptions = opt
 
     conf = this.supportFormData(conf)
+
+    // 确保 per-request timeout 不会被 cloneDeep / beforeRequestHook / supportFormData 意外丢失
+    if (config.timeout != null)
+      conf.timeout = config.timeout
 
     return new Promise((resolve, reject) => {
       this.axiosInstance
@@ -380,6 +388,10 @@ export class VAxios {
     conf.requestOptions = opt
 
     conf = this.supportFormData(conf)
+
+    // 确保 per-request timeout 不会被 cloneDeep / beforeRequestHook / supportFormData 意外丢失
+    if (config.timeout != null)
+      conf.timeout = config.timeout
 
     return new Promise((resolve, reject) => {
       this.axiosInstance

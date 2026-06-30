@@ -97,6 +97,33 @@ is_mini_deploy_profile() {
     [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "mini" ]
 }
 
+# 按部署形态判断业务模块是否启用（APP 仅 full 全量形态）
+module_enabled_for_deploy_profile() {
+    case "$1" in
+        APP) [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] ;;
+        *) return 0 ;;
+    esac
+}
+
+# mini / standard 形态均不部署 TDengine 中间件
+is_tdengine_disabled_deploy_profile() {
+    case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
+        mini|standard) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# iot-sink Spring Profile（local + 形态专用 profile）
+iot_sink_spring_profiles_active() {
+    if is_mini_deploy_profile; then
+        echo "local,mini"
+    elif is_tdengine_disabled_deploy_profile; then
+        echo "local,standard"
+    else
+        echo "local"
+    fi
+}
+
 # DEVICE 是否需要 tdengine compose profile
 device_compose_profile_flags() {
     case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
@@ -197,7 +224,7 @@ print_deploy_profile_summary() {
       echo "  其余模块与中间件全部启动"
       ;;
     full)
-      echo "  启动全部业务模块与中间件（推荐宿主机内存 ≥ 20 GB）"
+      echo "  启动全部业务模块与中间件（含 APP 移动端 H5，推荐宿主机内存 ≥ 20 GB）"
       ;;
   esac
 }
@@ -274,11 +301,13 @@ select_deploy_profile_interactive() {
 }
 
 # 写入或更新 .env.docker 中的键值
+# 使用临时文件方式（而非 sed -i），兼容 GNU sed 与 BSD sed（macOS）
 _set_env_docker_kv() {
     local file="$1" key="$2" value="$3"
     [ -f "$file" ] || return 0
     if grep -q "^${key}=" "$file" 2>/dev/null; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+        local tmp="${file}.tmp.$$"
+        sed "s|^${key}=.*|${key}=${value}|" "$file" > "$tmp" && mv "$tmp" "$file"
     else
         # 确保追加前文件以换行结尾，避免与最后一行粘连
         [ -n "$(tail -c1 "$file" 2>/dev/null || true)" ] && echo "" >> "$file"
@@ -296,7 +325,8 @@ sync_web_deploy_profile_env() {
     fi
     [ -f "$web_env" ] || return 0
     if grep -q '^NGINX_CONF=' "$web_env" 2>/dev/null; then
-        sed -i "s|^NGINX_CONF=.*|NGINX_CONF=${conf}|" "$web_env"
+        local tmp="${web_env}.tmp.$$"
+        sed "s|^NGINX_CONF=.*|NGINX_CONF=${conf}|" "$web_env" > "$tmp" && mv "$tmp" "$web_env"
     else
         [ -n "$(tail -c1 "$web_env" 2>/dev/null || true)" ] && echo "" >> "$web_env"
         echo "NGINX_CONF=${conf}" >> "$web_env"
@@ -307,7 +337,22 @@ sync_web_deploy_profile_env() {
 sync_deploy_profile_to_modules() {
     local root="${1:-$(_deploy_profile_repo_root)}"
     apply_python_service_deploy_env "$root"
+    apply_device_deploy_env "$root"
     sync_web_deploy_profile_env "$root"
+}
+
+# DEVICE：按形态写入 .env（docker compose 自动读取，供 IOT_SYSTEM_SPRING_PROFILES_ACTIVE 等变量替换）
+apply_device_deploy_env() {
+    local root="${1:-$(_deploy_profile_repo_root)}"
+    local env_file="${root}/DEVICE/.env"
+    mkdir -p "$(dirname "$env_file")"
+    touch "$env_file"
+    if is_mini_deploy_profile; then
+        _set_env_docker_kv "$env_file" IOT_SYSTEM_SPRING_PROFILES_ACTIVE "local,mini"
+    else
+        _set_env_docker_kv "$env_file" IOT_SYSTEM_SPRING_PROFILES_ACTIVE "local"
+    fi
+    _set_env_docker_kv "$env_file" IOT_SINK_SPRING_PROFILES_ACTIVE "$(iot_sink_spring_profiles_active)"
 }
 
 # 若 WEB 镜像构建时的形态与当前不一致，提示需 rebuild（前端 VITE_GLOB_DEPLOY_PROFILE 编译进镜像）

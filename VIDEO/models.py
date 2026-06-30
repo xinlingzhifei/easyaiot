@@ -38,8 +38,8 @@ class DeviceDirectory(db.Model):
     parent_id = db.Column(db.Integer, db.ForeignKey('device_directory.id', ondelete='CASCADE'), nullable=True, comment='父目录ID，NULL表示根目录')
     description = db.Column(db.String(500), nullable=True, comment='目录描述')
     sort_order = db.Column(db.Integer, default=0, nullable=False, comment='排序顺序')
-    snap_save_time = db.Column(db.Integer, default=168, nullable=False, comment='抓拍保存时长[0:永久,>=1:小时]，目录内非自定义设备继承此值')
-    record_save_time = db.Column(db.Integer, default=168, nullable=False, comment='录像保存时长[0:永久,>=1:小时]，目录内非自定义设备继承此值')
+    snap_save_time = db.Column(db.Integer, default=1, nullable=False, comment='抓拍保存时长[0:永久,>=1:小时]，目录内非自定义设备继承此值')
+    record_save_time = db.Column(db.Integer, default=1, nullable=False, comment='录像保存时长[0:永久,>=1:小时]，目录内非自定义设备继承此值')
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
@@ -296,7 +296,7 @@ class SnapSpace(db.Model):
     space_code = db.Column(db.String(255), nullable=False, unique=True, comment='空间编号（唯一标识）')
     bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket名称')
     save_mode = db.Column(db.SmallInteger, default=0, nullable=False, comment='文件保存模式[0:标准存储,1:归档存储]')
-    save_time = db.Column(db.Integer, default=168, nullable=False, comment='文件保存时长[0:永久保存,>=1(单位:小时)]')
+    save_time = db.Column(db.Integer, default=1, nullable=False, comment='文件保存时长[0:永久保存,>=1(单位:小时)]')
     save_time_custom = db.Column(db.Boolean, default=False, nullable=False, comment='是否自定义保存时间（False 时跟随目录默认值）')
     description = db.Column(db.String(500), nullable=True, comment='空间描述')
     device_id = db.Column(db.String(100), db.ForeignKey('device.id', ondelete='SET NULL'), nullable=True, unique=True, comment='关联的设备ID（一对一关系）')
@@ -337,7 +337,7 @@ class RecordSpace(db.Model):
     space_code = db.Column(db.String(255), nullable=False, unique=True, comment='空间编号（唯一标识）')
     bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket名称')
     save_mode = db.Column(db.SmallInteger, default=0, nullable=False, comment='文件保存模式[0:标准存储,1:归档存储]')
-    save_time = db.Column(db.Integer, default=168, nullable=False, comment='文件保存时长[0:永久保存,>=1(单位:小时)]')
+    save_time = db.Column(db.Integer, default=1, nullable=False, comment='文件保存时长[0:永久保存,>=1(单位:小时)]')
     save_time_custom = db.Column(db.Boolean, default=False, nullable=False, comment='是否自定义保存时间（False 时跟随目录默认值）')
     description = db.Column(db.String(500), nullable=True, comment='空间描述')
     device_id = db.Column(db.String(100), db.ForeignKey('device.id', ondelete='SET NULL'), nullable=True, unique=True, comment='关联的设备ID（一对一关系）')
@@ -373,8 +373,8 @@ class SpaceGroupSavePolicy(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     group_type = db.Column(db.String(20), nullable=False, comment='分组类型: nvr / gb28181')
     group_key = db.Column(db.String(100), nullable=False, comment='NVR ID 或国标 SIP 设备 ID')
-    snap_save_time = db.Column(db.Integer, default=168, nullable=False, comment='抓拍保存时长[0:永久,>=1:小时]')
-    record_save_time = db.Column(db.Integer, default=168, nullable=False, comment='录像保存时长[0:永久,>=1:小时]')
+    snap_save_time = db.Column(db.Integer, default=1, nullable=False, comment='抓拍保存时长[0:永久,>=1:小时]')
+    record_save_time = db.Column(db.Integer, default=1, nullable=False, comment='录像保存时长[0:永久,>=1:小时]')
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
 
@@ -904,7 +904,8 @@ class AlgorithmTask(db.Model):
     model_names = db.Column(db.Text, nullable=True, comment='关联的模型名称列表（逗号分隔，冗余字段，用于快速显示）')
     
     # 实时算法任务配置
-    extract_interval = db.Column(db.Integer, default=25, nullable=False, comment='抽帧间隔（每N帧抽一次，仅实时算法任务）')
+    extract_interval = db.Column(db.Integer, default=25, nullable=True,
+                                 comment='抽帧间隔（每N帧抽一次；NULL 时沿用 EXTRACT_INTERVAL，默认 25）')
     rtmp_input_url = db.Column(db.String(500), nullable=True, comment='RTMP输入流地址（仅实时算法任务）')
     rtmp_output_url = db.Column(db.String(500), nullable=True, comment='RTMP输出流地址（仅实时算法任务）')
     
@@ -917,6 +918,7 @@ class AlgorithmTask(db.Model):
     # 告警事件配置
     alert_event_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否启用告警事件')
     alert_event_suppress_time = db.Column(db.Integer, default=5, nullable=False, comment='告警事件抑制时间（秒），同一设备两次上报告警事件的最小间隔，减轻Kafka积压，默认5秒')
+    alert_class_names = db.Column(db.Text, nullable=True, comment='告警触发类别标签（JSON数组，为空则任意检测均可触发告警）')
     face_detection_enabled = db.Column(db.Boolean, default=True, nullable=False, comment='是否启用人脸检测')
     plate_detection_enabled = db.Column(db.Boolean, default=True, nullable=False, comment='是否启用车牌检测')
     face_matching_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否启用人脸匹配（默认关闭）')
@@ -979,6 +981,11 @@ class AlgorithmTask(db.Model):
     sam_supplement_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否启用 SAM 补充识别')
     sam_supplement_config = db.Column(db.Text, nullable=True, comment='SAM 补充配置 JSON')
 
+    # 运动检测门控（实时算法任务资源优化）
+    motion_gate_enabled = db.Column(db.Boolean, default=False, nullable=False,
+                                    comment='是否启用运动检测门控（仅实时算法任务）')
+    motion_gate_config = db.Column(db.Text, nullable=True, comment='运动门控配置 JSON')
+
     # AI 后处理（用户 Python 脚本）
     post_process_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否启用 AI 后处理脚本')
     post_process_script = db.Column(db.String(255), nullable=True, comment='后处理脚本文件名，默认 post_process.py')
@@ -1008,6 +1015,10 @@ class AlgorithmTask(db.Model):
             return tags if isinstance(tags, list) else []
         except Exception:
             return []
+
+    def _parse_alert_class_names(self):
+        from app.utils.alert_class_filter import parse_alert_class_names
+        return parse_alert_class_names(self.alert_class_names)
 
     @staticmethod
     def _parse_library_ids(raw) -> list:
@@ -1073,6 +1084,7 @@ class AlgorithmTask(db.Model):
             'tracking_smooth_alpha': self.tracking_smooth_alpha,
             'alert_event_enabled': self.alert_event_enabled,
             'alert_event_suppress_time': self.alert_event_suppress_time,
+            'alert_class_names': self._parse_alert_class_names(),
             'face_detection_enabled': self.face_detection_enabled,
             'plate_detection_enabled': self.plate_detection_enabled,
             'face_matching_enabled': self.face_matching_enabled,
@@ -1124,6 +1136,8 @@ class AlgorithmTask(db.Model):
             'algorithm_services': algorithm_services_list,  # 添加算法模型服务列表
             'sam_supplement_enabled': bool(self.sam_supplement_enabled),
             'sam_supplement_config': json.loads(self.sam_supplement_config) if self.sam_supplement_config else None,
+            'motion_gate_enabled': bool(getattr(self, 'motion_gate_enabled', False)),
+            'motion_gate_config': json.loads(self.motion_gate_config) if getattr(self, 'motion_gate_config', None) else None,
             'post_process_enabled': bool(self.post_process_enabled),
             'post_process_script': self.post_process_script,
             'post_process_replicas': int(self.post_process_replicas or 1),
@@ -2154,3 +2168,27 @@ def ensure_algorithm_task_post_process_columns(engine):
             log.info('已为 algorithm_task 表添加 %s 列', col)
     except Exception as e:
         log.warning('ensure_algorithm_task_post_process_columns: %s', e)
+
+
+def ensure_algorithm_task_alert_class_columns(engine):
+    """老库 algorithm_task 表补告警触发类别标签列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'alert_class_names': 'TEXT',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'algorithm_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('algorithm_task')}
+        for col, ddl in columns.items():
+            if col in col_names:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE algorithm_task ADD COLUMN {col} {ddl}'))
+            log.info('已为 algorithm_task 表添加 %s 列', col)
+    except Exception as e:
+        log.warning('ensure_algorithm_task_alert_class_columns: %s', e)

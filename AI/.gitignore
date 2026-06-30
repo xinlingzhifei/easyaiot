@@ -18,6 +18,7 @@ data/**
 .env
 .env.local
 .env.*.local
+.env.arch
 
 # BlueJ files
 *.ctxt

@@ -57,6 +57,11 @@ import {
 collectMatchingTagsFromLibraries,
   type LibraryWithTags,
 } from '@/views/camera/utils/libraryMatching';
+import {
+  buildAlertClassOptions,
+  loadAlertClassNamesForModels,
+  pruneAlertClassNames,
+} from '@/views/camera/utils/modelAlertClasses';
 
 defineOptions({ name: 'AlgorithmTaskModal' });
 
@@ -108,6 +113,7 @@ const defaultModels = [
 ];
 const modelOptions = ref<Array<{ label: string; value: number }>>([...defaultModels]);
 const modelMap = ref<Map<number, any>>(new Map()); // 存储完整的模型信息
+const alertClassOptions = ref<Array<{ label: string; value: string }>>([]);
 const faceLibraryOptions = ref<Array<{ label: string; value: number }>>([]);
 const plateLibraryOptions = ref<Array<{ label: string; value: number }>>([]);
 
@@ -398,6 +404,36 @@ const loadModels = async () => {
   }
 };
 
+const refreshAlertClassOptions = async (modelIds: unknown, selectedNames?: string[]) => {
+  const ids = Array.isArray(modelIds)
+    ? modelIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
+    : [];
+  if (ids.length === 0) {
+    alertClassOptions.value = [];
+    await setFieldsValue({ alert_class_names: [] });
+    updateSchema({
+      field: 'alert_class_names',
+      componentProps: { options: [] },
+    });
+    return;
+  }
+
+  const classNames = await loadAlertClassNamesForModels(ids);
+  alertClassOptions.value = buildAlertClassOptions(classNames);
+  updateSchema({
+    field: 'alert_class_names',
+    componentProps: {
+      options: alertClassOptions.value,
+    },
+  });
+
+  const currentSelected = selectedNames ?? (await getFieldsValue()).alert_class_names;
+  const pruned = pruneAlertClassNames(currentSelected, classNames);
+  if (JSON.stringify(pruned) !== JSON.stringify(currentSelected || [])) {
+    await setFieldsValue({ alert_class_names: pruned });
+  }
+};
+
 const loadFaceLibraries = async () => {
   try {
     const res = await listFaceLibraries({ is_enabled: true });
@@ -627,8 +663,35 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         placeholder: '每N帧抽一次',
         min: 1,
       },
-      helpMessage: '实时算法任务中，每N帧抽一次进行检测（默认25）',
+      helpMessage: '实时算法任务中，每N帧抽一次进行AI检测（默认25，即25帧抽1帧）。推流仍保持全帧率。',
       ifShow: ({ values }) => values.task_type === 'realtime',
+    },
+    {
+      field: 'motion_gate_enabled',
+      label: '启用运动补检',
+      component: 'Switch',
+      defaultValue: false,
+      componentProps: {
+        checkedChildren: '是',
+        unCheckedChildren: '否',
+      },
+      helpMessage: '在抽帧采样点评估画面变化；仅大面积持续变化时记录命中。风吹草动等局部抖动不会频繁触发额外检测。',
+      ifShow: ({ values }) => values.task_type === 'realtime',
+    },
+    {
+      field: 'motion_sensitivity',
+      label: '运动检测灵敏度',
+      component: 'Select',
+      defaultValue: 'conservative',
+      componentProps: {
+        options: [
+          { label: '保守（户外/有植被，推荐）', value: 'conservative' },
+          { label: '标准', value: 'standard' },
+          { label: '灵敏（室内，慎用）', value: 'sensitive' },
+        ],
+      },
+      helpMessage: '保守模式要求更大变化面积与连续确认，避免风吹草动误触发。',
+      ifShow: ({ values }) => values.task_type === 'realtime' && !!values.motion_gate_enabled,
     },
     {
       field: 'tracking_enabled',
@@ -713,6 +776,32 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         }),
       helpMessage: '是否启用告警事件，启用后会记录告警信息',
       ifShow: ({ values }) => values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol',
+    },
+    {
+      field: 'alert_class_names',
+      label: '告警触发标签',
+      component: 'Select',
+      componentProps: {
+        placeholder: '请选择触发告警的检测标签（可多选）',
+        options: alertClassOptions,
+        mode: 'multiple',
+        showSearch: true,
+        allowClear: true,
+        filterOption: (input: string, option: any) =>
+          (option?.label || '').toLowerCase().includes(input.toLowerCase()),
+      },
+      helpMessage: '仅当检测到所选标签时才触发告警，需至少选择一项',
+      dynamicRules: ({ values }) => {
+        if (!values.alert_event_enabled) return [];
+        const names = Array.isArray(values.alert_class_names) ? values.alert_class_names : [];
+        if (!names.length) {
+          return [{ required: true, message: '启用告警事件时必须选择至少一个告警触发标签' }];
+        }
+        return [];
+      },
+      ifShow: ({ values }) =>
+        (values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol')
+        && !!values.alert_event_enabled,
     },
     {
       field: 'alert_event_suppress_time',
@@ -1151,12 +1240,15 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       frame_skip: record.frame_skip || 25,
       model_ids: modelIds,
       extract_interval: record.extract_interval || 25,
+      motion_gate_enabled: record.motion_gate_enabled === true,
+      motion_sensitivity: record.motion_gate_config?.preset || 'conservative',
       tracking_enabled: record.tracking_enabled || false,
       tracking_similarity_threshold: record.tracking_similarity_threshold || 0.2,
       tracking_max_age: record.tracking_max_age || 25,
       tracking_smooth_alpha: record.tracking_smooth_alpha || 0.25,
       alert_event_enabled: record.alert_event_enabled !== undefined ? record.alert_event_enabled : false,
       alert_event_suppress_time: record.alert_event_suppress_time ?? 5,
+      alert_class_names: Array.isArray(record.alert_class_names) ? record.alert_class_names : [],
       face_matching_enabled: record.face_matching_enabled === true,
       face_library_ids: normalizeLibraryIds(record.face_library_ids),
       plate_matching_enabled: record.plate_matching_enabled === true,
@@ -1181,6 +1273,8 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
     // 更新formValues以便AlertNotificationConfig组件响应
     formValues.value = { ...formValues.value, ...await getFieldsValue() };
 
+    await refreshAlertClassOptions(modelIds, record.alert_class_names || []);
+
     // 查看模式禁用表单和按钮
     if (modalData.value.type === 'view') {
       updateSchema([
@@ -1193,11 +1287,14 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
         { field: 'frame_skip', componentProps: { disabled: true } },
         { field: 'model_ids', componentProps: { disabled: true } },
         { field: 'extract_interval', componentProps: { disabled: true } },
+        { field: 'motion_gate_enabled', componentProps: { disabled: true } },
+        { field: 'motion_sensitivity', componentProps: { disabled: true } },
         { field: 'tracking_enabled', componentProps: { disabled: true } },
         { field: 'tracking_similarity_threshold', componentProps: { disabled: true } },
         { field: 'tracking_max_age', componentProps: { disabled: true } },
         { field: 'tracking_smooth_alpha', componentProps: { disabled: true } },
         { field: 'alert_event_enabled', componentProps: { disabled: true } },
+        { field: 'alert_class_names', componentProps: { disabled: true } },
         { field: 'alert_event_suppress_time', componentProps: { disabled: true } },
         { field: 'post_process_enabled', componentProps: { disabled: true } },
         { field: 'post_process_replicas', componentProps: { disabled: true } },
@@ -1225,6 +1322,7 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
         { field: 'tracking_max_age', componentProps: { disabled: false } },
         { field: 'tracking_smooth_alpha', componentProps: { disabled: false } },
         { field: 'alert_event_enabled', componentProps: { disabled: false } },
+        { field: 'alert_class_names', componentProps: { disabled: false } },
         { field: 'alert_event_suppress_time', componentProps: { disabled: false } },
         { field: 'post_process_enabled', componentProps: { disabled: false } },
         { field: 'post_process_replicas', componentProps: { disabled: false } },
@@ -1254,6 +1352,7 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       { field: 'tracking_max_age', componentProps: { disabled: false } },
       { field: 'tracking_smooth_alpha', componentProps: { disabled: false } },
       { field: 'alert_event_enabled', componentProps: { disabled: false } },
+      { field: 'alert_class_names', componentProps: { disabled: false } },
       { field: 'alert_event_suppress_time', componentProps: { disabled: false } },
       { field: 'post_process_enabled', componentProps: { disabled: false } },
       { field: 'post_process_replicas', componentProps: { disabled: false } },
@@ -1271,12 +1370,15 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       cron_expression: DEFAULT_SNAP_CRON,
       frame_skip: 25,
       extract_interval: 25,
+      motion_gate_enabled: false,
+      motion_sensitivity: 'conservative',
       tracking_enabled: false,
       tracking_similarity_threshold: 0.2,
       tracking_max_age: 25,
       tracking_smooth_alpha: 0.25,
       alert_event_enabled: false, // 默认关闭告警事件
       alert_event_suppress_time: 5,
+      alert_class_names: [],
       face_matching_enabled: false,
       plate_matching_enabled: false,
       post_process_enabled: false,
@@ -1334,7 +1436,10 @@ const handleFieldValueChange = async (key: string, value: any) => {
       };
       notificationChannels.value = [];
       channelTemplates.value = {};
-      await setFieldsValue({ alert_notification_enabled: false });
+      await setFieldsValue({ alert_notification_enabled: false, alert_class_names: [] });
+    } else {
+      const currentValues = await getFieldsValue();
+      await refreshAlertClassOptions(currentValues.model_ids, currentValues.alert_class_names);
     }
     // 立即更新 formValues，确保告警通知配置能够及时响应
     const currentValues = await getFieldsValue();
@@ -1353,6 +1458,9 @@ const handleFieldValueChange = async (key: string, value: any) => {
     await setFieldsValue({ face_library_ids: [] });
   } else if (key === 'plate_matching_enabled' && !value) {
     await setFieldsValue({ plate_library_ids: [] });
+  } else if (key === 'model_ids') {
+    const currentValues = await getFieldsValue();
+    await refreshAlertClassOptions(value, currentValues.alert_class_names);
   } else if (key === 'schedule_policy' && value !== 'node') {
     await setFieldsValue({ target_node_id: undefined });
     const currentValues = await getFieldsValue();
@@ -1439,6 +1547,17 @@ const handleSubmit = async () => {
     if (values.alert_event_enabled) {
       values.alert_event_suppress_time = values.alert_event_suppress_time ?? 5;
       values.alarm_suppress_time = values.alarm_suppress_time ?? 300;
+      values.alert_class_names = Array.isArray(values.alert_class_names)
+        ? values.alert_class_names.filter((name: string) => String(name || '').trim())
+        : [];
+      if (!values.alert_class_names.length) {
+        createMessage.error('启用告警事件时必须选择至少一个告警触发标签');
+        confirmLoading.value = false;
+        setDrawerProps({ confirmLoading: false });
+        return;
+      }
+    } else {
+      values.alert_class_names = [];
     }
 
     if (values.alert_event_enabled && values.alert_notification_enabled && selectedChannels.length > 0) {
@@ -1541,6 +1660,17 @@ const handleSubmit = async () => {
     delete values.sam_interval_frames;
     delete values.sam_conf;
 
+    if (values.task_type === 'realtime') {
+      values.motion_gate_enabled = values.motion_gate_enabled === true;
+      values.motion_gate_config = values.motion_gate_enabled
+        ? { preset: values.motion_sensitivity || 'conservative' }
+        : null;
+    } else {
+      values.motion_gate_enabled = false;
+      values.motion_gate_config = null;
+    }
+    delete values.motion_sensitivity;
+
     values.post_process_enabled = !!values.post_process_enabled;
     if (values.post_process_enabled) {
       values.post_process_replicas = Math.max(1, Number(values.post_process_replicas) || 1);
@@ -1626,12 +1756,15 @@ const handleReset = () => {
       target_node_id: undefined,
       frame_skip: 25,
       extract_interval: 25,
+      motion_gate_enabled: false,
+      motion_sensitivity: 'conservative',
       tracking_enabled: false,
       tracking_similarity_threshold: 0.2,
       tracking_max_age: 25,
       tracking_smooth_alpha: 0.25,
       alert_event_enabled: false, // 默认关闭告警事件
       alert_event_suppress_time: 5,
+      alert_class_names: [],
       face_matching_enabled: false,
       plate_matching_enabled: false,
       post_process_enabled: false,
@@ -1678,12 +1811,15 @@ const handleReset = () => {
       frame_skip: record.frame_skip || 25,
       model_ids: modelIds,
       extract_interval: record.extract_interval || 25,
+      motion_gate_enabled: record.motion_gate_enabled === true,
+      motion_sensitivity: record.motion_gate_config?.preset || 'conservative',
       tracking_enabled: record.tracking_enabled || false,
       tracking_similarity_threshold: record.tracking_similarity_threshold || 0.2,
       tracking_max_age: record.tracking_max_age || 25,
       tracking_smooth_alpha: record.tracking_smooth_alpha || 0.25,
       alert_event_enabled: record.alert_event_enabled !== undefined ? record.alert_event_enabled : false,
       alert_event_suppress_time: record.alert_event_suppress_time ?? 5,
+      alert_class_names: Array.isArray(record.alert_class_names) ? record.alert_class_names : [],
       post_process_enabled: record.post_process_enabled === true,
       post_process_replicas: record.post_process_replicas ?? 1,
       alarm_suppress_time: record.alarm_suppress_time ?? 300,
@@ -1723,6 +1859,7 @@ const handleReset = () => {
         schedule: Array(7).fill(null).map(() => Array(24).fill(0)),
       };
     }
+    refreshAlertClassOptions(modelIds, record.alert_class_names || []);
   }
 };
 </script>

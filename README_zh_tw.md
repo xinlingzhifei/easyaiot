@@ -25,6 +25,28 @@
   <a href="./README_ko.md">한국어</a>
 </h4>
 
+## 📖 項目介紹
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+<strong>EasyAIoT</strong>（Easy AI Internet of Things）是一款<strong>雲邊端一體化的智能算法應用平臺</strong>，專注於將人工智能與物聯網深度融合，讓攝像頭、傳感器與邊緣算力在現場即可協同運轉——從設備接入、數據采集，到實時視覺分析、智能研判與告警聯動，全鏈路在一套軟件中貫通完成。
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+許多智能物聯網項目落地時面臨同一困境：視頻系統、設備平臺、算法服務各自為政，集成成本高、運維割裂、擴容困難。<strong>EasyAIoT 用一套平臺化解這一矛盾</strong>——同一套軟件既可部署在 4 GB 邊緣盒子上實現單點智能，也可搭載於 AI 一體攝像頭完成樓面級覆蓋，還能裝進企業級全棧一體機，一箱配齊 IoT 納管、海量視頻接入與 AI 分析研判，不必維護多套版本、不必反復對接異構系統。
+</p>
+
+<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
+平臺由 <strong>WEB、APP、DEVICE、NODE、VIDEO、AI、TASK</strong> 七個核心模塊組成，以 Java 構建穩定管控底座、Python 承載 AI 與網絡能力、C++ 驅動高性能計算任務，三語言混編各取所長。在能力側，平臺覆蓋 GB28181 / ONVIF 多協議攝像頭接入、實時與抓拍算法任務、YOLO 目標檢測與 SAM 零樣本自動標註、人臉/車牌識別、可編排業務後處理、聯邦算力集群調度，以及 MQTT / TCP / HTTP 物聯網設備全生命周期管理；在體驗側，Web 管控臺與移動 App / 小程序能力對齊，讓指揮中心與現場巡檢同一套業務邏輯、隨時隨地處置。
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
+<strong>一句話概括：</strong>EasyAIoT = AI + IoT，讓萬物互聯的同時實現萬物智視、萬物智控。
+</p>
+
+<p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
+📄 如需更完整的圖文介紹，請參閱 <a href=".doc/项目介绍/EasyAIoT项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">EasyAIoT 項目介紹 V2.0（PPT）</a>。
+</p>
+
 ## 🌟 關於項目的一些思考
 
 ### 📍 項目定位

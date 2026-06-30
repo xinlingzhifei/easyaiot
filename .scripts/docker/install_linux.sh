@@ -13,7 +13,9 @@
 #   restart    - 重启所有服务
 #   status     - 查看所有服务状态
 #   logs       - 查看服务日志
-#   build      - 重新构建所有镜像
+#   build           - 重新构建所有镜像（各模块本地构建）
+#   build-runtime   - 构建/推送运行时镜像到远程仓库
+#   pull            - 从远程仓库拉取预构建运行时镜像（等同 runtime_image.sh pull）
 #   clean      - 清理所有容器和镜像
 #   update     - 更新并重启所有服务
 #   verify     - 验证所有服务是否启动成功
@@ -45,6 +47,9 @@ cd "$PROJECT_ROOT"
 
 # shellcheck source=deploy_profile.sh
 source "${SCRIPT_DIR}/deploy_profile.sh"
+
+# shellcheck source=runtime_image_common.sh
+source "${SCRIPT_DIR}/runtime_image_common.sh"
 
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
@@ -80,6 +85,7 @@ MODULES=(
     "AI"               # AI服务
     "VIDEO"            # Video服务
     "WEB"              # Web前端服务
+    "APP"              # App移动端H5（仅 full 全量形态）
 )
 
 # 模块名称映射
@@ -89,6 +95,7 @@ MODULE_NAMES["DEVICE"]="Device服务"
 MODULE_NAMES["AI"]="AI服务"
 MODULE_NAMES["VIDEO"]="Video服务"
 MODULE_NAMES["WEB"]="Web前端服务"
+MODULE_NAMES["APP"]="App移动端H5"
 
 # 模块端口映射
 declare -A MODULE_PORTS
@@ -97,6 +104,7 @@ MODULE_PORTS["DEVICE"]="48080"           # Gateway端口
 MODULE_PORTS["AI"]="5000"
 MODULE_PORTS["VIDEO"]="6000"
 MODULE_PORTS["WEB"]="8888"
+MODULE_PORTS["APP"]="9010"
 
 # 模块健康检查端点
 declare -A MODULE_HEALTH_ENDPOINTS
@@ -105,6 +113,28 @@ MODULE_HEALTH_ENDPOINTS["DEVICE"]="/actuator/health"  # Gateway健康检查
 MODULE_HEALTH_ENDPOINTS["AI"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["VIDEO"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["WEB"]="/health"
+MODULE_HEALTH_ENDPOINTS["APP"]="/health"
+
+# 统计当前部署形态下参与 install 汇总的模块数（已启用且存在安装脚本）
+_count_installable_modules() {
+    local count=0 module _inst_script
+    for module in "${MODULES[@]}"; do
+        module_enabled_for_deploy_profile "$module" || continue
+        _inst_script="${PROJECT_ROOT}/${module}/$(module_install_script "$module")"
+        [ -f "$_inst_script" ] || continue
+        count=$((count + 1))
+    done
+    echo "$count"
+}
+
+# 统计当前部署形态下参与 verify 汇总的模块数
+_count_verifiable_modules() {
+    local count=0 module
+    for module in "${MODULES[@]}"; do
+        module_enabled_for_deploy_profile "$module" && count=$((count + 1))
+    done
+    echo "$count"
+}
 
 # 日志输出函数（去掉颜色代码后写入日志文件）
 log_to_file() {
@@ -217,7 +247,78 @@ EOF
     print_success "RTP 端口预留已生效"
 }
 
+# 检查 /dev/null 设备节点状态，返回 0 正常、1 异常。
+_verify_dev_null_node() {
+    if [ ! -e /dev/null ]; then
+        print_error "/dev/null 不存在，Docker 容器将无法启动（修复: sudo mknod -m 666 /dev/null c 1 3）"
+        return 1
+    elif [ ! -c /dev/null ]; then
+        local _ftype; _ftype=$(stat -c '%F' /dev/null 2>/dev/null || echo '未知类型')
+        print_error "/dev/null 不是字符设备（${_ftype}），Docker 容器将无法启动"
+        print_info "修复: sudo rm -f /dev/null && sudo mknod -m 666 /dev/null c 1 3"
+        return 1
+    fi
+    return 0
+}
+
+# 检测 Docker 是否为 rootless 模式（runc 在 rootless 下可能间歇性无法创建 /dev/null）
+_detect_docker_rootless() {
+    docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q "rootless"
+}
+
+# 用最简单的容器实测 Docker 是否当前能成功创建容器。
+# 成功返回 0，失败返回 1 并设置 _DOCKER_CREATE_FAIL_MSG。
+_verify_docker_create() {
+    local _test_output
+    _test_output=$(docker run --rm alpine:latest echo "docker_create_test" 2>&1) && return 0
+    _DOCKER_CREATE_FAIL_MSG="$_test_output"
+
+    # 尝试用 io.containerd.runc.v2 运行时（部分环境与 runc 行为不同）
+    _test_output=$(docker run --rm --runtime io.containerd.runc.v2 alpine:latest echo "docker_create_test" 2>&1) && return 0
+    _DOCKER_CREATE_FAIL_MSG="$_test_output"
+
+    return 1
+}
+
+# 验证 /dev/null 设备节点（Docker 容器创建的硬性前提）
+# /dev/null 缺失或不是字符设备时，runc 报：
+#   "error reopening /dev/null inside container: open /dev/null: operation not permitted"
+# 此时所有新容器都无法启动，必须在编排前尽早检测并给出修复指引。
+_verify_dev_null() {
+    # 第一步：节点存在性与类型检查
+    _verify_dev_null_node || return 1
+
+    # 第二步：权限检查（仅告警，不阻断：部分发行版使用 ACL 扩展权限，stat %a 可能不反映实际可访问性）
+    local _null_perm
+    _null_perm=$(stat -c '%a' /dev/null 2>/dev/null || echo "")
+    if [ -n "$_null_perm" ] && [ "$_null_perm" != "666" ]; then
+        print_warning "/dev/null 权限异常（当前 ${_null_perm}，通常应为 666），可能导致容器启动失败"
+        if [ "$EUID" -eq 0 ]; then
+            chmod 666 /dev/null 2>/dev/null && print_success "/dev/null 权限已修复为 666" \
+                || print_warning "自动修复 /dev/null 权限失败，请手动执行: sudo chmod 666 /dev/null"
+        else
+            print_info "请以 root 执行: sudo chmod 666 /dev/null"
+        fi
+    fi
+
+    # 第三步：容器创建实测（关键：节点正常≠Docker 能创建容器）
+    if _verify_docker_create; then
+        return 0
+    fi
+
+    # 容器创建失败 → 根因诊断（详细信息请查看日志或咨询文档）
+    print_error "Docker 无法创建容器: $_DOCKER_CREATE_FAIL_MSG"
+    if _detect_docker_rootless; then
+        print_info "rootless Docker 可能间歇性 OCI 错误，推荐安装 crun 替代 runc，或参考文档排查"
+    else
+        print_info "请检查: systemctl status docker / df -h / dmesg | grep -i denied"
+    fi
+
+    return 1
+}
+
 prepare_runtime_environment() {
+    _verify_dev_null || exit 1
     detect_host_ip
     configure_rtp_port_reservation
 }
@@ -232,69 +333,22 @@ check_command() {
 
 # 检查 Docker 权限
 check_docker_permission() {
-    # 首先检查 Docker daemon 是否运行
     if ! docker info &> /dev/null; then
-        # 检查是否是权限问题还是 daemon 未运行
         local error_msg=$(docker info 2>&1)
         
         if echo "$error_msg" | grep -qi "permission denied\|cannot connect"; then
-            print_error "没有权限访问 Docker daemon"
-            echo ""
-            echo "解决方案："
-            echo "  1. 将当前用户添加到 docker 组："
-            echo "     sudo usermod -aG docker $USER"
-            echo "     然后重新登录或运行: newgrp docker"
-            echo ""
-            echo "  2. 或者使用 sudo 运行此脚本："
-            echo "     sudo ./install_linux.sh $*"
-            echo ""
+            print_error "没有权限访问 Docker daemon（执行: sudo usermod -aG docker \$USER 后重新登录，或用 sudo 运行此脚本）"
         elif echo "$error_msg" | grep -qi "Is the docker daemon running"; then
-            print_error "Docker daemon 未运行"
-            echo ""
-            
-            # 检查是否是 systemd 超时问题
-            if systemctl is-active docker.service &> /dev/null; then
-                print_info "Docker 服务状态: $(systemctl is-active docker.service)"
-            elif systemctl is-failed docker.service &> /dev/null && systemctl is-failed docker.service | grep -qi "failed\|timeout"; then
-                print_warning "检测到 Docker 服务启动失败或超时"
-                echo ""
-                echo "这可能是 systemd 超时问题，请运行诊断脚本："
-                echo "  sudo .scripts/docker/diagnose_docker_systemd.sh diagnose"
-                echo ""
-                echo "然后尝试修复："
-                echo "  sudo .scripts/docker/diagnose_docker_systemd.sh fix-all"
-                echo ""
+            print_error "Docker daemon 未运行（执行: sudo systemctl start docker）"
+            if systemctl is-failed docker.service &> /dev/null 2>&1; then
+                print_info "若启动失败，运行诊断: sudo .scripts/docker/diagnose_docker_systemd.sh diagnose"
             fi
-            
-            echo "解决方案："
-            echo "  1. 启动 Docker 服务："
-            echo "     sudo systemctl start docker"
-            echo ""
-            echo "  2. 如果启动失败，运行诊断脚本："
-            echo "     sudo .scripts/docker/diagnose_docker_systemd.sh diagnose"
-            echo ""
-            echo "  3. 尝试修复 systemd 超时问题："
-            echo "     sudo .scripts/docker/diagnose_docker_systemd.sh fix-all"
-            echo ""
-            echo "  4. 设置 Docker 服务开机自启："
-            echo "     sudo systemctl enable docker"
-            echo ""
         else
-            print_error "无法连接到 Docker daemon"
-            echo ""
-            echo "错误信息: $error_msg"
-            echo ""
-            echo "请检查："
-            echo "  1. Docker 服务是否运行: sudo systemctl status docker"
-            echo "  2. 如果服务启动失败，运行诊断脚本："
-            echo "     sudo .scripts/docker/diagnose_docker_systemd.sh diagnose"
-            echo "  3. 当前用户是否有权限访问 Docker"
-            echo ""
+            print_error "无法连接 Docker daemon: $error_msg"
         fi
         exit 1
     fi
     
-    # 验证 docker ps 命令是否可用
     if ! docker ps &> /dev/null; then
         print_error "Docker 命令执行失败"
         exit 1
@@ -304,40 +358,15 @@ check_docker_permission() {
 # 检查 Docker 是否安装（进程内幂等：同一次运行重复调用直接返回）
 check_docker() {
     [ "${_DOCKER_CHECKED:-0}" = "1" ] && return 0
-    print_info "检查 Docker 安装状态..."
+    print_info "检查 Docker..."
     
-    # 检查命令是否存在
     if ! check_command docker; then
-        print_error "Docker 未安装"
-        echo ""
-        echo "安装方法："
-        echo "  Ubuntu/Debian:"
-        echo "    curl -fsSL https://get.docker.com -o get-docker.sh"
-        echo "    sudo sh get-docker.sh"
-        echo ""
-        echo "  CentOS/RHEL:"
-        echo "    sudo yum install -y docker"
-        echo "    sudo systemctl start docker"
-        echo "    sudo systemctl enable docker"
-        echo ""
-        echo "  更多安装指南: https://docs.docker.com/get-docker/"
+        print_error "Docker 未安装，请执行: curl -fsSL https://get.docker.com | sudo sh"
         exit 1
     fi
     
-    # 获取 Docker 版本信息
     local docker_version=$(docker --version 2>/dev/null || echo "未知版本")
-    print_success "Docker 已安装: $docker_version"
-    
-    # 检查 Docker 服务状态
-    if systemctl is-active --quiet docker.service 2>/dev/null; then
-        print_info "Docker 服务状态: 运行中"
-    elif systemctl is-enabled --quiet docker.service 2>/dev/null; then
-        print_warning "Docker 服务已启用但未运行"
-    else
-        print_warning "Docker 服务未启用"
-    fi
-    
-    # 检查权限和 daemon 状态
+    print_success "Docker: $docker_version"
     check_docker_permission "$@"
     _DOCKER_CHECKED=1
 }
@@ -375,30 +404,17 @@ detect_compose() {
 # 检查 Docker Compose 是否安装（进程内幂等）
 check_docker_compose() {
     [ "${_COMPOSE_CHECKED:-0}" = "1" ] && return 0
-    print_info "检查 Docker Compose 安装状态..."
+    print_info "检查 Docker Compose..."
 
     if ! detect_compose; then
-        print_error "Docker Compose 未安装"
-        echo ""
-        echo "安装方法："
-        echo "  Docker Compose v2 (推荐，随 Docker Desktop 自动安装):"
-        echo "    如果使用 Docker Desktop，Compose v2 已包含在内"
-        echo ""
-        echo "  Docker Compose v1 (独立安装):"
-        echo "    sudo curl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose"
-        echo "    sudo chmod +x /usr/local/bin/docker-compose"
-        echo ""
-        echo "  更多安装指南: https://docs.docker.com/compose/install/"
+        print_error "Docker Compose 未安装，请执行: sudo apt install docker-compose-plugin"
         exit 1
     fi
 
-    if [ -n "$COMPOSE_V1_VERSION" ]; then
-        print_success "Docker Compose v1 已安装: $COMPOSE_V1_VERSION"
-    fi
-    if [ -n "$COMPOSE_V2_VERSION" ]; then
-        print_success "Docker Compose v2 已安装: $COMPOSE_V2_VERSION"
-    fi
-    print_info "使用命令: $COMPOSE_CMD"
+    local _ver_display=""
+    [ -n "$COMPOSE_V2_VERSION" ] && _ver_display="$COMPOSE_V2_VERSION"
+    [ -n "$COMPOSE_V1_VERSION" ] && _ver_display="${_ver_display:+$_ver_display, }$COMPOSE_V1_VERSION"
+    print_success "Docker Compose: ${_ver_display:-已安装}"
     _COMPOSE_CHECKED=1
 }
 
@@ -483,12 +499,7 @@ PYEOF
     print_warning "未安装 jq/python3 且 $config_file 已存在，跳过自动配置（请手动确认 registry-mirrors 含 $DOCKER_MIRROR）"
 }
 
-# 创建统一网络
-# 存在性用 docker network inspect 判断（本地 API 调用，毫秒级、离线可用）。
-# 不再用「拉取 alpine + ping 8.8.8.8」探测：该测试验证的是外网连通而非 bridge 健康，
-# 在离线/内网/防火墙环境必然失败，会把健康网络误判为损坏，进而断开运行中容器、
-# 删网重建——把常规启动变成破坏性操作。宿主机 IP 变更等罕见场景需重建时显式执行：
-#   FORCE_NETWORK_RECREATE=true ./install_linux.sh start
+# 创建统一网络（已存在则跳过；FORCE_NETWORK_RECREATE=true 可强制重建）
 create_network() {
     print_info "检查统一网络 yfeieye-network..."
 
@@ -509,7 +520,6 @@ create_network() {
             print_error "旧网络删除失败，请确认无容器占用后重试: docker network inspect yfeieye-network"
             return 1
         fi
-        print_success "旧网络已删除"
     fi
 
     print_info "正在创建网络 yfeieye-network..."
@@ -532,32 +542,26 @@ create_network() {
     fi
 }
 
-# 修复脚本文件的换行符（Windows CRLF -> Unix LF），并确保可执行位
-# 两个动作都遵循「先检测、确需变更才写」：无 \r 不重写文件，已有执行位不再 chmod，
-# 避免每次运行都产生无谓的磁盘写与 mtime/权限抖动。
+# 修复脚本换行符（CRLF → LF）并确保可执行位
 fix_line_endings() {
     local script_file="$1"
     [ -f "$script_file" ] || return 1
 
     if grep -q $'\r' "$script_file" 2>/dev/null; then
-        print_info "修复 $script_file 的换行符（CRLF -> LF）..."
+        print_info "修复 $script_file 的换行符..."
         if ! sed -i 's/\r$//' "$script_file" 2>/dev/null; then
-            # 个别环境 sed -i 不可用：tr 经临时文件兜底
-            # （shell 脚本不存在行中 \r，tr -d '\r' 与 sed 's/\r$//' 语义等价，无需三级回退）
             local temp_file
             temp_file=$(mktemp)
             if tr -d '\r' < "$script_file" > "$temp_file" 2>/dev/null; then
                 mv "$temp_file" "$script_file"
             else
                 rm -f "$temp_file"
-                print_warning "$script_file 换行符修复失败（sed/tr 均不可用）"
+                print_warning "$script_file 换行符修复失败"
                 return 1
             fi
         fi
     fi
 
-    # 执行位独立于换行符修复：此前只在发现 CRLF 时才补 +x，LF 但无执行位的脚本会被漏掉。
-    # 子脚本统一经 `bash file` 调用本不依赖执行位，u+x 仅为手动 ./xxx.sh 兜底，粒度最小。
     [ -x "$script_file" ] || chmod u+x "$script_file" 2>/dev/null || true
 }
 
@@ -567,6 +571,12 @@ module_install_script() {
         ".scripts/docker") echo "install_middleware_linux.sh" ;;
         *)                 echo "install_linux.sh" ;;
     esac
+}
+
+# 检查模块是否存在安装脚本
+_module_has_install_script() {
+    local _s="${PROJECT_ROOT}/${1}/$(module_install_script "$1")"
+    [ -f "$_s" ]
 }
 
 # 执行模块命令（统一流程：定位脚本 -> 修换行符 -> 执行 -> 记录日志）
@@ -595,7 +605,7 @@ execute_module_command() {
 
     local defer_agent_sync=0
     case "$module" in
-        DEVICE|AI|VIDEO|WEB) defer_agent_sync=1 ;;
+        DEVICE|AI|VIDEO|WEB|APP) defer_agent_sync=1 ;;
     esac
     if [ "$defer_agent_sync" -eq 1 ]; then
         export EASYAIOT_DEFER_PLATFORM_AGENT_SYNC=1
@@ -604,6 +614,8 @@ execute_module_command() {
     ensure_deploy_profile
     export EASYAIOT_DEPLOY_PROFILE
     export EASYAIOT_SKIP_PROFILE_PROMPT
+    export EASYAIOT_SKIP_IMAGE_PROMPT
+    export EASYAIOT_SKIP_BUILD
 
     # ⚠️ 失败判定必须取 PIPESTATUS[0]（子脚本退出码）：
     # 脚本未开 pipefail（全局开会让 `docker ps | grep -q` 类管道误报），
@@ -692,27 +704,63 @@ verify_service_health() {
 # 安装所有服务
 install_linux() {
     print_section "开始安装所有服务"
-    
+
     select_deploy_profile_for_install
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux.sh"
+    runtime_images_acquire
+
     check_docker "$@"
     check_docker_compose
     prepare_runtime_environment
     configure_docker_mirror
     create_network
+
+    # 若已拉取预构建镜像，业务模块跳过 docker build
+    local _skip_build=0
+    if runtime_images_should_skip_build; then
+        _skip_build=1
+    else
+        print_info "将进行本地构建（各模块 docker build，耗时较长）"
+    fi
     
     local success_count=0
-    local total_count=${#MODULES[@]}
+    local total_count
+    total_count=$(_count_installable_modules)
+    local -a failed_modules=()
+    local -a succeeded_modules=()
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            print_info "跳过 ${MODULE_NAMES[$module]}（当前部署形态 ${EASYAIOT_DEPLOY_PROFILE} 不包含此模块）"
+            continue
+        fi
         print_section "安装 ${MODULE_NAMES[$module]}"
+
+        # 检查模块是否存在安装脚本，无安装脚本的模块直接跳过
+        local _inst_script
+        _inst_script="${PROJECT_ROOT}/${module}/$(module_install_script "$module")"
+        if [ ! -f "$_inst_script" ]; then
+            print_info "${MODULE_NAMES[$module]} 无需安装（无安装脚本），跳过"
+            continue
+        fi
+
+        if [ "$_skip_build" -eq 1 ] && [ "$module" != ".scripts/docker" ]; then
+            print_info "镜像已从远程拉取，跳过 docker build，直接启动 ${MODULE_NAMES[$module]}"
+        fi
         if execute_module_command "$module" "install"; then
             success_count=$((success_count + 1))
+            succeeded_modules+=("${MODULE_NAMES[$module]}")
             # 基础服务装完后精确等待 PostgreSQL/Nacos/Redis 就绪（取代原固定 sleep 5）
             if [ "$module" = ".scripts/docker" ]; then
                 wait_for_base_services
             fi
+            # DEVICE 装完后等待 iot-gateway 就绪，避免 WEB 启动时 gateway 未就绪导致 /dev-api/ 503
+            if [ "$module" = "DEVICE" ]; then
+                wait_for_device_gateway || print_warning "iot-gateway 未就绪，WEB 服务 /dev-api/ 接口可能返回 503（待 gateway 就绪后重启 WEB 即可）"
+            fi
         else
             print_error "${MODULE_NAMES[$module]} 安装失败"
+            failed_modules+=("${MODULE_NAMES[$module]}")
         fi
         echo ""
     done
@@ -720,11 +768,49 @@ install_linux() {
     print_section "安装完成"
     echo "成功安装: $success_count / $total_count 个模块"
     
+    if [ ${#succeeded_modules[@]} -gt 0 ]; then
+        echo "  已成功: ${succeeded_modules[*]}"
+    fi
+    if [ ${#failed_modules[@]} -gt 0 ]; then
+        echo "  已失败: ${failed_modules[*]}"
+    fi
+
     if [ $success_count -eq $total_count ]; then
         print_success "所有模块安装成功！"
         ensure_platform_agent_after_stack
     else
+        echo ""
         print_warning "部分模块安装失败，请检查日志"
+        echo ""
+        print_info "诊断建议："
+        for failed in "${failed_modules[@]}"; do
+            case "$failed" in
+                "基础服务")
+                    print_info "  - 基础服务：检查 Nacos/PostgreSQL/Redis 等中间件容器是否正常启动"
+                    print_info "    docker ps --filter 'name=nacos|postgres|redis'"
+                    ;;
+                "Device服务")
+                    print_info "  - Device服务：检查 Maven 编译是否成功、JAR 包是否生成"
+                    print_info "    ls DEVICE/target/jars/"
+                    print_info "    检查日志: cat ${LOG_DIR}/install_linux_*.log | grep -i 'error\|failed\|失败'"
+                    ;;
+                "AI服务")
+                    print_info "  - AI服务：检查 PyTorch 镜像拉取和 Python 依赖安装"
+                    print_info "    docker images | grep ai-service"
+                    ;;
+                "Video服务")
+                    print_info "  - Video服务：检查视频服务镜像构建"
+                    print_info "    docker images | grep video-service"
+                    ;;
+                "Web前端服务")
+                    print_info "  - Web前端服务：检查 pnpm install/build 和 nginx 镜像构建"
+                    print_info "    docker images | grep web-service"
+                    print_info "    cat WEB/docker-build-logs/pnpm-build.log | tail -50"
+                    ;;
+            esac
+        done
+        echo ""
+        print_info "完整日志文件: ${LOG_FILE}"
         exit 1
     fi
 }
@@ -735,6 +821,8 @@ wait_for_container_ready() {
     local name=$1 max_attempts=$2 interval=$3
     shift 3
     local attempt=0
+    local elapsed=0
+    local progress_interval=10  # 每 10 次检测输出一次友好提示
     print_info "等待 ${name} 服务就绪..."
     while [ $attempt -lt $max_attempts ]; do
         if "$@" > /dev/null 2>&1; then
@@ -743,8 +831,13 @@ wait_for_container_ready() {
         fi
         attempt=$((attempt + 1))
         sleep "$interval"
+        elapsed=$((elapsed + interval))
+        # 每 progress_interval 次检测输出友好提示，让用户知道没有卡死
+        if [ $((attempt % progress_interval)) -eq 0 ] && [ $attempt -lt $max_attempts ]; then
+            print_info "  ${name} 仍在启动中...（已等待 ${elapsed}s，将继续等待）"
+        fi
     done
-    print_warning "${name} 服务未在预期时间内就绪，继续执行..."
+    print_warning "${name} 服务未在预期时间内就绪（已等待 ${elapsed}s），继续执行..."
     return 1
 }
 
@@ -753,26 +846,209 @@ container_running() {
     docker ps --filter "name=$1" --format "{{.Names}}" | grep -q "$1"
 }
 
+# 容器是否存在（含 Created 状态，即 compose up 创建了但 OCI 运行时未能启动）
+container_exists() {
+    docker ps -a --filter "name=$1" --format "{{.Names}}" | grep -q "$1"
+}
+
+# 获取容器状态字符串（running / created / exited / 空）
+container_status() {
+    docker inspect --format '{{.State.Status}}' "$1" 2>/dev/null || echo ""
+}
+
+# 自动修复 Created 状态的容器（compose up 创建但 runc 启动失败，如 OCI /dev/null 错误）。
+# 先尝试 docker start，失败则通过 compose 重建（保留完整配置）。
+_repair_created_containers() {
+    local names n status rc=0 _svc _compose_file _up_log _up_rc _retry _delay
+    names=$(docker ps -a --filter "status=created" --format '{{.Names}}' 2>/dev/null || true)
+    [ -z "$names" ] && return 0
+
+    for n in $names; do
+        status=$(container_status "$n")
+        [ "$status" = "created" ] || continue
+        print_warning "容器 $n 处于 Created 状态，尝试修复..."
+
+        # 策略1：直接 docker start
+        if docker start "$n" >/dev/null 2>&1; then
+            print_success "容器 $n 已重新启动"
+            continue
+        fi
+
+        # 策略2：通过 compose 重建
+        _svc=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$n" 2>/dev/null || echo "")
+        _compose_file=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.file"}}' "$n" 2>/dev/null || echo "")
+        if [ -n "$_svc" ] && [ -n "$_compose_file" ] && [ -f "$_compose_file" ]; then
+            print_warning "通过 compose 重建 $n ($_svc)..."
+            docker rm -f "$n" >/dev/null 2>&1 || true
+            sleep 1
+            _up_log=$(mktemp)
+            docker compose -f "$_compose_file" up -d "$_svc" > "$_up_log" 2>&1 || true
+            cat "$_up_log" >> "${LOG_FILE:-/dev/null}" 2>/dev/null || true
+            rm -f "$_up_log"
+
+            sleep 2
+            if docker ps --filter "name=$n" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "$n"; then
+                print_success "容器 $n ($_svc) 已重建并运行"
+                continue
+            fi
+        fi
+
+        print_error "容器 $n 修复失败"
+        rc=1
+    done
+    return $rc
+}
+
 # 等待基础服务就绪（PostgreSQL / Nacos / Redis）
+# 增强：容器 Created 但未 Running 时自动尝试修复，避免静默失败导致后续业务服务 DNS 解析失败
 wait_for_base_services() {
     print_info "等待基础服务就绪..."
-    if container_running postgres-server; then
-        wait_for_container_ready "PostgreSQL" 60 2 docker exec postgres-server pg_isready -U postgres || true
+
+    # 第一步：修复所有 Created 状态的容器（如 OCI /dev/null 导致的启动失败）
+    _repair_created_containers || print_warning "部分 Created 容器未能自动修复，基础服务可能不可用"
+
+    # 第二步：对每个关键基础服务，确认 Running 后才做健康检查
+    local _redis_ok=false _pg_ok=false _nacos_ok=false
+
+    if container_exists postgres-server; then
+        if container_running postgres-server; then
+            wait_for_container_ready "PostgreSQL" 180 2 docker exec postgres-server pg_isready -U postgres || true
+            wait_for_container_ready "PostgreSQL (查询就绪)" 180 2 \
+                bash -c 'docker exec postgres-server psql -U postgres -d postgres -tAc "SELECT 1" >/dev/null 2>&1 && [ "$(docker exec postgres-server psql -U postgres -d postgres -tAc "SELECT pg_is_in_recovery();" 2>/dev/null)" = "f" ]' || true
+            _pg_ok=true
+        else
+            print_error "PostgreSQL 容器已创建但未运行，请检查: docker logs postgres-server"
+        fi
     fi
-    if container_running nacos-server; then
-        wait_for_container_ready "Nacos" 60 2 curl -s --connect-timeout 2 "http://localhost:8848/nacos/actuator/health" || true
+
+    if container_exists nacos-server; then
+        if container_running nacos-server; then
+            wait_for_container_ready "Nacos" 60 2 curl -s --connect-timeout 2 "http://localhost:8848/nacos/actuator/health" || true
+            _nacos_ok=true
+        else
+            print_error "Nacos 容器已创建但未运行，请检查: docker logs nacos-server"
+        fi
     fi
-    if container_running redis-server; then
-        wait_for_container_ready "Redis" 30 1 docker exec redis-server redis-cli ping || true
+
+    if container_exists redis-server; then
+        if container_running redis-server; then
+            wait_for_container_ready "Redis" 30 1 docker exec redis-server redis-cli ping || true
+            _redis_ok=true
+        else
+            print_error "Redis 容器已创建但未运行！后续业务服务将无法解析 'Redis' 主机名"
+            print_info "请检查: docker logs redis-server"
+            print_info "常见原因：rootless Docker 下 runc 无法创建 /dev/null（OCI 错误）"
+        fi
+    else
+        print_warning "Redis 容器不存在，业务服务将无法连接 Redis"
+    fi
+
+    if container_exists minio-server; then
+        if container_running minio-server; then
+            wait_for_container_ready "MinIO" 30 2 curl -sf --connect-timeout 2 "http://localhost:9000/minio/health/live" || true
+        else
+            print_error "MinIO 容器已创建但未运行！WEB 服务 nginx 将无法解析 'MinIO' 主机名"
+            print_info "请检查: docker logs minio-server"
+        fi
+    else
+        print_warning "MinIO 容器不存在，WEB 服务对 /api/v1/buckets 代理将不可用"
+    fi
+
+    # 关键基础服务缺失时给出明确警告（不中断，让用户看到后续错误的完整上下文）
+    if ! $_redis_ok || ! $_pg_ok || ! $_nacos_ok; then
+        print_warning "部分基础服务未就绪，后续业务模块可能启动失败"
     fi
 }
 
-# 业务模块清单（MODULES 去掉基础服务），结果写入全局数组 BIZ_MODULES
+# 等待 DEVICE 模块的 iot-gateway 就绪（仅非 mini 形态）
+# 必须在 WEB 模块启动前调用，否则 nginx 代理到 gateway:48080 将返回 502→503
+wait_for_device_gateway() {
+    # mini 形态无 iot-gateway，直连 iot-system，无需等待
+    if is_mini_deploy_profile; then
+        print_info "当前为 mini 部署形态，跳过 iot-gateway 就绪检查（直连 iot-system:48099）"
+        return 0
+    fi
+
+    print_info "等待 iot-gateway 就绪（Gateway API 网关，端口 48080）..."
+
+    # 检查容器是否存在
+    if ! container_exists iot-gateway 2>/dev/null; then
+        print_warning "iot-gateway 容器不存在，API 请求将返回 503"
+        print_info "可能原因：DEVICE 模块未安装或部署形态不包含 iot-gateway"
+        print_info "手动检查: docker ps -a | grep iot-gateway"
+        return 1
+    fi
+
+    # 等待容器 Running
+    if ! container_running iot-gateway 2>/dev/null; then
+        print_warning "iot-gateway 容器未运行，尝试等待启动..."
+        local _gw_wait=0
+        while [ $_gw_wait -lt 30 ]; do
+            if container_running iot-gateway 2>/dev/null; then
+                break
+            fi
+            sleep 1
+            _gw_wait=$((_gw_wait + 1))
+        done
+        if ! container_running iot-gateway 2>/dev/null; then
+            print_error "iot-gateway 容器未能启动，请检查日志: docker logs iot-gateway"
+            return 1
+        fi
+    fi
+
+    # 等待端口 48080 可连接（网关 Spring Boot 完全启动）
+    # 使用 1s 间隔、200 次检测（最长 200s），比 3s*90=270s 更快感知就绪
+    # 同时检测 docker logs 是否已输出 "启动成功" 但端口尚未绑定（Spring Boot 特性）
+    local _gw_port_ready=0
+    local _gw_log_ready=0
+    local _poll_attempt=0
+    local _poll_elapsed=0
+    local _poll_max=200
+    local _poll_interval=1
+    print_info "等待 iot-gateway (48080) 服务就绪..."
+    while [ $_poll_attempt -lt $_poll_max ]; do
+        if curl -sf --connect-timeout 2 -o /dev/null "http://localhost:48080/" 2>/dev/null || \
+           curl -sf --connect-timeout 2 -o /dev/null "http://localhost:48080/actuator/health" 2>/dev/null; then
+            _gw_port_ready=1
+            break
+        fi
+        # 检测 Spring Boot 是否已打印启动成功（提示用户只差端口绑定这一步了）
+        if [ $_gw_log_ready -eq 0 ] && docker logs iot-gateway --tail 5 2>/dev/null | grep -qE '(项目启动成功|Started .* in |JVM running for)'; then
+            _gw_log_ready=1
+            print_info "  Spring Boot 已初始化完成，正在等待 Netty 端口 48080 绑定..."
+        fi
+        _poll_attempt=$((_poll_attempt + 1))
+        sleep "$_poll_interval"
+        _poll_elapsed=$((_poll_elapsed + _poll_interval))
+        # 每 10 秒输出友好进度提示
+        if [ $((_poll_attempt % 10)) -eq 0 ] && [ $_poll_attempt -lt $_poll_max ]; then
+            print_info "  iot-gateway 仍在启动中...（已等待 ${_poll_elapsed}s，请耐心等待 Java 应用启动）"
+        fi
+    done
+
+    if [ $_gw_port_ready -eq 1 ]; then
+        print_success "iot-gateway 已就绪（端口 48080 响应正常），WEB 服务可以安全启动"
+    else
+        print_warning "iot-gateway 在 ${_poll_elapsed}s 内未就绪，WEB 服务启动后 /dev-api/ 可能返回 503"
+        print_info "手动检查: curl -v http://localhost:48080/"
+        print_info "查看日志: docker logs iot-gateway --tail 50"
+        # 如果日志显示启动成功但端口不通，给出明确提示
+        if docker logs iot-gateway --tail 20 2>/dev/null | grep -qE '(项目启动成功|Started .* in )'; then
+            print_warning "Spring Boot 日志显示启动成功，但端口 48080 仍不可达，可能是网络或防火墙问题"
+        fi
+        return 1
+    fi
+}
+
+# 业务模块清单（MODULES 去掉基础服务，并按部署形态过滤），结果写入全局数组 BIZ_MODULES
 collect_biz_modules() {
+    ensure_deploy_profile
     BIZ_MODULES=()
     local module
     for module in "${MODULES[@]}"; do
-        [ "$module" = ".scripts/docker" ] || BIZ_MODULES+=("$module")
+        [ "$module" = ".scripts/docker" ] && continue
+        module_enabled_for_deploy_profile "$module" || continue
+        BIZ_MODULES+=("$module")
     done
 }
 
@@ -841,8 +1117,17 @@ start_all() {
     else
         for module in "${BIZ_MODULES[@]}"; do
             execute_module_command "$module" "start" || print_warning "${MODULE_NAMES[$module]} 启动失败，继续其余模块"
+            # DEVICE 启动后等待 gateway 就绪，确保后续 WEB 启动时 /dev-api/ 可达
+            if [ "$module" = "DEVICE" ]; then
+                wait_for_device_gateway || print_warning "iot-gateway 未就绪，WEB 服务 /dev-api/ 接口可能返回 503"
+            fi
             echo ""
         done
+    fi
+
+    # 并行启动后仍需确保 gateway 就绪（DEVICE/WEB 同时启动时 WEB nginx 可能比 gateway 先就绪）
+    if module_enabled_for_deploy_profile "DEVICE" 2>/dev/null; then
+        wait_for_device_gateway || print_warning "iot-gateway 未就绪，WEB 服务 /dev-api/ 接口可能返回 503（待 gateway 就绪后重启 WEB 即可）"
     fi
     
     print_success "所有服务启动完成"
@@ -877,10 +1162,17 @@ restart_all() {
     create_network
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         if execute_module_command "$module" "restart"; then
             # 基础服务重启后精确等待就绪，再重启依赖它的业务模块（取代原固定 sleep 5）
             if [ "$module" = ".scripts/docker" ]; then
                 wait_for_base_services
+            fi
+            # DEVICE 重启后等待 gateway 就绪，确保后续模块（WEB）的 /dev-api/ 可达
+            if [ "$module" = "DEVICE" ]; then
+                wait_for_device_gateway || print_warning "iot-gateway 未就绪，WEB 服务 /dev-api/ 接口可能返回 503"
             fi
         else
             print_warning "${MODULE_NAMES[$module]} 重启失败，继续其余模块"
@@ -942,19 +1234,43 @@ build_all() {
 
     if [ "${PARALLEL_BUILD:-false}" = "true" ]; then
         print_info "并行构建模式（PARALLEL_BUILD=true），各模块日志将在结束后汇总展示"
-        if ! run_modules_parallel "build" "${MODULES[@]}"; then
+        local active_modules=()
+        local module
+        for module in "${MODULES[@]}"; do
+            module_enabled_for_deploy_profile "$module" && active_modules+=("$module")
+        done
+        if ! run_modules_parallel "build" "${active_modules[@]}"; then
             print_error "部分模块构建失败，请检查日志: $LOG_FILE"
             exit 1
         fi
     else
         local module
         for module in "${MODULES[@]}"; do
+            module_enabled_for_deploy_profile "$module" || continue
             execute_module_command "$module" "build" || print_warning "${MODULE_NAMES[$module]} 构建失败，继续其余模块"
             echo ""
         done
     fi
 
     print_success "所有镜像构建完成"
+}
+
+# 从远程仓库拉取预构建运行时镜像（交互式，默认 full）
+pull_runtime_images() {
+    check_docker "$@"
+    runtime_images_prepare_pull_interactive
+    runtime_images_export_for_invoke
+    runtime_images_invoke pull || exit 1
+    export EASYAIOT_SKIP_BUILD=1
+    export EASYAIOT_SKIP_IMAGE_PROMPT=1
+}
+
+# 构建并可选推送运行时镜像到远程仓库（交互式）
+build_runtime_images() {
+    check_docker "$@"
+    runtime_images_prepare_build_interactive
+    runtime_images_export_for_invoke
+    runtime_images_invoke build || exit 1
 }
 
 
@@ -1014,8 +1330,17 @@ update_all() {
     else
         for module in "${BIZ_MODULES[@]}"; do
             execute_module_command "$module" "update" || print_warning "${MODULE_NAMES[$module]} 更新失败，继续其余模块"
+            # DEVICE 更新后等待 gateway 就绪，确保后续 WEB 更新时 /dev-api/ 可达
+            if [ "$module" = "DEVICE" ]; then
+                wait_for_device_gateway || print_warning "iot-gateway 未就绪，WEB 服务 /dev-api/ 接口可能返回 503"
+            fi
             echo ""
         done
+    fi
+
+    # 并行更新后仍需确保 gateway 就绪
+    if module_enabled_for_deploy_profile "DEVICE" 2>/dev/null; then
+        wait_for_device_gateway || print_warning "iot-gateway 未就绪，/dev-api/ 接口可能返回 503（待 gateway 就绪后重启 WEB 即可）"
     fi
 
     print_success "所有服务更新完成"
@@ -1029,10 +1354,12 @@ verify_all() {
     check_docker "$@"
     
     local success_count=0
-    local total_count=${#MODULES[@]}
+    local total_count
+    total_count=$(_count_verifiable_modules)
     local failed_modules=()
     
     for module in "${MODULES[@]}"; do
+        module_enabled_for_deploy_profile "$module" || continue
         if verify_service_health "$module"; then
             success_count=$((success_count + 1))
         else
@@ -1055,6 +1382,9 @@ verify_all() {
         echo -e "  AI服务:                http://localhost:5000"
         echo -e "  Video服务:             http://localhost:6000"
         echo -e "  Web前端:               http://localhost:8888"
+        if module_enabled_for_deploy_profile APP; then
+            echo -e "  App移动端H5:           http://localhost:9010"
+        fi
         echo ""
         return 0
     else
@@ -1146,7 +1476,9 @@ show_help() {
     echo "  status          - 查看所有服务状态"
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
-    echo "  build           - 重新构建所有镜像"
+    echo "  build           - 重新构建所有镜像（各模块本地构建）"
+    echo "  build-runtime   - 构建/推送运行时镜像到远程仓库"
+    echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
     echo "  update          - 更新并重启所有服务"
     echo "  verify          - 验证所有服务是否启动成功"
@@ -1165,6 +1497,8 @@ show_help() {
     echo "  PARALLEL_BUILD=true          - build 时并行构建各模块（默认串行，防小内存并行 OOM）"
     echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 yfeieye-network（宿主机 IP 变更后使用）"
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
+    echo "  EASYAIOT_RUNTIME_REGISTRY    - 运行时镜像仓库（默认见 runtime_registry.conf）"
+    echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
     echo ""
 }
 
@@ -1192,6 +1526,12 @@ main() {
             ;;
         build)
             build_all
+            ;;
+        build-runtime|images-build)
+            build_runtime_images
+            ;;
+        pull|images-pull)
+            pull_runtime_images
             ;;
         clean)
             clean_all

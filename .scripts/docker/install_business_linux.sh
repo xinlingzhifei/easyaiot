@@ -3,7 +3,7 @@
 # ============================================
 # yFeiEye 业务系统统一管理脚本
 # ============================================
-# 管理模块: DEVICE、AI、VIDEO、WEB（不含中间件）
+# 管理模块: DEVICE、AI、VIDEO、WEB、APP（不含中间件；APP 仅 full 全量形态）
 # 各模块实际逻辑委托给对应目录下的 install_linux.sh
 #
 # 用法:
@@ -38,6 +38,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=deploy_profile.sh
 source "${SCRIPT_DIR}/deploy_profile.sh"
 
+# shellcheck source=runtime_image_common.sh
+source "${SCRIPT_DIR}/runtime_image_common.sh"
+
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
 
@@ -53,13 +56,14 @@ ensure_platform_agent_after_business_stack() {
 }
 
 # 业务模块（按依赖顺序：网关/微服务 -> AI/视频 -> 前端）
-ALL_MODULES=(DEVICE AI VIDEO WEB)
+ALL_MODULES=(DEVICE AI VIDEO WEB APP)
 
 declare -A MODULE_NAMES=(
     [DEVICE]="Device 服务"
     [AI]="AI 服务"
     [VIDEO]="Video 服务"
     [WEB]="Web 前端"
+    [APP]="App 移动端 H5"
 )
 
 declare -A MODULE_PORTS=(
@@ -67,6 +71,7 @@ declare -A MODULE_PORTS=(
     [AI]="5000"
     [VIDEO]="6000"
     [WEB]="8888"
+    [APP]="9010"
 )
 
 declare -A MODULE_HEALTH_ENDPOINTS=(
@@ -74,6 +79,7 @@ declare -A MODULE_HEALTH_ENDPOINTS=(
     [AI]="/actuator/health"
     [VIDEO]="/actuator/health"
     [WEB]="/health"
+    [APP]="/health"
 )
 
 LOG_DIR="${SCRIPT_DIR}/logs"
@@ -81,6 +87,7 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/install_business_$(date +%Y%m%d_%H%M%S).log"
 
 SELECTED_MODULES=()
+MODULE_POSITIONAL=()
 COMMAND=""
 EXTRA_ARGS=()
 AUTO_YES=false
@@ -299,12 +306,18 @@ normalize_module_name() {
 }
 
 resolve_modules() {
+    ensure_deploy_profile
     local tokens=("$@")
     local resolved=()
     local t norm
 
     if [ ${#tokens[@]} -eq 0 ]; then
-        SELECTED_MODULES=("${ALL_MODULES[@]}")
+        SELECTED_MODULES=()
+        local mod
+        for mod in "${ALL_MODULES[@]}"; do
+            module_enabled_for_deploy_profile "$mod" || continue
+            SELECTED_MODULES+=("$mod")
+        done
         return 0
     fi
 
@@ -313,6 +326,10 @@ resolve_modules() {
         if ! is_valid_module "$norm"; then
             print_error "未知模块: $t（可选: ${ALL_MODULES[*]}）"
             exit 1
+        fi
+        if ! module_enabled_for_deploy_profile "$norm"; then
+            print_warning "模块 $norm 在当前部署形态 ${EASYAIOT_DEPLOY_PROFILE:-full} 下不可用，已跳过"
+            continue
         fi
         resolved+=("$norm")
     done
@@ -393,6 +410,8 @@ execute_module() {
         export EASYAIOT_DEFER_PLATFORM_AGENT_SYNC=1
         export EASYAIOT_DEPLOY_PROFILE
         export EASYAIOT_SKIP_PROFILE_PROMPT
+        export EASYAIOT_SKIP_IMAGE_PROMPT
+        export EASYAIOT_SKIP_BUILD
         bash install_linux.sh "$mapped" "$@"
     ) 2>&1 | tee -a "$LOG_FILE"
 
@@ -472,14 +491,21 @@ is_no() {
     esac
 }
 
+# 镜像获取（install 时由 runtime_image_common 统一处理）
+init_runtime_images_for_install() {
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_business_linux.sh"
+    runtime_images_acquire
+}
+
 init_deploy_profile_for_command() {
     local cmd="$1"
     case "$cmd" in
         install)
             select_deploy_profile_for_install
+            init_runtime_images_for_install
             print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             ;;
-        start|restart|update|verify|status|build|build-base)
+        start|restart|update|verify|status|build|build-base|pull|build-runtime)
             ensure_deploy_profile
             warn_web_rebuild_if_profile_changed
             print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
@@ -507,7 +533,7 @@ usage() {
     cat <<EOF
 yFeiEye 业务系统统一管理脚本
 
-管理模块: DEVICE、AI、VIDEO、WEB（不含 Nacos/PostgreSQL 等中间件）
+管理模块: DEVICE、AI、VIDEO、WEB、APP（不含 Nacos/PostgreSQL 等中间件；APP 仅 full）
 
 用法:
   $0 <命令> [选项] [模块...]
@@ -519,7 +545,9 @@ yFeiEye 业务系统统一管理脚本
   restart       重启服务
   status        查看状态
   logs [服务名] 查看日志（可指定模块后接服务名，如 logs DEVICE iot-gateway）
-  build         重新构建镜像
+  build         重新构建镜像（各模块本地构建）
+  build-runtime 构建/推送运行时镜像到远程仓库
+  pull          从远程仓库拉取预构建运行时镜像（交互式，默认 full）
   build-base    仅 DEVICE：Maven 编译并提取 Jar（第一阶段）
   clean         清理容器（DEVICE 保留镜像）
   clean-all     完全清理（DEVICE 含镜像；其他模块等同 clean）
@@ -534,12 +562,14 @@ yFeiEye 业务系统统一管理脚本
   --continue-on-error    某模块失败后继续执行其余模块
 
 模块:
-  未指定时默认全部，顺序为 DEVICE -> AI -> VIDEO -> WEB
+  未指定时默认全部（按部署形态过滤），顺序为 DEVICE -> AI -> VIDEO -> WEB -> APP
   stop / clean / clean-all 时自动逆序执行
 
 示例:
   $0 install
   $0 update WEB
+  $0 pull
+  $0 build-runtime
   $0 verify
   $0 verify DEVICE WEB
   $0 -m DEVICE,AI status
@@ -548,7 +578,9 @@ yFeiEye 业务系统统一管理脚本
 
 说明:
   中间件请使用 .scripts/docker/install_linux.sh 或 install_middleware_linux.sh
+  运行时镜像仓库配置: .scripts/docker/runtime_registry.conf
   环境变量 EASYAIOT_DEPLOY_PROFILE: mini(1) | standard(2) | full(3，默认)
+  build-runtime 可选 EASYAIOT_RUNTIME_BUILD_ARCH: all(默认) | amd64 | arm64（单架构时跳过 manifest）
   日志: $LOG_DIR/
 EOF
 }
@@ -578,7 +610,7 @@ parse_args() {
                 positional+=("${_mods[@]}")
                 shift 2
                 ;;
-            install|start|stop|restart|status|logs|build|build-base|clean|clean-all|update|verify|profile)
+            install|start|stop|restart|status|logs|build|build-base|clean|clean-all|update|verify|profile|pull|build-runtime|images-pull|images-build)
                 COMMAND="$arg"
                 shift
                 ;;
@@ -603,6 +635,8 @@ parse_args() {
         return 0
     fi
 
+    MODULE_POSITIONAL=("${positional[@]}")
+
     if [ "$COMMAND" = "logs" ] && [ ${#positional[@]} -gt 0 ]; then
         local first
         first=$(normalize_module_name "${positional[0]}")
@@ -611,6 +645,11 @@ parse_args() {
             EXTRA_ARGS=("${positional[@]:1}")
             return 0
         fi
+    fi
+
+    # install 需在交互选定部署形态后再 resolve（见 main）
+    if [ "$COMMAND" = "install" ]; then
+        return 0
     fi
 
     resolve_modules "${positional[@]}"
@@ -636,9 +675,30 @@ main() {
             init_deploy_profile_for_command verify
             verify_all || exit 1
             ;;
-        install|start|restart|update|build|build-base|status)
+        install)
+            init_deploy_profile_for_command install
+            resolve_modules "${MODULE_POSITIONAL[@]}"
+            run_on_modules install "${EXTRA_ARGS[@]}" || exit 1
+            ;;
+        start|restart|update|build|build-base|status)
             init_deploy_profile_for_command "$COMMAND"
             run_on_modules "$COMMAND" "${EXTRA_ARGS[@]}" || exit 1
+            ;;
+        pull|images-pull)
+            init_deploy_profile_for_command pull
+            check_docker
+            runtime_images_prepare_pull_interactive
+            runtime_images_export_for_invoke
+            runtime_images_invoke pull || exit 1
+            export EASYAIOT_SKIP_BUILD=1
+            export EASYAIOT_SKIP_IMAGE_PROMPT=1
+            ;;
+        build-runtime|images-build)
+            init_deploy_profile_for_command build-runtime
+            check_docker
+            runtime_images_prepare_build_interactive
+            runtime_images_export_for_invoke
+            runtime_images_invoke build || exit 1
             ;;
         stop|clean|clean-all)
             if [[ "$COMMAND" == clean* ]]; then

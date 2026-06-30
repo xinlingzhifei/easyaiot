@@ -16,5 +16,12 @@ public interface AlertNotificationService {
      * @param notificationMessage 告警通知消息
      */
     void processAlertNotification(AlertNotificationMessage notificationMessage);
+
+    /**
+     * 判断告警消息是否具备可发送的通知配置
+     */
+    boolean hasNotificationConfig(
+            java.util.List<java.util.Map<String, Object>> channels,
+            java.util.List<java.util.Map<String, Object>> notifyUsers);
 }
 

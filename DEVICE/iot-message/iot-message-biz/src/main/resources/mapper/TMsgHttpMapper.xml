@@ -16,10 +16,12 @@
         <result column="modified_time" jdbcType="TIMESTAMP" property="modifiedTime"/>
         <result column="preview_user" jdbcType="VARCHAR" property="previewUser"/>
         <result column="user_group_id" jdbcType="VARCHAR" property="userGroupId"/>
+        <result column="record_type" jdbcType="INTEGER" property="recordType"/>
+        <result column="ref_template_id" jdbcType="VARCHAR" property="refTemplateId"/>
     </resultMap>
     <sql id="Base_Column_List">
         id, msg_type, msg_name, method, url, params, headers, cookies, body, body_type, create_time,
-    modified_time, preview_user,user_group_id
+    modified_time, preview_user,user_group_id, record_type, ref_template_id
     </sql>
     <select id="selectByPrimaryKey" parameterType="java.lang.String" resultMap="BaseResultMap">
         select
@@ -43,12 +45,13 @@
                                 method, url, params,
                                 headers, cookies, body,
                                 body_type, create_time, modified_time,
-                                preview_user,user_group_id)
+                                preview_user,user_group_id, record_type, ref_template_id)
         values (#{id,jdbcType=INTEGER}, #{msgType,jdbcType=INTEGER}, #{msgName,jdbcType=VARCHAR},
                 #{method,jdbcType=VARCHAR}, #{url,jdbcType=VARCHAR}, #{params,jdbcType=VARCHAR},
                 #{headers,jdbcType=VARCHAR}, #{cookies,jdbcType=VARCHAR}, #{body,jdbcType=VARCHAR},
                 #{bodyType,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP}, #{modifiedTime,jdbcType=TIMESTAMP},
-                #{previewUser,jdbcType=VARCHAR},#{userGroupId,jdbcType=VARCHAR})
+                #{previewUser,jdbcType=VARCHAR},#{userGroupId,jdbcType=VARCHAR},
+                #{recordType,jdbcType=INTEGER}, #{refTemplateId,jdbcType=VARCHAR})
     </insert>
     <insert id="insertSelective" parameterType="com.basiclab.iot.message.domain.entity.TMsgHttp" useGeneratedKeys="true"
             keyColumn="id" keyProperty="id">
@@ -178,7 +181,13 @@
             <if test="userGroupId != null">
                 user_group_id = #{userGroupId,jdbcType=VARCHAR},
             </if>
-        </set>
+                    <if test="recordType != null">
+                record_type = #{recordType,jdbcType=INTEGER},
+            </if>
+            <if test="refTemplateId != null">
+                ref_template_id = #{refTemplateId,jdbcType=VARCHAR},
+            </if>
+</set>
         where id = #{id,jdbcType=VARCHAR}
     </update>
     <update id="updateByPrimaryKey" parameterType="com.basiclab.iot.message.domain.entity.TMsgHttp">
@@ -228,5 +237,6 @@
         <include refid="Base_Column_List"/>
         from t_msg_http
         where msg_type = #{msgType,jdbcType=INTEGER}
+          and (record_type = 0 or record_type is null)
     </select>
 </mapper>

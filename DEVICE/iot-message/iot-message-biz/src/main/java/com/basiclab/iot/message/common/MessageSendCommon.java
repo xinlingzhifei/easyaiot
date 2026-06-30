@@ -279,6 +279,13 @@ public class MessageSendCommon {
     /**
      * 添加推送历史记录
      */
+    public void recordPushHistory(int msgType, String msgId, SendResult sendResult) {
+        addPushHistory(msgType, msgId, sendResult);
+    }
+
+    /**
+     * 添加推送历史记录
+     */
     private void addPushHistory(int msgType, String msgId, SendResult sendResult) {
         TPushHistory tPushHistory = new TPushHistory();
         tPushHistory.setMsgId(msgId);

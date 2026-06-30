@@ -8,13 +8,20 @@ import com.basiclab.iot.message.domain.model.SendResult;
 import com.basiclab.iot.message.domain.model.dto.MessageMailSendDto;
 import com.basiclab.iot.message.domain.model.vo.MessagePrepareVO;
 import com.basiclab.iot.message.mapper.TMsgHttpMapper;
+import com.basiclab.iot.message.mapper.TMsgDingMapper;
+import com.basiclab.iot.message.mapper.TMsgFeishuMapper;
+import com.basiclab.iot.message.mapper.TMsgWxCpMapper;
 import com.basiclab.iot.message.sendlogic.MessageTypeEnum;
+import com.basiclab.iot.message.sendlogic.msgsender.DingMsgSender;
+import com.basiclab.iot.message.sendlogic.msgsender.FeishuMsgSender;
+import com.basiclab.iot.message.sendlogic.msgsender.WxCpMsgSender;
 import com.basiclab.iot.message.service.AlertNotificationService;
 import com.basiclab.iot.message.service.MessagePrepareService;
 import com.basiclab.iot.system.api.notify.NotifyTemplateApi;
 import com.basiclab.iot.system.api.notify.dto.NotifyTemplateRespDTO;
 import com.basiclab.iot.common.domain.CommonResult;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -47,7 +54,28 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
     @Autowired
     private TMsgHttpMapper tMsgHttpMapper;
 
+    @Autowired
+    private TMsgWxCpMapper tMsgWxCpMapper;
+
+    @Autowired
+    private TMsgDingMapper tMsgDingMapper;
+
+    @Autowired
+    private TMsgFeishuMapper tMsgFeishuMapper;
+
+    @Autowired
+    private WxCpMsgSender wxCpMsgSender;
+
+    @Autowired
+    private DingMsgSender dingMsgSender;
+
+    @Autowired
+    private FeishuMsgSender feishuMsgSender;
+
     private static final Set<String> USERLESS_NOTIFY_METHODS = Set.of("http", "webhook");
+    private static final Set<String> WXCP_NOTIFY_METHODS = Set.of("wxcp", "wechat", "weixin");
+    private static final Set<String> DING_NOTIFY_METHODS = Set.of("ding", "dingtalk");
+    private static final Set<String> FEISHU_NOTIFY_METHODS = Set.of("feishu", "lark");
 
     /**
      * 通知方式到消息类型的映射表（优化：使用Map替代switch-case）
@@ -116,8 +144,28 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
 
                     String title = buildNotificationTitle(notificationMessage);
 
-                    if (isUserlessNotifyMethod(method)) {
-                        sendHttpWebhookFromTemplate(templateIdObj, title, templateParams, notificationMessage);
+                    if (isUserlessNotifyMethod(method) || isWxCpRobotChannel(method, channel)) {
+                        if (isWxCpNotifyMethod(method)) {
+                            sendWxCpRobotFromTemplate(templateIdObj, title, templateParams, notificationMessage);
+                        } else {
+                            sendHttpWebhookFromTemplate(templateIdObj, title, templateParams, notificationMessage);
+                        }
+                        continue;
+                    }
+
+                    if (isDingRobotChannel(method, channel)) {
+                        sendDingRobotFromTemplate(templateIdObj, title, templateParams, notificationMessage);
+                        continue;
+                    }
+
+                    if (isFeishuRobotChannel(method, channel)) {
+                        sendFeishuRobotFromTemplate(templateIdObj, title, templateParams, notificationMessage);
+                        continue;
+                    }
+
+                    if (isWxCpNotifyMethod(method)) {
+                        sendWxCpWorkFromTemplate(
+                                templateIdObj, title, templateParams, notificationMessage, notifyUsers);
                         continue;
                     }
 
@@ -254,13 +302,367 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
         return method != null && USERLESS_NOTIFY_METHODS.contains(method.toLowerCase());
     }
 
-    private static boolean hasUserlessChannel(List<Map<String, Object>> channels) {
+    private static boolean isWxCpNotifyMethod(String method) {
+        return method != null && WXCP_NOTIFY_METHODS.contains(method.toLowerCase());
+    }
+
+    private static boolean isDingNotifyMethod(String method) {
+        return method != null && DING_NOTIFY_METHODS.contains(method.toLowerCase());
+    }
+
+    private static boolean isFeishuNotifyMethod(String method) {
+        return method != null && FEISHU_NOTIFY_METHODS.contains(method.toLowerCase());
+    }
+
+    private boolean isWxCpRobotChannel(String method, Map<String, Object> channel) {
+        if (!isWxCpNotifyMethod(method)) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(channel.get("userless"))) {
+            return true;
+        }
+        Object templateIdObj = channel.get("template_id");
+        if (templateIdObj == null) {
+            return false;
+        }
+        TMsgWxCp template = tMsgWxCpMapper.selectByPrimaryKey(templateIdObj.toString());
+        return WxCpMsgSender.isRobotMessage(template);
+    }
+
+    private boolean isDingRobotChannel(String method, Map<String, Object> channel) {
+        if (!isDingNotifyMethod(method)) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(channel.get("userless"))) {
+            return true;
+        }
+        Object templateIdObj = channel.get("template_id");
+        if (templateIdObj == null) {
+            return false;
+        }
+        TMsgDing template = tMsgDingMapper.selectByPrimaryKey(templateIdObj.toString());
+        return DingMsgSender.isRobotMessage(template);
+    }
+
+    private boolean isFeishuRobotChannel(String method, Map<String, Object> channel) {
+        if (!isFeishuNotifyMethod(method)) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(channel.get("userless"))) {
+            return true;
+        }
+        Object templateIdObj = channel.get("template_id");
+        if (templateIdObj == null) {
+            return false;
+        }
+        TMsgFeishu template = tMsgFeishuMapper.selectByPrimaryKey(templateIdObj.toString());
+        return template != null && StringUtils.isNotBlank(template.getWebHook());
+    }
+
+    /**
+     * 企业微信群机器人：从 t_msg_wx_cp 加载模板并发送（不依赖 notifyUsers）
+     */
+    private void sendWxCpRobotFromTemplate(
+            Object templateIdObj,
+            String title,
+            Map<String, Object> templateParams,
+            AlertNotificationMessage notificationMessage) {
+        String templateId = templateIdObj.toString();
+        TMsgWxCp template = tMsgWxCpMapper.selectByPrimaryKey(templateId);
+        if (template == null) {
+            log.warn("企业微信模板不存在: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (!WxCpMsgSender.isRobotMessage(template)) {
+            log.warn("企业微信模板非群机器人模式: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (template.getWebHook() == null || template.getWebHook().trim().isEmpty()) {
+            log.warn("企业微信群机器人 Webhook 未配置: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+
+        String content = template.getContent();
+        if (content == null || content.trim().isEmpty()) {
+            content = buildDefaultContent(templateParams);
+        } else {
+            content = replacePlaceholders(content, templateParams);
+        }
+
+        TMsgWxCp sendPayload = new TMsgWxCp();
+        sendPayload.setId(UUID.randomUUID().toString());
+        sendPayload.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
+        sendPayload.setCpMsgType(
+                template.getCpMsgType() != null && !template.getCpMsgType().trim().isEmpty()
+                        ? template.getCpMsgType() : "文本消息");
+        sendPayload.setWebHook(template.getWebHook());
+        sendPayload.setRadioType(template.getRadioType());
+        sendPayload.setContent(content);
+        sendPayload.setTitle(replacePlaceholders(template.getTitle(), templateParams));
+        sendPayload.setDescribe(replacePlaceholders(template.getDescribe(), templateParams));
+        sendPayload.setUrl(replacePlaceholders(template.getUrl(), templateParams));
+        sendPayload.setImgUrl(replacePlaceholders(template.getImgUrl(), templateParams));
+
+        SendResult result = wxCpMsgSender.sendRobotMsg(sendPayload);
+        messageSendCommon.recordPushHistory(MessageTypeEnum.WX_CP_CODE, sendPayload.getId(), result);
+        log.info("企业微信群机器人告警通知发送结果: templateId={}, alertId={}, success={}, info={}",
+                templateId, notificationMessage.getAlertId(), result.isSuccess(), result.getInfo());
+    }
+
+    /**
+     * 钉钉群机器人：从 t_msg_ding 加载模板并发送（不依赖 notifyUsers）
+     */
+    private void sendDingRobotFromTemplate(
+            Object templateIdObj,
+            String title,
+            Map<String, Object> templateParams,
+            AlertNotificationMessage notificationMessage) {
+        String templateId = templateIdObj.toString();
+        TMsgDing template = tMsgDingMapper.selectByPrimaryKey(templateId);
+        if (template == null) {
+            log.warn("钉钉模板不存在: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (!DingMsgSender.isRobotMessage(template)) {
+            log.warn("钉钉模板非群机器人模式: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (StringUtils.isBlank(template.getWebHook())) {
+            log.warn("钉钉群机器人 Webhook 未配置: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+
+        TMsgDing sendPayload = buildDingAlertPayload(template, templateParams);
+        SendResult result = dingMsgSender.sendRobotMsg(sendPayload);
+        messageSendCommon.recordPushHistory(MessageTypeEnum.DING_CODE, sendPayload.getId(), result);
+        log.info("钉钉群机器人告警通知发送结果: templateId={}, alertId={}, success={}, info={}",
+                templateId, notificationMessage.getAlertId(), result.isSuccess(), result.getInfo());
+    }
+
+    /**
+     * 飞书群机器人：从 t_msg_feishu 加载模板并发送（不依赖 notifyUsers）
+     */
+    private void sendFeishuRobotFromTemplate(
+            Object templateIdObj,
+            String title,
+            Map<String, Object> templateParams,
+            AlertNotificationMessage notificationMessage) {
+        String templateId = templateIdObj.toString();
+        TMsgFeishu template = tMsgFeishuMapper.selectByPrimaryKey(templateId);
+        if (template == null) {
+            log.warn("飞书模板不存在: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (StringUtils.isBlank(template.getWebHook())) {
+            log.warn("飞书群机器人 Webhook 未配置: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+
+        TMsgFeishu sendPayload = buildFeishuAlertPayload(template, templateParams);
+        SendResult result = feishuMsgSender.sendDirect(sendPayload);
+        messageSendCommon.recordPushHistory(MessageTypeEnum.FEISHU_CODE, sendPayload.getId(), result);
+        log.info("飞书群机器人告警通知发送结果: templateId={}, alertId={}, success={}, info={}",
+                templateId, notificationMessage.getAlertId(), result.isSuccess(), result.getInfo());
+    }
+
+    private TMsgDing buildDingAlertPayload(TMsgDing template, Map<String, Object> templateParams) {
+        TMsgDing payload = new TMsgDing();
+        payload.setId(UUID.randomUUID().toString());
+        payload.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
+        payload.setRadioType(template.getRadioType());
+        payload.setWebHook(template.getWebHook());
+        payload.setDingMsgType(
+                template.getDingMsgType() != null && !template.getDingMsgType().trim().isEmpty()
+                        ? template.getDingMsgType() : "文本消息");
+
+        String content = template.getContent();
+        if (content == null || content.trim().isEmpty()) {
+            content = buildDefaultContent(templateParams);
+        } else {
+            content = replacePlaceholders(content, templateParams);
+        }
+        payload.setContent(content);
+        payload.setTitle(replacePlaceholders(template.getTitle(), templateParams));
+        payload.setUrl(replacePlaceholders(template.getUrl(), templateParams));
+        payload.setImgUrl(replacePlaceholders(template.getImgUrl(), templateParams));
+        payload.setBtnTxt(replacePlaceholders(template.getBtnTxt(), templateParams));
+        payload.setBtnUrl(replacePlaceholders(template.getBtnUrl(), templateParams));
+        return payload;
+    }
+
+    private TMsgFeishu buildFeishuAlertPayload(TMsgFeishu template, Map<String, Object> templateParams) {
+        TMsgFeishu payload = new TMsgFeishu();
+        payload.setId(UUID.randomUUID().toString());
+        payload.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
+        payload.setRadioType(template.getRadioType());
+        payload.setWebHook(template.getWebHook());
+        payload.setFeishuMsgType(
+                template.getFeishuMsgType() != null && !template.getFeishuMsgType().trim().isEmpty()
+                        ? template.getFeishuMsgType() : "文本消息");
+
+        String content = template.getContent();
+        if (content == null || content.trim().isEmpty()) {
+            content = buildDefaultContent(templateParams);
+        } else {
+            content = replacePlaceholders(content, templateParams);
+        }
+        payload.setContent(content);
+        payload.setTitle(replacePlaceholders(template.getTitle(), templateParams));
+        payload.setUrl(replacePlaceholders(template.getUrl(), templateParams));
+        payload.setImgUrl(replacePlaceholders(template.getImgUrl(), templateParams));
+        payload.setBtnTxt(replacePlaceholders(template.getBtnTxt(), templateParams));
+        payload.setBtnUrl(replacePlaceholders(template.getBtnUrl(), templateParams));
+        return payload;
+    }
+
+    /**
+     * 企业微信工作通知：从 t_msg_wx_cp 加载模板，向 notifyUsers 中的成员 UserID 发送
+     */
+    private void sendWxCpWorkFromTemplate(
+            Object templateIdObj,
+            String title,
+            Map<String, Object> templateParams,
+            AlertNotificationMessage notificationMessage,
+            List<Map<String, Object>> notifyUsers) {
+        String templateId = templateIdObj.toString();
+        TMsgWxCp template = tMsgWxCpMapper.selectByPrimaryKey(templateId);
+        if (template == null) {
+            log.warn("企业微信模板不存在: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (WxCpMsgSender.isRobotMessage(template)) {
+            log.warn("企业微信模板为群机器人模式，应走 robot 路径: templateId={}", templateId);
+            return;
+        }
+        if (template.getAgentId() == null || template.getAgentId().trim().isEmpty()) {
+            log.warn("企业微信工作通知模板未配置应用 agentId: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+        if (notifyUsers == null || notifyUsers.isEmpty()) {
+            log.warn("企业微信工作通知缺少通知人: templateId={}, alertId={}", templateId,
+                    notificationMessage.getAlertId());
+            return;
+        }
+
+        TMsgWxCp basePayload = buildWxCpAlertPayload(template, templateParams);
+        for (Map<String, Object> user : notifyUsers) {
+            String wxcpUserId = resolveWxCpUserId(user);
+            if (StringUtils.isBlank(wxcpUserId)) {
+                log.warn("通知人缺少企业微信 UserID: user={}, alertId={}", user,
+                        notificationMessage.getAlertId());
+                continue;
+            }
+            try {
+                TMsgWxCp sendPayload = copyWxCpPayload(basePayload);
+                sendPayload.setId(UUID.randomUUID().toString());
+                sendPayload.setPreviewUser(wxcpUserId);
+                SendResult result = wxCpMsgSender.sendWorkMsg(sendPayload);
+                messageSendCommon.recordPushHistory(MessageTypeEnum.WX_CP_CODE, sendPayload.getId(), result);
+                log.info("企业微信工作通知告警发送结果: templateId={}, userId={}, alertId={}, success={}, info={}",
+                        templateId, wxcpUserId, notificationMessage.getAlertId(),
+                        result.isSuccess(), result.getInfo());
+            } catch (Exception e) {
+                log.error("企业微信工作通知发送失败: templateId={}, user={}, alertId={}, error={}",
+                        templateId, user, notificationMessage.getAlertId(), e.getMessage(), e);
+            }
+        }
+    }
+
+    private TMsgWxCp buildWxCpAlertPayload(TMsgWxCp template, Map<String, Object> templateParams) {
+        TMsgWxCp payload = new TMsgWxCp();
+        payload.setMsgName(template.getMsgName() != null ? template.getMsgName() : "告警通知");
+        payload.setAgentId(template.getAgentId());
+        payload.setRadioType(template.getRadioType());
+        payload.setCpMsgType(
+                template.getCpMsgType() != null && !template.getCpMsgType().trim().isEmpty()
+                        ? template.getCpMsgType() : "文本消息");
+
+        String content = template.getContent();
+        if (content == null || content.trim().isEmpty()) {
+            content = buildDefaultContent(templateParams);
+        } else {
+            content = replacePlaceholders(content, templateParams);
+        }
+        payload.setContent(content);
+        payload.setTitle(replacePlaceholders(template.getTitle(), templateParams));
+        payload.setDescribe(replacePlaceholders(template.getDescribe(), templateParams));
+        payload.setUrl(replacePlaceholders(template.getUrl(), templateParams));
+        payload.setImgUrl(replacePlaceholders(template.getImgUrl(), templateParams));
+        payload.setBtnTxt(replacePlaceholders(template.getBtnTxt(), templateParams));
+        return payload;
+    }
+
+    private static TMsgWxCp copyWxCpPayload(TMsgWxCp source) {
+        TMsgWxCp copy = new TMsgWxCp();
+        copy.setMsgName(source.getMsgName());
+        copy.setAgentId(source.getAgentId());
+        copy.setRadioType(source.getRadioType());
+        copy.setCpMsgType(source.getCpMsgType());
+        copy.setContent(source.getContent());
+        copy.setTitle(source.getTitle());
+        copy.setDescribe(source.getDescribe());
+        copy.setUrl(source.getUrl());
+        copy.setImgUrl(source.getImgUrl());
+        copy.setBtnTxt(source.getBtnTxt());
+        return copy;
+    }
+
+    private static String resolveWxCpUserId(Map<String, Object> user) {
+        if (user == null) {
+            return null;
+        }
+        Object value = user.get("wxcp_userid");
+        if (value == null) {
+            value = user.get("previewUser");
+        }
+        if (value == null) {
+            value = user.get("preview_user");
+        }
+        return value != null ? value.toString().trim() : null;
+    }
+
+    @Override
+    public boolean hasNotificationConfig(
+            List<Map<String, Object>> channels,
+            List<Map<String, Object>> notifyUsers) {
+        if (channels == null || channels.isEmpty()) {
+            return false;
+        }
+        if (notifyUsers != null && !notifyUsers.isEmpty()) {
+            return true;
+        }
+        return hasUserlessChannel(channels);
+    }
+
+    private boolean hasUserlessChannel(List<Map<String, Object>> channels) {
         if (channels == null) {
             return false;
         }
         for (Map<String, Object> channel : channels) {
             Object method = channel.get("method");
             if (method != null && isUserlessNotifyMethod(method.toString())) {
+                return true;
+            }
+            if (Boolean.TRUE.equals(channel.get("userless"))) {
+                return true;
+            }
+            if (method != null && isWxCpRobotChannel(method.toString(), channel)) {
+                return true;
+            }
+            if (method != null && isDingRobotChannel(method.toString(), channel)) {
+                return true;
+            }
+            if (method != null && isFeishuRobotChannel(method.toString(), channel)) {
                 return true;
             }
         }

@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict fZCIMJ7YUAJZdjJWBs0ZadWJBe6KODBYATxobaCnaCKZbrSM1W5SnGMQELjs81N
+\restrict 4J3Zaeloz1qE9FaPdelsCcYSMmr4OgJNdHB0rP2OiHKU9fyhkemsU70qA5wp1uW
 
--- Dumped from database version 18.1 (Debian 18.1-1.pgdg13+2)
--- Dumped by pg_dump version 18.1 (Debian 18.1-1.pgdg13+2)
+-- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
+-- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-message20";
 CREATE DATABASE "iot-message20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict fZCIMJ7YUAJZdjJWBs0ZadWJBe6KODBYATxobaCnaCKZbrSM1W5SnGMQELjs81N
+\unrestrict 4J3Zaeloz1qE9FaPdelsCcYSMmr4OgJNdHB0rP2OiHKU9fyhkemsU70qA5wp1uW
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-message20'"
-\restrict fZCIMJ7YUAJZdjJWBs0ZadWJBe6KODBYATxobaCnaCKZbrSM1W5SnGMQELjs81N
+\restrict 4J3Zaeloz1qE9FaPdelsCcYSMmr4OgJNdHB0rP2OiHKU9fyhkemsU70qA5wp1uW
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -193,7 +193,9 @@ CREATE TABLE public.t_msg_ding (
     imgurl character varying(200),
     user_group_id character varying(64),
     tenant_id bigint DEFAULT 0 NOT NULL,
-    deleted smallint DEFAULT 0 NOT NULL
+    deleted smallint DEFAULT 0 NOT NULL,
+    record_type integer DEFAULT 0,
+    ref_template_id character varying(64)
 );
 
 
@@ -253,7 +255,9 @@ CREATE TABLE public.t_msg_feishu (
     url character varying(200),
     user_group_id character varying(64),
     tenant_id bigint DEFAULT 0 NOT NULL,
-    deleted smallint DEFAULT 0 NOT NULL
+    deleted smallint DEFAULT 0 NOT NULL,
+    record_type integer DEFAULT 0,
+    ref_template_id character varying(64)
 );
 
 
@@ -291,7 +295,9 @@ CREATE TABLE public.t_msg_http (
     preview_user character varying,
     user_group_id character varying(64),
     tenant_id bigint DEFAULT 0 NOT NULL,
-    deleted smallint DEFAULT 0 NOT NULL
+    deleted smallint DEFAULT 0 NOT NULL,
+    record_type integer DEFAULT 0,
+    ref_template_id character varying(64)
 );
 
 
@@ -483,7 +489,9 @@ CREATE TABLE public.t_msg_mail (
     preview_user character varying(1000),
     user_group_id character varying(64),
     tenant_id bigint DEFAULT 0 NOT NULL,
-    deleted smallint DEFAULT 0 NOT NULL
+    deleted smallint DEFAULT 0 NOT NULL,
+    record_type integer DEFAULT 0,
+    ref_template_id character varying(64)
 );
 
 
@@ -584,7 +592,9 @@ CREATE TABLE public.t_msg_sms (
     preview_user character varying(1000),
     user_group_id character varying(64),
     tenant_id bigint DEFAULT 0 NOT NULL,
-    deleted smallint DEFAULT 0 NOT NULL
+    deleted smallint DEFAULT 0 NOT NULL,
+    record_type integer DEFAULT 0,
+    ref_template_id character varying(64)
 );
 
 
@@ -623,7 +633,11 @@ CREATE TABLE public.t_msg_wx_cp (
     preview_user character varying(1000),
     user_group_id character varying(64),
     tenant_id bigint DEFAULT 0 NOT NULL,
-    deleted smallint DEFAULT 0 NOT NULL
+    deleted smallint DEFAULT 0 NOT NULL,
+    radio_type character varying(64),
+    web_hook character varying(512),
+    record_type integer DEFAULT 0,
+    ref_template_id character varying(64)
 );
 
 
@@ -639,6 +653,20 @@ COMMENT ON COLUMN public.t_msg_wx_cp.tenant_id IS '租户编号';
 --
 
 COMMENT ON COLUMN public.t_msg_wx_cp.deleted IS '是否删除';
+
+
+--
+-- Name: COLUMN t_msg_wx_cp.radio_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.t_msg_wx_cp.radio_type IS '通知方式：工作通知方式 / 群机器人消息';
+
+
+--
+-- Name: COLUMN t_msg_wx_cp.web_hook; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.t_msg_wx_cp.web_hook IS '企业微信群机器人 Webhook 地址';
 
 
 --
@@ -973,9 +1001,9 @@ COPY public.t_ding_app (id, app_name, agent_id, app_key, app_secret, create_time
 -- Data for Name: t_msg_ding; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.t_msg_ding (id, msg_type, msg_name, radio_type, ding_msg_type, agent_id, web_hook, content, create_time, modified_time, preview_user, title, btntxt, btnurl, url, imgurl, user_group_id, tenant_id, deleted) FROM stdin;
-940afe96-7843-4b5d-8eb5-c44fa54ac406	6	dingdign test	工作通知方式	文本消息	1	\N	dfs	2023-07-24 14:51:14.011	\N	1	\N	\N	\N	\N	\N	\N	1	0
-8f230ac9-bd4e-4bd6-be84-8aa9cd9da5a6	6	dingding001	群机器人消息	链接消息	\N	http://www.baidu.com	test111	2023-07-25 15:20:15.35	2023-07-25 15:20:27.942	manager9115	test	\N	\N	test	test	\N	1	0
+COPY public.t_msg_ding (id, msg_type, msg_name, radio_type, ding_msg_type, agent_id, web_hook, content, create_time, modified_time, preview_user, title, btntxt, btnurl, url, imgurl, user_group_id, tenant_id, deleted, record_type, ref_template_id) FROM stdin;
+940afe96-7843-4b5d-8eb5-c44fa54ac406	6	dingdign test	工作通知方式	文本消息	1	\N	dfs	2023-07-24 14:51:14.011	\N	1	\N	\N	\N	\N	\N	\N	1	0	0	\N
+8f230ac9-bd4e-4bd6-be84-8aa9cd9da5a6	6	dingding001	群机器人消息	链接消息	\N	http://www.baidu.com	test111	2023-07-25 15:20:15.35	2023-07-25 15:20:27.942	manager9115	test	\N	\N	test	test	\N	1	0	0	\N
 \.
 
 
@@ -983,7 +1011,7 @@ COPY public.t_msg_ding (id, msg_type, msg_name, radio_type, ding_msg_type, agent
 -- Data for Name: t_msg_feishu; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.t_msg_feishu (id, msg_type, msg_name, radio_type, feishu_msg_type, web_hook, content, create_time, modified_time, preview_user, title, "imgUrl", "btnTxt", "btnUrl", url, user_group_id, tenant_id, deleted) FROM stdin;
+COPY public.t_msg_feishu (id, msg_type, msg_name, radio_type, feishu_msg_type, web_hook, content, create_time, modified_time, preview_user, title, "imgUrl", "btnTxt", "btnUrl", url, user_group_id, tenant_id, deleted, record_type, ref_template_id) FROM stdin;
 \.
 
 
@@ -991,7 +1019,7 @@ COPY public.t_msg_feishu (id, msg_type, msg_name, radio_type, feishu_msg_type, w
 -- Data for Name: t_msg_http; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.t_msg_http (id, msg_type, msg_name, method, url, params, headers, cookies, body, body_type, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted) FROM stdin;
+COPY public.t_msg_http (id, msg_type, msg_name, method, url, params, headers, cookies, body, body_type, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted, record_type, ref_template_id) FROM stdin;
 \.
 
 
@@ -1023,18 +1051,18 @@ COPY public.t_msg_ma_template (id, msg_type, msg_name, template_id, page, emphas
 -- Data for Name: t_msg_mail; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.t_msg_mail (id, msg_type, msg_name, title, cc, files, content, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted) FROM stdin;
-907aec07-5b5f-4d88-bef0-9991262099f2	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:13:00	2025-12-10 15:13:05.796	\N	xxxxx@163.com	\N	0	0
-794f743b-1fd1-4ac6-8a41-a18353806474	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: truck\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 14:46:00	2025-12-10 14:46:05.836	\N	xxxxx@163.com	\N	0	0
-5356e214-9673-4d48-b952-2894dc584765	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 14:52:00	2025-12-10 14:52:05.574	\N	xxxxx@163.com	\N	0	0
-5186b29e-1a14-494e-8dd3-af314f464d26	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 14:57:00	2025-12-10 14:57:05.951	\N	xxxxx@163.com	\N	0	0
-bf366265-b98c-4bc9-8b12-a8c2426c2110	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:03:00	2025-12-10 15:03:05.63	\N	xxxxx@163.com	\N	0	0
-ade227fe-5ff3-4eda-9647-c133c0636189	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:19:00	2025-12-10 15:19:05.567	\N	xxxxx@163.com	\N	0	0
-e3a0432d-b0b2-438b-9681-9bfcc6a90873	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:24:00	2025-12-10 15:24:05.7	\N	xxxxx@163.com	\N	0	0
-175bc751-760d-40df-956b-ac2b3f374c60	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:29:00	2025-12-10 15:29:05.71	\N	xxxxx@163.com	\N	0	0
-5bdb23a7-4e2d-46de-b746-7745d6fc6eb5	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:35:00	2025-12-10 15:35:05.676	\N	xxxxx@163.com	\N	0	0
-0d5b118a-2d4e-4f76-a212-8d172648aed4	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:40:00	2025-12-10 15:40:05.795	\N	xxxxx@163.com	\N	0	0
-fb6cd163-9339-4df1-8b93-6a0af93197ab	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:46:00	2025-12-10 15:46:05.811	\N	xxxxx@163.com	\N	0	0
+COPY public.t_msg_mail (id, msg_type, msg_name, title, cc, files, content, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted, record_type, ref_template_id) FROM stdin;
+907aec07-5b5f-4d88-bef0-9991262099f2	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:13:00	2025-12-10 15:13:05.796	\N	xxxxx@163.com	\N	0	0	0	\N
+794f743b-1fd1-4ac6-8a41-a18353806474	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: truck\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 14:46:00	2025-12-10 14:46:05.836	\N	xxxxx@163.com	\N	0	0	0	\N
+5356e214-9673-4d48-b952-2894dc584765	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 14:52:00	2025-12-10 14:52:05.574	\N	xxxxx@163.com	\N	0	0	0	\N
+5186b29e-1a14-494e-8dd3-af314f464d26	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 14:57:00	2025-12-10 14:57:05.951	\N	xxxxx@163.com	\N	0	0	0	\N
+bf366265-b98c-4bc9-8b12-a8c2426c2110	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:03:00	2025-12-10 15:03:05.63	\N	xxxxx@163.com	\N	0	0	0	\N
+ade227fe-5ff3-4eda-9647-c133c0636189	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:19:00	2025-12-10 15:19:05.567	\N	xxxxx@163.com	\N	0	0	0	\N
+e3a0432d-b0b2-438b-9681-9bfcc6a90873	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:24:00	2025-12-10 15:24:05.7	\N	xxxxx@163.com	\N	0	0	0	\N
+175bc751-760d-40df-956b-ac2b3f374c60	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:29:00	2025-12-10 15:29:05.71	\N	xxxxx@163.com	\N	0	0	0	\N
+5bdb23a7-4e2d-46de-b746-7745d6fc6eb5	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:35:00	2025-12-10 15:35:05.676	\N	xxxxx@163.com	\N	0	0	0	\N
+0d5b118a-2d4e-4f76-a212-8d172648aed4	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:40:00	2025-12-10 15:40:05.795	\N	xxxxx@163.com	\N	0	0	0	\N
+fb6cd163-9339-4df1-8b93-6a0af93197ab	3	告警通知	告警通知-大门设备	\N	\N	【告警通知】\n设备名称: 大门设备\n设备ID: 1764341204704370850\n对象类型: car\n事件类型: 江北初中监控安防任务\n告警时间: 2025-12-10 15:46:00	2025-12-10 15:46:05.811	\N	xxxxx@163.com	\N	0	0	0	\N
 \.
 
 
@@ -1058,7 +1086,7 @@ COPY public.t_msg_mp_template (id, msg_type, msg_name, template_id, url, ma_appi
 -- Data for Name: t_msg_sms; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.t_msg_sms (id, msg_type, msg_name, template_id, content, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted) FROM stdin;
+COPY public.t_msg_sms (id, msg_type, msg_name, template_id, content, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted, record_type, ref_template_id) FROM stdin;
 \.
 
 
@@ -1066,7 +1094,8 @@ COPY public.t_msg_sms (id, msg_type, msg_name, template_id, content, create_time
 -- Data for Name: t_msg_wx_cp; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.t_msg_wx_cp (id, msg_type, msg_name, cp_msg_type, agent_id, content, title, img_url, describe, url, btn_txt, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted) FROM stdin;
+COPY public.t_msg_wx_cp (id, msg_type, msg_name, cp_msg_type, agent_id, content, title, img_url, describe, url, btn_txt, create_time, modified_time, preview_user, user_group_id, tenant_id, deleted, radio_type, web_hook, record_type, ref_template_id) FROM stdin;
+5032998a-2d4e-4101-96a9-da941466172e	4	消息告警测试	文本消息	\N	消息测试：${device_name}	\N	\N	\N	\N	\N	2026-06-29 10:23:47.489	\N	\N	\N	0	0	群机器人消息	https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=f63fff36-d2d1-4956-b45b-0e8321f7e0b2	0	\N
 \.
 
 
@@ -1111,6 +1140,7 @@ bf38c472-c3e6-4cdb-807e-c75ca044451b	175bc751-760d-40df-956b-ac2b3f374c60	3	告�
 213297e3-64f3-4e39-9ade-058ddd11fa83	5bdb23a7-4e2d-46de-b746-7745d6fc6eb5	3	告警通知	成功	\N	2025-12-10 15:35:06.315	\N	0	0
 5dd04995-921e-498f-9fe4-b9b0e10983a9	0d5b118a-2d4e-4f76-a212-8d172648aed4	3	告警通知	成功	\N	2025-12-10 15:40:06.373	\N	0	0
 dca51709-6a52-4b90-bca8-24cd1abcedb3	fb6cd163-9339-4df1-8b93-6a0af93197ab	3	告警通知	成功	\N	2025-12-10 15:46:06.441	\N	0	0
+aa5e6a79-c15d-4630-8052-455b5aa87f33	5032998a-2d4e-4101-96a9-da941466172e	4	消息告警测试	成功	\N	2026-06-29 10:24:04.697	\N	0	0
 \.
 
 
@@ -1362,5 +1392,5 @@ ALTER TABLE ONLY public.t_msg_kefu
 -- PostgreSQL database dump complete
 --
 
-\unrestrict fZCIMJ7YUAJZdjJWBs0ZadWJBe6KODBYATxobaCnaCKZbrSM1W5SnGMQELjs81N
+\unrestrict 4J3Zaeloz1qE9FaPdelsCcYSMmr4OgJNdHB0rP2OiHKU9fyhkemsU70qA5wp1uW
 

@@ -5,6 +5,7 @@ import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.sink.domain.model.PostProcessRequestMessage;
 import com.basiclab.iot.sink.service.PostProcessService;
 import com.basiclab.iot.sink.service.PostProcessWorkerResolver;
+import com.basiclab.iot.sink.util.AlertClassFilter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -288,7 +289,13 @@ public class PostProcessServiceImpl implements PostProcessService {
                 : message.get("detections") instanceof List
                 ? (List<Map<String, Object>>) message.get("detections")
                 : null;
-        Map<String, Object> defaultAlert = buildDefaultAlert(message, detections);
+        Object alertClassNames = message.get("alertClassNames");
+        if (alertClassNames == null) {
+            alertClassNames = message.get("alert_class_names");
+        }
+        List<Map<String, Object>> alertDetections = AlertClassFilter.filterDetectionsForAlert(
+                detections, alertClassNames);
+        Map<String, Object> defaultAlert = buildDefaultAlert(message, alertDetections);
         if (defaultAlert != null) {
             postAlertHook(defaultAlert);
         }

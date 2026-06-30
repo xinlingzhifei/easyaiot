@@ -307,11 +307,9 @@ def _parse_day_range(date_str: str):
 
 
 def _alert_time_naive(alert_time: datetime) -> datetime:
-    if alert_time is None:
-        return alert_time
-    if getattr(alert_time, 'tzinfo', None) is not None:
-        return alert_time.replace(tzinfo=None)
-    return alert_time
+    from app.utils.service_urls import normalize_to_shanghai_naive
+
+    return normalize_to_shanghai_naive(alert_time)
 
 
 def _match_alerts_to_segment(

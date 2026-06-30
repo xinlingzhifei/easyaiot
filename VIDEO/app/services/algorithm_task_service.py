@@ -72,6 +72,12 @@ def _serialize_matching_business_tags(tags) -> Optional[str]:
     return json.dumps(parsed, ensure_ascii=False) if parsed else None
 
 
+def _serialize_alert_class_names(class_names) -> Optional[str]:
+    from app.utils.alert_class_filter import parse_alert_class_names
+    parsed = parse_alert_class_names(class_names)
+    return json.dumps(parsed, ensure_ascii=False) if parsed else None
+
+
 def _normalize_library_ids(ids) -> List[int]:
     if ids is None:
         return []
@@ -117,12 +123,119 @@ def _serialize_sam_supplement_config(config) -> Optional[str]:
     return None
 
 
+def _serialize_motion_gate_config(config) -> Optional[str]:
+    if config is None:
+        return None
+    if isinstance(config, str):
+        return config if config.strip() else None
+    if isinstance(config, dict):
+        return json.dumps(config, ensure_ascii=False)
+    return None
+
+
 def _has_library_matching_scope(library_ids) -> bool:
     return bool(_normalize_library_ids(library_ids))
 
 
 def _has_userless_channel(channels: List[Dict]) -> bool:
-    return any((ch.get('method') or '').lower() in _USERLESS_NOTIFY_METHODS for ch in (channels or []))
+    return any(_is_userless_channel(ch) for ch in (channels or []))
+
+
+def _is_userless_channel(channel: Dict) -> bool:
+    if not channel:
+        return False
+    if channel.get('userless'):
+        return True
+    method = (channel.get('method') or '').lower()
+    if method in _USERLESS_NOTIFY_METHODS:
+        return True
+    return False
+
+
+def _enrich_channels_userless_flags(channels: List[Dict]) -> List[Dict]:
+    """为无需通知人的渠道（HTTP/Webhook、企业微信/钉钉/飞书群机器人）标记 userless。"""
+    if not channels:
+        return channels
+
+    enriched = []
+    for channel in channels:
+        ch = dict(channel)
+        method = (ch.get('method') or '').lower()
+        if _is_userless_channel(ch):
+            ch['userless'] = True
+            enriched.append(ch)
+            continue
+
+        if method in ('wxcp', 'wechat', 'weixin') and ch.get('template_id'):
+            template_meta = _fetch_message_template_meta(method, ch.get('template_id'))
+            if template_meta and (
+                template_meta.get('radioType') == '群机器人消息'
+                or template_meta.get('webHook')
+            ):
+                ch['userless'] = True
+        elif method in ('ding', 'dingtalk') and ch.get('template_id'):
+            template_meta = _fetch_message_template_meta(method, ch.get('template_id'))
+            if template_meta and (
+                template_meta.get('radioType') == '群机器人消息'
+                or template_meta.get('webHook')
+            ):
+                ch['userless'] = True
+        elif method in ('feishu', 'lark') and ch.get('template_id'):
+            template_meta = _fetch_message_template_meta(method, ch.get('template_id'))
+            if template_meta and (
+                template_meta.get('radioType') == '群机器人消息'
+                or template_meta.get('webHook')
+            ):
+                ch['userless'] = True
+        enriched.append(ch)
+    return enriched
+
+
+def _fetch_message_template_meta(method: str, template_id) -> Optional[Dict]:
+    """查询消息模板元数据，用于判断企业微信群机器人等免通知人渠道。"""
+    if not template_id:
+        return None
+    try:
+        import os
+        import requests
+
+        method_to_msg_type = {
+            'wxcp': 4, 'wechat': 4, 'weixin': 4,
+            'http': 5, 'webhook': 5,
+            'ding': 6, 'dingtalk': 6,
+            'feishu': 7, 'lark': 7,
+        }
+        msg_type = method_to_msg_type.get((method or '').lower())
+        if not msg_type:
+            return None
+
+        try:
+            from flask import current_app
+            message_service_url = current_app.config.get('MESSAGE_SERVICE_URL', 'http://localhost:48080')
+            jwt_token = current_app.config.get('JWT_TOKEN', os.getenv('JWT_TOKEN', ''))
+        except RuntimeError:
+            message_service_url = os.getenv('MESSAGE_SERVICE_URL', 'http://localhost:48080')
+            jwt_token = os.getenv('JWT_TOKEN', '')
+
+        headers = {}
+        if jwt_token:
+            headers['Authorization'] = f'Bearer {jwt_token}'
+
+        response = requests.get(
+            f"{message_service_url}/admin-api/message/template/get",
+            params={'id': template_id, 'msgType': msg_type},
+            headers=headers,
+            timeout=5,
+        )
+        if response.status_code != 200:
+            return None
+        result = response.json()
+        if result.get('code') == 0 or result.get('success'):
+            data = result.get('data') or result
+            return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.debug(f"查询消息模板元数据失败: method={method}, template_id={template_id}, error={e}")
+    return None
 
 
 def _normalize_alert_interval_fields(
@@ -209,6 +322,8 @@ def _extract_notify_users_from_templates(channels: List[Dict]) -> List[Dict]:
         
         for channel in channels:
             method = channel.get('method', '').lower()
+            if _is_userless_channel(channel):
+                continue
             template_id = channel.get('template_id')
             
             if not template_id:
@@ -445,13 +560,14 @@ def create_algorithm_task(task_name: str,
                          task_type: str = 'realtime',
                          device_ids: Optional[List[str]] = None,
                          model_ids: Optional[List[int]] = None,
-                         extract_interval: int = 25,
+                         extract_interval: Optional[int] = 25,
                          tracking_enabled: bool = False,
                          tracking_similarity_threshold: float = 0.2,
                          tracking_max_age: int = 25,
                          tracking_smooth_alpha: float = 0.25,
                          alert_event_enabled: bool = False,
                          alert_event_suppress_time: int = 5,
+                         alert_class_names=None,
                          face_detection_enabled: bool = True,
                          plate_detection_enabled: bool = False,
                          face_matching_enabled: bool = False,
@@ -477,6 +593,8 @@ def create_algorithm_task(task_name: str,
                          focus_device_id: Optional[str] = None,
                          sam_supplement_enabled: bool = False,
                          sam_supplement_config=None,
+                         motion_gate_enabled: bool = False,
+                         motion_gate_config=None,
                          post_process_enabled: bool = False,
                          post_process_replicas: int = 1) -> AlgorithmTask:
     """创建算法任务"""
@@ -484,6 +602,10 @@ def create_algorithm_task(task_name: str,
         # 验证任务类型
         if task_type not in ['realtime', 'snap', 'patrol']:
             raise ValueError(f"无效的任务类型: {task_type}，必须是 'realtime'、'snap' 或 'patrol'")
+
+        from app.utils.alert_class_filter import parse_alert_class_names
+        if alert_event_enabled and not parse_alert_class_names(alert_class_names):
+            raise ValueError('启用告警事件时必须指定至少一个告警触发标签')
         
         device_id_list = device_ids or []
         
@@ -659,6 +781,9 @@ def create_algorithm_task(task_name: str,
             # 确保config_dict是字典
             if isinstance(config_dict, dict):
                 channels = config_dict.get('channels', [])
+                if channels:
+                    channels = _enrich_channels_userless_flags(channels)
+                    config_dict['channels'] = channels
                 logger.info(f"开始处理告警通知配置: channels数量={len(channels) if channels else 0}")
                 if channels:
                     # 从消息模板中提取通知人信息
@@ -677,7 +802,7 @@ def create_algorithm_task(task_name: str,
                     else:
                         if _has_userless_channel(channels):
                             logger.info(
-                                "ℹ️  包含 HTTP/Webhook 渠道，无需从模板提取通知人（URL 在消息模板中）"
+                                "ℹ️  包含 HTTP/Webhook 或企业微信群机器人渠道，无需从模板提取通知人（URL 在消息模板中）"
                             )
                         else:
                             logger.warning(
@@ -704,7 +829,7 @@ def create_algorithm_task(task_name: str,
             task_type=task_type,
             model_ids=model_ids_json,
             model_names=model_names,
-            extract_interval=extract_interval if task_type == 'realtime' else 25,
+            extract_interval=extract_interval if task_type == 'realtime' else None,
             rtmp_input_url=None,  # 不再使用，从摄像头列表获取RTSP流地址
             rtmp_output_url=None,  # 不再使用，从摄像头列表获取RTMP流地址
             tracking_enabled=tracking_enabled if task_type == 'realtime' else False,
@@ -713,6 +838,7 @@ def create_algorithm_task(task_name: str,
             tracking_smooth_alpha=tracking_smooth_alpha if task_type == 'realtime' else 0.25,
             alert_event_enabled=alert_event_enabled,
             alert_event_suppress_time=alert_event_suppress_time,
+            alert_class_names=_serialize_alert_class_names(alert_class_names),
             face_detection_enabled=face_detection_enabled,
             plate_detection_enabled=plate_detection_enabled,
             face_matching_enabled=face_matching_enabled if task_type != 'patrol' else False,
@@ -739,6 +865,8 @@ def create_algorithm_task(task_name: str,
             target_node_id=target_node_id,
             sam_supplement_enabled=bool(sam_supplement_enabled),
             sam_supplement_config=_serialize_sam_supplement_config(sam_supplement_config),
+            motion_gate_enabled=bool(motion_gate_enabled) if task_type == 'realtime' else False,
+            motion_gate_config=_serialize_motion_gate_config(motion_gate_config) if task_type == 'realtime' else None,
             post_process_enabled=bool(post_process_enabled),
             post_process_replicas=max(1, int(post_process_replicas or 1)),
         )
@@ -900,7 +1028,7 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             'model_ids', 'model_names',  # 模型配置
             'extract_interval',  # 实时算法任务配置（rtmp_input_url和rtmp_output_url不再使用，从摄像头列表获取）
             'tracking_enabled', 'tracking_similarity_threshold', 'tracking_max_age', 'tracking_smooth_alpha',  # 追踪配置
-            'alert_event_enabled', 'alert_event_suppress_time',
+            'alert_event_enabled', 'alert_event_suppress_time', 'alert_class_names',
             'face_detection_enabled', 'plate_detection_enabled',
             'face_matching_enabled', 'face_library_ids', 'face_matching_threshold',
             'plate_matching_enabled', 'plate_library_ids',
@@ -913,12 +1041,18 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             'defense_mode', 'defense_schedule',
             'schedule_policy', 'prefer_gpu', 'target_node_id',
             'sam_supplement_enabled', 'sam_supplement_config',
+            'motion_gate_enabled', 'motion_gate_config',
             'post_process_enabled', 'post_process_script', 'post_process_replicas',
         ]
         
         if 'sam_supplement_config' in kwargs:
             kwargs['sam_supplement_config'] = _serialize_sam_supplement_config(
                 kwargs['sam_supplement_config']
+            )
+
+        if 'motion_gate_config' in kwargs:
+            kwargs['motion_gate_config'] = _serialize_motion_gate_config(
+                kwargs['motion_gate_config']
             )
         
         # 验证布防模式
@@ -970,6 +1104,20 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
 
         if 'matching_business_tags' in kwargs:
             kwargs['matching_business_tags'] = _serialize_matching_business_tags(kwargs['matching_business_tags'])
+
+        if 'alert_class_names' in kwargs:
+            kwargs['alert_class_names'] = _serialize_alert_class_names(kwargs['alert_class_names'])
+
+        if 'alert_event_enabled' in kwargs or 'alert_class_names' in kwargs:
+            from app.utils.alert_class_filter import parse_alert_class_names
+            alert_enabled = kwargs.get('alert_event_enabled', task.alert_event_enabled)
+            if alert_enabled:
+                if 'alert_class_names' in kwargs:
+                    alert_names = parse_alert_class_names(kwargs.get('alert_class_names'))
+                else:
+                    alert_names = task._parse_alert_class_names()
+                if not alert_names:
+                    raise ValueError('启用告警事件时必须指定至少一个告警触发标签')
         
         # 处理告警通知配置（如果是字典或字符串，需要转换为JSON字符串）
         # 在保存前，从消息模板中提取通知人信息并保存到配置中
@@ -991,6 +1139,9 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             # 确保config_dict是字典
             if isinstance(config_dict, dict):
                 channels = config_dict.get('channels', [])
+                if channels:
+                    channels = _enrich_channels_userless_flags(channels)
+                    config_dict['channels'] = channels
                 logger.info(f"开始处理告警通知配置（更新）: channels数量={len(channels) if channels else 0}")
                 if channels:
                     # 从消息模板中提取通知人信息
@@ -1009,7 +1160,7 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
                     else:
                         if _has_userless_channel(channels):
                             logger.info(
-                                "ℹ️  包含 HTTP/Webhook 渠道，无需从模板提取通知人（URL 在消息模板中）（更新）"
+                                "ℹ️  包含 HTTP/Webhook 或企业微信群机器人渠道，无需从模板提取通知人（URL 在消息模板中）（更新）"
                             )
                         else:
                             logger.warning(

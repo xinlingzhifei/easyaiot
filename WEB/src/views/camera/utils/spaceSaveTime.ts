@@ -71,8 +71,8 @@ export function buildSpaceTableColumns(kind: SpaceKind) {
   ];
 }
 
-/** 默认 7 天，单位：小时 */
-export const DEFAULT_SAVE_TIME = 168;
+/** 默认 1 小时 */
+export const DEFAULT_SAVE_TIME = 1;
 export const MIN_SAVE_TIME_HOURS = 1;
 export const MAX_SAVE_TIME_DAYS = 3650;
 export const MAX_SAVE_TIME_HOURS = MAX_SAVE_TIME_DAYS * 24;

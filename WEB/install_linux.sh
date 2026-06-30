@@ -111,6 +111,72 @@ check_docker_compose() {
     fi
 }
 
+# 检查当前部署形态是否与已记录的 WEB 镜像构建形态一致
+# 返回 0 表示一致（可安全复用镜像），1 表示不一致或无法判断（应触发重建）
+web_image_profile_matches() {
+    ensure_deploy_profile
+    local current_profile="${EASYAIOT_DEPLOY_PROFILE:-full}"
+    local built_profile=""
+    local profile_stamp="${EASYAIOT_ROOT}/.scripts/docker/.web_deploy_profile_built"
+    if [ -f "$profile_stamp" ]; then
+        built_profile=$(tr -d '\n' < "$profile_stamp")
+    fi
+    [ "$built_profile" = "$current_profile" ]
+}
+
+# 当前部署形态对应的 WEB 镜像本地标签（与 runtime_image.sh local_ref 一致）
+web_profile_image_ref() {
+    ensure_deploy_profile
+    case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
+        mini)     echo "web-service:latest-mini" ;;
+        standard) echo "web-service:latest-standard" ;;
+        *)        echo "web-service:latest" ;;
+    esac
+}
+
+# 将形态镜像打标为 docker-compose 使用的 web-service:latest
+web_tag_compose_image() {
+    local profile_ref compose_ref="web-service:latest"
+    profile_ref=$(web_profile_image_ref)
+    if [ "$profile_ref" = "$compose_ref" ]; then
+        return 0
+    fi
+    if docker image inspect "$profile_ref" >/dev/null 2>&1; then
+        docker tag "$profile_ref" "$compose_ref"
+        print_info "已打标签: ${profile_ref} → ${compose_ref}（供 docker-compose 使用）"
+        return 0
+    fi
+    return 1
+}
+
+# 解析远端拉取的 WEB 镜像（兼容旧版误标 web-service:latest-full）
+web_resolve_pulled_image() {
+    local profile_ref legacy_ref="web-service:latest-full"
+    profile_ref=$(web_profile_image_ref)
+    if docker image inspect "$profile_ref" >/dev/null 2>&1; then
+        echo "$profile_ref"
+        return 0
+    fi
+    ensure_deploy_profile
+    if [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] && docker image inspect "$legacy_ref" >/dev/null 2>&1; then
+        docker tag "$legacy_ref" "$profile_ref" 2>/dev/null || true
+        echo "$profile_ref"
+        return 0
+    fi
+    return 1
+}
+
+# 已选择拉取远端镜像且本地镜像就绪 → 跳过 vite/docker build
+web_skip_build_from_pull() {
+    [ "${EASYAIOT_SKIP_BUILD:-0}" != "1" ] && return 1
+    local img
+    img=$(web_resolve_pulled_image) || return 1
+    web_tag_compose_image
+    record_web_deploy_profile_built "${EASYAIOT_ROOT}"
+    print_success "镜像已从远程拉取 (${img})，跳过 Docker 构建与 vite 编译"
+    return 0
+}
+
 # 组合 git 提交与 clean 写入的戳，用于 Dockerfile ARG CACHE_BUST（使 COPY 之后层在代码/clean 后重建）
 get_web_build_cache_bust() {
     local git_rev stamp
@@ -160,10 +226,19 @@ docker_build_image() {
     else
         print_info "使用 Docker 守护进程层缓存（默认）；如需跨守护进程清理/换机器持久化：WEB_PERSIST_BUILD_CACHE=1"
     fi
+    local platform_opts=""
+    if [ -n "${DOCKER_PLATFORM:-}" ]; then
+        platform_opts="--platform $DOCKER_PLATFORM"
+        print_info "构建目标平台: ${DOCKER_PLATFORM}"
+    fi
     docker build \
         "${cache_from_to[@]}" \
         --build-arg "CACHE_BUST=${cache_bust}" \
         --build-arg "VITE_GLOB_DEPLOY_PROFILE=${deploy_profile}" \
+        --build-arg "SKIP_VITE_BUILD=${SKIP_VITE_BUILD:-0}" \
+        --build-arg NPM_REGISTRY="${NPM_REGISTRY:-https://mirrors.cloud.tencent.com/npm/}" \
+        --build-arg APK_MIRROR="${APK_MIRROR:-mirrors.cloud.tencent.com}" \
+        $platform_opts \
         "$@" 2>&1 | tee "$log_new" | tee -a "$pnpm_log"
     ec=$?
     set +o pipefail
@@ -171,6 +246,9 @@ docker_build_image() {
         echo "======== docker build 结束 ${ts} 退出码: ${ec} ========"
         echo ""
     } >> "$pnpm_log"
+    if [ $ec -ne 0 ]; then
+        print_error "Docker 构建失败，请检查日志: ${log_new}"
+    fi
     return $ec
 }
 
@@ -559,10 +637,85 @@ build_frontend() {
     print_success "前端项目构建完成（此构建仅用于测试，Docker部署时会重新构建）"
 }
 
+# 验证上游后端服务是否可达（gateway/system-host）
+verify_upstream_connectivity() {
+    local container_name="web-service"
+    # 等待容器完全启动
+    local attempt=0
+    while [ $attempt -lt 10 ]; do
+        if docker exec "$container_name" wget -q --spider http://127.0.0.1/health 2>/dev/null; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+
+    # 检查 gateway/system-host 可达性
+    local upstream_host upstream_port upstream_label
+    if is_mini_deploy_profile; then
+        upstream_host="system-host"
+        upstream_port="48099"
+        upstream_label="iot-system(48099)"
+    else
+        upstream_host="gateway"
+        upstream_port="48080"
+        upstream_label="iot-gateway(48080)"
+    fi
+
+    print_info "验证后端服务连通性 (${upstream_label})..."
+    if docker exec "$container_name" wget -q --timeout=3 --tries=1 --spider "http://${upstream_host}:${upstream_port}/" 2>/dev/null; then
+        print_success "后端服务 ${upstream_label} 连通正常"
+    elif docker exec "$container_name" wget -q --timeout=3 --tries=1 --spider "http://${upstream_host}:${upstream_port}/actuator/health" 2>/dev/null; then
+        print_success "后端服务 ${upstream_label} 连通正常"
+    else
+        print_warning "后端服务 ${upstream_label} 不可达，API 请求将返回 502"
+        print_warning "请确保 DEVICE 模块已成功安装并启动"
+        if ! is_mini_deploy_profile; then
+            print_info "检查 iot-gateway 是否在运行: docker ps | grep iot-gateway"
+            print_info "检查端口 48080 是否监听: ss -tlnp | grep 48080"
+        else
+            print_info "检查 iot-system 是否在运行: docker ps | grep iot-system"
+            print_info "检查端口 48099 是否监听: ss -tlnp | grep 48099"
+        fi
+        print_info "待后端就绪后重启 web 服务: ./install_linux.sh restart"
+    fi
+}
+
 # 安装服务
 install_service() {
     print_info "开始安装 WEB 服务..."
-    
+
+    # 镜像获取方式（install_business_linux.sh 已统一询问时跳过）
+    if [ "${EASYAIOT_SKIP_IMAGE_PROMPT:-0}" != "1" ]; then
+        local _do_local_build=0
+        if [ -t 0 ]; then
+            print_info "========================================"
+            print_info "  镜像获取方式"
+            print_info "========================================"
+            print_info "  1) 拉取预构建镜像：从远程仓库下载（快速，默认）"
+            print_info "  2) 本地构建：编译并制作 Docker 镜像（耗时较长）"
+            echo ""
+            read -r -p "是否从远程仓库下载预构建的镜像？(Y/n) " _pull_response
+            case "${_pull_response:-Y}" in
+                n|N|no|NO) _do_local_build=1 ;;
+                *) _do_local_build=0 ;;
+            esac
+        else
+            print_info "非交互模式，默认拉取预构建镜像"
+        fi
+
+        if [ "$_do_local_build" -eq 0 ]; then
+            print_info "正在拉取预构建镜像..."
+            if bash "${EASYAIOT_ROOT}/.scripts/docker/runtime_image.sh" pull; then
+                print_success "预构建镜像拉取成功"
+                export EASYAIOT_SKIP_BUILD=1
+            else
+                print_warning "预构建镜像拉取失败，将尝试本地构建"
+                _do_local_build=1
+            fi
+        fi
+    fi
+
     check_docker
     check_docker_compose
     create_directories
@@ -580,12 +733,16 @@ install_service() {
         exit 1
     fi
 
-    # 注意：前端构建现在在Docker容器内完成，不再需要在宿主机上构建
-    print_info "前端构建将在Docker容器内自动完成"
-    
-    print_info "构建 Docker 镜像（根据代码重新构建）..."
-    docker_build_image -t web-service:latest .
-    record_web_deploy_profile_built "${EASYAIOT_ROOT}"
+    if web_skip_build_from_pull; then
+        :
+    elif [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect web-service:latest >/dev/null 2>&1 && web_image_profile_matches; then
+        print_success "镜像已从远程拉取 (web-service:latest)，跳过 Docker 构建与 vite 编译"
+    else
+        print_info "前端构建将在 Docker 容器内自动完成"
+        print_info "构建 Docker 镜像（根据代码重新构建）..."
+        docker_build_image -t web-service:latest .
+        record_web_deploy_profile_built "${EASYAIOT_ROOT}"
+    fi
     
     print_info "启动服务..."
     $COMPOSE_CMD up -d
@@ -596,6 +753,9 @@ install_service() {
     
     # 检查服务状态
     check_status
+    
+    # 验证上游连通性
+    verify_upstream_connectivity
     
     # 读取端口配置
     if [ -f .env ]; then
@@ -695,16 +855,37 @@ view_logs() {
 
 # 构建镜像
 build_image() {
-    print_info "重新构建 Docker 镜像..."
     check_docker
     check_docker_compose
-    
+
+    local profile_ref
+    profile_ref=$(web_profile_image_ref)
+
+    # runtime_image.sh 按形态推送 web-service:latest-{mini|standard}；须检查形态标签而非仅 latest
+    if [ "${FORCE_REBUILD:-0}" != "1" ] \
+        && docker image inspect "$profile_ref" >/dev/null 2>&1 \
+        && web_image_profile_matches; then
+        print_success "${profile_ref} 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        web_tag_compose_image || true
+        return 0
+    fi
+
+    print_info "重新构建 Docker 镜像..."
     # 注意：前端构建现在在Docker容器内完成，构建镜像时会自动完成
     print_info "前端构建将在Docker容器内自动完成"
     
-    docker_build_image -t web-service:latest --no-cache .
+    # 勿用 --no-cache：会强制重跑 pnpm fetch/install（数分钟），且 hoisted+store cache mount 下
+    # 可能出现 install 打印 Done 后进程仍挂起。源码变更由 CACHE_BUST 触发 vite 重编；全量重建请先 clean。
+    local build_rc=0
+    docker_build_image -t "$profile_ref" . || build_rc=$?
     record_web_deploy_profile_built "${EASYAIOT_ROOT}"
-    print_success "镜像构建完成"
+    web_tag_compose_image || true
+    if [ $build_rc -eq 0 ]; then
+        print_success "镜像构建完成: ${profile_ref}"
+    else
+        print_error "镜像构建失败 (exit=${build_rc})"
+    fi
+    return $build_rc
 }
 
 # 清理服务
@@ -780,13 +961,15 @@ update_service() {
     local rev_after=""
     rev_after="$(git rev-parse HEAD 2>/dev/null || echo "")"
 
-    # 无变更快速路径：提交号未变 + 本地无未提交改动 + 镜像已存在 → 跳过前端重建
+    # 无变更快速路径：提交号未变 + 本地无未提交改动 + 镜像已存在 + 部署形态未变 → 跳过前端重建
     # 说明1：clean 会删除镜像并刷新构建戳，故 clean 后镜像不存在 → 此处不会误跳过
     # 说明2：git diff --quiet HEAD 捕获「已跟踪文件的本地未提交修改」，避免改了代码没 commit
     #        却被误判为无变更而跳过重建（git diff 不受未跟踪的构建日志干扰）。
     #        注意：全新的未跟踪文件 git diff 检测不到，这种情况请先 git add，或用 FORCE_REBUILD=1。
+    # 说明3：部署形态（mini/standard/full）变更时，即使代码无变更也必须重建以写入正确的 VITE_GLOB_DEPLOY_PROFILE
     if [ "${FORCE_REBUILD:-0}" != "1" ] \
         && docker image inspect web-service:latest >/dev/null 2>&1 \
+        && web_image_profile_matches \
         && [ -n "$rev_before" ] && [ "$rev_before" = "$rev_after" ] \
         && git diff --quiet HEAD -- . 2>/dev/null; then
         print_success "代码无变更且镜像已存在，跳过前端重建"

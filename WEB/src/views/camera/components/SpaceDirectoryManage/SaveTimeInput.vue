@@ -46,7 +46,7 @@ const props = withDefaults(
     disabled?: boolean;
   }>(),
   {
-    value: 168,
+    value: 1,
     disabled: false,
   },
 );
@@ -98,8 +98,8 @@ watch(permanent, (checked, prev) => {
     return;
   }
   if ((days.value ?? 0) === 0 && (hours.value ?? 0) === 0) {
-    days.value = 7;
-    hours.value = 0;
+    days.value = 0;
+    hours.value = 1;
   }
   emitFromParts();
 });

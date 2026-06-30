@@ -1,3 +1,6 @@
+# 部署形态环境变量（由 deploy_profile.sh 自动生成）
+.env
+
 # Compiled class file
 *.class
 
