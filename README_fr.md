@@ -28,11 +28,11 @@ Mon souhait est que ce système soit utilisé dans le monde entier, rendant l'IA
 ## 📖 Présentation du projet
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-<strong>EasyAIoT</strong> (Easy AI Internet of Things) est une <strong>plateforme d'application d'algorithmes intelligents à intégration cloud-bord-périphérique</strong>, dédiée à la fusion profonde de l'intelligence artificielle et de l'Internet des objets — permettant aux caméras, capteurs et ressources de calcul en périphérie de collaborer sur le terrain. De la connexion des appareils et la collecte de données à l'analyse visuelle en temps réel, l'évaluation intelligente et l'orchestration des alertes, l'ensemble de la chaîne s'accomplit au sein d'une seule pile logicielle.
+<strong>yFeiEye</strong> est une <strong>plateforme d'application d'algorithmes intelligents à intégration cloud-bord-périphérique</strong>, dédiée à la fusion profonde de l'intelligence artificielle et de l'Internet des objets — permettant aux caméras, capteurs et ressources de calcul en périphérie de collaborer sur le terrain. De la connexion des appareils et la collecte de données à l'analyse visuelle en temps réel, l'évaluation intelligente et l'orchestration des alertes, l'ensemble de la chaîne s'accomplit au sein d'une seule pile logicielle.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-De nombreux projets IoT intelligents se heurtent au même obstacle lors du déploiement : systèmes vidéo, plateformes d'appareils et services algorithmiques fonctionnent en silos — l'intégration est coûteuse, l'exploitation fragmentée et la montée en charge difficile. <strong>EasyAIoT résout ce problème avec une plateforme unique</strong> — le même logiciel se déploie sur une box edge de 4 Go pour l'intelligence ponctuelle, sur des caméras IA tout-en-un pour une couverture à l'échelle d'un étage, ou dans un appliance full-stack d'entreprise regroupant gestion IoT, accès vidéo massif et analyse IA — sans maintenir plusieurs versions ni réintégrer des systèmes hétérogènes.
+De nombreux projets IoT intelligents se heurtent au même obstacle lors du déploiement : systèmes vidéo, plateformes d'appareils et services algorithmiques fonctionnent en silos — l'intégration est coûteuse, l'exploitation fragmentée et la montée en charge difficile. <strong>yFeiEye résout ce problème avec une plateforme unique</strong> — le même logiciel se déploie sur une box edge de 4 Go pour l'intelligence ponctuelle, sur des caméras IA tout-en-un pour une couverture à l'échelle d'un étage, ou dans un appliance full-stack d'entreprise regroupant gestion IoT, accès vidéo massif et analyse IA — sans maintenir plusieurs versions ni réintégrer des systèmes hétérogènes.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -40,11 +40,11 @@ La plateforme comprend sept modules principaux — <strong>WEB, APP, DEVICE, NOD
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
-<strong>En une phrase :</strong> EasyAIoT = IA + IoT — interconnecter toutes choses tout en leur donnant une vision et un contrôle intelligents.
+<strong>En une phrase :</strong> yFeiEye = IA + IoT — interconnecter toutes choses tout en leur donnant une vision et un contrôle intelligents.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-📄 Pour une présentation illustrée plus complète, consultez <a href=".doc/项目介绍/EasyAIoT项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">Présentation du projet EasyAIoT V2.0 (PPT)</a>.
+📄 Pour une présentation illustrée plus complète, consultez <a href=".doc/项目介绍/yFeiEye项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">Présentation du projet yFeiEye V2.0 (PPT)</a>.
 </p>
 
 ## 🌟 Réflexions sur le projet

@@ -28,11 +28,11 @@
 ## 📖 프로젝트 소개
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-<strong>EasyAIoT</strong>(Easy AI Internet of Things)는 <strong>클라우드-엣지-디바이스 통합 지능형 알고리즘 애플리케이션 플랫폼</strong>으로, 인공지능과 사물인터넷의 깊은 융합에 전념합니다. 카메라, 센서, 엣지 연산 자원이 현장에서 협력하여 동작하도록 하며—디바이스 접속과 데이터 수집부터 실시간 영상 분석, 지능형 판단, 알람 연동까지 전 과정을 하나의 소프트웨어 스택에서 완성합니다.
+<strong>yFeiEye</strong>는 <strong>클라우드-엣지-디바이스 통합 지능형 알고리즘 애플리케이션 플랫폼</strong>으로, 인공지능과 사물인터넷의 깊은 융합에 전념합니다. 카메라, 센서, 엣지 연산 자원이 현장에서 협력하여 동작하도록 하며—디바이스 접속과 데이터 수집부터 실시간 영상 분석, 지능형 판단, 알람 연동까지 전 과정을 하나의 소프트웨어 스택에서 완성합니다.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-많은 스마트 IoT 프로젝트가 배포 단계에서 같은 벽에 부딪힙니다. 영상 시스템, 디바이스 플랫폼, 알고리즘 서비스가 각각 분리되어 있어 통합 비용이 높고, 운영이 파편화되며, 확장이 어렵습니다. <strong>EasyAIoT는 하나의 플랫폼으로 이 모순을 해소합니다</strong>—동일한 소프트웨어를 4 GB 엣지 박스에 배포해 단일 지점 지능을 구현하거나, AI 일체형 카메라에 탑재해 층 단위 커버리지를 달성하거나, 기업용 풀스택 어플라이언스에 탑재해 IoT 관리, 대규모 영상 접속, AI 분석 판단을 한 상자에 담을 수 있습니다. 여러 버전을 유지하거나 이기종 시스템을 반복 연동할 필요가 없습니다.
+많은 스마트 IoT 프로젝트가 배포 단계에서 같은 벽에 부딪힙니다. 영상 시스템, 디바이스 플랫폼, 알고리즘 서비스가 각각 분리되어 있어 통합 비용이 높고, 운영이 파편화되며, 확장이 어렵습니다. <strong>yFeiEye는 하나의 플랫폼으로 이 모순을 해소합니다</strong>—동일한 소프트웨어를 4 GB 엣지 박스에 배포해 단일 지점 지능을 구현하거나, AI 일체형 카메라에 탑재해 층 단위 커버리지를 달성하거나, 기업용 풀스택 어플라이언스에 탑재해 IoT 관리, 대규모 영상 접속, AI 분석 판단을 한 상자에 담을 수 있습니다. 여러 버전을 유지하거나 이기종 시스템을 반복 연동할 필요가 없습니다.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
@@ -40,11 +40,11 @@
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
-<strong>한 문장으로:</strong> EasyAIoT = AI + IoT — 만물을 연결하는 동시에 만물에 지능형 시각과 지능형 제어를 실현합니다.
+<strong>한 문장으로:</strong> yFeiEye = AI + IoT — 만물을 연결하는 동시에 만물에 지능형 시각과 지능형 제어를 실현합니다.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-📄 보다 완전한 그림·문자 소개는 <a href=".doc/项目介绍/EasyAIoT项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">EasyAIoT 프로젝트 소개 V2.0 (PPT)</a>를 참조하세요.
+📄 보다 완전한 그림·문자 소개는 <a href=".doc/项目介绍/yFeiEye项目介绍 V2.0.pptx" style="color: #3498db; text-decoration: none; font-weight: 600;">yFeiEye 프로젝트 소개 V2.0 (PPT)</a>를 참조하세요.
 </p>
 
 ## 🌟 프로젝트에 대한 몇 가지 생각
