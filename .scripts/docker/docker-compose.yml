@@ -292,8 +292,8 @@ services:
       - MINIO_ROOT_PASSWORD=basiclab@iot975248395
     command: server /data --console-address ":9001"
     volumes:
-      - "./minio_data/data:/data:rw"
-      - "./minio_data/config:/root/.minio:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/minio_data/data:/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/minio_data/config:/root/.minio:rw"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
