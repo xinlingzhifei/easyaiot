@@ -39,6 +39,11 @@ assert.match(
 );
 assert.match(
   installScript,
+  /sync_agent_sources\(\)[\s\S]*sudo mkdir -p "\$INSTALL_DIR"[\s\S]*readlink -f "\$INSTALL_DIR"/,
+  'Node agent installer should create the install directory before resolving it with readlink -f.',
+);
+assert.match(
+  installScript,
   /EASYAIOT_AGENT_ALLOW_ONLINE_PIP/,
   'Online pip fallback should be controlled by an explicit environment variable.',
 );

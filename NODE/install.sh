@@ -124,6 +124,7 @@ cmd_logs() {
 
 sync_agent_sources() {
   local resolved_install_dir resolved_script_dir
+  sudo mkdir -p "$INSTALL_DIR"
   resolved_install_dir="$(readlink -f "$INSTALL_DIR")"
   resolved_script_dir="$(readlink -f "$SCRIPT_DIR")"
   if [ "$resolved_script_dir" = "$resolved_install_dir" ]; then
