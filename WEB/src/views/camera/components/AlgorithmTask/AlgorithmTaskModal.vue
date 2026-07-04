@@ -26,7 +26,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, nextTick, h, watch } from 'vue';
+import { ref, computed, h } from 'vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
@@ -510,7 +510,6 @@ const loadTemplates = async (channel: string) => {
 };
 
 const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getFieldsValue }] = useForm({
-  transformDateToString: false,
   labelWidth: 150,
   baseColProps: { span: 24 },
   schemas: [
@@ -750,7 +749,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         checkedChildren: '是',
         unCheckedChildren: '否',
       },
-      suffix: () =>
+      suffix: (() =>
         h(Popover, {
           title: '算法任务占位符',
           trigger: 'hover',
@@ -773,7 +772,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
           }, {
             icon: () => h(QuestionCircleOutlined),
           }),
-        }),
+        })) as any,
       helpMessage: '是否启用告警事件，启用后会记录告警信息',
       ifShow: ({ values }) => values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol',
     },
@@ -1030,7 +1029,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       field: 'notification_templates',
       label: '通知模板',
       component: 'Input',
-      render: ({ model, values }) => {
+      render: ({ values }) => {
         const channels = values?.notification_channels || notificationChannels.value || [];
         if (!channels || channels.length === 0) {
           return h('div', { class: 'notification-templates-empty' }, '请先选择通知渠道');
@@ -1088,7 +1087,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         checkedChildren: '是',
         unCheckedChildren: '否',
       },
-      suffix: () =>
+      suffix: (() =>
         h(Popover, {
           trigger: 'hover',
           placement: 'rightTop',
@@ -1105,7 +1104,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
           }, {
             icon: () => h(QuestionCircleOutlined),
           }),
-        }),
+        })) as any,
       helpMessage: '开启后将在全天24小时执行监控任务，关闭后可配置自定义布防时段',
     },
   ],
@@ -1508,7 +1507,7 @@ const handleSubmit = async () => {
 
     // 新建任务时，默认设置为未启用状态（需要通过启动按钮来启动）
     if (modalData.value.type !== 'edit') {
-      values.is_enabled = 0;
+      values.is_enabled = false;
     }
     // 编辑任务时，不修改 is_enabled 状态（保持原值，通过启动/停止按钮控制）
 
@@ -1697,9 +1696,10 @@ const handleSubmit = async () => {
     }
 
     if (modalData.value.type === 'edit' && modalData.value.record) {
-      const response = await updateAlgorithmTask(modalData.value.record.id, values);
+      const response = await updateAlgorithmTask(modalData.value.record.id, values as any);
+      const task = response as any;
       // 由于 isTransformResponse: true，成功时返回的是任务对象，而不是包含 code 的响应对象
-      if (response && response.id) {
+      if (task && task.id) {
         createMessage.success('更新成功');
         taskId.value = modalData.value.record.id;
         emit('success');
@@ -1709,10 +1709,11 @@ const handleSubmit = async () => {
         createMessage.error((response as any)?.msg || '更新失败');
       }
     } else {
-      const response = await createAlgorithmTask(values);
+      const response = await createAlgorithmTask(values as any);
+      const task = response as any;
       // 由于 isTransformResponse: true，成功时返回的是任务对象，而不是包含 code 的响应对象
-      if (response && response.id) {
-        taskId.value = response.id;
+      if (task && task.id) {
+        taskId.value = task.id;
         createMessage.success('创建成功');
         emit('success');
         closeDrawer();
