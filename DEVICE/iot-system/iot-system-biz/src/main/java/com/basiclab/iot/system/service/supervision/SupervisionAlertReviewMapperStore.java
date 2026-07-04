@@ -1002,9 +1002,11 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         boolean insert = segmentDO == null;
         if (insert) {
             segmentDO = new SupervisionAlertReviewSegmentDO()
+                    .setTenantId(reviewSegmentTenantId(itemDO.getTenantId()))
                     .setReviewItemId(itemDO.getId())
                     .setVersion(0);
         }
+        segmentDO.setTenantId(reviewSegmentTenantId(itemDO.getTenantId()));
         segmentDO.setSegmentNo(toText(segment.get("segmentId"), itemDO.getReviewItemNo()))
                 .setCameraId(toText(segment.get("cameraId"), itemDO.getCameraId()))
                 .setSeverity(toText(segment.get("severity"), "alert"))
@@ -1032,6 +1034,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             throw new IllegalArgumentException("review segment endTime cannot be before startTime: " + segmentDO.getReviewItemId());
         }
         for (SupervisionAlertReviewSegmentDO overlap : reviewSegmentMapper.selectOverlapping(
+                segmentDO.getTenantId(),
                 segmentDO.getCameraId(),
                 segmentDO.getStartTime(),
                 segmentDO.getEndTime())) {
@@ -1040,6 +1043,10 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                         + segmentDO.getCameraId() + ": " + overlap.getReviewItemId());
             }
         }
+    }
+
+    private static Long reviewSegmentTenantId(Long tenantId) {
+        return tenantId == null ? 0L : tenantId;
     }
 
     private ReviewItemAggregate toAggregate(SupervisionAlertReviewItemDO itemDO) {

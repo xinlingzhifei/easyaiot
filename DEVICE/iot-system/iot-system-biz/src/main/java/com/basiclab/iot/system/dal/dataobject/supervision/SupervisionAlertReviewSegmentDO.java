@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 public class SupervisionAlertReviewSegmentDO extends BaseDO {
 
     private Long id;
+    private Long tenantId;
     private Long reviewItemId;
     private String segmentNo;
     private String cameraId;

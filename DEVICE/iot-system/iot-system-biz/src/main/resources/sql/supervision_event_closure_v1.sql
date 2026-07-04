@@ -168,6 +168,7 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_item_id BIGINT NOT NULL,
   segment_no VARCHAR(128) NOT NULL,
   camera_id VARCHAR(128) NOT NULL,
@@ -188,6 +189,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT ck_supervision_alert_review_segment_time CHECK (end_time IS NULL OR end_time >= start_time),
   CONSTRAINT ex_supervision_alert_review_segment_camera_time EXCLUDE USING gist (
+    tenant_id WITH =,
     camera_id WITH =,
     tsrange(start_time, COALESCE(end_time, 'infinity'::timestamp), '[)') WITH &&
   ) WHERE (deleted = FALSE)
@@ -202,7 +204,7 @@ ON system_supervision_alert_review_segment(review_item_id)
 WHERE deleted = FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time
-ON system_supervision_alert_review_segment(camera_id, start_time, end_time);
+ON system_supervision_alert_review_segment(tenant_id, camera_id, start_time, end_time);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_status
 ON system_supervision_alert_review_segment(segment_status, severity, start_time);

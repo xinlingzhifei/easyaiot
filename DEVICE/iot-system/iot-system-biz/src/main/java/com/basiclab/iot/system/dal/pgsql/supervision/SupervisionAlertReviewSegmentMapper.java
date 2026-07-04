@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Mapper
 public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<SupervisionAlertReviewSegmentDO> {
@@ -16,13 +17,15 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
                 .eq(SupervisionAlertReviewSegmentDO::getReviewItemId, reviewItemId));
     }
 
-    default List<SupervisionAlertReviewSegmentDO> selectOverlapping(String cameraId,
+    default List<SupervisionAlertReviewSegmentDO> selectOverlapping(Long tenantId,
+                                                                    String cameraId,
                                                                     LocalDateTime startTime,
                                                                     LocalDateTime endTime) {
         return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
                 .eq(SupervisionAlertReviewSegmentDO::getCameraId, cameraId)
                 .orderByDesc(SupervisionAlertReviewSegmentDO::getStartTime))
                 .stream()
+                .filter(segment -> Objects.equals(tenantId, segment.getTenantId()))
                 .filter(segment -> overlaps(startTime, endTime, segment.getStartTime(), segment.getEndTime()))
                 .toList();
     }

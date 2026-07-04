@@ -104,6 +104,7 @@ class SupervisionAlertReviewMapperStoreTest {
         SupervisionAlertReviewSegmentMapper reviewSegmentMapper = mapper(SupervisionAlertReviewSegmentMapper.class, (proxy, method, args) -> {
             if ("selectOverlapping".equals(method.getName())) {
                 return List.of(new SupervisionAlertReviewSegmentDO()
+                        .setTenantId(0L)
                         .setReviewItemId(200L)
                         .setCameraId("camera-01")
                         .setStartTime(startTime.minusSeconds(10))
@@ -156,6 +157,70 @@ class SupervisionAlertReviewMapperStoreTest {
 
         assertTrue(error.getMessage().contains("overlapping review segment"));
         assertEquals(0, segmentInserts.get());
+    }
+
+    @Test
+    void createScopesReviewSegmentOverlapProbeByTenant() {
+        LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 45);
+        AtomicInteger overlapArgCount = new AtomicInteger();
+        AtomicReference<Object[]> overlapArgs = new AtomicReference<>();
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                SupervisionAlertReviewItemDO itemDO = (SupervisionAlertReviewItemDO) args[0];
+                itemDO.setId(101L);
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewSegmentMapper reviewSegmentMapper = mapper(SupervisionAlertReviewSegmentMapper.class, (proxy, method, args) -> {
+            if ("selectOverlapping".equals(method.getName())) {
+                overlapArgCount.set(args == null ? 0 : args.length);
+                overlapArgs.set(args);
+                return List.of();
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        try {
+            TenantContextHolder.setTenantId(1001L);
+            store.create(new ReviewItemDraft(
+                    "video",
+                    "alert-tenant-segment-store",
+                    "restricted_area",
+                    "restricted_area",
+                    startTime,
+                    "device-01",
+                    "camera-01",
+                    "zone-a",
+                    "person",
+                    "hash-tenant-segment-store",
+                    Map.of("reviewSegment", Map.of(
+                            "segmentId", "seg-tenant-store",
+                            "cameraId", "camera-01",
+                            "status", "alert",
+                            "severity", "alert",
+                            "startTime", startTime.toString(),
+                            "endTime", startTime.plusSeconds(20).toString(),
+                            "objectIds", List.of("obj-tenant-store"),
+                            "zones", List.of("zone-a"),
+                            "sourceAlertIds", List.of("alert-tenant-segment-store")
+                    )),
+                    "not_required",
+                    startTime,
+                    null
+            ), List.of());
+        } finally {
+            TenantContextHolder.clear();
+        }
+
+        assertEquals(4, overlapArgCount.get());
+        assertEquals(1001L, overlapArgs.get()[0]);
+        assertEquals("camera-01", overlapArgs.get()[1]);
     }
 
     private static SupervisionAlertReviewMapperStore newStore(SupervisionAlertReviewItemMapper reviewItemMapper,
