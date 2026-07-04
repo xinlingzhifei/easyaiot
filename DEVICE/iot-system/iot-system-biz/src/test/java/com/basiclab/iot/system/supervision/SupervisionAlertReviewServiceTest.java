@@ -3725,6 +3725,41 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void reviewSegmentLifecycleRejectsEndBeforeSegmentStart() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 43);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-segment-invalid-end",
+                alertTime,
+                "segment-invalid-end.jpg",
+                null
+        ));
+
+        IllegalArgumentException invalidEnd = assertThrows(IllegalArgumentException.class,
+                () -> service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                        item.id(),
+                        "ended",
+                        alertTime.minusSeconds(1),
+                        List.of("obj-invalid-end"),
+                        List.of("person"),
+                        List.of("zone-a"),
+                        List.of(),
+                        Map.of(),
+                        null
+                )));
+        ReviewSegmentView segment = service.getReviewSegment(item.id());
+
+        assertTrue(invalidEnd.getMessage().contains("before review segment start"));
+        assertEquals("active", segment.status());
+        assertEquals(alertTime, segment.startTime());
+        assertEquals(alertTime, segment.endTime());
+    }
+
+    @Test
     void reviewSegmentLifecycleRejectsInvalidStateAndReopenAfterEnded() {
         LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 45);
         SupervisionAlertReviewService service = newService(

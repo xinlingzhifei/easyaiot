@@ -389,7 +389,8 @@ async function evaluateOpsRuleGeometry() {
   }
   opsLoading.value = true
   try {
-    const bbox = Array.isArray(target.reviewData?.bbox) ? target.reviewData.bbox : [0, 0, 1, 1]
+    const reviewData = target.reviewData || {}
+    const bbox = Array.isArray(reviewData.bbox) ? reviewData.bbox as number[] : [0, 0, 1, 1]
     opsGeometry.value = await evaluateAlertReviewRuleGeometry({
       ruleCode: target.ruleCode,
       cameraId: target.cameraId,

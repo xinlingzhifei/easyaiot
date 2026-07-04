@@ -299,7 +299,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
         LocalDateTime happenedAt = command.happenedAt() == null ? LocalDateTime.now() : command.happenedAt();
         String state = normalizeReviewSegmentState(command.lifecycleState());
-        assertReviewSegmentTransitionAllowed(item, state);
+        assertReviewSegmentTransitionAllowed(item, state, happenedAt);
         Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
         Map<String, Object> lifecycle = new LinkedHashMap<>(toStringObjectMap(reviewData.get("lifecycle")));
         List<Map<String, Object>> events = new ArrayList<>(toMapList(lifecycle.get("events")));
@@ -4461,13 +4461,20 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         throw new IllegalArgumentException("review segment state must be active, detection, alert, or ended: " + lifecycleState);
     }
 
-    private static void assertReviewSegmentTransitionAllowed(ReviewItemAggregate item, String nextState) {
+    private static void assertReviewSegmentTransitionAllowed(ReviewItemAggregate item,
+                                                             String nextState,
+                                                             LocalDateTime happenedAt) {
         Map<String, Object> segment = toStringObjectMap(item.reviewData() == null
                 ? null
                 : item.reviewData().get("reviewSegment"));
         String currentState = firstText(segment.get("status"), "active");
         if ("ended".equals(currentState) && !"ended".equals(nextState)) {
             throw new IllegalStateException("ended review segment cannot be reopened: " + item.id());
+        }
+        LocalDateTime startTime = toLocalDateTime(firstText(segment.get("startTime"),
+                item.firstAlertTime() == null ? null : item.firstAlertTime().toString()));
+        if (happenedAt != null && startTime != null && happenedAt.isBefore(startTime)) {
+            throw new IllegalArgumentException("review segment lifecycle time cannot be before review segment start: " + item.id());
         }
     }
 
