@@ -1,0 +1,5492 @@
+package com.basiclab.iot.system.service.supervision;
+
+import com.basiclab.iot.common.core.context.TenantContextHolder;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewAiSummaryRequest;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewItemSummaryContext;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchCandidate;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
+
+@Service
+public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReviewService {
+
+    private static final String REVIEW_SOURCE_SYSTEM = "alert_review";
+    private static final int DEFAULT_MERGE_WINDOW_SECONDS = 300;
+    private static final int DEFAULT_CASE_CANDIDATE_WINDOW_SECONDS = 600;
+    private static final int DEFAULT_EXPORT_JOB_EXPIRES_DAYS = 7;
+    private static final int DEFAULT_RUNTIME_OUTBOX_LIMIT = 50;
+    private static final int MAX_RUNTIME_OUTBOX_LIMIT = 200;
+    private static final int REVIEW_DATA_VERSION = 1;
+    private static final String LOCAL_EMBEDDING_MODEL = "yfeieye-review-local-v1";
+    private static final String MATERIAL_SNAPSHOT = "snapshot";
+    private static final String MATERIAL_RECORD = "record";
+    private static final String MATERIAL_RECORD_COVERAGE = "record_coverage";
+    private static final String MATERIAL_REVIEW_ACTION = "review_action";
+    private static final String RECORD_GAP_FILE_MISSING = "file_missing";
+    private static final String RECORD_GAP_FILE_EXPIRED = "file_expired";
+    private static final String RECORD_GAP_DISK_FULL = "disk_full";
+    private static final String RECORD_GAP_CACHE_FLUSH_FAILED = "cache_flush_failed";
+    private static final String FALLBACK_RULE_CODE = SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING;
+    private static final List<String> DEFAULT_RULE_CANDIDATE_ACTIONS = List.of(
+            "narrow_zone",
+            "raise_confidence",
+            "increase_min_stay",
+            "require_zone",
+            "suppress_label_zone"
+    );
+
+    private final ReviewItemStore reviewItemStore;
+    private final ReviewRuleStore reviewRuleStore;
+    private final SupervisionEventService supervisionEventService;
+    private final RecordEvidenceResolver recordEvidenceResolver;
+    private final EventProjectionStore eventProjectionStore;
+    private final RecordCoverageResolver recordCoverageResolver;
+    private final ReviewIntelligenceProvider reviewIntelligenceProvider;
+    private final VideoEvidenceExportProvider videoEvidenceExportProvider;
+    private final ReviewCameraPermissionResolver cameraPermissionResolver;
+    private final ConcurrentMap<String, Object> reviewSegmentIngestLocks = new ConcurrentHashMap<>();
+
+    private record ReviewDataConsistency(Map<String, Object> reviewData,
+                                         boolean schemaDrift,
+                                         boolean segmentDoubleWriteDrift) {
+        boolean hasDrift() {
+            return schemaDrift || segmentDoubleWriteDrift;
+        }
+    }
+
+    public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
+                                             ReviewRuleStore reviewRuleStore,
+                                             SupervisionEventService supervisionEventService,
+                                             RecordEvidenceResolver recordEvidenceResolver,
+                                             EventProjectionStore eventProjectionStore,
+                                             RecordCoverageResolver recordCoverageResolver,
+                                             ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                             VideoEvidenceExportProvider videoEvidenceExportProvider) {
+        this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver, eventProjectionStore,
+                recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
+                ReviewCameraPermissionResolver.unrestricted());
+    }
+
+    @Autowired
+    public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
+                                             ReviewRuleStore reviewRuleStore,
+                                             SupervisionEventService supervisionEventService,
+                                             RecordEvidenceResolver recordEvidenceResolver,
+                                             EventProjectionStore eventProjectionStore,
+                                             RecordCoverageResolver recordCoverageResolver,
+                                             ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                             VideoEvidenceExportProvider videoEvidenceExportProvider,
+                                             ReviewCameraPermissionResolver cameraPermissionResolver) {
+        this.reviewItemStore = Objects.requireNonNull(reviewItemStore, "reviewItemStore");
+        this.reviewRuleStore = Objects.requireNonNull(reviewRuleStore, "reviewRuleStore");
+        this.supervisionEventService = Objects.requireNonNull(supervisionEventService, "supervisionEventService");
+        this.recordEvidenceResolver = Objects.requireNonNull(recordEvidenceResolver, "recordEvidenceResolver");
+        this.eventProjectionStore = Objects.requireNonNull(eventProjectionStore, "eventProjectionStore");
+        this.recordCoverageResolver = Objects.requireNonNull(recordCoverageResolver, "recordCoverageResolver");
+        this.reviewIntelligenceProvider = Objects.requireNonNull(reviewIntelligenceProvider, "reviewIntelligenceProvider");
+        this.videoEvidenceExportProvider = Objects.requireNonNull(videoEvidenceExportProvider, "videoEvidenceExportProvider");
+        this.cameraPermissionResolver = Objects.requireNonNull(cameraPermissionResolver, "cameraPermissionResolver");
+    }
+
+    @Override
+    public ReviewItemAggregate ingestClue(AlertClueCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.sourceSystem(), "sourceSystem");
+        requireText(command.sourceAlertId(), "sourceAlertId");
+        LocalDateTime alertTime = Objects.requireNonNull(command.alertTime(), "alertTime");
+        String cameraId = normalizeCameraId(command);
+        synchronized (reviewSegmentIngestLock(cameraId)) {
+            return ingestClueLocked(command, alertTime, cameraId);
+        }
+    }
+
+    private ReviewItemAggregate ingestClueLocked(AlertClueCommand command, LocalDateTime alertTime, String cameraId) {
+        String ruleCode = resolveRuleCode(command);
+        Optional<ReviewItemAggregate> existingIdentity = findExistingIngestIdentity(command);
+        if (existingIdentity.isPresent()) {
+            return withEventProjection(existingIdentity.get());
+        }
+        EvidenceBuildResult evidenceResult = buildEvidenceItems(command);
+        Map<String, Object> reviewData = withReviewWindow(buildReviewData(command, ruleCode), alertTime, alertTime);
+        LocalDateTime windowStart = alertTime.minusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
+        LocalDateTime windowEnd = alertTime.plusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
+
+        return reviewItemStore.findMergeCandidate(
+                        command.sourceSystem(),
+                        cameraId,
+                        command.zoneCode(),
+                        ruleCode,
+                        windowStart,
+                        windowEnd
+                )
+                .filter(SupervisionAlertReviewServiceImpl::canMergeReviewSegment)
+                .map(candidate -> {
+                    String recordEvidenceStatus = mergeRecordEvidenceStatus(
+                            candidate.recordEvidenceStatus(),
+                            evidenceResult.recordEvidenceStatus()
+                    );
+                    return reviewItemStore.appendClue(candidate.id(),
+                            command.sourceAlertId(),
+                            alertTime,
+                            evidenceResult.evidenceItems(),
+                            withReviewWindow(
+                                    mergeReviewData(candidate.reviewData(), reviewData),
+                                    min(candidate.firstAlertTime(), alertTime),
+                                    max(candidate.lastAlertTime(), alertTime)
+                            ),
+                            recordEvidenceStatus,
+                            evidenceResult.recordEvidenceCheckedAt() == null
+                                    ? candidate.recordEvidenceCheckedAt()
+                                    : evidenceResult.recordEvidenceCheckedAt(),
+                            hasText(evidenceResult.recordEvidenceMessage())
+                                    ? evidenceResult.recordEvidenceMessage()
+                                    : candidate.recordEvidenceMessage());
+                })
+                .orElseGet(() -> reviewItemStore.create(new ReviewItemDraft(
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        ruleCode,
+                        command.sourceAlertType(),
+                        alertTime,
+                        command.deviceId(),
+                        cameraId,
+                        command.zoneCode(),
+                        command.objectLabel(),
+                        command.sourcePayloadHash(),
+                        reviewData,
+                        evidenceResult.recordEvidenceStatus(),
+                        evidenceResult.recordEvidenceCheckedAt(),
+                        evidenceResult.recordEvidenceMessage()
+                ), evidenceResult.evidenceItems()));
+    }
+
+    private Object reviewSegmentIngestLock(String cameraId) {
+        return reviewSegmentIngestLocks.computeIfAbsent(firstText(cameraId, "__missing_camera__"), key -> new Object());
+    }
+
+    @Override
+    public List<ReviewItemAggregate> listWorkbench(ReviewQuery query) {
+        if (query == null) {
+            return reviewItemStore.listWorkbench(null).stream()
+                    .map(this::withEventProjection)
+                    .toList();
+        }
+        return reviewItemStore.listWorkbench(query)
+                .stream()
+                .map(this::withEventProjection)
+                .filter(item -> matchesQuery(item, query))
+                .filter(item -> matchesReviewerStatus(query.reviewerUserId(), item.id()))
+                .toList();
+    }
+
+    @Override
+    public List<ReviewEvidenceItem> getTimeline(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        return reviewItemStore.listTimeline(reviewItemId);
+    }
+
+    @Override
+    public List<ReviewEvidenceItem> getTimeline(Long reviewItemId,
+                                                Long reviewCaseId,
+                                                Long operatorUserId,
+                                                List<String> allowedCameraIds) {
+        List<ReviewEvidenceItem> timeline = getTimeline(reviewItemId);
+        enforceItemMediaReadScope(
+                reviewCaseId,
+                reviewItemId,
+                operatorUserId,
+                "timeline",
+                allowedCameraIds,
+                "timeline media read",
+                timeline.stream()
+                        .map(item -> new MediaAccessRef(item.materialType(), item.materialUri()))
+                        .toList()
+        );
+        return timeline;
+    }
+
+    @Override
+    public List<ReviewDetailStreamItem> getReviewDetailStream(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        List<ReviewDetailStreamItem> stream = new ArrayList<>();
+        stream.addAll(buildDetectionDetailStream(item));
+        stream.addAll(buildMotionDetailStream(item));
+        stream.addAll(buildLifecycleDetailStream(item));
+        for (ReviewEvidenceItem evidenceItem : reviewItemStore.listTimeline(reviewItemId)) {
+            stream.add(new ReviewDetailStreamItem(
+                    item.id(),
+                    evidenceItem.sourceAlertId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    null,
+                    item.objectLabel(),
+                    evidenceItem.materialType(),
+                    evidenceItem.happenedAt(),
+                    evidenceItem.happenedAt() == null ? item.firstAlertTime() : evidenceItem.happenedAt(),
+                    toDoubleList(item.reviewData() == null ? null : item.reviewData().get("bbox")),
+                    List.of(),
+                    evidenceItem.materialType(),
+                    evidenceItem.materialUri(),
+                    Map.of("source", "timeline")
+            ));
+        }
+        return stream.stream()
+                .sorted(Comparator
+                        .comparing(ReviewDetailStreamItem::seekTime, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparingInt(itemRow -> materialOrder(itemRow.materialType()))
+                        .thenComparing(ReviewDetailStreamItem::lifecycleEvent, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+    }
+
+    @Override
+    public List<ReviewDetailStreamItem> getReviewDetailStream(Long reviewItemId,
+                                                              Long reviewCaseId,
+                                                              Long operatorUserId,
+                                                              List<String> allowedCameraIds) {
+        List<ReviewDetailStreamItem> stream = getReviewDetailStream(reviewItemId);
+        enforceItemMediaReadScope(
+                reviewCaseId,
+                reviewItemId,
+                operatorUserId,
+                "detail_stream",
+                allowedCameraIds,
+                "detail stream media read",
+                stream.stream()
+                        .map(item -> new MediaAccessRef(item.materialType(), item.materialUri()))
+                        .toList()
+        );
+        return stream;
+    }
+
+    @Override
+    public ReviewSegmentView getReviewSegment(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        return toReviewSegmentView(item);
+    }
+
+    @Override
+    public ReviewItemAggregate updateReviewLifecycle(ReviewLifecycleCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        LocalDateTime happenedAt = command.happenedAt() == null ? LocalDateTime.now() : command.happenedAt();
+        String state = normalizeReviewSegmentState(command.lifecycleState());
+        assertReviewSegmentTransitionAllowed(item, state);
+        Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
+        Map<String, Object> lifecycle = new LinkedHashMap<>(toStringObjectMap(reviewData.get("lifecycle")));
+        List<Map<String, Object>> events = new ArrayList<>(toMapList(lifecycle.get("events")));
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("state", state);
+        event.put("event", state);
+        event.put("happenedAt", happenedAt.toString());
+        event.put("objectIds", command.objectIds() == null ? List.of() : List.copyOf(command.objectIds()));
+        event.put("labels", command.labels() == null ? List.of() : List.copyOf(command.labels()));
+        event.put("zones", command.zones() == null ? List.of() : List.copyOf(command.zones()));
+        event.put("bbox", command.bbox() == null ? List.of() : List.copyOf(command.bbox()));
+        event.put("motion", command.motionMetadata() == null ? Map.of() : Map.copyOf(command.motionMetadata()));
+        if (hasText(command.recordUri())) {
+            event.put("recordUri", command.recordUri());
+        }
+        events.add(immutableNonNullMap(event));
+
+        String startedAt = firstText(lifecycle.get("startedAt"), firstText(reviewData.get("startTime"),
+                item.firstAlertTime() == null ? null : item.firstAlertTime().toString()));
+        lifecycle.put("state", state);
+        lifecycle.put("startedAt", startedAt);
+        lifecycle.put("lastSeenAt", happenedAt.toString());
+        lifecycle.put("activeObjectIds", command.objectIds() == null ? List.of() : List.copyOf(command.objectIds()));
+        lifecycle.put("labels", mergeStringValues(lifecycle.get("labels"), command.labels()));
+        lifecycle.put("zones", mergeStringValues(lifecycle.get("zones"), command.zones()));
+        lifecycle.put("cutoffWindowSeconds", DEFAULT_MERGE_WINDOW_SECONDS);
+        lifecycle.put("events", List.copyOf(events));
+        if ("ended".equals(state)) {
+            lifecycle.put("endedAt", happenedAt.toString());
+        }
+        reviewData.put("lifecycle", immutableNonNullMap(lifecycle));
+        reviewData.put("labels", mergeStringValues(reviewData.get("labels"), command.labels()));
+        reviewData.put("zones", mergeStringValues(reviewData.get("zones"), command.zones()));
+        reviewData.put("objectIds", mergeStringValues(reviewData.get("objectIds"), command.objectIds()));
+        if (command.bbox() != null && !command.bbox().isEmpty()) {
+            reviewData.put("bbox", List.copyOf(command.bbox()));
+        }
+        if (command.motionMetadata() != null && !command.motionMetadata().isEmpty()) {
+            reviewData.put("motion", mergeMotionMetadata(reviewData.get("motion"), command.motionMetadata(), event));
+        }
+        reviewData.put("reviewSegment", updateReviewSegmentLifecycle(item, reviewData, event, state, happenedAt));
+
+        List<ReviewEvidenceItem> evidenceItems = new ArrayList<>();
+        String recordEvidenceStatus = item.recordEvidenceStatus();
+        LocalDateTime checkedAt = item.recordEvidenceCheckedAt();
+        String message = item.recordEvidenceMessage();
+        if (hasText(command.recordUri())) {
+            evidenceItems.add(new ReviewEvidenceItem(item.id(), firstSourceAlertId(item), MATERIAL_RECORD,
+                    command.recordUri(), happenedAt));
+            recordEvidenceStatus = RECORD_EVIDENCE_FOUND;
+            checkedAt = LocalDateTime.now();
+            message = "lifecycle_record_uri";
+        }
+        Map<String, Object> persistedReviewData = new LinkedHashMap<>(withReviewWindow(
+                immutableNonNullMap(reviewData),
+                item.firstAlertTime(),
+                max(item.lastAlertTime(), happenedAt)
+        ));
+        if ("ended".equals(state)) {
+            persistedReviewData.put("reviewSegment", reviewData.get("reviewSegment"));
+        }
+        ReviewItemAggregate updated = reviewItemStore.updateReviewLifecycle(
+                item.id(),
+                immutableNonNullMap(persistedReviewData),
+                item.firstAlertTime(),
+                max(item.lastAlertTime(), happenedAt),
+                evidenceItems,
+                recordEvidenceStatus,
+                checkedAt,
+                message
+        );
+        return withEventProjection(updated);
+    }
+
+    @Override
+    public ReviewItemAggregate retryRecordEvidence(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        RecordEvidenceAttempt attempt = resolveRecordEvidence(
+                firstSourceAlertId(item),
+                item.deviceId(),
+                item.cameraId(),
+                item.firstAlertTime()
+        );
+        if (attempt.evidenceItem().isPresent()) {
+            reviewItemStore.appendEvidence(item.id(), List.of(attempt.evidenceItem().get()));
+        }
+        return withEventProjection(reviewItemStore.updateRecordEvidenceStatus(
+                item.id(),
+                attempt.recordEvidenceStatus(),
+                attempt.recordEvidenceCheckedAt(),
+                attempt.recordEvidenceMessage()
+        ));
+    }
+
+    @Override
+    public ReviewItemAggregate markReviewed(ReviewOperationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        LocalDateTime reviewedAt = LocalDateTime.now();
+        markUserReviewed(command.reviewItemId(), command.reviewerUserId(), reviewedAt);
+        return withEventProjection(reviewItemStore.updateReviewStatus(
+                command.reviewItemId(),
+                STATUS_REVIEWED,
+                command.reviewerUserId(),
+                null,
+                reviewedAt
+        ));
+    }
+
+    @Override
+    public ReviewUserStatusView markUserReviewStatus(ReviewUserStatusCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        requirePositive(command.userId(), "userId");
+        reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        boolean hasBeenReviewed = Boolean.TRUE.equals(command.hasBeenReviewed());
+        return reviewItemStore.upsertUserReviewStatus(
+                command.reviewItemId(),
+                command.userId(),
+                hasBeenReviewed,
+                hasBeenReviewed ? LocalDateTime.now() : null
+        );
+    }
+
+    @Override
+    public ReviewItemAggregate ignore(ReviewOperationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        LocalDateTime reviewedAt = LocalDateTime.now();
+        markUserReviewed(command.reviewItemId(), command.reviewerUserId(), reviewedAt);
+        return withEventProjection(reviewItemStore.updateReviewStatus(
+                command.reviewItemId(),
+                STATUS_IGNORED,
+                command.reviewerUserId(),
+                command.reason(),
+                reviewedAt
+        ));
+    }
+
+    @Override
+    public ReviewItemAggregate markFalsePositive(ReviewOperationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        if (item.eventId() != null || STATUS_CONVERTED.equals(item.reviewStatus())) {
+            throw new IllegalStateException("converted_review_item_cannot_be_marked_false_positive");
+        }
+        LocalDateTime reviewedAt = LocalDateTime.now();
+        markUserReviewed(command.reviewItemId(), command.reviewerUserId(), reviewedAt);
+        return withEventProjection(reviewItemStore.updateFalsePositive(
+                command.reviewItemId(),
+                command.reviewerUserId(),
+                command.reason(),
+                buildRuleSuggestion(item, command.reason()),
+                reviewedAt
+        ));
+    }
+
+    @Override
+    public ReviewItemAggregate updateRuleSuggestionStatus(RuleSuggestionOperationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        String status = requireRuleSuggestionStatus(command.status());
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        Map<String, Object> suggestion = updateRuleSuggestionLifecycle(item.ruleSuggestion(), status, command.note());
+        if (RULE_SUGGESTION_ACCEPTED.equals(status)) {
+            suggestion = withRuleGovernanceEvidence(item, suggestion, null);
+        }
+        if (RULE_SUGGESTION_APPLIED.equals(status)) {
+            requireAcceptedRuleSuggestion(item);
+            suggestion = withRuleGovernanceEvidence(item, suggestion, command.note());
+            suggestion = applyRuleSuggestion(item, suggestion);
+        }
+        return withEventProjection(reviewItemStore.updateRuleSuggestionStatus(
+                command.reviewItemId(),
+                command.reviewerUserId(),
+                status,
+                suggestion,
+                LocalDateTime.now()
+        ));
+    }
+
+    @Override
+    public RuleSuggestionPreview previewRuleSuggestion(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        Map<String, Object> proposedRule = buildProposedRule(item);
+        Map<String, Object> currentRule = reviewRuleStore.listAll().stream()
+                .filter(rule -> sameRuleScope(rule, item))
+                .findFirst()
+                .map(SupervisionAlertReviewServiceImpl::ruleToMap)
+                .orElse(Map.of());
+        List<String> diff = buildRuleSuggestionDiff(currentRule, proposedRule);
+        List<String> affectedReviewItemNos = listWorkbench(new ReviewQuery(null, item.cameraId(), null, null))
+                .stream()
+                .filter(candidate -> Objects.equals(candidate.zoneCode(), item.zoneCode()))
+                .filter(candidate -> Objects.equals(candidate.objectLabel(), item.objectLabel()))
+                .map(ReviewItemAggregate::reviewItemNo)
+                .toList();
+        return new RuleSuggestionPreview(item.id(), currentRule, proposedRule, diff, affectedReviewItemNos);
+    }
+
+    @Override
+    public ReviewItemAggregate revertRuleSuggestion(RuleSuggestionOperationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        String status = requireRuleSuggestionStatus(command.status());
+        if (!RULE_SUGGESTION_REVERTED.equals(status)) {
+            throw new IllegalArgumentException("rule suggestion revert requires status: " + RULE_SUGGESTION_REVERTED);
+        }
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        Map<String, Object> suggestion = updateRuleSuggestionLifecycle(item.ruleSuggestion(), status, command.note());
+        suggestion = rollbackRuleSuggestion(item, suggestion);
+        return withEventProjection(reviewItemStore.updateRuleSuggestionStatus(
+                command.reviewItemId(),
+                command.reviewerUserId(),
+                status,
+                suggestion,
+                LocalDateTime.now()
+        ));
+    }
+
+    @Override
+    public List<RuleSuggestionStat> listRuleSuggestionStats(ReviewQuery query) {
+        ReviewQuery scopedQuery = query == null
+                ? new ReviewQuery(null, null, null, null)
+                : new ReviewQuery(null, query.cameraId(), query.zoneCode(), query.objectLabel(), null,
+                        null, null, null, query.beginTime(), query.endTime());
+        Map<RuleSuggestionGroupKey, List<ReviewItemAggregate>> grouped = new LinkedHashMap<>();
+        for (ReviewItemAggregate item : listWorkbench(scopedQuery)) {
+            RuleSuggestionGroupKey key = new RuleSuggestionGroupKey(item.cameraId(), item.zoneCode(), item.objectLabel());
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(item);
+        }
+
+        List<RuleSuggestionStat> stats = new ArrayList<>();
+        for (Map.Entry<RuleSuggestionGroupKey, List<ReviewItemAggregate>> entry : grouped.entrySet()) {
+            List<ReviewItemAggregate> falsePositiveItems = entry.getValue().stream()
+                    .filter(item -> STATUS_FALSE_POSITIVE.equals(item.reviewStatus()))
+                    .toList();
+            if (falsePositiveItems.isEmpty()) {
+                continue;
+            }
+            ReviewItemAggregate sample = falsePositiveItems.get(0);
+            Map<String, Object> suggestion = sample.ruleSuggestion() == null ? Map.of() : sample.ruleSuggestion();
+            String action = toText(suggestion.get("action"));
+            LocalDateTime lastSeenAt = falsePositiveItems.stream()
+                    .map(ReviewItemAggregate::lastAlertTime)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(null);
+            stats.add(new RuleSuggestionStat(
+                    entry.getKey().cameraId(),
+                    entry.getKey().zoneCode(),
+                    entry.getKey().objectLabel(),
+                    hasText(action) ? action : "suppress_label_zone",
+                    falsePositiveItems.size(),
+                    entry.getValue().size(),
+                    roundRate(falsePositiveItems.size(), entry.getValue().size()),
+                    ruleCandidateActions(suggestion),
+                    lastSeenAt
+            ));
+        }
+        return stats.stream()
+                .sorted(Comparator
+                        .comparing(RuleSuggestionStat::falsePositiveCount, Comparator.reverseOrder())
+                        .thenComparing(RuleSuggestionStat::lastSeenAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+    }
+
+    @Override
+    public List<RecordCoverageSegment> getRecordCoverage(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        LocalDateTime windowStart = item.firstAlertTime().minusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
+        LocalDateTime windowEnd = item.lastAlertTime().plusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
+        List<RecordCoverageSegment> resolved;
+        try {
+            resolved = recordCoverageResolver.resolve(new RecordCoverageRequest(
+                    item.deviceId(),
+                    item.cameraId(),
+                    windowStart,
+                    windowEnd
+            ));
+        } catch (RuntimeException ex) {
+            resolved = List.of(new RecordCoverageSegment(
+                    RECORD_COVERAGE_MISSING,
+                    windowStart,
+                    windowEnd,
+                    0,
+                    null,
+                    0,
+                    recordGapMetadata("service_unavailable", "video_service_unavailable", true, ex.getMessage())
+            ));
+        }
+        if (resolved != null && !resolved.isEmpty()) {
+            return mergeCoverageWithMissingGaps(windowStart, windowEnd, resolved);
+        }
+        Optional<ReviewEvidenceItem> recordEvidence = reviewItemStore.listTimeline(reviewItemId).stream()
+                .filter(evidence -> MATERIAL_RECORD.equals(evidence.materialType()))
+                .filter(evidence -> hasText(evidence.materialUri()))
+                .findFirst();
+        if (recordEvidence.isPresent()) {
+            return List.of(new RecordCoverageSegment(RECORD_COVERAGE_AVAILABLE, windowStart, windowEnd, null,
+                    recordEvidence.get().materialUri()));
+        }
+        String gapReason = recordGapReason(item);
+        return List.of(new RecordCoverageSegment(
+                RECORD_COVERAGE_MISSING,
+                windowStart,
+                windowEnd,
+                0,
+                null,
+                0,
+                recordGapMetadata(gapReason, gapReason, false, null)
+        ));
+    }
+
+    @Override
+    public List<RecordCoverageSegment> getRecordCoverage(Long reviewItemId,
+                                                         Long reviewCaseId,
+                                                         Long operatorUserId,
+                                                         List<String> allowedCameraIds) {
+        List<RecordCoverageSegment> coverage = getRecordCoverage(reviewItemId);
+        enforceItemMediaReadScope(
+                reviewCaseId,
+                reviewItemId,
+                operatorUserId,
+                "coverage",
+                allowedCameraIds,
+                "record coverage read",
+                List.of()
+        );
+        return coverage;
+    }
+
+    @Override
+    public ReviewRecordStorageSyncResult syncRecordStorage(ReviewRecordStorageSyncCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        List<RecordCoverageSegment> coverage = command.coverageSegments() == null
+                ? List.of()
+                : command.coverageSegments().stream()
+                        .filter(segment -> segment.startTime() != null && segment.endTime() != null)
+                        .sorted(Comparator.comparing(RecordCoverageSegment::startTime))
+                        .toList();
+        int availableCount = 0;
+        int missingCount = 0;
+        int motionCount = 0;
+        int availableSeconds = 0;
+        int missingSeconds = 0;
+        int motionSeconds = 0;
+        Map<String, Integer> gapReasons = new LinkedHashMap<>();
+        List<ReviewEvidenceItem> evidenceItems = new ArrayList<>();
+        for (RecordCoverageSegment segment : coverage) {
+            String status = normalizeCoverageStatus(segment);
+            if (RECORD_COVERAGE_MISSING.equals(segment.status())) {
+                status = RECORD_COVERAGE_MISSING;
+            }
+            int seconds = coverageSeconds(segment);
+            if (RECORD_COVERAGE_MISSING.equals(status)) {
+                missingCount++;
+                missingSeconds += seconds;
+                String gapReason = toText(segment.metadata() == null ? null : segment.metadata().get("gapReason"));
+                if (hasText(gapReason)) {
+                    gapReasons.merge(gapReason, seconds, Integer::sum);
+                }
+                continue;
+            }
+            availableCount++;
+            availableSeconds += seconds;
+            if (RECORD_COVERAGE_MOTION.equals(status)) {
+                motionCount++;
+                motionSeconds += seconds;
+            }
+            if (hasText(segment.recordUri())) {
+                evidenceItems.add(new ReviewEvidenceItem(item.id(), firstSourceAlertId(item), MATERIAL_RECORD,
+                        segment.recordUri(), segment.startTime()));
+            }
+        }
+        String syncStatus = missingCount > 0 ? "partial" : (availableCount > 0 ? "complete" : "missing");
+        String recordEvidenceStatus = availableCount > 0 && missingCount == 0
+                ? RECORD_EVIDENCE_FOUND
+                : RECORD_EVIDENCE_MISSING;
+        String recordEvidenceMessage = firstRecordGapReason(gapReasons, syncStatus);
+        LocalDateTime syncedAt = LocalDateTime.now();
+        Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
+        Map<String, Object> storage = new LinkedHashMap<>();
+        storage.put("syncStatus", syncStatus);
+        storage.put("availableSegmentCount", availableCount);
+        storage.put("missingSegmentCount", missingCount);
+        storage.put("motionSegmentCount", motionCount);
+        storage.put("availableSeconds", availableSeconds);
+        storage.put("missingSeconds", missingSeconds);
+        storage.put("motionSeconds", motionSeconds);
+        storage.put("gapReasons", gapReasons);
+        storage.put("operatorUserId", command.operatorUserId());
+        storage.put("syncedAt", syncedAt.toString());
+        reviewData.put("recordStorage", immutableNonNullMap(storage));
+        reviewItemStore.updateReviewLifecycle(
+                item.id(),
+                immutableNonNullMap(reviewData),
+                item.firstAlertTime(),
+                item.lastAlertTime(),
+                evidenceItems,
+                recordEvidenceStatus,
+                syncedAt,
+                recordEvidenceMessage
+        );
+        return new ReviewRecordStorageSyncResult(
+                item.id(),
+                syncStatus,
+                availableCount,
+                missingCount,
+                motionCount,
+                availableSeconds,
+                missingSeconds,
+                motionSeconds,
+                coverage,
+                syncedAt,
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewCaseView createReviewCase(ReviewCaseCommand command) {
+        Objects.requireNonNull(command, "command");
+        List<Long> reviewItemIds = normalizeReviewCaseItems(command.primaryReviewItemId(), command.reviewItemIds());
+        Long primaryReviewItemId = command.primaryReviewItemId() == null ? reviewItemIds.get(0) : command.primaryReviewItemId();
+        return reviewItemStore.createCase(
+                new ReviewCaseDraft(command.title(), primaryReviewItemId, command.ownerUserId(), command.notes()),
+                reviewItemIds
+        );
+    }
+
+    @Override
+    public ReviewCaseView addToReviewCase(Long reviewCaseId, Long reviewItemId) {
+        requirePositive(reviewCaseId, "reviewCaseId");
+        requirePositive(reviewItemId, "reviewItemId");
+        return reviewItemStore.addCaseItem(reviewCaseId, reviewItemId);
+    }
+
+    @Override
+    public ReviewCaseView assignReviewCaseOwner(ReviewCaseOwnerCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewCaseId(), "reviewCaseId");
+        requirePositive(command.ownerUserId(), "ownerUserId");
+        return reviewItemStore.updateCaseOwner(
+                command.reviewCaseId(),
+                command.ownerUserId(),
+                command.notes(),
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewCaseView closeReviewCase(ReviewCaseOperationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewCaseId(), "reviewCaseId");
+        return reviewItemStore.closeCase(
+                command.reviewCaseId(),
+                command.notes(),
+                command.operatorUserId(),
+                LocalDateTime.now()
+        );
+    }
+
+    @Override
+    public ReviewCaseMergeResult mergeReviewCases(ReviewCaseMergeCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.targetReviewCaseId(), "targetReviewCaseId");
+        requirePositive(command.sourceReviewCaseId(), "sourceReviewCaseId");
+        if (Objects.equals(command.targetReviewCaseId(), command.sourceReviewCaseId())) {
+            throw new IllegalArgumentException("sourceReviewCaseId must differ from targetReviewCaseId");
+        }
+        return reviewItemStore.mergeCases(
+                command.targetReviewCaseId(),
+                command.sourceReviewCaseId(),
+                command.operatorUserId(),
+                command.notes()
+        );
+    }
+
+    @Override
+    public ReviewCaseSplitResult splitReviewCase(ReviewCaseSplitCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.sourceReviewCaseId(), "sourceReviewCaseId");
+        List<Long> reviewItemIds = normalizeReviewCaseItems(null, command.reviewItemIds());
+        return reviewItemStore.splitCase(
+                command.sourceReviewCaseId(),
+                new ReviewCaseDraft(command.title(), reviewItemIds.get(0), command.ownerUserId(), command.notes()),
+                reviewItemIds,
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public List<ReviewCaseTimelineItem> getReviewCaseTimeline(Long reviewCaseId) {
+        requirePositive(reviewCaseId, "reviewCaseId");
+        List<ReviewCaseTimelineItem> timeline = new ArrayList<>(reviewItemStore.listCaseTimeline(reviewCaseId));
+        timeline.addAll(buildCaseDerivedTimeline(reviewCaseId, timeline));
+        return timeline.stream()
+                .sorted(Comparator
+                        .comparing(ReviewCaseTimelineItem::happenedAt,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparingInt(item -> materialOrder(item.materialType())))
+                .toList();
+    }
+
+    @Override
+    public List<ReviewCaseTimelineItem> getReviewCaseTimeline(Long reviewCaseId,
+                                                              Long operatorUserId,
+                                                              List<String> allowedCameraIds) {
+        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(reviewCaseId);
+        enforceMediaAccessScope(
+                reviewCaseId,
+                timeline,
+                loadReviewItems(reviewItemIdsFromTimeline(timeline)),
+                operatorUserId,
+                "case_timeline",
+                allowedCameraIds,
+                "case timeline media read"
+        );
+        return timeline;
+    }
+
+    @Override
+    public List<ReviewItemAggregate> suggestReviewCaseCandidates(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate base = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        LocalDateTime beginTime = base.firstAlertTime().minusSeconds(DEFAULT_CASE_CANDIDATE_WINDOW_SECONDS);
+        LocalDateTime endTime = base.lastAlertTime().plusSeconds(DEFAULT_CASE_CANDIDATE_WINDOW_SECONDS);
+        ReviewQuery query = new ReviewQuery(null, null, null, null, null, null, null, null, beginTime, endTime);
+        return listWorkbench(query).stream()
+                .filter(candidate -> !Objects.equals(candidate.id(), base.id()))
+                .filter(candidate -> correlates(base, candidate))
+                .sorted(Comparator
+                        .comparingInt((ReviewItemAggregate candidate) -> correlationScore(base, candidate))
+                        .reversed()
+                        .thenComparing(ReviewItemAggregate::firstAlertTime,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+    }
+
+    @Override
+    public ReviewWorkbenchSummary getWorkbenchSummary(ReviewQuery query) {
+        List<ReviewItemAggregate> items = listWorkbench(query == null
+                ? new ReviewQuery(null, null, null, null)
+                : new ReviewQuery(null, null, query.zoneCode(), query.objectLabel(), null, null, null,
+                        null, query.beginTime(), query.endTime()));
+        long pendingReview = items.stream().filter(item -> STATUS_PENDING_REVIEW.equals(item.reviewStatus())).count();
+        long reviewedByMe = 0L;
+        if (query != null && query.reviewerUserId() != null) {
+            reviewedByMe = reviewItemStore.countReviewedByUser(
+                    items.stream().map(ReviewItemAggregate::id).toList(),
+                    query.reviewerUserId()
+            );
+        }
+        long missingRecord = items.stream()
+                .filter(item -> RECORD_EVIDENCE_MISSING.equals(item.recordEvidenceStatus())
+                        || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus()))
+                .count();
+        long converted = items.stream().filter(item -> item.eventId() != null).count();
+        long inReviewCase = items.stream().filter(item -> Boolean.TRUE.equals(item.inReviewCase())).count();
+        return new ReviewWorkbenchSummary(items.size(), pendingReview, reviewedByMe, missingRecord, converted, inReviewCase);
+    }
+
+    @Override
+    public List<ReviewSemanticHit> semanticSearch(ReviewSemanticSearchCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.query(), "query");
+        List<String> terms = tokenize(command.query());
+        int limit = command.limit() == null || command.limit() <= 0 ? 20 : command.limit();
+        List<ReviewSemanticSearchCandidate> candidates = semanticCandidates(command.filters());
+        Optional<List<ReviewSemanticHit>> providerHits = reviewIntelligenceProvider.semanticSearch(
+                new ReviewSemanticSearchRequest(command.query(), command.filters(), limit, candidates)
+        );
+        if (providerHits.isPresent()) {
+            return providerHits.get().stream().limit(limit).toList();
+        }
+        return candidates.stream()
+                .map(candidate -> toSemanticHit(candidate.item(), candidate.document(), terms))
+                .filter(hit -> hit.score() > 0)
+                .sorted(Comparator
+                        .comparing(ReviewSemanticHit::score, Comparator.reverseOrder())
+                        .thenComparing(hit -> hit.item().lastAlertTime(), Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public List<ReviewSemanticIndexEntry> reindexSemanticIndex(ReviewQuery query) {
+        LocalDateTime indexedAt = LocalDateTime.now();
+        return listWorkbench(query).stream()
+                .map(item -> {
+                    String document = buildSearchDocument(item);
+                    return reviewItemStore.upsertSemanticIndex(
+                            item,
+                            document,
+                            semanticEmbeddingKey(item),
+                            LOCAL_EMBEDDING_MODEL,
+                            semanticEmbeddingVectorHash(document),
+                            SEMANTIC_INDEX_INDEXED,
+                            0,
+                            null,
+                            indexedAt
+                    );
+                })
+                .toList();
+    }
+
+    @Override
+    public ReviewSemanticReindexJob queueSemanticReindex(ReviewSemanticReindexCommand command) {
+        Objects.requireNonNull(command, "command");
+        LocalDateTime queuedAt = LocalDateTime.now();
+        List<ReviewItemAggregate> items = listWorkbench(command.query());
+        List<Long> queuedIds = new ArrayList<>();
+        for (ReviewItemAggregate item : items) {
+            reviewItemStore.upsertSemanticIndex(
+                    item,
+                    buildSearchDocument(item),
+                    semanticEmbeddingKey(item),
+                    LOCAL_EMBEDDING_MODEL,
+                    null,
+                    SEMANTIC_INDEX_PENDING,
+                    0,
+                    null,
+                    null
+            );
+            queuedIds.add(item.id());
+        }
+        return new ReviewSemanticReindexJob(
+                "RSJ-" + UUID.randomUUID(),
+                "queued",
+                List.copyOf(queuedIds),
+                queuedAt,
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewSemanticIndexEvaluation evaluateSemanticIndex(ReviewSemanticIndexEvaluationCommand command) {
+        Objects.requireNonNull(command, "command");
+        List<ReviewItemAggregate> items = listWorkbench(command.query());
+        Map<Long, ReviewSemanticIndexEntry> indexByItemId = new LinkedHashMap<>();
+        for (ReviewSemanticIndexEntry entry : reviewItemStore.listSemanticIndex(command.query())) {
+            indexByItemId.put(entry.reviewItemId(), entry);
+        }
+        int pending = 0;
+        int indexed = 0;
+        int failed = 0;
+        List<Long> staleIds = new ArrayList<>();
+        for (ReviewItemAggregate item : items) {
+            ReviewSemanticIndexEntry entry = indexByItemId.get(item.id());
+            if (entry == null) {
+                staleIds.add(item.id());
+                continue;
+            }
+            if (SEMANTIC_INDEX_PENDING.equals(entry.indexStatus())) {
+                pending++;
+                staleIds.add(item.id());
+            } else if (SEMANTIC_INDEX_FAILED.equals(entry.indexStatus())) {
+                failed++;
+                staleIds.add(item.id());
+            } else if (SEMANTIC_INDEX_INDEXED.equals(entry.indexStatus())) {
+                indexed++;
+                if (!Objects.equals(item.lastAlertTime(), entry.lastAlertTime())) {
+                    staleIds.add(item.id());
+                }
+            } else {
+                staleIds.add(item.id());
+            }
+        }
+        List<String> actions = new ArrayList<>();
+        if (pending > 0) {
+            actions.add("process_pending_semantic_index");
+        }
+        if (failed > 0) {
+            actions.add("retry_failed_semantic_index");
+        }
+        if (!staleIds.isEmpty() && pending == 0 && failed == 0) {
+            actions.add("reindex_stale_semantic_index");
+        }
+        return new ReviewSemanticIndexEvaluation(
+                items.size(),
+                pending,
+                indexed,
+                failed,
+                roundRate(indexed, items.size()),
+                List.copyOf(staleIds),
+                List.copyOf(actions),
+                LocalDateTime.now(),
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewRuntimeHealthReport getReviewRuntimeHealth(ReviewRuntimeHealthCommand command) {
+        Objects.requireNonNull(command, "command");
+        ReviewQuery query = command.query();
+        List<ReviewItemAggregate> items = listWorkbench(query);
+        int missingRecordCount = (int) items.stream()
+                .filter(this::hasRecordEvidenceGap)
+                .count();
+        ReviewSemanticIndexEvaluation semantic = evaluateSemanticIndex(
+                new ReviewSemanticIndexEvaluationCommand(query, command.operatorUserId()));
+        int semanticBacklogCount = semantic.staleReviewItemIds().size();
+        List<ReviewEvidenceExportJob> exportJobs = reviewItemStore.listAllExportJobs();
+        int failedExportJobCount = (int) exportJobs.stream()
+                .filter(job -> EXPORT_JOB_FAILED.equals(job.status()))
+                .count();
+        List<ReviewDataConsistency> reviewDataConsistencies = items.stream()
+                .map(SupervisionAlertReviewServiceImpl::reviewDataConsistency)
+                .toList();
+        int reviewDataSchemaDriftCount = (int) reviewDataConsistencies.stream()
+                .filter(ReviewDataConsistency::schemaDrift)
+                .count();
+        int reviewSegmentDoubleWriteDriftCount = (int) reviewDataConsistencies.stream()
+                .filter(ReviewDataConsistency::segmentDoubleWriteDrift)
+                .count();
+        Map<String, Integer> recordGapReasons = recordGapReasons(items);
+        List<String> alerts = new ArrayList<>();
+        if (missingRecordCount > 0) {
+            alerts.add("record_evidence_gap");
+            for (String reason : recordGapReasons.keySet()) {
+                alerts.add("record_evidence_gap:" + reason);
+            }
+        }
+        List<String> storageDriftReasons = recordGapReasons.keySet().stream()
+                .filter(SupervisionAlertReviewServiceImpl::isRecordStorageDriftReason)
+                .toList();
+        if (!storageDriftReasons.isEmpty()) {
+            alerts.add("record_storage_drift");
+            for (String reason : storageDriftReasons) {
+                alerts.add("record_storage_drift:" + reason);
+            }
+        }
+        if (semanticBacklogCount > 0) {
+            alerts.add("semantic_index_backlog");
+        }
+        if (failedExportJobCount > 0) {
+            alerts.add("evidence_export_failed");
+        }
+        if (reviewDataSchemaDriftCount > 0) {
+            alerts.add("review_data_schema_drift");
+        }
+        if (reviewSegmentDoubleWriteDriftCount > 0) {
+            alerts.add("review_segment_double_write_drift");
+        }
+        return new ReviewRuntimeHealthReport(
+                items.size(),
+                missingRecordCount,
+                semantic.staleReviewItemIds().size(),
+                failedExportJobCount,
+                roundRate(missingRecordCount, items.size()),
+                roundRate(failedExportJobCount, exportJobs.size()),
+                semanticBacklogCount,
+                missingRecordCount + semanticBacklogCount + failedExportJobCount
+                        + reviewDataSchemaDriftCount + reviewSegmentDoubleWriteDriftCount,
+                Map.copyOf(recordGapReasons),
+                List.copyOf(alerts),
+                LocalDateTime.now(),
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewRuntimePatrolResult runRuntimePatrol(ReviewRuntimePatrolCommand command) {
+        Objects.requireNonNull(command, "command");
+        String lockName = "alert-review-runtime-patrol";
+        if (!reviewItemStore.tryAcquireRuntimePatrolLock(
+                lockName,
+                LocalDateTime.now().plusMinutes(10),
+                command.operatorUserId())) {
+            return new ReviewRuntimePatrolResult(
+                    "locked",
+                    false,
+                    normalizePatrolAttempts(command.maxAttempts()),
+                    0,
+                    getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(command.query(), command.operatorUserId())),
+                    null,
+                    List.of("runtime_patrol_locked"),
+                    List.of(),
+                    List.of("wait_for_current_runtime_patrol"),
+                    LocalDateTime.now(),
+                    command.operatorUserId(),
+                    Map.of(
+                            "scheduled", Boolean.TRUE.equals(command.scheduled()),
+                            "lockName", lockName,
+                            "lockBackend", "review_item_store"
+                    )
+            );
+        }
+        try {
+            int maxAttempts = normalizePatrolAttempts(command.maxAttempts());
+            ReviewRuntimeHealthReport before = getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                    command.query(), command.operatorUserId()));
+            List<String> alerts = List.copyOf(before.alerts());
+            List<String> notifications = alerts.stream()
+                    .map(alert -> "review_runtime_alert:" + alert)
+                    .toList();
+            ReviewReconciliationResult reconciliation = null;
+            int attemptCount = 0;
+            List<String> attemptFindings = new ArrayList<>();
+            RuntimeException lastFailure = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                attemptCount = attempt;
+                try {
+                    reconciliation = reconcileReviewRuntime(new ReviewReconciliationCommand(
+                            command.query(),
+                            command.operatorUserId(),
+                            command.repair()
+                    ));
+                    break;
+                } catch (RuntimeException ex) {
+                    lastFailure = ex;
+                    attemptFindings.add("attempt_failed:" + attempt + ":" + ex.getClass().getSimpleName());
+                }
+            }
+            ReviewRuntimeHealthReport after = reconciliation == null
+                    ? before
+                    : reconciliation.healthReport();
+            List<String> recommendedActions = runtimePatrolRecommendedActions(alerts, after);
+            if (reconciliation == null && lastFailure != null) {
+                recommendedActions = new ArrayList<>(recommendedActions);
+                recommendedActions.add("inspect_runtime_patrol_failure");
+            }
+            LocalDateTime executedAt = LocalDateTime.now();
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("scheduled", Boolean.TRUE.equals(command.scheduled()));
+            metadata.put("lockName", lockName);
+            metadata.put("lockBackend", "review_item_store");
+            metadata.put("repairRequested", !Boolean.FALSE.equals(command.repair()));
+            metadata.put("attemptFindings", attemptFindings);
+            metadata.put("initialRepairableCount", before.repairableCount());
+            metadata.put("finalRepairableCount", after.repairableCount());
+            metadata.put("alertActions", runtimePatrolAlertActions(alerts));
+            metadata.put("nextRetryAt", after.repairableCount() > 0
+                    ? executedAt.plusMinutes(Math.max(1, attemptCount)).toString()
+                    : null);
+            String status = reconciliation == null ? "failed" : (alerts.isEmpty() ? "healthy" : "alerted");
+            String runId = reviewItemStore.recordRuntimePatrolRun(
+                    status,
+                    attemptCount,
+                    alerts,
+                    recommendedActions,
+                    command.operatorUserId(),
+                    executedAt,
+                    immutableNonNullMap(metadata)
+            );
+            int outboxEventCount = reviewItemStore.enqueueRuntimePatrolAlerts(
+                    runId,
+                    alerts,
+                    recommendedActions,
+                    command.operatorUserId(),
+                    executedAt,
+                    immutableNonNullMap(metadata)
+            );
+            metadata.put("historyRunId", runId);
+            metadata.put("outboxEventCount", outboxEventCount);
+            return new ReviewRuntimePatrolResult(
+                    status,
+                    true,
+                    maxAttempts,
+                    attemptCount,
+                    after,
+                    reconciliation,
+                    alerts,
+                    notifications,
+                    List.copyOf(new LinkedHashSet<>(recommendedActions)),
+                    executedAt,
+                    command.operatorUserId(),
+                    immutableNonNullMap(metadata)
+            );
+        } finally {
+            reviewItemStore.releaseRuntimePatrolLock(lockName, command.operatorUserId());
+        }
+    }
+
+    @Override
+    public ReviewRuntimeOutboxPublishResult publishRuntimeOutbox(ReviewRuntimeOutboxPublishCommand command) {
+        Objects.requireNonNull(command, "command");
+        int limit = normalizeRuntimeOutboxLimit(command.limit());
+        LocalDateTime publishedAt = LocalDateTime.now();
+        List<String> publishedAlerts = new ArrayList<>();
+        List<String> failedAlerts = new ArrayList<>();
+        List<ReviewRuntimeOutboxMessage> messages = reviewItemStore.listPendingRuntimeOutbox(limit);
+        for (ReviewRuntimeOutboxMessage message : messages) {
+            if (message == null || message.id() == null) {
+                continue;
+            }
+            if (!hasText(message.eventType()) || !hasText(message.alertKey()) || !hasText(message.payload())) {
+                reviewItemStore.markRuntimeOutboxFailed(
+                        message.id(),
+                        "invalid_runtime_outbox_payload",
+                        publishedAt
+                );
+                failedAlerts.add(String.valueOf(message.alertKey()));
+                continue;
+            }
+            reviewItemStore.markRuntimeOutboxPublished(message.id(), publishedAt);
+            publishedAlerts.add(message.alertKey());
+        }
+        return new ReviewRuntimeOutboxPublishResult(
+                messages.size(),
+                publishedAlerts.size(),
+                failedAlerts.size(),
+                List.copyOf(publishedAlerts),
+                List.copyOf(failedAlerts),
+                publishedAt,
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewEventReconciliationResult reconcileEventProjections(ReviewEventReconciliationCommand command) {
+        Objects.requireNonNull(command, "command");
+        ReviewQuery query = command.query();
+        LocalDateTime reconciledAt = LocalDateTime.now();
+        List<ReviewItemAggregate> items = reviewItemStore.listWorkbench(query)
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> query == null || matchesQuery(item, query))
+                .filter(item -> query == null || matchesReviewerStatus(query.reviewerUserId(), item.id()))
+                .toList();
+        List<String> findings = new ArrayList<>();
+        int reconciledCount = 0;
+        int missingProjectionCount = 0;
+        for (ReviewItemAggregate item : items) {
+            if (item.eventId() == null) {
+                continue;
+            }
+            Optional<EventProjection> projection = eventProjectionStore.findByEventId(item.eventId());
+            if (projection.isEmpty()) {
+                missingProjectionCount++;
+                findings.add("event_projection_missing:" + item.id() + ":" + item.eventId());
+                continue;
+            }
+            EventProjection eventProjection = projection.get();
+            String eventReviewStatus = mapEventReviewStatus(eventProjection);
+            Map<String, Object> projectionData = new LinkedHashMap<>();
+            projectionData.put("eventId", eventProjection.eventId());
+            projectionData.put("eventStatus", eventProjection.eventStatus());
+            projectionData.put("closeCheckStatus", eventProjection.closeCheckStatus());
+            projectionData.put("evidenceStatus", eventProjection.evidenceStatus());
+            projectionData.put("eventReviewStatus", eventReviewStatus);
+            projectionData.put("reconciledAt", reconciledAt.toString());
+            projectionData.put("operatorUserId", command.operatorUserId());
+            Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
+            reviewData.put("eventProjection", immutableNonNullMap(projectionData));
+            reviewItemStore.updateEventProjection(
+                    item.id(),
+                    immutableNonNullMap(reviewData),
+                    eventProjection,
+                    eventReviewStatus,
+                    reconciledAt
+            );
+            reconciledCount++;
+            findings.add("event_projection_reconciled:" + item.id() + ":" + item.eventId() + ":" + eventReviewStatus);
+        }
+        return new ReviewEventReconciliationResult(
+                items.size(),
+                reconciledCount,
+                missingProjectionCount,
+                List.copyOf(findings),
+                reconciledAt,
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewReconciliationResult reconcileReviewRuntime(ReviewReconciliationCommand command) {
+        Objects.requireNonNull(command, "command");
+        boolean repair = !Boolean.FALSE.equals(command.repair());
+        ReviewQuery query = command.query();
+        List<ReviewItemAggregate> items = listWorkbench(query);
+        List<String> findings = new ArrayList<>();
+        int repairedRecordCount = 0;
+        if (repair) {
+            for (ReviewItemAggregate item : items) {
+                if (!hasRecordEvidenceGap(item)) {
+                    continue;
+                }
+                List<RecordCoverageSegment> coverage = getRecordCoverage(item.id());
+                ReviewRecordStorageSyncResult syncResult = syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                        item.id(),
+                        command.operatorUserId(),
+                        coverage
+                ));
+                ReviewItemAggregate repairedItem = reviewItemStore.findById(item.id()).orElse(item);
+                if (RECORD_EVIDENCE_FOUND.equals(repairedItem.recordEvidenceStatus())) {
+                    repairedRecordCount++;
+                    findings.add("record_repaired:" + item.id());
+                } else {
+                    findings.add("record_unresolved:" + item.id() + ":" + syncResult.syncStatus());
+                }
+            }
+        }
+
+        items = listWorkbench(query);
+        if (repair) {
+            for (ReviewItemAggregate item : items) {
+                ReviewDataConsistency consistency = reviewDataConsistency(item);
+                if (!consistency.hasDrift()) {
+                    continue;
+                }
+                reviewItemStore.updateReviewLifecycle(
+                        item.id(),
+                        consistency.reviewData(),
+                        item.firstAlertTime(),
+                        item.lastAlertTime(),
+                        List.of(),
+                        item.recordEvidenceStatus(),
+                        item.recordEvidenceCheckedAt(),
+                        item.recordEvidenceMessage()
+                );
+                if (consistency.schemaDrift()) {
+                    findings.add("review_data_repaired:" + item.id());
+                }
+                if (consistency.segmentDoubleWriteDrift()) {
+                    findings.add("review_segment_repaired:" + item.id());
+                }
+            }
+        }
+
+        ReviewSemanticIndexEvaluation semanticBefore = evaluateSemanticIndex(
+                new ReviewSemanticIndexEvaluationCommand(query, command.operatorUserId()));
+        int repairedSemanticIndexCount = 0;
+        if (repair && !semanticBefore.staleReviewItemIds().isEmpty()) {
+            Set<Long> staleIds = new LinkedHashSet<>(semanticBefore.staleReviewItemIds());
+            for (ReviewSemanticIndexEntry entry : reindexSemanticIndex(query)) {
+                if (staleIds.contains(entry.reviewItemId())) {
+                    repairedSemanticIndexCount++;
+                    findings.add("semantic_reindexed:" + entry.reviewItemId());
+                }
+            }
+        }
+        int failedExportJobCount = (int) reviewItemStore.listAllExportJobs().stream()
+                .filter(job -> EXPORT_JOB_FAILED.equals(job.status()))
+                .count();
+        ReviewRuntimeHealthReport healthReport = getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                query,
+                command.operatorUserId()
+        ));
+        return new ReviewReconciliationResult(
+                items.size(),
+                repairedRecordCount,
+                repairedSemanticIndexCount,
+                failedExportJobCount,
+                List.copyOf(findings),
+                healthReport,
+                LocalDateTime.now(),
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewSemanticTriggerResult evaluateSemanticTrigger(ReviewSemanticTriggerCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.triggerName(), "triggerName");
+        requireText(command.data(), "data");
+        ReviewQuery filters = semanticTriggerFilters(command);
+        int limit = command.actions() == null || command.actions().isEmpty() ? 20 : 50;
+        List<ReviewSemanticHit> hits = semanticSearch(new ReviewSemanticSearchCommand(command.data(), filters, limit))
+                .stream()
+                .filter(hit -> matchesSemanticTriggerThreshold(hit, command.threshold()))
+                .toList();
+        List<String> actions = command.actions() == null || command.actions().isEmpty()
+                ? List.of("notification")
+                : List.copyOf(command.actions());
+        LocalDateTime evaluatedAt = LocalDateTime.now();
+        List<Map<String, Object>> actionPayloads = new ArrayList<>();
+        for (ReviewSemanticHit hit : hits) {
+            for (String action : actions) {
+                actionPayloads.add(buildSemanticTriggerAction(command, hit, action, evaluatedAt));
+            }
+        }
+        return new ReviewSemanticTriggerResult(
+                command.triggerName(),
+                command.triggerType(),
+                command.data(),
+                hits.stream().map(hit -> hit.item().id()).toList(),
+                List.copyOf(actionPayloads),
+                evaluatedAt
+        );
+    }
+
+    @Override
+    public ReviewAiSummary summarizeReviewCase(Long reviewCaseId, Long operatorUserId) {
+        requirePositive(reviewCaseId, "reviewCaseId");
+        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(reviewCaseId);
+        List<Long> reviewItemIds = reviewItemIdsFromTimeline(timeline);
+        List<ReviewItemAggregate> reviewItems = reviewItemIds.stream()
+                .map(id -> withEventProjection(reviewItemStore.findById(id).orElse(null)))
+                .filter(Objects::nonNull)
+                .toList();
+        Optional<ReviewAiSummary> providerSummary = reviewIntelligenceProvider.summarize(new ReviewAiSummaryRequest(
+                reviewCaseId,
+                operatorUserId,
+                reviewItemIds,
+                timeline,
+                reviewItems.stream().map(this::toSummaryContext).toList()
+        ));
+        if (providerSummary.isPresent()) {
+            return withStructuredAiSummaryData(providerSummary.get(), reviewItems);
+        }
+        List<String> keyFacts = new ArrayList<>();
+        List<String> evidenceGaps = new ArrayList<>();
+        List<String> recommendedActions = new ArrayList<>();
+        for (ReviewItemAggregate item : reviewItems) {
+            keyFacts.add("camera " + item.cameraId() + " zone " + item.zoneCode()
+                    + " object " + item.objectLabel() + " status " + item.reviewStatus());
+            if (RECORD_EVIDENCE_MISSING.equals(item.recordEvidenceStatus())
+                    || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus())) {
+                evidenceGaps.add("review item " + item.reviewItemNo()
+                        + " record evidence " + item.recordEvidenceStatus());
+                recommendedActions.add("backfill record evidence for " + item.reviewItemNo());
+            }
+            if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {
+                recommendedActions.add("review rule suggestion for " + item.reviewItemNo());
+            }
+            if (item.eventId() != null) {
+                recommendedActions.add("track supervision event " + item.eventId());
+            }
+        }
+        String summary = keyFacts.isEmpty()
+                ? "No review items are available in this case."
+                : "Case includes " + reviewItemIds.size() + " review item(s) across "
+                        + keyFacts.stream().map(fact -> fact.split(" zone ")[0]).distinct().count()
+                        + " camera view(s).";
+        String title = "review case " + reviewCaseId;
+        Map<String, Object> structuredData = buildStructuredAiSummaryData(
+                reviewCaseId,
+                title,
+                summary,
+                reviewItems,
+                evidenceGaps,
+                recommendedActions
+        );
+        return new ReviewAiSummary(
+                reviewCaseId,
+                reviewItemIds,
+                title,
+                summary,
+                List.copyOf(keyFacts),
+                List.copyOf(evidenceGaps),
+                List.copyOf(new LinkedHashSet<>(recommendedActions)),
+                LocalDateTime.now(),
+                operatorUserId == null ? "local-rule-summary" : "local-rule-summary:" + operatorUserId,
+                structuredData
+        );
+    }
+
+    @Override
+    public ReviewOperationsReport generateReviewReport(ReviewReportCommand command) {
+        Objects.requireNonNull(command, "command");
+        String reportType = firstText(command.reportType(), "shift");
+        ReviewQuery query = reportQuery(command);
+        List<ReviewItemAggregate> reviewItems = listWorkbench(query);
+        List<Long> reviewItemIds = reviewItems.stream().map(ReviewItemAggregate::id).toList();
+        List<String> evidenceGaps = new ArrayList<>();
+        List<String> recommendedActions = new ArrayList<>();
+        for (ReviewItemAggregate item : reviewItems) {
+            if (RECORD_EVIDENCE_MISSING.equals(item.recordEvidenceStatus())
+                    || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus())) {
+                evidenceGaps.add("review item " + item.reviewItemNo()
+                        + " record evidence " + item.recordEvidenceStatus());
+                recommendedActions.add("backfill record evidence for " + item.reviewItemNo());
+            }
+            if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {
+                recommendedActions.add("review rule suggestion for " + item.reviewItemNo());
+            }
+            if (item.eventId() != null) {
+                recommendedActions.add("track supervision event " + item.eventId());
+            }
+        }
+        LocalDateTime generatedAt = LocalDateTime.now();
+        String title = reportType + " review report"
+                + (command.periodStart() == null ? "" : " " + command.periodStart().toLocalDate());
+        String summary = reviewItems.size() + " review item(s), "
+                + evidenceGaps.size() + " evidence gap(s), "
+                + reviewItems.stream().filter(item -> item.eventId() != null).count() + " converted event(s).";
+        List<String> distinctActions = List.copyOf(new LinkedHashSet<>(recommendedActions));
+        Map<String, Object> structuredData = new LinkedHashMap<>(buildStructuredAiSummaryData(
+                null,
+                title,
+                summary,
+                reviewItems,
+                evidenceGaps,
+                distinctActions
+        ));
+        structuredData.put("reportType", reportType);
+        structuredData.put("periodStart", command.periodStart() == null ? null : command.periodStart().toString());
+        structuredData.put("periodEnd", command.periodEnd() == null ? null : command.periodEnd().toString());
+        structuredData.put("reviewItemCount", reviewItems.size());
+        structuredData.put("evidenceGapCount", evidenceGaps.size());
+        structuredData.put("operatorUserId", command.operatorUserId());
+        structuredData.put("generatedAt", generatedAt.toString());
+        return new ReviewOperationsReport(
+                reportType,
+                reviewItemIds,
+                title,
+                summary,
+                List.copyOf(evidenceGaps),
+                distinctActions,
+                generatedAt,
+                command.operatorUserId(),
+                immutableNonNullMap(structuredData)
+        );
+    }
+
+    @Override
+    public ReviewEvidenceExportPackage exportReviewEvidence(ReviewEvidenceExportCommand command) {
+        return buildReviewEvidenceExportPackage(command);
+    }
+
+    @Override
+    public ReviewEvidenceExportJob createReviewEvidenceExportJob(ReviewEvidenceExportCommand command) {
+        ReviewEvidenceExportPackage exportPackage = buildReviewEvidenceExportPackage(command);
+        LocalDateTime createdAt = exportPackage.generatedAt();
+        return reviewItemStore.createExportJob(
+                exportPackage,
+                command.operatorUserId(),
+                command.reason(),
+                boundEventIds(exportPackage.reviewItemIds()),
+                exportFileHash(exportPackage),
+                createdAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS),
+                createdAt
+        );
+    }
+
+    @Override
+    public ReviewManifestVerification verifyEvidenceExportManifest(String jobNo) {
+        return verifyEvidenceExportManifest(jobNo, null, null);
+    }
+
+    @Override
+    public ReviewManifestVerification verifyEvidenceExportManifest(String jobNo,
+                                                                   Long operatorUserId,
+                                                                   List<String> allowedCameraIds) {
+        requireText(jobNo, "jobNo");
+        ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(jobNo)
+                .orElseThrow(() -> new IllegalArgumentException("export job not found: " + jobNo));
+        enforceMediaAccessScope(
+                job.exportPackage().reviewCaseId(),
+                job.exportPackage().timeline(),
+                loadReviewItems(job.exportPackage().reviewItemIds()),
+                operatorUserId,
+                "manifest_verify",
+                allowedCameraIds,
+                "manifest verify"
+        );
+        Map<String, Object> manifest = job.exportPackage().manifest();
+        String actualManifestHash = toText(manifest.get("manifestHash"));
+        String expectedManifestHash = expectedManifestHash(manifest);
+        String packageChecksum = toText(manifest.get("packageChecksum"));
+        List<String> violations = new ArrayList<>();
+        if (!hasText(actualManifestHash)) {
+            violations.add("missing_manifest_hash");
+        } else if (!Objects.equals(expectedManifestHash, actualManifestHash)) {
+            violations.add("manifest_hash_mismatch");
+        }
+        Map<String, Object> signature = toStringObjectMap(manifest.get("signature"));
+        String expectedSignature = expectedManifestSignature(manifest, expectedManifestHash);
+        if (signature.isEmpty()) {
+            violations.add("missing_signature");
+        } else if (!Objects.equals(expectedSignature, signature.get("value"))) {
+            violations.add("signature_mismatch");
+        }
+        if (!hasText(packageChecksum)) {
+            violations.add("missing_package_checksum");
+        }
+        return new ReviewManifestVerification(
+                jobNo,
+                violations.isEmpty(),
+                expectedManifestHash,
+                actualManifestHash,
+                packageChecksum,
+                List.copyOf(violations),
+                LocalDateTime.now()
+        );
+    }
+
+    @Override
+    public ReviewEvidenceVerificationReport verifyEvidencePackage(ReviewEvidenceVerificationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.jobNo(), "jobNo");
+        ReviewManifestVerification manifestVerification = verifyEvidenceExportManifest(command.jobNo());
+        ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(command.jobNo())
+                .orElseThrow(() -> new IllegalArgumentException("export job not found: " + command.jobNo()));
+        Map<String, Object> manifest = new LinkedHashMap<>(job.exportPackage().manifest());
+        Long reviewCaseId = toLong(manifest.get("reviewCaseId"));
+        List<ReviewEvidenceAuditEntry> auditTrail = reviewCaseId == null ? List.of() : getEvidenceAuditTrail(reviewCaseId);
+        manifest.put("downloadRecords", auditTrail.stream()
+                .filter(entry -> "export_downloaded".equals(entry.actionType()))
+                .map(SupervisionAlertReviewServiceImpl::auditEntryToManifestMap)
+                .toList());
+        List<Map<String, Object>> decisionTrail = toMapList(manifest.get("decisionTrail"));
+        if (decisionTrail.isEmpty()) {
+            decisionTrail = reconstructDecisionTrail(job.exportPackage().reviewItemIds());
+        }
+        List<String> replayableReasons = new ArrayList<>();
+        if (manifestVerification.valid()) {
+            replayableReasons.add("manifest_hash_valid");
+            replayableReasons.add("signature_valid");
+        }
+        if (!decisionTrail.isEmpty()) {
+            replayableReasons.add("decision_trail_reconstructed");
+        }
+        if (!toMapList(manifest.get("coverageSummary")).isEmpty()) {
+            replayableReasons.add("coverage_summary_present");
+        }
+        if (!toStringObjectMap(manifest.get("reviewData")).isEmpty()) {
+            replayableReasons.add("review_data_present");
+        }
+        if (!auditTrail.isEmpty()) {
+            replayableReasons.add("audit_trail_attached");
+        }
+        if (!toMapList(manifest.get("ruleVersions")).isEmpty()) {
+            replayableReasons.add("rule_version_present");
+        }
+        return new ReviewEvidenceVerificationReport(
+                command.jobNo(),
+                manifestVerification.valid(),
+                manifestVerification,
+                immutableNonNullMap(manifest),
+                decisionTrail,
+                List.copyOf(replayableReasons),
+                auditTrail,
+                LocalDateTime.now(),
+                command.operatorUserId()
+        );
+    }
+
+    @Override
+    public ReviewIntegrationSmokeResult runIntegrationSmoke(ReviewIntegrationSmokeCommand command) {
+        Objects.requireNonNull(command, "command");
+        LocalDateTime alertTime = command.alertTime() == null ? LocalDateTime.now() : command.alertTime();
+        boolean includeVideoExport = Boolean.TRUE.equals(command.includeVideoExport());
+        String profile = firstText(command.profile(), "service-synthetic");
+        List<String> checkpoints = new ArrayList<>();
+        if ("device-video-web".equals(profile)) {
+            checkpoints.add("device_api_reachable");
+            checkpoints.add("video_record_query_checked");
+            checkpoints.add("web_contract_checked");
+        }
+        String sourceAlertId = "review-smoke-" + UUID.randomUUID();
+        ReviewItemAggregate item = ingestClue(new AlertClueCommand(
+                "video",
+                sourceAlertId,
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-smoke",
+                "camera-smoke",
+                "zone-smoke",
+                "person",
+                15,
+                "smoke-snapshot.jpg",
+                "smoke-record.mp4",
+                "smoke:" + sourceAlertId,
+                List.of("person"),
+                List.of("zone-smoke"),
+                List.of("obj-smoke"),
+                0.9D,
+                List.of(0D, 0D, 10D, 20D),
+                sourceAlertId
+        ));
+        checkpoints.add("ingest_review_item");
+        if ("device-video-web".equals(profile)) {
+            checkpoints.add("sample_alert_ingested");
+        }
+        List<RecordCoverageSegment> coverage = getRecordCoverage(item.id());
+        syncRecordStorage(new ReviewRecordStorageSyncCommand(item.id(), command.operatorUserId(), coverage));
+        checkpoints.add("record_coverage_synced");
+        if ("device-video-web".equals(profile)) {
+            checkpoints.add("sample_record_coverage_probed");
+        }
+        ReviewCaseView reviewCase = createReviewCase(new ReviewCaseCommand(
+                "integration smoke " + sourceAlertId,
+                item.id(),
+                List.of(item.id()),
+                command.operatorUserId(),
+                "runtime smoke"
+        ));
+        checkpoints.add("review_case_created");
+        ReviewEvidenceExportJob job = createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                command.operatorUserId(),
+                includeVideoExport ? "mp4" : "manifest",
+                "integration smoke"
+        ));
+        checkpoints.add("evidence_export_ready");
+        ReviewManifestVerification verification = verifyEvidenceExportManifest(job.jobNo());
+        if (verification.valid()) {
+            checkpoints.add("manifest_verified");
+            recordEvidenceDownload(job.jobNo(), command.operatorUserId(), "integration smoke download audit");
+            checkpoints.add("evidence_download_audited");
+        }
+        if ("device-video-web".equals(profile)) {
+            checkpoints.add("sample_web_contract_renderable");
+        }
+        return new ReviewIntegrationSmokeResult(
+                verification.valid() ? "passed" : "failed",
+                item.id(),
+                reviewCase.id(),
+                job.jobNo(),
+                verification.valid(),
+                includeVideoExport,
+                List.copyOf(checkpoints),
+                LocalDateTime.now(),
+                command.operatorUserId(),
+                profile
+        );
+    }
+
+    @Override
+    public List<ReviewEvidenceAuditEntry> getEvidenceAuditTrail(Long reviewCaseId) {
+        requirePositive(reviewCaseId, "reviewCaseId");
+        List<ReviewEvidenceAuditEntry> auditTrail = new ArrayList<>();
+        for (ReviewEvidenceExportJob job : reviewItemStore.listExportJobs(reviewCaseId)) {
+            auditTrail.add(exportJobAuditEntry(job));
+        }
+        for (ReviewCaseTimelineItem timelineItem : reviewItemStore.listCaseTimeline(reviewCaseId)) {
+            if (!"case_audit".equals(timelineItem.materialType())
+                    || !"export_downloaded".equals(timelineItem.materialUri())) {
+                continue;
+            }
+            auditTrail.add(downloadAuditEntry(reviewCaseId, timelineItem));
+        }
+        List<ReviewEvidenceAuditEntry> sortedTrail = auditTrail.stream()
+                .sorted(Comparator
+                        .comparing(ReviewEvidenceAuditEntry::happenedAt,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewEvidenceAuditEntry::actionType, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        return withAuditHashChain(sortedTrail);
+    }
+
+    @Override
+    public ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo, Long operatorUserId, String reason) {
+        return recordEvidenceDownload(jobNo, operatorUserId, reason, null);
+    }
+
+    @Override
+    public ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
+                                                           Long operatorUserId,
+                                                           String reason,
+                                                           List<String> allowedCameraIds) {
+        requireText(jobNo, "jobNo");
+        ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(jobNo)
+                .orElseThrow(() -> new IllegalArgumentException("export job not found: " + jobNo));
+        enforceMediaAccessScope(
+                job.exportPackage().reviewCaseId(),
+                job.exportPackage().timeline(),
+                loadReviewItems(job.exportPackage().reviewItemIds()),
+                operatorUserId,
+                "download",
+                allowedCameraIds,
+                reason
+        );
+        ReviewEvidenceAuditEntry auditEntry = reviewItemStore.recordEvidenceDownload(
+                jobNo,
+                operatorUserId,
+                reason,
+                LocalDateTime.now()
+        );
+        return enrichDownloadAuditEntry(auditEntry, job);
+    }
+
+    @Override
+    public ReviewMediaAccessAuditEntry auditMediaAccess(ReviewMediaAccessCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewCaseId(), "reviewCaseId");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(command.reviewCaseId());
+        boolean itemInCase = timeline.stream().anyMatch(row -> Objects.equals(command.reviewItemId(), row.reviewItemId()));
+        boolean mediaInCase = !hasText(command.materialUri()) || timeline.stream()
+                .filter(row -> Objects.equals(command.reviewItemId(), row.reviewItemId()))
+                .anyMatch(row -> Objects.equals(command.materialUri(), row.materialUri()));
+        String actionType = firstText(command.actionType(), "playback");
+        List<String> effectiveAllowedCameraIds = resolveEffectiveAllowedCameraIds(
+                command.reviewCaseId(),
+                command.operatorUserId(),
+                actionType,
+                command.allowedCameraIds()
+        );
+        Set<String> allowedCameras = new LinkedHashSet<>(effectiveAllowedCameraIds == null
+                ? List.of()
+                : effectiveAllowedCameraIds);
+        List<String> deniedReasons = new ArrayList<>();
+        if (!itemInCase) {
+            deniedReasons.add("item_not_in_case");
+        }
+        if (!mediaInCase) {
+            deniedReasons.add("media_not_in_case");
+        }
+        if (!Objects.equals(item.cameraId(), command.cameraId())) {
+            deniedReasons.add("camera_mismatch");
+        }
+        if (!allowedCameras.contains(item.cameraId())) {
+            deniedReasons.add("camera_not_allowed");
+        }
+        String decision = deniedReasons.isEmpty() ? "granted" : "denied";
+        LocalDateTime happenedAt = LocalDateTime.now();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("decision", decision);
+        metadata.put("allowedCameraIds", List.copyOf(allowedCameras));
+        metadata.put("deniedReasons", List.copyOf(deniedReasons));
+        metadata.put("reason", command.reason());
+        metadata.put("eventId", item.eventId());
+        String auditNote = "decision=" + decision
+                + "; action=" + actionType
+                + "; cameraId=" + command.cameraId()
+                + "; materialUri=" + command.materialUri()
+                + (deniedReasons.isEmpty() ? "" : "; deniedReasons=" + String.join(",", deniedReasons))
+                + (hasText(command.reason()) ? "; reason=" + command.reason() : "");
+        reviewItemStore.recordCaseAudit(
+                command.reviewCaseId(),
+                command.reviewItemId(),
+                "media_access_" + decision,
+                auditNote,
+                command.operatorUserId(),
+                happenedAt
+        );
+        return new ReviewMediaAccessAuditEntry(
+                command.reviewCaseId(),
+                command.reviewItemId(),
+                command.operatorUserId(),
+                command.cameraId(),
+                command.materialUri(),
+                actionType,
+                decision,
+                List.copyOf(deniedReasons),
+                happenedAt,
+                immutableNonNullMap(metadata)
+        );
+    }
+
+    private ReviewEvidenceExportPackage buildReviewEvidenceExportPackage(ReviewEvidenceExportCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewCaseId(), "reviewCaseId");
+        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(command.reviewCaseId());
+        List<Long> reviewItemIds = command.reviewItemIds() == null || command.reviewItemIds().isEmpty()
+                ? reviewItemIdsFromTimeline(timeline)
+                : List.copyOf(new LinkedHashSet<>(command.reviewItemIds()));
+        List<ReviewCaseTimelineItem> scopedTimeline = timeline.stream()
+                .filter(item -> item.reviewItemId() == null || reviewItemIds.contains(item.reviewItemId()))
+                .toList();
+        List<ReviewItemAggregate> reviewItems = reviewItemIds.stream()
+                .map(id -> withEventProjection(reviewItemStore.findById(id).orElse(null)))
+                .filter(Objects::nonNull)
+                .toList();
+        String format = hasText(command.format()) ? command.format() : "manifest";
+        enforceMediaAccessScope(
+                command.reviewCaseId(),
+                scopedTimeline,
+                reviewItems,
+                command.operatorUserId(),
+                "export",
+                command.allowedCameraIds(),
+                command.reason()
+        );
+        List<ReviewEvidenceVideoExportResult> videoExports = requestVideoExports(
+                command.reviewCaseId(),
+                reviewItemIds,
+                scopedTimeline,
+                format
+        );
+        List<String> evidenceUris = scopedTimeline.stream()
+                .filter(item -> MATERIAL_SNAPSHOT.equals(item.materialType()) || MATERIAL_RECORD.equals(item.materialType()))
+                .map(ReviewCaseTimelineItem::materialUri)
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .distinct()
+                .toList();
+        evidenceUris = mergeEvidenceUris(evidenceUris, videoExports);
+        LocalDateTime generatedAt = LocalDateTime.now();
+        Map<String, Object> manifest = buildEvidenceManifest(
+                command.reviewCaseId(),
+                reviewItemIds,
+                evidenceUris,
+                scopedTimeline,
+                reviewItems,
+                videoExports,
+                format,
+                command.operatorUserId(),
+                command.approverUserId(),
+                command.approvalNote(),
+                generatedAt
+        );
+        return new ReviewEvidenceExportPackage(
+                "REP-" + UUID.randomUUID(),
+                format,
+                command.reviewCaseId(),
+                reviewItemIds,
+                evidenceUris,
+                scopedTimeline,
+                manifest,
+                generatedAt
+        );
+    }
+
+    private void enforceItemMediaReadScope(Long reviewCaseId,
+                                           Long reviewItemId,
+                                           Long operatorUserId,
+                                           String actionType,
+                                           List<String> allowedCameraIds,
+                                           String reason,
+                                           List<MediaAccessRef> mediaRefs) {
+        List<String> effectiveAllowedCameraIds = resolveEffectiveAllowedCameraIds(
+                reviewCaseId,
+                operatorUserId,
+                actionType,
+                allowedCameraIds
+        );
+        if (effectiveAllowedCameraIds == null) {
+            return;
+        }
+        requirePositive(reviewCaseId, "reviewCaseId");
+        requirePositive(reviewItemId, "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        Set<String> auditedKeys = new LinkedHashSet<>();
+        boolean audited = false;
+        for (MediaAccessRef ref : mediaRefs == null ? List.<MediaAccessRef>of() : mediaRefs) {
+            if (ref == null || !isEvidenceMedia(ref.materialType()) || !hasText(ref.materialUri())) {
+                continue;
+            }
+            String key = ref.materialType() + "\n" + ref.materialUri();
+            if (!auditedKeys.add(key)) {
+                continue;
+            }
+            auditAndEnforceMediaAccess(reviewCaseId, item, operatorUserId, actionType, effectiveAllowedCameraIds, reason,
+                    ref.materialUri());
+            audited = true;
+        }
+        if (!audited) {
+            auditAndEnforceMediaAccess(reviewCaseId, item, operatorUserId, actionType, effectiveAllowedCameraIds, reason, null);
+        }
+    }
+
+    private void auditAndEnforceMediaAccess(Long reviewCaseId,
+                                            ReviewItemAggregate item,
+                                            Long operatorUserId,
+                                            String actionType,
+                                            List<String> allowedCameraIds,
+                                            String reason,
+                                            String materialUri) {
+        ReviewMediaAccessAuditEntry audit = auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCaseId,
+                item.id(),
+                operatorUserId,
+                item.cameraId(),
+                materialUri,
+                actionType,
+                allowedCameraIds,
+                reason
+        ));
+        if ("denied".equals(audit.decision())) {
+            throw new SecurityException("media access denied: " + String.join(",", audit.deniedReasons()));
+        }
+    }
+
+    private record MediaAccessRef(String materialType, String materialUri) {
+    }
+
+    private void enforceMediaAccessScope(Long reviewCaseId,
+                                         List<ReviewCaseTimelineItem> timeline,
+                                         List<ReviewItemAggregate> reviewItems,
+                                         Long operatorUserId,
+                                         String actionType,
+                                         List<String> allowedCameraIds,
+                                         String reason) {
+        List<String> effectiveAllowedCameraIds = resolveEffectiveAllowedCameraIds(
+                reviewCaseId,
+                operatorUserId,
+                actionType,
+                allowedCameraIds
+        );
+        if (effectiveAllowedCameraIds == null) {
+            return;
+        }
+        Map<Long, ReviewItemAggregate> itemById = reviewItems == null
+                ? Map.of()
+                : reviewItems.stream()
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toMap(
+                                ReviewItemAggregate::id,
+                                item -> item,
+                                (left, right) -> left,
+                                LinkedHashMap::new
+                        ));
+        for (ReviewCaseTimelineItem item : timeline == null ? List.<ReviewCaseTimelineItem>of() : timeline) {
+            if (!isEvidenceMedia(item.materialType()) || item.reviewItemId() == null) {
+                continue;
+            }
+            ReviewItemAggregate reviewItem = itemById.get(item.reviewItemId());
+            if (reviewItem == null) {
+                throw new IllegalArgumentException("reviewItemId not found: " + item.reviewItemId());
+            }
+            auditAndEnforceMediaAccess(
+                    reviewCaseId,
+                    reviewItem,
+                    operatorUserId,
+                    actionType,
+                    effectiveAllowedCameraIds,
+                    reason,
+                    item.materialUri()
+            );
+        }
+    }
+
+    private List<String> resolveEffectiveAllowedCameraIds(Long reviewCaseId,
+                                                          Long operatorUserId,
+                                                          String actionType,
+                                                          List<String> requestedCameraIds) {
+        List<String> normalizedRequested = normalizeCameraScope(requestedCameraIds);
+        List<String> serviceAllowed = cameraPermissionResolver.resolveAllowedCameraIds(new ReviewCameraPermissionRequest(
+                reviewCaseId,
+                operatorUserId,
+                TenantContextHolder.getTenantId(),
+                actionType,
+                normalizedRequested
+        ));
+        List<String> normalizedServiceAllowed = normalizeCameraScope(serviceAllowed);
+        if (normalizedServiceAllowed == null) {
+            return normalizedRequested;
+        }
+        if (normalizedRequested == null) {
+            return normalizedServiceAllowed;
+        }
+        Set<String> requestedSet = new LinkedHashSet<>(normalizedRequested);
+        return normalizedServiceAllowed.stream()
+                .filter(requestedSet::contains)
+                .toList();
+    }
+
+    private static List<String> normalizeCameraScope(List<String> cameraIds) {
+        if (cameraIds == null) {
+            return null;
+        }
+        return cameraIds.stream()
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private List<ReviewItemAggregate> loadReviewItems(List<Long> reviewItemIds) {
+        if (reviewItemIds == null || reviewItemIds.isEmpty()) {
+            return List.of();
+        }
+        return reviewItemIds.stream()
+                .map(id -> withEventProjection(reviewItemStore.findById(id).orElse(null)))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private static boolean isEvidenceMedia(String materialType) {
+        return MATERIAL_SNAPSHOT.equals(materialType) || MATERIAL_RECORD.equals(materialType);
+    }
+
+    @Override
+    public ReviewToEventResult convertToEvent(ReviewToEventCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate item = withEventProjection(reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId())));
+        if (item.eventId() != null) {
+            return new ReviewToEventResult(item.id(), item.reviewStatus(), item.eventId(), true);
+        }
+
+        AlertToEventResult eventResult = supervisionEventService.createFromAlert(new AlertToEventCommand(
+                REVIEW_SOURCE_SYSTEM,
+                item.reviewItemNo(),
+                item.ruleCode(),
+                item.sourceAlertType(),
+                item.firstAlertTime(),
+                null
+        ));
+        LocalDateTime convertedAt = LocalDateTime.now();
+        markUserReviewed(item.id(), command.reviewerUserId(), convertedAt);
+        ReviewItemAggregate converted = withEventProjection(reviewItemStore.markConverted(
+                item.id(),
+                command.reviewerUserId(),
+                eventResult.eventId(),
+                convertedAt
+        ));
+        return new ReviewToEventResult(converted.id(), converted.reviewStatus(), eventResult.eventId(), eventResult.reused());
+    }
+
+    @Override
+    public ReviewRuleReplayResult replayRule(ReviewRuleReplayCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.ruleCode(), "ruleCode");
+        ReviewQuery query = new ReviewQuery(
+                null,
+                command.cameraId(),
+                command.zoneCode(),
+                command.objectLabel(),
+                null,
+                null,
+                null,
+                null,
+                command.beginTime(),
+                command.endTime()
+        );
+        List<ReviewItemAggregate> evaluatedItems = listWorkbench(query).stream()
+                .filter(item -> Objects.equals(command.ruleCode(), item.ruleCode()))
+                .filter(item -> matchesText(command.sourceSystem(), item.sourceSystem()))
+                .toList();
+        Optional<ReviewRuleView> currentRule = reviewRuleStore.listAll().stream()
+                .filter(rule -> Objects.equals(command.ruleCode(), rule.ruleCode()))
+                .filter(rule -> matchesText(rule.sourceSystem(), command.sourceSystem()))
+                .filter(rule -> matchesText(rule.cameraId(), command.cameraId()))
+                .filter(rule -> matchesText(rule.zoneCode(), command.zoneCode()))
+                .filter(rule -> matchesText(rule.objectLabel(), command.objectLabel()))
+                .findFirst();
+        Map<String, Object> ruleVersion = currentRule
+                .map(SupervisionAlertReviewServiceImpl::ruleVersionFromRule)
+                .orElseGet(() -> ruleVersionFromReplayCommand(command));
+        int matchBeforeCount = currentRule
+                .map(rule -> (int) evaluatedItems.stream().filter(item -> matchesReplayRule(item, rule)).count())
+                .orElse(0);
+        int matchAfterCount = (int) evaluatedItems.stream()
+                .filter(item -> matchesReplayRule(item, command))
+                .count();
+        int falsePositiveBeforeCount = (int) evaluatedItems.stream()
+                .filter(item -> STATUS_FALSE_POSITIVE.equals(item.reviewStatus()))
+                .count();
+        int matchedFalsePositiveAfterCount = (int) evaluatedItems.stream()
+                .filter(item -> STATUS_FALSE_POSITIVE.equals(item.reviewStatus()))
+                .filter(item -> matchesReplayRule(item, command))
+                .count();
+        List<String> actions = new ArrayList<>();
+        double beforeRate = roundRate(falsePositiveBeforeCount, evaluatedItems.size());
+        double afterRate = roundRate(matchedFalsePositiveAfterCount, matchAfterCount);
+        if (afterRate <= beforeRate) {
+            actions.add("safe_to_apply");
+        } else {
+            actions.add("manual_review_required");
+        }
+        if (matchAfterCount == 0) {
+            actions.add("check_recall_risk");
+        }
+        Map<String, Object> report = buildReplayReport(
+                evaluatedItems,
+                matchBeforeCount,
+                matchAfterCount,
+                falsePositiveBeforeCount,
+                matchedFalsePositiveAfterCount,
+                actions,
+                ruleVersion
+        );
+        return new ReviewRuleReplayResult(
+                command.ruleCode(),
+                evaluatedItems.stream().map(ReviewItemAggregate::id).toList(),
+                evaluatedItems.size(),
+                matchBeforeCount,
+                matchAfterCount,
+                falsePositiveBeforeCount,
+                beforeRate,
+                afterRate,
+                List.copyOf(actions),
+                replayScope(command),
+                report,
+                LocalDateTime.now()
+        );
+    }
+
+    @Override
+    public ReviewRuleGeometryEvaluation evaluateRuleGeometry(ReviewRuleGeometryCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.ruleCode(), "ruleCode");
+        List<Double> evaluatedPoint = bottomCenterPoint(command.bbox());
+        boolean inside = !evaluatedPoint.isEmpty() && pointInPolygon(evaluatedPoint, command.polygon());
+        ReviewQuery query = command.query() == null
+                ? new ReviewQuery(null, command.cameraId(), command.zoneCode(), command.objectLabel(),
+                        null, null, null, null, null, null)
+                : command.query();
+        List<ReviewItemAggregate> replayedItems = listWorkbench(query).stream()
+                .filter(item -> Objects.equals(command.ruleCode(), item.ruleCode()))
+                .filter(item -> matchesText(command.cameraId(), item.cameraId()))
+                .filter(item -> matchesText(command.zoneCode(), item.zoneCode()))
+                .filter(item -> matchesText(command.objectLabel(), item.objectLabel()))
+                .toList();
+        List<Long> replayedReviewItemIds = replayedItems.stream()
+                .map(ReviewItemAggregate::id)
+                .toList();
+        Integer minStaySeconds = replayedItems.stream()
+                .map(SupervisionAlertReviewServiceImpl::inferredStaySeconds)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        Optional<ReviewRuleView> matchedRule = matchingRuleForGeometry(command);
+        Integer zoneInertiaFrames = matchedRule
+                .map(ReviewRuleView::inertiaFrames)
+                .map(SupervisionAlertReviewServiceImpl::normalizeZoneInertiaFrames)
+                .orElse(1);
+        Integer loiteringSeconds = matchedRule
+                .map(ReviewRuleView::loiteringSeconds)
+                .filter(value -> value != null && value > 0)
+                .orElseGet(() -> matchedRule
+                        .map(ReviewRuleView::minStaySeconds)
+                        .filter(value -> value != null && value > 0)
+                        .orElse(minStaySeconds));
+        Integer observedConsecutiveFrames = replayedItems.stream()
+                .map(SupervisionAlertReviewServiceImpl::inferredConsecutiveZoneFrames)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        Integer observedStaySeconds = replayedItems.stream()
+                .map(SupervisionAlertReviewServiceImpl::inferredStaySeconds)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        boolean inertiaSatisfied = observedConsecutiveFrames == null
+                ? zoneInertiaFrames <= 1
+                : observedConsecutiveFrames >= zoneInertiaFrames;
+        boolean loiteringSatisfied = loiteringSeconds == null || loiteringSeconds <= 0
+                || (observedStaySeconds != null && observedStaySeconds >= loiteringSeconds);
+        Map<String, Object> ruleVersion = new LinkedHashMap<>();
+        ruleVersion.put("ruleCode", command.ruleCode());
+        ruleVersion.put("cameraId", command.cameraId());
+        ruleVersion.put("zoneCode", command.zoneCode());
+        ruleVersion.put("objectLabel", command.objectLabel());
+        ruleVersion.put("minStaySeconds", minStaySeconds);
+        ruleVersion.put("zoneInertiaFrames", zoneInertiaFrames);
+        ruleVersion.put("loiteringSeconds", loiteringSeconds);
+        ruleVersion.put("geometryType", "bottom_center");
+        ruleVersion.put("semanticEngine", "yfeieye-rule-geometry-v1");
+        ruleVersion.put("pointStrategy", "bottom_center");
+        ruleVersion.put("coordinateSpace", "image");
+        ruleVersion.put("applicationMode", "shadow");
+        ruleVersion.put("operatorUserId", command.operatorUserId());
+        ruleVersion.put("evaluatedAt", LocalDateTime.now().toString());
+        List<String> consistencyChecks = new ArrayList<>(List.of(
+                "front_back_replay_use_bottom_center",
+                "bbox_order_x1_y1_x2_y2"
+        ));
+        if (zoneInertiaFrames > 1) {
+            consistencyChecks.add("zone_inertia_applied");
+        }
+        if (loiteringSeconds != null && loiteringSeconds > 0) {
+            consistencyChecks.add("loitering_threshold_applied");
+        }
+        return new ReviewRuleGeometryEvaluation(
+                "bottom_center",
+                inside,
+                evaluatedPoint,
+                command.zoneCode(),
+                replayedReviewItemIds,
+                immutableNonNullMap(ruleVersion),
+                List.copyOf(consistencyChecks),
+                LocalDateTime.now(),
+                List.of(ruleMatchTrace(command, evaluatedPoint, inside, minStaySeconds, zoneInertiaFrames,
+                        observedConsecutiveFrames, inertiaSatisfied, loiteringSeconds, observedStaySeconds,
+                        loiteringSatisfied))
+        );
+    }
+
+    @Override
+    public ReviewRuleView saveRule(ReviewRuleCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.ruleCode(), "ruleCode");
+        return reviewRuleStore.save(command);
+    }
+
+    @Override
+    public List<ReviewRuleView> listRules() {
+        return reviewRuleStore.listAll();
+    }
+
+    private static ReviewEvidenceAuditEntry exportJobAuditEntry(ReviewEvidenceExportJob job) {
+        ReviewEvidenceExportPackage exportPackage = job.exportPackage();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("packageNo", exportPackage.packageNo());
+        metadata.put("format", exportPackage.format());
+        metadata.put("status", job.status());
+        metadata.put("expiresAt", job.expiresAt() == null ? null : job.expiresAt().toString());
+        metadata.put("reason", job.reason());
+        putAuditReverseLookupMetadata(
+                metadata,
+                exportPackage.reviewCaseId(),
+                exportPackage.reviewItemIds(),
+                job.boundEventIds(),
+                job.jobNo()
+        );
+        return new ReviewEvidenceAuditEntry(
+                exportPackage.reviewCaseId(),
+                null,
+                "export_created",
+                job.jobNo(),
+                job.fileHash(),
+                job.operatorUserId(),
+                job.reason(),
+                exportPackage.evidenceUris(),
+                job.boundEventIds(),
+                job.createdAt(),
+                immutableNonNullMap(metadata)
+        );
+    }
+
+    private static List<ReviewEvidenceAuditEntry> withAuditHashChain(List<ReviewEvidenceAuditEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return List.of();
+        }
+        List<ReviewEvidenceAuditEntry> chained = new ArrayList<>();
+        String previousHash = "GENESIS";
+        for (ReviewEvidenceAuditEntry entry : entries) {
+            Map<String, Object> metadata = new LinkedHashMap<>(entry.metadata() == null ? Map.of() : entry.metadata());
+            metadata.put("previousHash", previousHash);
+            String entryHash = sha256Token(
+                    entry.reviewCaseId(),
+                    entry.reviewItemId(),
+                    entry.actionType(),
+                    entry.jobNo(),
+                    entry.fileHash(),
+                    entry.operatorUserId(),
+                    entry.actionNote(),
+                    entry.evidenceUris(),
+                    entry.boundEventIds(),
+                    entry.happenedAt(),
+                    previousHash
+            );
+            metadata.put("entryHash", entryHash);
+            previousHash = entryHash;
+            chained.add(new ReviewEvidenceAuditEntry(
+                    entry.reviewCaseId(),
+                    entry.reviewItemId(),
+                    entry.actionType(),
+                    entry.jobNo(),
+                    entry.fileHash(),
+                    entry.operatorUserId(),
+                    entry.actionNote(),
+                    entry.evidenceUris(),
+                    entry.boundEventIds(),
+                    entry.happenedAt(),
+                    immutableNonNullMap(metadata)
+            ));
+        }
+        return List.copyOf(chained);
+    }
+
+    private static ReviewEvidenceAuditEntry enrichDownloadAuditEntry(ReviewEvidenceAuditEntry entry,
+                                                                     ReviewEvidenceExportJob job) {
+        if (entry == null || job == null) {
+            return entry;
+        }
+        ReviewEvidenceExportPackage exportPackage = job.exportPackage();
+        Map<String, Object> metadata = new LinkedHashMap<>(entry.metadata() == null ? Map.of() : entry.metadata());
+        putAuditReverseLookupMetadata(
+                metadata,
+                exportPackage.reviewCaseId(),
+                exportPackage.reviewItemIds(),
+                job.boundEventIds(),
+                job.jobNo()
+        );
+        return new ReviewEvidenceAuditEntry(
+                entry.reviewCaseId() == null ? exportPackage.reviewCaseId() : entry.reviewCaseId(),
+                entry.reviewItemId(),
+                entry.actionType(),
+                firstText(entry.jobNo(), job.jobNo()),
+                firstText(entry.fileHash(), job.fileHash()),
+                entry.operatorUserId(),
+                entry.actionNote(),
+                entry.evidenceUris() == null || entry.evidenceUris().isEmpty()
+                        ? exportPackage.evidenceUris()
+                        : entry.evidenceUris(),
+                entry.boundEventIds() == null || entry.boundEventIds().isEmpty()
+                        ? job.boundEventIds()
+                        : entry.boundEventIds(),
+                entry.happenedAt(),
+                immutableNonNullMap(metadata)
+        );
+    }
+
+    private ReviewEvidenceAuditEntry downloadAuditEntry(Long reviewCaseId, ReviewCaseTimelineItem timelineItem) {
+        Map<String, Object> note = parseAuditNote(timelineItem.actionNote());
+        String jobNo = toText(note.get("jobNo"));
+        Optional<ReviewEvidenceExportJob> exportJob = hasText(jobNo)
+                ? reviewItemStore.findExportJobByNo(jobNo)
+                : Optional.empty();
+        Map<String, Object> metadata = new LinkedHashMap<>(note);
+        exportJob.ifPresent(job -> putAuditReverseLookupMetadata(
+                metadata,
+                job.exportPackage().reviewCaseId(),
+                job.exportPackage().reviewItemIds(),
+                job.boundEventIds(),
+                job.jobNo()
+        ));
+        return new ReviewEvidenceAuditEntry(
+                exportJob.map(job -> job.exportPackage().reviewCaseId()).orElse(reviewCaseId),
+                timelineItem.reviewItemId(),
+                "export_downloaded",
+                jobNo,
+                firstText(note.get("fileHash"), exportJob.map(ReviewEvidenceExportJob::fileHash).orElse(null)),
+                toLong(note.get("operatorUserId")),
+                toText(note.get("reason")),
+                exportJob
+                        .map(job -> job.exportPackage().evidenceUris())
+                        .orElse(List.of()),
+                exportJob
+                        .map(ReviewEvidenceExportJob::boundEventIds)
+                        .orElse(List.of()),
+                timelineItem.happenedAt(),
+                immutableNonNullMap(metadata)
+        );
+    }
+
+    private static void putAuditReverseLookupMetadata(Map<String, Object> metadata,
+                                                      Long reviewCaseId,
+                                                      List<Long> reviewItemIds,
+                                                      List<Long> eventIds,
+                                                      String exportJobNo) {
+        metadata.put("reviewCaseId", reviewCaseId);
+        metadata.put("reviewItemIds", reviewItemIds == null ? List.of() : List.copyOf(reviewItemIds));
+        metadata.put("eventIds", eventIds == null ? List.of() : List.copyOf(eventIds));
+        metadata.put("exportJobNo", exportJobNo);
+    }
+
+    private static Map<String, Object> parseAuditNote(String note) {
+        if (!hasText(note)) {
+            return Map.of();
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (String part : note.split(";")) {
+            String[] pair = part.trim().split("=", 2);
+            if (pair.length == 2 && hasText(pair[0])) {
+                values.put(pair[0].trim(), pair[1].trim());
+            }
+        }
+        return immutableNonNullMap(values);
+    }
+
+    private static int normalizePatrolAttempts(Integer maxAttempts) {
+        if (maxAttempts == null || maxAttempts <= 0) {
+            return 1;
+        }
+        return Math.min(maxAttempts, 5);
+    }
+
+    private static int normalizeRuntimeOutboxLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_RUNTIME_OUTBOX_LIMIT;
+        }
+        return Math.min(limit, MAX_RUNTIME_OUTBOX_LIMIT);
+    }
+
+    private static List<String> runtimePatrolRecommendedActions(List<String> alerts,
+                                                                ReviewRuntimeHealthReport healthReport) {
+        List<String> actions = new ArrayList<>();
+        for (String alert : alerts == null ? List.<String>of() : alerts) {
+            String action = runtimePatrolActionForAlert(alert);
+            if (hasText(action)) {
+                actions.add(action);
+            }
+        }
+        if (healthReport != null && healthReport.repairableCount() != null && healthReport.repairableCount() > 0) {
+            actions.add("rerun_runtime_reconciliation");
+        }
+        return actions;
+    }
+
+    private static Map<String, Object> runtimePatrolAlertActions(List<String> alerts) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (String alert : alerts == null ? List.<String>of() : alerts) {
+            String action = runtimePatrolActionForAlert(alert);
+            if (hasText(action)) {
+                values.put(alert, action);
+            }
+        }
+        return values;
+    }
+
+    private static String runtimePatrolActionForAlert(String alert) {
+        if ("record_evidence_gap".equals(alert)) {
+            return "backfill_record_evidence";
+        }
+        if (("record_evidence_gap:" + RECORD_GAP_VIDEO_URL_NOT_CONFIGURED).equals(alert)) {
+            return "configure_video_record_query_url";
+        }
+        if ("record_storage_drift".equals(alert)) {
+            return "inspect_record_storage_drift";
+        }
+        if (("record_storage_drift:" + RECORD_GAP_FILE_MISSING).equals(alert)) {
+            return "review_missing_record_file";
+        }
+        if (("record_storage_drift:" + RECORD_GAP_FILE_EXPIRED).equals(alert)) {
+            return "verify_record_retention_cleanup";
+        }
+        if (("record_storage_drift:" + RECORD_GAP_DISK_FULL).equals(alert)) {
+            return "free_or_expand_recording_disk";
+        }
+        if (("record_storage_drift:" + RECORD_GAP_CACHE_FLUSH_FAILED).equals(alert)) {
+            return "inspect_record_cache_flush";
+        }
+        if ("semantic_index_backlog".equals(alert)) {
+            return "process_pending_semantic_index";
+        }
+        if ("evidence_export_failed".equals(alert)) {
+            return "retry_evidence_export";
+        }
+        return null;
+    }
+
+    private boolean hasRecordEvidenceGap(ReviewItemAggregate item) {
+        return item != null
+                && (RECORD_EVIDENCE_MISSING.equals(item.recordEvidenceStatus())
+                || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus()));
+    }
+
+    private Map<String, Integer> recordGapReasons(List<ReviewItemAggregate> items) {
+        Map<String, Integer> reasons = new LinkedHashMap<>();
+        for (ReviewItemAggregate item : items == null ? List.<ReviewItemAggregate>of() : items) {
+            if (!hasRecordEvidenceGap(item)) {
+                continue;
+            }
+            for (String reason : recordGapReasons(item)) {
+                reasons.merge(reason, 1, Integer::sum);
+            }
+        }
+        return reasons;
+    }
+
+    private static Set<String> recordGapReasons(ReviewItemAggregate item) {
+        Set<String> reasons = new LinkedHashSet<>();
+        reasons.add(recordGapReason(item));
+        reasons.addAll(recordStorageGapReasons(item));
+        return reasons;
+    }
+
+    private static String recordGapReason(ReviewItemAggregate item) {
+        if (item == null) {
+            return RECORD_GAP_RECORD_NOT_FOUND;
+        }
+        String message = normalizeRecordGapReason(item.recordEvidenceMessage());
+        if (hasText(message)) {
+            return message;
+        }
+        if (RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus())) {
+            return RECORD_GAP_MISSING_LOOKUP_FIELDS;
+        }
+        return RECORD_GAP_RECORD_NOT_FOUND;
+    }
+
+    private static String normalizeRecordGapReason(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case RECORD_GAP_VIDEO_URL_NOT_CONFIGURED,
+                 RECORD_GAP_MISSING_LOOKUP_FIELDS,
+                 RECORD_GAP_RECORD_NOT_FOUND,
+                 "service_unavailable",
+                 "video_service_unavailable",
+                 "permission_denied",
+                 "retention_expired",
+                 "stream_interrupted",
+                 "recording_disabled",
+                 "record_space_not_found",
+                 "probe_failed",
+                 RECORD_GAP_FILE_MISSING,
+                 RECORD_GAP_FILE_EXPIRED,
+                 RECORD_GAP_DISK_FULL,
+                 RECORD_GAP_CACHE_FLUSH_FAILED -> normalized;
+            default -> RECORD_GAP_RECORD_NOT_FOUND;
+        };
+    }
+
+    private static Set<String> recordStorageGapReasons(ReviewItemAggregate item) {
+        if (item == null || item.reviewData() == null) {
+            return Set.of();
+        }
+        Map<String, Object> storage = toStringObjectMap(item.reviewData().get("recordStorage"));
+        Map<String, Object> gapReasons = toStringObjectMap(storage.get("gapReasons"));
+        if (gapReasons.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> reasons = new LinkedHashSet<>();
+        for (String reason : gapReasons.keySet()) {
+            String normalized = normalizeRecordGapReason(reason);
+            if (hasText(normalized)) {
+                reasons.add(normalized);
+            }
+        }
+        return reasons;
+    }
+
+    private static boolean isRecordStorageDriftReason(String reason) {
+        return switch (reason) {
+            case RECORD_GAP_FILE_MISSING,
+                 RECORD_GAP_FILE_EXPIRED,
+                 RECORD_GAP_DISK_FULL,
+                 RECORD_GAP_CACHE_FLUSH_FAILED -> true;
+            default -> false;
+        };
+    }
+
+    private static ReviewDataConsistency reviewDataConsistency(ReviewItemAggregate item) {
+        if (item == null) {
+            return new ReviewDataConsistency(Map.of(), true, true);
+        }
+        Map<String, Object> current = item.reviewData() == null
+                ? Map.of()
+                : item.reviewData();
+        Map<String, Object> normalized = new LinkedHashMap<>(current);
+
+        List<String> labels = toStringList(normalized.get("labels"), item.objectLabel());
+        List<String> zones = toStringList(normalized.get("zones"), item.zoneCode());
+        List<String> objectIds = toStringList(normalized.get("objectIds"), null);
+        List<Double> bbox = toDoubleList(normalized.get("bbox"));
+        Double confidence = toDouble(normalized.get("confidence"));
+
+        boolean schemaDrift = !Objects.equals(toInteger(normalized.get("reviewDataVersion")), REVIEW_DATA_VERSION)
+                || !normalized.containsKey("labels")
+                || !normalized.containsKey("zones")
+                || !normalized.containsKey("objectIds")
+                || toMapList(normalized.get("objects")).isEmpty()
+                || toMapList(normalized.get("detections")).isEmpty();
+        normalized.put("reviewDataVersion", REVIEW_DATA_VERSION);
+        normalized.put("labels", labels);
+        normalized.put("zones", zones);
+        normalized.put("objectIds", objectIds);
+        if (toMapList(normalized.get("objects")).isEmpty()) {
+            normalized.put("objects", buildReviewObjects(labels, objectIds, confidence, bbox));
+        }
+        if (toMapList(normalized.get("detections")).isEmpty()) {
+            normalized.put("detections", List.of(buildRuntimeRepairDetection(item, labels, zones, objectIds, confidence, bbox)));
+        }
+
+        Map<String, Object> segment = normalizeReviewSegmentDoubleWrite(item, normalized.get("reviewSegment"), objectIds, zones);
+        boolean segmentDoubleWriteDrift = reviewSegmentDoubleWriteDrift(item, toStringObjectMap(normalized.get("reviewSegment")), segment);
+        normalized.put("reviewSegment", segment);
+        return new ReviewDataConsistency(Map.copyOf(normalized), schemaDrift, segmentDoubleWriteDrift);
+    }
+
+    private static Map<String, Object> buildRuntimeRepairDetection(ReviewItemAggregate item,
+                                                                   List<String> labels,
+                                                                   List<String> zones,
+                                                                   List<String> objectIds,
+                                                                   Double confidence,
+                                                                   List<Double> bbox) {
+        Map<String, Object> detection = new LinkedHashMap<>();
+        detection.put("sourceAlertId", firstSourceAlertId(item));
+        detection.put("alertTime", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
+        detection.put("cameraId", item.cameraId());
+        detection.put("zoneCode", item.zoneCode());
+        detection.put("ruleCode", item.ruleCode());
+        detection.put("objectLabel", item.objectLabel());
+        detection.put("labels", labels);
+        detection.put("zones", zones);
+        detection.put("objectIds", objectIds);
+        detection.put("confidence", confidence);
+        detection.put("bbox", bbox);
+        detection.put("source", "runtime_repair");
+        return immutableNonNullMap(detection);
+    }
+
+    private static Map<String, Object> normalizeReviewSegmentDoubleWrite(ReviewItemAggregate item,
+                                                                         Object currentSegment,
+                                                                         List<String> objectIds,
+                                                                         List<String> zones) {
+        Map<String, Object> segment = new LinkedHashMap<>(toStringObjectMap(currentSegment));
+        segment.put("segmentId", firstText(segment.get("segmentId"), buildReviewSegmentId(item.cameraId(), item.firstAlertTime())));
+        segment.put("cameraId", item.cameraId());
+        segment.put("severity", firstText(segment.get("severity"), reviewSegmentSeverity(item.sourceAlertType())));
+        segment.put("status", firstText(segment.get("status"), "active"));
+        segment.put("startTime", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
+        segment.put("endTime", item.lastAlertTime() == null ? null : item.lastAlertTime().toString());
+        segment.put("objectIds", objectIds.isEmpty()
+                ? toStringList(segment.get("objectIds"), null)
+                : objectIds);
+        segment.put("zones", zones.isEmpty()
+                ? toStringList(segment.get("zones"), null)
+                : zones);
+        segment.put("sourceAlertIds", item.sourceAlertIds() == null
+                ? List.of()
+                : List.copyOf(item.sourceAlertIds()));
+        if (toMapList(segment.get("events")).isEmpty()) {
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("event", "runtime_repair");
+            event.put("happenedAt", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
+            event.put("sourceAlertId", firstSourceAlertId(item));
+            event.put("ruleCode", item.ruleCode());
+            event.put("objectIds", segment.get("objectIds"));
+            event.put("labels", toStringList(null, item.objectLabel()));
+            event.put("zones", segment.get("zones"));
+            segment.put("events", List.of(immutableNonNullMap(event)));
+        }
+        return immutableNonNullMap(segment);
+    }
+
+    private static boolean reviewSegmentDoubleWriteDrift(ReviewItemAggregate item,
+                                                         Map<String, Object> current,
+                                                         Map<String, Object> normalized) {
+        if (current == null || current.isEmpty()) {
+            return true;
+        }
+        return !Objects.equals(firstText(current.get("cameraId"), null), normalized.get("cameraId"))
+                || !Objects.equals(firstText(current.get("startTime"), null), normalized.get("startTime"))
+                || !Objects.equals(firstText(current.get("endTime"), null), normalized.get("endTime"))
+                || !Objects.equals(toStringList(current.get("objectIds"), null), normalized.get("objectIds"))
+                || !Objects.equals(toStringList(current.get("zones"), null), normalized.get("zones"))
+                || !Objects.equals(toStringList(current.get("sourceAlertIds"), null), normalized.get("sourceAlertIds"))
+                || !Objects.equals(firstText(current.get("status"), null), normalized.get("status"))
+                || !Objects.equals(firstText(current.get("severity"), null), normalized.get("severity"))
+                || !Objects.equals(firstText(current.get("segmentId"), null), normalized.get("segmentId"))
+                || toMapList(current.get("events")).isEmpty()
+                || item.firstAlertTime() == null;
+    }
+
+    private static boolean matchesReplayRule(ReviewItemAggregate item, ReviewRuleView rule) {
+        return matchesText(rule.sourceSystem(), item.sourceSystem())
+                && matchesText(rule.cameraId(), item.cameraId())
+                && matchesText(rule.zoneCode(), item.zoneCode())
+                && matchesText(rule.objectLabel(), item.objectLabel())
+                && matchesReplayStay(rule.minStaySeconds(), item)
+                && matchesReplayInertia(rule.inertiaFrames(), item);
+    }
+
+    private static boolean matchesReplayRule(ReviewItemAggregate item, ReviewRuleReplayCommand command) {
+        return matchesText(command.sourceSystem(), item.sourceSystem())
+                && matchesText(command.cameraId(), item.cameraId())
+                && matchesText(command.zoneCode(), item.zoneCode())
+                && matchesText(command.objectLabel(), item.objectLabel())
+                && matchesReplayStay(command.minStaySeconds(), item);
+    }
+
+    private static boolean matchesReplayStay(Integer minStaySeconds, ReviewItemAggregate item) {
+        if (minStaySeconds == null || minStaySeconds <= 0) {
+            return true;
+        }
+        Integer staySeconds = inferredStaySeconds(item);
+        return staySeconds != null && staySeconds >= minStaySeconds;
+    }
+
+    private static boolean matchesReplayInertia(Integer inertiaFrames, ReviewItemAggregate item) {
+        int requiredFrames = normalizeZoneInertiaFrames(inertiaFrames);
+        if (requiredFrames <= 1) {
+            return true;
+        }
+        Integer observedFrames = inferredConsecutiveZoneFrames(item);
+        return observedFrames != null && observedFrames >= requiredFrames;
+    }
+
+    private static List<Double> bottomCenterPoint(List<Double> bbox) {
+        if (bbox == null || bbox.size() < 4) {
+            return List.of();
+        }
+        Double x1 = bbox.get(0);
+        Double y2 = bbox.get(3);
+        Double x2 = bbox.get(2);
+        if (x1 == null || x2 == null || y2 == null) {
+            return List.of();
+        }
+        return List.of((x1 + x2) / 2D, y2);
+    }
+
+    private static boolean pointInPolygon(List<Double> point, List<List<Double>> polygon) {
+        if (point == null || point.size() < 2 || polygon == null || polygon.size() < 3) {
+            return false;
+        }
+        double x = point.get(0);
+        double y = point.get(1);
+        boolean inside = false;
+        for (int i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+            List<Double> current = polygon.get(i);
+            List<Double> previous = polygon.get(j);
+            if (current == null || previous == null || current.size() < 2 || previous.size() < 2) {
+                continue;
+            }
+            double xi = current.get(0);
+            double yi = current.get(1);
+            double xj = previous.get(0);
+            double yj = previous.get(1);
+            boolean intersects = ((yi > y) != (yj > y))
+                    && x < (xj - xi) * (y - yi) / (yj - yi) + xi;
+            if (intersects) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    private static Integer inferredStaySeconds(ReviewItemAggregate item) {
+        Map<String, Object> reviewData = item.reviewData() == null ? Map.of() : item.reviewData();
+        Integer staySeconds = toInteger(reviewData.get("staySeconds"));
+        if (staySeconds != null) {
+            return staySeconds;
+        }
+        for (Map<String, Object> detection : toMapList(reviewData.get("detections"))) {
+            staySeconds = toInteger(detection.get("staySeconds"));
+            if (staySeconds != null) {
+                return staySeconds;
+            }
+        }
+        return null;
+    }
+
+    private Optional<ReviewRuleView> matchingRuleForGeometry(ReviewRuleGeometryCommand command) {
+        return reviewRuleStore.listAll().stream()
+                .filter(rule -> Objects.equals(command.ruleCode(), rule.ruleCode()))
+                .filter(rule -> matchesText(rule.cameraId(), command.cameraId()))
+                .filter(rule -> matchesText(rule.zoneCode(), command.zoneCode()))
+                .filter(rule -> matchesText(rule.objectLabel(), command.objectLabel()))
+                .findFirst();
+    }
+
+    private static Integer inferredConsecutiveZoneFrames(ReviewItemAggregate item) {
+        Map<String, Object> reviewData = item.reviewData() == null ? Map.of() : item.reviewData();
+        Integer frames = toInteger(reviewData.get("consecutiveZoneFrames"));
+        if (frames != null) {
+            return frames;
+        }
+        Map<String, Object> motion = toStringObjectMap(reviewData.get("motion"));
+        frames = toInteger(firstNonNull(motion.get("consecutiveZoneFrames"), motion.get("consecutive_zone_frames")));
+        if (frames != null) {
+            return frames;
+        }
+        for (Map<String, Object> detection : toMapList(reviewData.get("detections"))) {
+            frames = toInteger(firstNonNull(detection.get("consecutiveZoneFrames"), detection.get("consecutive_zone_frames")));
+            if (frames != null) {
+                return frames;
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, Object> ruleMatchTrace(ReviewRuleGeometryCommand command,
+                                                      List<Double> bottomCenter,
+                                                      boolean inside,
+                                                      Integer minStaySeconds,
+                                                      Integer zoneInertiaFrames,
+                                                      Integer observedConsecutiveFrames,
+                                                      boolean inertiaSatisfied,
+                                                      Integer loiteringSeconds,
+                                                      Integer observedStaySeconds,
+                                                      boolean loiteringSatisfied) {
+        Map<String, Object> trace = new LinkedHashMap<>();
+        trace.put("ruleCode", command.ruleCode());
+        trace.put("cameraId", command.cameraId());
+        trace.put("zoneCode", command.zoneCode());
+        trace.put("objectLabel", command.objectLabel());
+        trace.put("bbox", command.bbox());
+        trace.put("bottomCenter", bottomCenter);
+        trace.put("inside", inside);
+        trace.put("minStaySeconds", minStaySeconds);
+        trace.put("threshold", minStaySeconds);
+        trace.put("zoneInertiaFrames", zoneInertiaFrames);
+        trace.put("observedConsecutiveFrames", observedConsecutiveFrames);
+        trace.put("inertiaSatisfied", inertiaSatisfied);
+        trace.put("loiteringSeconds", loiteringSeconds);
+        trace.put("observedStaySeconds", observedStaySeconds);
+        trace.put("loiteringSatisfied", loiteringSatisfied);
+        trace.put("qualifiedInside", inside && inertiaSatisfied && loiteringSatisfied);
+        trace.put("ruleVersion", "shadow");
+        trace.put("geometryType", "bottom_center");
+        trace.put("semanticEngine", "yfeieye-rule-geometry-v1");
+        trace.put("pointStrategy", "bottom_center");
+        trace.put("coordinateSpace", "image");
+        trace.put("operatorUserId", command.operatorUserId());
+        return immutableNonNullMap(trace);
+    }
+
+    private static Map<String, Object> replayScope(ReviewRuleReplayCommand command) {
+        Map<String, Object> scope = new LinkedHashMap<>();
+        scope.put("ruleCode", command.ruleCode());
+        scope.put("sourceSystem", command.sourceSystem());
+        scope.put("cameraId", command.cameraId());
+        scope.put("zoneCode", command.zoneCode());
+        scope.put("objectLabel", command.objectLabel());
+        scope.put("minStaySeconds", command.minStaySeconds());
+        scope.put("beginTime", command.beginTime() == null ? null : command.beginTime().toString());
+        scope.put("endTime", command.endTime() == null ? null : command.endTime().toString());
+        scope.put("operatorUserId", command.operatorUserId());
+        return immutableNonNullMap(scope);
+    }
+
+    private static Map<String, Object> ruleVersionFromRule(ReviewRuleView rule) {
+        Map<String, Object> version = new LinkedHashMap<>();
+        version.put("ruleId", rule.id());
+        version.put("ruleCode", rule.ruleCode());
+        version.put("sourceSystem", rule.sourceSystem());
+        version.put("cameraId", rule.cameraId());
+        version.put("zoneCode", rule.zoneCode());
+        version.put("objectLabel", rule.objectLabel());
+        version.put("minStaySeconds", rule.minStaySeconds());
+        version.put("inertiaFrames", normalizeZoneInertiaFrames(rule.inertiaFrames()));
+        version.put("loiteringSeconds", firstNonNull(rule.loiteringSeconds(), rule.minStaySeconds()));
+        version.put("semanticEngine", "yfeieye-rule-geometry-v1");
+        version.put("source", "saved_rule");
+        return immutableNonNullMap(version);
+    }
+
+    private static Map<String, Object> ruleVersionFromReplayCommand(ReviewRuleReplayCommand command) {
+        Map<String, Object> version = new LinkedHashMap<>();
+        version.put("ruleCode", command.ruleCode());
+        version.put("sourceSystem", command.sourceSystem());
+        version.put("cameraId", command.cameraId());
+        version.put("zoneCode", command.zoneCode());
+        version.put("objectLabel", command.objectLabel());
+        version.put("minStaySeconds", command.minStaySeconds());
+        version.put("inertiaFrames", 1);
+        version.put("loiteringSeconds", command.minStaySeconds());
+        version.put("semanticEngine", "yfeieye-rule-geometry-v1");
+        version.put("source", "replay_command");
+        return immutableNonNullMap(version);
+    }
+
+    private static Integer normalizeZoneInertiaFrames(Integer inertiaFrames) {
+        if (inertiaFrames == null || inertiaFrames <= 0) {
+            return 1;
+        }
+        return inertiaFrames;
+    }
+
+    private static Map<String, Object> buildReplayReport(List<ReviewItemAggregate> evaluatedItems,
+                                                         int matchBeforeCount,
+                                                         int matchAfterCount,
+                                                         int falsePositiveBeforeCount,
+                                                         int matchedFalsePositiveAfterCount,
+                                                         List<String> recommendedActions) {
+        return buildReplayReport(evaluatedItems, matchBeforeCount, matchAfterCount, falsePositiveBeforeCount,
+                matchedFalsePositiveAfterCount, recommendedActions, Map.of());
+    }
+
+    private static Map<String, Object> buildReplayReport(List<ReviewItemAggregate> evaluatedItems,
+                                                         int matchBeforeCount,
+                                                         int matchAfterCount,
+                                                         int falsePositiveBeforeCount,
+                                                         int matchedFalsePositiveAfterCount,
+                                                         List<String> recommendedActions,
+                                                         Map<String, Object> ruleVersion) {
+        int hitReduction = Math.max(0, matchBeforeCount - matchAfterCount);
+        int falsePositiveReduction = Math.max(0, falsePositiveBeforeCount - matchedFalsePositiveAfterCount);
+        int possibleMissedCount = matchAfterCount == 0
+                ? evaluatedItems.size()
+                : Math.max(0, matchBeforeCount - matchAfterCount);
+        boolean recallRisk = possibleMissedCount > 0 && recommendedActions.contains("check_recall_risk");
+        boolean shouldApply = recommendedActions.contains("safe_to_apply") && !recallRisk;
+
+        Map<String, Object> impactScope = new LinkedHashMap<>();
+        impactScope.put("cameraIds", distinctValues(evaluatedItems.stream().map(ReviewItemAggregate::cameraId).toList()));
+        impactScope.put("zoneCodes", distinctValues(evaluatedItems.stream().map(ReviewItemAggregate::zoneCode).toList()));
+        impactScope.put("objectLabels", distinctValues(evaluatedItems.stream().map(ReviewItemAggregate::objectLabel).toList()));
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("shouldApply", shouldApply);
+        report.put("decision", shouldApply ? "apply" : "review_before_apply");
+        report.put("hitReduction", hitReduction);
+        report.put("matchBeforeCount", matchBeforeCount);
+        report.put("matchAfterCount", matchAfterCount);
+        report.put("falsePositiveReduction", falsePositiveReduction);
+        report.put("possibleMissedCount", possibleMissedCount);
+        report.put("impactScope", impactScope);
+        report.put("ruleVersion", immutableNonNullMap(ruleVersion));
+        Map<String, Object> geometrySemantics = new LinkedHashMap<>();
+        geometrySemantics.put("objectPoint", "bottom_center");
+        geometrySemantics.put("bboxOrder", "x1_y1_x2_y2");
+        geometrySemantics.put("zoneInertiaFrames", ruleVersion.getOrDefault("inertiaFrames", 1));
+        geometrySemantics.put("loiteringSeconds", ruleVersion.get("loiteringSeconds"));
+        geometrySemantics.put("singleSourceRuleVersion", !ruleVersion.isEmpty());
+        geometrySemantics.put("sharedBy", List.of("rule_editor", "backend_replay", "evidence_verifier"));
+        report.put("geometrySemantics", immutableNonNullMap(geometrySemantics));
+        report.put("ruleLifecyclePolicy", Map.of(
+                "directApplyAllowed", false,
+                "shadowEvaluationRequired", true,
+                "approvalRequired", true,
+                "versionedRollbackRequired", true,
+                "rollbackSupported", true
+        ));
+        return immutableNonNullMap(report);
+    }
+
+    private static List<String> distinctValues(List<String> values) {
+        Set<String> distinct = new LinkedHashSet<>();
+        for (String value : values) {
+            if (hasText(value)) {
+                distinct.add(value);
+            }
+        }
+        return List.copyOf(distinct);
+    }
+
+    private List<ReviewDetailStreamItem> buildDetectionDetailStream(ReviewItemAggregate item) {
+        Map<String, Object> reviewData = item.reviewData() == null ? Map.of() : item.reviewData();
+        List<Map<String, Object>> detections = toMapList(reviewData.get("detections"));
+        List<ReviewDetailStreamItem> stream = new ArrayList<>();
+        for (Map<String, Object> detection : detections) {
+            LocalDateTime happenedAt = firstNonNull(toLocalDateTime(detection.get("alertTime")), item.firstAlertTime());
+            List<String> labels = toStringList(detection.get("labels"), firstText(detection.get("objectLabel"), item.objectLabel()));
+            List<String> objectIds = toStringList(detection.get("objectIds"), null);
+            List<Double> bbox = toDoubleList(detection.get("bbox"));
+            if (bbox.isEmpty()) {
+                bbox = toDoubleList(reviewData.get("bbox"));
+            }
+            int count = Math.max(Math.max(labels.size(), objectIds.size()), 1);
+            for (int index = 0; index < count; index++) {
+                String label = index < labels.size() ? labels.get(index) : firstText(detection.get("objectLabel"), item.objectLabel());
+                String objectId = index < objectIds.size() ? objectIds.get(index) : null;
+                stream.add(new ReviewDetailStreamItem(
+                        item.id(),
+                        firstText(detection.get("sourceAlertId"), firstSourceAlertId(item)),
+                        firstText(detection.get("cameraId"), item.cameraId()),
+                        firstText(detection.get("zoneCode"), item.zoneCode()),
+                        objectId,
+                        label,
+                        "detected",
+                        happenedAt,
+                        happenedAt,
+                        bbox,
+                        List.of(),
+                        null,
+                        firstText(detection.get("recordUri"), null),
+                        detection
+                ));
+            }
+        }
+        return List.copyOf(stream);
+    }
+
+    private List<ReviewDetailStreamItem> buildMotionDetailStream(ReviewItemAggregate item) {
+        Map<String, Object> reviewData = item.reviewData() == null ? Map.of() : item.reviewData();
+        Map<String, Object> motion = toStringObjectMap(reviewData.get("motion"));
+        List<ReviewDetailStreamItem> stream = new ArrayList<>();
+        for (Map<String, Object> point : toMapList(motion.get("path"))) {
+            LocalDateTime happenedAt = firstNonNull(
+                    toLocalDateTime(firstNonNull(point.get("timestamp"), point.get("time"), point.get("happenedAt"))),
+                    item.firstAlertTime()
+            );
+            List<Double> bbox = toDoubleList(point.get("bbox"));
+            if (bbox.isEmpty()) {
+                bbox = toDoubleList(reviewData.get("bbox"));
+            }
+            stream.add(new ReviewDetailStreamItem(
+                    item.id(),
+                    firstSourceAlertId(item),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    firstText(firstNonNull(point.get("objectId"), point.get("object_id")), null),
+                    firstText(point.get("label"), item.objectLabel()),
+                    firstText(point.get("event"), "motion"),
+                    happenedAt,
+                    happenedAt,
+                    bbox,
+                    List.of(point),
+                    null,
+                    null,
+                    point
+            ));
+        }
+        return List.copyOf(stream);
+    }
+
+    private List<ReviewDetailStreamItem> buildLifecycleDetailStream(ReviewItemAggregate item) {
+        Map<String, Object> reviewData = item.reviewData() == null ? Map.of() : item.reviewData();
+        Map<String, Object> lifecycle = toStringObjectMap(reviewData.get("lifecycle"));
+        List<ReviewDetailStreamItem> stream = new ArrayList<>();
+        for (Map<String, Object> event : toMapList(lifecycle.get("events"))) {
+            LocalDateTime happenedAt = firstNonNull(
+                    toLocalDateTime(event.get("happenedAt")),
+                    item.firstAlertTime()
+            );
+            List<String> labels = toStringList(event.get("labels"), item.objectLabel());
+            List<String> objectIds = toStringList(event.get("objectIds"), null);
+            List<Double> bbox = toDoubleList(event.get("bbox"));
+            if (bbox.isEmpty()) {
+                bbox = toDoubleList(reviewData.get("bbox"));
+            }
+            int count = Math.max(Math.max(labels.size(), objectIds.size()), 1);
+            for (int index = 0; index < count; index++) {
+                stream.add(new ReviewDetailStreamItem(
+                        item.id(),
+                        firstSourceAlertId(item),
+                        item.cameraId(),
+                        item.zoneCode(),
+                        index < objectIds.size() ? objectIds.get(index) : null,
+                        index < labels.size() ? labels.get(index) : item.objectLabel(),
+                        firstText(event.get("state"), firstText(event.get("event"), "active")),
+                        happenedAt,
+                        happenedAt,
+                        bbox,
+                        List.of(event),
+                        hasText(toText(event.get("recordUri"))) ? MATERIAL_RECORD : null,
+                        toText(event.get("recordUri")),
+                        event
+                ));
+            }
+        }
+        return List.copyOf(stream);
+    }
+
+    private ReviewQuery semanticTriggerFilters(ReviewSemanticTriggerCommand command) {
+        ReviewQuery filters = command.filters();
+        if (filters == null) {
+            return new ReviewQuery(null, command.cameraId(), null, null);
+        }
+        if (!hasText(command.cameraId()) || matchesText(command.cameraId(), filters.cameraId())) {
+            return filters;
+        }
+        return new ReviewQuery(
+                filters.reviewStatus(),
+                command.cameraId(),
+                filters.zoneCode(),
+                filters.objectLabel(),
+                filters.recordEvidenceStatus(),
+                filters.converted(),
+                filters.inReviewCase(),
+                filters.reviewerUserId(),
+                filters.beginTime(),
+                filters.endTime()
+        );
+    }
+
+    private static boolean matchesSemanticTriggerThreshold(ReviewSemanticHit hit, Double threshold) {
+        if (threshold == null || threshold <= 0D) {
+            return hit.score() > 0D;
+        }
+        if (threshold <= 1D) {
+            return hit.score() > 0D;
+        }
+        return hit.score() >= threshold;
+    }
+
+    private static Map<String, Object> buildSemanticTriggerAction(ReviewSemanticTriggerCommand command,
+                                                                  ReviewSemanticHit hit,
+                                                                  String action,
+                                                                  LocalDateTime evaluatedAt) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("action", action);
+        payload.put("triggerName", command.triggerName());
+        payload.put("triggerType", command.triggerType());
+        payload.put("data", command.data());
+        payload.put("reviewItemId", hit.item().id());
+        payload.put("cameraId", hit.item().cameraId());
+        payload.put("score", hit.score());
+        payload.put("matchedTerms", hit.matchedTerms());
+        payload.put("evaluatedAt", evaluatedAt.toString());
+        if ("sub_label".equals(action)) {
+            payload.put("value", command.triggerName());
+        }
+        if ("attribute".equals(action)) {
+            payload.put("key", command.triggerName());
+            payload.put("value", command.data());
+        }
+        return immutableNonNullMap(payload);
+    }
+
+    private static ReviewQuery reportQuery(ReviewReportCommand command) {
+        ReviewQuery query = command.query();
+        if (query == null) {
+            return new ReviewQuery(null, null, null, null, null, null, null, null,
+                    command.periodStart(), command.periodEnd());
+        }
+        return new ReviewQuery(
+                query.reviewStatus(),
+                query.cameraId(),
+                query.zoneCode(),
+                query.objectLabel(),
+                query.recordEvidenceStatus(),
+                query.converted(),
+                query.inReviewCase(),
+                query.reviewerUserId(),
+                query.beginTime() == null ? command.periodStart() : query.beginTime(),
+                query.endTime() == null ? command.periodEnd() : query.endTime()
+        );
+    }
+
+    private static void requireAcceptedRuleSuggestion(ReviewItemAggregate item) {
+        String lifecycleStatus = item.ruleSuggestion() == null
+                ? null
+                : toText(item.ruleSuggestion().get("lifecycleStatus"));
+        if (RULE_SUGGESTION_ACCEPTED.equals(item.ruleSuggestionStatus())
+                || RULE_SUGGESTION_ACCEPTED.equals(lifecycleStatus)) {
+            return;
+        }
+        throw new IllegalStateException("rule suggestion must be accepted before apply");
+    }
+
+    private Map<String, Object> withRuleGovernanceEvidence(ReviewItemAggregate item,
+                                                           Map<String, Object> suggestion,
+                                                           String applyNote) {
+        Map<String, Object> updated = new LinkedHashMap<>(suggestion == null ? Map.of() : suggestion);
+        Map<String, Object> shadowEvaluation = toStringObjectMap(updated.get("shadowEvaluation"));
+        if (shadowEvaluation.isEmpty()) {
+            shadowEvaluation = buildRuleShadowEvaluation(item);
+            updated.put("shadowEvaluation", shadowEvaluation);
+        }
+        if (toStringObjectMap(updated.get("replayReport")).isEmpty()) {
+            updated.put("replayReport", buildRuleSuggestionReplayReport(item, shadowEvaluation));
+        }
+        if (hasText(applyNote)) {
+            updated.put("applyNote", applyNote);
+        }
+        return immutableNonNullMap(updated);
+    }
+
+    private Map<String, Object> buildRuleShadowEvaluation(ReviewItemAggregate item) {
+        List<ReviewItemAggregate> scopedItems = listWorkbench(new ReviewQuery(
+                null,
+                item.cameraId(),
+                item.zoneCode(),
+                item.objectLabel(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        )).stream()
+                .filter(candidate -> Objects.equals(candidate.ruleCode(), item.ruleCode()))
+                .filter(candidate -> sameRuleScope(candidate, item))
+                .toList();
+        long totalCount = scopedItems.size();
+        long falsePositiveCount = scopedItems.stream()
+                .filter(candidate -> STATUS_FALSE_POSITIVE.equals(candidate.reviewStatus()))
+                .count();
+        long estimatedSuppressedCount = falsePositiveCount;
+        long afterFalsePositiveCount = Math.max(0L, falsePositiveCount - estimatedSuppressedCount);
+        Map<String, Object> shadow = new LinkedHashMap<>();
+        shadow.put("evaluatedReviewItemCount", (int) totalCount);
+        shadow.put("estimatedSuppressedCount", (int) estimatedSuppressedCount);
+        shadow.put("beforeFalsePositiveRate", roundRate(falsePositiveCount, totalCount));
+        shadow.put("afterFalsePositiveRate", roundRate(afterFalsePositiveCount, totalCount));
+        shadow.put("scopeCameraId", item.cameraId());
+        shadow.put("scopeZoneCode", item.zoneCode());
+        shadow.put("scopeObjectLabel", item.objectLabel());
+        shadow.put("evaluatedAt", LocalDateTime.now().toString());
+        return immutableNonNullMap(shadow);
+    }
+
+    private Map<String, Object> buildRuleSuggestionReplayReport(ReviewItemAggregate item,
+                                                                Map<String, Object> shadowEvaluation) {
+        List<ReviewItemAggregate> scopedItems = listWorkbench(new ReviewQuery(
+                null,
+                item.cameraId(),
+                item.zoneCode(),
+                item.objectLabel(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        )).stream()
+                .filter(candidate -> Objects.equals(candidate.ruleCode(), item.ruleCode()))
+                .filter(candidate -> sameRuleScope(candidate, item))
+                .toList();
+        int falsePositiveCount = (int) scopedItems.stream()
+                .filter(candidate -> STATUS_FALSE_POSITIVE.equals(candidate.reviewStatus()))
+                .count();
+        List<String> recommendedActions = List.of("safe_to_apply", "check_recall_risk");
+        Map<String, Object> report = new LinkedHashMap<>(buildReplayReport(
+                scopedItems,
+                scopedItems.size(),
+                0,
+                falsePositiveCount,
+                0,
+                recommendedActions
+        ));
+        report.put("evaluatedReviewItemIds", scopedItems.stream().map(ReviewItemAggregate::id).toList());
+        report.put("evaluatedCount", scopedItems.size());
+        Map<String, Object> scope = new LinkedHashMap<>();
+        scope.put("sourceSystem", item.sourceSystem());
+        scope.put("ruleCode", item.ruleCode());
+        scope.put("cameraId", item.cameraId());
+        scope.put("zoneCode", item.zoneCode());
+        scope.put("objectLabel", item.objectLabel());
+        report.put("scope", immutableNonNullMap(scope));
+        report.put("recommendedActions", recommendedActions);
+        report.put("shadowEvaluation", shadowEvaluation);
+        report.put("replayedAt", LocalDateTime.now().toString());
+        return immutableNonNullMap(report);
+    }
+
+    private static boolean sameRuleScope(ReviewItemAggregate left, ReviewItemAggregate right) {
+        return Objects.equals(left.sourceSystem(), right.sourceSystem())
+                && Objects.equals(left.ruleCode(), right.ruleCode())
+                && Objects.equals(left.cameraId(), right.cameraId())
+                && Objects.equals(left.zoneCode(), right.zoneCode())
+                && Objects.equals(left.objectLabel(), right.objectLabel());
+    }
+
+    private void markUserReviewed(Long reviewItemId, Long reviewerUserId, LocalDateTime reviewedAt) {
+        if (reviewerUserId == null) {
+            return;
+        }
+        reviewItemStore.upsertUserReviewStatus(reviewItemId, reviewerUserId, true, reviewedAt);
+    }
+
+    private boolean matchesReviewerStatus(Long reviewerUserId, Long reviewItemId) {
+        return reviewerUserId == null || reviewItemStore.findUserReviewStatus(reviewItemId, reviewerUserId)
+                .map(ReviewUserStatusView::hasBeenReviewed)
+                .orElse(false);
+    }
+
+    private ReviewSemanticHit toSemanticHit(ReviewItemAggregate item, String document, List<String> terms) {
+        String lowerDocument = document.toLowerCase();
+        Set<String> matchedTerms = new LinkedHashSet<>();
+        double score = 0D;
+        for (String term : terms) {
+            if (lowerDocument.contains(term)) {
+                matchedTerms.add(term);
+                score += Math.max(1, term.length());
+            }
+        }
+        if (matchedTerms.isEmpty()) {
+            return new ReviewSemanticHit(item, 0D, List.of(), "");
+        }
+        return new ReviewSemanticHit(item, score, List.copyOf(matchedTerms), snippet(document, matchedTerms));
+    }
+
+    private ReviewItemSummaryContext toSummaryContext(ReviewItemAggregate item) {
+        return new ReviewItemSummaryContext(
+                item.id(),
+                item.reviewItemNo(),
+                item.cameraId(),
+                item.zoneCode(),
+                item.objectLabel(),
+                item.reviewStatus(),
+                item.recordEvidenceStatus(),
+                item.eventId(),
+                item.reviewData()
+        );
+    }
+
+    private static ReviewAiSummary withStructuredAiSummaryData(ReviewAiSummary summary,
+                                                               List<ReviewItemAggregate> reviewItems) {
+        Map<String, Object> defaults = buildStructuredAiSummaryData(
+                summary.reviewCaseId(),
+                summary.title(),
+                summary.summary(),
+                reviewItems,
+                summary.evidenceGaps(),
+                summary.recommendedActions()
+        );
+        Map<String, Object> merged = new LinkedHashMap<>(defaults);
+        if (summary.structuredData() != null) {
+            merged.putAll(summary.structuredData());
+        }
+        return new ReviewAiSummary(
+                summary.reviewCaseId(),
+                summary.reviewItemIds(),
+                summary.title(),
+                summary.summary(),
+                summary.keyFacts(),
+                summary.evidenceGaps(),
+                summary.recommendedActions(),
+                summary.generatedAt(),
+                summary.generatedBy(),
+                Map.copyOf(merged)
+        );
+    }
+
+    private static Map<String, Object> buildStructuredAiSummaryData(Long reviewCaseId,
+                                                                    String title,
+                                                                    String summary,
+                                                                    List<ReviewItemAggregate> reviewItems,
+                                                                    List<String> evidenceGaps,
+                                                                    List<String> recommendedActions) {
+        List<String> cameras = reviewItems.stream()
+                .map(ReviewItemAggregate::cameraId)
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .distinct()
+                .toList();
+        List<String> zones = reviewItems.stream()
+                .map(ReviewItemAggregate::zoneCode)
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .distinct()
+                .toList();
+        boolean hasEvidenceGap = evidenceGaps != null && !evidenceGaps.isEmpty();
+        boolean hasEvent = reviewItems.stream().anyMatch(item -> item.eventId() != null);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("title", hasText(title) ? title : "review case " + reviewCaseId);
+        data.put("scene", String.join(" / ", cameras));
+        data.put("zones", zones);
+        data.put("shortSummary", summary);
+        data.put("confidence", hasEvidenceGap ? 0.72D : 0.86D);
+        data.put("concerns", evidenceGaps == null ? List.of() : List.copyOf(evidenceGaps));
+        data.put("threatLevel", hasEvidenceGap ? "medium" : "low");
+        data.put("responsibilityUnit", cameras.isEmpty() ? "unassigned" : cameras.get(0));
+        data.put("handlingSuggestion", recommendedActions == null ? List.of() : List.copyOf(recommendedActions));
+        data.put("disposalSuggestion", recommendedActions == null ? List.of() : List.copyOf(recommendedActions));
+        data.put("evidenceGaps", evidenceGaps == null ? List.of() : List.copyOf(evidenceGaps));
+        data.put("evidenceCompleteness", hasEvidenceGap ? "incomplete" : "complete");
+        data.put("convertibleToEvent", !hasEvidenceGap || hasEvent);
+        return Map.copyOf(data);
+    }
+
+    private List<ReviewSemanticSearchCandidate> semanticCandidates(ReviewQuery filters) {
+        List<ReviewSemanticSearchCandidate> indexedCandidates = reviewItemStore.listSemanticIndex(filters).stream()
+                .filter(entry -> SEMANTIC_INDEX_INDEXED.equals(entry.indexStatus()))
+                .filter(entry -> hasText(entry.document()))
+                .map(entry -> reviewItemStore.findById(entry.reviewItemId())
+                        .map(item -> new ReviewSemanticSearchCandidate(item, entry.document()))
+                        .orElse(null))
+                .filter(Objects::nonNull)
+                .toList();
+        if (!indexedCandidates.isEmpty()) {
+            return indexedCandidates;
+        }
+        return listWorkbench(filters).stream()
+                .map(item -> new ReviewSemanticSearchCandidate(item, buildSearchDocument(item)))
+                .toList();
+    }
+
+    private String buildSearchDocument(ReviewItemAggregate item) {
+        StringBuilder document = new StringBuilder();
+        appendSearchValue(document, item.reviewItemNo());
+        appendSearchValue(document, item.sourceSystem());
+        appendSearchValue(document, item.ruleCode());
+        appendSearchValue(document, item.sourceAlertType());
+        appendSearchValue(document, item.deviceId());
+        appendSearchValue(document, item.cameraId());
+        appendSearchValue(document, item.zoneCode());
+        appendSearchValue(document, item.objectLabel());
+        appendSearchValue(document, item.reviewStatus());
+        appendSearchValue(document, item.sourceAlertIds());
+        appendSearchValue(document, item.reviewData());
+        for (ReviewEvidenceItem evidenceItem : reviewItemStore.listTimeline(item.id())) {
+            appendSearchValue(document, evidenceItem.sourceAlertId());
+            appendSearchValue(document, evidenceItem.materialType());
+            appendSearchValue(document, evidenceItem.materialUri());
+        }
+        return document.toString().trim();
+    }
+
+    private static String semanticEmbeddingKey(ReviewItemAggregate item) {
+        return "review-item:" + item.id();
+    }
+
+    private static String semanticEmbeddingVectorHash(String document) {
+        return "sha256:" + sha256Hex(document == null ? "" : document);
+    }
+
+    private static void appendSearchValue(StringBuilder document, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                appendSearchValue(document, entry.getKey());
+                appendSearchValue(document, entry.getValue());
+            }
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                appendSearchValue(document, item);
+            }
+            return;
+        }
+        if (hasText(String.valueOf(value))) {
+            document.append(value).append(' ');
+        }
+    }
+
+    private static List<String> tokenize(String query) {
+        String[] rawTerms = query.toLowerCase().split("[^a-z0-9\\u4e00-\\u9fa5]+");
+        Set<String> terms = new LinkedHashSet<>();
+        for (String term : rawTerms) {
+            if (hasText(term)) {
+                terms.add(term);
+            }
+        }
+        return List.copyOf(terms);
+    }
+
+    private static String snippet(String document, Set<String> matchedTerms) {
+        String lowerDocument = document.toLowerCase();
+        int firstMatch = -1;
+        for (String term : matchedTerms) {
+            int index = lowerDocument.indexOf(term);
+            if (index >= 0 && (firstMatch < 0 || index < firstMatch)) {
+                firstMatch = index;
+            }
+        }
+        int start = firstMatch < 0 ? 0 : Math.max(0, firstMatch - 40);
+        int end = Math.min(document.length(), start + 180);
+        return document.substring(start, end);
+    }
+
+    private static List<Long> reviewItemIdsFromTimeline(List<ReviewCaseTimelineItem> timeline) {
+        Set<Long> ids = new LinkedHashSet<>();
+        for (ReviewCaseTimelineItem item : timeline) {
+            if (item.reviewItemId() != null) {
+                ids.add(item.reviewItemId());
+            }
+        }
+        return List.copyOf(ids);
+    }
+
+    private static Map<String, Object> buildEvidenceManifest(Long reviewCaseId,
+                                                             List<Long> reviewItemIds,
+                                                             List<String> evidenceUris,
+                                                             List<ReviewCaseTimelineItem> timeline,
+                                                             List<ReviewItemAggregate> reviewItems,
+                                                             List<ReviewEvidenceVideoExportResult> videoExports,
+                                                             String format,
+                                                             Long operatorUserId,
+                                                             Long approverUserId,
+                                                             String approvalNote,
+                                                             LocalDateTime generatedAt) {
+        List<Long> eventIds = eventIdsFromTimeline(timeline);
+        List<Map<String, Object>> files = evidenceFileHashes(evidenceUris);
+        LocalDateTime expiresAt = generatedAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS);
+        Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("manifestVersion", "2");
+        manifest.put("schema", "yfeieye-evidence-manifest-v2");
+        manifest.put("reviewCaseId", reviewCaseId);
+        manifest.put("reviewItemIds", reviewItemIds);
+        manifest.put("evidenceUris", evidenceUris);
+        manifest.put("files", files);
+        manifest.put("timelineSize", timeline.size());
+        manifest.put("format", format);
+        manifest.put("operatorUserId", operatorUserId);
+        manifest.put("generatedBy", operatorUserId);
+        manifest.put("generatedAt", generatedAt.toString());
+        manifest.put("expiresAt", expiresAt.toString());
+        Map<String, Object> operator = new LinkedHashMap<>();
+        operator.put("exportedBy", operatorUserId);
+        operator.put("generatedBy", operatorUserId);
+        operator.put("approvedBy", approverUserId);
+        manifest.put("operator", immutableNonNullMap(operator));
+        manifest.put("ruleVersions", manifestRuleVersions(reviewItems));
+        manifest.put("reviewData", manifestReviewData(reviewItems));
+        manifest.put("coverageSummary", manifestCoverageSummary(reviewItems));
+        manifest.put("decisionTrail", manifestDecisionTrail(reviewItems));
+        manifest.put("aiSummaryVersion", "review-ai-summary-v1");
+        manifest.put("downloadRecords", List.of());
+        manifest.put("approval", approvalManifest(approverUserId, approvalNote, generatedAt));
+        manifest.put("eventReferences", eventIds.stream()
+                .map(eventId -> Map.<String, Object>of(
+                        "eventId", eventId,
+                        "relation", "evidence_for_event"))
+                .toList());
+        manifest.put("videoExports", videoExports.stream()
+                .map(SupervisionAlertReviewServiceImpl::videoExportToMap)
+                .toList());
+        String packageChecksum = sha256Token(
+                reviewCaseId,
+                reviewItemIds,
+                evidenceUris,
+                files,
+                videoExports,
+                timeline.stream().map(ReviewCaseTimelineItem::toString).toList(),
+                format
+        );
+        manifest.put("packageChecksum", packageChecksum);
+        manifest.put("checksum", packageChecksum);
+        manifest.put("immutableAudit", Map.of(
+                "algorithm", "sha256(previousHash + canonicalEntry)",
+                "entryCount", 1,
+                "headHash", sha256Token(packageChecksum, generatedAt)
+        ));
+        String manifestHash = expectedManifestHash(manifest);
+        manifest.put("manifestHash", manifestHash);
+        manifest.put("signature", manifestSignature(manifest, manifestHash, generatedAt));
+        return Map.copyOf(manifest);
+    }
+
+    private static List<Map<String, Object>> manifestRuleVersions(List<ReviewItemAggregate> reviewItems) {
+        if (reviewItems == null || reviewItems.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> versions = new ArrayList<>();
+        for (ReviewItemAggregate item : reviewItems) {
+            Map<String, Object> suggestion = item.ruleSuggestion() == null ? Map.of() : item.ruleSuggestion();
+            Map<String, Object> version = new LinkedHashMap<>();
+            version.put("reviewItemId", item.id());
+            version.put("ruleCode", item.ruleCode());
+            version.put("sourceSystem", item.sourceSystem());
+            version.put("cameraId", item.cameraId());
+            version.put("zoneCode", item.zoneCode());
+            version.put("objectLabel", item.objectLabel());
+            version.put("ruleSuggestionStatus", item.ruleSuggestionStatus());
+            version.put("ruleSuggestionUpdatedAt", item.ruleSuggestionUpdatedAt() == null
+                    ? null
+                    : item.ruleSuggestionUpdatedAt().toString());
+            version.put("applicationMode", RULE_SUGGESTION_APPLIED.equals(item.ruleSuggestionStatus()) ? "applied" : "shadow");
+            version.put("shadowEvaluation", toStringObjectMap(suggestion.get("shadowEvaluation")));
+            version.put("replayReport", toStringObjectMap(suggestion.get("replayReport")));
+            version.put("versionHash", sha256Token(
+                    item.ruleCode(),
+                    item.ruleSuggestionStatus(),
+                    item.ruleSuggestionUpdatedAt(),
+                    suggestion
+            ));
+            versions.add(immutableNonNullMap(version));
+        }
+        return List.copyOf(versions);
+    }
+
+    private static Map<String, Object> manifestReviewData(List<ReviewItemAggregate> reviewItems) {
+        Map<String, Object> reviewData = new LinkedHashMap<>();
+        if (reviewItems == null) {
+            return Map.of();
+        }
+        for (ReviewItemAggregate item : reviewItems) {
+            reviewData.put(String.valueOf(item.id()), item.reviewData() == null ? Map.of() : item.reviewData());
+        }
+        return immutableNonNullMap(reviewData);
+    }
+
+    private static List<Map<String, Object>> manifestCoverageSummary(List<ReviewItemAggregate> reviewItems) {
+        if (reviewItems == null || reviewItems.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> coverage = new ArrayList<>();
+        for (ReviewItemAggregate item : reviewItems) {
+            Map<String, Object> storage = toStringObjectMap(item.reviewData() == null
+                    ? null
+                    : item.reviewData().get("recordStorage"));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("reviewItemId", item.id());
+            row.put("recordEvidenceStatus", item.recordEvidenceStatus());
+            row.put("recordEvidenceCheckedAt", item.recordEvidenceCheckedAt() == null
+                    ? null
+                    : item.recordEvidenceCheckedAt().toString());
+            row.put("recordEvidenceMessage", item.recordEvidenceMessage());
+            row.put("syncStatus", storage.get("syncStatus"));
+            row.put("availableSeconds", storage.get("availableSeconds"));
+            row.put("missingSeconds", storage.get("missingSeconds"));
+            row.put("motionSeconds", storage.get("motionSeconds"));
+            coverage.add(immutableNonNullMap(row));
+        }
+        return List.copyOf(coverage);
+    }
+
+    private static List<Map<String, Object>> manifestDecisionTrail(List<ReviewItemAggregate> reviewItems) {
+        if (reviewItems == null || reviewItems.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> decisionTrail = new ArrayList<>();
+        for (ReviewItemAggregate item : reviewItems) {
+            decisionTrail.add(decisionTrailRow(item));
+        }
+        return List.copyOf(decisionTrail);
+    }
+
+    private static Map<String, Object> decisionTrailRow(ReviewItemAggregate item) {
+        Map<String, Object> suggestion = item.ruleSuggestion() == null ? Map.of() : item.ruleSuggestion();
+        String reason = hasText(item.ignoreReason()) ? item.ignoreReason() : toText(suggestion.get("reason"));
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("reviewItemId", item.id());
+        row.put("reviewItemNo", item.reviewItemNo());
+        row.put("reviewStatus", item.reviewStatus());
+        row.put("reason", reason);
+        row.put("reviewerUserId", item.reviewerUserId());
+        row.put("reviewedAt", item.reviewedAt() == null ? null : item.reviewedAt().toString());
+        row.put("eventId", item.eventId());
+        row.put("convertedAt", item.convertedAt() == null ? null : item.convertedAt().toString());
+        row.put("eventStatus", item.eventStatus());
+        row.put("closeCheckStatus", item.closeCheckStatus());
+        row.put("evidenceStatus", item.evidenceStatus());
+        row.put("ruleSuggestionStatus", item.ruleSuggestionStatus());
+        row.put("recordEvidenceStatus", item.recordEvidenceStatus());
+        row.put("correlationId", item.reviewData() == null ? null : item.reviewData().get("correlationId"));
+        return immutableNonNullMap(row);
+    }
+
+    private List<Map<String, Object>> reconstructDecisionTrail(List<Long> reviewItemIds) {
+        if (reviewItemIds == null || reviewItemIds.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Long reviewItemId : reviewItemIds) {
+            reviewItemStore.findById(reviewItemId)
+                    .map(SupervisionAlertReviewServiceImpl::decisionTrailRow)
+                    .ifPresent(rows::add);
+        }
+        return List.copyOf(rows);
+    }
+
+    private static Map<String, Object> auditEntryToManifestMap(ReviewEvidenceAuditEntry entry) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("actionType", entry.actionType());
+        values.put("jobNo", entry.jobNo());
+        values.put("fileHash", entry.fileHash());
+        values.put("operatorUserId", entry.operatorUserId());
+        values.put("actionNote", entry.actionNote());
+        values.put("happenedAt", entry.happenedAt() == null ? null : entry.happenedAt().toString());
+        return immutableNonNullMap(values);
+    }
+
+    private static String expectedManifestHash(Map<String, Object> manifest) {
+        Map<String, Object> hashable = new LinkedHashMap<>(manifest == null ? Map.of() : manifest);
+        hashable.remove("manifestHash");
+        hashable.remove("signature");
+        return sha256Token(canonicalValue(hashable));
+    }
+
+    private static Map<String, Object> manifestSignature(Map<String, Object> manifest,
+                                                         String manifestHash,
+                                                         LocalDateTime signedAt) {
+        Map<String, Object> signature = new LinkedHashMap<>();
+        signature.put("algorithm", "sha256");
+        signature.put("signer", "yFeiEye-evidence-chain");
+        signature.put("signedAt", signedAt == null ? null : signedAt.toString());
+        signature.put("value", expectedManifestSignature(manifest, manifestHash));
+        return immutableNonNullMap(signature);
+    }
+
+    private static String expectedManifestSignature(Map<String, Object> manifest, String manifestHash) {
+        Map<String, Object> approval = toStringObjectMap(manifest == null ? null : manifest.get("approval"));
+        return sha256Token(
+                manifest == null ? null : manifest.get("packageChecksum"),
+                manifestHash,
+                manifest == null ? null : manifest.get("generatedBy"),
+                approval.get("approvedBy")
+        );
+    }
+
+    private static String canonicalValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new TreeMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    sorted.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            StringBuilder builder = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<String, Object> entry : sorted.entrySet()) {
+                if (!first) {
+                    builder.append(',');
+                }
+                first = false;
+                builder.append(entry.getKey()).append('=').append(canonicalValue(entry.getValue()));
+            }
+            return builder.append('}').toString();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            StringBuilder builder = new StringBuilder("[");
+            boolean first = true;
+            for (Object item : iterable) {
+                if (!first) {
+                    builder.append(',');
+                }
+                first = false;
+                builder.append(canonicalValue(item));
+            }
+            return builder.append(']').toString();
+        }
+        return value == null ? "<null>" : String.valueOf(value);
+    }
+
+    private static Map<String, Object> approvalManifest(Long approverUserId,
+                                                        String approvalNote,
+                                                        LocalDateTime generatedAt) {
+        Map<String, Object> approval = new LinkedHashMap<>();
+        approval.put("approvedBy", approverUserId);
+        approval.put("approvedAt", approverUserId == null ? null : generatedAt.toString());
+        approval.put("approvalNote", hasText(approvalNote) ? approvalNote : null);
+        return immutableNonNullMap(approval);
+    }
+
+    private static List<Map<String, Object>> evidenceFileHashes(List<String> evidenceUris) {
+        if (evidenceUris == null || evidenceUris.isEmpty()) {
+            return List.of();
+        }
+        return evidenceUris.stream()
+                .map(uri -> {
+                    Map<String, Object> file = new LinkedHashMap<>();
+                    file.put("uri", uri);
+                    file.put("role", uri.endsWith(".mp4") || uri.endsWith(".flv") ? MATERIAL_RECORD : MATERIAL_SNAPSHOT);
+                    file.put("hash", sha256Token(uri));
+                    return Map.copyOf(file);
+                })
+                .toList();
+    }
+
+    private static List<Long> eventIdsFromTimeline(List<ReviewCaseTimelineItem> timeline) {
+        if (timeline == null || timeline.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> eventIds = new LinkedHashSet<>();
+        for (ReviewCaseTimelineItem item : timeline) {
+            if (item == null || !hasText(item.materialUri())) {
+                continue;
+            }
+            String prefix = "converted_to_event:";
+            if (!item.materialUri().startsWith(prefix)) {
+                continue;
+            }
+            Long eventId = toLong(item.materialUri().substring(prefix.length()));
+            if (eventId != null) {
+                eventIds.add(eventId);
+            }
+        }
+        return List.copyOf(eventIds);
+    }
+
+    private List<Long> boundEventIds(List<Long> reviewItemIds) {
+        if (reviewItemIds == null || reviewItemIds.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> eventIds = new LinkedHashSet<>();
+        for (Long reviewItemId : reviewItemIds) {
+            reviewItemStore.findById(reviewItemId)
+                    .map(ReviewItemAggregate::eventId)
+                    .filter(Objects::nonNull)
+                    .ifPresent(eventIds::add);
+        }
+        return List.copyOf(eventIds);
+    }
+
+    private static String exportFileHash(ReviewEvidenceExportPackage exportPackage) {
+        String payload = exportPackage.packageNo()
+                + "|" + exportPackage.reviewCaseId()
+                + "|" + exportPackage.reviewItemIds()
+                + "|" + exportPackage.evidenceUris()
+                + "|" + exportPackage.manifest().get("checksum");
+        return "sha256:" + sha256Hex(payload);
+    }
+
+    private static String sha256Token(Object... values) {
+        StringBuilder payload = new StringBuilder();
+        if (values != null) {
+            for (Object value : values) {
+                payload.append(value == null ? "<null>" : value).append('\u001f');
+            }
+        }
+        return "sha256:" + sha256Hex(payload.toString());
+    }
+
+    private static String sha256Hex(String payload) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte value : hash) {
+                hex.append(String.format("%02x", value));
+            }
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException("SHA-256 unavailable", ex);
+        }
+    }
+
+    private List<ReviewEvidenceVideoExportResult> requestVideoExports(Long reviewCaseId,
+                                                                      List<Long> reviewItemIds,
+                                                                      List<ReviewCaseTimelineItem> timeline,
+                                                                      String format) {
+        if (timeline.isEmpty()) {
+            return List.of();
+        }
+        List<ReviewEvidenceVideoExportResult> results = new ArrayList<>();
+        Set<String> requested = new LinkedHashSet<>();
+        for (ReviewCaseTimelineItem timelineItem : timeline) {
+            if (!MATERIAL_RECORD.equals(timelineItem.materialType())
+                    || timelineItem.reviewItemId() == null
+                    || !reviewItemIds.contains(timelineItem.reviewItemId())
+                    || !hasText(timelineItem.materialUri())) {
+                continue;
+            }
+            String requestKey = timelineItem.reviewItemId() + "|" + timelineItem.materialUri();
+            if (!requested.add(requestKey)) {
+                continue;
+            }
+            Optional<ReviewItemAggregate> aggregate = reviewItemStore.findById(timelineItem.reviewItemId());
+            if (aggregate.isEmpty()) {
+                continue;
+            }
+            ReviewItemAggregate item = aggregate.get();
+            try {
+                videoEvidenceExportProvider.export(new ReviewEvidenceVideoExportRequest(
+                        reviewCaseId,
+                        item.id(),
+                        item.deviceId(),
+                        item.cameraId(),
+                        timelineItem.sourceAlertId(),
+                        exportStartTime(item, timelineItem),
+                        exportEndTime(item, timelineItem),
+                        timelineItem.materialUri(),
+                        format
+                )).ifPresent(results::add);
+            } catch (RuntimeException ignored) {
+                // Evidence export must still return the manifest when VIDEO export is unavailable.
+            }
+        }
+        return List.copyOf(results);
+    }
+
+    private static LocalDateTime exportStartTime(ReviewItemAggregate item, ReviewCaseTimelineItem timelineItem) {
+        if (item.firstAlertTime() != null) {
+            return item.firstAlertTime();
+        }
+        return timelineItem.happenedAt();
+    }
+
+    private static LocalDateTime exportEndTime(ReviewItemAggregate item, ReviewCaseTimelineItem timelineItem) {
+        LocalDateTime startTime = exportStartTime(item, timelineItem);
+        LocalDateTime endTime = item.lastAlertTime();
+        if (endTime == null) {
+            endTime = timelineItem.happenedAt();
+        }
+        if (startTime != null && (endTime == null || !endTime.isAfter(startTime))) {
+            return startTime.plusSeconds(60);
+        }
+        return endTime;
+    }
+
+    private static List<String> mergeEvidenceUris(List<String> evidenceUris,
+                                                  List<ReviewEvidenceVideoExportResult> videoExports) {
+        Set<String> merged = new LinkedHashSet<>(evidenceUris);
+        for (ReviewEvidenceVideoExportResult videoExport : videoExports) {
+            if (hasText(videoExport.exportUri())) {
+                merged.add(videoExport.exportUri());
+            }
+        }
+        return List.copyOf(merged);
+    }
+
+    private static Map<String, Object> videoExportToMap(ReviewEvidenceVideoExportResult videoExport) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("exportId", videoExport.exportId());
+        values.put("exportUri", videoExport.exportUri());
+        values.put("status", videoExport.status());
+        values.put("message", videoExport.message());
+        values.entrySet().removeIf(entry -> entry.getValue() == null);
+        return Map.copyOf(values);
+    }
+
+    private static Map<String, Object> buildProposedRule(ReviewItemAggregate item) {
+        Map<String, Object> suggestion = item.ruleSuggestion() == null ? Map.of() : item.ruleSuggestion();
+        Map<String, Object> proposedRule = new LinkedHashMap<>();
+        proposedRule.put("action", hasText(toText(suggestion.get("action")))
+                ? suggestion.get("action")
+                : "suppress_label_zone");
+        proposedRule.put("sourceSystem", item.sourceSystem());
+        proposedRule.put("ruleCode", item.ruleCode());
+        proposedRule.put("cameraId", item.cameraId());
+        proposedRule.put("zoneCode", item.zoneCode());
+        proposedRule.put("objectLabel", item.objectLabel());
+        if (hasText(toText(suggestion.get("reason")))) {
+            proposedRule.put("reason", suggestion.get("reason"));
+        }
+        return Map.copyOf(proposedRule);
+    }
+
+    private Map<String, Object> applyRuleSuggestion(ReviewItemAggregate item, Map<String, Object> suggestion) {
+        Map<String, Object> previousRule = reviewRuleStore.listAll().stream()
+                .filter(rule -> sameRuleScope(rule, item))
+                .findFirst()
+                .map(SupervisionAlertReviewServiceImpl::ruleToMap)
+                .orElse(Map.of());
+        ReviewRuleView appliedRule = reviewRuleStore.save(buildAppliedRuleCommand(item, suggestion, previousRule));
+        Map<String, Object> updated = new LinkedHashMap<>(suggestion);
+        if (!previousRule.isEmpty()) {
+            updated.put("previousRule", previousRule);
+        }
+        updated.put("appliedRuleId", appliedRule.id());
+        updated.put("appliedRule", ruleToMap(appliedRule));
+        updated.put("configVersion", ruleConfigVersion(appliedRule.id(), suggestion, "configVersion"));
+        return immutableNonNullMap(updated);
+    }
+
+    private Map<String, Object> rollbackRuleSuggestion(ReviewItemAggregate item, Map<String, Object> suggestion) {
+        Long appliedRuleId = toLong(suggestion.get("appliedRuleId"));
+        if (appliedRuleId == null) {
+            return suggestion;
+        }
+        Map<String, Object> previousRule = toStringObjectMap(suggestion.get("previousRule"));
+        ReviewRuleCommand rollbackCommand = previousRule.isEmpty()
+                ? buildDisabledAppliedRuleCommand(item, suggestion, appliedRuleId)
+                : ruleCommandFromMap(previousRule, appliedRuleId);
+        ReviewRuleView rollbackRule = reviewRuleStore.save(rollbackCommand);
+        Map<String, Object> updated = new LinkedHashMap<>(suggestion);
+        updated.put("rollbackRule", ruleToMap(rollbackRule));
+        updated.put("rollbackVersion", ruleConfigVersion(appliedRuleId, suggestion, "configVersion"));
+        return immutableNonNullMap(updated);
+    }
+
+    private static ReviewRuleCommand buildAppliedRuleCommand(ReviewItemAggregate item,
+                                                             Map<String, Object> suggestion,
+                                                             Map<String, Object> previousRule) {
+        Long ruleId = toLong(suggestion.get("appliedRuleId"));
+        if (ruleId == null) {
+            ruleId = toLong(previousRule.get("id"));
+        }
+        return new ReviewRuleCommand(
+                ruleId,
+                item.ruleCode(),
+                firstText(suggestion.get("suggestedRuleName"), "false_positive_" + item.cameraId() + "_" + item.zoneCode()),
+                item.sourceSystem(),
+                item.cameraId(),
+                item.zoneCode(),
+                item.objectLabel(),
+                toInteger(suggestion.get("minStaySeconds")),
+                null,
+                null,
+                true,
+                toInteger(firstNonNull(suggestion.get("inertiaFrames"), previousRule.get("inertiaFrames"))),
+                toInteger(firstNonNull(suggestion.get("loiteringSeconds"), previousRule.get("loiteringSeconds")))
+        );
+    }
+
+    private static ReviewRuleCommand buildDisabledAppliedRuleCommand(ReviewItemAggregate item,
+                                                                     Map<String, Object> suggestion,
+                                                                     Long appliedRuleId) {
+        Map<String, Object> appliedRule = toStringObjectMap(suggestion.get("appliedRule"));
+        return new ReviewRuleCommand(
+                appliedRuleId,
+                firstText(appliedRule.get("ruleCode"), item.ruleCode()),
+                firstText(appliedRule.get("ruleName"), "false_positive_" + item.cameraId() + "_" + item.zoneCode()),
+                firstText(appliedRule.get("sourceSystem"), item.sourceSystem()),
+                firstText(appliedRule.get("cameraId"), item.cameraId()),
+                firstText(appliedRule.get("zoneCode"), item.zoneCode()),
+                firstText(appliedRule.get("objectLabel"), item.objectLabel()),
+                toInteger(appliedRule.get("minStaySeconds")),
+                toLocalDateTime(appliedRule.get("activeStart")),
+                toLocalDateTime(appliedRule.get("activeEnd")),
+                false,
+                toInteger(appliedRule.get("inertiaFrames")),
+                toInteger(appliedRule.get("loiteringSeconds"))
+        );
+    }
+
+    private static ReviewRuleCommand ruleCommandFromMap(Map<String, Object> rule, Long fallbackRuleId) {
+        return new ReviewRuleCommand(
+                toLong(rule.get("id")) == null ? fallbackRuleId : toLong(rule.get("id")),
+                toText(rule.get("ruleCode")),
+                toText(rule.get("ruleName")),
+                toText(rule.get("sourceSystem")),
+                toText(rule.get("cameraId")),
+                toText(rule.get("zoneCode")),
+                toText(rule.get("objectLabel")),
+                toInteger(rule.get("minStaySeconds")),
+                toLocalDateTime(rule.get("activeStart")),
+                toLocalDateTime(rule.get("activeEnd")),
+                toBoolean(rule.get("enabled")),
+                toInteger(rule.get("inertiaFrames")),
+                toInteger(rule.get("loiteringSeconds"))
+        );
+    }
+
+    private static boolean sameRuleScope(ReviewRuleView rule, ReviewItemAggregate item) {
+        return Objects.equals(rule.ruleCode(), item.ruleCode())
+                && matchesText(rule.sourceSystem(), item.sourceSystem())
+                && matchesText(rule.cameraId(), item.cameraId())
+                && matchesText(rule.zoneCode(), item.zoneCode())
+                && matchesText(rule.objectLabel(), item.objectLabel());
+    }
+
+    private static Map<String, Object> ruleToMap(ReviewRuleView rule) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", rule.id());
+        values.put("ruleCode", rule.ruleCode());
+        values.put("ruleName", rule.ruleName());
+        values.put("sourceSystem", rule.sourceSystem());
+        values.put("cameraId", rule.cameraId());
+        values.put("zoneCode", rule.zoneCode());
+        values.put("objectLabel", rule.objectLabel());
+        values.put("minStaySeconds", rule.minStaySeconds());
+        values.put("inertiaFrames", rule.inertiaFrames());
+        values.put("loiteringSeconds", rule.loiteringSeconds());
+        values.put("activeStart", rule.activeStart());
+        values.put("activeEnd", rule.activeEnd());
+        values.put("enabled", rule.enabled());
+        values.entrySet().removeIf(entry -> entry.getValue() == null);
+        return Map.copyOf(values);
+    }
+
+    private static List<String> buildRuleSuggestionDiff(Map<String, Object> currentRule,
+                                                        Map<String, Object> proposedRule) {
+        Set<String> keys = new LinkedHashSet<>();
+        keys.addAll(currentRule.keySet());
+        keys.addAll(proposedRule.keySet());
+        List<String> diff = new ArrayList<>();
+        for (String key : keys) {
+            Object currentValue = currentRule.get(key);
+            Object proposedValue = proposedRule.get(key);
+            if (!Objects.equals(currentValue, proposedValue)) {
+                diff.add(key + ": " + currentValue + " -> " + proposedValue);
+            }
+        }
+        return List.copyOf(diff);
+    }
+
+    private String resolveRuleCode(AlertClueCommand command) {
+        if (hasText(command.ruleCode())) {
+            return command.ruleCode();
+        }
+        return reviewRuleStore.listEnabled().stream()
+                .filter(rule -> matchesRule(rule, command))
+                .map(ReviewRuleView::ruleCode)
+                .findFirst()
+                .orElse(FALLBACK_RULE_CODE);
+    }
+
+    private static boolean matchesRule(ReviewRuleView rule, AlertClueCommand command) {
+        return matchesText(rule.sourceSystem(), command.sourceSystem())
+                && matchesText(rule.cameraId(), normalizeCameraId(command))
+                && matchesText(rule.zoneCode(), command.zoneCode())
+                && matchesText(rule.objectLabel(), command.objectLabel())
+                && matchesStaySeconds(rule.minStaySeconds(), command.staySeconds())
+                && matchesZoneInertia(rule.inertiaFrames(), command.motionMetadata())
+                && matchesActiveWindow(rule, command.alertTime());
+    }
+
+    private static boolean matchesText(String configured, String actual) {
+        if (!hasText(configured)) {
+            return true;
+        }
+        return Objects.equals(configured, actual);
+    }
+
+    private static boolean matchesStaySeconds(Integer minStaySeconds, Integer actualStaySeconds) {
+        if (minStaySeconds == null || minStaySeconds <= 0) {
+            return true;
+        }
+        return actualStaySeconds != null && actualStaySeconds >= minStaySeconds;
+    }
+
+    private static boolean matchesZoneInertia(Integer inertiaFrames, Map<String, Object> motionMetadata) {
+        int requiredFrames = normalizeZoneInertiaFrames(inertiaFrames);
+        if (requiredFrames <= 1) {
+            return true;
+        }
+        Integer observedFrames = toInteger(firstNonNull(
+                motionMetadata == null ? null : motionMetadata.get("consecutiveZoneFrames"),
+                motionMetadata == null ? null : motionMetadata.get("consecutive_zone_frames")
+        ));
+        return observedFrames != null && observedFrames >= requiredFrames;
+    }
+
+    private static boolean matchesActiveWindow(ReviewRuleView rule, LocalDateTime alertTime) {
+        if (alertTime == null) {
+            return false;
+        }
+        if (rule.activeStart() != null && alertTime.isBefore(rule.activeStart())) {
+            return false;
+        }
+        return rule.activeEnd() == null || !alertTime.isAfter(rule.activeEnd());
+    }
+
+    private EvidenceBuildResult buildEvidenceItems(AlertClueCommand command) {
+        List<ReviewEvidenceItem> evidenceItems = new ArrayList<>(2);
+        if (hasText(command.snapshotUri())) {
+            evidenceItems.add(new ReviewEvidenceItem(
+                    null,
+                    command.sourceAlertId(),
+                    MATERIAL_SNAPSHOT,
+                    command.snapshotUri(),
+                    command.alertTime()
+            ));
+        }
+        if (hasText(command.recordUri())) {
+            evidenceItems.add(new ReviewEvidenceItem(
+                    null,
+                    command.sourceAlertId(),
+                    MATERIAL_RECORD,
+                    command.recordUri(),
+                    command.alertTime()
+            ));
+            return new EvidenceBuildResult(
+                    List.copyOf(evidenceItems),
+                    RECORD_EVIDENCE_FOUND,
+                    LocalDateTime.now(),
+                    "source_record_uri"
+            );
+        }
+        RecordEvidenceAttempt attempt = resolveRecordEvidence(
+                command.sourceAlertId(),
+                command.deviceId(),
+                normalizeCameraId(command),
+                command.alertTime()
+        );
+        attempt.evidenceItem().ifPresent(evidenceItems::add);
+        return new EvidenceBuildResult(
+                List.copyOf(evidenceItems),
+                attempt.recordEvidenceStatus(),
+                attempt.recordEvidenceCheckedAt(),
+                attempt.recordEvidenceMessage()
+        );
+    }
+
+    private RecordEvidenceAttempt resolveRecordEvidence(String sourceAlertId,
+                                                        String deviceId,
+                                                        String cameraId,
+                                                        LocalDateTime alertTime) {
+        LocalDateTime checkedAt = LocalDateTime.now();
+        if (!hasText(sourceAlertId) || (!hasText(deviceId) && !hasText(cameraId)) || alertTime == null) {
+            return new RecordEvidenceAttempt(Optional.empty(), RECORD_EVIDENCE_FAILED, checkedAt, "missing_lookup_fields");
+        }
+        try {
+            Optional<RecordEvidenceResult> resolved = recordEvidenceResolver.resolve(new RecordEvidenceRequest(
+                    sourceAlertId,
+                    deviceId,
+                    cameraId,
+                    alertTime
+            ));
+            if (resolved.isPresent() && hasText(resolved.get().recordUri())) {
+                ReviewEvidenceItem evidenceItem = new ReviewEvidenceItem(
+                        null,
+                        sourceAlertId,
+                        MATERIAL_RECORD,
+                        resolved.get().recordUri(),
+                        alertTime
+                );
+                return new RecordEvidenceAttempt(
+                        Optional.of(evidenceItem),
+                        RECORD_EVIDENCE_FOUND,
+                        checkedAt,
+                        resolved.get().message()
+                );
+            }
+            return new RecordEvidenceAttempt(
+                    Optional.empty(),
+                    RECORD_EVIDENCE_MISSING,
+                    checkedAt,
+                    recordEvidenceResolver.unavailableReason().orElse(RECORD_GAP_RECORD_NOT_FOUND)
+            );
+        } catch (RuntimeException ex) {
+            return new RecordEvidenceAttempt(Optional.empty(), RECORD_EVIDENCE_FAILED, checkedAt, ex.getMessage());
+        }
+    }
+
+    private ReviewItemAggregate withEventProjection(ReviewItemAggregate item) {
+        if (item == null || item.eventId() == null) {
+            return item;
+        }
+        return eventProjectionStore.findByEventId(item.eventId())
+                .map(projection -> new ReviewItemAggregate(
+                        item.id(),
+                        item.reviewItemNo(),
+                        item.sourceSystem(),
+                        item.ruleCode(),
+                        item.sourceAlertType(),
+                        item.deviceId(),
+                        item.cameraId(),
+                        item.zoneCode(),
+                        item.objectLabel(),
+                        item.firstAlertTime(),
+                        item.lastAlertTime(),
+                        item.alertCount(),
+                        item.sourceAlertIds(),
+                        item.reviewData(),
+                        item.reviewStatus(),
+                        item.reviewerUserId(),
+                        item.reviewedAt(),
+                        item.ignoreReason(),
+                        item.ruleSuggestion(),
+                        item.eventId(),
+                        item.convertedAt(),
+                        item.recordEvidenceStatus(),
+                        item.recordEvidenceCheckedAt(),
+                        item.recordEvidenceMessage(),
+                        projection.eventStatus(),
+                        projection.closeCheckStatus(),
+                        projection.evidenceStatus(),
+                        mapEventReviewStatus(projection),
+                        item.inReviewCase(),
+                        item.ruleSuggestionStatus(),
+                        item.ruleSuggestionUpdatedAt()
+                ))
+                .orElse(item);
+    }
+
+    private Optional<ReviewItemAggregate> findExistingIngestIdentity(AlertClueCommand command) {
+        Set<String> identityKeys = new LinkedHashSet<>(ingestIdentityKeys(command));
+        if (identityKeys.isEmpty()) {
+            return Optional.empty();
+        }
+        return reviewItemStore.listWorkbench(null).stream()
+                .filter(item -> Objects.equals(command.sourceSystem(), item.sourceSystem()))
+                .filter(item -> hasExistingIngestIdentity(item, command.sourceAlertId(), identityKeys))
+                .findFirst();
+    }
+
+    private static boolean hasExistingIngestIdentity(ReviewItemAggregate item,
+                                                     String sourceAlertId,
+                                                     Set<String> identityKeys) {
+        if (item.sourceAlertIds() != null && item.sourceAlertIds().contains(sourceAlertId)) {
+            return true;
+        }
+        Set<String> storedIdentityKeys = new LinkedHashSet<>();
+        collectStringValues(storedIdentityKeys, item.reviewData() == null ? null : item.reviewData().get("ingestIdentityKeys"));
+        for (String identityKey : identityKeys) {
+            if (storedIdentityKeys.contains(identityKey)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Map<String, Object> buildReviewData(AlertClueCommand command, String ruleCode) {
+        Map<String, Object> reviewData = new LinkedHashMap<>();
+        List<String> labels = nonEmpty(command.labels(), command.objectLabel());
+        List<String> zones = nonEmpty(command.zones(), command.zoneCode());
+        List<String> objectIds = command.objectIds() == null ? List.of() : List.copyOf(command.objectIds());
+        reviewData.put("reviewDataVersion", REVIEW_DATA_VERSION);
+        reviewData.put("ingestIdentityKeys", ingestIdentityKeys(command));
+        reviewData.put("aggregation", buildAggregationPolicy(command));
+        reviewData.put("labels", labels);
+        reviewData.put("zones", zones);
+        reviewData.put("objectIds", objectIds);
+        reviewData.put("objects", buildReviewObjects(labels, objectIds, command.confidence(), command.bbox()));
+        reviewData.put("detections", List.of(buildReviewDetection(command, ruleCode, labels, zones, objectIds)));
+        reviewData.put("reviewSegment", buildInitialReviewSegment(command, ruleCode, labels, zones, objectIds));
+        reviewData.put("verifiedObjects", command.verifiedObjects() == null ? List.of() : List.copyOf(command.verifiedObjects()));
+        reviewData.put("audio", Map.of("labels", command.audioLabels() == null ? List.of() : List.copyOf(command.audioLabels())));
+        reviewData.put("motion", command.motionMetadata() == null ? Map.of() : Map.copyOf(command.motionMetadata()));
+        if (command.confidence() != null) {
+            reviewData.put("confidence", command.confidence());
+        }
+        if (command.bbox() != null && !command.bbox().isEmpty()) {
+            reviewData.put("bbox", List.copyOf(command.bbox()));
+        }
+        if (command.staySeconds() != null) {
+            reviewData.put("staySeconds", command.staySeconds());
+        }
+        if (hasText(command.correlationId())) {
+            reviewData.put("correlationId", command.correlationId());
+        }
+        if (hasText(command.sourcePayloadHash())) {
+            reviewData.put("sourcePayloadHash", command.sourcePayloadHash());
+        }
+        if (command.thumbTime() != null) {
+            reviewData.put("thumbTime", command.thumbTime().toString());
+        }
+        return Map.copyOf(reviewData);
+    }
+
+    private static List<String> ingestIdentityKeys(AlertClueCommand command) {
+        Set<String> keys = new LinkedHashSet<>();
+        if (hasText(command.sourcePayloadHash())) {
+            keys.add(command.sourceSystem() + ":payload:" + command.sourcePayloadHash());
+        } else if (hasText(command.sourceAlertId())) {
+            keys.add(command.sourceSystem() + ":alert:" + command.sourceAlertId());
+        }
+        return List.copyOf(keys);
+    }
+
+    private static Map<String, Object> buildAggregationPolicy(AlertClueCommand command) {
+        Map<String, Object> aggregation = new LinkedHashMap<>();
+        aggregation.put("aggregationKey", command.sourceSystem() + "|" + normalizeCameraId(command));
+        aggregation.put("mergePolicy", "same_camera_sliding_window");
+        aggregation.put("mergeWindowSeconds", DEFAULT_MERGE_WINDOW_SECONDS);
+        aggregation.put("splitPolicy", "new_item_when_gap_exceeds_merge_window_or_existing_not_pending");
+        return Map.copyOf(aggregation);
+    }
+
+    private static Map<String, Object> buildInitialReviewSegment(AlertClueCommand command,
+                                                                 String ruleCode,
+                                                                 List<String> labels,
+                                                                 List<String> zones,
+                                                                 List<String> objectIds) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("event", "start");
+        event.put("happenedAt", command.alertTime() == null ? null : command.alertTime().toString());
+        event.put("sourceAlertId", command.sourceAlertId());
+        event.put("ruleCode", ruleCode);
+        event.put("objectIds", objectIds);
+        event.put("labels", labels);
+        event.put("zones", zones);
+        if (command.bbox() != null && !command.bbox().isEmpty()) {
+            event.put("bbox", List.copyOf(command.bbox()));
+        }
+        if (command.confidence() != null) {
+            event.put("confidence", command.confidence());
+        }
+        Map<String, Object> segment = new LinkedHashMap<>();
+        segment.put("segmentId", buildReviewSegmentId(normalizeCameraId(command), command.alertTime()));
+        segment.put("cameraId", normalizeCameraId(command));
+        segment.put("severity", reviewSegmentSeverity(command.sourceAlertType()));
+        segment.put("status", "active");
+        segment.put("startTime", command.alertTime() == null ? null : command.alertTime().toString());
+        segment.put("endTime", command.alertTime() == null ? null : command.alertTime().toString());
+        segment.put("objectIds", objectIds);
+        segment.put("zones", zones);
+        segment.put("sourceAlertIds", hasText(command.sourceAlertId()) ? List.of(command.sourceAlertId()) : List.of());
+        segment.put("cutoffWindowSeconds", DEFAULT_MERGE_WINDOW_SECONDS);
+        segment.put("events", List.of(immutableNonNullMap(event)));
+        return immutableNonNullMap(segment);
+    }
+
+    private static Map<String, Object> mergeReviewSegment(Map<String, Object> current, Map<String, Object> incoming) {
+        Map<String, Object> currentSegment = toStringObjectMap(current == null ? null : current.get("reviewSegment"));
+        Map<String, Object> incomingSegment = toStringObjectMap(incoming == null ? null : incoming.get("reviewSegment"));
+        if (currentSegment.isEmpty()) {
+            return immutableNonNullMap(incomingSegment);
+        }
+        if (incomingSegment.isEmpty()) {
+            return immutableNonNullMap(currentSegment);
+        }
+        List<Map<String, Object>> events = new ArrayList<>(toMapList(currentSegment.get("events")));
+        for (Map<String, Object> incomingEvent : toMapList(incomingSegment.get("events"))) {
+            Map<String, Object> event = new LinkedHashMap<>(incomingEvent);
+            event.put("event", "update");
+            events.add(immutableNonNullMap(event));
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(currentSegment);
+        merged.put("severity", mergeSeverity(toText(currentSegment.get("severity")), toText(incomingSegment.get("severity"))));
+        merged.put("status", mergeReviewSegmentStatus(toText(currentSegment.get("status")), toText(incomingSegment.get("status"))));
+        merged.put("startTime", minTextTime(currentSegment.get("startTime"), incomingSegment.get("startTime")));
+        merged.put("endTime", maxTextTime(currentSegment.get("endTime"), incomingSegment.get("endTime")));
+        merged.put("objectIds", mergeStringValues(currentSegment.get("objectIds"), toStringList(incomingSegment.get("objectIds"), null)));
+        merged.put("zones", mergeStringValues(currentSegment.get("zones"), toStringList(incomingSegment.get("zones"), null)));
+        merged.put("sourceAlertIds", mergeSourceAlertIdsByEventTime(currentSegment, incomingSegment, events));
+        merged.put("events", List.copyOf(events));
+        return immutableNonNullMap(merged);
+    }
+
+    private static List<String> mergeSourceAlertIdsByEventTime(Map<String, Object> currentSegment,
+                                                               Map<String, Object> incomingSegment,
+                                                               List<Map<String, Object>> events) {
+        List<String> mergedIds = mergeStringValues(
+                currentSegment.get("sourceAlertIds"),
+                toStringList(incomingSegment.get("sourceAlertIds"), null)
+        );
+        Map<String, Integer> originalOrder = new LinkedHashMap<>();
+        for (int i = 0; i < mergedIds.size(); i++) {
+            originalOrder.putIfAbsent(mergedIds.get(i), i);
+        }
+        Map<String, LocalDateTime> happenedAtById = new LinkedHashMap<>();
+        for (Map<String, Object> event : events) {
+            String sourceAlertId = firstText(event.get("sourceAlertId"), null);
+            LocalDateTime happenedAt = toLocalDateTime(event.get("happenedAt"));
+            if (hasText(sourceAlertId) && happenedAt != null) {
+                happenedAtById.merge(sourceAlertId, happenedAt, SupervisionAlertReviewServiceImpl::min);
+            }
+        }
+        return mergedIds.stream()
+                .sorted(Comparator
+                        .comparing((String id) -> happenedAtById.get(id), Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparingInt(id -> originalOrder.getOrDefault(id, Integer.MAX_VALUE)))
+                .toList();
+    }
+
+    private static boolean canMergeReviewSegment(ReviewItemAggregate candidate) {
+        Map<String, Object> segment = toStringObjectMap(candidate.reviewData() == null
+                ? null
+                : candidate.reviewData().get("reviewSegment"));
+        return !"ended".equals(firstText(segment.get("status"), "active"));
+    }
+
+    private static String normalizeReviewSegmentState(String lifecycleState) {
+        String state = hasText(lifecycleState) ? lifecycleState.trim().toLowerCase() : "active";
+        if (List.of("active", "detection", "alert", "ended").contains(state)) {
+            return state;
+        }
+        throw new IllegalArgumentException("review segment state must be active, detection, alert, or ended: " + lifecycleState);
+    }
+
+    private static void assertReviewSegmentTransitionAllowed(ReviewItemAggregate item, String nextState) {
+        Map<String, Object> segment = toStringObjectMap(item.reviewData() == null
+                ? null
+                : item.reviewData().get("reviewSegment"));
+        String currentState = firstText(segment.get("status"), "active");
+        if ("ended".equals(currentState) && !"ended".equals(nextState)) {
+            throw new IllegalStateException("ended review segment cannot be reopened: " + item.id());
+        }
+    }
+
+    private static Map<String, Object> updateReviewSegmentLifecycle(ReviewItemAggregate item,
+                                                                    Map<String, Object> reviewData,
+                                                                    Map<String, Object> lifecycleEvent,
+                                                                    String state,
+                                                                    LocalDateTime happenedAt) {
+        Map<String, Object> segment = new LinkedHashMap<>(toStringObjectMap(reviewData.get("reviewSegment")));
+        if (segment.isEmpty()) {
+            segment.put("segmentId", buildReviewSegmentId(item.cameraId(), item.firstAlertTime()));
+            segment.put("cameraId", item.cameraId());
+            segment.put("severity", reviewSegmentSeverity(item.sourceAlertType()));
+            segment.put("startTime", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
+            segment.put("sourceAlertIds", item.sourceAlertIds() == null ? List.of() : List.copyOf(item.sourceAlertIds()));
+        }
+        List<Map<String, Object>> events = new ArrayList<>(toMapList(segment.get("events")));
+        Map<String, Object> event = new LinkedHashMap<>(lifecycleEvent);
+        event.put("event", state);
+        events.add(immutableNonNullMap(event));
+        segment.put("status", mergeReviewSegmentStatus(toText(segment.get("status")), state));
+        segment.put("severity", mergeSeverity(toText(segment.get("severity")), lifecycleSeverity(state)));
+        segment.put("endTime", happenedAt.toString());
+        segment.put("objectIds", mergeStringValues(segment.get("objectIds"), toStringList(lifecycleEvent.get("objectIds"), null)));
+        segment.put("zones", mergeStringValues(segment.get("zones"), toStringList(lifecycleEvent.get("zones"), null)));
+        segment.put("events", List.copyOf(events));
+        return immutableNonNullMap(segment);
+    }
+
+    private static ReviewSegmentView toReviewSegmentView(ReviewItemAggregate item) {
+        Map<String, Object> segment = toStringObjectMap(item.reviewData() == null ? null : item.reviewData().get("reviewSegment"));
+        String segmentId = firstText(segment.get("segmentId"), buildReviewSegmentId(item.cameraId(), item.firstAlertTime()));
+        LocalDateTime startTime = toLocalDateTime(firstText(segment.get("startTime"),
+                item.firstAlertTime() == null ? null : item.firstAlertTime().toString()));
+        LocalDateTime endTime = toLocalDateTime(firstText(segment.get("endTime"),
+                item.lastAlertTime() == null ? null : item.lastAlertTime().toString()));
+        String status = firstText(segment.get("status"), "active");
+        return new ReviewSegmentView(
+                item.id(),
+                segmentId,
+                firstText(segment.get("cameraId"), item.cameraId()),
+                firstText(segment.get("severity"), reviewSegmentSeverity(item.sourceAlertType())),
+                status,
+                startTime,
+                endTime,
+                toStringList(segment.containsKey("objectIds") ? segment.get("objectIds") : segment.get("objects"), null),
+                toStringList(segment.get("zones"), null),
+                toStringList(segment.containsKey("sourceAlertIds") ? segment.get("sourceAlertIds") : segment.get("alerts"), null),
+                toMapList(segment.get("events")),
+                immutableNonNullMap(segment)
+        );
+    }
+
+    private static String buildReviewSegmentId(String cameraId, LocalDateTime startTime) {
+        String camera = hasText(cameraId) ? cameraId : "unknown-camera";
+        String time = startTime == null ? "unknown-time" : startTime.toString().replace(":", "").replace("-", "");
+        return camera + "-" + time;
+    }
+
+    private static String reviewSegmentSeverity(String sourceAlertType) {
+        String type = toText(sourceAlertType).toLowerCase();
+        if (type.contains("detect") || type.contains("motion")) {
+            return "detection";
+        }
+        return "alert";
+    }
+
+    private static String mergeSeverity(String current, String incoming) {
+        if ("alert".equals(current) || "alert".equals(incoming)) {
+            return "alert";
+        }
+        return hasText(incoming) ? incoming : firstText(current, "detection");
+    }
+
+    private static String minTextTime(Object left, Object right) {
+        LocalDateTime leftTime = toLocalDateTime(left);
+        LocalDateTime rightTime = toLocalDateTime(right);
+        if (leftTime == null) {
+            return rightTime == null ? null : rightTime.toString();
+        }
+        if (rightTime == null) {
+            return leftTime.toString();
+        }
+        return min(leftTime, rightTime).toString();
+    }
+
+    private static String maxTextTime(Object left, Object right) {
+        LocalDateTime leftTime = toLocalDateTime(left);
+        LocalDateTime rightTime = toLocalDateTime(right);
+        if (leftTime == null) {
+            return rightTime == null ? null : rightTime.toString();
+        }
+        if (rightTime == null) {
+            return leftTime.toString();
+        }
+        return max(leftTime, rightTime).toString();
+    }
+
+    private static Map<String, Object> mergeReviewData(Map<String, Object> current, Map<String, Object> incoming) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        merged.putAll(current == null ? Map.of() : current);
+        merged.put("reviewDataVersion", REVIEW_DATA_VERSION);
+        merged.put("ingestIdentityKeys", mergeStringLists(current, incoming, "ingestIdentityKeys"));
+        merged.put("labels", mergeStringLists(current, incoming, "labels"));
+        merged.put("zones", mergeStringLists(current, incoming, "zones"));
+        merged.put("objectIds", mergeStringLists(current, incoming, "objectIds"));
+        merged.put("verifiedObjects", mergeStringLists(current, incoming, "verifiedObjects"));
+        merged.put("objects", mergeMapLists(current, incoming, "objects"));
+        merged.put("detections", mergeMapLists(current, incoming, "detections"));
+        merged.put("reviewSegment", mergeReviewSegment(current, incoming));
+        copyIfPresent(merged, current, incoming, "aggregation");
+        copyIfPresent(merged, current, incoming, "audio");
+        copyIfPresent(merged, current, incoming, "motion");
+        copyIfPresent(merged, current, incoming, "thumbTime");
+        copyIfPresent(merged, current, incoming, "confidence");
+        copyIfPresent(merged, current, incoming, "bbox");
+        copyIfPresent(merged, current, incoming, "staySeconds");
+        copyIfPresent(merged, current, incoming, "correlationId");
+        copyIfPresent(merged, current, incoming, "sourcePayloadHash");
+        return Map.copyOf(merged);
+    }
+
+    private static String mergeReviewSegmentStatus(String current, String incoming) {
+        List<String> priority = List.of("active", "detection", "alert", "ended");
+        String currentState = firstText(current, "active");
+        String incomingState = firstText(incoming, "active");
+        int currentPriority = priority.indexOf(currentState);
+        int incomingPriority = priority.indexOf(incomingState);
+        if (currentPriority < 0) {
+            currentPriority = 0;
+        }
+        if (incomingPriority < 0) {
+            incomingPriority = 0;
+        }
+        return incomingPriority >= currentPriority ? incomingState : currentState;
+    }
+
+    private static String lifecycleSeverity(String state) {
+        if ("alert".equals(state)) {
+            return "alert";
+        }
+        if ("detection".equals(state)) {
+            return "detection";
+        }
+        return null;
+    }
+
+    private static Map<String, Object> withReviewWindow(Map<String, Object> reviewData,
+                                                        LocalDateTime startTime,
+                                                        LocalDateTime endTime) {
+        Map<String, Object> enriched = new LinkedHashMap<>(reviewData == null ? Map.of() : reviewData);
+        if (startTime != null) {
+            enriched.put("startTime", startTime.toString());
+        }
+        if (endTime != null) {
+            enriched.put("endTime", endTime.toString());
+        }
+        Map<String, Object> reviewSegment = toStringObjectMap(enriched.get("reviewSegment"));
+        if (!reviewSegment.isEmpty()) {
+            Map<String, Object> updatedSegment = new LinkedHashMap<>(reviewSegment);
+            if (startTime != null) {
+                updatedSegment.put("startTime", startTime.toString());
+            }
+            if (endTime != null) {
+                updatedSegment.put("endTime", endTime.toString());
+            }
+            enriched.put("reviewSegment", immutableNonNullMap(updatedSegment));
+        }
+        return Map.copyOf(enriched);
+    }
+
+    private static String mergeRecordEvidenceStatus(String currentStatus, String incomingStatus) {
+        if (RECORD_EVIDENCE_MISSING.equals(currentStatus) || RECORD_EVIDENCE_MISSING.equals(incomingStatus)) {
+            return RECORD_EVIDENCE_MISSING;
+        }
+        if (RECORD_EVIDENCE_FAILED.equals(currentStatus) || RECORD_EVIDENCE_FAILED.equals(incomingStatus)) {
+            return RECORD_EVIDENCE_FAILED;
+        }
+        if (RECORD_EVIDENCE_FOUND.equals(currentStatus) || RECORD_EVIDENCE_FOUND.equals(incomingStatus)) {
+            return RECORD_EVIDENCE_FOUND;
+        }
+        if (RECORD_EVIDENCE_NOT_REQUIRED.equals(currentStatus) || RECORD_EVIDENCE_NOT_REQUIRED.equals(incomingStatus)) {
+            return RECORD_EVIDENCE_NOT_REQUIRED;
+        }
+        return hasText(incomingStatus) ? incomingStatus : currentStatus;
+    }
+
+    private static Map<String, Object> buildRuleSuggestion(ReviewItemAggregate item, String reason) {
+        Map<String, Object> suggestion = new LinkedHashMap<>();
+        suggestion.put("action", "suppress_label_zone");
+        suggestion.put("candidateActions", DEFAULT_RULE_CANDIDATE_ACTIONS);
+        suggestion.put("lifecycleStatus", RULE_SUGGESTION_PENDING);
+        suggestion.put("sourceSystem", item.sourceSystem());
+        suggestion.put("ruleCode", item.ruleCode());
+        suggestion.put("cameraId", item.cameraId());
+        suggestion.put("zoneCode", item.zoneCode());
+        suggestion.put("objectLabel", item.objectLabel());
+        if (hasText(reason)) {
+            suggestion.put("reason", reason);
+        }
+        suggestion.put("suggestedRuleName", "false_positive_" + item.cameraId() + "_" + item.zoneCode());
+        return suggestion;
+    }
+
+    private List<ReviewCaseTimelineItem> buildCaseDerivedTimeline(Long reviewCaseId,
+                                                                  List<ReviewCaseTimelineItem> storedTimeline) {
+        Set<Long> reviewItemIds = new LinkedHashSet<>();
+        for (ReviewCaseTimelineItem item : storedTimeline) {
+            if (item.reviewItemId() != null) {
+                reviewItemIds.add(item.reviewItemId());
+            }
+        }
+        List<ReviewCaseTimelineItem> derived = new ArrayList<>();
+        for (Long reviewItemId : reviewItemIds) {
+            ReviewItemAggregate item = withEventProjection(reviewItemStore.findById(reviewItemId).orElse(null));
+            if (item == null) {
+                continue;
+            }
+            for (RecordCoverageSegment segment : getRecordCoverage(reviewItemId)) {
+                derived.add(new ReviewCaseTimelineItem(
+                        reviewCaseId,
+                        item.id(),
+                        item.cameraId(),
+                        firstSourceAlertId(item),
+                        MATERIAL_RECORD_COVERAGE,
+                        segment.status(),
+                        segment.startTime(),
+                        segment.recordUri()
+                ));
+            }
+            if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {
+                derived.add(new ReviewCaseTimelineItem(
+                        reviewCaseId,
+                        item.id(),
+                        item.cameraId(),
+                        firstSourceAlertId(item),
+                        MATERIAL_REVIEW_ACTION,
+                        "false_positive",
+                        item.reviewedAt() == null ? item.lastAlertTime() : item.reviewedAt(),
+                        item.ignoreReason()
+                ));
+            }
+            if (item.eventId() != null) {
+                derived.add(new ReviewCaseTimelineItem(
+                        reviewCaseId,
+                        item.id(),
+                        item.cameraId(),
+                        firstSourceAlertId(item),
+                        MATERIAL_REVIEW_ACTION,
+                        "converted_to_event:" + item.eventId(),
+                        item.convertedAt() == null ? item.lastAlertTime() : item.convertedAt(),
+                        item.eventReviewStatus()
+                ));
+            }
+            if (RECORD_EVIDENCE_MISSING.equals(item.recordEvidenceStatus())
+                    || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus())) {
+                derived.add(new ReviewCaseTimelineItem(
+                        reviewCaseId,
+                        item.id(),
+                        item.cameraId(),
+                        firstSourceAlertId(item),
+                        MATERIAL_REVIEW_ACTION,
+                        "record_evidence:" + item.recordEvidenceStatus(),
+                        item.recordEvidenceCheckedAt() == null ? item.firstAlertTime() : item.recordEvidenceCheckedAt(),
+                        item.recordEvidenceMessage()
+                ));
+            }
+        }
+        return derived;
+    }
+
+    private static List<String> ruleCandidateActions(Map<String, Object> suggestion) {
+        Set<String> values = new LinkedHashSet<>();
+        collectStringValues(values, suggestion == null ? null : suggestion.get("candidateActions"));
+        if (values.isEmpty()) {
+            return DEFAULT_RULE_CANDIDATE_ACTIONS;
+        }
+        return List.copyOf(values);
+    }
+
+    private static double roundRate(long numerator, long denominator) {
+        if (denominator <= 0) {
+            return 0D;
+        }
+        return Math.round((numerator * 100D) / denominator) / 100D;
+    }
+
+    private static Map<String, Object> updateRuleSuggestionLifecycle(Map<String, Object> current,
+                                                                     String status,
+                                                                     String note) {
+        Map<String, Object> suggestion = new LinkedHashMap<>(current == null ? Map.of() : current);
+        suggestion.put("lifecycleStatus", status);
+        if (hasText(note)) {
+            suggestion.put("lifecycleNote", note);
+        }
+        if (RULE_SUGGESTION_ACCEPTED.equals(status) && hasText(note)) {
+            suggestion.put("approvalNote", note);
+        }
+        suggestion.put("lifecycleUpdatedAt", LocalDateTime.now().toString());
+        return Map.copyOf(suggestion);
+    }
+
+    private static String ruleConfigVersion(Long ruleId, Map<String, Object> suggestion, String versionKey) {
+        int version = toInteger(suggestion.get(versionKey)) == null ? 1 : toInteger(suggestion.get(versionKey)) + 1;
+        Object current = suggestion.get(versionKey);
+        if (current instanceof String value && value.startsWith("rule-" + ruleId + "-v")) {
+            String raw = value.substring(("rule-" + ruleId + "-v").length());
+            try {
+                version = Integer.parseInt(raw) + 1;
+            } catch (NumberFormatException ignored) {
+                version = 1;
+            }
+        }
+        return "rule-" + ruleId + "-v" + version;
+    }
+
+    private static Map<String, Object> toStringObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        return normalizeStringKeyMap(map);
+    }
+
+    private static Map<String, Object> immutableNonNullMap(Map<String, Object> values) {
+        values.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
+        return Map.copyOf(values);
+    }
+
+    private static List<RecordCoverageSegment> mergeCoverageWithMissingGaps(LocalDateTime windowStart,
+                                                                            LocalDateTime windowEnd,
+                                                                            List<RecordCoverageSegment> rawSegments) {
+        List<RecordCoverageSegment> normalized = rawSegments.stream()
+                .filter(segment -> segment.startTime() != null && segment.endTime() != null)
+                .filter(segment -> segment.endTime().isAfter(windowStart) && segment.startTime().isBefore(windowEnd))
+                .map(segment -> new RecordCoverageSegment(
+                        normalizeCoverageStatus(segment),
+                        max(windowStart, segment.startTime()),
+                        min(windowEnd, segment.endTime()),
+                        segment.motion(),
+                        segment.recordUri(),
+                        segment.objects(),
+                        segment.metadata() == null ? Map.of() : segment.metadata()
+                ))
+                .filter(segment -> segment.endTime().isAfter(segment.startTime()))
+                .sorted(Comparator.comparing(RecordCoverageSegment::startTime))
+                .toList();
+        if (normalized.isEmpty()) {
+            return List.of(recordMissingSegment(windowStart, windowEnd, "record_not_found", "record_window_empty", false));
+        }
+        List<RecordCoverageSegment> result = new ArrayList<>();
+        LocalDateTime cursor = windowStart;
+        for (RecordCoverageSegment segment : normalized) {
+            if (segment.startTime().isAfter(cursor)) {
+                result.add(recordMissingSegment(cursor, segment.startTime(), "stream_interrupted", "coverage_gap", true));
+            }
+            result.add(segment);
+            if (segment.endTime().isAfter(cursor)) {
+                cursor = segment.endTime();
+            }
+        }
+        if (cursor.isBefore(windowEnd)) {
+            result.add(recordMissingSegment(cursor, windowEnd, "stream_interrupted", "coverage_gap", true));
+        }
+        return List.copyOf(result);
+    }
+
+    private static String normalizeCoverageStatus(RecordCoverageSegment segment) {
+        if (RECORD_COVERAGE_MISSING.equals(segment.status())) {
+            return RECORD_COVERAGE_MISSING;
+        }
+        if (RECORD_COVERAGE_MOTION.equals(segment.status())) {
+            return RECORD_COVERAGE_MOTION;
+        }
+        if (segment.motion() != null && segment.motion() > 0) {
+            return RECORD_COVERAGE_MOTION;
+        }
+        return RECORD_COVERAGE_AVAILABLE;
+    }
+
+    private static RecordCoverageSegment recordMissingSegment(LocalDateTime startTime,
+                                                              LocalDateTime endTime,
+                                                              String gapReason,
+                                                              String reasonCode,
+                                                              boolean retryable) {
+        return new RecordCoverageSegment(
+                RECORD_COVERAGE_MISSING,
+                startTime,
+                endTime,
+                0,
+                null,
+                0,
+                recordGapMetadata(gapReason, reasonCode, retryable, null)
+        );
+    }
+
+    private static Map<String, Object> recordGapMetadata(String gapReason,
+                                                         String reasonCode,
+                                                         boolean retryable,
+                                                         String detail) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("gapReason", gapReason);
+        metadata.put("reasonCode", reasonCode);
+        metadata.put("retryable", retryable);
+        metadata.put("category", recordGapCategory(gapReason));
+        metadata.put("detail", detail);
+        return immutableNonNullMap(metadata);
+    }
+
+    private static String firstRecordGapReason(Map<String, Integer> gapReasons, String syncStatus) {
+        if (gapReasons != null) {
+            for (String reason : gapReasons.keySet()) {
+                if (hasText(reason)) {
+                    return normalizeRecordGapReason(reason);
+                }
+            }
+        }
+        return "record_storage_sync:" + syncStatus;
+    }
+
+    private static String recordGapCategory(String gapReason) {
+        return switch (gapReason) {
+            case RECORD_GAP_VIDEO_URL_NOT_CONFIGURED -> "configuration";
+            case "retention_expired", RECORD_GAP_FILE_EXPIRED -> "retention";
+            case "stream_interrupted" -> "stream";
+            case "recording_disabled", "record_space_not_found", "record_not_found" -> "configuration";
+            case "permission_denied" -> "permission";
+            case "service_unavailable" -> "service";
+            case RECORD_GAP_FILE_MISSING -> "filesystem";
+            case RECORD_GAP_DISK_FULL -> "storage";
+            case RECORD_GAP_CACHE_FLUSH_FAILED -> "cache";
+            default -> "unknown";
+        };
+    }
+
+    private static int coverageSeconds(RecordCoverageSegment segment) {
+        if (segment == null || segment.startTime() == null || segment.endTime() == null
+                || !segment.endTime().isAfter(segment.startTime())) {
+            return 0;
+        }
+        long seconds = Duration.between(segment.startTime(), segment.endTime()).getSeconds();
+        return seconds > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) seconds;
+    }
+
+    private static int materialOrder(String materialType) {
+        if (MATERIAL_SNAPSHOT.equals(materialType)) {
+            return 10;
+        }
+        if (MATERIAL_RECORD.equals(materialType)) {
+            return 20;
+        }
+        if (MATERIAL_RECORD_COVERAGE.equals(materialType)) {
+            return 30;
+        }
+        if (MATERIAL_REVIEW_ACTION.equals(materialType)) {
+            return 40;
+        }
+        return 90;
+    }
+
+    private static List<Map<String, Object>> buildReviewObjects(List<String> labels,
+                                                                List<String> objectIds,
+                                                                Double confidence,
+                                                                List<Double> bbox) {
+        int count = Math.max(labels.size(), objectIds.size());
+        if (count == 0) {
+            return List.of();
+        }
+        List<Map<String, Object>> objects = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            Map<String, Object> object = new LinkedHashMap<>();
+            if (i < objectIds.size()) {
+                object.put("id", objectIds.get(i));
+            }
+            if (i < labels.size()) {
+                object.put("label", labels.get(i));
+            }
+            if (confidence != null) {
+                object.put("confidence", confidence);
+            }
+            if (bbox != null && !bbox.isEmpty()) {
+                object.put("bbox", List.copyOf(bbox));
+            }
+            objects.add(Map.copyOf(object));
+        }
+        return List.copyOf(objects);
+    }
+
+    private static Map<String, Object> buildReviewDetection(AlertClueCommand command,
+                                                            String ruleCode,
+                                                            List<String> labels,
+                                                            List<String> zones,
+                                                            List<String> objectIds) {
+        Map<String, Object> detection = new LinkedHashMap<>();
+        detection.put("sourceAlertId", command.sourceAlertId());
+        detection.put("ruleCode", ruleCode);
+        detection.put("alertTime", command.alertTime().toString());
+        detection.put("cameraId", normalizeCameraId(command));
+        detection.put("labels", labels);
+        detection.put("zones", zones);
+        detection.put("objectIds", objectIds);
+        putIfPresent(detection, "sourceAlertType", command.sourceAlertType());
+        putIfPresent(detection, "deviceId", command.deviceId());
+        putIfPresent(detection, "zoneCode", command.zoneCode());
+        putIfPresent(detection, "objectLabel", command.objectLabel());
+        if (command.confidence() != null) {
+            detection.put("confidence", command.confidence());
+        }
+        if (command.staySeconds() != null) {
+            detection.put("staySeconds", command.staySeconds());
+        }
+        if (command.bbox() != null && !command.bbox().isEmpty()) {
+            detection.put("bbox", List.copyOf(command.bbox()));
+        }
+        if (hasText(command.snapshotUri())) {
+            detection.put("snapshotUri", command.snapshotUri());
+        }
+        if (hasText(command.recordUri())) {
+            detection.put("recordUri", command.recordUri());
+        }
+        return Map.copyOf(detection);
+    }
+
+    private static boolean matchesQuery(ReviewItemAggregate item, ReviewQuery query) {
+        return matchesText(query.reviewStatus(), item.reviewStatus())
+                && matchesText(query.cameraId(), item.cameraId())
+                && matchesText(query.zoneCode(), item.zoneCode())
+                && matchesText(query.objectLabel(), item.objectLabel())
+                && matchesText(query.recordEvidenceStatus(), item.recordEvidenceStatus())
+                && matchesConverted(query.converted(), item.eventId())
+                && matchesInCase(query.inReviewCase(), item.inReviewCase())
+                && matchesReviewer(query.reviewerUserId(), item.reviewerUserId())
+                && matchesTimeRange(query.beginTime(), query.endTime(), item.firstAlertTime(), item.lastAlertTime());
+    }
+
+    private static boolean matchesConverted(Boolean converted, Long eventId) {
+        return converted == null || converted == (eventId != null);
+    }
+
+    private static boolean matchesInCase(Boolean inReviewCase, Boolean actual) {
+        return inReviewCase == null || inReviewCase.equals(Boolean.TRUE.equals(actual));
+    }
+
+    private static boolean matchesReviewer(Long reviewerUserId, Long actualReviewerUserId) {
+        return reviewerUserId == null || Objects.equals(reviewerUserId, actualReviewerUserId);
+    }
+
+    private static boolean matchesTimeRange(LocalDateTime beginTime,
+                                            LocalDateTime endTime,
+                                            LocalDateTime firstAlertTime,
+                                            LocalDateTime lastAlertTime) {
+        if (beginTime != null && lastAlertTime != null && lastAlertTime.isBefore(beginTime)) {
+            return false;
+        }
+        return endTime == null || firstAlertTime == null || !firstAlertTime.isAfter(endTime);
+    }
+
+    private static boolean correlates(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        return correlationScore(base, candidate) > 0;
+    }
+
+    private static int correlationScore(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        int score = 0;
+        String baseCorrelationId = toText(base.reviewData().get("correlationId"));
+        String candidateCorrelationId = toText(candidate.reviewData().get("correlationId"));
+        if (hasText(baseCorrelationId) && Objects.equals(baseCorrelationId, candidateCorrelationId)) {
+            score += 100;
+        }
+        if (intersects(objectIds(base), objectIds(candidate))) {
+            score += 80;
+        }
+        if (hasSameRegulatoryArea(base, candidate)) {
+            score += 40;
+        }
+        if (hasAdjacentCamera(base, candidate)) {
+            score += 35;
+        }
+        if (intersects(zones(base), zones(candidate))) {
+            score += 30;
+        }
+        return score;
+    }
+
+    private static Set<String> objectIds(ReviewItemAggregate item) {
+        Set<String> values = new LinkedHashSet<>();
+        collectStringValues(values, item.reviewData().get("objectIds"));
+        return values;
+    }
+
+    private static Set<String> zones(ReviewItemAggregate item) {
+        Set<String> values = new LinkedHashSet<>();
+        collectStringValues(values, item.zoneCode());
+        collectStringValues(values, item.reviewData().get("zones"));
+        return values;
+    }
+
+    private static boolean hasSameRegulatoryArea(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        String baseArea = toText(reviewDataValue(base,
+                "regulatoryArea", "regulatory_area", "regulatoryAreaCode", "regulatory_area_code",
+                "supervisionArea", "supervision_area"));
+        String candidateArea = toText(reviewDataValue(candidate,
+                "regulatoryArea", "regulatory_area", "regulatoryAreaCode", "regulatory_area_code",
+                "supervisionArea", "supervision_area"));
+        return hasText(baseArea) && Objects.equals(baseArea, candidateArea);
+    }
+
+    private static boolean hasAdjacentCamera(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        Set<String> baseAdjacentCameras = adjacentCameras(base);
+        Set<String> candidateAdjacentCameras = adjacentCameras(candidate);
+        return baseAdjacentCameras.contains(candidate.cameraId()) || candidateAdjacentCameras.contains(base.cameraId());
+    }
+
+    private static Set<String> adjacentCameras(ReviewItemAggregate item) {
+        Set<String> values = new LinkedHashSet<>();
+        collectStringValues(values, reviewDataValue(item, "adjacentCameras", "adjacent_cameras"));
+        return values;
+    }
+
+    private static Object reviewDataValue(ReviewItemAggregate item, String... keys) {
+        Map<String, Object> reviewData = item.reviewData() == null ? Map.of() : item.reviewData();
+        for (String key : keys) {
+            if (reviewData.containsKey(key)) {
+                return reviewData.get(key);
+            }
+        }
+        Object motion = reviewData.get("motion");
+        if (motion instanceof Map<?, ?> motionMap) {
+            for (String key : keys) {
+                if (motionMap.containsKey(key)) {
+                    return motionMap.get(key);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean intersects(Set<String> left, Set<String> right) {
+        if (left.isEmpty() || right.isEmpty()) {
+            return false;
+        }
+        Set<String> intersection = new LinkedHashSet<>(left);
+        intersection.retainAll(right);
+        return !intersection.isEmpty();
+    }
+
+    private static String requireRuleSuggestionStatus(String status) {
+        requireText(status, "status");
+        if (List.of(RULE_SUGGESTION_PENDING, RULE_SUGGESTION_ACCEPTED, RULE_SUGGESTION_REJECTED,
+                RULE_SUGGESTION_APPLIED, RULE_SUGGESTION_REVERTED).contains(status)) {
+            return status;
+        }
+        throw new IllegalArgumentException("unsupported rule suggestion status: " + status);
+    }
+
+    private static String mapEventReviewStatus(EventProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        if ("closed".equals(projection.eventStatus())) {
+            return "closed";
+        }
+        if ("returned".equals(projection.eventStatus()) || "rejected".equals(projection.eventStatus())) {
+            return "returned";
+        }
+        if (projection.evidenceStatus() != null && projection.evidenceStatus().startsWith("missing")) {
+            return "pending_evidence";
+        }
+        if ("recheck_required".equals(projection.closeCheckStatus()) || "rechecking".equals(projection.closeCheckStatus())) {
+            return "rechecking";
+        }
+        return projection.eventStatus() == null ? null : "accepted";
+    }
+
+    @SafeVarargs
+    private static <T> T firstNonNull(T... values) {
+        if (values == null) {
+            return null;
+        }
+        for (T value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static List<Long> normalizeReviewCaseItems(Long primaryReviewItemId, List<Long> reviewItemIds) {
+        Set<Long> ids = new LinkedHashSet<>();
+        if (primaryReviewItemId != null) {
+            requirePositive(primaryReviewItemId, "primaryReviewItemId");
+            ids.add(primaryReviewItemId);
+        }
+        if (reviewItemIds != null) {
+            for (Long reviewItemId : reviewItemIds) {
+                requirePositive(reviewItemId, "reviewItemId");
+                ids.add(reviewItemId);
+            }
+        }
+        if (ids.isEmpty()) {
+            throw new IllegalArgumentException("reviewItemIds must not be empty");
+        }
+        return List.copyOf(ids);
+    }
+
+    private static List<Map<String, Object>> toMapList(Object value) {
+        List<Map<String, Object>> values = new ArrayList<>();
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if (item instanceof Map<?, ?> map) {
+                    values.add(normalizeStringKeyMap(map));
+                }
+            }
+            return List.copyOf(values);
+        }
+        if (value instanceof Map<?, ?> map) {
+            values.add(normalizeStringKeyMap(map));
+        }
+        return List.copyOf(values);
+    }
+
+    private static List<String> toStringList(Object value, String fallback) {
+        List<String> values = new ArrayList<>();
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                String text = toText(item);
+                if (hasText(text)) {
+                    values.add(text);
+                }
+            }
+        } else {
+            String text = toText(value);
+            if (hasText(text)) {
+                values.add(text);
+            }
+        }
+        if (values.isEmpty() && hasText(fallback)) {
+            values.add(fallback);
+        }
+        return List.copyOf(values);
+    }
+
+    private static List<Double> toDoubleList(Object value) {
+        List<Double> values = new ArrayList<>();
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                Double number = toDouble(item);
+                if (number != null) {
+                    values.add(number);
+                }
+            }
+        } else {
+            Double number = toDouble(value);
+            if (number != null) {
+                values.add(number);
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private static Double toDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        String text = toText(value);
+        if (!hasText(text)) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static List<String> nonEmpty(List<String> configured, String fallback) {
+        if (configured != null && !configured.isEmpty()) {
+            return List.copyOf(configured);
+        }
+        if (hasText(fallback)) {
+            return List.of(fallback);
+        }
+        return List.of();
+    }
+
+    private static List<String> mergeStringLists(Map<String, Object> current,
+                                                 Map<String, Object> incoming,
+                                                 String key) {
+        Set<String> values = new LinkedHashSet<>();
+        collectStringValues(values, current == null ? null : current.get(key));
+        collectStringValues(values, incoming == null ? null : incoming.get(key));
+        return List.copyOf(values);
+    }
+
+    private static List<String> mergeStringValues(Object current, List<String> incoming) {
+        Set<String> values = new LinkedHashSet<>();
+        collectStringValues(values, current);
+        collectStringValues(values, incoming);
+        return List.copyOf(values);
+    }
+
+    private static Map<String, Object> mergeMotionMetadata(Object current,
+                                                           Map<String, Object> incoming,
+                                                           Map<String, Object> lifecycleEvent) {
+        Map<String, Object> motion = new LinkedHashMap<>(toStringObjectMap(current));
+        motion.putAll(incoming == null ? Map.of() : incoming);
+        List<Map<String, Object>> path = new ArrayList<>(toMapList(motion.get("path")));
+        path.add(lifecycleEvent);
+        motion.put("path", List.copyOf(path));
+        return immutableNonNullMap(motion);
+    }
+
+    private static List<Map<String, Object>> mergeMapLists(Map<String, Object> current,
+                                                           Map<String, Object> incoming,
+                                                           String key) {
+        Map<String, Map<String, Object>> values = new LinkedHashMap<>();
+        collectMapValues(values, current == null ? null : current.get(key));
+        collectMapValues(values, incoming == null ? null : incoming.get(key));
+        return List.copyOf(values.values());
+    }
+
+    private static void collectMapValues(Map<String, Map<String, Object>> values, Object value) {
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Map<String, Object> normalized = normalizeStringKeyMap(map);
+                    values.putIfAbsent(mapIdentity(normalized), normalized);
+                }
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> normalized = normalizeStringKeyMap(map);
+            values.putIfAbsent(mapIdentity(normalized), normalized);
+        }
+    }
+
+    private static Map<String, Object> normalizeStringKeyMap(Map<?, ?> value) {
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : value.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return Map.copyOf(normalized);
+    }
+
+    private static void putIfPresent(Map<String, Object> values, String key, Object value) {
+        if (value != null) {
+            values.put(key, value);
+        }
+    }
+
+    private static String mapIdentity(Map<String, Object> value) {
+        Object sourceAlertId = value.get("sourceAlertId");
+        if (sourceAlertId != null && hasText(String.valueOf(sourceAlertId))) {
+            return "alert:" + sourceAlertId;
+        }
+        Object id = value.get("id");
+        if (id != null && hasText(String.valueOf(id))) {
+            return "object:" + id;
+        }
+        return "value:" + value;
+    }
+
+    private static void collectStringValues(Set<String> values, Object value) {
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                if (item != null && hasText(String.valueOf(item))) {
+                    values.add(String.valueOf(item));
+                }
+            }
+            return;
+        }
+        if (value != null && hasText(String.valueOf(value))) {
+            values.add(String.valueOf(value));
+        }
+    }
+
+    private static void copyIfPresent(Map<String, Object> merged,
+                                      Map<String, Object> current,
+                                      Map<String, Object> incoming,
+                                      String key) {
+        Object incomingValue = incoming == null ? null : incoming.get(key);
+        if (incomingValue != null) {
+            merged.put(key, incomingValue);
+            return;
+        }
+        Object currentValue = current == null ? null : current.get(key);
+        if (currentValue != null) {
+            merged.put(key, currentValue);
+        }
+    }
+
+    private static String firstSourceAlertId(ReviewItemAggregate item) {
+        if (item.sourceAlertIds() == null || item.sourceAlertIds().isEmpty()) {
+            return null;
+        }
+        return item.sourceAlertIds().get(0);
+    }
+
+    private static String toText(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String firstText(Object value, String fallback) {
+        String text = toText(value);
+        return hasText(text) ? text : fallback;
+    }
+
+    private static Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        String text = toText(value);
+        if (!hasText(text)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Integer toInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        String text = toText(value);
+        if (!hasText(text)) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Boolean toBoolean(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        String text = toText(value);
+        return hasText(text) ? Boolean.parseBoolean(text) : null;
+    }
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime dateTime) {
+            return dateTime;
+        }
+        String text = toText(value);
+        if (!hasText(text)) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(text);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static LocalDateTime min(LocalDateTime first, LocalDateTime second) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        return first.isBefore(second) ? first : second;
+    }
+
+    private static LocalDateTime max(LocalDateTime first, LocalDateTime second) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        return first.isAfter(second) ? first : second;
+    }
+
+    private static String normalizeCameraId(AlertClueCommand command) {
+        if (hasText(command.cameraId())) {
+            return command.cameraId();
+        }
+        return command.deviceId();
+    }
+
+    private static void requireText(String value, String fieldName) {
+        if (!hasText(value)) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+    }
+
+    private static void requirePositive(Long value, String fieldName) {
+        if (value == null || value <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be positive");
+        }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private record EvidenceBuildResult(List<ReviewEvidenceItem> evidenceItems,
+                                       String recordEvidenceStatus,
+                                       LocalDateTime recordEvidenceCheckedAt,
+                                       String recordEvidenceMessage) {
+    }
+
+    private record RecordEvidenceAttempt(Optional<ReviewEvidenceItem> evidenceItem,
+                                         String recordEvidenceStatus,
+                                         LocalDateTime recordEvidenceCheckedAt,
+                                         String recordEvidenceMessage) {
+    }
+
+    private record RuleSuggestionGroupKey(String cameraId,
+                                          String zoneCode,
+                                          String objectLabel) {
+    }
+
+}

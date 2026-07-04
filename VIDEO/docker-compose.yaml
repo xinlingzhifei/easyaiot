@@ -4,6 +4,9 @@
 services:
   video-service:
     image: video-service:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: video-service
     user: root
     # runtime: nvidia  # 由 install_linux.sh 检测到 GPU 后自动启用

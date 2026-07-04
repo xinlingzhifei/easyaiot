@@ -133,6 +133,17 @@ aj:
 
 --- #################### yFeiEye相关配置 ####################
 
+yfeieye:
+  video:
+    alert-record-query-url: ${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:}
+    record-coverage-query-url: ${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:}
+    record-base-url: ${YFEIEYE_VIDEO_RECORD_BASE_URL:}
+    record-export-url: ${YFEIEYE_VIDEO_RECORD_EXPORT_URL:}
+    public-play-host: ${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:${MEDIA_HTTP_PLAY_HOST:}}
+  review-intelligence:
+    semantic-search-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SEMANTIC_SEARCH_URL:}
+    summary-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SUMMARY_URL:}
+
 iot:
   info:
     version: 1.0.0

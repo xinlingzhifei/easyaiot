@@ -15,7 +15,15 @@ from app.services.record_space_service import (
 from app.services.record_video_service import (
     list_record_videos, delete_record_videos, get_record_video, cleanup_old_videos_by_save_time,
     sync_record_videos_metadata, list_record_video_dates, list_record_videos_day_detail,
-    find_segment_for_alert,
+    find_segment_for_alert, query_recording_availability, inspect_recording_storage_drift,
+)
+from app.services.record_export_service import (
+    create_record_export,
+    poll_record_export,
+    retry_record_export,
+    get_record_export_audit,
+    get_record_export_manifest,
+    download_record_export,
 )
 
 record_bp = Blueprint('record', __name__)
@@ -259,6 +267,154 @@ def resolve_alert_segment(device_id):
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 
 
+@record_bp.route('/availability', methods=['GET'])
+def record_availability():
+    """Query recording coverage for a review incident window."""
+    try:
+        device_id = request.args.get('device_id') or request.args.get('deviceId')
+        camera_id = request.args.get('camera_id') or request.args.get('cameraId')
+        begin_time = (
+            request.args.get('begin_time')
+            or request.args.get('beginTime')
+            or request.args.get('start_time')
+            or request.args.get('startTime')
+            or request.args.get('after')
+        )
+        end_time = (
+            request.args.get('end_time')
+            or request.args.get('endTime')
+            or request.args.get('stop_time')
+            or request.args.get('stopTime')
+            or request.args.get('before')
+        )
+        result = query_recording_availability(
+            device_id=device_id,
+            camera_id=camera_id,
+            begin_time=begin_time,
+            end_time=end_time,
+            alert_time=request.args.get('alert_time') or request.args.get('alertTime'),
+            time_range=request.args.get('time_range') or request.args.get('timeRange'),
+        )
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'查询录像覆盖度失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@record_bp.route('/export', methods=['POST'])
+def export_record():
+    """Create a review evidence record export task."""
+    try:
+        data = request.get_json() or {}
+        result = create_record_export(data)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'\u521b\u5efa\u590d\u6838\u8bc1\u636e\u5f55\u50cf\u5bfc\u51fa\u4efb\u52a1\u5931\u8d25: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'\u670d\u52a1\u5668\u5185\u90e8\u9519\u8bef: {str(e)}'}), 500
+
+
+@record_bp.route('/export/<export_id>', methods=['GET'])
+def get_record_export(export_id):
+    """Poll a review evidence record export task."""
+    try:
+        result = poll_record_export(export_id)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 404, 'msg': str(e)}), 404
+    except Exception as e:
+        logger.error(f'查询复核证据录像导出任务失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@record_bp.route('/export/<export_id>/retry', methods=['POST'])
+def retry_record_export_job(export_id):
+    """Requeue a failed review evidence record export task."""
+    try:
+        result = retry_record_export(export_id)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 404, 'msg': str(e)}), 404
+    except Exception as e:
+        logger.error(f'retry review evidence record export failed: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
+
+
+@record_bp.route('/export/<export_id>/audit', methods=['GET'])
+def get_record_export_audit_entries(export_id):
+    """List review evidence record export audit entries."""
+    try:
+        result = get_record_export_audit(export_id)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 404, 'msg': str(e)}), 404
+    except Exception as e:
+        logger.error(f'list review evidence record export audit failed: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
+
+
+@record_bp.route('/export/<export_id>/manifest', methods=['GET'])
+def get_record_export_manifest_file(export_id):
+    """Return the persistent review evidence record export manifest."""
+    try:
+        result = get_record_export_manifest(export_id)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 404, 'msg': str(e)}), 404
+    except Exception as e:
+        logger.error(f'get review evidence record export manifest failed: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
+
+
+@record_bp.route('/export/<export_id>/download', methods=['GET'])
+def download_record_export_file(export_id):
+    """Download a generated review evidence record export."""
+    try:
+        result = download_record_export(
+            export_id,
+            operator_user_id=request.args.get('operator_user_id') or request.args.get('operatorUserId'),
+            reason=request.args.get('reason'),
+        )
+        return send_file(
+            BytesIO(result['content']),
+            mimetype=result.get('mimetype') or 'application/octet-stream',
+            as_attachment=True,
+            download_name=result.get('filename') or f'{export_id}.mp4',
+        )
+    except ValueError as e:
+        return jsonify({'code': 404, 'msg': str(e)}), 404
+    except Exception as e:
+        logger.error(f'下载复核证据录像导出任务失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
 @record_bp.route('/space/<int:space_id>/videos', methods=['GET'])
 def list_videos(space_id):
     """获取监控录像列表"""
@@ -351,6 +507,28 @@ def sync_videos_metadata(space_id):
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 
 
+@record_bp.route('/space/<int:space_id>/videos/drift', methods=['GET'])
+def inspect_videos_storage_drift(space_id):
+    """Inspect recording DB/disk drift for review evidence reliability."""
+    try:
+        retention_hours = request.args.get('retention_hours') or request.args.get('retentionHours')
+        result = inspect_recording_storage_drift(
+            space_id=space_id,
+            device_id=request.args.get('device_id') or request.args.get('deviceId'),
+            retention_hours=int(retention_hours) if retention_hours else None,
+        )
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'inspect recording storage drift failed: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
+
+
 @record_bp.route('/space/<int:space_id>/videos/cleanup', methods=['POST'])
 def cleanup_videos(space_id):
     """清理过期的监控录像"""
@@ -377,4 +555,3 @@ def cleanup_videos(space_id):
         logger.error(f'清理过期监控录像失败: {str(e)}', exc_info=True)
         db.session.rollback()
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
-

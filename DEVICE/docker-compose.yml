@@ -47,6 +47,10 @@ services:
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL=jdbc:postgresql://PostgresSQL:5432/ruoyi-vue-pro20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&createDatabaseIfNotExist=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified # PostgreSQL数据库地址（使用Docker服务名）
       - SPRING_REDIS_HOST=Redis # Redis地址（使用Docker服务名）
       - IOT_CAPTCHA_ENABLE=${IOT_CAPTCHA_ENABLE:-true} # 默认开启验证码；本地可通过环境变量覆盖
+      - YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL=${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:-http://host.docker.internal:6000/video/record/availability} # 线索复核录像自动补证查询地址；未配置时降级为缺录像/待手动补证
+      - YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://host.docker.internal:6000/video/record/availability} # 线索复核录像覆盖度查询地址；未配置时返回缺录像覆盖
+      - YFEIEYE_VIDEO_RECORD_BASE_URL=${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://host.docker.internal:6000/video/record} # VIDEO录像基础地址；用于录像空间发现和覆盖度兜底
+      - YFEIEYE_VIDEO_RECORD_EXPORT_URL=${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://host.docker.internal:6000/video/record/export} # 线索复核证据录像导出地址；未配置时导出任务保留待补证状态
       # SkyWalking配置（如需要，请取消注释并配置）
       # - JAVA_TOOL_OPTIONS=-javaagent:/data/skywalking/skywalking-agent/skywalking-agent.jar
       # - SW_AGENT_NAME=iot-system
@@ -55,6 +59,8 @@ services:
     volumes:
       - ../.build-cache/device/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48099/actuator/health"]
       interval: 30s

@@ -1,0 +1,5506 @@
+package com.basiclab.iot.system.supervision;
+
+import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
+import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
+import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewEventReconcileJob;
+import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimeOutboxJob;
+import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimePatrolJob;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.AlertClueCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceItem;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordCoverageSegment;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordCoverageRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordCoverageResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseDraft;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseOperationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseOwnerCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseTimelineItem;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemAggregate;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemStore;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleStore;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewWorkbenchSummary;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RuleSuggestionStat;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RuleSuggestionOperationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RuleSuggestionPreview;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewToEventCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticSearchCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticHit;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummary;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportJob;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportPackage;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewDetailStreamItem;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxMessage;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSegmentView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleGeometryCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleGeometryEvaluation;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleReplayCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleReplayResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewLifecycleCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEvaluation;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEvaluationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticReindexCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticReindexJob;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.VideoEvidenceExportProvider;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.EventProjection;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.EventProjectionStore;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResult;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewAiSummaryRequest;
+import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewServiceImpl;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
+import com.basiclab.iot.system.service.supervision.SupervisionRuleSeeds;
+import org.junit.jupiter.api.Test;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SupervisionAlertReviewServiceTest {
+
+    @Test
+    void ingestCluesMergesNearbyAlertSnapshotsAndRecordsIntoOneReviewItem() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 6, 30, 10, 0);
+
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-001", firstTime, "snap-001.jpg", "record-001.mp4"));
+        ReviewItemAggregate second = service.ingestClue(newClue("alert-002", firstTime.plusSeconds(35), "snap-002.jpg", "record-002.mp4"));
+
+        assertEquals(first.id(), second.id());
+        assertEquals("pending_review", second.reviewStatus());
+        assertEquals(2, second.alertCount());
+        assertEquals(List.of("alert-001", "alert-002"), second.sourceAlertIds());
+        assertEquals(firstTime, second.firstAlertTime());
+        assertEquals(firstTime.plusSeconds(35), second.lastAlertTime());
+
+        List<ReviewEvidenceItem> timeline = service.getTimeline(second.id());
+        assertEquals(List.of("snapshot", "record", "snapshot", "record"),
+                timeline.stream().map(ReviewEvidenceItem::materialType).toList());
+        assertEquals(List.of("snap-001.jpg", "record-001.mp4", "snap-002.jpg", "record-002.mp4"),
+                timeline.stream().map(ReviewEvidenceItem::materialUri).toList());
+    }
+
+    @Test
+    void concurrentIngestKeepsSingleActiveReviewSegmentForSameCameraWindow() throws Exception {
+        SlowCreateReviewItemStore itemStore = new SlowCreateReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 7, 3, 21, 0);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicReference<ReviewItemAggregate> first = new AtomicReference<>();
+        AtomicReference<ReviewItemAggregate> second = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        Thread firstThread = new Thread(() -> ingestAfterStart(
+                service,
+                newClue("alert-race-001", firstTime, "race-1.jpg", "race-1.mp4"),
+                ready,
+                start,
+                first,
+                failure
+        ), "review-segment-race-1");
+        Thread secondThread = new Thread(() -> ingestAfterStart(
+                service,
+                newClue("alert-race-002", firstTime.plusSeconds(30), "race-2.jpg", "race-2.mp4"),
+                ready,
+                start,
+                second,
+                failure
+        ), "review-segment-race-2");
+
+        firstThread.start();
+        secondThread.start();
+        assertTrue(ready.await(2, TimeUnit.SECONDS), "both ingest threads should be ready");
+        start.countDown();
+        firstThread.join(5_000);
+        secondThread.join(5_000);
+
+        assertFalse(firstThread.isAlive(), "first ingest thread should finish");
+        assertFalse(secondThread.isAlive(), "second ingest thread should finish");
+        if (failure.get() != null) {
+            throw new AssertionError(failure.get());
+        }
+        assertEquals(first.get().id(), second.get().id());
+        assertEquals(1, itemStore.listWorkbench(null).size());
+        ReviewSegmentView segment = service.getReviewSegment(first.get().id());
+        assertEquals("active", segment.status());
+        assertEquals(firstTime, segment.startTime());
+        assertEquals(firstTime.plusSeconds(30), segment.endTime());
+        assertEquals(List.of("alert-race-001", "alert-race-002"), segment.sourceAlertIds());
+    }
+
+    @Test
+    void ingestCluesMergesSameCameraTimeWindowAcrossRulesZonesAndObjects() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 6, 30, 10, 0);
+
+        ReviewItemAggregate first = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-zone-a-person",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                firstTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "snap-person.jpg",
+                "record-person.mp4",
+                "hash-person",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-person"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-window"
+        ));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-zone-b-vehicle",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                firstTime.plusSeconds(120),
+                "device-01",
+                "camera-01",
+                "zone-b",
+                "vehicle",
+                6,
+                "snap-vehicle.jpg",
+                "record-vehicle.mp4",
+                "hash-vehicle",
+                List.of("vehicle"),
+                List.of("zone-b"),
+                List.of("obj-vehicle"),
+                0.82D,
+                List.of(0.5D, 0.6D, 0.7D, 0.8D),
+                "corr-window"
+        ));
+
+        assertEquals(first.id(), second.id());
+        assertEquals(firstTime, second.firstAlertTime());
+        assertEquals(firstTime.plusSeconds(120), second.lastAlertTime());
+        assertEquals(2, second.alertCount());
+        assertEquals(List.of("alert-zone-a-person", "alert-zone-b-vehicle"), second.sourceAlertIds());
+        assertEquals(List.of("person", "vehicle"), second.reviewData().get("labels"));
+        assertEquals(List.of("zone-a", "zone-b"), second.reviewData().get("zones"));
+        assertEquals(List.of("obj-person", "obj-vehicle"), second.reviewData().get("objectIds"));
+        assertEquals(firstTime.toString(), second.reviewData().get("startTime"));
+        assertEquals(firstTime.plusSeconds(120).toString(), second.reviewData().get("endTime"));
+        assertEquals(2, ((List<?>) second.reviewData().get("objects")).size());
+        List<?> detections = (List<?>) second.reviewData().get("detections");
+        assertEquals(2, detections.size());
+        assertTrue(detections.stream().map(Map.class::cast)
+                .anyMatch(detection -> "alert-zone-a-person".equals(detection.get("sourceAlertId"))
+                        && SupervisionRuleSeeds.RULE_RESTRICTED_AREA.equals(detection.get("ruleCode"))));
+        assertTrue(detections.stream().map(Map.class::cast)
+                .anyMatch(detection -> "alert-zone-b-vehicle".equals(detection.get("sourceAlertId"))
+                        && SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING.equals(detection.get("ruleCode"))));
+    }
+
+    @Test
+    void ingestDuplicatePayloadHashKeepsReviewItemIdempotentWithoutExtraEvidence() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 9, 0);
+
+        ReviewItemAggregate first = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-idempotent-a",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "idempotent-a.jpg",
+                "idempotent-a.mp4",
+                "payload-hash-idempotent",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-001"),
+                0.92D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-idempotent"
+        ));
+        ReviewItemAggregate duplicate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-idempotent-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime.plusSeconds(10),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "idempotent-b.jpg",
+                "idempotent-b.mp4",
+                "payload-hash-idempotent",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-001"),
+                0.92D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-idempotent"
+        ));
+
+        assertEquals(first.id(), duplicate.id());
+        assertEquals(1, duplicate.alertCount());
+        assertEquals(List.of("alert-idempotent-a"), duplicate.sourceAlertIds());
+        assertEquals(List.of("video:payload:payload-hash-idempotent"),
+                duplicate.reviewData().get("ingestIdentityKeys"));
+        assertEquals(List.of("snapshot", "record"),
+                service.getTimeline(duplicate.id()).stream().map(ReviewEvidenceItem::materialType).toList());
+    }
+
+    @Test
+    void ingestSplitsOutsideMergeWindowAndRecordsAggregationPolicy() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 7, 2, 10, 0);
+
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-window-a",
+                firstTime,
+                "window-a.jpg",
+                "window-a.mp4"
+        ));
+        ReviewItemAggregate split = service.ingestClue(newClue(
+                "alert-window-b",
+                firstTime.plusSeconds(301),
+                "window-b.jpg",
+                "window-b.mp4"
+        ));
+
+        assertFalse(Objects.equals(first.id(), split.id()));
+        Map<?, ?> firstAggregation = (Map<?, ?>) first.reviewData().get("aggregation");
+        Map<?, ?> splitAggregation = (Map<?, ?>) split.reviewData().get("aggregation");
+        assertEquals("same_camera_sliding_window", firstAggregation.get("mergePolicy"));
+        assertEquals(300, firstAggregation.get("mergeWindowSeconds"));
+        assertEquals("new_item_when_gap_exceeds_merge_window_or_existing_not_pending",
+                splitAggregation.get("splitPolicy"));
+        assertEquals("video|camera-01", splitAggregation.get("aggregationKey"));
+    }
+
+    @Test
+    void reviewStatusCanBeConfirmedOrIgnoredBeforeConversion() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-001",
+                LocalDateTime.of(2026, 6, 30, 10, 0),
+                "snap-001.jpg",
+                "record-001.mp4"
+        ));
+
+        ReviewItemAggregate reviewed = service.markReviewed(new ReviewOperationCommand(item.id(), 9001L, null));
+        assertEquals("reviewed", reviewed.reviewStatus());
+        assertEquals(9001L, reviewed.reviewerUserId());
+        assertTrue(reviewed.reviewedAt() != null);
+
+        ReviewItemAggregate ignored = service.ignore(new ReviewOperationCommand(item.id(), 9002L, "duplicate"));
+        assertEquals("ignored", ignored.reviewStatus());
+        assertEquals(9002L, ignored.reviewerUserId());
+        assertEquals("duplicate", ignored.ignoreReason());
+    }
+
+    @Test
+    void convertReviewItemToSupervisionEventUsesReviewItemAsIdempotentSource() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        List<AlertToEventCommand> eventCommands = new ArrayList<>();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), command -> {
+            eventCommands.add(command);
+            return new AlertToEventResult(
+                    7001L,
+                    command.sourceSystem(),
+                    command.sourceAlertId(),
+                    command.ruleCode(),
+                    "supervision_order",
+                    SupervisionEventLevelEnum.L2,
+                    SupervisionEventStatusEnum.DISPATCHED.getCode(),
+                    false
+            );
+        });
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-001",
+                LocalDateTime.of(2026, 6, 30, 10, 0),
+                "snap-001.jpg",
+                "record-001.mp4"
+        ));
+
+        var result = service.convertToEvent(new ReviewToEventCommand(item.id(), 9001L));
+
+        assertEquals(7001L, result.eventId());
+        assertEquals("converted", result.reviewStatus());
+        assertEquals(7001L, itemStore.findById(item.id()).orElseThrow().eventId());
+        assertEquals(List.of(new AlertToEventCommand(
+                "alert_review",
+                item.reviewItemNo(),
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 6, 30, 10, 0),
+                null
+        )), eventCommands);
+    }
+
+    @Test
+    void convertedReviewItemAllowsEvidenceHardeningButRejectsFalsePositiveRollback() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7002L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                )
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-converted-policy",
+                LocalDateTime.of(2026, 7, 4, 11, 0),
+                "converted-policy.jpg",
+                "converted-policy.mp4"
+        ));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9001L));
+
+        ReviewRecordStorageSyncResult syncResult = service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9002L,
+                List.of(new RecordCoverageSegment(
+                        "available",
+                        LocalDateTime.of(2026, 7, 4, 10, 59),
+                        LocalDateTime.of(2026, 7, 4, 11, 1),
+                        1,
+                        "converted-policy.mp4"
+                ))
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "converted policy case",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob exportJob = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9003L,
+                "manifest",
+                "post event evidence hardening"
+        ));
+        IllegalStateException rejected = assertThrows(IllegalStateException.class,
+                () -> service.markFalsePositive(new ReviewOperationCommand(item.id(), 9004L, "late false positive")));
+
+        assertEquals("complete", syncResult.syncStatus());
+        assertEquals(1, syncResult.availableSegmentCount());
+        assertTrue(exportJob.boundEventIds().contains(7002L));
+        assertEquals("converted", itemStore.findById(item.id()).orElseThrow().reviewStatus());
+        assertEquals("converted_review_item_cannot_be_marked_false_positive", rejected.getMessage());
+    }
+
+    @Test
+    void regionRuleSuppliesRuleCodeOnlyWhenZoneObjectAndStayTimeMatch() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(new InMemoryReviewItemStore(), ruleStore, unusedEventService());
+        service.saveRule(new ReviewRuleCommand(
+                null,
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "A区禁入复核",
+                "video",
+                "camera-01",
+                "zone-a",
+                "person",
+                10,
+                null,
+                null,
+                true
+        ));
+
+        ReviewItemAggregate matched = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-001",
+                null,
+                "restricted_area",
+                LocalDateTime.of(2026, 6, 30, 10, 0),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "snap-001.jpg",
+                "record-001.mp4",
+                null
+        ));
+        ReviewItemAggregate notMatched = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-002",
+                null,
+                "restricted_area",
+                LocalDateTime.of(2026, 6, 30, 10, 10),
+                "device-01",
+                "camera-01",
+                "zone-b",
+                "person",
+                12,
+                "snap-002.jpg",
+                "record-002.mp4",
+                null
+        ));
+
+        assertEquals(SupervisionRuleSeeds.RULE_RESTRICTED_AREA, matched.ruleCode());
+        assertEquals(SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING, notMatched.ruleCode());
+    }
+
+    @Test
+    void ingestWithoutRecordUriBackfillsRecordEvidenceWhenResolverFindsRecord() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingRecordEvidenceResolver resolver = new CapturingRecordEvidenceResolver(
+                Optional.of(new RecordEvidenceResult("record-from-video.mp4", "playback_match"))
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                resolver,
+                noEventProjectionStore()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 11, 0);
+
+        ReviewItemAggregate item = service.ingestClue(newClue("alert-003", alertTime, "snap-003.jpg", null));
+
+        assertEquals("found", item.recordEvidenceStatus());
+        assertEquals("playback_match", item.recordEvidenceMessage());
+        assertTrue(item.recordEvidenceCheckedAt() != null);
+        assertEquals(List.of(new RecordEvidenceRequest("alert-003", "device-01", "camera-01", alertTime)),
+                resolver.requests());
+        assertEquals(List.of("snapshot", "record"),
+                service.getTimeline(item.id()).stream().map(ReviewEvidenceItem::materialType).toList());
+        assertEquals(List.of("snap-003.jpg", "record-from-video.mp4"),
+                service.getTimeline(item.id()).stream().map(ReviewEvidenceItem::materialUri).toList());
+    }
+
+    @Test
+    void ingestWithoutRecordUriMarksMissingWhenResolverHasNoRecord() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                new CapturingRecordEvidenceResolver(Optional.empty()),
+                noEventProjectionStore()
+        );
+
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-004",
+                LocalDateTime.of(2026, 6, 30, 11, 5),
+                "snap-004.jpg",
+                null
+        ));
+
+        assertEquals("missing", item.recordEvidenceStatus());
+        assertTrue(item.recordEvidenceCheckedAt() != null);
+        assertEquals(List.of("snapshot"),
+                service.getTimeline(item.id()).stream().map(ReviewEvidenceItem::materialType).toList());
+    }
+
+    @Test
+    void retryRecordEvidenceDoesNotDuplicateExistingRecordEvidence() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                new CapturingRecordEvidenceResolver(Optional.of(new RecordEvidenceResult("record-retry.mp4", "retry"))),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-005",
+                LocalDateTime.of(2026, 6, 30, 11, 10),
+                "snap-005.jpg",
+                null
+        ));
+
+        service.retryRecordEvidence(item.id());
+        ReviewItemAggregate retried = service.retryRecordEvidence(item.id());
+
+        assertEquals("found", retried.recordEvidenceStatus());
+        assertEquals(1, service.getTimeline(item.id()).stream()
+                .filter(evidence -> "record".equals(evidence.materialType()))
+                .count());
+    }
+
+    @Test
+    void convertedReviewItemCarriesLinkedEventProjection() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7002L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.DISPATCHED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                eventId -> Optional.of(new EventProjection(eventId, "pending_close_check", "passed", "complete"))
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-006",
+                LocalDateTime.of(2026, 6, 30, 11, 20),
+                "snap-006.jpg",
+                "record-006.mp4"
+        ));
+
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9001L));
+        ReviewItemAggregate linked = service.listWorkbench(null).get(0);
+
+        assertEquals(7002L, linked.eventId());
+        assertEquals("pending_close_check", linked.eventStatus());
+        assertEquals("passed", linked.closeCheckStatus());
+        assertEquals("complete", linked.evidenceStatus());
+    }
+
+    @Test
+    void eventReconcileJobPersistsReverseEventProjectionOutsideListQuery() throws Exception {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        Map<Long, EventProjection> projections = new LinkedHashMap<>();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7003L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                eventId -> Optional.ofNullable(projections.get(eventId))
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-event-reconcile-job",
+                LocalDateTime.of(2026, 7, 3, 16, 5),
+                "event-reconcile.jpg",
+                "event-reconcile.mp4"
+        ));
+
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9008L));
+        assertEquals("converted", itemStore.findById(item.id()).orElseThrow().reviewStatus());
+        assertEquals(null, itemStore.findById(item.id()).orElseThrow().eventStatus());
+
+        projections.put(7003L, new EventProjection(7003L, "closed", "passed", "complete"));
+        String summary = new SupervisionAlertReviewEventReconcileJob(service).execute("");
+
+        ReviewItemAggregate reconciled = itemStore.findById(item.id()).orElseThrow();
+        assertTrue(summary.contains("reconciled=1"));
+        assertEquals("converted", reconciled.reviewStatus());
+        assertEquals("closed", reconciled.eventStatus());
+        assertEquals("passed", reconciled.closeCheckStatus());
+        assertEquals("complete", reconciled.evidenceStatus());
+        assertEquals("closed", reconciled.eventReviewStatus());
+        Map<String, Object> eventProjection = toStringObjectMap(reconciled.reviewData().get("eventProjection"));
+        assertEquals("closed", eventProjection.get("eventStatus"));
+        assertEquals("passed", eventProjection.get("closeCheckStatus"));
+        assertEquals("complete", eventProjection.get("evidenceStatus"));
+        assertEquals("closed", eventProjection.get("eventReviewStatus"));
+    }
+    @Test
+    void reviewItemKeepsFrigateLikeReviewDataFromDetectionContext() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-rich-001",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 6, 30, 12, 0),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "snap-rich.jpg",
+                "record-rich.mp4",
+                "payload-hash-001",
+                List.of("person", "helmet"),
+                List.of("zone-a", "doorway"),
+                List.of("obj-001", "obj-002"),
+                0.92D,
+                List.of(0.11D, 0.22D, 0.33D, 0.44D),
+                "corr-001"
+        ));
+
+        assertEquals(List.of("person", "helmet"), item.reviewData().get("labels"));
+        assertEquals(List.of("zone-a", "doorway"), item.reviewData().get("zones"));
+        assertEquals(List.of("obj-001", "obj-002"), item.reviewData().get("objectIds"));
+        assertEquals(0.92D, item.reviewData().get("confidence"));
+        assertEquals(List.of(0.11D, 0.22D, 0.33D, 0.44D), item.reviewData().get("bbox"));
+        assertEquals("corr-001", item.reviewData().get("correlationId"));
+    }
+
+    @Test
+    void recordCoverageReturnsAvailableOrMissingWindowSegments() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 12, 10);
+
+        ReviewItemAggregate withRecord = service.ingestClue(newClue("alert-record", alertTime, "snap.jpg", "record.mp4"));
+        ReviewItemAggregate withoutRecord = service.ingestClue(newClue("alert-missing", alertTime.plusMinutes(10), "snap-2.jpg", null));
+
+        List<RecordCoverageSegment> availableCoverage = service.getRecordCoverage(withRecord.id());
+        assertEquals(1, availableCoverage.size());
+        assertEquals("available", availableCoverage.get(0).status());
+        assertEquals(alertTime.minusSeconds(300), availableCoverage.get(0).startTime());
+        assertEquals(alertTime.plusSeconds(300), availableCoverage.get(0).endTime());
+        assertEquals("record.mp4", availableCoverage.get(0).recordUri());
+
+        List<RecordCoverageSegment> missingCoverage = service.getRecordCoverage(withoutRecord.id());
+        assertEquals(1, missingCoverage.size());
+        assertEquals("missing", missingCoverage.get(0).status());
+        assertEquals(alertTime.plusMinutes(10).minusSeconds(300), missingCoverage.get(0).startTime());
+        assertEquals(alertTime.plusMinutes(10).plusSeconds(300), missingCoverage.get(0).endTime());
+    }
+
+    @Test
+    void recordCoverageFallsBackToMissingWindowWhenVideoResolverFails() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> {
+                    throw new IllegalStateException("video unavailable");
+                }
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 12, 15);
+        ReviewItemAggregate item = service.ingestClue(newClue("alert-video-down", alertTime, "snap-down.jpg", null));
+
+        List<RecordCoverageSegment> coverage = service.getRecordCoverage(item.id());
+
+        assertEquals(1, coverage.size());
+        assertEquals("missing", coverage.get(0).status());
+        assertEquals(alertTime.minusSeconds(300), coverage.get(0).startTime());
+        assertEquals(alertTime.plusSeconds(300), coverage.get(0).endTime());
+    }
+
+    @Test
+    void falsePositiveActionMarksStatusAndCreatesRuleSuggestion() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-fp",
+                LocalDateTime.of(2026, 6, 30, 12, 20),
+                "snap-fp.jpg",
+                "record-fp.mp4"
+        ));
+
+        ReviewItemAggregate falsePositive = service.markFalsePositive(
+                new ReviewOperationCommand(item.id(), 9003L, "zone_too_wide")
+        );
+
+        assertEquals("false_positive", falsePositive.reviewStatus());
+        assertEquals(9003L, falsePositive.reviewerUserId());
+        assertEquals("zone_too_wide", falsePositive.ignoreReason());
+        assertEquals("suppress_label_zone", falsePositive.ruleSuggestion().get("action"));
+        assertEquals("camera-01", falsePositive.ruleSuggestion().get("cameraId"));
+        assertEquals("zone-a", falsePositive.ruleSuggestion().get("zoneCode"));
+        assertEquals("person", falsePositive.ruleSuggestion().get("objectLabel"));
+    }
+
+    @Test
+    void reviewCaseCollectsMultipleCameraCluesIntoOneTimeline() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 6, 30, 12, 30);
+        ReviewItemAggregate corridor = service.ingestClue(newClue(
+                "alert-case-001",
+                firstTime,
+                "corridor.jpg",
+                "corridor.mp4"
+        ));
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-case-002",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                firstTime.plusSeconds(40),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                15,
+                "gate.jpg",
+                "gate.mp4",
+                null
+        ));
+
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "跨摄像头走廊复盘",
+                corridor.id(),
+                List.of(corridor.id())
+        ));
+        ReviewCaseView updated = service.addToReviewCase(reviewCase.id(), gate.id());
+        List<ReviewCaseTimelineItem> timeline = service.getReviewCaseTimeline(updated.id());
+        List<ReviewCaseTimelineItem> evidenceTimeline = timeline.stream()
+                .filter(item -> List.of("snapshot", "record").contains(item.materialType()))
+                .toList();
+
+        assertEquals(List.of(corridor.id(), gate.id()), updated.reviewItemIds());
+        assertEquals(List.of("camera-01", "camera-02"), updated.cameraIds());
+        assertEquals(firstTime, updated.startTime());
+        assertEquals(firstTime.plusSeconds(40), updated.endTime());
+        assertEquals(List.of("corridor.jpg", "corridor.mp4", "gate.jpg", "gate.mp4"),
+                evidenceTimeline.stream().map(ReviewCaseTimelineItem::materialUri).toList());
+        assertEquals(List.of("camera-01", "camera-01", "camera-02", "camera-02"),
+                evidenceTimeline.stream().map(ReviewCaseTimelineItem::cameraId).toList());
+    }
+
+    @Test
+    void reviewCaseLifecycleKeepsOwnerDedupCloseAndAuditTrail() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 7, 3, 17, 0);
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-case-life-001",
+                firstTime,
+                "case-life-1.jpg",
+                "case-life-1.mp4"
+        ));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-case-life-002",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                firstTime.plusSeconds(45),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                15,
+                "case-life-2.jpg",
+                "case-life-2.mp4",
+                null
+        ));
+        ReviewItemAggregate late = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-case-life-003",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                firstTime.plusMinutes(20),
+                "device-03",
+                "camera-03",
+                "zone-c",
+                "person",
+                15,
+                "case-life-3.jpg",
+                "case-life-3.mp4",
+                null
+        ));
+
+        ReviewCaseView created = service.createReviewCase(new ReviewCaseCommand(
+                "case lifecycle",
+                first.id(),
+                List.of(first.id(), second.id(), first.id()),
+                9101L,
+                "initial owner"
+        ));
+        ReviewCaseView deduped = service.addToReviewCase(created.id(), second.id());
+        ReviewCaseView reassigned = service.assignReviewCaseOwner(new ReviewCaseOwnerCommand(
+                created.id(),
+                9102L,
+                9103L,
+                "handoff to duty lead"
+        ));
+        ReviewCaseView closed = service.closeReviewCase(new ReviewCaseOperationCommand(
+                created.id(),
+                9102L,
+                "case resolved"
+        ));
+
+        IllegalStateException rejectedAdd = assertThrows(IllegalStateException.class,
+                () -> service.addToReviewCase(created.id(), late.id()));
+        List<ReviewCaseTimelineItem> auditTimeline = service.getReviewCaseTimeline(created.id()).stream()
+                .filter(item -> "case_audit".equals(item.materialType()))
+                .toList();
+
+        assertEquals(List.of(first.id(), second.id()), created.reviewItemIds());
+        assertEquals(List.of(first.id(), second.id()), deduped.reviewItemIds());
+        assertEquals(9101L, created.ownerUserId());
+        assertEquals("initial owner", created.notes());
+        assertEquals(9102L, reassigned.ownerUserId());
+        assertEquals("closed", closed.status());
+        assertTrue(rejectedAdd.getMessage().contains("closed"));
+        assertTrue(auditTimeline.stream().anyMatch(item -> "assign_owner".equals(item.materialUri())
+                && item.actionNote().contains("ownerUserId=9102")
+                && item.actionNote().contains("handoff to duty lead")));
+        assertTrue(auditTimeline.stream().anyMatch(item -> "close_case".equals(item.materialUri())
+                && item.actionNote().contains("case resolved")));
+    }
+
+    @Test
+    void reviewCaseMergeAndSplitMoveCluesWithAuditTrail() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 3, 18, 0);
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-case-merge-001",
+                baseTime,
+                "case-merge-1.jpg",
+                "case-merge-1.mp4"
+        ));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-case-merge-002",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime.plusSeconds(30),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                15,
+                "case-merge-2.jpg",
+                "case-merge-2.mp4",
+                null
+        ));
+        ReviewItemAggregate third = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-case-merge-003",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime.plusSeconds(90),
+                "device-03",
+                "camera-03",
+                "zone-c",
+                "person",
+                15,
+                "case-merge-3.jpg",
+                "case-merge-3.mp4",
+                null
+        ));
+
+        ReviewCaseView target = service.createReviewCase(new ReviewCaseCommand(
+                "target case",
+                first.id(),
+                List.of(first.id(), second.id()),
+                9201L,
+                "target owner"
+        ));
+        ReviewCaseView source = service.createReviewCase(new ReviewCaseCommand(
+                "source case",
+                second.id(),
+                List.of(second.id(), third.id()),
+                9202L,
+                "source owner"
+        ));
+
+        ReviewCaseMergeResult merged = service.mergeReviewCases(new ReviewCaseMergeCommand(
+                target.id(),
+                source.id(),
+                9203L,
+                "same person moved from gate to corridor"
+        ));
+        ReviewCaseSplitResult split = service.splitReviewCase(new ReviewCaseSplitCommand(
+                target.id(),
+                List.of(third.id()),
+                "camera-03 follow-up",
+                9204L,
+                9205L,
+                "separate camera-03 lead"
+        ));
+        List<ReviewCaseTimelineItem> targetAudit = service.getReviewCaseTimeline(target.id()).stream()
+                .filter(item -> "case_audit".equals(item.materialType()))
+                .toList();
+        List<ReviewCaseTimelineItem> sourceAudit = service.getReviewCaseTimeline(source.id()).stream()
+                .filter(item -> "case_audit".equals(item.materialType()))
+                .toList();
+        List<ReviewCaseTimelineItem> splitAudit = service.getReviewCaseTimeline(split.newCase().id()).stream()
+                .filter(item -> "case_audit".equals(item.materialType()))
+                .toList();
+
+        assertEquals(List.of(first.id(), second.id(), third.id()), merged.targetCase().reviewItemIds());
+        assertEquals("merged", merged.sourceCase().status());
+        assertEquals(List.of(), merged.sourceCase().reviewItemIds());
+        assertEquals(List.of(first.id(), second.id()), split.sourceCase().reviewItemIds());
+        assertEquals(List.of(third.id()), split.newCase().reviewItemIds());
+        assertEquals(9204L, split.newCase().ownerUserId());
+        assertTrue(targetAudit.stream().anyMatch(item -> "merge_case".equals(item.materialUri())
+                && item.actionNote().contains("sourceReviewCaseId=" + source.id())
+                && item.actionNote().contains("same person moved")));
+        assertTrue(sourceAudit.stream().anyMatch(item -> "merge_case".equals(item.materialUri())
+                && item.actionNote().contains("targetReviewCaseId=" + target.id())));
+        assertTrue(targetAudit.stream().anyMatch(item -> "split_case".equals(item.materialUri())
+                && item.actionNote().contains("newReviewCaseId=" + split.newCase().id())));
+        assertTrue(splitAudit.stream().anyMatch(item -> "split_case".equals(item.materialUri())
+                && item.actionNote().contains("sourceReviewCaseId=" + target.id())));
+    }
+    @Test
+    void reviewDataIsVersionedAndKeepsObjectsVerifiedThumbAudioAndMotionMetadata() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 13, 0);
+        LocalDateTime thumbTime = alertTime.plusSeconds(2);
+
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-structured",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "snap-structured.jpg",
+                "record-structured.mp4",
+                "payload-hash-structured",
+                List.of("person", "helmet"),
+                List.of("zone-a"),
+                List.of("obj-001", "obj-002"),
+                0.93D,
+                List.of(0.10D, 0.20D, 0.30D, 0.40D),
+                "corr-structured",
+                List.of("obj-001"),
+                thumbTime,
+                List.of("shout"),
+                Map.of("score", 83, "area", "doorway")
+        ));
+
+        assertEquals(1, item.reviewData().get("reviewDataVersion"));
+        assertEquals("payload-hash-structured", item.reviewData().get("sourcePayloadHash"));
+        assertEquals("corr-structured", item.reviewData().get("correlationId"));
+        assertEquals(List.of("obj-001"), item.reviewData().get("verifiedObjects"));
+        assertEquals(thumbTime.toString(), item.reviewData().get("thumbTime"));
+        List<?> objects = (List<?>) item.reviewData().get("objects");
+        assertEquals(2, objects.size());
+        Map<?, ?> firstObject = (Map<?, ?>) objects.get(0);
+        assertEquals("obj-001", firstObject.get("id"));
+        assertEquals("person", firstObject.get("label"));
+        assertEquals(0.93D, firstObject.get("confidence"));
+        assertEquals(List.of(0.10D, 0.20D, 0.30D, 0.40D), firstObject.get("bbox"));
+        Map<?, ?> audio = (Map<?, ?>) item.reviewData().get("audio");
+        assertEquals(List.of("shout"), audio.get("labels"));
+        Map<?, ?> motion = (Map<?, ?>) item.reviewData().get("motion");
+        assertEquals(83, motion.get("score"));
+        assertEquals("doorway", motion.get("area"));
+    }
+
+    @Test
+    void reviewDetailStreamExpandsObjectsDetectionsAndSeekTimes() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 1, 8, 30);
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-detail-001",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "gate-zone",
+                "person",
+                18,
+                "detail-snap.jpg",
+                "detail-record.mp4",
+                "detail-hash",
+                List.of("person", "helmet"),
+                List.of("gate-zone"),
+                List.of("obj-person", "obj-helmet"),
+                0.93D,
+                List.of(0.11D, 0.22D, 0.33D, 0.44D),
+                "corr-detail",
+                List.of("obj-person"),
+                alertTime.minusSeconds(2),
+                List.of("speech"),
+                Map.of("path", List.of(
+                        Map.of(
+                                "objectId", "obj-person",
+                                "label", "person",
+                                "event", "entered_zone",
+                                "timestamp", alertTime.plusSeconds(4).toString(),
+                                "x", 0.42D,
+                                "y", 0.58D
+                        )
+                ))
+        ));
+
+        List<ReviewDetailStreamItem> stream = service.getReviewDetailStream(item.id());
+
+        assertTrue(stream.stream().anyMatch(row -> "detected".equals(row.lifecycleEvent())
+                && "obj-person".equals(row.objectId())
+                && "person".equals(row.label())
+                && alertTime.equals(row.seekTime())
+                && List.of(0.11D, 0.22D, 0.33D, 0.44D).equals(row.bbox())));
+        assertTrue(stream.stream().anyMatch(row -> "entered_zone".equals(row.lifecycleEvent())
+                && "obj-person".equals(row.objectId())
+                && alertTime.plusSeconds(4).equals(row.seekTime())
+                && row.path().stream().anyMatch(point -> Objects.equals(0.42D, point.get("x")))));
+        assertTrue(stream.stream().anyMatch(row -> "record".equals(row.lifecycleEvent())
+                && "detail-record.mp4".equals(row.materialUri())
+                && alertTime.equals(row.seekTime())));
+    }
+
+    @Test
+    void reviewLifecycleStateMachineKeepsActiveWindowObjectEventsAndSeekTimes() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 9, 30);
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-lifecycle",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "gate-zone",
+                "person",
+                20,
+                "life-start.jpg",
+                "life-start.mp4",
+                "life-hash",
+                List.of("person"),
+                List.of("gate-zone"),
+                List.of("obj-life"),
+                0.94D,
+                List.of(0.12D, 0.22D, 0.32D, 0.42D),
+                "corr-life"
+        ));
+
+        ReviewItemAggregate active = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "active",
+                alertTime.plusSeconds(40),
+                List.of("obj-life"),
+                List.of("person"),
+                List.of("gate-zone", "inner-yard"),
+                List.of(0.13D, 0.23D, 0.33D, 0.43D),
+                Map.of("event", "entered_zone", "x", 0.42D, "y", 0.58D),
+                "life-active.mp4"
+        ));
+        ReviewItemAggregate ended = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "ended",
+                alertTime.plusSeconds(140),
+                List.of("obj-life"),
+                List.of("person"),
+                List.of("inner-yard"),
+                List.of(0.14D, 0.24D, 0.34D, 0.44D),
+                Map.of("event", "left_zone"),
+                null
+        ));
+
+        Map<?, ?> lifecycle = (Map<?, ?>) ended.reviewData().get("lifecycle");
+        assertEquals("ended", lifecycle.get("state"));
+        assertEquals(alertTime.toString(), lifecycle.get("startedAt"));
+        assertEquals(alertTime.plusSeconds(140).toString(), lifecycle.get("endedAt"));
+        assertEquals(List.of("obj-life"), lifecycle.get("activeObjectIds"));
+        assertEquals(300, lifecycle.get("cutoffWindowSeconds"));
+        assertEquals(alertTime.plusSeconds(140), ended.lastAlertTime());
+        assertEquals("found", active.recordEvidenceStatus());
+        assertTrue(service.getTimeline(item.id()).stream()
+                .anyMatch(evidence -> "record".equals(evidence.materialType())
+                        && "life-active.mp4".equals(evidence.materialUri())));
+        List<ReviewDetailStreamItem> stream = service.getReviewDetailStream(item.id());
+        assertTrue(stream.stream().anyMatch(row -> "active".equals(row.lifecycleEvent())
+                && "obj-life".equals(row.objectId())
+                && alertTime.plusSeconds(40).equals(row.seekTime())
+                && List.of(0.13D, 0.23D, 0.33D, 0.43D).equals(row.bbox())));
+        assertTrue(stream.stream().anyMatch(row -> "ended".equals(row.lifecycleEvent())
+                && alertTime.plusSeconds(140).equals(row.seekTime())));
+    }
+
+    @Test
+    void recordStorageSyncPersistsCoverageSummaryAndBackfilledRecordEvidence() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 10, 0);
+        ReviewItemAggregate item = service.ingestClue(newClue("alert-storage-sync", alertTime, "storage-sync.jpg", null));
+
+        ReviewRecordStorageSyncResult result = service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9001L,
+                List.of(
+                        new RecordCoverageSegment("available", alertTime.minusSeconds(300), alertTime.minusSeconds(120),
+                                0, "storage-a.mp4", 0, Map.of("source", "video-index")),
+                        new RecordCoverageSegment("missing", alertTime.minusSeconds(120), alertTime.plusSeconds(60),
+                                0, null, 0, Map.of("source", "video-index")),
+                        new RecordCoverageSegment("motion", alertTime.plusSeconds(60), alertTime.plusSeconds(300),
+                                55, "storage-b.mp4", 2, Map.of("source", "video-index"))
+                )
+        ));
+        ReviewItemAggregate synced = service.listWorkbench(null).get(0);
+
+        assertEquals("partial", result.syncStatus());
+        assertEquals(2, result.availableSegmentCount());
+        assertEquals(1, result.missingSegmentCount());
+        assertEquals(1, result.motionSegmentCount());
+        assertEquals("missing", synced.recordEvidenceStatus());
+        Map<?, ?> storage = (Map<?, ?>) synced.reviewData().get("recordStorage");
+        assertEquals("partial", storage.get("syncStatus"));
+        assertEquals(420, storage.get("availableSeconds"));
+        assertEquals(180, storage.get("missingSeconds"));
+        assertEquals(240, storage.get("motionSeconds"));
+        assertTrue(service.getTimeline(item.id()).stream()
+                .anyMatch(evidence -> "record".equals(evidence.materialType())
+                        && "storage-b.mp4".equals(evidence.materialUri())));
+    }
+
+    @Test
+    void runtimePatrolSurfacesRecordStorageDriftReasonsFromStorageSync() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 10, 30);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-storage-drift-runtime",
+                alertTime,
+                "storage-drift.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9005L,
+                List.of(
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(5), alertTime.minusMinutes(3),
+                                0, null, 0, Map.of("gapReason", "file_missing", "source", "record_file")),
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(3), alertTime.minusMinutes(1),
+                                0, null, 0, Map.of("gapReason", "disk_full", "source", "recording_storage")),
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(1), alertTime.plusMinutes(1),
+                                0, null, 0, Map.of("gapReason", "cache_flush_failed", "source", "record_cache"))
+                )
+        ));
+
+        ReviewRuntimeHealthReport health = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9006L
+        ));
+        ReviewRuntimePatrolResult patrol = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9007L,
+                false,
+                1,
+                true
+        ));
+
+        assertEquals(1, health.recordGapReasons().get("file_missing"));
+        assertEquals(1, health.recordGapReasons().get("disk_full"));
+        assertEquals(1, health.recordGapReasons().get("cache_flush_failed"));
+        assertTrue(health.alerts().contains("record_storage_drift"));
+        assertTrue(health.alerts().contains("record_storage_drift:file_missing"));
+        assertTrue(health.alerts().contains("record_storage_drift:disk_full"));
+        assertTrue(health.alerts().contains("record_storage_drift:cache_flush_failed"));
+        assertTrue(patrol.notifications().contains("review_runtime_alert:record_storage_drift:file_missing"));
+        assertTrue(patrol.recommendedActions().contains("inspect_record_storage_drift"));
+        assertTrue(patrol.recommendedActions().contains("review_missing_record_file"));
+        assertTrue(patrol.recommendedActions().contains("free_or_expand_recording_disk"));
+        assertTrue(patrol.recommendedActions().contains("inspect_record_cache_flush"));
+        RuntimeOutboxEntry fileMissingOutbox = itemStore.runtimeOutbox().stream()
+                .filter(entry -> "record_storage_drift:file_missing".equals(entry.alert()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("review_missing_record_file", fileMissingOutbox.action());
+        assertTrue(fileMissingOutbox.recommendedActions().contains("inspect_record_storage_drift"));
+        assertTrue(fileMissingOutbox.recommendedActions().contains("review_missing_record_file"));
+        assertEquals(patrol.metadata().get("historyRunId"), fileMissingOutbox.runId());
+        assertEquals("pending", fileMissingOutbox.status());
+    }
+
+    @Test
+    void runtimePatrolAndOutboxJobsCloseScheduledAlertDispatchLoop() throws Exception {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 11, 20);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-runtime-job-loop",
+                alertTime,
+                "runtime-job.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9011L,
+                List.of(new RecordCoverageSegment("missing", alertTime.minusMinutes(2), alertTime.plusMinutes(2),
+                        0, null, 0, Map.of("gapReason", "file_missing")))
+        ));
+
+        String patrolSummary = new SupervisionAlertReviewRuntimePatrolJob(service).execute("");
+
+        assertTrue(patrolSummary.contains("scheduled=true"));
+        assertFalse(itemStore.runtimeOutbox().isEmpty());
+        assertTrue(itemStore.runtimeOutbox().stream()
+                .allMatch(entry -> "pending".equals(entry.status())));
+        assertTrue(itemStore.runtimeOutbox().stream()
+                .allMatch(entry -> Boolean.TRUE.equals(entry.metadata().get("scheduled"))));
+
+        String outboxSummary = new SupervisionAlertReviewRuntimeOutboxJob(service).execute("10");
+
+        assertTrue(outboxSummary.contains("published="));
+        assertTrue(itemStore.runtimeOutbox().stream()
+                .allMatch(entry -> "published".equals(entry.status())));
+    }
+
+    @Test
+    void evidenceManifestVerificationRequiresHashAndSignature() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7600L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-manifest-verify",
+                LocalDateTime.of(2026, 7, 2, 10, 30),
+                "manifest.jpg",
+                "manifest.mp4"
+        ));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9002L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "manifest verification",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9003L,
+                "manifest",
+                "regulator package",
+                9005L,
+                "approved"
+        ));
+
+        ReviewManifestVerification verification = service.verifyEvidenceExportManifest(job.jobNo());
+
+        assertTrue(verification.valid());
+        assertEquals(job.jobNo(), verification.jobNo());
+        assertEquals(job.exportPackage().manifest().get("manifestHash"), verification.actualManifestHash());
+        assertEquals(verification.expectedManifestHash(), verification.actualManifestHash());
+        assertEquals(job.exportPackage().manifest().get("packageChecksum"), verification.packageChecksum());
+        assertEquals(List.of(), verification.violations());
+        assertTrue(job.exportPackage().manifest().get("signature") instanceof Map<?, ?>);
+    }
+
+    @Test
+    void mediaAccessAuditRecordsGrantedAndDeniedCameraScopedDecisions() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 0);
+        ReviewItemAggregate corridor = service.ingestClue(newClue("alert-media-a", baseTime, "media-a.jpg", "media-a.mp4"));
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-media-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime.plusMinutes(10),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "media-b.jpg",
+                "media-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "media access case",
+                corridor.id(),
+                List.of(corridor.id(), gate.id())
+        ));
+
+        ReviewMediaAccessAuditEntry granted = service.auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCase.id(),
+                corridor.id(),
+                9001L,
+                "camera-01",
+                "media-a.mp4",
+                "playback",
+                List.of("camera-01"),
+                "review playback"
+        ));
+        ReviewMediaAccessAuditEntry denied = service.auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCase.id(),
+                gate.id(),
+                9001L,
+                "camera-02",
+                "media-b.mp4",
+                "download",
+                List.of("camera-01"),
+                "not assigned camera"
+        ));
+
+        assertEquals("granted", granted.decision());
+        assertEquals("denied", denied.decision());
+        assertEquals(List.of("camera_not_allowed"), denied.deniedReasons());
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void evidenceExportRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 10);
+        ReviewItemAggregate corridor = service.ingestClue(newClue("alert-export-scope-a", baseTime, "scope-a.jpg", "scope-a.mp4"));
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-export-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime.plusMinutes(10),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "scope-b.jpg",
+                "scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "export scope case",
+                corridor.id(),
+                List.of(corridor.id(), gate.id())
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.exportReviewEvidence(new ReviewEvidenceExportCommand(
+                        reviewCase.id(),
+                        List.of(gate.id()),
+                        9002L,
+                        "manifest",
+                        "restricted camera export",
+                        null,
+                        null,
+                        List.of("camera-01")
+                )));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=export")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void evidenceDownloadRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 20);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-download-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "download-scope-b.jpg",
+                "download-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "download scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(gate.id()),
+                9003L,
+                "manifest",
+                "prepare restricted download"
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.recordEvidenceDownload(
+                        job.jobNo(),
+                        9003L,
+                        "restricted download",
+                        List.of("camera-01")
+                ));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=download")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void itemTimelineRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 25);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-timeline-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "timeline-scope-b.jpg",
+                "timeline-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "timeline scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.getTimeline(gate.id(), reviewCase.id(), 9005L, List.of("camera-01")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=timeline")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void detailStreamRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 28);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-detail-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "detail-scope-b.jpg",
+                "detail-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "detail scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.getReviewDetailStream(gate.id(), reviewCase.id(), 9006L, List.of("camera-01")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=detail_stream")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void recordCoverageRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 32);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-coverage-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "coverage-scope-b.jpg",
+                "coverage-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "coverage scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.getRecordCoverage(gate.id(), reviewCase.id(), 9007L, List.of("camera-01")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=coverage")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void caseTimelineRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 36);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-case-timeline-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "case-timeline-scope-b.jpg",
+                "case-timeline-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "case timeline scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.getReviewCaseTimeline(reviewCase.id(), 9008L, List.of("camera-01")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=case_timeline")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void manifestVerificationRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 40);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-manifest-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "manifest-scope-b.jpg",
+                "manifest-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "manifest scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(gate.id()),
+                9009L,
+                "manifest",
+                "prepare manifest verify"
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.verifyEvidenceExportManifest(job.jobNo(), 9009L, List.of("camera-01")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=manifest_verify")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void requestedCameraScopeCannotExpandServiceSideCameraPermission() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of("camera-01")
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 3, 9, 10);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-server-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "server-scope-b.jpg",
+                "server-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "server scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.getTimeline(gate.id(), reviewCase.id(), 9010L, List.of("camera-02")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=timeline")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void mediaAccessAuditCannotExpandServiceSideCameraPermission() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of("camera-01")
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 3, 9, 20);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-audit-server-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "audit-server-scope-b.jpg",
+                "audit-server-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "audit server scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+
+        ReviewMediaAccessAuditEntry audit = service.auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCase.id(),
+                gate.id(),
+                9011L,
+                "camera-02",
+                "audit-server-scope-b.mp4",
+                "playback",
+                List.of("camera-02"),
+                "tampered request scope"
+        ));
+
+        assertEquals("denied", audit.decision());
+        assertTrue(audit.deniedReasons().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=playback")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void semanticIndexQueueSupportsAsyncBacklogEvaluation() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 30);
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-semantic-queue-1", baseTime, "queue-1.jpg", "queue-1.mp4"));
+        ReviewItemAggregate second = service.ingestClue(newClue("alert-semantic-queue-2", baseTime.plusMinutes(10), "queue-2.jpg", "queue-2.mp4"));
+
+        ReviewSemanticReindexJob job = service.queueSemanticReindex(new ReviewSemanticReindexCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9001L
+        ));
+        ReviewSemanticIndexEvaluation pending = service.evaluateSemanticIndex(new ReviewSemanticIndexEvaluationCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9001L
+        ));
+        service.reindexSemanticIndex(new ReviewQuery(null, "camera-01", null, null));
+        ReviewSemanticIndexEvaluation indexed = service.evaluateSemanticIndex(new ReviewSemanticIndexEvaluationCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9001L
+        ));
+
+        assertEquals("queued", job.status());
+        assertEquals(List.of(first.id(), second.id()), job.queuedReviewItemIds());
+        assertEquals(2, pending.pendingCount());
+        assertEquals(0.0D, pending.coverageRate());
+        assertTrue(pending.recommendedActions().contains("process_pending_semantic_index"));
+        assertEquals(2, indexed.indexedCount());
+        assertEquals(1.0D, indexed.coverageRate());
+        assertEquals(List.of(), indexed.staleReviewItemIds());
+    }
+
+    @Test
+    void recordCoverageMergesVideoIndexIntervalsAndMissingGaps() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 13, 10);
+        CapturingRecordCoverageResolver coverageResolver = new CapturingRecordCoverageResolver(List.of(
+                new RecordCoverageSegment("available", alertTime.minusSeconds(240), alertTime.minusSeconds(60),
+                        0, "https://eye.yfeiai.com/records/a.mp4", 0, Map.of("source", "video-index")),
+                new RecordCoverageSegment("motion", alertTime.plusSeconds(60), alertTime.plusSeconds(180),
+                        42, "https://eye.yfeiai.com/records/b.mp4", 3, Map.of("source", "video-index"))
+        ));
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                coverageResolver
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue("alert-coverage", alertTime, "snap.jpg", null));
+
+        List<RecordCoverageSegment> coverage = service.getRecordCoverage(item.id());
+
+        assertEquals(List.of(new RecordCoverageRequest("device-01", "camera-01",
+                        alertTime.minusSeconds(300), alertTime.plusSeconds(300))),
+                coverageResolver.requests());
+        assertEquals(List.of("missing", "available", "missing", "motion", "missing"),
+                coverage.stream().map(RecordCoverageSegment::status).toList());
+        assertEquals(alertTime.minusSeconds(300), coverage.get(0).startTime());
+        assertEquals(alertTime.minusSeconds(240), coverage.get(0).endTime());
+        assertEquals(alertTime.minusSeconds(60), coverage.get(2).startTime());
+        assertEquals(alertTime.plusSeconds(60), coverage.get(2).endTime());
+        assertEquals(42, coverage.get(3).motion());
+        assertEquals(3, coverage.get(3).objects());
+    }
+
+    @Test
+    void falsePositiveRuleSuggestionAppliesRuleConfigOnlyAfterApprovalAndCanRollback() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                ruleStore,
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-rule-lifecycle",
+                LocalDateTime.of(2026, 6, 30, 13, 20),
+                "snap-rule.jpg",
+                "record-rule.mp4"
+        ));
+
+        ReviewItemAggregate falsePositive = service.markFalsePositive(
+                new ReviewOperationCommand(item.id(), 9003L, "zone_too_wide")
+        );
+        ReviewItemAggregate accepted = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                item.id(),
+                9004L,
+                "accepted",
+                "confirmed by supervisor"
+        ));
+        assertEquals(List.of(), ruleStore.listAll());
+
+        ReviewItemAggregate applied = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                item.id(),
+                9004L,
+                "applied",
+                "manual rule updated"
+        ));
+
+        assertEquals("pending", falsePositive.ruleSuggestionStatus());
+        assertEquals("pending", falsePositive.ruleSuggestion().get("lifecycleStatus"));
+        assertEquals(List.of("narrow_zone", "raise_confidence", "increase_min_stay", "require_zone", "suppress_label_zone"),
+                falsePositive.ruleSuggestion().get("candidateActions"));
+        assertEquals("accepted", accepted.ruleSuggestionStatus());
+        assertEquals("applied", applied.ruleSuggestionStatus());
+        assertEquals(1, ruleStore.listAll().size());
+        ReviewRuleView appliedRule = ruleStore.listAll().get(0);
+        assertEquals(SupervisionRuleSeeds.RULE_RESTRICTED_AREA, appliedRule.ruleCode());
+        assertEquals("false_positive_camera-01_zone-a", appliedRule.ruleName());
+        assertEquals("video", appliedRule.sourceSystem());
+        assertEquals("camera-01", appliedRule.cameraId());
+        assertEquals("zone-a", appliedRule.zoneCode());
+        assertEquals("person", appliedRule.objectLabel());
+        assertEquals(Boolean.TRUE, appliedRule.enabled());
+        assertEquals(appliedRule.id(), applied.ruleSuggestion().get("appliedRuleId"));
+        assertEquals("rule-" + appliedRule.id() + "-v1", applied.ruleSuggestion().get("configVersion"));
+
+        ReviewItemAggregate reverted = service.revertRuleSuggestion(new RuleSuggestionOperationCommand(
+                item.id(),
+                9005L,
+                "reverted",
+                "rollback after supervisor check"
+        ));
+        assertEquals("reverted", reverted.ruleSuggestionStatus());
+        assertEquals(Boolean.FALSE, ruleStore.listAll().get(0).enabled());
+        assertEquals("rule-" + appliedRule.id() + "-v2", reverted.ruleSuggestion().get("rollbackVersion"));
+    }
+
+    @Test
+    void ruleSuggestionSafeApplyRequiresApprovalAndStoresShadowEvaluation() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                ruleStore,
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 1, 9, 0);
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-safe-apply-1", baseTime, "safe-1.jpg", "safe-1.mp4"));
+        ReviewItemAggregate second = service.ingestClue(newClue("alert-safe-apply-2", baseTime.plusMinutes(20), "safe-2.jpg", "safe-2.mp4"));
+        service.markFalsePositive(new ReviewOperationCommand(first.id(), 9001L, "zone too wide"));
+        service.markFalsePositive(new ReviewOperationCommand(second.id(), 9002L, "zone too wide"));
+
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                first.id(),
+                9003L,
+                "applied",
+                "unsafe direct apply"
+        )));
+
+        ReviewItemAggregate accepted = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                first.id(),
+                9003L,
+                "accepted",
+                "supervisor approved"
+        ));
+        assertEquals("accepted", accepted.ruleSuggestionStatus());
+        assertTrue(accepted.ruleSuggestion().get("shadowEvaluation") != null);
+        Map<?, ?> acceptedReplayReport = (Map<?, ?>) accepted.ruleSuggestion().get("replayReport");
+        assertEquals("review_before_apply", acceptedReplayReport.get("decision"));
+        assertEquals(2, acceptedReplayReport.get("evaluatedCount"));
+        assertEquals(2, acceptedReplayReport.get("falsePositiveReduction"));
+
+        ReviewItemAggregate applied = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                first.id(),
+                9003L,
+                "applied",
+                "safe apply after shadow evaluation"
+        ));
+
+        Map<?, ?> shadowEvaluation = (Map<?, ?>) applied.ruleSuggestion().get("shadowEvaluation");
+        assertEquals(2, shadowEvaluation.get("estimatedSuppressedCount"));
+        assertEquals(2, shadowEvaluation.get("evaluatedReviewItemCount"));
+        assertEquals(1.0D, shadowEvaluation.get("beforeFalsePositiveRate"));
+        assertEquals(0.0D, shadowEvaluation.get("afterFalsePositiveRate"));
+        assertEquals("supervisor approved", applied.ruleSuggestion().get("approvalNote"));
+        assertEquals(acceptedReplayReport, applied.ruleSuggestion().get("replayReport"));
+        assertTrue(String.valueOf(applied.ruleSuggestion().get("configVersion")).startsWith("rule-"));
+    }
+
+    @Test
+    void ruleSuggestionStatsAggregateFalsePositiveRateByCameraZoneLabelAndWindow() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 6, 30, 13, 25);
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-stat-001", baseTime, "stat-1.jpg", "stat-1.mp4"));
+        ReviewItemAggregate second = service.ingestClue(newClue("alert-stat-002", baseTime.plusMinutes(10), "stat-2.jpg", "stat-2.mp4"));
+        service.ingestClue(newClue("alert-stat-003", baseTime.plusMinutes(20), "stat-3.jpg", "stat-3.mp4"));
+        service.markFalsePositive(new ReviewOperationCommand(first.id(), 9001L, "zone_too_wide"));
+        service.markFalsePositive(new ReviewOperationCommand(second.id(), 9002L, "zone_too_wide"));
+
+        List<RuleSuggestionStat> stats = service.listRuleSuggestionStats(new ReviewQuery(
+                null,
+                "camera-01",
+                "zone-a",
+                "person",
+                null,
+                null,
+                null,
+                null,
+                baseTime.minusMinutes(1),
+                baseTime.plusMinutes(30)
+        ));
+
+        assertEquals(1, stats.size());
+        assertEquals("camera-01", stats.get(0).cameraId());
+        assertEquals("zone-a", stats.get(0).zoneCode());
+        assertEquals("person", stats.get(0).objectLabel());
+        assertEquals(2, stats.get(0).falsePositiveCount());
+        assertEquals(3, stats.get(0).totalCount());
+        assertEquals(0.67D, stats.get(0).falsePositiveRate());
+        assertEquals(List.of("narrow_zone", "raise_confidence", "increase_min_stay", "require_zone", "suppress_label_zone"),
+                stats.get(0).candidateActions());
+    }
+
+    @Test
+    void ruleReplayEvaluatesHistoricalItemsBeforeApplyingRuleChange() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 1, 9, 30);
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-replay-001", baseTime, "replay-1.jpg", "replay-1.mp4"));
+        ReviewItemAggregate second = service.ingestClue(newClue("alert-replay-002", baseTime.plusMinutes(10), "replay-2.jpg", "replay-2.mp4"));
+        service.markFalsePositive(new ReviewOperationCommand(first.id(), 9001L, "zone too wide"));
+
+        ReviewRuleReplayResult result = service.replayRule(new ReviewRuleReplayCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "video",
+                "camera-01",
+                "zone-a",
+                "person",
+                20,
+                baseTime.minusMinutes(1),
+                baseTime.plusMinutes(20),
+                9003L
+        ));
+
+        assertEquals(SupervisionRuleSeeds.RULE_RESTRICTED_AREA, result.ruleCode());
+        assertEquals(List.of(first.id(), second.id()), result.evaluatedReviewItemIds());
+        assertEquals(2, result.evaluatedCount());
+        assertEquals(0, result.matchBeforeCount());
+        assertEquals(0, result.matchAfterCount());
+        assertEquals(1, result.falsePositiveBeforeCount());
+        assertEquals(0.5D, result.falsePositiveBeforeRate());
+        assertEquals(0.0D, result.falsePositiveAfterRate());
+        assertTrue(result.recommendedActions().contains("safe_to_apply"));
+        assertEquals("camera-01", result.scope().get("cameraId"));
+        assertEquals(false, result.report().get("shouldApply"));
+        assertEquals("review_before_apply", result.report().get("decision"));
+        assertEquals(1, result.report().get("falsePositiveReduction"));
+        assertEquals(2, result.report().get("possibleMissedCount"));
+        Map<?, ?> impactScope = (Map<?, ?>) result.report().get("impactScope");
+        assertEquals(List.of("camera-01"), impactScope.get("cameraIds"));
+        assertEquals(List.of("zone-a"), impactScope.get("zoneCodes"));
+    }
+
+    @Test
+    void reviewCaseTimelineIncludesCoverageAndReviewActions() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime baseTime = LocalDateTime.of(2026, 6, 30, 13, 28);
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7200L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                new CapturingRecordEvidenceResolver(Optional.empty()),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate falsePositive = service.ingestClue(newClue("alert-timeline-fp", baseTime, "fp.jpg", null));
+        ReviewItemAggregate converted = service.ingestClue(newClue("alert-timeline-event", baseTime.plusMinutes(8), "event.jpg", "event.mp4"));
+        service.markFalsePositive(new ReviewOperationCommand(falsePositive.id(), 9001L, "manual false positive"));
+        service.convertToEvent(new ReviewToEventCommand(converted.id(), 9002L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "action timeline",
+                falsePositive.id(),
+                List.of(falsePositive.id(), converted.id())
+        ));
+
+        List<ReviewCaseTimelineItem> timeline = service.getReviewCaseTimeline(reviewCase.id());
+
+        assertTrue(timeline.stream().anyMatch(item -> "record_coverage".equals(item.materialType())
+                && "missing".equals(item.materialUri())));
+        assertTrue(timeline.stream().anyMatch(item -> "review_action".equals(item.materialType())
+                && "false_positive".equals(item.materialUri())));
+        assertTrue(timeline.stream().anyMatch(item -> "review_action".equals(item.materialType())
+                && "converted_to_event:7200".equals(item.materialUri())));
+    }
+
+    @Test
+    void reviewCaseCandidatesUseCorrelationObjectIdsAndTimeWindow() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 6, 30, 13, 30);
+        ReviewItemAggregate first = service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-001", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime, "device-01", "camera-01", "zone-a", "person", 15,
+                "candidate-1.jpg", "candidate-1.mp4", null, List.of("person"), List.of("zone-a"),
+                List.of("obj-shared"), 0.88D, List.of(0.1D, 0.2D, 0.3D, 0.4D), "corr-shared"
+        ));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-002", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(70), "device-02", "camera-02", "zone-b", "person", 15,
+                "candidate-2.jpg", "candidate-2.mp4", null, List.of("person"), List.of("zone-b"),
+                List.of("obj-shared"), 0.86D, List.of(0.2D, 0.3D, 0.4D, 0.5D), "corr-shared"
+        ));
+        service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-003", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusMinutes(30), "device-03", "camera-03", "zone-c", "person", 15,
+                "candidate-3.jpg", "candidate-3.mp4", null, List.of("person"), List.of("zone-c"),
+                List.of("obj-other"), 0.80D, List.of(0.3D, 0.4D, 0.5D, 0.6D), "corr-other"
+        ));
+
+        List<ReviewItemAggregate> candidates = service.suggestReviewCaseCandidates(first.id());
+
+        assertEquals(List.of(second.id()), candidates.stream().map(ReviewItemAggregate::id).toList());
+    }
+
+    @Test
+    void reviewCaseCandidatesUseAdjacentCameraZoneAndRegulatoryArea() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 6, 30, 13, 45);
+        ReviewItemAggregate base = service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-area-001", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime, "device-01", "camera-01", "zone-a", "person", 15,
+                "candidate-area-1.jpg", "candidate-area-1.mp4", null, List.of("person"), List.of("zone-a"),
+                List.of("obj-base"), 0.88D, List.of(0.1D, 0.2D, 0.3D, 0.4D), null,
+                null, null, null, Map.of(
+                        "regulatoryArea", "yard-east",
+                        "adjacentCameras", List.of("camera-02", "camera-03")
+                )
+        ));
+        ReviewItemAggregate adjacentSameArea = service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-area-002", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(30), "device-02", "camera-02", "zone-b", "vehicle", 15,
+                "candidate-area-2.jpg", "candidate-area-2.mp4", null, List.of("vehicle"), List.of("zone-b"),
+                List.of("obj-other-1"), 0.84D, List.of(0.2D, 0.3D, 0.4D, 0.5D), null,
+                null, null, null, Map.of("regulatoryArea", "yard-east")
+        ));
+        ReviewItemAggregate sameZone = service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-area-003", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(40), "device-04", "camera-04", "zone-a", "helmet", 15,
+                "candidate-area-3.jpg", "candidate-area-3.mp4", null, List.of("helmet"), List.of("zone-a"),
+                List.of("obj-other-2"), 0.81D, List.of(0.3D, 0.4D, 0.5D, 0.6D), null,
+                null, null, null, Map.of("regulatoryArea", "yard-west")
+        ));
+        ReviewItemAggregate sharedObject = service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-area-004", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(90), "device-03", "camera-03", "zone-c", "person", 15,
+                "candidate-area-4.jpg", "candidate-area-4.mp4", null, List.of("person"), List.of("zone-c"),
+                List.of("obj-base"), 0.87D, List.of(0.4D, 0.5D, 0.6D, 0.7D), null,
+                null, null, null, Map.of("regulatoryArea", "yard-east")
+        ));
+        service.ingestClue(new AlertClueCommand(
+                "video", "alert-candidate-area-005", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(50), "device-05", "camera-05", "zone-d", "smoke", 15,
+                "candidate-area-5.jpg", "candidate-area-5.mp4", null, List.of("smoke"), List.of("zone-d"),
+                List.of("obj-other-3"), 0.75D, List.of(0.5D, 0.6D, 0.7D, 0.8D), null,
+                null, null, null, Map.of("regulatoryArea", "yard-west")
+        ));
+
+        List<ReviewItemAggregate> candidates = service.suggestReviewCaseCandidates(base.id());
+
+        assertEquals(List.of(sharedObject.id(), adjacentSameArea.id(), sameZone.id()),
+                candidates.stream().map(ReviewItemAggregate::id).toList());
+    }
+
+    @Test
+    void workbenchQueryAndSummarySupportEvidenceEventCaseAndReviewerPerspective() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7100L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                new CapturingRecordEvidenceResolver(Optional.empty()),
+                eventId -> Optional.of(new EventProjection(eventId, SupervisionEventStatusEnum.ACCEPTED.getCode(), "not_checked", "missing_soft"))
+        );
+        LocalDateTime now = LocalDateTime.of(2026, 6, 30, 13, 40);
+        ReviewItemAggregate missing = service.ingestClue(newClue("alert-summary-001", now, "summary-1.jpg", null));
+        ReviewItemAggregate converted = service.ingestClue(newClue("alert-summary-002", now.plusMinutes(10), "summary-2.jpg", "summary-2.mp4"));
+        service.markReviewed(new ReviewOperationCommand(missing.id(), 9001L, null));
+        service.convertToEvent(new ReviewToEventCommand(converted.id(), 9002L));
+        service.createReviewCase(new ReviewCaseCommand("investigation", missing.id(), List.of(missing.id())));
+
+        List<ReviewItemAggregate> filtered = service.listWorkbench(new ReviewQuery(
+                null,
+                "camera-01",
+                "zone-a",
+                "person",
+                "missing",
+                false,
+                true,
+                9001L,
+                now.minusMinutes(1),
+                now.plusMinutes(1)
+        ));
+        ReviewWorkbenchSummary summary = service.getWorkbenchSummary(new ReviewQuery(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                9001L,
+                null,
+                null
+        ));
+
+        assertEquals(List.of(missing.id()), filtered.stream().map(ReviewItemAggregate::id).toList());
+        assertEquals(2, summary.total());
+        assertEquals(1, summary.reviewedByMe());
+        assertEquals(1, summary.missingRecord());
+        assertEquals(1, summary.converted());
+        assertEquals(1, summary.inReviewCase());
+        assertEquals("pending_evidence", service.listWorkbench(null).stream()
+                .filter(item -> Objects.equals(converted.id(), item.id()))
+                .findFirst()
+                .orElseThrow()
+                .eventReviewStatus());
+    }
+
+    @Test
+    void userReviewStatusTracksMultipleReviewersIndependently() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-user-status",
+                LocalDateTime.of(2026, 6, 30, 14, 0),
+                "status.jpg",
+                "status.mp4"
+        ));
+
+        ReviewUserStatusView reviewerOne = service.markUserReviewStatus(new ReviewUserStatusCommand(
+                item.id(),
+                9001L,
+                true
+        ));
+        ReviewUserStatusView reviewerTwo = service.markUserReviewStatus(new ReviewUserStatusCommand(
+                item.id(),
+                9002L,
+                false
+        ));
+        ReviewWorkbenchSummary reviewerOneSummary = service.getWorkbenchSummary(new ReviewQuery(
+                null, null, null, null, null, null, null, 9001L, null, null
+        ));
+        ReviewWorkbenchSummary reviewerTwoSummary = service.getWorkbenchSummary(new ReviewQuery(
+                null, null, null, null, null, null, null, 9002L, null, null
+        ));
+
+        assertTrue(reviewerOne.hasBeenReviewed());
+        assertFalse(reviewerTwo.hasBeenReviewed());
+        assertEquals(1, reviewerOneSummary.reviewedByMe());
+        assertEquals(0, reviewerTwoSummary.reviewedByMe());
+        assertEquals("pending_review", service.listWorkbench(null).get(0).reviewStatus());
+    }
+
+    @Test
+    void ruleSuggestionCanBePreviewedAndRolledBackWithoutChangingRulesSilently() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                ruleStore,
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-preview",
+                LocalDateTime.of(2026, 6, 30, 14, 5),
+                "preview.jpg",
+                "preview.mp4"
+        ));
+        service.markFalsePositive(new ReviewOperationCommand(item.id(), 9001L, "zone too wide"));
+
+        RuleSuggestionPreview preview = service.previewRuleSuggestion(item.id());
+        ReviewItemAggregate reverted = service.revertRuleSuggestion(new RuleSuggestionOperationCommand(
+                item.id(),
+                9002L,
+                "reverted",
+                "rollback after supervisor check"
+        ));
+
+        assertEquals(item.id(), preview.reviewItemId());
+        assertEquals("suppress_label_zone", preview.proposedRule().get("action"));
+        assertTrue(preview.diff().stream().anyMatch(line -> line.contains("zone-a")));
+        assertEquals("reverted", reverted.ruleSuggestionStatus());
+        assertEquals("reverted", reverted.ruleSuggestion().get("lifecycleStatus"));
+        assertEquals(List.of(), ruleStore.listAll());
+    }
+
+    @Test
+    void semanticSearchRanksReviewItemsByDetectionEvidenceContext() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 14, 10);
+        ReviewItemAggregate helmet = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-semantic-helmet",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "doorway",
+                "person",
+                15,
+                "helmet.jpg",
+                "helmet.mp4",
+                null,
+                List.of("person", "helmet"),
+                List.of("doorway"),
+                List.of("obj-helmet"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-semantic"
+        ));
+        service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-semantic-vehicle",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "vehicle",
+                alertTime.plusMinutes(10),
+                "device-02",
+                "camera-02",
+                "parking",
+                "car",
+                5,
+                "car.jpg",
+                "car.mp4",
+                null
+        ));
+
+        List<ReviewSemanticHit> hits = service.semanticSearch(new ReviewSemanticSearchCommand(
+                "helmet doorway person",
+                new ReviewQuery(null, null, null, null),
+                5
+        ));
+
+        assertEquals(helmet.id(), hits.get(0).item().id());
+        assertTrue(hits.get(0).score() > 0);
+        assertTrue(hits.get(0).matchedTerms().contains("helmet"));
+        assertTrue(hits.get(0).snippet().contains("doorway"));
+    }
+
+    @Test
+    void semanticSearchCanUseExternalProviderBeforeLocalKeywordFallback() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> {
+                            ReviewItemAggregate vehicle = request.candidates().stream()
+                                    .map(ReviewIntelligenceProvider.ReviewSemanticSearchCandidate::item)
+                                    .filter(item -> Objects.equals("car", item.objectLabel()))
+                                    .findFirst()
+                                    .orElseThrow();
+                            assertTrue(request.candidates().stream()
+                                    .anyMatch(candidate -> candidate.document().contains("corr-provider")));
+                            return Optional.of(List.of(new ReviewSemanticHit(
+                                    vehicle,
+                                    99D,
+                                    List.of("provider"),
+                                    "provider semantic hit"
+                            )));
+                        },
+                        request -> Optional.empty()
+                )
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 14, 30);
+        service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-provider-helmet",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "doorway",
+                "person",
+                15,
+                "helmet.jpg",
+                "helmet.mp4",
+                null,
+                List.of("person", "helmet"),
+                List.of("doorway"),
+                List.of("obj-provider"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-provider"
+        ));
+        ReviewItemAggregate vehicle = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-provider-vehicle",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "vehicle",
+                alertTime.plusMinutes(10),
+                "device-02",
+                "camera-02",
+                "parking",
+                "car",
+                5,
+                "car.jpg",
+                "car.mp4",
+                null
+        ));
+
+        List<ReviewSemanticHit> hits = service.semanticSearch(new ReviewSemanticSearchCommand(
+                "helmet doorway person",
+                new ReviewQuery(null, null, null, null),
+                5
+        ));
+
+        assertEquals(vehicle.id(), hits.get(0).item().id());
+        assertEquals("provider semantic hit", hits.get(0).snippet());
+    }
+
+    @Test
+    void semanticReindexPersistsLifecycleAndSearchCanUseIndexedDocument() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-semantic-index",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 6, 30, 15, 10),
+                "device-01",
+                "camera-01",
+                "doorway",
+                "person",
+                15,
+                "semantic-index.jpg",
+                "semantic-index.mp4",
+                null,
+                List.of("person", "helmet"),
+                List.of("doorway"),
+                List.of("obj-semantic"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-semantic-index"
+        ));
+
+        List<ReviewSemanticIndexEntry> indexed = service.reindexSemanticIndex(new ReviewQuery(
+                null,
+                "camera-01",
+                null,
+                null
+        ));
+        List<ReviewSemanticHit> hits = service.semanticSearch(new ReviewSemanticSearchCommand(
+                "helmet doorway",
+                new ReviewQuery(null, "camera-01", null, null),
+                5
+        ));
+
+        assertEquals(1, indexed.size());
+        assertEquals(item.id(), indexed.get(0).reviewItemId());
+        assertEquals("indexed", indexed.get(0).indexStatus());
+        assertEquals("camera-01", indexed.get(0).cameraId());
+        assertTrue(indexed.get(0).document().contains("corr-semantic-index"));
+        assertEquals("review-item:" + item.id(), indexed.get(0).embeddingKey());
+        assertEquals("yfeieye-review-local-v1", indexed.get(0).embeddingModel());
+        assertTrue(indexed.get(0).embeddingVectorHash().startsWith("sha256:"));
+        assertEquals(item.id(), hits.get(0).item().id());
+    }
+
+    @Test
+    void semanticTriggerMatchesIndexedItemsAndReturnsActions() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-trigger-helmet",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 7, 1, 10, 10),
+                "device-01",
+                "camera-01",
+                "doorway",
+                "person",
+                15,
+                "trigger.jpg",
+                "trigger.mp4",
+                null,
+                List.of("person", "helmet"),
+                List.of("doorway"),
+                List.of("obj-trigger"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-trigger"
+        ));
+        service.reindexSemanticIndex(new ReviewQuery(null, "camera-01", null, null));
+
+        ReviewSemanticTriggerResult result = service.evaluateSemanticTrigger(new ReviewSemanticTriggerCommand(
+                "helmet-doorway",
+                "camera-01",
+                "description",
+                "helmet doorway",
+                0.5D,
+                List.of("notification", "sub_label", "attribute"),
+                new ReviewQuery(null, "camera-01", null, null)
+        ));
+
+        assertEquals("helmet-doorway", result.triggerName());
+        assertEquals(List.of(item.id()), result.matchedReviewItemIds());
+        assertTrue(result.actionPayloads().stream()
+                .anyMatch(action -> Objects.equals("notification", action.get("action"))));
+        assertTrue(result.actionPayloads().stream()
+                .anyMatch(action -> Objects.equals("sub_label", action.get("action"))
+                        && Objects.equals("helmet-doorway", action.get("value"))));
+        assertTrue(result.actionPayloads().stream()
+                .anyMatch(action -> Objects.equals("attribute", action.get("action"))
+                        && Objects.equals(item.id(), action.get("reviewItemId"))));
+    }
+
+    @Test
+    void shiftReportSummarizesReviewItemsAndEvidenceGaps() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> Optional.empty(),
+                noEventProjectionStore()
+        );
+        LocalDateTime shiftStart = LocalDateTime.of(2026, 7, 1, 8, 0);
+        ReviewItemAggregate missing = service.ingestClue(newClue("alert-report-missing", shiftStart.plusMinutes(15), "report-missing.jpg", null));
+        ReviewItemAggregate found = service.ingestClue(newClue("alert-report-found", shiftStart.plusMinutes(45), "report-found.jpg", "report-found.mp4"));
+
+        ReviewOperationsReport report = service.generateReviewReport(new ReviewReportCommand(
+                "shift",
+                new ReviewQuery(null, "camera-01", null, null, null, null, null, null, shiftStart, shiftStart.plusHours(1)),
+                shiftStart,
+                shiftStart.plusHours(1),
+                9001L
+        ));
+
+        assertEquals("shift", report.reportType());
+        assertEquals(List.of(missing.id(), found.id()), report.reviewItemIds());
+        assertTrue(report.title().contains("shift"));
+        assertTrue(report.summary().contains("2 review item"));
+        assertEquals(shiftStart.toString(), report.structuredData().get("periodStart"));
+        assertEquals(shiftStart.plusHours(1).toString(), report.structuredData().get("periodEnd"));
+        assertEquals(1, report.structuredData().get("evidenceGapCount"));
+        assertEquals("camera-01", report.structuredData().get("responsibilityUnit"));
+    }
+
+    @Test
+    void aiSummaryAndEvidenceExportUseCaseTimelineEvidenceCoverageAndActions() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime baseTime = LocalDateTime.of(2026, 6, 30, 14, 20);
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7300L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                new CapturingRecordEvidenceResolver(Optional.empty()),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate missing = service.ingestClue(newClue("alert-ai-missing", baseTime, "ai-missing.jpg", null));
+        ReviewItemAggregate converted = service.ingestClue(newClue("alert-ai-event", baseTime.plusMinutes(4), "ai-event.jpg", "ai-event.mp4"));
+        assertEquals(missing.id(), converted.id());
+        service.markFalsePositive(new ReviewOperationCommand(missing.id(), 9001L, "shadow"));
+        service.convertToEvent(new ReviewToEventCommand(converted.id(), 9002L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI summary case",
+                missing.id(),
+                List.of(missing.id(), converted.id())
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9003L);
+        ReviewEvidenceExportPackage exportPackage = service.exportReviewEvidence(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                null,
+                9003L,
+                "manifest"
+        ));
+
+        assertEquals(reviewCase.id(), summary.reviewCaseId());
+        assertTrue(summary.keyFacts().stream().anyMatch(fact -> fact.contains("camera-01")));
+        assertTrue(summary.evidenceGaps().stream().anyMatch(gap -> gap.contains("missing")));
+        assertEquals("medium", summary.structuredData().get("threatLevel"));
+        assertEquals("camera-01", summary.structuredData().get("responsibilityUnit"));
+        assertEquals(true, summary.structuredData().get("convertibleToEvent"));
+        assertEquals("camera-01", summary.structuredData().get("scene"));
+        assertEquals(summary.summary(), summary.structuredData().get("shortSummary"));
+        assertEquals("incomplete", summary.structuredData().get("evidenceCompleteness"));
+        assertTrue(((List<?>) summary.structuredData().get("concerns")).stream()
+                .anyMatch(concern -> String.valueOf(concern).contains("missing")));
+        assertTrue(((List<?>) summary.structuredData().get("disposalSuggestion")).stream()
+                .anyMatch(action -> String.valueOf(action).contains("backfill")));
+        assertEquals("manifest", exportPackage.format());
+        assertEquals(List.of(missing.id()), exportPackage.reviewItemIds());
+        assertTrue(exportPackage.evidenceUris().contains("ai-missing.jpg"));
+        assertTrue(exportPackage.timeline().stream().anyMatch(item -> "converted_to_event:7300".equals(item.materialUri())));
+        assertTrue(exportPackage.manifest().containsKey("checksum"));
+    }
+
+    @Test
+    void evidenceExportCreatesReadyJobWithIntegrityAuditAndEventBinding() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7400L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-job",
+                LocalDateTime.of(2026, 6, 30, 15, 20),
+                "export-job.jpg",
+                "export-job.mp4"
+        ));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9002L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "export job case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9003L,
+                "manifest",
+                "regulator handoff",
+                9005L,
+                "approved by duty supervisor"
+        ));
+
+        assertEquals("ready", job.status());
+        assertEquals(reviewCase.id(), job.exportPackage().reviewCaseId());
+        assertEquals(List.of(item.id()), job.exportPackage().reviewItemIds());
+        assertEquals(9003L, job.operatorUserId());
+        assertEquals("regulator handoff", job.reason());
+        assertEquals(List.of(7400L), job.boundEventIds());
+        assertTrue(job.fileHash().startsWith("sha256:"));
+        assertTrue(job.expiresAt().isAfter(job.createdAt()));
+        Map<String, Object> manifest = job.exportPackage().manifest();
+        assertTrue(String.valueOf(manifest.get("packageChecksum")).startsWith("sha256:"));
+        assertTrue(String.valueOf(manifest.get("manifestHash")).startsWith("sha256:"));
+        assertEquals(9003L, manifest.get("generatedBy"));
+        assertEquals(job.expiresAt().toString(), manifest.get("expiresAt"));
+        assertEquals(List.of(7400L), ((List<?>) manifest.get("eventReferences")).stream()
+                .map(reference -> ((Map<?, ?>) reference).get("eventId"))
+                .toList());
+        assertTrue(((List<?>) manifest.get("files")).stream()
+                .anyMatch(file -> "export-job.mp4".equals(((Map<?, ?>) file).get("uri"))
+                        && String.valueOf(((Map<?, ?>) file).get("hash")).startsWith("sha256:")));
+        assertEquals(9005L, ((Map<?, ?>) manifest.get("approval")).get("approvedBy"));
+        assertEquals("approved by duty supervisor", ((Map<?, ?>) manifest.get("approval")).get("approvalNote"));
+        assertTrue(String.valueOf(((Map<?, ?>) manifest.get("immutableAudit")).get("headHash"))
+                .startsWith("sha256:"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(timeline -> "case_audit".equals(timeline.materialType())
+                        && "export_evidence_job".equals(timeline.materialUri())
+                        && timeline.actionNote().contains(job.jobNo())));
+    }
+
+    @Test
+    void evidenceAuditTrailListsHashesExporterDownloadsAndBoundEvents() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7500L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-audit-chain",
+                LocalDateTime.of(2026, 7, 1, 10, 20),
+                "audit-chain.jpg",
+                "audit-chain.mp4"
+        ));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9002L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "audit chain case",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9003L,
+                "manifest",
+                "regulator package"
+        ));
+
+        service.recordEvidenceDownload(job.jobNo(), 9004L, "case handoff download");
+        List<ReviewEvidenceAuditEntry> auditTrail = service.getEvidenceAuditTrail(reviewCase.id());
+
+        ReviewEvidenceAuditEntry createdAudit = auditTrail.stream()
+                .filter(entry -> "export_created".equals(entry.actionType()))
+                .findFirst()
+                .orElseThrow();
+        ReviewEvidenceAuditEntry downloadedAudit = auditTrail.stream()
+                .filter(entry -> "export_downloaded".equals(entry.actionType()))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(auditTrail.stream().anyMatch(entry -> "export_created".equals(entry.actionType())
+                && Objects.equals(job.jobNo(), entry.jobNo())
+                && Objects.equals(job.fileHash(), entry.fileHash())
+                && Objects.equals(9003L, entry.operatorUserId())
+                && entry.boundEventIds().contains(7500L)
+                && entry.evidenceUris().contains("audit-chain.mp4")));
+        assertTrue(auditTrail.stream().anyMatch(entry -> "export_downloaded".equals(entry.actionType())
+                && Objects.equals(job.jobNo(), entry.jobNo())
+                && Objects.equals(9004L, entry.operatorUserId())
+                && "case handoff download".equals(entry.actionNote())));
+        assertEquals(reviewCase.id(), createdAudit.metadata().get("reviewCaseId"));
+        assertEquals(List.of(item.id()), createdAudit.metadata().get("reviewItemIds"));
+        assertEquals(List.of(7500L), createdAudit.metadata().get("eventIds"));
+        assertEquals(job.jobNo(), createdAudit.metadata().get("exportJobNo"));
+        assertEquals(reviewCase.id(), downloadedAudit.metadata().get("reviewCaseId"));
+        assertEquals(List.of(item.id()), downloadedAudit.metadata().get("reviewItemIds"));
+        assertEquals(List.of(7500L), downloadedAudit.metadata().get("eventIds"));
+        assertEquals(job.jobNo(), downloadedAudit.metadata().get("exportJobNo"));
+        assertTrue(downloadedAudit.boundEventIds().contains(7500L));
+        assertTrue(downloadedAudit.evidenceUris().contains("audit-chain.mp4"));
+        assertTrue(auditTrail.stream().allMatch(entry -> String.valueOf(entry.metadata().get("entryHash"))
+                .startsWith("sha256:")));
+        assertEquals("GENESIS", auditTrail.get(0).metadata().get("previousHash"));
+        assertEquals(auditTrail.get(0).metadata().get("entryHash"), auditTrail.get(1).metadata().get("previousHash"));
+    }
+
+    @Test
+    void aiSummaryCanUseExternalProviderWithCaseTimelineContext() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> {
+                            assertEquals(2, request.items().size());
+                            assertTrue(request.timeline().stream()
+                                    .anyMatch(item -> "snapshot".equals(item.materialType())));
+                            return Optional.of(new ReviewAiSummary(
+                                    request.reviewCaseId(),
+                                    request.reviewItemIds(),
+                                    "provider case",
+                                    "external provider summary",
+                                    List.of("provider fact"),
+                                    List.of("provider gap"),
+                                    List.of("provider action"),
+                                    LocalDateTime.of(2026, 6, 30, 15, 0),
+                                    "external-review-provider"
+                            ));
+                        }
+                )
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 6, 30, 14, 40);
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-provider-ai-1", baseTime, "provider-1.jpg", "provider-1.mp4"));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-provider-ai-2",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                baseTime.plusMinutes(2),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                15,
+                "provider-2.jpg",
+                "provider-2.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "Provider summary case",
+                first.id(),
+                List.of(first.id(), second.id())
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+
+        assertEquals("external provider summary", summary.summary());
+        assertEquals("external-review-provider", summary.generatedBy());
+        assertEquals(List.of("provider action"), summary.recommendedActions());
+        assertEquals("provider case", summary.structuredData().get("title"));
+        assertEquals("camera-01 / camera-02", summary.structuredData().get("scene"));
+        assertEquals("medium", summary.structuredData().get("threatLevel"));
+        assertEquals(List.of("provider gap"), summary.structuredData().get("evidenceGaps"));
+        assertEquals(List.of("provider action"), summary.structuredData().get("disposalSuggestion"));
+    }
+
+    @Test
+    void evidenceExportRequestsVideoProviderAndKeepsExportTaskInManifest() {
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "video-export-001",
+                        "https://eye.yfeiai.com/exports/video-export-001.mp4",
+                        "queued",
+                        "VIDEO export accepted"
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 16, 0);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-video-export",
+                alertTime,
+                "video-export.jpg",
+                "video-export.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "video export case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewEvidenceExportPackage exportPackage = service.exportReviewEvidence(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                null,
+                9003L,
+                "mp4"
+        ));
+
+        assertEquals(1, videoExportProvider.requests().size());
+        ReviewEvidenceVideoExportRequest request = videoExportProvider.requests().get(0);
+        assertEquals(reviewCase.id(), request.reviewCaseId());
+        assertEquals(item.id(), request.reviewItemId());
+        assertEquals("camera-01", request.cameraId());
+        assertEquals("alert-video-export", request.sourceAlertId());
+        assertEquals("video-export.mp4", request.recordUri());
+        assertEquals("mp4", request.format());
+        Object videoExports = exportPackage.manifest().get("videoExports");
+        assertTrue(videoExports instanceof List<?>);
+        assertEquals("video-export-001", ((Map<?, ?>) ((List<?>) videoExports).get(0)).get("exportId"));
+        assertTrue(exportPackage.evidenceUris().contains("https://eye.yfeiai.com/exports/video-export-001.mp4"));
+    }
+
+    @Test
+    void reviewReconciliationRepairsRecordAndSemanticDriftAndReportsHealthMetrics() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 9, 30);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "available",
+                        alertTime.minusMinutes(5),
+                        alertTime.plusMinutes(5),
+                        null,
+                        "reconciled-record.mp4"
+                ))
+        );
+        ReviewItemAggregate missingRecord = service.ingestClue(newClue(
+                "alert-reconcile",
+                alertTime,
+                "reconcile.jpg",
+                null
+        ));
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(new ReviewQuery(null, null, null, null), 9100L));
+
+        ReviewRuntimeHealthReport before = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9101L
+        ));
+        ReviewReconciliationResult result = service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9102L,
+                true
+        ));
+        ReviewItemAggregate repaired = service.listWorkbench(new ReviewQuery(null, null, null, null)).get(0);
+        ReviewSemanticIndexEvaluation semanticHealth = service.evaluateSemanticIndex(new ReviewSemanticIndexEvaluationCommand(
+                new ReviewQuery(null, null, null, null),
+                9103L
+        ));
+
+        assertEquals(1, before.missingRecordCount());
+        assertEquals(1, before.semanticBacklogCount());
+        assertTrue(before.alerts().contains("record_evidence_gap"));
+        assertEquals(1, result.scannedCount());
+        assertEquals(1, result.repairedRecordCount());
+        assertEquals(1, result.repairedSemanticIndexCount());
+        assertTrue(result.findings().contains("record_repaired:" + missingRecord.id()));
+        assertTrue(result.findings().contains("semantic_reindexed:" + missingRecord.id()));
+        assertEquals("found", repaired.recordEvidenceStatus());
+        assertTrue(service.getTimeline(repaired.id()).stream()
+                .anyMatch(evidence -> "record".equals(evidence.materialType())
+                        && "reconciled-record.mp4".equals(evidence.materialUri())));
+        assertTrue(semanticHealth.staleReviewItemIds().isEmpty());
+        assertEquals(0, result.healthReport().missingRecordCount());
+        assertEquals(0, result.healthReport().semanticBacklogCount());
+    }
+
+    @Test
+    void reviewReconciliationRepairsReviewDataSchemaAndSegmentDoubleWriteDrift() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 3, 11, 30);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-reviewdata-repair",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                20,
+                "reviewdata-repair.jpg",
+                "reviewdata-repair.mp4",
+                "payload-reviewdata-repair",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-reviewdata"),
+                0.91D,
+                List.of(0.11D, 0.21D, 0.31D, 0.41D),
+                "corr-reviewdata-repair"
+        ));
+        Map<String, Object> legacyReviewData = new LinkedHashMap<>(item.reviewData());
+        legacyReviewData.remove("reviewDataVersion");
+        legacyReviewData.remove("reviewSegment");
+        itemStore.updateReviewLifecycle(
+                item.id(),
+                Map.copyOf(legacyReviewData),
+                item.firstAlertTime(),
+                item.lastAlertTime(),
+                List.of(),
+                item.recordEvidenceStatus(),
+                item.recordEvidenceCheckedAt(),
+                item.recordEvidenceMessage()
+        );
+
+        ReviewRuntimeHealthReport before = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9301L
+        ));
+        ReviewReconciliationResult result = service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9302L,
+                true
+        ));
+        ReviewItemAggregate repaired = service.listWorkbench(new ReviewQuery(null, null, null, null)).get(0);
+        Map<?, ?> segment = (Map<?, ?>) repaired.reviewData().get("reviewSegment");
+
+        assertTrue(before.alerts().contains("review_data_schema_drift"));
+        assertTrue(before.alerts().contains("review_segment_double_write_drift"));
+        assertEquals(3, before.repairableCount());
+        assertTrue(result.findings().contains("review_data_repaired:" + item.id()));
+        assertTrue(result.findings().contains("review_segment_repaired:" + item.id()));
+        assertEquals(1, repaired.reviewData().get("reviewDataVersion"));
+        assertEquals("corr-reviewdata-repair", repaired.reviewData().get("correlationId"));
+        assertEquals("camera-01", segment.get("cameraId"));
+        assertEquals(alertTime.toString(), segment.get("startTime"));
+        assertEquals(alertTime.toString(), segment.get("endTime"));
+        assertEquals(List.of("obj-reviewdata"), segment.get("objectIds"));
+        assertEquals(List.of("zone-a"), segment.get("zones"));
+        assertFalse(result.healthReport().alerts().contains("review_data_schema_drift"));
+        assertFalse(result.healthReport().alerts().contains("review_segment_double_write_drift"));
+    }
+
+    @Test
+    void integrationSmokeCoversReviewRecordCaseExportAndManifestVerification() {
+        LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 2, 10, 0);
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "smoke-video-export",
+                        "https://eye.yfeiai.com/exports/smoke-video-export.mp4",
+                        "ready",
+                        "smoke export ready"
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7600L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "motion",
+                        smokeTime.minusSeconds(30),
+                        smokeTime.plusSeconds(90),
+                        3,
+                        "smoke-record.mp4"
+                )),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+
+        ReviewIntegrationSmokeResult smoke = service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                9200L,
+                true,
+                smokeTime
+        ));
+
+        assertEquals("passed", smoke.status());
+        assertTrue(smoke.reviewItemId() > 0);
+        assertTrue(smoke.reviewCaseId() > 0);
+        assertTrue(smoke.exportJobNo().startsWith("REJ-"));
+        assertTrue(smoke.manifestValid());
+        assertTrue(smoke.videoExportRequested());
+        assertEquals(1, videoExportProvider.requests().size());
+        assertTrue(smoke.checkpoints().contains("ingest_review_item"));
+        assertTrue(smoke.checkpoints().contains("record_coverage_synced"));
+        assertTrue(smoke.checkpoints().contains("review_case_created"));
+        assertTrue(smoke.checkpoints().contains("evidence_export_ready"));
+        assertTrue(smoke.checkpoints().contains("manifest_verified"));
+        assertTrue(smoke.checkpoints().contains("evidence_download_audited"));
+        assertTrue(service.getEvidenceAuditTrail(smoke.reviewCaseId()).stream()
+                .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
+                        && Objects.equals(9200L, entry.operatorUserId())
+                        && "integration smoke download audit".equals(entry.actionNote())));
+    }
+
+    @Test
+    void ruleGeometryUsesBottomCenterSemanticsAndReplayRequiresSafeVersionLifecycle() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(new InMemoryReviewItemStore(), ruleStore, unusedEventService());
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 0);
+        service.saveRule(new ReviewRuleCommand(
+                null,
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted area v1",
+                "video",
+                "camera-01",
+                "zone-a",
+                "person",
+                5,
+                baseTime.minusDays(1),
+                null,
+                true
+        ));
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-geometry",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "geometry.jpg",
+                "geometry.mp4",
+                null,
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-geometry"),
+                0.92D,
+                List.of(5D, -10D, 15D, 5D),
+                "corr-geometry"
+        ));
+
+        ReviewRuleGeometryEvaluation geometry = service.evaluateRuleGeometry(new ReviewRuleGeometryCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "camera-01",
+                "zone-a",
+                List.of(
+                        List.of(0D, 0D),
+                        List.of(20D, 0D),
+                        List.of(20D, 20D),
+                        List.of(0D, 20D)
+                ),
+                List.of(5D, -10D, 15D, 5D),
+                "person",
+                new ReviewQuery(null, "camera-01", null, null),
+                9300L
+        ));
+        ReviewRuleReplayResult replay = service.replayRule(new ReviewRuleReplayCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "video",
+                "camera-01",
+                "zone-a",
+                "person",
+                20,
+                baseTime.minusMinutes(5),
+                baseTime.plusMinutes(5),
+                9301L
+        ));
+        Map<?, ?> lifecyclePolicy = (Map<?, ?>) replay.report().get("ruleLifecyclePolicy");
+        Map<?, ?> geometrySemantics = (Map<?, ?>) replay.report().get("geometrySemantics");
+
+        assertEquals("bottom_center", geometry.geometryType());
+        assertEquals(List.of(10D, 5D), geometry.evaluatedPoint());
+        assertTrue(geometry.inside());
+        assertTrue(geometry.replayedReviewItemIds().contains(item.id()));
+        assertEquals("shadow", geometry.ruleVersion().get("applicationMode"));
+        assertTrue(geometry.consistencyChecks().contains("front_back_replay_use_bottom_center"));
+        assertEquals(false, lifecyclePolicy.get("directApplyAllowed"));
+        assertEquals(true, lifecyclePolicy.get("shadowEvaluationRequired"));
+        assertEquals(true, lifecyclePolicy.get("approvalRequired"));
+        assertEquals(true, lifecyclePolicy.get("rollbackSupported"));
+        assertEquals("bottom_center", geometrySemantics.get("objectPoint"));
+    }
+
+    @Test
+    void evidenceManifestV2AndVerifierReconstructDecisionTrailAndAuditChain() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 12, 0);
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-manifest-v2",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "manifest-v2.jpg",
+                "manifest-v2.mp4",
+                "payload-manifest-v2",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-manifest-v2"),
+                0.96D,
+                List.of(1D, 2D, 9D, 18D),
+                "corr-manifest-v2"
+        ));
+        service.markFalsePositive(new ReviewOperationCommand(item.id(), 9400L, "known staff"));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "manifest v2 case",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9401L,
+                "manifest",
+                "evidence reproducibility",
+                9402L,
+                "approved for replay"
+        ));
+        service.recordEvidenceDownload(job.jobNo(), 9403L, "verifier download");
+
+        ReviewEvidenceVerificationReport verification = service.verifyEvidencePackage(new ReviewEvidenceVerificationCommand(
+                job.jobNo(),
+                9404L
+        ));
+        Map<String, Object> manifest = job.exportPackage().manifest();
+        Map<?, ?> operator = (Map<?, ?>) manifest.get("operator");
+        List<?> ruleVersions = (List<?>) manifest.get("ruleVersions");
+        Map<?, ?> reviewDataByItem = (Map<?, ?>) manifest.get("reviewData");
+        List<?> coverageSummary = (List<?>) manifest.get("coverageSummary");
+
+        assertEquals("2", manifest.get("manifestVersion"));
+        assertEquals("review-ai-summary-v1", manifest.get("aiSummaryVersion"));
+        assertEquals(9401L, operator.get("exportedBy"));
+        assertFalse(ruleVersions.isEmpty());
+        assertEquals(SupervisionRuleSeeds.RULE_RESTRICTED_AREA, ((Map<?, ?>) ruleVersions.get(0)).get("ruleCode"));
+        assertTrue(reviewDataByItem.containsKey(String.valueOf(item.id())));
+        assertFalse(coverageSummary.isEmpty());
+        assertTrue(((Map<?, ?>) reviewDataByItem.get(String.valueOf(item.id()))).containsKey("correlationId"));
+        assertTrue(verification.valid());
+        assertEquals(job.jobNo(), verification.jobNo());
+        assertTrue(verification.replayableReasons().contains("manifest_hash_valid"));
+        assertTrue(verification.replayableReasons().contains("decision_trail_reconstructed"));
+        assertTrue(verification.decisionTrail().stream()
+                .anyMatch(decision -> "false_positive".equals(decision.get("reviewStatus"))
+                        && "known staff".equals(decision.get("reason"))));
+        assertTrue(verification.auditTrail().stream()
+                .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
+                        && Objects.equals(9403L, entry.operatorUserId())));
+    }
+
+    @Test
+    void runtimePatrolProfileTraceAndGapReasonsHardenReviewOperations() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 3, 9, 0);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "missing",
+                        request.beginTime(),
+                        request.endTime(),
+                        0,
+                        null,
+                        0,
+                        Map.of(
+                                "gapReason", "service_unavailable",
+                                "reasonCode", "video_service_unavailable",
+                                "retryable", true
+                        )
+                ))
+        );
+        ReviewItemAggregate missingRecord = service.ingestClue(newClue(
+                "alert-runtime-patrol",
+                alertTime,
+                "patrol.jpg",
+                null
+        ));
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(new ReviewQuery(null, null, null, null), 9500L));
+
+        ReviewRuntimePatrolResult patrol = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9501L,
+                true,
+                2,
+                true
+        ));
+        List<RecordCoverageSegment> coverage = service.getRecordCoverage(missingRecord.id());
+        ReviewIntegrationSmokeResult smoke = service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                9502L,
+                true,
+                alertTime.plusHours(1),
+                "device-video-web"
+        ));
+        ReviewRuleGeometryEvaluation geometry = service.evaluateRuleGeometry(new ReviewRuleGeometryCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "camera-01",
+                "zone-a",
+                List.of(List.of(0D, 0D), List.of(20D, 0D), List.of(20D, 20D), List.of(0D, 20D)),
+                List.of(2D, 4D, 8D, 16D),
+                "person",
+                new ReviewQuery(null, null, null, null),
+                9503L
+        ));
+        Map<?, ?> firstTrace = (Map<?, ?>) geometry.matchTraces().get(0);
+
+        assertEquals("alerted", patrol.status());
+        assertTrue(patrol.lockAcquired());
+        assertEquals(2, patrol.maxAttempts());
+        assertTrue(patrol.reconciliationResult().scannedCount() >= 1);
+        assertTrue(patrol.alerts().contains("record_evidence_gap"));
+        assertTrue(patrol.notifications().contains("review_runtime_alert:record_evidence_gap"));
+        assertTrue(patrol.recommendedActions().contains("backfill_record_evidence"));
+        assertEquals("service_unavailable", coverage.get(0).metadata().get("gapReason"));
+        assertEquals("device-video-web", smoke.profile());
+        assertTrue(smoke.checkpoints().contains("device_api_reachable"));
+        assertTrue(smoke.checkpoints().contains("video_record_query_checked"));
+        assertTrue(smoke.checkpoints().contains("web_contract_checked"));
+        assertEquals(List.of(5D, 16D), firstTrace.get("bottomCenter"));
+        assertEquals("zone-a", firstTrace.get("zoneCode"));
+        assertEquals(15, firstTrace.get("minStaySeconds"));
+        assertEquals("bottom_center", firstTrace.get("geometryType"));
+        assertEquals("shadow", firstTrace.get("ruleVersion"));
+    }
+
+    @Test
+    void runtimeHealthReportsVideoUrlNotConfiguredReasonWhenResolverIsUnconfigured() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 3, 11, 0);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                new ConfigMissingRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of()
+        );
+
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-video-url-missing",
+                alertTime,
+                "video-url-missing.jpg",
+                null
+        ));
+        ReviewRuntimeHealthReport health = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9601L
+        ));
+        ReviewRuntimePatrolResult patrol = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9602L,
+                false,
+                1,
+                true
+        ));
+
+        assertEquals("missing", item.recordEvidenceStatus());
+        assertEquals("video_url_not_configured", item.recordEvidenceMessage());
+        assertEquals(1, health.recordGapReasons().get("video_url_not_configured"));
+        assertTrue(health.alerts().contains("record_evidence_gap:video_url_not_configured"));
+        assertTrue(patrol.recommendedActions().contains("configure_video_record_query_url"));
+    }
+
+    @Test
+    void reviewSegmentsRuntimePatrolAndRuleSemanticsArePersistentAndSingleSourced() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime firstTime = LocalDateTime.of(2026, 7, 4, 9, 0);
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "missing",
+                        request.beginTime(),
+                        request.endTime(),
+                        0,
+                        null,
+                        0,
+                        Map.of("gapReason", "stream_interrupted", "retryable", true)
+                ))
+        );
+
+        ReviewItemAggregate first = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-segment-start",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                firstTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "segment-start.jpg",
+                null,
+                "hash-segment-start",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-1"),
+                0.91D,
+                List.of(2D, 4D, 8D, 16D),
+                "corr-segment"
+        ));
+        ReviewItemAggregate updated = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-segment-update",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                firstTime.plusSeconds(45),
+                "device-01",
+                "camera-01",
+                "zone-b",
+                "vehicle",
+                20,
+                "segment-update.jpg",
+                null,
+                "hash-segment-update",
+                List.of("vehicle"),
+                List.of("zone-b"),
+                List.of("obj-2"),
+                0.88D,
+                List.of(10D, 6D, 16D, 18D),
+                "corr-segment"
+        ));
+        ReviewItemAggregate ended = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                updated.id(),
+                "ended",
+                firstTime.plusSeconds(90),
+                List.of("obj-1", "obj-2"),
+                List.of("person", "vehicle"),
+                List.of("zone-a", "zone-b"),
+                List.of(10D, 6D, 16D, 18D),
+                Map.of("motionCount", 4),
+                null
+        ));
+
+        ReviewSegmentView segment = service.getReviewSegment(ended.id());
+        ReviewRuntimePatrolResult patrol = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9601L,
+                true,
+                3,
+                true
+        ));
+        ReviewRuleGeometryEvaluation geometry = service.evaluateRuleGeometry(new ReviewRuleGeometryCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "camera-01",
+                "zone-a",
+                List.of(List.of(0D, 0D), List.of(20D, 0D), List.of(20D, 20D), List.of(0D, 20D)),
+                List.of(2D, 4D, 8D, 16D),
+                "person",
+                new ReviewQuery(null, null, null, null),
+                9602L
+        ));
+        ReviewIntegrationSmokeResult smoke = service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                9603L,
+                true,
+                firstTime.plusHours(1),
+                "device-video-web"
+        ));
+        Map<?, ?> firstTrace = (Map<?, ?>) geometry.matchTraces().get(0);
+
+        assertEquals(first.id(), updated.id());
+        assertEquals(ended.id(), segment.reviewItemId());
+        assertEquals("camera-01", segment.cameraId());
+        assertEquals("ended", segment.status());
+        assertEquals("alert", segment.severity());
+        assertEquals(firstTime, segment.startTime());
+        assertEquals(firstTime.plusSeconds(90), segment.endTime());
+        assertEquals(List.of("obj-1", "obj-2"), segment.objectIds());
+        assertEquals(List.of("zone-a", "zone-b"), segment.zones());
+        assertEquals(List.of("start", "update", "ended"), segment.events().stream()
+                .map(event -> String.valueOf(event.get("event")))
+                .toList());
+        assertEquals(segment.segmentId(), ((Map<?, ?>) ended.reviewData().get("reviewSegment")).get("segmentId"));
+        assertEquals("review_item_store", patrol.metadata().get("lockBackend"));
+        assertTrue(String.valueOf(patrol.metadata().get("historyRunId")).startsWith("RPR-"));
+        assertTrue(((Number) patrol.metadata().get("outboxEventCount")).intValue() >= 1);
+        assertTrue(patrol.metadata().containsKey("nextRetryAt"));
+        assertEquals("yfeieye-rule-geometry-v1", geometry.ruleVersion().get("semanticEngine"));
+        assertEquals("yfeieye-rule-geometry-v1", firstTrace.get("semanticEngine"));
+        assertEquals("bottom_center", firstTrace.get("pointStrategy"));
+        assertTrue(smoke.checkpoints().contains("sample_alert_ingested"));
+        assertTrue(smoke.checkpoints().contains("sample_record_coverage_probed"));
+        assertTrue(smoke.checkpoints().contains("sample_web_contract_renderable"));
+    }
+
+    @Test
+    void endedAlertReviewSegmentSplitsLateDetectionIntoNewSegment() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 30);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate alert = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-split-start",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                8,
+                "alert-split-start.jpg",
+                null,
+                "hash-alert-split-start",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-alert"),
+                0.92D,
+                List.of(1D, 2D, 8D, 18D),
+                "corr-split"
+        ));
+        ReviewItemAggregate endedAlert = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                alert.id(),
+                "ended",
+                alertTime.plusSeconds(40),
+                List.of("obj-alert"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(1D, 2D, 8D, 18D),
+                Map.of("motionCount", 1),
+                null
+        ));
+
+        ReviewItemAggregate detection = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-split-detection",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "motion_detection",
+                alertTime.plusSeconds(80),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                3,
+                "alert-split-detection.jpg",
+                null,
+                "hash-alert-split-detection",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-detection"),
+                0.72D,
+                List.of(2D, 3D, 9D, 19D),
+                "corr-split"
+        ));
+
+        ReviewSegmentView alertSegment = service.getReviewSegment(endedAlert.id());
+        ReviewSegmentView detectionSegment = service.getReviewSegment(detection.id());
+
+        assertNotEquals(alert.id(), detection.id());
+        assertEquals("ended", alertSegment.status());
+        assertEquals(alertTime.plusSeconds(40), alertSegment.endTime());
+        assertEquals("detection", detectionSegment.severity());
+        assertEquals("active", detectionSegment.status());
+        assertEquals(alertTime.plusSeconds(80), detectionSegment.startTime());
+        assertEquals(List.of("start"), detectionSegment.events().stream()
+                .map(event -> String.valueOf(event.get("event")))
+                .toList());
+    }
+
+    @Test
+    void endingMergedSegmentTruncatesBeforeLateDetectionSplitsNewActiveSegment() {
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 4, 9, 40);
+        LocalDateTime cutoffTime = baseTime.plusMinutes(2);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate started = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-truncate-start",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                8,
+                "alert-truncate-start.jpg",
+                null,
+                "hash-alert-truncate-start",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-truncate-alert"),
+                0.92D,
+                List.of(1D, 2D, 8D, 18D),
+                "corr-truncate"
+        ));
+        ReviewItemAggregate merged = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-truncate-update",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime.plusMinutes(4),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                10,
+                "alert-truncate-update.jpg",
+                null,
+                "hash-alert-truncate-update",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-truncate-update"),
+                0.9D,
+                List.of(2D, 3D, 9D, 19D),
+                "corr-truncate"
+        ));
+        ReviewItemAggregate ended = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                merged.id(),
+                "ended",
+                cutoffTime,
+                List.of("obj-truncate-alert", "obj-truncate-update"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(2D, 3D, 9D, 19D),
+                Map.of("motionCount", 2),
+                null
+        ));
+
+        ReviewItemAggregate detection = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-truncate-detection",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "motion_detection",
+                baseTime.plusMinutes(3),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                3,
+                "alert-truncate-detection.jpg",
+                null,
+                "hash-alert-truncate-detection",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-truncate-detection"),
+                0.72D,
+                List.of(3D, 4D, 10D, 20D),
+                "corr-truncate"
+        ));
+
+        ReviewSegmentView endedSegment = service.getReviewSegment(ended.id());
+        ReviewSegmentView detectionSegment = service.getReviewSegment(detection.id());
+
+        assertEquals(started.id(), merged.id());
+        assertNotEquals(ended.id(), detection.id());
+        assertEquals("ended", endedSegment.status());
+        assertEquals(cutoffTime, endedSegment.endTime());
+        assertEquals("active", detectionSegment.status());
+        assertEquals("detection", detectionSegment.severity());
+        assertEquals(baseTime.plusMinutes(3), detectionSegment.startTime());
+        assertFalse(detectionSegment.startTime().isBefore(endedSegment.endTime()));
+    }
+
+    @Test
+    void reviewSegmentLifecycleRejectsInvalidStateAndReopenAfterEnded() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 45);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-segment-transition",
+                alertTime,
+                "segment-transition.jpg",
+                null
+        ));
+
+        IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class,
+                () -> service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                        item.id(),
+                        "paused",
+                        alertTime.plusSeconds(10),
+                        List.of("obj-transition"),
+                        List.of("person"),
+                        List.of("zone-a"),
+                        List.of(),
+                        Map.of(),
+                        null
+                )));
+        ReviewItemAggregate ended = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "ended",
+                alertTime.plusSeconds(30),
+                List.of("obj-transition"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(),
+                Map.of(),
+                null
+        ));
+        IllegalStateException reopen = assertThrows(IllegalStateException.class,
+                () -> service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                        ended.id(),
+                        "active",
+                        alertTime.plusSeconds(40),
+                        List.of("obj-transition"),
+                        List.of("person"),
+                        List.of("zone-a"),
+                        List.of(),
+                        Map.of(),
+                        null
+                )));
+
+        assertTrue(invalid.getMessage().contains("review segment state"));
+        assertTrue(reopen.getMessage().contains("ended review segment"));
+    }
+
+    @Test
+    void reviewSegmentAlertStateDoesNotDowngradeWhenLaterDetectionHeartbeatArrives() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 50);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-segment-escalation",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "motion_detection",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                3,
+                "segment-escalation.jpg",
+                null,
+                "hash-segment-escalation",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-escalation"),
+                0.72D,
+                List.of(1D, 2D, 8D, 18D),
+                "corr-escalation"
+        ));
+        service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "alert",
+                alertTime.plusSeconds(20),
+                List.of("obj-escalation"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(2D, 3D, 9D, 19D),
+                Map.of("event", "restricted_area_alert"),
+                null
+        ));
+        service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "detection",
+                alertTime.plusSeconds(30),
+                List.of("obj-escalation"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(3D, 4D, 10D, 20D),
+                Map.of("event", "detection_heartbeat"),
+                null
+        ));
+
+        ReviewSegmentView segment = service.getReviewSegment(item.id());
+
+        assertEquals("alert", segment.status());
+        assertEquals("alert", segment.severity());
+        assertEquals(List.of("start", "alert", "detection"), segment.events().stream()
+                .map(event -> String.valueOf(event.get("event")))
+                .toList());
+        assertEquals(alertTime.plusSeconds(30), segment.endTime());
+    }
+
+    @Test
+    void reviewSegmentAlertStateDoesNotDowngradeWhenLaterDetectionClueIsMerged() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 55);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-segment-ingest-escalation",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "motion_detection",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                3,
+                "segment-ingest-escalation.jpg",
+                null,
+                "hash-segment-ingest-escalation",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-ingest-escalation"),
+                0.72D,
+                List.of(1D, 2D, 8D, 18D),
+                "corr-ingest-escalation"
+        ));
+        service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "alert",
+                alertTime.plusSeconds(20),
+                List.of("obj-ingest-escalation"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(2D, 3D, 9D, 19D),
+                Map.of("event", "restricted_area_alert"),
+                null
+        ));
+
+        ReviewItemAggregate mergedDetection = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-segment-ingest-detection",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "motion_detection",
+                alertTime.plusSeconds(30),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                4,
+                "segment-ingest-detection.jpg",
+                null,
+                "hash-segment-ingest-detection",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-ingest-detection"),
+                0.74D,
+                List.of(3D, 4D, 10D, 20D),
+                "corr-ingest-escalation"
+        ));
+
+        ReviewSegmentView segment = service.getReviewSegment(item.id());
+
+        assertEquals(item.id(), mergedDetection.id());
+        assertEquals("alert", segment.status());
+        assertEquals("alert", segment.severity());
+        assertEquals(List.of("start", "alert", "update"), segment.events().stream()
+                .map(event -> String.valueOf(event.get("event")))
+                .toList());
+        assertEquals(alertTime.plusSeconds(30), segment.endTime());
+    }
+
+    @Test
+    void ruleGeometryAndReplayUseZoneInertiaAndLoiteringSemanticsFromSavedRule() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                ruleStore,
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 10, 0);
+        service.saveRule(new ReviewRuleCommand(
+                null,
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "Restricted area with dwell guard",
+                "video",
+                "camera-01",
+                "zone-a",
+                "person",
+                30,
+                null,
+                null,
+                true,
+                3,
+                30
+        ));
+        service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-zone-inertia",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "zone-inertia.jpg",
+                null,
+                "hash-zone-inertia",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-zone-1"),
+                0.91D,
+                List.of(2D, 4D, 8D, 16D),
+                "corr-zone-inertia",
+                List.of("obj-zone-1"),
+                alertTime,
+                List.of(),
+                Map.of("consecutiveZoneFrames", 2)
+        ));
+
+        ReviewRuleReplayResult replay = service.replayRule(new ReviewRuleReplayCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "video",
+                "camera-01",
+                "zone-a",
+                "person",
+                30,
+                alertTime.minusMinutes(5),
+                alertTime.plusMinutes(5),
+                9701L
+        ));
+        ReviewRuleGeometryEvaluation geometry = service.evaluateRuleGeometry(new ReviewRuleGeometryCommand(
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "camera-01",
+                "zone-a",
+                List.of(List.of(0D, 0D), List.of(20D, 0D), List.of(20D, 20D), List.of(0D, 20D)),
+                List.of(2D, 4D, 8D, 16D),
+                "person",
+                new ReviewQuery(null, null, null, null),
+                9702L
+        ));
+
+        Map<?, ?> replayGeometrySemantics = (Map<?, ?>) replay.report().get("geometrySemantics");
+        Map<?, ?> replayRuleVersion = (Map<?, ?>) replay.report().get("ruleVersion");
+        Map<?, ?> trace = geometry.matchTraces().get(0);
+
+        assertEquals(3, replayGeometrySemantics.get("zoneInertiaFrames"));
+        assertEquals(30, replayGeometrySemantics.get("loiteringSeconds"));
+        assertEquals(Boolean.TRUE, replayGeometrySemantics.get("singleSourceRuleVersion"));
+        assertEquals(3, replayRuleVersion.get("inertiaFrames"));
+        assertEquals(30, replayRuleVersion.get("loiteringSeconds"));
+        assertTrue(geometry.consistencyChecks().contains("zone_inertia_applied"));
+        assertTrue(geometry.consistencyChecks().contains("loitering_threshold_applied"));
+        assertEquals(3, geometry.ruleVersion().get("zoneInertiaFrames"));
+        assertEquals(30, geometry.ruleVersion().get("loiteringSeconds"));
+        assertEquals(2, trace.get("observedConsecutiveFrames"));
+        assertEquals(12, trace.get("observedStaySeconds"));
+        assertEquals(Boolean.FALSE, trace.get("inertiaSatisfied"));
+        assertEquals(Boolean.FALSE, trace.get("loiteringSatisfied"));
+        assertEquals(Boolean.FALSE, trace.get("qualifiedInside"));
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService) {
+        return newService(itemStore, ruleStore, eventService, noRecordEvidenceResolver(), noEventProjectionStore());
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            ReviewCameraPermissionResolver cameraPermissionResolver) {
+        return newService(itemStore, ruleStore, eventService, noRecordEvidenceResolver(), noEventProjectionStore(),
+                request -> List.of(), ReviewIntelligenceProvider.unavailable(), VideoEvidenceExportProvider.unavailable(),
+                cameraPermissionResolver);
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordEvidenceResolver recordEvidenceResolver,
+                                                            EventProjectionStore eventProjectionStore) {
+        return newService(itemStore, ruleStore, eventService, recordEvidenceResolver, eventProjectionStore,
+                request -> List.of());
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordEvidenceResolver recordEvidenceResolver,
+                                                            EventProjectionStore eventProjectionStore,
+                                                            RecordCoverageResolver recordCoverageResolver) {
+        return newService(itemStore, ruleStore, eventService, recordEvidenceResolver, eventProjectionStore,
+                recordCoverageResolver, ReviewIntelligenceProvider.unavailable());
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordCoverageResolver recordCoverageResolver,
+                                                            ReviewIntelligenceProvider reviewIntelligenceProvider) {
+        return newService(itemStore, ruleStore, eventService, noRecordEvidenceResolver(), noEventProjectionStore(),
+                recordCoverageResolver, reviewIntelligenceProvider);
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordEvidenceResolver recordEvidenceResolver,
+                                                            EventProjectionStore eventProjectionStore,
+                                                            RecordCoverageResolver recordCoverageResolver,
+                                                            ReviewIntelligenceProvider reviewIntelligenceProvider) {
+        return newService(itemStore, ruleStore, eventService, recordEvidenceResolver, eventProjectionStore,
+                recordCoverageResolver, reviewIntelligenceProvider, VideoEvidenceExportProvider.unavailable());
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordEvidenceResolver recordEvidenceResolver,
+                                                            EventProjectionStore eventProjectionStore,
+                                                            RecordCoverageResolver recordCoverageResolver,
+                                                            ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                                            VideoEvidenceExportProvider videoEvidenceExportProvider) {
+        return new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                ruleStore,
+                eventService,
+                recordEvidenceResolver,
+                eventProjectionStore,
+                recordCoverageResolver,
+                reviewIntelligenceProvider,
+                videoEvidenceExportProvider,
+                ReviewCameraPermissionResolver.unrestricted()
+        );
+    }
+
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordEvidenceResolver recordEvidenceResolver,
+                                                            EventProjectionStore eventProjectionStore,
+                                                            RecordCoverageResolver recordCoverageResolver,
+                                                            ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                                            VideoEvidenceExportProvider videoEvidenceExportProvider,
+                                                            ReviewCameraPermissionResolver cameraPermissionResolver) {
+        return new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                ruleStore,
+                eventService,
+                recordEvidenceResolver,
+                eventProjectionStore,
+                recordCoverageResolver,
+                reviewIntelligenceProvider,
+                videoEvidenceExportProvider,
+                cameraPermissionResolver
+        );
+    }
+
+    private static AlertClueCommand newClue(String sourceAlertId,
+                                            LocalDateTime alertTime,
+                                            String snapshotUri,
+                                            String recordUri) {
+        return new AlertClueCommand(
+                "video",
+                sourceAlertId,
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                snapshotUri,
+                recordUri,
+                null
+        );
+    }
+
+    private static void ingestAfterStart(SupervisionAlertReviewService service,
+                                         AlertClueCommand command,
+                                         CountDownLatch ready,
+                                         CountDownLatch start,
+                                         AtomicReference<ReviewItemAggregate> result,
+                                         AtomicReference<Throwable> failure) {
+        ready.countDown();
+        try {
+            if (!start.await(2, TimeUnit.SECONDS)) {
+                throw new AssertionError("ingest start latch timed out");
+            }
+            result.set(service.ingestClue(command));
+        } catch (Throwable throwable) {
+            failure.compareAndSet(null, throwable);
+        }
+    }
+
+    private static SupervisionEventService unusedEventService() {
+        return command -> {
+            throw new AssertionError("event service should not be called");
+        };
+    }
+
+    private static RecordEvidenceResolver noRecordEvidenceResolver() {
+        return request -> Optional.empty();
+    }
+
+    private static final class ConfigMissingRecordEvidenceResolver implements RecordEvidenceResolver {
+
+        @Override
+        public Optional<RecordEvidenceResult> resolve(RecordEvidenceRequest request) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<String> unavailableReason() {
+            return Optional.of("video_url_not_configured");
+        }
+
+    }
+
+    private static Map<String, Object> toStringObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw) || raw.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    private static List<String> reviewSegmentSourceAlertIds(Map<String, Object> reviewData) {
+        Map<String, Object> segment = toStringObjectMap(reviewData == null ? null : reviewData.get("reviewSegment"));
+        Object value = segment.get("sourceAlertIds");
+        if (value instanceof List<?> raw) {
+            List<String> result = new ArrayList<>();
+            for (Object item : raw) {
+                if (item != null && !String.valueOf(item).isBlank()) {
+                    result.add(String.valueOf(item));
+                }
+            }
+            return List.copyOf(result);
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return List.of(text);
+        }
+        return List.of();
+    }
+
+    private static EventProjectionStore noEventProjectionStore() {
+        return eventId -> Optional.empty();
+    }
+
+    private static final class StubReviewIntelligenceProvider implements ReviewIntelligenceProvider {
+
+        private final Function<ReviewSemanticSearchRequest, Optional<List<ReviewSemanticHit>>> semanticSearch;
+        private final Function<ReviewAiSummaryRequest, Optional<ReviewAiSummary>> summarize;
+
+        private StubReviewIntelligenceProvider(
+                Function<ReviewSemanticSearchRequest, Optional<List<ReviewSemanticHit>>> semanticSearch,
+                Function<ReviewAiSummaryRequest, Optional<ReviewAiSummary>> summarize) {
+            this.semanticSearch = semanticSearch;
+            this.summarize = summarize;
+        }
+
+        @Override
+        public Optional<List<ReviewSemanticHit>> semanticSearch(ReviewSemanticSearchRequest request) {
+            return semanticSearch.apply(request);
+        }
+
+        @Override
+        public Optional<ReviewAiSummary> summarize(ReviewAiSummaryRequest request) {
+            return summarize.apply(request);
+        }
+    }
+
+    private static final class CapturingRecordEvidenceResolver implements RecordEvidenceResolver {
+
+        private final Optional<RecordEvidenceResult> result;
+        private final List<RecordEvidenceRequest> requests = new ArrayList<>();
+
+        private CapturingRecordEvidenceResolver(Optional<RecordEvidenceResult> result) {
+            this.result = result;
+        }
+
+        @Override
+        public Optional<RecordEvidenceResult> resolve(RecordEvidenceRequest request) {
+            requests.add(request);
+            return result;
+        }
+
+        List<RecordEvidenceRequest> requests() {
+            return requests;
+        }
+
+    }
+
+    private static final class CapturingRecordCoverageResolver implements RecordCoverageResolver {
+
+        private final List<RecordCoverageSegment> result;
+        private final List<RecordCoverageRequest> requests = new ArrayList<>();
+
+        private CapturingRecordCoverageResolver(List<RecordCoverageSegment> result) {
+            this.result = result;
+        }
+
+        @Override
+        public List<RecordCoverageSegment> resolve(RecordCoverageRequest request) {
+            requests.add(request);
+            return result;
+        }
+
+        List<RecordCoverageRequest> requests() {
+            return requests;
+        }
+
+    }
+
+    private static final class CapturingVideoEvidenceExportProvider implements VideoEvidenceExportProvider {
+
+        private final Optional<ReviewEvidenceVideoExportResult> result;
+        private final List<ReviewEvidenceVideoExportRequest> requests = new ArrayList<>();
+
+        private CapturingVideoEvidenceExportProvider(Optional<ReviewEvidenceVideoExportResult> result) {
+            this.result = result;
+        }
+
+        @Override
+        public Optional<ReviewEvidenceVideoExportResult> export(ReviewEvidenceVideoExportRequest request) {
+            requests.add(request);
+            return result;
+        }
+
+        List<ReviewEvidenceVideoExportRequest> requests() {
+            return requests;
+        }
+
+    }
+
+    private record RuntimeOutboxEntry(String runId,
+                                      String alert,
+                                      String action,
+                                      List<String> recommendedActions,
+                                      Long operatorUserId,
+                                      String status,
+                                      Map<String, Object> metadata,
+                                      Long id,
+                                      String payload,
+                                      Integer retryCount,
+                                      LocalDateTime publishedAt,
+                                      String lastError) {
+    }
+
+    private static final class SlowCreateReviewItemStore extends InMemoryReviewItemStore {
+
+        private final CountDownLatch concurrentCreateWindow = new CountDownLatch(2);
+
+        @Override
+        public ReviewItemAggregate create(ReviewItemDraft draft, List<ReviewEvidenceItem> evidenceItems) {
+            concurrentCreateWindow.countDown();
+            try {
+                concurrentCreateWindow.await(1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(e);
+            }
+            synchronized (this) {
+                return super.create(draft, evidenceItems);
+            }
+        }
+    }
+
+    private static class InMemoryReviewItemStore implements ReviewItemStore {
+
+        private final Map<Long, ReviewItemAggregate> items = new LinkedHashMap<>();
+        private final Map<Long, List<ReviewEvidenceItem>> evidenceByItemId = new LinkedHashMap<>();
+        private final Map<Long, ReviewCaseView> cases = new LinkedHashMap<>();
+        private final Map<Long, List<Long>> caseItemIds = new LinkedHashMap<>();
+        private final Map<Long, List<ReviewCaseTimelineItem>> caseAudits = new LinkedHashMap<>();
+        private final Map<String, ReviewEvidenceExportJob> exportJobs = new LinkedHashMap<>();
+        private final Map<Long, ReviewSemanticIndexEntry> semanticIndex = new LinkedHashMap<>();
+        private final Map<String, ReviewUserStatusView> userStatuses = new LinkedHashMap<>();
+        private final List<RuntimeOutboxEntry> runtimeOutbox = new ArrayList<>();
+        private long nextId = 1000L;
+        private long nextCaseId = 3000L;
+        private long nextExportJobId = 5000L;
+        private long nextRuntimeOutboxId = 7000L;
+
+        @Override
+        public Optional<ReviewItemAggregate> findMergeCandidate(String sourceSystem,
+                                                                String cameraId,
+                                                                String zoneCode,
+                                                                String ruleCode,
+                                                                LocalDateTime windowStart,
+                                                                LocalDateTime windowEnd) {
+            return items.values().stream()
+                    .filter(item -> "pending_review".equals(item.reviewStatus()))
+                    .filter(item -> Objects.equals(sourceSystem, item.sourceSystem()))
+                    .filter(item -> Objects.equals(cameraId, item.cameraId()))
+                    .filter(item -> !item.lastAlertTime().isBefore(windowStart))
+                    .filter(item -> !item.firstAlertTime().isAfter(windowEnd))
+                    .findFirst();
+        }
+
+        @Override
+        public ReviewItemAggregate create(ReviewItemDraft draft, List<ReviewEvidenceItem> evidenceItems) {
+            long id = nextId++;
+            ReviewItemAggregate item = new ReviewItemAggregate(
+                    id,
+                    "RI-" + id,
+                    draft.sourceSystem(),
+                    draft.ruleCode(),
+                    draft.sourceAlertType(),
+                    draft.deviceId(),
+                    draft.cameraId(),
+                    draft.zoneCode(),
+                    draft.objectLabel(),
+                    draft.alertTime(),
+                    draft.alertTime(),
+                    1,
+                    List.of(draft.sourceAlertId()),
+                    draft.reviewData(),
+                    "pending_review",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    draft.recordEvidenceStatus(),
+                    draft.recordEvidenceCheckedAt(),
+                    draft.recordEvidenceMessage(),
+                    null,
+                    null,
+                    null
+            );
+            items.put(id, item);
+            evidenceByItemId.put(id, new ArrayList<>(evidenceItems));
+            return item;
+        }
+
+        @Override
+        public ReviewItemAggregate appendClue(Long reviewItemId,
+                                              String sourceAlertId,
+                                              LocalDateTime alertTime,
+                                              List<ReviewEvidenceItem> evidenceItems,
+                                              Map<String, Object> reviewData,
+                                              String recordEvidenceStatus,
+                                              LocalDateTime recordEvidenceCheckedAt,
+                                              String recordEvidenceMessage) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            List<String> sourceAlertIds = new ArrayList<>(item.sourceAlertIds());
+            if (!sourceAlertIds.contains(sourceAlertId)) {
+                sourceAlertIds.add(sourceAlertId);
+            }
+            List<String> orderedSourceAlertIds = reviewSegmentSourceAlertIds(reviewData);
+            if (!orderedSourceAlertIds.isEmpty()) {
+                sourceAlertIds = orderedSourceAlertIds;
+            }
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    min(item.firstAlertTime(), alertTime),
+                    max(item.lastAlertTime(), alertTime),
+                    sourceAlertIds.size(),
+                    List.copyOf(sourceAlertIds),
+                    reviewData,
+                    item.reviewStatus(),
+                    item.reviewerUserId(),
+                    item.reviewedAt(),
+                    item.ignoreReason(),
+                    item.ruleSuggestion(),
+                    item.eventId(),
+                    item.convertedAt(),
+                    recordEvidenceStatus,
+                    recordEvidenceCheckedAt,
+                    recordEvidenceMessage,
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus()
+            );
+            items.put(reviewItemId, updated);
+            appendEvidence(reviewItemId, evidenceItems);
+            return updated;
+        }
+
+        @Override
+        public ReviewItemAggregate appendEvidence(Long reviewItemId, List<ReviewEvidenceItem> evidenceItems) {
+            List<ReviewEvidenceItem> timeline = evidenceByItemId.computeIfAbsent(reviewItemId, key -> new ArrayList<>());
+            for (ReviewEvidenceItem evidenceItem : evidenceItems) {
+                boolean exists = timeline.stream().anyMatch(existing -> sameEvidence(existing, evidenceItem));
+                if (!exists) {
+                    timeline.add(evidenceItem);
+                }
+            }
+            return findById(reviewItemId).orElseThrow();
+        }
+
+        @Override
+        public ReviewItemAggregate updateRecordEvidenceStatus(Long reviewItemId,
+                                                              String recordEvidenceStatus,
+                                                              LocalDateTime recordEvidenceCheckedAt,
+                                                              String recordEvidenceMessage) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    item.reviewData(),
+                    item.reviewStatus(),
+                    item.reviewerUserId(),
+                    item.reviewedAt(),
+                    item.ignoreReason(),
+                    item.ruleSuggestion(),
+                    item.eventId(),
+                    item.convertedAt(),
+                    recordEvidenceStatus,
+                    recordEvidenceCheckedAt,
+                    recordEvidenceMessage,
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus()
+            );
+            items.put(reviewItemId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewItemAggregate updateReviewLifecycle(Long reviewItemId,
+                                                         Map<String, Object> reviewData,
+                                                         LocalDateTime firstAlertTime,
+                                                         LocalDateTime lastAlertTime,
+                                                         List<ReviewEvidenceItem> evidenceItems,
+                                                         String recordEvidenceStatus,
+                                                         LocalDateTime recordEvidenceCheckedAt,
+                                                         String recordEvidenceMessage) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    firstAlertTime,
+                    lastAlertTime,
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    reviewData,
+                    item.reviewStatus(),
+                    item.reviewerUserId(),
+                    item.reviewedAt(),
+                    item.ignoreReason(),
+                    item.ruleSuggestion(),
+                    item.eventId(),
+                    item.convertedAt(),
+                    recordEvidenceStatus,
+                    recordEvidenceCheckedAt,
+                    recordEvidenceMessage,
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus(),
+                    item.eventReviewStatus(),
+                    item.inReviewCase(),
+                    item.ruleSuggestionStatus(),
+                    item.ruleSuggestionUpdatedAt()
+            );
+            items.put(reviewItemId, updated);
+            appendEvidence(reviewItemId, evidenceItems);
+            return updated;
+        }
+
+        @Override
+        public Optional<ReviewItemAggregate> findById(Long reviewItemId) {
+            return Optional.ofNullable(items.get(reviewItemId)).map(this::withCaseFlag);
+        }
+
+        @Override
+        public List<ReviewItemAggregate> listWorkbench(ReviewQuery query) {
+            return items.values().stream().map(this::withCaseFlag).toList();
+        }
+
+        @Override
+        public List<ReviewEvidenceItem> listTimeline(Long reviewItemId) {
+            return List.copyOf(evidenceByItemId.getOrDefault(reviewItemId, List.of()));
+        }
+
+        @Override
+        public ReviewItemAggregate updateReviewStatus(Long reviewItemId,
+                                                      String reviewStatus,
+                                                      Long reviewerUserId,
+                                                      String ignoreReason,
+                                                      LocalDateTime reviewedAt) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    item.reviewData(),
+                    reviewStatus,
+                    reviewerUserId,
+                    reviewedAt,
+                    ignoreReason,
+                    item.ruleSuggestion(),
+                    item.eventId(),
+                    item.convertedAt(),
+                    item.recordEvidenceStatus(),
+                    item.recordEvidenceCheckedAt(),
+                    item.recordEvidenceMessage(),
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus(),
+                    item.eventReviewStatus(),
+                    item.inReviewCase(),
+                    item.ruleSuggestionStatus(),
+                    item.ruleSuggestionUpdatedAt()
+            );
+            items.put(reviewItemId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewUserStatusView upsertUserReviewStatus(Long reviewItemId,
+                                                           Long userId,
+                                                           boolean hasBeenReviewed,
+                                                           LocalDateTime reviewedAt) {
+            findById(reviewItemId).orElseThrow();
+            ReviewUserStatusView view = new ReviewUserStatusView(reviewItemId, userId, hasBeenReviewed, reviewedAt);
+            userStatuses.put(userStatusKey(reviewItemId, userId), view);
+            return view;
+        }
+
+        @Override
+        public Optional<ReviewUserStatusView> findUserReviewStatus(Long reviewItemId, Long userId) {
+            return Optional.ofNullable(userStatuses.get(userStatusKey(reviewItemId, userId)));
+        }
+
+        @Override
+        public long countReviewedByUser(List<Long> reviewItemIds, Long userId) {
+            if (reviewItemIds == null || reviewItemIds.isEmpty() || userId == null) {
+                return 0L;
+            }
+            return userStatuses.values().stream()
+                    .filter(status -> Objects.equals(userId, status.userId()))
+                    .filter(status -> Boolean.TRUE.equals(status.hasBeenReviewed()))
+                    .filter(status -> reviewItemIds.contains(status.reviewItemId()))
+                    .count();
+        }
+
+        @Override
+        public ReviewItemAggregate updateRuleSuggestionStatus(Long reviewItemId,
+                                                              Long reviewerUserId,
+                                                              String status,
+                                                              Map<String, Object> ruleSuggestion,
+                                                              LocalDateTime updatedAt) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    item.reviewData(),
+                    item.reviewStatus(),
+                    reviewerUserId,
+                    item.reviewedAt(),
+                    item.ignoreReason(),
+                    ruleSuggestion,
+                    item.eventId(),
+                    item.convertedAt(),
+                    item.recordEvidenceStatus(),
+                    item.recordEvidenceCheckedAt(),
+                    item.recordEvidenceMessage(),
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus(),
+                    item.eventReviewStatus(),
+                    item.inReviewCase(),
+                    status,
+                    updatedAt
+            );
+            items.put(reviewItemId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewItemAggregate updateFalsePositive(Long reviewItemId,
+                                                       Long reviewerUserId,
+                                                       String reason,
+                                                       Map<String, Object> ruleSuggestion,
+                                                       LocalDateTime reviewedAt) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    item.reviewData(),
+                    "false_positive",
+                    reviewerUserId,
+                    reviewedAt,
+                    reason,
+                    ruleSuggestion,
+                    item.eventId(),
+                    item.convertedAt(),
+                    item.recordEvidenceStatus(),
+                    item.recordEvidenceCheckedAt(),
+                    item.recordEvidenceMessage(),
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus(),
+                    item.eventReviewStatus(),
+                    item.inReviewCase(),
+                    "pending",
+                    reviewedAt
+            );
+            items.put(reviewItemId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewItemAggregate markConverted(Long reviewItemId,
+                                                 Long reviewerUserId,
+                                                 Long eventId,
+                                                 LocalDateTime convertedAt) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    item.reviewData(),
+                    "converted",
+                    reviewerUserId,
+                    convertedAt,
+                    item.ignoreReason(),
+                    item.ruleSuggestion(),
+                    eventId,
+                    convertedAt,
+                    item.recordEvidenceStatus(),
+                    item.recordEvidenceCheckedAt(),
+                    item.recordEvidenceMessage(),
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus()
+            );
+            items.put(reviewItemId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewItemAggregate updateEventProjection(Long reviewItemId,
+                                                         Map<String, Object> reviewData,
+                                                         EventProjection projection,
+                                                         String eventReviewStatus,
+                                                         LocalDateTime reconciledAt) {
+            ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+            ReviewItemAggregate updated = new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    reviewData,
+                    item.reviewStatus(),
+                    item.reviewerUserId(),
+                    item.reviewedAt(),
+                    item.ignoreReason(),
+                    item.ruleSuggestion(),
+                    item.eventId(),
+                    item.convertedAt(),
+                    item.recordEvidenceStatus(),
+                    item.recordEvidenceCheckedAt(),
+                    item.recordEvidenceMessage(),
+                    projection.eventStatus(),
+                    projection.closeCheckStatus(),
+                    projection.evidenceStatus(),
+                    eventReviewStatus,
+                    item.inReviewCase(),
+                    item.ruleSuggestionStatus(),
+                    item.ruleSuggestionUpdatedAt()
+            );
+            items.put(reviewItemId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewCaseView createCase(ReviewCaseDraft draft, List<Long> reviewItemIds) {
+            long id = nextCaseId++;
+            for (Long reviewItemId : reviewItemIds) {
+                findById(reviewItemId).orElseThrow();
+            }
+            caseItemIds.put(id, new ArrayList<>(reviewItemIds));
+            ReviewCaseView view = buildCaseView(
+                    id,
+                    "RC-" + id,
+                    draft.title(),
+                    SupervisionAlertReviewService.REVIEW_CASE_OPEN,
+                    draft.primaryReviewItemId(),
+                    draft.ownerUserId(),
+                    draft.notes()
+            );
+            cases.put(id, view);
+            addCaseAudit(id, draft.primaryReviewItemId(), "create_case", draft.notes(), draft.ownerUserId(), LocalDateTime.now());
+            return view;
+        }
+
+        @Override
+        public ReviewCaseView addCaseItem(Long reviewCaseId, Long reviewItemId) {
+            findById(reviewItemId).orElseThrow();
+            ReviewCaseView current = cases.get(reviewCaseId);
+            if (current == null) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+            }
+            if (SupervisionAlertReviewService.REVIEW_CASE_CLOSED.equals(current.status())) {
+                throw new IllegalStateException("review case is closed: " + reviewCaseId);
+            }
+            List<Long> reviewItemIds = caseItemIds.computeIfAbsent(reviewCaseId, key -> new ArrayList<>());
+            if (!reviewItemIds.contains(reviewItemId)) {
+                reviewItemIds.add(reviewItemId);
+                addCaseAudit(reviewCaseId, reviewItemId, "add_item", null, null, LocalDateTime.now());
+            }
+            ReviewCaseView updated = buildCaseView(
+                    reviewCaseId,
+                    current.caseNo(),
+                    current.title(),
+                    current.status(),
+                    current.primaryReviewItemId(),
+                    current.ownerUserId(),
+                    current.notes()
+            );
+            cases.put(reviewCaseId, updated);
+            return updated;
+        }
+
+        @Override
+        public ReviewCaseView updateCaseOwner(Long reviewCaseId,
+                                              Long ownerUserId,
+                                              String notes,
+                                              Long operatorUserId) {
+            ReviewCaseView current = cases.get(reviewCaseId);
+            if (current == null) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+            }
+            if (SupervisionAlertReviewService.REVIEW_CASE_CLOSED.equals(current.status())) {
+                throw new IllegalStateException("review case is closed: " + reviewCaseId);
+            }
+            ReviewCaseView updated = buildCaseView(
+                    reviewCaseId,
+                    current.caseNo(),
+                    current.title(),
+                    current.status(),
+                    current.primaryReviewItemId(),
+                    ownerUserId,
+                    notes == null || notes.isBlank() ? current.notes() : notes
+            );
+            cases.put(reviewCaseId, updated);
+            addCaseAudit(reviewCaseId, null, "assign_owner", caseOwnerAuditNote(ownerUserId, notes), operatorUserId, LocalDateTime.now());
+            return updated;
+        }
+
+        @Override
+        public ReviewCaseView closeCase(Long reviewCaseId,
+                                        String notes,
+                                        Long operatorUserId,
+                                        LocalDateTime closedAt) {
+            ReviewCaseView current = cases.get(reviewCaseId);
+            if (current == null) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+            }
+            if (SupervisionAlertReviewService.REVIEW_CASE_CLOSED.equals(current.status())) {
+                return current;
+            }
+            ReviewCaseView updated = buildCaseView(
+                    reviewCaseId,
+                    current.caseNo(),
+                    current.title(),
+                    SupervisionAlertReviewService.REVIEW_CASE_CLOSED,
+                    current.primaryReviewItemId(),
+                    current.ownerUserId(),
+                    notes == null || notes.isBlank() ? current.notes() : notes
+            );
+            cases.put(reviewCaseId, updated);
+            addCaseAudit(reviewCaseId, null, "close_case", caseNotesAuditNote(notes), operatorUserId,
+                    closedAt == null ? LocalDateTime.now() : closedAt);
+            return updated;
+        }
+
+        @Override
+        public ReviewCaseMergeResult mergeCases(Long targetReviewCaseId,
+                                                Long sourceReviewCaseId,
+                                                Long operatorUserId,
+                                                String notes) {
+            if (Objects.equals(targetReviewCaseId, sourceReviewCaseId)) {
+                throw new IllegalArgumentException("sourceReviewCaseId must differ from targetReviewCaseId");
+            }
+            ReviewCaseView target = requireOpenCase(targetReviewCaseId);
+            ReviewCaseView source = requireOpenCase(sourceReviewCaseId);
+            List<Long> targetReviewItemIds = caseItemIds.computeIfAbsent(targetReviewCaseId, key -> new ArrayList<>());
+            List<Long> sourceReviewItemIds = caseItemIds.computeIfAbsent(sourceReviewCaseId, key -> new ArrayList<>());
+            if (sourceReviewItemIds.isEmpty()) {
+                throw new IllegalStateException("source review case has no clues: " + sourceReviewCaseId);
+            }
+            for (Long reviewItemId : sourceReviewItemIds) {
+                if (!targetReviewItemIds.contains(reviewItemId)) {
+                    targetReviewItemIds.add(reviewItemId);
+                }
+            }
+            sourceReviewItemIds.clear();
+            ReviewCaseView updatedTarget = buildCaseView(
+                    targetReviewCaseId,
+                    target.caseNo(),
+                    target.title(),
+                    target.status(),
+                    target.primaryReviewItemId(),
+                    target.ownerUserId(),
+                    target.notes()
+            );
+            ReviewCaseView updatedSource = buildCaseView(
+                    sourceReviewCaseId,
+                    source.caseNo(),
+                    source.title(),
+                    SupervisionAlertReviewService.REVIEW_CASE_MERGED,
+                    source.primaryReviewItemId(),
+                    source.ownerUserId(),
+                    notes == null || notes.isBlank() ? source.notes() : notes
+            );
+            cases.put(targetReviewCaseId, updatedTarget);
+            cases.put(sourceReviewCaseId, updatedSource);
+            addCaseAudit(targetReviewCaseId, null, "merge_case", caseRelatedAuditNote("sourceReviewCaseId", sourceReviewCaseId, null, notes), operatorUserId, LocalDateTime.now());
+            addCaseAudit(sourceReviewCaseId, null, "merge_case", caseRelatedAuditNote("targetReviewCaseId", targetReviewCaseId, null, notes), operatorUserId, LocalDateTime.now());
+            return new ReviewCaseMergeResult(updatedTarget, updatedSource);
+        }
+
+        @Override
+        public ReviewCaseSplitResult splitCase(Long sourceReviewCaseId,
+                                               ReviewCaseDraft draft,
+                                               List<Long> reviewItemIds,
+                                               Long operatorUserId) {
+            Objects.requireNonNull(draft, "draft");
+            ReviewCaseView source = requireOpenCase(sourceReviewCaseId);
+            LinkedHashSet<Long> splitReviewItemIds = new LinkedHashSet<>(reviewItemIds == null ? List.of() : reviewItemIds);
+            if (splitReviewItemIds.isEmpty()) {
+                throw new IllegalArgumentException("reviewItemIds must not be empty");
+            }
+            for (Long reviewItemId : splitReviewItemIds) {
+                findById(reviewItemId).orElseThrow();
+            }
+            List<Long> sourceReviewItemIds = caseItemIds.computeIfAbsent(sourceReviewCaseId, key -> new ArrayList<>());
+            if (!sourceReviewItemIds.containsAll(splitReviewItemIds)) {
+                throw new IllegalArgumentException("reviewItemIds must belong to source review case");
+            }
+            if (sourceReviewItemIds.size() == splitReviewItemIds.size()) {
+                throw new IllegalArgumentException("split must leave at least one clue in source review case");
+            }
+            sourceReviewItemIds.removeIf(splitReviewItemIds::contains);
+            Long sourcePrimaryReviewItemId = splitReviewItemIds.contains(source.primaryReviewItemId())
+                    ? sourceReviewItemIds.get(0)
+                    : source.primaryReviewItemId();
+            long newCaseId = nextCaseId++;
+            caseItemIds.put(newCaseId, new ArrayList<>(splitReviewItemIds));
+            ReviewCaseView updatedSource = buildCaseView(
+                    sourceReviewCaseId,
+                    source.caseNo(),
+                    source.title(),
+                    source.status(),
+                    sourcePrimaryReviewItemId,
+                    source.ownerUserId(),
+                    source.notes()
+            );
+            ReviewCaseView newCase = buildCaseView(
+                    newCaseId,
+                    "RC-" + newCaseId,
+                    draft.title() == null || draft.title().isBlank() ? "review-case" : draft.title(),
+                    SupervisionAlertReviewService.REVIEW_CASE_OPEN,
+                    draft.primaryReviewItemId(),
+                    draft.ownerUserId(),
+                    draft.notes()
+            );
+            cases.put(sourceReviewCaseId, updatedSource);
+            cases.put(newCaseId, newCase);
+            addCaseAudit(newCaseId, draft.primaryReviewItemId(), "create_case", draft.notes(), draft.ownerUserId(), LocalDateTime.now());
+            addCaseAudit(sourceReviewCaseId, null, "split_case", caseRelatedAuditNote("newReviewCaseId", newCaseId, splitReviewItemIds, draft.notes()), operatorUserId, LocalDateTime.now());
+            addCaseAudit(newCaseId, null, "split_case", caseRelatedAuditNote("sourceReviewCaseId", sourceReviewCaseId, splitReviewItemIds, draft.notes()), operatorUserId, LocalDateTime.now());
+            return new ReviewCaseSplitResult(updatedSource, newCase);
+        }
+
+        @Override
+        public List<ReviewCaseTimelineItem> listCaseTimeline(Long reviewCaseId) {
+            if (!cases.containsKey(reviewCaseId)) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+            }
+            List<ReviewCaseTimelineItem> timeline = new ArrayList<>();
+            for (Long reviewItemId : caseItemIds.getOrDefault(reviewCaseId, List.of())) {
+                ReviewItemAggregate item = findById(reviewItemId).orElseThrow();
+                for (ReviewEvidenceItem evidenceItem : evidenceByItemId.getOrDefault(reviewItemId, List.of())) {
+                    timeline.add(new ReviewCaseTimelineItem(
+                            reviewCaseId,
+                            reviewItemId,
+                            item.cameraId(),
+                            evidenceItem.sourceAlertId(),
+                            evidenceItem.materialType(),
+                            evidenceItem.materialUri(),
+                            evidenceItem.happenedAt()
+                    ));
+                }
+            }
+            timeline.addAll(caseAudits.getOrDefault(reviewCaseId, List.of()));
+            return timeline;
+        }
+
+        @Override
+        public ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
+                                                           String document,
+                                                           String embeddingKey,
+                                                           String embeddingModel,
+                                                           String embeddingVectorHash,
+                                                           String indexStatus,
+                                                           Integer retryCount,
+                                                           String lastError,
+                                                           LocalDateTime indexedAt) {
+            ReviewSemanticIndexEntry entry = new ReviewSemanticIndexEntry(
+                    item.id(),
+                    item.cameraId(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    indexStatus,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    embeddingVectorHash,
+                    retryCount == null ? 0 : retryCount,
+                    lastError,
+                    indexedAt
+            );
+            semanticIndex.put(item.id(), entry);
+            return entry;
+        }
+
+        @Override
+        public List<ReviewSemanticIndexEntry> listSemanticIndex(ReviewQuery query) {
+            List<Long> reviewItemIds = listWorkbench(query).stream()
+                    .map(ReviewItemAggregate::id)
+                    .toList();
+            return reviewItemIds.stream()
+                    .map(semanticIndex::get)
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+
+        @Override
+        public ReviewEvidenceExportJob createExportJob(ReviewEvidenceExportPackage exportPackage,
+                                                       Long operatorUserId,
+                                                       String reason,
+                                                       List<Long> boundEventIds,
+                                                       String fileHash,
+                                                       LocalDateTime expiresAt,
+                                                       LocalDateTime createdAt) {
+            if (!cases.containsKey(exportPackage.reviewCaseId())) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + exportPackage.reviewCaseId());
+            }
+            String jobNo = "REJ-" + nextExportJobId++;
+            ReviewEvidenceExportJob job = new ReviewEvidenceExportJob(
+                    jobNo,
+                    "ready",
+                    exportPackage,
+                    fileHash,
+                    expiresAt,
+                    operatorUserId,
+                    reason,
+                    boundEventIds == null ? List.of() : List.copyOf(boundEventIds),
+                    createdAt
+            );
+            exportJobs.put(jobNo, job);
+            String auditNote = "jobNo=" + jobNo + "; fileHash=" + fileHash
+                    + (reason == null || reason.isBlank() ? "" : "; reason=" + reason);
+            caseAudits.computeIfAbsent(exportPackage.reviewCaseId(), key -> new ArrayList<>())
+                    .add(new ReviewCaseTimelineItem(
+                            exportPackage.reviewCaseId(),
+                            null,
+                            null,
+                            null,
+                            "case_audit",
+                            "export_evidence_job",
+                            createdAt,
+                            auditNote
+                    ));
+            return job;
+        }
+
+        @Override
+        public List<ReviewEvidenceExportJob> listExportJobs(Long reviewCaseId) {
+            return exportJobs.values().stream()
+                    .filter(job -> Objects.equals(reviewCaseId, job.exportPackage().reviewCaseId()))
+                    .toList();
+        }
+
+        @Override
+        public List<ReviewEvidenceExportJob> listAllExportJobs() {
+            return List.copyOf(exportJobs.values());
+        }
+
+        @Override
+        public int enqueueRuntimePatrolAlerts(String runId,
+                                              List<String> alerts,
+                                              List<String> recommendedActions,
+                                              Long operatorUserId,
+                                              LocalDateTime executedAt,
+                                              Map<String, Object> metadata) {
+            if (alerts == null || alerts.isEmpty()) {
+                return 0;
+            }
+            int count = 0;
+            for (String alert : alerts) {
+                if (alert == null || alert.isBlank()) {
+                    continue;
+                }
+                runtimeOutbox.add(new RuntimeOutboxEntry(
+                        runId,
+                        alert,
+                        runtimeOutboxAction(alert, metadata),
+                        recommendedActions == null ? List.of() : List.copyOf(recommendedActions),
+                        operatorUserId,
+                        "pending",
+                        metadata == null ? Map.of() : Map.copyOf(metadata),
+                        nextRuntimeOutboxId++,
+                        "alert=" + alert,
+                        0,
+                        null,
+                        null
+                ));
+                count++;
+            }
+            return count;
+        }
+
+        @Override
+        public List<ReviewRuntimeOutboxMessage> listPendingRuntimeOutbox(Integer limit) {
+            int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
+            return runtimeOutbox.stream()
+                    .filter(entry -> "pending".equals(entry.status()))
+                    .limit(normalizedLimit)
+                    .map(entry -> new ReviewRuntimeOutboxMessage(
+                            entry.id(),
+                            entry.runId(),
+                            "review_runtime_alert",
+                            entry.alert(),
+                            entry.payload(),
+                            entry.retryCount(),
+                            null
+                    ))
+                    .toList();
+        }
+
+        @Override
+        public void markRuntimeOutboxPublished(Long outboxId, LocalDateTime publishedAt) {
+            replaceRuntimeOutboxEntry(outboxId, entry -> new RuntimeOutboxEntry(
+                    entry.runId(),
+                    entry.alert(),
+                    entry.action(),
+                    entry.recommendedActions(),
+                    entry.operatorUserId(),
+                    "published",
+                    entry.metadata(),
+                    entry.id(),
+                    entry.payload(),
+                    entry.retryCount(),
+                    publishedAt,
+                    null
+            ));
+        }
+
+        @Override
+        public void markRuntimeOutboxFailed(Long outboxId, String lastError, LocalDateTime failedAt) {
+            replaceRuntimeOutboxEntry(outboxId, entry -> new RuntimeOutboxEntry(
+                    entry.runId(),
+                    entry.alert(),
+                    entry.action(),
+                    entry.recommendedActions(),
+                    entry.operatorUserId(),
+                    "failed",
+                    entry.metadata(),
+                    entry.id(),
+                    entry.payload(),
+                    (entry.retryCount() == null ? 0 : entry.retryCount()) + 1,
+                    failedAt,
+                    lastError
+            ));
+        }
+
+        private void replaceRuntimeOutboxEntry(Long outboxId, Function<RuntimeOutboxEntry, RuntimeOutboxEntry> updater) {
+            for (int index = 0; index < runtimeOutbox.size(); index++) {
+                RuntimeOutboxEntry entry = runtimeOutbox.get(index);
+                if (Objects.equals(outboxId, entry.id())) {
+                    runtimeOutbox.set(index, updater.apply(entry));
+                    return;
+                }
+            }
+        }
+
+        List<RuntimeOutboxEntry> runtimeOutbox() {
+            return List.copyOf(runtimeOutbox);
+        }
+
+        private static String runtimeOutboxAction(String alert, Map<String, Object> metadata) {
+            Object rawAlertActions = metadata == null ? null : metadata.get("alertActions");
+            if (!(rawAlertActions instanceof Map<?, ?> alertActions)) {
+                return null;
+            }
+            Object action = alertActions.get(alert);
+            return action == null ? null : String.valueOf(action);
+        }
+
+        @Override
+        public Optional<ReviewEvidenceExportJob> findExportJobByNo(String jobNo) {
+            return Optional.ofNullable(exportJobs.get(jobNo));
+        }
+
+        @Override
+        public ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
+                                                               Long operatorUserId,
+                                                               String reason,
+                                                               LocalDateTime happenedAt) {
+            ReviewEvidenceExportJob job = exportJobs.get(jobNo);
+            if (job == null) {
+                throw new IllegalArgumentException("export job not found: " + jobNo);
+            }
+            LocalDateTime auditTime = happenedAt == null ? LocalDateTime.now() : happenedAt;
+            String auditNote = "jobNo=" + jobNo + "; fileHash=" + job.fileHash()
+                    + (operatorUserId == null ? "" : "; operatorUserId=" + operatorUserId)
+                    + (reason == null || reason.isBlank() ? "" : "; reason=" + reason);
+            caseAudits.computeIfAbsent(job.exportPackage().reviewCaseId(), key -> new ArrayList<>())
+                    .add(new ReviewCaseTimelineItem(
+                            job.exportPackage().reviewCaseId(),
+                            null,
+                            null,
+                            null,
+                            "case_audit",
+                            "export_downloaded",
+                            auditTime,
+                            auditNote
+                    ));
+            return new ReviewEvidenceAuditEntry(
+                    job.exportPackage().reviewCaseId(),
+                    null,
+                    "export_downloaded",
+                    jobNo,
+                    job.fileHash(),
+                    operatorUserId,
+                    reason,
+                    job.exportPackage().evidenceUris(),
+                    job.boundEventIds(),
+                    auditTime,
+                    Map.of("status", job.status())
+            );
+        }
+
+        @Override
+        public void recordCaseAudit(Long reviewCaseId,
+                                    Long reviewItemId,
+                                    String actionType,
+                                    String actionNote,
+                                    Long operatorUserId,
+                                    LocalDateTime happenedAt) {
+            if (!cases.containsKey(reviewCaseId)) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+            }
+            if (reviewItemId != null) {
+                findById(reviewItemId).orElseThrow();
+            }
+            caseAudits.computeIfAbsent(reviewCaseId, key -> new ArrayList<>())
+                    .add(new ReviewCaseTimelineItem(
+                            reviewCaseId,
+                            reviewItemId,
+                            null,
+                            null,
+                            "case_audit",
+                            actionType,
+                            happenedAt == null ? LocalDateTime.now() : happenedAt,
+                            actionNote
+                    ));
+        }
+
+        private void addCaseAudit(Long reviewCaseId,
+                                  Long reviewItemId,
+                                  String actionType,
+                                  String actionNote,
+                                  Long operatorUserId,
+                                  LocalDateTime happenedAt) {
+            caseAudits.computeIfAbsent(reviewCaseId, key -> new ArrayList<>())
+                    .add(new ReviewCaseTimelineItem(
+                            reviewCaseId,
+                            reviewItemId,
+                            null,
+                            null,
+                            "case_audit",
+                            actionType,
+                            happenedAt == null ? LocalDateTime.now() : happenedAt,
+                            actionNote == null || actionNote.isBlank()
+                                    ? (operatorUserId == null ? "" : "operatorUserId=" + operatorUserId)
+                                    : actionNote + (operatorUserId == null ? "" : "; operatorUserId=" + operatorUserId)
+                    ));
+        }
+
+        private ReviewCaseView requireOpenCase(Long reviewCaseId) {
+            ReviewCaseView current = cases.get(reviewCaseId);
+            if (current == null) {
+                throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+            }
+            if (!SupervisionAlertReviewService.REVIEW_CASE_OPEN.equals(current.status())) {
+                throw new IllegalStateException("review case is not open: " + reviewCaseId + " status=" + current.status());
+            }
+            return current;
+        }
+
+        private static String caseRelatedAuditNote(String relatedKey,
+                                                   Long relatedCaseId,
+                                                   Iterable<Long> reviewItemIds,
+                                                   String notes) {
+            List<String> values = new ArrayList<>();
+            values.add(relatedKey + "=" + relatedCaseId);
+            if (reviewItemIds != null) {
+                values.add("reviewItemIds=" + joinLongCsv(reviewItemIds));
+            }
+            if (notes != null && !notes.isBlank()) {
+                values.add("notes=" + notes);
+            }
+            return String.join("; ", values);
+        }
+
+        private static String caseOwnerAuditNote(Long ownerUserId, String notes) {
+            String owner = "ownerUserId=" + ownerUserId;
+            return notes == null || notes.isBlank() ? owner : owner + "; notes=" + notes;
+        }
+
+        private static String joinLongCsv(Iterable<Long> values) {
+            if (values == null) {
+                return "";
+            }
+            List<String> normalized = new ArrayList<>();
+            for (Long value : values) {
+                if (value != null) {
+                    normalized.add(String.valueOf(value));
+                }
+            }
+            return String.join(",", normalized);
+        }
+
+        private static String caseNotesAuditNote(String notes) {
+            return notes == null || notes.isBlank() ? null : "notes=" + notes;
+        }
+
+        private ReviewCaseView buildCaseView(Long reviewCaseId,
+                                             String caseNo,
+                                             String title,
+                                             String status,
+                                             Long primaryReviewItemId,
+                                             Long ownerUserId,
+                                             String notes) {
+            List<ReviewItemAggregate> reviewItems = caseItemIds.getOrDefault(reviewCaseId, List.of()).stream()
+                    .map(reviewItemId -> findById(reviewItemId).orElseThrow())
+                    .toList();
+            List<String> cameraIds = reviewItems.stream()
+                    .map(ReviewItemAggregate::cameraId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            LocalDateTime startTime = reviewItems.stream()
+                    .map(ReviewItemAggregate::firstAlertTime)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(null);
+            LocalDateTime endTime = reviewItems.stream()
+                    .map(ReviewItemAggregate::lastAlertTime)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(null);
+            return new ReviewCaseView(
+                    reviewCaseId,
+                    caseNo,
+                    title,
+                    status,
+                    primaryReviewItemId,
+                    List.copyOf(caseItemIds.getOrDefault(reviewCaseId, List.of())),
+                    cameraIds,
+                    startTime,
+                    endTime,
+                    ownerUserId,
+                    notes
+            );
+        }
+
+        private ReviewItemAggregate withCaseFlag(ReviewItemAggregate item) {
+            boolean inReviewCase = caseItemIds.values().stream().anyMatch(ids -> ids.contains(item.id()));
+            return new ReviewItemAggregate(
+                    item.id(),
+                    item.reviewItemNo(),
+                    item.sourceSystem(),
+                    item.ruleCode(),
+                    item.sourceAlertType(),
+                    item.deviceId(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.firstAlertTime(),
+                    item.lastAlertTime(),
+                    item.alertCount(),
+                    item.sourceAlertIds(),
+                    item.reviewData(),
+                    item.reviewStatus(),
+                    item.reviewerUserId(),
+                    item.reviewedAt(),
+                    item.ignoreReason(),
+                    item.ruleSuggestion(),
+                    item.eventId(),
+                    item.convertedAt(),
+                    item.recordEvidenceStatus(),
+                    item.recordEvidenceCheckedAt(),
+                    item.recordEvidenceMessage(),
+                    item.eventStatus(),
+                    item.closeCheckStatus(),
+                    item.evidenceStatus(),
+                    item.eventReviewStatus(),
+                    inReviewCase,
+                    item.ruleSuggestionStatus(),
+                    item.ruleSuggestionUpdatedAt()
+            );
+        }
+
+        private static boolean sameEvidence(ReviewEvidenceItem first, ReviewEvidenceItem second) {
+            return Objects.equals(first.sourceAlertId(), second.sourceAlertId())
+                    && Objects.equals(first.materialType(), second.materialType())
+                    && Objects.equals(first.materialUri(), second.materialUri());
+        }
+
+        private static String userStatusKey(Long reviewItemId, Long userId) {
+            return reviewItemId + ":" + userId;
+        }
+
+        private static LocalDateTime min(LocalDateTime first, LocalDateTime second) {
+            return first.isBefore(second) ? first : second;
+        }
+
+        private static LocalDateTime max(LocalDateTime first, LocalDateTime second) {
+            return first.isAfter(second) ? first : second;
+        }
+
+    }
+
+    private static final class InMemoryRuleStore implements ReviewRuleStore {
+
+        private final List<ReviewRuleView> rules = new ArrayList<>();
+        private long nextId = 2000L;
+
+        @Override
+        public ReviewRuleView save(ReviewRuleCommand command) {
+            ReviewRuleView view = new ReviewRuleView(
+                    command.id() == null ? nextId++ : command.id(),
+                    command.ruleCode(),
+                    command.ruleName(),
+                    command.sourceSystem(),
+                    command.cameraId(),
+                    command.zoneCode(),
+                    command.objectLabel(),
+                    command.minStaySeconds(),
+                    command.activeStart(),
+                    command.activeEnd(),
+                    command.enabled(),
+                    command.inertiaFrames(),
+                    command.loiteringSeconds()
+            );
+            for (int i = 0; i < rules.size(); i++) {
+                if (Objects.equals(rules.get(i).id(), view.id())) {
+                    rules.set(i, view);
+                    return view;
+                }
+            }
+            rules.add(view);
+            return view;
+        }
+
+        @Override
+        public List<ReviewRuleView> listEnabled() {
+            return rules.stream().filter(ReviewRuleView::enabled).toList();
+        }
+
+        @Override
+        public List<ReviewRuleView> listAll() {
+            return List.copyOf(rules);
+        }
+
+    }
+
+}

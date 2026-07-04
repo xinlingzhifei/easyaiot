@@ -1,0 +1,30 @@
+package com.basiclab.iot.system.dal.dataobject.supervision;
+
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.basiclab.iot.common.core.dataobject.BaseDO;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
+
+@TableName("system_supervision_alert_review_semantic_index")
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class SupervisionAlertReviewSemanticIndexDO extends BaseDO {
+
+    private Long id;
+    private Long reviewItemId;
+    private String cameraId;
+    private LocalDateTime firstAlertTime;
+    private LocalDateTime lastAlertTime;
+    private String indexStatus;
+    private String document;
+    private String embeddingKey;
+    private String embeddingModel;
+    private String embeddingVectorHash;
+    private Integer retryCount;
+    private String lastError;
+    private LocalDateTime indexedAt;
+    private Integer version;
+
+}
