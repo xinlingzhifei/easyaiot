@@ -24,7 +24,7 @@ export const useDesignStore = defineStore({
       appThemeDetail,
     },
   getters: {
-    getDarkTheme(e): boolean {
+    getDarkTheme(): boolean {
       return this.darkTheme
     },
     getAppTheme(): string {
