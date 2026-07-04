@@ -26,6 +26,10 @@ declare global {
     }
     lastBuildTime: string
   }
+  interface Window {
+    $KeyboardActive?: { [T: string]: boolean }
+    onKeySpacePressHold?: Function
+  }
   // declare interface Window {
   //   // Global vue app instance
   //   __APP__: App<Element>;

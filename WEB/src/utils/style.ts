@@ -4,7 +4,6 @@ import { PickCreateComponentType } from '@/design/packages/index.d'
 import { EditCanvasConfigType } from '@/store/modules/chartEditStore/chartEditStore.d'
 import { chartColors, chartColorsSearch, CustomColorsType } from '@/settings/chartThemes/index'
 
-type AttrType = PickCreateComponentType<'attr'>
 type StylesType = PickCreateComponentType<'styles'>
 
 // * 动画
