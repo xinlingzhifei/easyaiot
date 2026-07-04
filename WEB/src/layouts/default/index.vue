@@ -20,7 +20,6 @@ import { useMultipleTabSetting } from '@/hooks/setting/useMultipleTabSetting'
 
 defineOptions({ name: 'DefaultLayout' })
 
-const LayoutFeatures = createAsyncComponent(() => import('@/layouts/default/feature/index.vue'))
 const LayoutFooter = createAsyncComponent(() => import('@/layouts/default/footer/index.vue'))
 
 const { prefixCls } = useDesign('default-layout')

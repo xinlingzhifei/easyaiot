@@ -8,6 +8,7 @@ const rulechains: AppRouteModule = {
   component: LAYOUT,
   redirect: '/rulechains/index',
   meta: {
+    title: '规则链',
     orderNo: 20,
     hideMenu: false,
     hideChildrenInMenu: true,
@@ -36,4 +37,3 @@ const rulechains: AppRouteModule = {
 }
 
 export default rulechains
-
