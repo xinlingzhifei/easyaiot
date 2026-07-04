@@ -301,7 +301,7 @@ const loadModelList = async () => {
     console.log('模型列表API响应:', response);
     
     // 处理响应数据，兼容不同的响应格式
-    let models = [];
+    let models: any[] = [];
     if (response && response.code === 0) {
       models = response.data || [];
     } else if (Array.isArray(response)) {
@@ -790,6 +790,8 @@ const drawCurrentRegion = () => {
   ctx.value.strokeStyle = redColor;
   ctx.value.lineWidth = 1.5; // 边框更细
   ctx.value.fillStyle = redColor + '50';
+  const pointContext = ctx.value;
+  if (!pointContext) return;
 
   switch (activeTool.value) {
     case ToolType.RECTANGLE:
@@ -824,10 +826,10 @@ const drawCurrentRegion = () => {
         // 绘制点
         currentPoints.value.forEach(point => {
           const canvasPoint = toCanvasCoords(point);
-          ctx.value.fillStyle = redColor;
-          ctx.value.beginPath();
-          ctx.value.arc(canvasPoint.x, canvasPoint.y, 4, 0, Math.PI * 2);
-          ctx.value.fill();
+          pointContext.fillStyle = redColor;
+          pointContext.beginPath();
+          pointContext.arc(canvasPoint.x, canvasPoint.y, 4, 0, Math.PI * 2);
+          pointContext.fill();
         });
       }
       break;
@@ -846,12 +848,13 @@ const isPointInRegion = (region: DeviceDetectionRegion, x: number, y: number): b
     const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
     return x >= minX && x <= maxX && y >= minY && y <= maxY;
   } else if (region.region_type === 'polygon' && region.points && region.points.length > 0) {
+    const points = region.points;
     let inside = false;
-    for (let i = 0, j = region.points.length - 1; i < region.points.length; j = i++) {
-      const xi = region.points[i].x;
-      const yi = region.points[i].y;
-      const xj = region.points[j].x;
-      const yj = region.points[j].y;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const xi = points[i].x;
+      const yi = points[i].y;
+      const xj = points[j].x;
+      const yj = points[j].y;
       const crossY = (yi > y) !== (yj > y);
       const crossX = (xj - xi) * (y - yi) / (yj - yi) + xi;
       const intersect = crossY && (x < crossX);
@@ -2044,4 +2047,3 @@ onUnmounted(() => {
   }
 }
 </style>
-

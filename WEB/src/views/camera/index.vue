@@ -70,11 +70,11 @@
                 <template v-if="column.dataIndex === 'name'">
                   <span
                     class="device-list-table__copyable"
-                    :title="formatCameraDeviceLabel(record)"
-                    @click="handleCopy(formatCameraDeviceLabel(record))"
+                    :title="formatDeviceTableLabel(record)"
+                    @click="handleCopy(formatDeviceTableLabel(record))"
                   >
                     <Icon icon="tdesign:copy-filled" color="#4287FCFF" />
-                    {{ formatCameraDeviceLabel(record) }}
+                    {{ formatDeviceTableLabel(record) }}
                   </span>
                 </template>
                 <template v-else-if="column.dataIndex === 'stream_status'">
@@ -175,10 +175,10 @@
 
 <script lang="ts" setup>
 import {nextTick, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
-import {useRoute} from 'vue-router';
+import {useRoute, useRouter} from 'vue-router';
 import {TabPane, Tabs} from 'ant-design-vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
-import {BasicTable, TableAction, useTable} from '@/components/Table';
+import {BasicTable, TableAction, useTable, type ActionItem} from '@/components/Table';
 import {useMessage} from '@/hooks/web/useMessage';
 import {getBasicColumns, getFormConfig} from "./Data";
 import {useModal} from "@/components/Modal";
@@ -188,7 +188,6 @@ import {
   deleteDevice,
   deleteNvr,
   DeviceInfo,
-  getDeviceList,
   getStreamStatus,
   StreamStatusResponse,
 } from '@/api/device/camera';
@@ -243,6 +242,11 @@ const gb28181Enabled = isGb28181Enabled();
 const facePlateLibraryEnabled = isFacePlateLibraryEnabled();
 
 const route = useRoute();
+const router = useRouter();
+
+function formatDeviceTableLabel(record: Record<string, any>) {
+  return formatCameraDeviceLabel(record as DeviceInfo);
+}
 
 const {createMessage} = useMessage();
 const [registerAddModel, {openModal}] = useModal();
@@ -505,7 +509,7 @@ function handleEditGbDevice(item: Gb28181CardItem) {
   openGbDeviceInfoModal('edit', { sipDeviceId: item.deviceIdentification });
 }
 
-async function handleDeleteGbDevice(item: Gb28181CardItem | { sip_device_id?: string; deviceIdentification?: string }) {
+async function handleDeleteGbDevice(item: Gb28181CardItem | Record<string, any>) {
   const sipId =
     'deviceIdentification' in item && item.deviceIdentification
       ? item.deviceIdentification
@@ -523,11 +527,11 @@ async function handleDeleteGbDevice(item: Gb28181CardItem | { sip_device_id?: st
   }
 }
 
-function handleTableViewGbDevice(record: DeviceInfo & { sip_device_id?: string }) {
+function handleTableViewGbDevice(record: Record<string, any>) {
   openGbDeviceInfoModal('view', { sipDeviceId: gbSipIdFromRecord(record) });
 }
 
-function handleTableEditGbDevice(record: DeviceInfo & { sip_device_id?: string }) {
+function handleTableEditGbDevice(record: Record<string, any>) {
   openGbDeviceInfoModal('edit', { sipDeviceId: gbSipIdFromRecord(record) });
 }
 
@@ -654,7 +658,10 @@ const startStatusCheckTimer = () => {
 };
 
 // 获取表格操作按钮
-const getTableActions = (record) => {
+void checkAllDevicesStreamStatus;
+void startStatusCheckTimer;
+
+const getTableActions = (record: Record<string, any>): ActionItem[] => {
   if (isNvrListRow(record)) {
     const nvrId = record.nvr_id_num ?? Number(String(record.id).replace(/^nvr_/, ''));
     const nvrCard = {
@@ -740,30 +747,31 @@ const getTableActions = (record) => {
     ];
   }
 
-  const actions = [];
+  const deviceRecord = record as DeviceInfo;
+  const actions: ActionItem[] = [];
 
-  if (hasDirectPlayStream(record)) {
+  if (hasDirectPlayStream(deviceRecord)) {
     actions.push({
       icon: 'octicon:play-16',
       tooltip: supportsRtspForward(record) ? '播放视频流' : '播放国标通道',
-      onClick: () => handlePlay(record),
+      onClick: () => handlePlay(deviceRecord),
     });
   }
 
-  if (hasDirectPlayStream(record, true)) {
+  if (hasDirectPlayStream(deviceRecord, true)) {
     actions.push({
       icon: 'hugeicons:ai-video',
       tooltip: '查看AI流',
-      onClick: () => handlePlayAIStream(record),
+      onClick: () => handlePlayAIStream(deviceRecord),
     });
   }
 
-  if (canSetDeviceLocation(record)) {
+  if (canSetDeviceLocation(deviceRecord)) {
     actions.unshift({
       icon: 'ant-design:environment-outlined',
       tooltip: '设置坐标',
       label: '坐标',
-      onClick: () => openDeviceLocationDrawer(record),
+      onClick: () => openDeviceLocationDrawer(deviceRecord),
     });
   }
 
@@ -824,7 +832,7 @@ async function handleCopy(text: string) {
 }
 
 // 打开模态框
-const openAddModal = (type, record = null) => {
+const openAddModal = (type: string, record: Record<string, any> | null = null) => {
   openModal(true, {
     type,
     record,
@@ -854,7 +862,7 @@ function handleLocationImportSuccess() {
   handleLocationDrawerSuccess();
 }
 
-function openDeviceLocationDrawer(record: DeviceInfo | { id: string; name?: string }) {
+function openDeviceLocationDrawer(record: DeviceInfo | Record<string, any> | { id: string; name?: string }) {
   if (!canSetDeviceLocation(record)) return;
   openLocationModal(true, { deviceId: record.id, record });
 }
@@ -879,7 +887,7 @@ function handleSuccess() {
 }
 
 // 删除设备
-const handleDelete = async (record) => {
+const handleDelete = async (record: Record<string, any>) => {
   try {
     await deleteDevice(record.id);
     createMessage.success('删除成功');
@@ -891,7 +899,7 @@ const handleDelete = async (record) => {
 };
 
 // 卡片视图事件处理
-const handleCardView = (record) => {
+const handleCardView = (record: Record<string, any>) => {
   if (isGb28181SipListRow(record)) {
     handleTableViewGbDevice(record);
     return;
@@ -899,7 +907,7 @@ const handleCardView = (record) => {
   openAddModal('view', record);
 };
 
-const handleCardEdit = (record) => {
+const handleCardEdit = (record: Record<string, any>) => {
   if (isGb28181SipListRow(record)) {
     handleTableEditGbDevice(record);
     return;
@@ -907,7 +915,7 @@ const handleCardEdit = (record) => {
   openAddModal('edit', record);
 };
 
-const handleCardDelete = async (record) => {
+const handleCardDelete = async (record: Record<string, any>) => {
   if (isGb28181SipListRow(record)) {
     await handleDeleteGbDevice(record);
     return;
@@ -922,12 +930,12 @@ async function handleNvrChannelDelete(record: DeviceInfo) {
   }
 }
 
-const handleCardPlay = (record) => {
-  handlePlay(record);
+const handleCardPlay = (record: Record<string, any>) => {
+  handlePlay(record as DeviceInfo);
 };
 
-const handleCardPlayAI = (record) => {
-  handlePlayAIStream(record);
+const handleCardPlayAI = (record: Record<string, any>) => {
+  handlePlayAIStream(record as DeviceInfo);
 };
 
 /** 根据路由 query 切换 Camera 一级 Tab（子 Tab 如 storage 由 StorageSpace 自行同步，不触发整页刷新） */

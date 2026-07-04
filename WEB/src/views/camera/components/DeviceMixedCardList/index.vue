@@ -198,10 +198,7 @@ import {
 import { hasDirectPlayStream } from '@/views/camera/utils/devicePlay';
 import { canSetDeviceLocation } from '@/views/camera/utils/deviceLocation';
 import { queryAllVideoList } from '@/api/device/gb28181';
-import {
-  buildMergedCardRows,
-  type GbSipDeviceSummary,
-} from '@/views/camera/utils/gb28181DeviceGroup';
+import { buildMergedCardRows } from '@/views/camera/utils/gb28181DeviceGroup';
 import { fetchNvrListBrief } from '@/views/camera/utils/nvrDeviceGroup';
 import type { NvrCardItem } from '@/views/camera/utils/nvrDeviceGroup';
 import Gb28181DeviceCard, {
@@ -337,7 +334,7 @@ function filterRows(rows: CardRow[], p: Record<string, any>): CardRow[] {
     const online = p.online === true || p.online === 'true';
     list = list.filter((row) => {
       if (row.type === 'gb_sip') return row.gbItem.onLine === online;
-      return row.device.online === online;
+      return (row as any).device?.online === online;
     });
   }
   return list;
