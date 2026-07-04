@@ -38,7 +38,7 @@ const { createMessage } = useMessage();
 const loading = ref(false);
 const imageUrl = ref<string>('');
 
-const [register, { setModalProps, closeModal }] = useModalInner(async (data) => {
+const [register] = useModalInner(async (data) => {
   loading.value = true;
   imageUrl.value = '';
   
@@ -91,4 +91,3 @@ const handleImageLoad = () => {
   }
 }
 </style>
-
