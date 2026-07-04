@@ -183,7 +183,7 @@ const imageList = ref<SnapImage[]>([]);
 const loading = ref(false);
 const searchKeyword = ref('');
 const sourceFilter = ref<SnapImageSource | ''>('');
-const dateRange = ref<[string, string] | null>(null);
+const dateRange = ref<[string, string] | undefined>(undefined);
 const activeQuickDate = ref<QuickDateKey | ''>('');
 const selectedRowKeys = ref<string[]>([]);
 const page = ref(1);
@@ -253,11 +253,12 @@ function pageSizeChange(_current: number, size: number) {
   loadImageList();
 }
 
-function getImageUrl(record: SnapImage) {
-  if (record.url) return resolveAlertImageDisplayUrl(record.url);
+function getImageUrl(record: Record<string, any>) {
+  const item = record as SnapImage;
+  if (item.url) return resolveAlertImageDisplayUrl(item.url);
   if (!props.spaceId) return '';
   return resolveAlertImageDisplayUrl(
-    `/video/snap/space/${props.spaceId}/image/${record.object_name}`,
+    `/video/snap/space/${props.spaceId}/image/${item.object_name}`,
   );
 }
 
@@ -273,8 +274,8 @@ function formatTime(timeStr?: string) {
   return dayjs(timeStr).format('MM-DD HH:mm:ss');
 }
 
-function openPreview(item: SnapImage) {
-  previewItem.value = item;
+function openPreview(item: Record<string, any>) {
+  previewItem.value = item as SnapImage;
   previewOpen.value = true;
 }
 
@@ -325,7 +326,7 @@ function handleSearch() {
 function handleReset() {
   searchKeyword.value = '';
   sourceFilter.value = '';
-  dateRange.value = null;
+  dateRange.value = undefined;
   activeQuickDate.value = '';
   page.value = 1;
   selectedRowKeys.value = [];
@@ -347,8 +348,9 @@ function handleSelectAll() {
     : imageList.value.map((item) => item.object_name);
 }
 
-async function handleDownload(record: SnapImage) {
-  const imageUrl = getImageUrl(record);
+async function handleDownload(record: Record<string, any>) {
+  const item = record as SnapImage;
+  const imageUrl = getImageUrl(item);
   if (!imageUrl) {
     createMessage.error('图片地址无效');
     return;
@@ -365,7 +367,7 @@ async function handleDownload(record: SnapImage) {
     }
     const blob = await response.blob();
     const contentDisposition = response.headers.get('Content-Disposition');
-    let fileName = record.filename || 'snap-image.jpg';
+    let fileName = item.filename || 'snap-image.jpg';
     if (contentDisposition) {
       const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
       if (fileNameMatch?.[1]) {
@@ -394,12 +396,13 @@ async function handleDownload(record: SnapImage) {
   }
 }
 
-async function handleDelete(record: SnapImage) {
+async function handleDelete(record: Record<string, any>) {
+  const item = record as SnapImage;
   if (!props.spaceId) return;
   try {
-    await deleteSnapImages(props.spaceId, [record.object_name]);
+    await deleteSnapImages(props.spaceId, [item.object_name]);
     createMessage.success('删除成功');
-    if (previewItem.value?.object_name === record.object_name) {
+    if (previewItem.value?.object_name === item.object_name) {
       previewOpen.value = false;
       previewItem.value = null;
     }
@@ -426,7 +429,7 @@ async function handleBatchDelete() {
 function resetFilters() {
   searchKeyword.value = '';
   sourceFilter.value = '';
-  dateRange.value = null;
+  dateRange.value = undefined;
   activeQuickDate.value = '';
   page.value = 1;
   selectedRowKeys.value = [];

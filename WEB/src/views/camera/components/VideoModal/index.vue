@@ -238,7 +238,7 @@
   </BasicModal>
 </template>
 <script lang="ts" setup>
-import {computed, nextTick, reactive, ref} from 'vue';
+import {computed, nextTick, reactive} from 'vue';
 import { formatLocationSummary } from '@/views/camera/utils/deviceLocation';
 import { isNvrChannelDevice } from '@/views/camera/utils/deviceLabel';
 import {BasicModal, useModal, useModalInner} from '@/components/Modal';
@@ -258,7 +258,7 @@ defineOptions({name: 'VideoModal'})
 
 const {createMessage} = useMessage();
 
-const state = reactive({
+const state = reactive<Record<string, any>>({
   isEdit: false,
   isView: false,
   type: null,
@@ -288,7 +288,7 @@ const state = reactive({
   ],
 });
 
-const modelRef = reactive({
+const modelRef = reactive<Record<string, any>>({
   id: '',
   name: '',
   source: '',
@@ -559,7 +559,7 @@ function getDirectDeviceValidateFields(): string[] {
 
 const rulesRef = reactive(getRules());
 
-function handleCLickChange(value) {
+function handleCLickChange(_value: unknown) {
   //console.log('handleCLickChange', value)
 }
 
@@ -632,7 +632,7 @@ function generateRtspUrl() {
 }
 
 // 处理码流类型变化
-function handleStreamChange(value) {
+function handleStreamChange(_value: unknown) {
   if (modelRef.cameraType === 'hikvision' || modelRef.cameraType === 'dahua' || modelRef.cameraType === 'uniview') {
     generateRtspUrl();
   }
@@ -857,7 +857,7 @@ function handleOk() {
         }
         stripReadOnlyFromPayload(updateData);
         stripLocationFromPayload(updateData);
-        await updateDevice(modelRef.id, updateData);
+        await updateDevice(modelRef.id, updateData as any);
       } else if (state.type === 'camera') {
         // 摄像头处理
         if (modelRef.id) {
@@ -875,9 +875,9 @@ function handleOk() {
           }
           stripReadOnlyFromPayload(updateData);
           stripLocationFromPayload(updateData);
-          await updateDevice(modelRef.id, updateData);
+          await updateDevice(modelRef.id, updateData as any);
         } else {
-          const response = await registerDevice(modelRef);
+          const response = await registerDevice(modelRef as any);
           const deviceId = resolveRegisteredDeviceId(response);
           
           // 检查并确保推流转发任务存在
@@ -892,7 +892,7 @@ function handleOk() {
         }
       } else if (state.type === 'source') {
         // 独立摄像头处理
-        const response = await registerDevice(modelRef);
+        const response = await registerDevice(modelRef as any);
         const deviceId = resolveRegisteredDeviceId(response);
         
         // 检查并确保推流转发任务存在
@@ -921,7 +921,7 @@ function handleOk() {
           }
           stripReadOnlyFromPayload(updateData);
           stripLocationFromPayload(updateData);
-          await updateDevice(modelRef.id, updateData);
+          await updateDevice(modelRef.id, updateData as any);
           
           // 检查并确保推流转发任务存在
           try {
@@ -931,7 +931,7 @@ function handleOk() {
             console.warn('检查推流转发任务失败:', error);
           }
         } else {
-          const response = await registerDevice(modelRef);
+          const response = await registerDevice(modelRef as any);
           const deviceId = resolveRegisteredDeviceId(response);
           
           // 检查并确保推流转发任务存在

@@ -362,7 +362,7 @@ const handleBatchDelete = async () => {
   }
 };
 
-const [register, { setModalProps, closeModal }] = useModalInner(async (data) => {
+const [register, { setModalProps }] = useModalInner(async (data) => {
   modalData.value = data || {};
   selectedRowKeys.value = [];
   page.value = 1;
@@ -622,4 +622,3 @@ const [register, { setModalProps, closeModal }] = useModalInner(async (data) => 
   }
 }
 </style>
-

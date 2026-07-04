@@ -63,7 +63,7 @@
 
 <script lang="ts" setup>
 import { ref, reactive } from 'vue';
-import { BasicTable, TableAction, useTable } from '@/components/Table';
+import { BasicTable, TableAction, useTable, type ActionItem } from '@/components/Table';
 import { BasicForm, useForm } from '@/components/Form';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getPlaybackList, deletePlayback, type PlaybackInfo } from '@/api/device/playback';
@@ -194,24 +194,25 @@ const getColumns = () => {
 };
 
 // 获取表格操作按钮
-const getTableActions = (record: PlaybackInfo) => {
+const getTableActions = (record: Record<string, any>): ActionItem[] => {
+  const item = record as PlaybackInfo;
   return [
     {
       icon: 'octicon:play-16',
       tooltip: '播放',
-      onClick: () => handlePlay(record)
+      onClick: () => handlePlay(item)
     },
     {
       icon: 'ant-design:eye-filled',
       tooltip: '详情',
-      onClick: () => handleView(record)
+      onClick: () => handleView(item)
     },
     {
       icon: 'material-symbols:delete-outline-rounded',
       tooltip: '删除',
       popConfirm: {
         title: '确定删除此录像？',
-        confirm: () => handleDelete(record)
+        confirm: () => handleDelete(item)
       }
     }
   ];
@@ -226,7 +227,7 @@ const [registerTable, { reload }] = useTable({
   showIndexColumn: false,
   title: '录像回放列表',
   api: getPlaybackList,
-  columns: getColumns(),
+  columns: getColumns() as any,
   useSearchForm: false,
   showTableSetting: false,
   pagination: true,
@@ -415,4 +416,3 @@ defineExpose({
   }
 }
 </style>
-
