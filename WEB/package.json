@@ -36,6 +36,7 @@
     "test:alert-review-workbench:contract": "node scripts/alert-review-workbench-e2e-check.mjs --mode=contract",
     "test:alert-review-workbench:dev-api-mock": "node scripts/alert-review-workbench-e2e-check.mjs --mode=dev-api-mock",
     "test:alert-review-workbench:runner": "node scripts/alert-review-workbench-e2e-check.test.mjs",
+    "test:alert-review-playback": "node scripts/alert-review-playback-contract.test.mjs",
     "preview": "pnpm build && vite preview",
     "preview:dist": "vite preview",
     "clean:cache": "rimraf node_modules/.cache/ && rimraf node_modules/.vite",

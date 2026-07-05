@@ -999,6 +999,7 @@ function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
     device_id: entry.cameraId || selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.seekTime || entry.happenedAt,
     seek_time: entry.seekTime || entry.happenedAt,
+    record_start_time: reviewSegment.value?.startTime,
     record_path: entry.materialUri,
   })
 }
@@ -1042,6 +1043,7 @@ function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
     device_id: entry.cameraId || selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.happenedAt,
     seek_time: entry.happenedAt,
+    record_start_time: reviewSegment.value?.startTime || activeCase.value?.startTime,
     record_path: entry.materialUri,
   })
 }
@@ -1055,6 +1057,7 @@ function openCoverageSegment(segment: AlertReviewCoverageSegment) {
     device_id: selectedItem.value?.cameraId || selectedItem.value?.deviceId,
     time: segment.startTime,
     seek_time: segment.startTime,
+    record_start_time: segment.startTime,
     record_path: segment.recordUri,
   })
 }

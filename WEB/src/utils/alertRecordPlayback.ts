@@ -12,6 +12,9 @@ export type AlertRecordModalMethods = {
 export type AlertRecordPlayInput = AlertRecordLike & {
   device_id?: string | number;
   time?: string;
+  seek_time?: string | null;
+  record_start_time?: string | null;
+  playback_offset_seconds?: number | null;
   video_url?: string | null;
   url?: string | null;
 };
@@ -24,12 +27,50 @@ function buildModalPayload(
   videoUrl: string,
   seq: number,
   pending: boolean,
+  seekContext: ReturnType<typeof resolvePlaybackSeekContext>,
 ) {
   return {
     id: deviceId,
     http_stream: videoUrl,
+    ...(seekContext.seekTime ? { seek_time: seekContext.seekTime } : {}),
+    ...(seekContext.playbackOffsetSeconds != null
+      ? { playback_offset_seconds: seekContext.playbackOffsetSeconds }
+      : {}),
     ...(pending ? { _pendingRecord: true as const } : {}),
     _playbackSeq: seq,
+  };
+}
+
+function parseTimeMs(value?: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolvePlaybackSeekContext(record: AlertRecordPlayInput) {
+  const seekTime = record.seek_time || record.time || '';
+  const explicitOffset = Number(record.playback_offset_seconds);
+  if (Number.isFinite(explicitOffset) && explicitOffset >= 0) {
+    return {
+      seekTime,
+      playbackOffsetSeconds: Math.round(explicitOffset),
+    };
+  }
+
+  const seekMs = parseTimeMs(seekTime);
+  const startMs = parseTimeMs(record.record_start_time);
+  if (seekMs == null || startMs == null || seekMs < startMs) {
+    return {
+      seekTime,
+      playbackOffsetSeconds: null,
+    };
+  }
+
+  return {
+    seekTime,
+    playbackOffsetSeconds: Math.round((seekMs - startMs) / 1000),
   };
 }
 
@@ -43,12 +84,13 @@ export async function playAlertRecordInModal(
 ): Promise<boolean> {
   const { openModal, closeModal } = modal;
   const seq = ++playbackSeq;
+  const seekContext = resolvePlaybackSeekContext(record);
 
   const directRaw = record.video_url || record.url;
   if (directRaw) {
     const videoUrl = resolveAlertVideoUrl(String(directRaw).trim());
     if (videoUrl) {
-      openModal(true, buildModalPayload(record.device_id ?? 0, videoUrl, seq, false));
+      openModal(true, buildModalPayload(record.device_id ?? 0, videoUrl, seq, false, seekContext));
       return true;
     }
   }
@@ -58,12 +100,12 @@ export async function playAlertRecordInModal(
     return false;
   }
 
-  openModal(true, buildModalPayload(deviceId, '', seq, true));
+  openModal(true, buildModalPayload(deviceId, '', seq, true, seekContext));
 
   try {
     const videoUrl = await resolveAlertRecordVideoUrl(record);
     if (videoUrl) {
-      openModal(true, buildModalPayload(deviceId, videoUrl, seq, false));
+      openModal(true, buildModalPayload(deviceId, videoUrl, seq, false, seekContext));
       return true;
     }
     closeModal?.();

@@ -35,7 +35,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/alert-review-workbench-e2e-check(\.test)?\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
+      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
   },
   {
     group: 'FR documentation package',
@@ -79,6 +79,7 @@ const TRACKED_RELEASE_PATHS = [
   'WEB/package.json',
   'WEB/scripts/alert-review-workbench-e2e-check.mjs',
   'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
+  'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/scripts/fixtures/alert-review-workbench-e2e',
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/src/utils/withInstall.ts',

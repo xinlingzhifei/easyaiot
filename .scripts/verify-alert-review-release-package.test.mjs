@@ -47,16 +47,18 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'README.md',
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
+  'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/src/utils/withInstall.ts',
   '.scripts/verify-alert-review-release-package.mjs',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 5);
+assert.equal(trackedReleaseEntries.length, 6);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
     ['  ', 'WEB/src/api/supervision/alertReview.ts', 'WEB alert review workbench package'],
     ['  ', 'WEB/scripts/alert-review-workbench-e2e-check.test.mjs', 'WEB alert review workbench package'],
+    ['  ', 'WEB/scripts/alert-review-playback-contract.test.mjs', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/utils/withInstall.ts', 'WEB alert review workbench package'],
     ['  ', '.scripts/verify-alert-review-release-package.mjs', 'FR release gate tooling'],
     [
@@ -75,11 +77,13 @@ assert.equal(unstagedTenantMigration.blockers[0].group, 'DEVICE schema and migra
 
 const untrackedWorkbenchRunner = evaluateStatus(`
 ?? WEB/scripts/alert-review-workbench-e2e-check.test.mjs
+?? WEB/scripts/alert-review-playback-contract.test.mjs
 ?? WEB/src/utils/withInstall.ts
 `);
 assert.equal(untrackedWorkbenchRunner.ok, false);
 assert.equal(untrackedWorkbenchRunner.blockers[0].group, 'WEB alert review workbench package');
 assert.equal(untrackedWorkbenchRunner.blockers[1].group, 'WEB alert review workbench package');
+assert.equal(untrackedWorkbenchRunner.blockers[2].group, 'WEB alert review workbench package');
 
 const mojibakeScan = scanTextQuality([
   {

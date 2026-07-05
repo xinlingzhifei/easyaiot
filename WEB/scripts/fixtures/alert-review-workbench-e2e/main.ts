@@ -87,12 +87,19 @@ function lastVideoEvent() {
   return event
 }
 
-function assertLastVideoSeek(label: string, expectedSeekTime: string, expectedRecordPath: string) {
+function assertLastVideoSeek(
+  label: string,
+  expectedSeekTime: string,
+  expectedRecordPath: string,
+  expectedRecordStartTime?: string,
+) {
   const event = lastVideoEvent()
   if (event.seek_time !== expectedSeekTime)
     throw new Error(`${label} expected seek_time ${expectedSeekTime}, got ${String(event.seek_time)}`)
   if (event.record_path !== expectedRecordPath)
     throw new Error(`${label} expected record_path ${expectedRecordPath}, got ${String(event.record_path)}`)
+  if (expectedRecordStartTime && event.record_start_time !== expectedRecordStartTime)
+    throw new Error(`${label} expected record_start_time ${expectedRecordStartTime}, got ${String(event.record_start_time)}`)
 }
 
 async function runE2E() {
@@ -122,7 +129,12 @@ async function runE2E() {
 
   click('[data-testid="alert-review-detail-seek"]')
   await waitFor(() => viewVideoEvents.length > 0, 'detail seek video event')
-  assertLastVideoSeek('detail stream seek', '2026-07-02T08:00:02', 'mock://record/east-gate-080000.mp4')
+  assertLastVideoSeek(
+    'detail stream seek',
+    '2026-07-02T08:00:02',
+    'mock://record/east-gate-080000.mp4',
+    '2026-07-02T08:00:00',
+  )
 
   click('[data-testid="alert-review-unified-action"]')
   await waitFor(() => viewVideoEvents.length > 1, 'unified timeline video event')
@@ -130,7 +142,12 @@ async function runE2E() {
 
   click('[data-testid="alert-review-coverage-seek"]')
   await waitFor(() => viewVideoEvents.length > 2, 'coverage seek video event')
-  assertLastVideoSeek('coverage seek', '2026-07-02T07:59:45', 'mock://record/east-gate-075945.mp4')
+  assertLastVideoSeek(
+    'coverage seek',
+    '2026-07-02T07:59:45',
+    'mock://record/east-gate-075945.mp4',
+    '2026-07-02T07:59:45',
+  )
 
   click('[data-testid="alert-review-open-rule-drawer"]')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-region-drawer-stub"]'), 'region drawer')
@@ -158,7 +175,12 @@ async function runE2E() {
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-timeline-seek"]'), 'case timeline seek button')
   click('[data-testid="alert-review-case-timeline-seek"]')
   await waitFor(() => viewVideoEvents.length > 3, 'case timeline seek video event')
-  assertLastVideoSeek('case timeline seek', '2026-07-02T08:00:00', 'mock://record/east-gate-080000.mp4')
+  assertLastVideoSeek(
+    'case timeline seek',
+    '2026-07-02T08:00:00',
+    'mock://record/east-gate-080000.mp4',
+    '2026-07-02T08:00:00',
+  )
   await waitFor(() => !requiredElement<HTMLButtonElement>('[data-testid="alert-review-case-split"]').disabled, 'case lifecycle idle')
 
   click('[data-testid="alert-review-case-split"]')

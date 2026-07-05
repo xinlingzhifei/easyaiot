@@ -28,6 +28,7 @@
               :playerEngine="state.playerEngine"
               :videoCodec="state.videoCodec"
               :vodMode="state.vodMode"
+              :seekOffsetSeconds="state.seekOffsetSeconds"
             />
             <div v-else-if="state.playLoading" class="player-stage__loading">
               <div class="ant-spin ant-spin-lg">
@@ -171,6 +172,7 @@ const state = reactive({
   activeKey: 'info',
   playLoading: false,
   vodMode: false,
+  seekOffsetSeconds: 0,
   playerOptions: {
     aspectRatio: '16:5',
     controls: true,
@@ -190,6 +192,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.playSources = [];
   state.playLoading = false;
   state.vodMode = false;
+  state.seekOffsetSeconds = 0;
 
   const gbIds = getGb28181PlayIds(record);
   const sipDeviceId = gbIds?.sipDeviceId ?? '';
@@ -234,6 +237,8 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   // 已有播放地址（如摄像头、告警录像等）
   state.deviceId = record['id'];
   const streamUrl = String(record['http_stream'] ?? '').trim();
+  const rawSeekOffset = Number(record['playback_offset_seconds']);
+  state.seekOffsetSeconds = Number.isFinite(rawSeekOffset) && rawSeekOffset > 0 ? rawSeekOffset : 0;
 
   // 告警录像解析中：仅展示加载占位，不挂载 Jessibuca
   if (!streamUrl && record['_pendingRecord']) {
@@ -248,7 +253,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.vodMode = isVodPlaybackUrl(streamUrl);
   await nextTick();
   state.currentUrl = streamUrl;
-  state.playerEngine = '';
+  state.playerEngine = shouldUseNativeSeekPlayback(streamUrl, state.seekOffsetSeconds) ? 'native' : '';
   state.videoCodec = '';
   state.iframeUrl = streamUrl ? '<iframe src="' + streamUrl + '"></iframe>' : '';
   state.playSources = streamUrl
@@ -271,12 +276,28 @@ const handleChange = (value: string) => {
   }
   state.currentUrl = value;
   state.mediaType = value;
-  state.playerEngine = '';
+  state.playerEngine = shouldUseNativeSeekPlayback(value, state.seekOffsetSeconds) ? 'native' : '';
   state.videoCodec = '';
   state.vodMode = isVodPlaybackUrl(value);
   state.iframeUrl = value ? '<iframe src="' + value + '"></iframe>' : '';
   if (value) playerKey.value += 1;
 };
+
+function shouldUseNativeSeekPlayback(url: string, seekOffsetSeconds: number): boolean {
+  if (!url || seekOffsetSeconds <= 0) {
+    return false;
+  }
+  const normalized = safeDecode(url).toLowerCase();
+  return /\.mp4(?:[?#]|$)/.test(normalized);
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 const handleCopy = (value: string) => {
   copyText(value);
