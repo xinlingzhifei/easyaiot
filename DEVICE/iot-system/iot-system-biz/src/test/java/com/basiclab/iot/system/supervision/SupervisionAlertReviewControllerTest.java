@@ -1,6 +1,8 @@
 package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionAlertReviewController;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleReplayReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleSuggestionStatusReqVO;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeResult;
@@ -10,11 +12,13 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -22,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -99,6 +104,34 @@ class SupervisionAlertReviewControllerTest {
                 reviewService.command("mergeReviewCases"));
         assertEquals(new ReviewCaseSplitCommand(10L, List.of(103L), "camera-03 follow-up", 2002L, 9004L, "separate lead"),
                 reviewService.command("splitReviewCase"));
+    }
+
+    @Test
+    void ruleSuggestionGovernanceEndpointsDeclareApprovalPermissions() throws Exception {
+        assertPreAuthorize(
+                "updateRuleSuggestionStatus",
+                new Class<?>[]{Long.class, RuleSuggestionStatusReqVO.class},
+                "system:supervision-alert-review:rule-suggestion:update"
+        );
+        assertPreAuthorize(
+                "revertRuleSuggestion",
+                new Class<?>[]{Long.class, RuleSuggestionStatusReqVO.class},
+                "system:supervision-alert-review:rule-suggestion:revert"
+        );
+        assertPreAuthorize(
+                "replayRule",
+                new Class<?>[]{RuleReplayReqVO.class},
+                "system:supervision-alert-review:rules:replay"
+        );
+    }
+
+    private static void assertPreAuthorize(String methodName,
+                                           Class<?>[] parameterTypes,
+                                           String permission) throws NoSuchMethodException {
+        Method method = SupervisionAlertReviewController.class.getMethod(methodName, parameterTypes);
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, methodName + " must declare @PreAuthorize");
+        assertEquals("@ss.hasPermission('" + permission + "')", preAuthorize.value());
     }
 
     private static ReviewCaseView caseView(Long id,

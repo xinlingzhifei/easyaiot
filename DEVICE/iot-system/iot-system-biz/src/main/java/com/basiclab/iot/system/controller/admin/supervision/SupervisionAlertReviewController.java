@@ -87,6 +87,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -543,6 +544,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/items/{reviewItemId}/rule-suggestion/status")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:rule-suggestion:update')")
     @Operation(summary = "Update alert review rule suggestion status")
     public CommonResult<ItemRespVO> updateRuleSuggestionStatus(@PathVariable("reviewItemId") Long reviewItemId,
                                                                @RequestBody RuleSuggestionStatusReqVO reqVO) {
@@ -563,6 +565,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/items/{reviewItemId}/rule-suggestion/revert")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:rule-suggestion:revert')")
     @Operation(summary = "Revert alert review rule suggestion")
     public CommonResult<ItemRespVO> revertRuleSuggestion(@PathVariable("reviewItemId") Long reviewItemId,
                                                          @RequestBody RuleSuggestionStatusReqVO reqVO) {
@@ -883,6 +886,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/rules/replay")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:rules:replay')")
     @Operation(summary = "Replay alert review rule against historical clues")
     public CommonResult<RuleReplayRespVO> replayRule(@Valid @RequestBody RuleReplayReqVO reqVO) {
         return success(RuleReplayRespVO.from(supervisionAlertReviewService.replayRule(new ReviewRuleReplayCommand(
