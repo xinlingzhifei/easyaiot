@@ -41,6 +41,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final int DEFAULT_EXPORT_JOB_EXPIRES_DAYS = 7;
     private static final int DEFAULT_RUNTIME_OUTBOX_LIMIT = 50;
     private static final int MAX_RUNTIME_OUTBOX_LIMIT = 200;
+    private static final int DEFAULT_SEMANTIC_WORKER_LIMIT = 50;
+    private static final int MAX_SEMANTIC_WORKER_LIMIT = 200;
     private static final int MIN_RULE_SUGGESTION_SAMPLE_COUNT = 3;
     private static final int REVIEW_DATA_VERSION = 1;
     private static final String LOCAL_EMBEDDING_MODEL = "yfeieye-review-local-v1";
@@ -1039,16 +1041,65 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     @Override
+    public ReviewSemanticWorkerRun processSemanticIndexQueue(ReviewSemanticWorkerCommand command) {
+        Objects.requireNonNull(command, "command");
+        int limit = boundedPositive(command.maxItems(), DEFAULT_SEMANTIC_WORKER_LIMIT, MAX_SEMANTIC_WORKER_LIMIT);
+        List<ReviewItemAggregate> items = listWorkbench(command.query());
+        Map<Long, ReviewSemanticIndexEntry> indexByItemId = semanticIndexByItemId(command.query());
+        List<ReviewItemAggregate> backlog = items.stream()
+                .filter(item -> shouldProcessSemanticIndex(item, indexByItemId.get(item.id())))
+                .limit(limit)
+                .toList();
+        LocalDateTime processedAt = LocalDateTime.now();
+        List<Long> processedIds = new ArrayList<>();
+        List<Long> failedIds = new ArrayList<>();
+        for (ReviewItemAggregate item : backlog) {
+            ReviewSemanticIndexEntry current = indexByItemId.get(item.id());
+            try {
+                upsertIndexedSemanticDocument(item, processedAt);
+                processedIds.add(item.id());
+            } catch (RuntimeException ex) {
+                int retryCount = (current == null || current.retryCount() == null ? 0 : current.retryCount()) + 1;
+                reviewItemStore.upsertSemanticIndex(
+                        item,
+                        current == null ? buildSearchDocument(item) : current.document(),
+                        semanticEmbeddingKey(item),
+                        LOCAL_EMBEDDING_MODEL,
+                        current == null ? null : current.embeddingVectorHash(),
+                        SEMANTIC_INDEX_FAILED,
+                        retryCount,
+                        ex.getMessage(),
+                        null
+                );
+                failedIds.add(item.id());
+            }
+        }
+        ReviewSemanticIndexEvaluation evaluation = evaluateSemanticIndex(
+                new ReviewSemanticIndexEvaluationCommand(command.query(), command.operatorUserId()));
+        String status = semanticWorkerStatus(processedIds.size(), failedIds.size(), evaluation.staleReviewItemIds().size());
+        return new ReviewSemanticWorkerRun(
+                status,
+                backlog.size(),
+                processedIds.size(),
+                failedIds.size(),
+                evaluation.staleReviewItemIds().size(),
+                evaluation.rebuildProgressRate(),
+                List.copyOf(processedIds),
+                List.copyOf(failedIds),
+                processedAt,
+                command.operatorUserId()
+        );
+    }
+
+    @Override
     public ReviewSemanticIndexEvaluation evaluateSemanticIndex(ReviewSemanticIndexEvaluationCommand command) {
         Objects.requireNonNull(command, "command");
         List<ReviewItemAggregate> items = listWorkbench(command.query());
-        Map<Long, ReviewSemanticIndexEntry> indexByItemId = new LinkedHashMap<>();
-        for (ReviewSemanticIndexEntry entry : reviewItemStore.listSemanticIndex(command.query())) {
-            indexByItemId.put(entry.reviewItemId(), entry);
-        }
+        Map<Long, ReviewSemanticIndexEntry> indexByItemId = semanticIndexByItemId(command.query());
         int pending = 0;
         int indexed = 0;
         int failed = 0;
+        int latestIndexVersion = 0;
         List<Long> staleIds = new ArrayList<>();
         for (ReviewItemAggregate item : items) {
             ReviewSemanticIndexEntry entry = indexByItemId.get(item.id());
@@ -1070,6 +1121,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             } else {
                 staleIds.add(item.id());
             }
+            if (entry != null && entry.indexVersion() != null) {
+                latestIndexVersion = Math.max(latestIndexVersion, entry.indexVersion());
+            }
         }
         List<String> actions = new ArrayList<>();
         if (pending > 0) {
@@ -1081,6 +1135,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (!staleIds.isEmpty() && pending == 0 && failed == 0) {
             actions.add("reindex_stale_semantic_index");
         }
+        String backlogAlarmLevel = semanticBacklogAlarmLevel(pending, failed, staleIds.size());
+        if (!"none".equals(backlogAlarmLevel)) {
+            actions.add("inspect_semantic_index_backlog_alarm");
+        }
         return new ReviewSemanticIndexEvaluation(
                 items.size(),
                 pending,
@@ -1089,9 +1147,69 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 roundRate(indexed, items.size()),
                 List.copyOf(staleIds),
                 List.copyOf(actions),
+                roundRate(indexed, items.size()),
+                backlogAlarmLevel,
+                latestIndexVersion,
                 LocalDateTime.now(),
                 command.operatorUserId()
         );
+    }
+
+    private Map<Long, ReviewSemanticIndexEntry> semanticIndexByItemId(ReviewQuery query) {
+        Map<Long, ReviewSemanticIndexEntry> indexByItemId = new LinkedHashMap<>();
+        for (ReviewSemanticIndexEntry entry : reviewItemStore.listSemanticIndex(query)) {
+            indexByItemId.put(entry.reviewItemId(), entry);
+        }
+        return indexByItemId;
+    }
+
+    private boolean shouldProcessSemanticIndex(ReviewItemAggregate item, ReviewSemanticIndexEntry entry) {
+        if (entry == null) {
+            return true;
+        }
+        if (SEMANTIC_INDEX_PENDING.equals(entry.indexStatus()) || SEMANTIC_INDEX_FAILED.equals(entry.indexStatus())) {
+            return true;
+        }
+        return SEMANTIC_INDEX_INDEXED.equals(entry.indexStatus())
+                && !Objects.equals(item.lastAlertTime(), entry.lastAlertTime());
+    }
+
+    private ReviewSemanticIndexEntry upsertIndexedSemanticDocument(ReviewItemAggregate item, LocalDateTime indexedAt) {
+        String document = buildSearchDocument(item);
+        return reviewItemStore.upsertSemanticIndex(
+                item,
+                document,
+                semanticEmbeddingKey(item),
+                LOCAL_EMBEDDING_MODEL,
+                semanticEmbeddingVectorHash(document),
+                SEMANTIC_INDEX_INDEXED,
+                0,
+                null,
+                indexedAt
+        );
+    }
+
+    private static String semanticWorkerStatus(int processedCount, int failedCount, int remainingBacklogCount) {
+        if (failedCount > 0 && processedCount > 0) {
+            return "partial_failed";
+        }
+        if (failedCount > 0) {
+            return "failed";
+        }
+        if (remainingBacklogCount > 0) {
+            return "partial";
+        }
+        return "completed";
+    }
+
+    private static String semanticBacklogAlarmLevel(int pendingCount, int failedCount, int staleCount) {
+        if (failedCount > 0) {
+            return "critical";
+        }
+        if (pendingCount > 0 || staleCount > 0) {
+            return "warning";
+        }
+        return "none";
     }
 
     @Override
@@ -5466,6 +5584,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             return 0D;
         }
         return Math.round((numerator * 100D) / denominator) / 100D;
+    }
+
+    private static int boundedPositive(Integer value, int fallback, int max) {
+        if (value == null || value <= 0) {
+            return fallback;
+        }
+        return Math.min(value, max);
     }
 
     private static Map<String, Object> updateRuleSuggestionLifecycle(Map<String, Object> current,

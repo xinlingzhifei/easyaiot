@@ -5,6 +5,7 @@ import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewEventReconcileJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimeOutboxJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimePatrolJob;
+import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewSemanticIndexJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.AlertClueCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceItem;
@@ -80,6 +81,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticReindexJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticWorkerCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticWorkerRun;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.VideoEvidenceExportProvider;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.EventProjection;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.EventProjectionStore;
@@ -1994,6 +1997,90 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(2, indexed.indexedCount());
         assertEquals(1.0D, indexed.coverageRate());
         assertEquals(List.of(), indexed.staleReviewItemIds());
+    }
+
+    @Test
+    void semanticIndexWorkerRetriesFailuresAndReportsBacklogProgress() {
+        FailingSemanticIndexStore itemStore = new FailingSemanticIndexStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 6, 9, 30);
+        ReviewItemAggregate first = service.ingestClue(newClue("alert-semantic-worker-1", baseTime, "worker-1.jpg", "worker-1.mp4"));
+        ReviewItemAggregate second = service.ingestClue(newClue("alert-semantic-worker-2", baseTime.plusMinutes(10), "worker-2.jpg", "worker-2.mp4"));
+
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9101L
+        ));
+        itemStore.failNextIndexedUpsertFor(second.id(), "embedding provider timeout");
+
+        ReviewSemanticWorkerRun firstRun = service.processSemanticIndexQueue(new ReviewSemanticWorkerCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                10,
+                9101L
+        ));
+        ReviewSemanticIndexEvaluation partial = service.evaluateSemanticIndex(new ReviewSemanticIndexEvaluationCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9101L
+        ));
+
+        assertEquals("partial_failed", firstRun.status());
+        assertEquals(2, firstRun.scannedCount());
+        assertEquals(1, firstRun.processedCount());
+        assertEquals(1, firstRun.failedCount());
+        assertEquals(1, firstRun.remainingBacklogCount());
+        assertEquals(0.5D, firstRun.progressRate());
+        assertEquals(List.of(first.id()), firstRun.processedReviewItemIds());
+        assertEquals(List.of(second.id()), firstRun.failedReviewItemIds());
+        assertEquals(1, partial.indexedCount());
+        assertEquals(1, partial.failedCount());
+        assertEquals(0.5D, partial.rebuildProgressRate());
+        assertEquals("critical", partial.backlogAlarmLevel());
+        assertTrue(partial.latestIndexVersion() >= 2);
+        ReviewSemanticIndexEntry failed = itemStore.listSemanticIndex(new ReviewQuery(null, "camera-01", null, null)).stream()
+                .filter(entry -> entry.reviewItemId().equals(second.id()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("failed", failed.indexStatus());
+        assertEquals(1, failed.retryCount());
+        assertEquals("embedding provider timeout", failed.lastError());
+
+        ReviewSemanticWorkerRun retryRun = service.processSemanticIndexQueue(new ReviewSemanticWorkerCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                10,
+                9101L
+        ));
+        ReviewSemanticIndexEvaluation complete = service.evaluateSemanticIndex(new ReviewSemanticIndexEvaluationCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9101L
+        ));
+
+        assertEquals("completed", retryRun.status());
+        assertEquals(1, retryRun.processedCount());
+        assertEquals(0, retryRun.failedCount());
+        assertEquals(0, retryRun.remainingBacklogCount());
+        assertEquals(1.0D, complete.rebuildProgressRate());
+        assertEquals("none", complete.backlogAlarmLevel());
+        assertEquals(2, complete.indexedCount());
+
+        ReviewItemAggregate third = service.ingestClue(newClue("alert-semantic-worker-3", baseTime.plusMinutes(20), "worker-3.jpg", "worker-3.mp4"));
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9101L
+        ));
+        String jobSummary = new SupervisionAlertReviewSemanticIndexJob(service).execute("10");
+
+        assertTrue(jobSummary.contains("status=completed"));
+        assertTrue(jobSummary.contains("processed=3"));
+        assertTrue(jobSummary.contains("remaining=0"));
+        assertTrue(service.evaluateSemanticIndex(new ReviewSemanticIndexEvaluationCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9101L
+        )).staleReviewItemIds().isEmpty());
+        assertTrue(third.id() != null);
     }
 
     @Test
@@ -4932,6 +5019,44 @@ class SupervisionAlertReviewServiceTest {
         }
     }
 
+    private static class FailingSemanticIndexStore extends InMemoryReviewItemStore {
+
+        private final Map<Long, String> indexedFailures = new LinkedHashMap<>();
+
+        void failNextIndexedUpsertFor(Long reviewItemId, String message) {
+            indexedFailures.put(reviewItemId, message);
+        }
+
+        @Override
+        public ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
+                                                           String document,
+                                                           String embeddingKey,
+                                                           String embeddingModel,
+                                                           String embeddingVectorHash,
+                                                           String indexStatus,
+                                                           Integer retryCount,
+                                                           String lastError,
+                                                           LocalDateTime indexedAt) {
+            if (item != null
+                    && SupervisionAlertReviewService.SEMANTIC_INDEX_INDEXED.equals(indexStatus)
+                    && indexedFailures.containsKey(item.id())) {
+                String message = indexedFailures.remove(item.id());
+                throw new IllegalStateException(message);
+            }
+            return super.upsertSemanticIndex(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    embeddingVectorHash,
+                    indexStatus,
+                    retryCount,
+                    lastError,
+                    indexedAt
+            );
+        }
+    }
+
     private static class InMemoryReviewItemStore implements ReviewItemStore {
 
         private final Map<Long, ReviewItemAggregate> items = new LinkedHashMap<>();
@@ -5645,6 +5770,8 @@ class SupervisionAlertReviewServiceTest {
                                                            Integer retryCount,
                                                            String lastError,
                                                            LocalDateTime indexedAt) {
+            ReviewSemanticIndexEntry current = semanticIndex.get(item.id());
+            int indexVersion = (current == null || current.indexVersion() == null ? 0 : current.indexVersion()) + 1;
             ReviewSemanticIndexEntry entry = new ReviewSemanticIndexEntry(
                     item.id(),
                     item.cameraId(),
@@ -5657,7 +5784,8 @@ class SupervisionAlertReviewServiceTest {
                     embeddingVectorHash,
                     retryCount == null ? 0 : retryCount,
                     lastError,
-                    indexedAt
+                    indexedAt,
+                    indexVersion
             );
             semanticIndex.put(item.id(), entry);
             return entry;

@@ -704,7 +704,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .setEmbeddingVectorHash(embeddingVectorHash)
                 .setRetryCount(retryCount == null ? 0 : retryCount)
                 .setLastError(lastError)
-                .setIndexedAt(indexedAt);
+                .setIndexedAt(indexedAt)
+                .setVersion((indexDO.getVersion() == null ? 0 : indexDO.getVersion()) + 1);
         if (indexDO.getId() == null) {
             reviewSemanticIndexMapper.insert(indexDO);
         } else {
@@ -1319,7 +1320,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 indexDO.getEmbeddingVectorHash(),
                 indexDO.getRetryCount(),
                 indexDO.getLastError(),
-                indexDO.getIndexedAt()
+                indexDO.getIndexedAt(),
+                indexDO.getVersion()
         );
     }
 

@@ -806,6 +806,7 @@ public final class AlertReviewVO {
         private Integer retryCount;
         private String lastError;
         private LocalDateTime indexedAt;
+        private Integer indexVersion;
 
         public static SemanticIndexRespVO from(ReviewSemanticIndexEntry entry) {
             SemanticIndexRespVO respVO = new SemanticIndexRespVO();
@@ -820,6 +821,7 @@ public final class AlertReviewVO {
             respVO.setRetryCount(entry.retryCount());
             respVO.setLastError(entry.lastError());
             respVO.setIndexedAt(entry.indexedAt());
+            respVO.setIndexVersion(entry.indexVersion());
             return respVO;
         }
 
@@ -858,6 +860,9 @@ public final class AlertReviewVO {
         private Double coverageRate;
         private List<Long> staleReviewItemIds;
         private List<String> recommendedActions;
+        private Double rebuildProgressRate;
+        private String backlogAlarmLevel;
+        private Integer latestIndexVersion;
         private LocalDateTime evaluatedAt;
         private Long operatorUserId;
 
@@ -870,6 +875,9 @@ public final class AlertReviewVO {
             respVO.setCoverageRate(evaluation.coverageRate());
             respVO.setStaleReviewItemIds(evaluation.staleReviewItemIds());
             respVO.setRecommendedActions(evaluation.recommendedActions());
+            respVO.setRebuildProgressRate(evaluation.rebuildProgressRate());
+            respVO.setBacklogAlarmLevel(evaluation.backlogAlarmLevel());
+            respVO.setLatestIndexVersion(evaluation.latestIndexVersion());
             respVO.setEvaluatedAt(evaluation.evaluatedAt());
             respVO.setOperatorUserId(evaluation.operatorUserId());
             return respVO;

@@ -123,6 +123,8 @@ public interface SupervisionAlertReviewService {
 
     ReviewSemanticReindexJob queueSemanticReindex(ReviewSemanticReindexCommand command);
 
+    ReviewSemanticWorkerRun processSemanticIndexQueue(ReviewSemanticWorkerCommand command);
+
     ReviewSemanticIndexEvaluation evaluateSemanticIndex(ReviewSemanticIndexEvaluationCommand command);
 
     ReviewRuntimeHealthReport getReviewRuntimeHealth(ReviewRuntimeHealthCommand command);
@@ -681,7 +683,8 @@ public interface SupervisionAlertReviewService {
                                     String embeddingVectorHash,
                                     Integer retryCount,
                                     String lastError,
-                                    LocalDateTime indexedAt) {
+                                    LocalDateTime indexedAt,
+                                    Integer indexVersion) {
     }
 
     record ReviewSemanticReindexCommand(ReviewQuery query,
@@ -695,6 +698,23 @@ public interface SupervisionAlertReviewService {
                                     Long operatorUserId) {
     }
 
+    record ReviewSemanticWorkerCommand(ReviewQuery query,
+                                       Integer maxItems,
+                                       Long operatorUserId) {
+    }
+
+    record ReviewSemanticWorkerRun(String status,
+                                   Integer scannedCount,
+                                   Integer processedCount,
+                                   Integer failedCount,
+                                   Integer remainingBacklogCount,
+                                   Double progressRate,
+                                   List<Long> processedReviewItemIds,
+                                   List<Long> failedReviewItemIds,
+                                   LocalDateTime processedAt,
+                                   Long operatorUserId) {
+    }
+
     record ReviewSemanticIndexEvaluationCommand(ReviewQuery query,
                                                 Long operatorUserId) {
     }
@@ -706,6 +726,9 @@ public interface SupervisionAlertReviewService {
                                          Double coverageRate,
                                          List<Long> staleReviewItemIds,
                                          List<String> recommendedActions,
+                                         Double rebuildProgressRate,
+                                         String backlogAlarmLevel,
+                                         Integer latestIndexVersion,
                                          LocalDateTime evaluatedAt,
                                          Long operatorUserId) {
     }
