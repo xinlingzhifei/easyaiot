@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
-    match: /^\.scripts\/(verify-alert-review-release-package|alert-review-postgres-migration-smoke)(\.test)?\.mjs$/,
+    match: /^\.scripts\/(verify-alert-review-release-package|alert-review-postgres-migration-smoke|alert-review-video-live-smoke)(\.test)?\.mjs$/,
   },
   {
     group: 'DEVICE review backend',
@@ -55,6 +55,8 @@ const TRACKED_RELEASE_PATHS = [
   '.scripts/verify-alert-review-release-package.test.mjs',
   '.scripts/alert-review-postgres-migration-smoke.mjs',
   '.scripts/alert-review-postgres-migration-smoke.test.mjs',
+  '.scripts/alert-review-video-live-smoke.mjs',
+  '.scripts/alert-review-video-live-smoke.test.mjs',
   'DEVICE/docker-compose.yml',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision',
