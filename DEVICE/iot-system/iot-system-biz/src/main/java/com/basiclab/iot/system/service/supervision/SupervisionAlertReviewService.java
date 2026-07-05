@@ -612,6 +612,16 @@ public interface SupervisionAlertReviewService {
                                      Map<String, Object> metadata) {
     }
 
+    record ReviewRuntimeLockAcquisition(String lockName,
+                                        Boolean acquired,
+                                        Boolean recoveredStaleLock,
+                                        Long previousOwnerUserId,
+                                        LocalDateTime previousLockedUntil,
+                                        LocalDateTime lockedUntil,
+                                        LocalDateTime acquiredAt,
+                                        String reason) {
+    }
+
     record ReviewRuntimeOutboxPublishCommand(Integer limit,
                                              Long operatorUserId) {
     }
@@ -1281,6 +1291,22 @@ public interface SupervisionAlertReviewService {
 
         default List<ReviewEvidenceExportJob> listAllExportJobs() {
             return List.of();
+        }
+
+        default ReviewRuntimeLockAcquisition acquireRuntimePatrolLock(String lockName,
+                                                                      LocalDateTime expiresAt,
+                                                                      Long operatorUserId) {
+            boolean acquired = tryAcquireRuntimePatrolLock(lockName, expiresAt, operatorUserId);
+            return new ReviewRuntimeLockAcquisition(
+                    lockName,
+                    acquired,
+                    false,
+                    null,
+                    null,
+                    acquired ? expiresAt : null,
+                    LocalDateTime.now(),
+                    acquired ? "legacy_lock_acquired" : "active_lock"
+            );
         }
 
         default boolean tryAcquireRuntimePatrolLock(String lockName,

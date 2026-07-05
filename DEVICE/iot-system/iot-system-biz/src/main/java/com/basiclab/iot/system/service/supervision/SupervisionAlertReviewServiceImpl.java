@@ -1287,10 +1287,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     public ReviewRuntimePatrolResult runRuntimePatrol(ReviewRuntimePatrolCommand command) {
         Objects.requireNonNull(command, "command");
         String lockName = "alert-review-runtime-patrol";
-        if (!reviewItemStore.tryAcquireRuntimePatrolLock(
+        ReviewRuntimeLockAcquisition lock = reviewItemStore.acquireRuntimePatrolLock(
                 lockName,
                 LocalDateTime.now().plusMinutes(10),
-                command.operatorUserId())) {
+                command.operatorUserId());
+        if (!Boolean.TRUE.equals(lock.acquired())) {
             return new ReviewRuntimePatrolResult(
                     "locked",
                     false,
@@ -1303,11 +1304,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     List.of("wait_for_current_runtime_patrol"),
                     LocalDateTime.now(),
                     command.operatorUserId(),
-                    Map.of(
-                            "scheduled", Boolean.TRUE.equals(command.scheduled()),
-                            "lockName", lockName,
-                            "lockBackend", "review_item_store"
-                    )
+                    immutableNonNullMap(runtimeLockMetadata(command, lockName, lock))
             );
         }
         try {
@@ -1345,10 +1342,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 recommendedActions.add("inspect_runtime_patrol_failure");
             }
             LocalDateTime executedAt = LocalDateTime.now();
-            Map<String, Object> metadata = new LinkedHashMap<>();
-            metadata.put("scheduled", Boolean.TRUE.equals(command.scheduled()));
-            metadata.put("lockName", lockName);
-            metadata.put("lockBackend", "review_item_store");
+            Map<String, Object> metadata = runtimeLockMetadata(command, lockName, lock);
             metadata.put("repairRequested", !Boolean.FALSE.equals(command.repair()));
             metadata.put("attemptFindings", attemptFindings);
             metadata.put("initialRepairableCount", before.repairableCount());
@@ -1394,6 +1388,26 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         } finally {
             reviewItemStore.releaseRuntimePatrolLock(lockName, command.operatorUserId());
         }
+    }
+
+    private static Map<String, Object> runtimeLockMetadata(ReviewRuntimePatrolCommand command,
+                                                           String lockName,
+                                                           ReviewRuntimeLockAcquisition lock) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("scheduled", Boolean.TRUE.equals(command.scheduled()));
+        metadata.put("lockName", lockName);
+        metadata.put("lockBackend", "review_item_store");
+        metadata.put("lockReason", lock.reason());
+        metadata.put("lockRecovered", Boolean.TRUE.equals(lock.recoveredStaleLock()));
+        metadata.put("lockedUntil", lock.lockedUntil());
+        metadata.put("lockAcquiredAt", lock.acquiredAt());
+        if (Boolean.TRUE.equals(lock.acquired())) {
+            metadata.put("previousLockOwnerUserId", lock.previousOwnerUserId());
+            metadata.put("previousLockedUntil", lock.previousLockedUntil());
+        } else {
+            metadata.put("lockOwnerUserId", lock.previousOwnerUserId());
+        }
+        return metadata;
     }
 
     @Override

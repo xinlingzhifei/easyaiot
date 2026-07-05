@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.service.supervision;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.basiclab.iot.common.core.context.TenantContextHolder;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewEvidenceDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
@@ -49,6 +50,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleStore;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeLockAcquisition;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxMessage;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusView;
@@ -881,29 +883,76 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean tryAcquireRuntimePatrolLock(String lockName, LocalDateTime expiresAt, Long operatorUserId) {
-        if (!hasText(lockName)) {
-            return false;
-        }
+    public ReviewRuntimeLockAcquisition acquireRuntimePatrolLock(String lockName,
+                                                                 LocalDateTime expiresAt,
+                                                                 Long operatorUserId) {
         LocalDateTime now = LocalDateTime.now();
+        if (!hasText(lockName)) {
+            return new ReviewRuntimeLockAcquisition(lockName, false, false, null, null, null, now, "missing_lock_name");
+        }
         SupervisionAlertReviewRuntimeLockDO lockDO = reviewRuntimeLockMapper.selectByLockName(lockName);
         if (lockDO == null) {
-            lockDO = new SupervisionAlertReviewRuntimeLockDO()
+            SupervisionAlertReviewRuntimeLockDO created = new SupervisionAlertReviewRuntimeLockDO()
                     .setLockName(lockName)
                     .setOwnerUserId(operatorUserId)
                     .setLockedUntil(expiresAt)
                     .setLastLockedAt(now)
                     .setVersion(0);
-            reviewRuntimeLockMapper.insert(lockDO);
-            return true;
+            reviewRuntimeLockMapper.insert(created);
+            return new ReviewRuntimeLockAcquisition(lockName, true, false, null, null, expiresAt, now, "created");
         }
-        if (lockDO.getLockedUntil() != null && lockDO.getLockedUntil().isAfter(now)) {
-            return false;
+        LocalDateTime previousLockedUntil = lockDO.getLockedUntil();
+        Long previousOwnerUserId = lockDO.getOwnerUserId();
+        if (previousLockedUntil != null && previousLockedUntil.isAfter(now)) {
+            return new ReviewRuntimeLockAcquisition(
+                    lockName,
+                    false,
+                    false,
+                    previousOwnerUserId,
+                    previousLockedUntil,
+                    previousLockedUntil,
+                    now,
+                    "active_lock"
+            );
         }
-        lockDO.setOwnerUserId(operatorUserId)
+        SupervisionAlertReviewRuntimeLockDO updateDO = new SupervisionAlertReviewRuntimeLockDO()
+                .setOwnerUserId(operatorUserId)
                 .setLockedUntil(expiresAt)
                 .setLastLockedAt(now);
-        return reviewRuntimeLockMapper.updateById(lockDO) > 0;
+        int updated = reviewRuntimeLockMapper.update(updateDO,
+                new LambdaUpdateWrapper<SupervisionAlertReviewRuntimeLockDO>()
+                        .eq(SupervisionAlertReviewRuntimeLockDO::getId, lockDO.getId())
+                        .and(wrapper -> wrapper
+                                .isNull(SupervisionAlertReviewRuntimeLockDO::getLockedUntil)
+                                .or()
+                                .le(SupervisionAlertReviewRuntimeLockDO::getLockedUntil, now)));
+        if (updated <= 0) {
+            return new ReviewRuntimeLockAcquisition(
+                    lockName,
+                    false,
+                    false,
+                    previousOwnerUserId,
+                    previousLockedUntil,
+                    previousLockedUntil,
+                    now,
+                    "lock_race_lost"
+            );
+        }
+        return new ReviewRuntimeLockAcquisition(
+                lockName,
+                true,
+                true,
+                previousOwnerUserId,
+                previousLockedUntil,
+                expiresAt,
+                now,
+                "stale_lock_recovered"
+        );
+    }
+
+    @Override
+    public boolean tryAcquireRuntimePatrolLock(String lockName, LocalDateTime expiresAt, Long operatorUserId) {
+        return Boolean.TRUE.equals(acquireRuntimePatrolLock(lockName, expiresAt, operatorUserId).acquired());
     }
 
     @Override

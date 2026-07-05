@@ -61,6 +61,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeLockAcquisition;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxMessage;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolResult;
@@ -1451,6 +1452,51 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(outboxSummary.contains("published="));
         assertTrue(itemStore.runtimeOutbox().stream()
                 .allMatch(entry -> "published".equals(entry.status())));
+    }
+
+    @Test
+    void runtimePatrolRecoversExpiredClusterLockAndReportsPreviousOwner() {
+        RecoverableRuntimeLockStore itemStore = new RecoverableRuntimeLockStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        String lockName = "alert-review-runtime-patrol";
+        LocalDateTime futureUntil = LocalDateTime.now().plusMinutes(5);
+        itemStore.seedRuntimeLock(lockName, 42L, futureUntil);
+
+        ReviewRuntimePatrolResult locked = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9012L,
+                true,
+                1,
+                true
+        ));
+
+        assertEquals("locked", locked.status());
+        assertFalse(locked.lockAcquired());
+        assertEquals("active_lock", locked.metadata().get("lockReason"));
+        assertEquals(42L, locked.metadata().get("lockOwnerUserId"));
+        assertEquals(futureUntil, locked.metadata().get("lockedUntil"));
+
+        LocalDateTime staleUntil = LocalDateTime.now().minusMinutes(5);
+        itemStore.seedRuntimeLock(lockName, 42L, staleUntil);
+        ReviewRuntimePatrolResult recovered = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9013L,
+                true,
+                1,
+                true
+        ));
+
+        assertTrue(recovered.lockAcquired());
+        assertEquals("healthy", recovered.status());
+        assertEquals(true, recovered.metadata().get("lockRecovered"));
+        assertEquals("stale_lock_recovered", recovered.metadata().get("lockReason"));
+        assertEquals(42L, recovered.metadata().get("previousLockOwnerUserId"));
+        assertEquals(staleUntil, recovered.metadata().get("previousLockedUntil"));
+        assertEquals(9013L, itemStore.currentLockOwner(lockName));
     }
 
     @Test
@@ -5019,6 +5065,69 @@ class SupervisionAlertReviewServiceTest {
         }
     }
 
+    private static final class RecoverableRuntimeLockStore extends InMemoryReviewItemStore {
+
+        private final Map<String, RuntimeLockState> runtimeLocks = new LinkedHashMap<>();
+
+        void seedRuntimeLock(String lockName, Long ownerUserId, LocalDateTime lockedUntil) {
+            runtimeLocks.put(lockName, new RuntimeLockState(ownerUserId, lockedUntil, LocalDateTime.now()));
+        }
+
+        Long currentLockOwner(String lockName) {
+            RuntimeLockState state = runtimeLocks.get(lockName);
+            return state == null ? null : state.ownerUserId();
+        }
+
+        @Override
+        public ReviewRuntimeLockAcquisition acquireRuntimePatrolLock(String lockName,
+                                                                     LocalDateTime expiresAt,
+                                                                     Long operatorUserId) {
+            LocalDateTime now = LocalDateTime.now();
+            RuntimeLockState state = runtimeLocks.get(lockName);
+            if (state != null && state.lockedUntil() != null && state.lockedUntil().isAfter(now)) {
+                return new ReviewRuntimeLockAcquisition(
+                        lockName,
+                        false,
+                        false,
+                        state.ownerUserId(),
+                        state.lockedUntil(),
+                        state.lockedUntil(),
+                        now,
+                        "active_lock"
+                );
+            }
+            boolean recovered = state != null;
+            runtimeLocks.put(lockName, new RuntimeLockState(operatorUserId, expiresAt, now));
+            return new ReviewRuntimeLockAcquisition(
+                    lockName,
+                    true,
+                    recovered,
+                    state == null ? null : state.ownerUserId(),
+                    state == null ? null : state.lockedUntil(),
+                    expiresAt,
+                    now,
+                    recovered ? "stale_lock_recovered" : "created"
+            );
+        }
+
+        @Override
+        public void releaseRuntimePatrolLock(String lockName, Long operatorUserId) {
+            RuntimeLockState state = runtimeLocks.get(lockName);
+            if (state == null) {
+                return;
+            }
+            if (operatorUserId != null && state.ownerUserId() != null
+                    && !Objects.equals(operatorUserId, state.ownerUserId())) {
+                return;
+            }
+            runtimeLocks.put(lockName, new RuntimeLockState(state.ownerUserId(), LocalDateTime.now(), state.lastLockedAt()));
+        }
+    }
+
+    private record RuntimeLockState(Long ownerUserId,
+                                    LocalDateTime lockedUntil,
+                                    LocalDateTime lastLockedAt) {
+    }
     private static class FailingSemanticIndexStore extends InMemoryReviewItemStore {
 
         private final Map<Long, String> indexedFailures = new LinkedHashMap<>();
