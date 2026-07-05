@@ -86,9 +86,7 @@ import { List, Popconfirm, Spin } from 'ant-design-vue';
 import { BasicForm, useForm } from '@/components/Form';
 import { propTypes } from '@/utils/propTypes';
 import { isFunction } from '@/utils/is';
-import { useMessage } from '@/hooks/web/useMessage';
 import { Icon } from '@/components/Icon';
-import moment from 'moment';
 
 import OTA from "@/assets/images/ota/ota.png";
 
@@ -101,8 +99,6 @@ const props = defineProps({
   // api
   api: propTypes.func,
 });
-
-const { createMessage } = useMessage();
 
 // 暴露内部方法
 const emit = defineEmits(['getMethod', 'delete', 'edit', 'view', 'download']);
@@ -207,11 +203,6 @@ function pageChange(p: number, pz: number) {
 function pageSizeChange(_current, size: number) {
   pageSize.value = size;
   fetch();
-}
-
-function formatTime(time: string) {
-  if (!time) return '-';
-  return moment(time).format('YYYY-MM-DD HH:mm:ss');
 }
 
 async function handleView(record: object) {
@@ -371,4 +362,3 @@ async function handleDownload(record: object) {
   }
 }
 </style>
-

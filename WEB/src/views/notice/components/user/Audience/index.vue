@@ -46,7 +46,7 @@ import { Button } from '@/components/Button'
   import { BasicTable, useTable, TableAction } from '/@/components/Table';
   import { downloadByUrl } from '/@/utils/file/download';
   import { Upload } from 'ant-design-vue';
-  import { getColumns, getFormConfig } from './Data.tsx';
+  import { getColumns, getFormConfig } from './Data';
   import { useMessage } from '/@/hooks/web/useMessage';
   import UserConfigModal from './component/UserConfigModal.vue';
   import { useModal } from '/@/components/Modal';
@@ -139,7 +139,7 @@ import { Button } from '@/components/Button'
           createMessage.success(ret?.message);
         } else {
           notification.open({
-            getContainer: () => document.querySelector('.user-warpper'),
+            getContainer: () => document.querySelector('.user-warpper') as HTMLElement,
             placement: 'topLeft',
             message: '导入失败',
             description: ret?.data?.map((item) => {

@@ -28,7 +28,7 @@
       <RadioGroup
         v-model:value="contentTab"
         button-style="solid"
-        size="middle"
+        size="default"
         class="mode-radio-group"
         @change="handleContentTabChange"
       >

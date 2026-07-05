@@ -69,7 +69,7 @@
 <script lang="ts" setup>
   import { computed, ref } from 'vue';
   import { BasicModal, useModalInner } from '/@/components/Modal';
-  import { BasicForm, useForm } from '/@/components/Form';
+  import { BasicForm, useForm, type FormSchema } from '/@/components/Form';
   import { useMessage } from '/@/hooks/web/useMessage';
   import {
     templateFormSchemas,
@@ -96,8 +96,8 @@
 
   const emits = defineEmits(['success']);
   const { createMessage } = useMessage();
-  const httpParamsRef = ref(null);
-  const describeRef = ref(null);
+  const httpParamsRef = ref<InstanceType<typeof HttpParams> | null>(null);
+  const describeRef = ref<InstanceType<typeof Describe> | null>(null);
   const opertionType = ref('add');
 
   const DESCRIBE_TYPE_MAP: Record<string, string> = {
@@ -109,7 +109,16 @@
     feishu: 'feishu',
   };
 
-  const formData = ref({
+  const asFormSchemaFactory = (factory: (opt?: any) => unknown[]) =>
+    (opt: any) => factory(opt) as FormSchema[];
+
+  const formData = ref<{
+    variableDefinitions: any[];
+    attachments: any[];
+    templateDataList: any[];
+    userGroupList: any[];
+    agent: any[];
+  }>({
     variableDefinitions: [],
     attachments: [],
     templateDataList: [],
@@ -139,7 +148,7 @@
       resetFields,
     },
   ] = useForm({
-    schemas: templateFormSchemas({ isVariable }),
+    schemas: templateFormSchemas({ isVariable }) as FormSchema[],
     labelWidth: '100px',
     layout: 'vertical',
     baseColProps: { span: 24 },
@@ -183,13 +192,13 @@
   }
 
   function changeNoticeType(type) {
-    const config = {
-      email: emailSchemas,
-      sms: smsSchemas,
-      weixin: weixinSchemas,
-      ding: dindinSchemas,
-      http: httpSchemas,
-      feishu: feishuSchemas,
+    const config: Record<string, (opt: any) => FormSchema[]> = {
+      email: asFormSchemaFactory(emailSchemas),
+      sms: asFormSchemaFactory(smsSchemas),
+      weixin: asFormSchemaFactory(weixinSchemas),
+      ding: asFormSchemaFactory(dindinSchemas),
+      http: asFormSchemaFactory(httpSchemas),
+      feishu: asFormSchemaFactory(feishuSchemas),
     };
     const fields = Object.keys(config)
       .map((c) => config[c]({}))
@@ -238,7 +247,7 @@
           let bodyValue = allFields.body !== undefined ? allFields.body : t_Msg.body;
           let bodyTypeValue = allFields.bodyType !== undefined ? allFields.bodyType : (t_Msg.bodyType || 'application/json');
           if (bodyValue === undefined || bodyValue === null) bodyValue = '';
-          const httpParams = httpParamsRef.value.getParams();
+          const httpParams = httpParamsRef.value?.getParams?.() || {};
           Object.keys(httpParams).forEach((key) => {
             if (key !== 'body' && key !== 'bodyType') t_Msg[key] = httpParams[key];
           });

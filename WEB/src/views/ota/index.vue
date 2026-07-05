@@ -89,7 +89,6 @@ import OtaPackageModal from "@/views/ota/components/OtaPackageModal/index.vue";
 import OtaPackageCards from "@/views/ota/components/OtaPackageCards/index.vue";
 import {useModal} from "@/components/Modal";
 import {downloadByUrl} from "@/utils/file/download";
-import ALERT from "@/assets/images/product/product_normal.png";
 import { Button } from '@/components/Button'
 const [registerAddModel, {openModal: openAddModal}] = useModal();
 

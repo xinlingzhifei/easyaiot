@@ -228,7 +228,7 @@ const rulesRef = reactive({ productName: [{ required: true, message: '请输入�
 const useForm = Form.useForm;
 const { validate, resetFields, validateInfos } = useForm(modelRef, rulesRef);
 
-function handleCLickChange(value) {
+function handleCLickChange(_value) {
   //console.log('handleCLickChange', value)
 }
 

@@ -96,7 +96,7 @@ const props = defineProps({
   api: propTypes.func,
 });
 const emit = defineEmits(['getMethod', 'delete', 'edit', 'view', 'go']);
-const data = ref([]);
+const data = ref<any[]>([]);
 
 const state = reactive({
   loading: true,
@@ -144,7 +144,7 @@ async function fetch(p = {}) {
   const {api, params} = props;
   if (api && isFunction(api)) {
     const res = await api({...params, pageNo: page.value, pageSize: pageSize.value, ...p});
-    let list = [];
+    let list: any[] = [];
     res['data'].forEach((element) => {
       if (element.type == 'tab') {
         list.push(element);

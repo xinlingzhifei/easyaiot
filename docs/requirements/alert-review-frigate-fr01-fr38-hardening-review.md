@@ -72,7 +72,7 @@ Command aliases used below:
 - `J1`: `mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewControllerTest,SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test`
 - `V1`: `python -m pytest test_record_export.py test_record_availability.py -q`
 - `W1`: `pnpm test:alert-review-workbench`; split modes are `pnpm test:alert-review-workbench:contract`, `pnpm test:alert-review-workbench:dev-api-mock`, and runner validation `pnpm test:alert-review-workbench:runner`.
-- `W2`: `pnpm exec tsc --noEmit --skipLibCheck --pretty false --allowJs false`; full `pnpm type:check` now exits but remains a release blocker until the remaining non-workbench Vue SFC type errors are cleared.
+- `W2`: `pnpm run type:check`; full Vue SFC type checking must exit 0 from the release tree.
 - `PG1`: `node .scripts/alert-review-postgres-migration-smoke.mjs --container=<postgres-container>`; applies `V20260702` and `V20260704` to a temporary database and verifies FR-01 ingest identity plus FR-20 ReviewSegment constraints against PostgreSQL.
 - `Smoke`: `POST /system/supervision/alert-review/integration-smoke` against release DEVICE + real VIDEO recordings.
 - `Pkg`: `node .scripts/verify-alert-review-release-package.mjs`; use `--require-clean` for a release artifact that must come only from HEAD.
@@ -140,7 +140,7 @@ Release packaging gates:
 - Full `pnpm type:check` must exit cleanly before release; the lightweight `tsc --allowJs false` check only proves ordinary TypeScript files.
 - The production migration `DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql` has local PostgreSQL 16 `btree_gist` smoke coverage for tenant-scoped historical segment overlap; rerun it against the release database shape before deploy.
 - The release smoke must use real DEVICE and VIDEO services, with configured alert record, record coverage, export, manifest, download audit, detail-stream seek, and case/event reverse-link paths.
-- Do not ship while the worktree-only FR files remain outside the release package, while `pnpm type:check` still reports non-workbench Vue SFC type errors, or before real VIDEO recording smoke proves playable/exportable evidence.
+- Do not ship while the worktree-only FR files remain outside the release package, while `pnpm run type:check` fails, or before real VIDEO recording smoke proves playable/exportable evidence.
 
 ## Required Release Gates
 
@@ -336,12 +336,12 @@ Release packaging gates:
 - Runtime patrol scheduler/outbox slice passed:
   `mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewServiceTest#runtimePatrolAndOutboxJobsCloseScheduledAlertDispatchLoop" -DfailIfNoTests=false test`
   Result: 1 test, 0 failures, 0 errors.
-- Full frontend `pnpm type:check` no longer stalls after narrowing heavy frontend barrel imports; it exits with existing non-workbench Vue SFC type errors. See Current Open Risks.
+- Full frontend `pnpm run type:check` passed locally after narrowing heavy frontend barrel imports and clearing the remaining non-workbench Vue SFC type errors.
 
 ## Current Open Risks
 
-- Frontend full `vue-tsc` / `pnpm type:check` no longer stalls locally after replacing several heavyweight barrel imports (`Application`, `Table`, `Dropdown`, `Container`, `Transition`, `Basic`, `utils`, `Form`) with narrow imports where only a small hook/type/helper was needed. The 2026-07-05 rerun exited with diagnostics in non-workbench modules, including `DeviceLog`, `devices/Event`, `devices/Service`, `notice/*ConfigModal`, `product/Edit.vue`, `product/index.vue`, `rulechains/CardList`, and `train/TrainTaskList`. Lightweight `pnpm exec tsc --noEmit --skipLibCheck --pretty false --allowJs false` and `pnpm test:alert-review-workbench` exit 0, but the full Vue SFC type gate remains a release blocker until those existing module errors are cleared.
-- Release packaging is staged and passes `Pkg` default mode, but a HEAD-only release artifact is still blocked by `Pkg --require-clean` until the staged FR package is committed.
+- Frontend full `vue-tsc` / `pnpm run type:check` exits 0 locally after replacing heavyweight barrel imports with narrow imports and clearing the remaining non-workbench Vue SFC type errors in device logs/events/services, notice configuration, product, rulechain, and train-task modules.
+- Release packaging has been committed into HEAD and `node .scripts/verify-alert-review-release-package.mjs --require-clean` exits 0 locally.
 - Real VIDEO integration now has docker-compose defaults for local iot-system -> VIDEO record availability/base/export routes, and empty env values still degrade with `video_url_not_configured`; this does not yet prove live recording availability.
 - Workbench Chinese copy is now guarded by the E2E contract against replacement characters/common mojibake fragments and required UTF-8 labels; the remaining release risk is the broader WEB/VIDEO visible-copy scan outside the workbench.
 - Controller-level permission enforcement now has scoped parameters on export, download, timeline, detail stream, coverage, case timeline, and manifest verification endpoints; the remaining audit is to bind those parameters to the real tenant/user/camera permission source instead of caller-supplied lists.

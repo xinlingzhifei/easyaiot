@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { theme } from '@/settings/designSetting'
-import { DesignStateType, AppThemeColorType } from './designStore.d'
-import { setLocalStorage, getLocalStorage } from '@/utils'
+import type { DesignStateType, AppThemeColorType } from './designStore.d'
+import { setLocalStorage, getLocalStorage } from '@/utils/storage'
 import { StorageEnum } from '@/enums/storageEnum'
 import { ThemeEnum } from '@/enums/styleEnum'
 

@@ -63,10 +63,13 @@ defineOptions({
   name: 'AlarmPanel'
 })
 
-const props = defineProps<{
+withDefaults(defineProps<{
   alarmList?: any[]
   todayAlarmCount?: number
-}>()
+}>(), {
+  alarmList: () => [],
+  todayAlarmCount: 0,
+})
 
 const emit = defineEmits<{
   'play-alarm': [alarm: any]
@@ -148,12 +151,12 @@ const getTaskTypeClass = (alarm: any): string => {
 }
 
 // 获取图片展示 URL（与告警列表页一致，兼容 mini 本地路径 /video/alert/image）
-const getImageUrl = (alarm: any): string | null => {
+const getImageUrl = (alarm: any): string | undefined => {
   if (alarm.image) return alarm.image
   const raw = alarm.image_url
-  if (!raw) return null
+  if (!raw) return undefined
   const resolved = resolveAlertImageDisplayUrl(raw)
-  return resolved || null
+  return resolved || undefined
 }
 
 // 处理图片加载错误

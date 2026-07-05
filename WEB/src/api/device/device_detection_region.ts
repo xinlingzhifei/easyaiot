@@ -39,6 +39,9 @@ export interface DeviceDetectionRegion {
   is_enabled: boolean;
   sort_order: number;
   model_ids?: number[]; // 关联的算法模型ID列表
+  minStaySeconds?: number;
+  inertiaFrames?: number;
+  loiteringSeconds?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -141,4 +144,3 @@ export const updateDeviceCoverImage = (device_id: string) => {
     false,
   );
 };
-

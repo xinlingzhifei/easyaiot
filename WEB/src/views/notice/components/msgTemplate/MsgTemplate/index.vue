@@ -40,7 +40,9 @@
 </template>
 <script lang="ts" setup name="MsgTemplateList">
   import { Button } from '@/components/Button';
+  import type { BasicColumn } from '/@/components/Table';
   import { BasicTable, useTable, TableAction } from '/@/components/Table';
+  import type { FormProps } from '/@/components/Form';
   import { useMessage } from '/@/hooks/web/useMessage';
   import { useModal } from '/@/components/Modal';
   import { useDrawer } from '@/components/Drawer';
@@ -85,18 +87,18 @@
     fetchSetting: { listField: 'data', totalField: 'total' },
   });
 
-  function getFormConfig() {
+  function getFormConfig(): Partial<FormProps> {
     return {
       labelWidth: 70,
       baseColProps: { span: 6 },
       schemas: [
-        ...props.searchField,
+        ...(props.searchField as any[]),
         { field: 'msgName', label: '模板名称', component: 'Input' },
       ],
-    };
+    } as Partial<FormProps>;
   }
 
-  function getColumns() {
+  function getColumns(): BasicColumn[] {
     return [
       {
         title: '模板名称',
@@ -108,9 +110,9 @@
         dataIndex: 'title',
         ifShow: () => !['sms', 'http'].includes(props.pushType),
       },
-      ...props.columns,
+      ...(props.columns as BasicColumn[]),
       { width: 200, title: '操作', dataIndex: 'action', fixed: 'right' },
-    ];
+    ] as BasicColumn[];
   }
 
   const handleDelete = async ({ id }) => {

@@ -87,7 +87,7 @@ import { deleteModel, getModelPage } from "@/api/device/model";
 import ModelCardList from "../ModelCardList/index.vue";
 import { Button } from '@/components/Button'
 import { buildModelDownloadUrl } from './downloadUrl';
-const { createMessage, createConfirm } = useMessage();
+const { createMessage } = useMessage();
 
 const [registerAddModel, { openDrawer: openAddModal }] = useDrawer();
 defineOptions({ name: 'ModelList' })
@@ -147,7 +147,7 @@ const handleDelete = async (record) => {
     await deleteModel(record.id);
     createMessage.success('删除成功');
     handleSuccess();
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     createMessage.error('删除失败');
   }
@@ -223,7 +223,7 @@ const handleDownload = async (record) => {
     window.URL.revokeObjectURL(url);
     
     createMessage.success('模型下载成功');
-  } catch (error) {
+  } catch (error: any) {
     console.error('下载模型失败:', error);
     createMessage.error('下载模型失败: ' + (error.message || '未知错误'));
   }

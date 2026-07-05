@@ -51,7 +51,7 @@ import { Button } from '@/components/Button'
 <script lang="ts" setup name="PlanTask">
   import { onMounted } from 'vue';
   import { BasicTable, useTable, TableAction } from '/@/components/Table';
-  import { getColumns, getFormConfig } from './Data.tsx';
+  import { getColumns, getFormConfig } from './Data';
   import { useMessage } from '/@/hooks/web/useMessage';
   import TaskConfig from './component/TaskConfig.vue';
   import { useModal } from '/@/components/Modal';

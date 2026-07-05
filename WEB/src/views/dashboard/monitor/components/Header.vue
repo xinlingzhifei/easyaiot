@@ -37,7 +37,7 @@ defineOptions({
   name: 'MonitorHeader'
 })
 
-const props = defineProps<{
+defineProps<{
   activeVideos?: any[]
 }>()
 
