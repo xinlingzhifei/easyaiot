@@ -17,6 +17,7 @@ public class SupervisionAlertReviewCaseAuditDO extends BaseDO {
     private Long reviewItemId;
     private String actionType;
     private String actionNote;
+    private String metadata;
     private Long operatorUserId;
     private LocalDateTime happenedAt;
     private Integer version;

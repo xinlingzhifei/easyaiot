@@ -8,6 +8,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseI
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewEvidenceMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewExportJobMapper;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewIngestIdentityMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewItemMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuleMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeLockMapper;
@@ -18,6 +19,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewSeman
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewUserStatusMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEventMapper;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewMapperStore;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
 import org.junit.jupiter.api.Test;
 
@@ -160,6 +162,115 @@ class SupervisionAlertReviewMapperStoreTest {
     }
 
     @Test
+    void createRejectsReviewSegmentWithoutCameraBeforeSegmentInsert() {
+        LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 25);
+        AtomicInteger segmentInserts = new AtomicInteger();
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                SupervisionAlertReviewItemDO itemDO = (SupervisionAlertReviewItemDO) args[0];
+                itemDO.setId(102L);
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewSegmentMapper reviewSegmentMapper = mapper(SupervisionAlertReviewSegmentMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                segmentInserts.incrementAndGet();
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> store.create(new ReviewItemDraft(
+                        "video",
+                        "alert-missing-segment-camera",
+                        "restricted_area",
+                        "restricted_area",
+                        startTime,
+                        "device-01",
+                        null,
+                        "zone-a",
+                        "person",
+                        "hash-missing-segment-camera",
+                        Map.of("reviewSegment", Map.of(
+                                "segmentId", "seg-missing-camera",
+                                "status", "alert",
+                                "severity", "alert",
+                                "startTime", startTime.toString(),
+                                "endTime", startTime.plusSeconds(20).toString(),
+                                "sourceAlertIds", List.of("alert-missing-segment-camera")
+                        )),
+                        "not_required",
+                        startTime,
+                        null
+                ), List.of()));
+
+        assertTrue(error.getMessage().contains("review segment cameraId is required"));
+        assertEquals(0, segmentInserts.get());
+    }
+
+    @Test
+    void createRejectsInvalidReviewSegmentStatusBeforeSegmentInsert() {
+        LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 35);
+        AtomicInteger segmentInserts = new AtomicInteger();
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                SupervisionAlertReviewItemDO itemDO = (SupervisionAlertReviewItemDO) args[0];
+                itemDO.setId(103L);
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewSegmentMapper reviewSegmentMapper = mapper(SupervisionAlertReviewSegmentMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                segmentInserts.incrementAndGet();
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> store.create(new ReviewItemDraft(
+                        "video",
+                        "alert-invalid-segment-status",
+                        "restricted_area",
+                        "restricted_area",
+                        startTime,
+                        "device-01",
+                        "camera-01",
+                        "zone-a",
+                        "person",
+                        "hash-invalid-segment-status",
+                        Map.of("reviewSegment", Map.of(
+                                "segmentId", "seg-invalid-status",
+                                "cameraId", "camera-01",
+                                "status", "paused",
+                                "severity", "alert",
+                                "startTime", startTime.toString(),
+                                "endTime", startTime.plusSeconds(20).toString(),
+                                "sourceAlertIds", List.of("alert-invalid-segment-status")
+                        )),
+                        "not_required",
+                        startTime,
+                        null
+                ), List.of()));
+
+        assertTrue(error.getMessage().contains("review segment status must be active, detection, alert, or ended"));
+        assertEquals(0, segmentInserts.get());
+    }
+
+    @Test
     void createScopesReviewSegmentOverlapProbeByTenant() {
         LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 45);
         AtomicInteger overlapArgCount = new AtomicInteger();
@@ -223,12 +334,78 @@ class SupervisionAlertReviewMapperStoreTest {
         assertEquals("camera-01", overlapArgs.get()[1]);
     }
 
+    @Test
+    void updateReviewStatusRejectsConcurrentStatusConflict() {
+        LocalDateTime firstReviewedAt = LocalDateTime.of(2026, 7, 4, 11, 0);
+        LocalDateTime ignoredAt = LocalDateTime.of(2026, 7, 4, 11, 1);
+        AtomicInteger selectCount = new AtomicInteger();
+        AtomicInteger conditionalUpdateCount = new AtomicInteger();
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {
+            if ("selectById".equals(method.getName())) {
+                if (selectCount.incrementAndGet() == 1) {
+                    return reviewItem(101L, SupervisionAlertReviewService.STATUS_PENDING_REVIEW, null, null);
+                }
+                return reviewItem(101L, SupervisionAlertReviewService.STATUS_REVIEWED, 9001L, firstReviewedAt);
+            }
+            if ("updateReviewStatusIfCurrent".equals(method.getName())) {
+                conditionalUpdateCount.incrementAndGet();
+                return 0;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> store.updateReviewStatus(
+                        101L,
+                        SupervisionAlertReviewService.STATUS_IGNORED,
+                        9002L,
+                        "duplicate",
+                        ignoredAt
+                ));
+
+        assertEquals("review_item_status_conflict: reviewed -> ignored", error.getMessage());
+        assertEquals(1, conditionalUpdateCount.get());
+    }
+
+    private static SupervisionAlertReviewItemDO reviewItem(Long id,
+                                                           String reviewStatus,
+                                                           Long reviewerUserId,
+                                                           LocalDateTime reviewedAt) {
+        return new SupervisionAlertReviewItemDO()
+                .setId(id)
+                .setTenantId(0L)
+                .setReviewItemNo("ARI-" + id)
+                .setSourceSystem("video")
+                .setRuleCode("restricted_area")
+                .setSourceAlertType("restricted_area")
+                .setDeviceId("device-01")
+                .setCameraId("camera-01")
+                .setZoneCode("zone-a")
+                .setObjectLabel("person")
+                .setFirstAlertTime(LocalDateTime.of(2026, 7, 4, 10, 55))
+                .setLastAlertTime(LocalDateTime.of(2026, 7, 4, 10, 55))
+                .setAlertCount(1)
+                .setSourceAlertIds("alert-101")
+                .setReviewData("{}")
+                .setReviewStatus(reviewStatus)
+                .setReviewerUserId(reviewerUserId)
+                .setReviewedAt(reviewedAt)
+                .setRecordEvidenceStatus("not_required")
+                .setVersion(0);
+    }
+
     private static SupervisionAlertReviewMapperStore newStore(SupervisionAlertReviewItemMapper reviewItemMapper,
                                                               SupervisionAlertReviewSegmentMapper reviewSegmentMapper,
                                                               SupervisionAlertReviewCaseItemMapper reviewCaseItemMapper) {
         return new SupervisionAlertReviewMapperStore(
                 reviewItemMapper,
                 noopMapper(SupervisionAlertReviewEvidenceMapper.class),
+                noopMapper(SupervisionAlertReviewIngestIdentityMapper.class),
                 noopMapper(SupervisionAlertReviewRuleMapper.class),
                 noopMapper(SupervisionAlertReviewCaseMapper.class),
                 reviewCaseItemMapper,

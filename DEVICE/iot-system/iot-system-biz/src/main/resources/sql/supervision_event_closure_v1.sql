@@ -164,6 +164,28 @@ ON system_supervision_alert_review_item(event_id);
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_rule_suggestion
 ON system_supervision_alert_review_item(rule_suggestion_status, camera_id, zone_code, object_label);
 
+CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
+  review_item_id BIGINT NOT NULL,
+  source_system VARCHAR(64) NOT NULL,
+  identity_key VARCHAR(256) NOT NULL,
+  source_alert_id VARCHAR(128),
+  source_payload_hash VARCHAR(128),
+  creator VARCHAR(64),
+  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updater VARCHAR(64),
+  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity
+ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)
+WHERE deleted = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_ingest_identity_item
+ON system_supervision_alert_review_ingest_identity(review_item_id);
+
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
@@ -188,6 +210,8 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT ck_supervision_alert_review_segment_time CHECK (end_time IS NULL OR end_time >= start_time),
+  CONSTRAINT ck_supervision_alert_review_segment_status CHECK (segment_status IN ('active', 'detection', 'alert', 'ended')),
+  CONSTRAINT ck_supervision_alert_review_segment_severity CHECK (severity IN ('detection', 'alert')),
   CONSTRAINT ex_supervision_alert_review_segment_camera_time EXCLUDE USING gist (
     tenant_id WITH =,
     camera_id WITH =,
@@ -325,6 +349,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_audit (
   review_item_id BIGINT,
   action_type VARCHAR(64) NOT NULL,
   action_note TEXT,
+  metadata TEXT,
   operator_user_id BIGINT,
   happened_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   version INTEGER NOT NULL DEFAULT 0,

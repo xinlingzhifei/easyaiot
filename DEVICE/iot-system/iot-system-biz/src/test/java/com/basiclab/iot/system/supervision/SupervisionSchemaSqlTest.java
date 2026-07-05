@@ -36,6 +36,7 @@ class SupervisionSchemaSqlTest {
                 "system_supervision_action",
                 "system_supervision_evidence_item",
                 "system_supervision_alert_review_item",
+                "system_supervision_alert_review_ingest_identity",
                 "system_supervision_alert_review_segment",
                 "system_supervision_alert_review_user_status",
                 "system_supervision_alert_review_evidence",
@@ -75,12 +76,16 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_action_event_id"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_evidence_event_id"));
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_item_no"));
+        assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity"));
+        assertTrue(sql.contains("ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)"));
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_no"));
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_item"));
         assertTrue(sql.contains("ON system_supervision_alert_review_segment(review_item_id)"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_status"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_time"));
+        assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_status"));
+        assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_severity"));
         assertTrue(sql.contains("CONSTRAINT ex_supervision_alert_review_segment_camera_time"));
         assertTrue(sql.contains("camera_id WITH ="));
         assertTrue(sql.contains("tsrange(start_time, COALESCE(end_time, 'infinity'::timestamp), '[)') WITH &&"));
@@ -158,6 +163,7 @@ class SupervisionSchemaSqlTest {
     void alertReviewTablesKeepClueEvidenceAndRegionRuleFields() throws IOException {
         String sql = readSchemaSql();
         String reviewItemTable = extractTableBody(sql, "system_supervision_alert_review_item");
+        String ingestIdentityTable = extractTableBody(sql, "system_supervision_alert_review_ingest_identity");
         String reviewSegmentTable = extractTableBody(sql, "system_supervision_alert_review_segment");
         String evidenceTable = extractTableBody(sql, "system_supervision_alert_review_evidence");
         String userStatusTable = extractTableBody(sql, "system_supervision_alert_review_user_status");
@@ -185,11 +191,19 @@ class SupervisionSchemaSqlTest {
         assertTrue(reviewItemTable.contains("record_evidence_message VARCHAR(256)"));
         assertTrue(sql.contains("ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, last_alert_time)"));
         assertTrue(sql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code, review_status, last_alert_time)"));
+        assertTrue(ingestIdentityTable.contains("tenant_id BIGINT NOT NULL DEFAULT 0"));
+        assertTrue(ingestIdentityTable.contains("review_item_id BIGINT NOT NULL"));
+        assertTrue(ingestIdentityTable.contains("source_system VARCHAR(64) NOT NULL"));
+        assertTrue(ingestIdentityTable.contains("identity_key VARCHAR(256) NOT NULL"));
+        assertTrue(ingestIdentityTable.contains("source_alert_id VARCHAR(128)"));
+        assertTrue(ingestIdentityTable.contains("source_payload_hash VARCHAR(128)"));
         assertTrue(reviewSegmentTable.contains("review_item_id BIGINT NOT NULL"));
         assertTrue(reviewSegmentTable.contains("segment_no VARCHAR(128) NOT NULL"));
         assertTrue(reviewSegmentTable.contains("camera_id VARCHAR(128) NOT NULL"));
         assertTrue(reviewSegmentTable.contains("severity VARCHAR(64) NOT NULL"));
         assertTrue(reviewSegmentTable.contains("segment_status VARCHAR(64) NOT NULL DEFAULT 'active'"));
+        assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_status"));
+        assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_severity"));
         assertTrue(reviewSegmentTable.contains("start_time TIMESTAMP NOT NULL"));
         assertTrue(reviewSegmentTable.contains("end_time TIMESTAMP"));
         assertTrue(reviewSegmentTable.contains("object_ids TEXT"));
@@ -224,6 +238,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(caseAuditTable.contains("review_item_id BIGINT"));
         assertTrue(caseAuditTable.contains("action_type VARCHAR(64) NOT NULL"));
         assertTrue(caseAuditTable.contains("action_note TEXT"));
+        assertTrue(caseAuditTable.contains("metadata TEXT"));
         assertTrue(semanticIndexTable.contains("review_item_id BIGINT NOT NULL"));
         assertTrue(semanticIndexTable.contains("camera_id VARCHAR(128)"));
         assertTrue(semanticIndexTable.contains("first_alert_time TIMESTAMP"));
@@ -274,12 +289,34 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("ADD COLUMN IF NOT EXISTS tenant_id BIGINT"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, last_alert_time)"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code, review_status, last_alert_time)"));
+        assertTrue(migrationSql.contains("CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity"));
+        assertTrue(migrationSql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity"));
+        assertTrue(migrationSql.contains("ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_segment(review_item_id)"));
+        assertTrue(migrationSql.contains("UPDATE system_supervision_alert_review_segment segment"));
+        assertTrue(migrationSql.contains("ON system_supervision_alert_review_segment(tenant_id, camera_id, start_time, end_time)"));
         assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_time"));
+        assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_status"));
+        assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_severity"));
         assertTrue(migrationSql.contains("ex_supervision_alert_review_segment_camera_time"));
         assertTrue(migrationSql.contains("DROP CONSTRAINT IF EXISTS ex_supervision_alert_review_segment_camera_time"));
+        assertTrue(migrationSql.contains("tenant_id WITH ="));
         assertTrue(migrationSql.contains("tsrange(start_time, COALESCE(end_time, 'infinity'::timestamp), '[)') WITH &&"));
         assertTrue(migrationSql.contains("system_supervision_alert_review_segment"));
+    }
+
+    @Test
+    void alertReviewSegmentTenantScopeMigrationKeepsStatusAndSeverityConstraints() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql");
+
+        assertTrue(Files.exists(migration), "tenant-scoped segment migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_status"));
+        assertTrue(migrationSql.contains("segment_status IN ('active', 'detection', 'alert', 'ended')"));
+        assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_severity"));
+        assertTrue(migrationSql.contains("severity IN ('detection', 'alert')"));
+        assertTrue(migrationSql.contains("tenant_id WITH ="));
+        assertTrue(migrationSql.contains("camera_id WITH ="));
     }
 
     @Test

@@ -19,6 +19,32 @@ ALTER TABLE system_supervision_alert_review_segment
 ALTER TABLE system_supervision_alert_review_segment
   ALTER COLUMN tenant_id SET NOT NULL;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'ck_supervision_alert_review_segment_status'
+  ) THEN
+    ALTER TABLE system_supervision_alert_review_segment
+      ADD CONSTRAINT ck_supervision_alert_review_segment_status
+      CHECK (segment_status IN ('active', 'detection', 'alert', 'ended'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'ck_supervision_alert_review_segment_severity'
+  ) THEN
+    ALTER TABLE system_supervision_alert_review_segment
+      ADD CONSTRAINT ck_supervision_alert_review_segment_severity
+      CHECK (severity IN ('detection', 'alert'));
+  END IF;
+END $$;
+
 DROP INDEX IF EXISTS idx_supervision_alert_review_segment_camera_time;
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time
 ON system_supervision_alert_review_segment(tenant_id, camera_id, start_time, end_time);

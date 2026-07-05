@@ -344,6 +344,14 @@ export interface AlertReviewSemanticIndexEvaluation {
   operatorUserId?: number
 }
 
+export interface AlertReviewRecordGapReasonDefinition {
+  code: string
+  category: string
+  labelZh: string
+  retryable: boolean
+  aliases?: string[]
+}
+
 export interface AlertReviewRuntimeHealth {
   totalCount: number
   missingRecordCount: number
@@ -353,6 +361,7 @@ export interface AlertReviewRuntimeHealth {
   exportFailureRate: number
   semanticBacklogCount: number
   recordGapReasons?: Record<string, number>
+  recordGapReasonCatalog?: Record<string, AlertReviewRecordGapReasonDefinition>
   repairableCount: number
   alerts: string[]
   measuredAt: string

@@ -916,6 +916,9 @@ async function handleRegionRuleSave(regions: DeviceDetectionRegion[]) {
       cameraId: item.cameraId || item.deviceId,
       zoneCode: item.zoneCode || region.region_name || String(region.id),
       objectLabel: item.objectLabel,
+      minStaySeconds: toOptionalNumber(region.minStaySeconds ?? item.ruleSuggestion?.proposedRule?.minStaySeconds),
+      inertiaFrames: toOptionalNumber(region.inertiaFrames),
+      loiteringSeconds: toOptionalNumber(region.loiteringSeconds),
       enabled: true,
     })
     createMessage.success('区域规则已保存')
@@ -1040,6 +1043,19 @@ function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
     time: entry.happenedAt,
     seek_time: entry.happenedAt,
     record_path: entry.materialUri,
+  })
+}
+
+function openCoverageSegment(segment: AlertReviewCoverageSegment) {
+  if (!segment.recordUri) {
+    createMessage.warn('record uri is empty')
+    return
+  }
+  emit('viewVideo', {
+    device_id: selectedItem.value?.cameraId || selectedItem.value?.deviceId,
+    time: segment.startTime,
+    seek_time: segment.startTime,
+    record_path: segment.recordUri,
   })
 }
 
@@ -1430,7 +1446,7 @@ defineExpose({
                   >
                     补证
                   </Button>
-                  <Button size="small" type="link" @click="openRuleDrawer(item)">
+                  <Button size="small" type="link" data-testid="alert-review-open-rule-drawer" @click="openRuleDrawer(item)">
                     区域规则
                   </Button>
                   <Button size="small" type="link" @click="openItem(item)">
@@ -1711,6 +1727,15 @@ defineExpose({
               <span v-if="segment.motion !== undefined">motion {{ segment.motion }}</span>
               <span v-if="segment.objects !== undefined">objects {{ segment.objects }}</span>
               <span v-if="segment.recordUri" class="coverage-uri">{{ segment.recordUri }}</span>
+              <Button
+                v-if="segment.recordUri"
+                size="small"
+                type="link"
+                data-testid="alert-review-coverage-seek"
+                @click="openCoverageSegment(segment)"
+              >
+                Seek
+              </Button>
             </div>
           </div>
 
@@ -1870,6 +1895,15 @@ defineExpose({
                 <div class="timeline-uri">
                   {{ evidence.materialUri || '-' }}
                 </div>
+                <Button
+                  v-if="evidence.materialUri"
+                  size="small"
+                  type="link"
+                  data-testid="alert-review-case-timeline-seek"
+                  @click="openCaseTimelineEntry(evidence)"
+                >
+                  Seek
+                </Button>
               </div>
             </div>
           </div>

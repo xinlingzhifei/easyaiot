@@ -8,6 +8,7 @@ import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.Re
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchCandidate;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -28,6 +29,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,16 +41,22 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final int DEFAULT_EXPORT_JOB_EXPIRES_DAYS = 7;
     private static final int DEFAULT_RUNTIME_OUTBOX_LIMIT = 50;
     private static final int MAX_RUNTIME_OUTBOX_LIMIT = 200;
+    private static final int MIN_RULE_SUGGESTION_SAMPLE_COUNT = 3;
     private static final int REVIEW_DATA_VERSION = 1;
     private static final String LOCAL_EMBEDDING_MODEL = "yfeieye-review-local-v1";
+    private static final String LOCAL_RULE_SUMMARY_MODEL = "local-rule-summary";
+    private static final String REVIEW_AI_SUMMARY_PROVIDER_VERSION = "review-ai-provider-v1";
+    private static final String REVIEW_AI_SUMMARY_PROMPT_VERSION = "review-ai-summary-prompt-v1";
+    private static final String AI_SUMMARY_GENERATED_ACTION = "ai_summary_generated";
+    private static final String AI_SUMMARY_CONFIRMED_ACTION = "ai_summary_confirmed";
+    private static final String AI_SUMMARY_REJECTED_ACTION = "ai_summary_rejected";
+    private static final String AI_SUMMARY_CONFIRMATION_CONFIRMED = "confirmed";
+    private static final String AI_SUMMARY_CONFIRMATION_REJECTED = "rejected";
     private static final String MATERIAL_SNAPSHOT = "snapshot";
     private static final String MATERIAL_RECORD = "record";
     private static final String MATERIAL_RECORD_COVERAGE = "record_coverage";
     private static final String MATERIAL_REVIEW_ACTION = "review_action";
-    private static final String RECORD_GAP_FILE_MISSING = "file_missing";
-    private static final String RECORD_GAP_FILE_EXPIRED = "file_expired";
-    private static final String RECORD_GAP_DISK_FULL = "disk_full";
-    private static final String RECORD_GAP_CACHE_FLUSH_FAILED = "cache_flush_failed";
+    private static final String RECORD_GAP_FILE_EXPIRED_ALIAS = "file_expired";
     private static final String FALLBACK_RULE_CODE = SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING;
     private static final List<String> DEFAULT_RULE_CANDIDATE_ACTIONS = List.of(
             "narrow_zone",
@@ -56,6 +64,36 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             "increase_min_stay",
             "require_zone",
             "suppress_label_zone"
+    );
+    private static final List<RecordGapReasonDefinition> RECORD_GAP_REASON_CATALOG = List.of(
+            new RecordGapReasonDefinition(RECORD_GAP_VIDEO_URL_NOT_CONFIGURED, "configuration",
+                    "\u672A\u914D\u7F6E", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_RECORD_SPACE_NOT_FOUND, "configuration",
+                    "\u65E0\u5F55\u50CF\u7A7A\u95F4", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_FILE_MISSING, "filesystem",
+                    "\u6587\u4EF6\u7F3A\u5931", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_PROBE_FAILED, "probe",
+                    "\u63A2\u6D4B\u5931\u8D25", true, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_PERMISSION_DENIED, "permission",
+                    "\u6743\u9650\u62D2\u7EDD", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_RETENTION_EXPIRED, "retention",
+                    "\u8FC7\u671F", false, List.of(RECORD_GAP_FILE_EXPIRED_ALIAS)),
+            new RecordGapReasonDefinition(RECORD_GAP_RECORD_NOT_FOUND, "configuration",
+                    "\u5F55\u50CF\u672A\u627E\u5230", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_MISSING_LOOKUP_FIELDS, "configuration",
+                    "\u67E5\u8BE2\u5B57\u6BB5\u7F3A\u5931", false, List.of()),
+            new RecordGapReasonDefinition("service_unavailable", "service",
+                    "\u670D\u52A1\u4E0D\u53EF\u7528", true, List.of()),
+            new RecordGapReasonDefinition("video_service_unavailable", "service",
+                    "\u89C6\u9891\u670D\u52A1\u4E0D\u53EF\u7528", true, List.of()),
+            new RecordGapReasonDefinition("stream_interrupted", "stream",
+                    "\u7801\u6D41\u4E2D\u65AD", true, List.of()),
+            new RecordGapReasonDefinition("recording_disabled", "configuration",
+                    "\u5F55\u50CF\u672A\u542F\u7528", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_DISK_FULL, "storage",
+                    "\u5F55\u50CF\u78C1\u76D8\u6EE1", false, List.of()),
+            new RecordGapReasonDefinition(RECORD_GAP_CACHE_FLUSH_FAILED, "cache",
+                    "\u7F13\u5B58\u843D\u76D8\u5931\u8D25", true, List.of())
     );
 
     private final ReviewItemStore reviewItemStore;
@@ -67,7 +105,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private final ReviewIntelligenceProvider reviewIntelligenceProvider;
     private final VideoEvidenceExportProvider videoEvidenceExportProvider;
     private final ReviewCameraPermissionResolver cameraPermissionResolver;
+    private final ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy;
     private final ConcurrentMap<String, Object> reviewSegmentIngestLocks = new ConcurrentHashMap<>();
+
+    private record RecordGapReasonDefinition(String code,
+                                             String category,
+                                             String labelZh,
+                                             boolean retryable,
+                                             List<String> aliases) {
+    }
 
     private record ReviewDataConsistency(Map<String, Object> reviewData,
                                          boolean schemaDrift,
@@ -87,7 +133,21 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                              VideoEvidenceExportProvider videoEvidenceExportProvider) {
         this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver, eventProjectionStore,
                 recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
-                ReviewCameraPermissionResolver.unrestricted());
+                ReviewCameraPermissionResolver.unrestricted(), new ReviewAiSummaryRedactionPolicy());
+    }
+
+    public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
+                                             ReviewRuleStore reviewRuleStore,
+                                             SupervisionEventService supervisionEventService,
+                                             RecordEvidenceResolver recordEvidenceResolver,
+                                             EventProjectionStore eventProjectionStore,
+                                             RecordCoverageResolver recordCoverageResolver,
+                                             ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                             VideoEvidenceExportProvider videoEvidenceExportProvider,
+                                             ReviewCameraPermissionResolver cameraPermissionResolver) {
+        this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver, eventProjectionStore,
+                recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
+                cameraPermissionResolver, new ReviewAiSummaryRedactionPolicy());
     }
 
     @Autowired
@@ -99,7 +159,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                              RecordCoverageResolver recordCoverageResolver,
                                              ReviewIntelligenceProvider reviewIntelligenceProvider,
                                              VideoEvidenceExportProvider videoEvidenceExportProvider,
-                                             ReviewCameraPermissionResolver cameraPermissionResolver) {
+                                             ReviewCameraPermissionResolver cameraPermissionResolver,
+                                             ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy) {
         this.reviewItemStore = Objects.requireNonNull(reviewItemStore, "reviewItemStore");
         this.reviewRuleStore = Objects.requireNonNull(reviewRuleStore, "reviewRuleStore");
         this.supervisionEventService = Objects.requireNonNull(supervisionEventService, "supervisionEventService");
@@ -109,6 +170,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         this.reviewIntelligenceProvider = Objects.requireNonNull(reviewIntelligenceProvider, "reviewIntelligenceProvider");
         this.videoEvidenceExportProvider = Objects.requireNonNull(videoEvidenceExportProvider, "videoEvidenceExportProvider");
         this.cameraPermissionResolver = Objects.requireNonNull(cameraPermissionResolver, "cameraPermissionResolver");
+        this.aiSummaryRedactionPolicy = Objects.requireNonNull(aiSummaryRedactionPolicy, "aiSummaryRedactionPolicy");
     }
 
     @Override
@@ -125,7 +187,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private ReviewItemAggregate ingestClueLocked(AlertClueCommand command, LocalDateTime alertTime, String cameraId) {
         String ruleCode = resolveRuleCode(command);
-        Optional<ReviewItemAggregate> existingIdentity = findExistingIngestIdentity(command);
+        List<String> identityKeys = ingestIdentityKeys(command);
+        Optional<ReviewItemAggregate> existingIdentity = findExistingIngestIdentity(command, identityKeys);
         if (existingIdentity.isPresent()) {
             return withEventProjection(existingIdentity.get());
         }
@@ -134,53 +197,59 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         LocalDateTime windowStart = alertTime.minusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
         LocalDateTime windowEnd = alertTime.plusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
 
-        return reviewItemStore.findMergeCandidate(
-                        command.sourceSystem(),
-                        cameraId,
-                        command.zoneCode(),
-                        ruleCode,
-                        windowStart,
-                        windowEnd
-                )
-                .filter(SupervisionAlertReviewServiceImpl::canMergeReviewSegment)
-                .map(candidate -> {
-                    String recordEvidenceStatus = mergeRecordEvidenceStatus(
-                            candidate.recordEvidenceStatus(),
-                            evidenceResult.recordEvidenceStatus()
-                    );
-                    return reviewItemStore.appendClue(candidate.id(),
+        try {
+            return reviewItemStore.findMergeCandidate(
+                            command.sourceSystem(),
+                            cameraId,
+                            command.zoneCode(),
+                            ruleCode,
+                            windowStart,
+                            windowEnd
+                    )
+                    .filter(SupervisionAlertReviewServiceImpl::canMergeReviewSegment)
+                    .map(candidate -> {
+                        String recordEvidenceStatus = mergeRecordEvidenceStatus(
+                                candidate.recordEvidenceStatus(),
+                                evidenceResult.recordEvidenceStatus()
+                        );
+                        return reviewItemStore.appendClue(candidate.id(),
+                                command.sourceAlertId(),
+                                alertTime,
+                                evidenceResult.evidenceItems(),
+                                withReviewWindow(
+                                        mergeReviewData(candidate.reviewData(), reviewData),
+                                        min(candidate.firstAlertTime(), alertTime),
+                                        max(candidate.lastAlertTime(), alertTime)
+                                ),
+                                recordEvidenceStatus,
+                                evidenceResult.recordEvidenceCheckedAt() == null
+                                        ? candidate.recordEvidenceCheckedAt()
+                                        : evidenceResult.recordEvidenceCheckedAt(),
+                                hasText(evidenceResult.recordEvidenceMessage())
+                                        ? evidenceResult.recordEvidenceMessage()
+                                        : candidate.recordEvidenceMessage());
+                    })
+                    .orElseGet(() -> reviewItemStore.create(new ReviewItemDraft(
+                            command.sourceSystem(),
                             command.sourceAlertId(),
+                            ruleCode,
+                            command.sourceAlertType(),
                             alertTime,
-                            evidenceResult.evidenceItems(),
-                            withReviewWindow(
-                                    mergeReviewData(candidate.reviewData(), reviewData),
-                                    min(candidate.firstAlertTime(), alertTime),
-                                    max(candidate.lastAlertTime(), alertTime)
-                            ),
-                            recordEvidenceStatus,
-                            evidenceResult.recordEvidenceCheckedAt() == null
-                                    ? candidate.recordEvidenceCheckedAt()
-                                    : evidenceResult.recordEvidenceCheckedAt(),
-                            hasText(evidenceResult.recordEvidenceMessage())
-                                    ? evidenceResult.recordEvidenceMessage()
-                                    : candidate.recordEvidenceMessage());
-                })
-                .orElseGet(() -> reviewItemStore.create(new ReviewItemDraft(
-                        command.sourceSystem(),
-                        command.sourceAlertId(),
-                        ruleCode,
-                        command.sourceAlertType(),
-                        alertTime,
-                        command.deviceId(),
-                        cameraId,
-                        command.zoneCode(),
-                        command.objectLabel(),
-                        command.sourcePayloadHash(),
-                        reviewData,
-                        evidenceResult.recordEvidenceStatus(),
-                        evidenceResult.recordEvidenceCheckedAt(),
-                        evidenceResult.recordEvidenceMessage()
-                ), evidenceResult.evidenceItems()));
+                            command.deviceId(),
+                            cameraId,
+                            command.zoneCode(),
+                            command.objectLabel(),
+                            command.sourcePayloadHash(),
+                            reviewData,
+                            evidenceResult.recordEvidenceStatus(),
+                            evidenceResult.recordEvidenceCheckedAt(),
+                            evidenceResult.recordEvidenceMessage()
+                    ), evidenceResult.evidenceItems()));
+        } catch (DuplicateKeyException ex) {
+            return findExistingIngestIdentity(command, identityKeys)
+                    .map(this::withEventProjection)
+                    .orElseThrow(() -> ex);
+        }
     }
 
     private Object reviewSegmentIngestLock(String cameraId) {
@@ -400,6 +469,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     public ReviewItemAggregate markReviewed(ReviewOperationCommand command) {
         Objects.requireNonNull(command, "command");
         requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate existing = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        if (isSameReviewStatus(existing, STATUS_REVIEWED)) {
+            markUserReviewed(command.reviewItemId(), command.reviewerUserId(), existing.reviewedAt());
+            return withEventProjection(existing);
+        }
+        assertReviewStatusTransitionAllowed(existing, STATUS_REVIEWED);
         LocalDateTime reviewedAt = LocalDateTime.now();
         markUserReviewed(command.reviewItemId(), command.reviewerUserId(), reviewedAt);
         return withEventProjection(reviewItemStore.updateReviewStatus(
@@ -431,6 +507,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     public ReviewItemAggregate ignore(ReviewOperationCommand command) {
         Objects.requireNonNull(command, "command");
         requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate existing = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        if (isSameReviewStatus(existing, STATUS_IGNORED)) {
+            markUserReviewed(command.reviewItemId(), command.reviewerUserId(), existing.reviewedAt());
+            return withEventProjection(existing);
+        }
+        assertReviewStatusTransitionAllowed(existing, STATUS_IGNORED);
         LocalDateTime reviewedAt = LocalDateTime.now();
         markUserReviewed(command.reviewItemId(), command.reviewerUserId(), reviewedAt);
         return withEventProjection(reviewItemStore.updateReviewStatus(
@@ -451,6 +534,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (item.eventId() != null || STATUS_CONVERTED.equals(item.reviewStatus())) {
             throw new IllegalStateException("converted_review_item_cannot_be_marked_false_positive");
         }
+        if (isSameReviewStatus(item, STATUS_FALSE_POSITIVE)) {
+            markUserReviewed(command.reviewItemId(), command.reviewerUserId(), item.reviewedAt());
+            return withEventProjection(item);
+        }
+        assertReviewStatusTransitionAllowed(item, STATUS_FALSE_POSITIVE);
         LocalDateTime reviewedAt = LocalDateTime.now();
         markUserReviewed(command.reviewItemId(), command.reviewerUserId(), reviewedAt);
         return withEventProjection(reviewItemStore.updateFalsePositive(
@@ -1070,6 +1158,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 missingRecordCount + semanticBacklogCount + failedExportJobCount
                         + reviewDataSchemaDriftCount + reviewSegmentDoubleWriteDriftCount,
                 Map.copyOf(recordGapReasons),
+                recordGapReasonCatalog(),
                 List.copyOf(alerts),
                 LocalDateTime.now(),
                 command.operatorUserId()
@@ -1406,15 +1495,26 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .map(id -> withEventProjection(reviewItemStore.findById(id).orElse(null)))
                 .filter(Objects::nonNull)
                 .toList();
-        Optional<ReviewAiSummary> providerSummary = reviewIntelligenceProvider.summarize(new ReviewAiSummaryRequest(
+        ReviewAiSummaryRequest rawSummaryRequest = new ReviewAiSummaryRequest(
                 reviewCaseId,
                 operatorUserId,
                 reviewItemIds,
                 timeline,
                 reviewItems.stream().map(this::toSummaryContext).toList()
-        ));
+        );
+        AiSummaryRedactionResult redaction = redactAiSummaryRequest(rawSummaryRequest);
+        ReviewAiSummaryRequest summaryRequest = redaction.request();
+        List<String> redactedFields = redaction.redactedFields();
+        Optional<ReviewAiSummary> providerSummary = reviewIntelligenceProvider.summarize(summaryRequest);
         if (providerSummary.isPresent()) {
-            return withStructuredAiSummaryData(providerSummary.get(), reviewItems);
+            ReviewAiSummary enrichedSummary = withStructuredAiSummaryData(
+                    providerSummary.get(),
+                    reviewItems,
+                    summaryRequest,
+                    redactedFields
+            );
+            persistAiSummaryAudit(enrichedSummary, operatorUserId);
+            return enrichedSummary;
         }
         List<String> keyFacts = new ArrayList<>();
         List<String> evidenceGaps = new ArrayList<>();
@@ -1441,15 +1541,26 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                         + keyFacts.stream().map(fact -> fact.split(" zone ")[0]).distinct().count()
                         + " camera view(s).";
         String title = "review case " + reviewCaseId;
-        Map<String, Object> structuredData = buildStructuredAiSummaryData(
+        Map<String, Object> structuredData = new LinkedHashMap<>(buildStructuredAiSummaryData(
                 reviewCaseId,
                 title,
                 summary,
                 reviewItems,
                 evidenceGaps,
                 recommendedActions
-        );
-        return new ReviewAiSummary(
+        ));
+        LocalDateTime generatedAt = LocalDateTime.now();
+        String generatedBy = operatorUserId == null
+                ? LOCAL_RULE_SUMMARY_MODEL
+                : LOCAL_RULE_SUMMARY_MODEL + ":" + operatorUserId;
+        structuredData.put("aiProvenance", buildAiSummaryProvenance(
+                summaryRequest,
+                generatedBy,
+                generatedAt,
+                LOCAL_RULE_SUMMARY_MODEL,
+                redactedFields
+        ));
+        ReviewAiSummary generatedSummary = new ReviewAiSummary(
                 reviewCaseId,
                 reviewItemIds,
                 title,
@@ -1457,9 +1568,82 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 List.copyOf(keyFacts),
                 List.copyOf(evidenceGaps),
                 List.copyOf(new LinkedHashSet<>(recommendedActions)),
-                LocalDateTime.now(),
-                operatorUserId == null ? "local-rule-summary" : "local-rule-summary:" + operatorUserId,
-                structuredData
+                generatedAt,
+                generatedBy,
+                immutableNonNullMap(structuredData)
+        );
+        persistAiSummaryAudit(generatedSummary, operatorUserId);
+        return generatedSummary;
+    }
+
+    @Override
+    public ReviewAiSummaryConfirmation confirmReviewCaseAiSummary(ReviewAiSummaryConfirmationCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewCaseId(), "reviewCaseId");
+        String confirmationStatus = normalizeAiSummaryConfirmationStatus(command.confirmationStatus());
+        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(command.reviewCaseId());
+        ReviewCaseTimelineItem generatedAudit = latestCaseAudit(timeline, AI_SUMMARY_GENERATED_ACTION)
+                .orElseThrow(() -> new IllegalStateException(
+                        "AI summary generation audit is required before confirmation: " + command.reviewCaseId()));
+        Map<String, Object> generatedNote = parseAuditNote(generatedAudit.actionNote());
+        String promptHash = toText(generatedNote.get("promptHash"));
+        String promptVersion = toText(generatedNote.get("promptVersion"));
+        String summaryHash = toText(generatedNote.get("summaryHash"));
+        Optional<ReviewCaseTimelineItem> latestConfirmation = latestAiSummaryConfirmation(
+                timeline,
+                generatedAudit.happenedAt(),
+                promptHash
+        );
+        String previousStatus = latestConfirmation
+                .map(ReviewCaseTimelineItem::actionNote)
+                .map(SupervisionAlertReviewServiceImpl::parseAuditNote)
+                .map(note -> toText(note.get("humanConfirmationStatus")))
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .orElse(null);
+        if (latestConfirmation.isPresent() && confirmationStatus.equals(previousStatus)) {
+            return buildAiSummaryConfirmation(
+                    command,
+                    confirmationStatus,
+                    previousStatus,
+                    promptHash,
+                    promptVersion,
+                    summaryHash,
+                    latestConfirmation.get().happenedAt(),
+                    true,
+                    parseAuditNote(latestConfirmation.get().actionNote())
+            );
+        }
+
+        LocalDateTime confirmedAt = LocalDateTime.now();
+        Map<String, Object> metadata = aiSummaryConfirmationMetadata(
+                command,
+                confirmationStatus,
+                previousStatus,
+                generatedAudit,
+                generatedNote,
+                confirmedAt
+        );
+        reviewItemStore.recordCaseAudit(
+                command.reviewCaseId(),
+                null,
+                AI_SUMMARY_CONFIRMATION_CONFIRMED.equals(confirmationStatus)
+                        ? AI_SUMMARY_CONFIRMED_ACTION
+                        : AI_SUMMARY_REJECTED_ACTION,
+                aiSummaryConfirmationAuditNote(metadata),
+                command.operatorUserId(),
+                confirmedAt,
+                metadata
+        );
+        return buildAiSummaryConfirmation(
+                command,
+                confirmationStatus,
+                previousStatus,
+                promptHash,
+                promptVersion,
+                summaryHash,
+                confirmedAt,
+                false,
+                metadata
         );
     }
 
@@ -1472,26 +1656,40 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         List<Long> reviewItemIds = reviewItems.stream().map(ReviewItemAggregate::id).toList();
         List<String> evidenceGaps = new ArrayList<>();
         List<String> recommendedActions = new ArrayList<>();
+        int missingRecordCount = 0;
+        int falsePositiveCount = 0;
+        int convertedEventCount = 0;
         for (ReviewItemAggregate item : reviewItems) {
-            if (RECORD_EVIDENCE_MISSING.equals(item.recordEvidenceStatus())
-                    || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus())) {
+            if (hasRecordEvidenceGap(item)) {
+                missingRecordCount++;
                 evidenceGaps.add("review item " + item.reviewItemNo()
                         + " record evidence " + item.recordEvidenceStatus());
                 recommendedActions.add("backfill record evidence for " + item.reviewItemNo());
             }
             if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {
+                falsePositiveCount++;
                 recommendedActions.add("review rule suggestion for " + item.reviewItemNo());
             }
             if (item.eventId() != null) {
+                convertedEventCount++;
                 recommendedActions.add("track supervision event " + item.eventId());
             }
         }
+        ReviewSemanticIndexEvaluation semantic = evaluateSemanticIndex(
+                new ReviewSemanticIndexEvaluationCommand(query, command.operatorUserId()));
+        Set<Long> reportReviewItemIds = new LinkedHashSet<>(reviewItemIds);
+        List<ReviewEvidenceExportJob> exportJobs = reviewItemStore.listAllExportJobs().stream()
+                .filter(job -> exportJobContainsAnyReviewItem(job, reportReviewItemIds))
+                .toList();
+        int exportFailureCount = (int) exportJobs.stream()
+                .filter(job -> EXPORT_JOB_FAILED.equals(job.status()))
+                .count();
         LocalDateTime generatedAt = LocalDateTime.now();
         String title = reportType + " review report"
                 + (command.periodStart() == null ? "" : " " + command.periodStart().toLocalDate());
         String summary = reviewItems.size() + " review item(s), "
                 + evidenceGaps.size() + " evidence gap(s), "
-                + reviewItems.stream().filter(item -> item.eventId() != null).count() + " converted event(s).";
+                + convertedEventCount + " converted event(s).";
         List<String> distinctActions = List.copyOf(new LinkedHashSet<>(recommendedActions));
         Map<String, Object> structuredData = new LinkedHashMap<>(buildStructuredAiSummaryData(
                 null,
@@ -1506,6 +1704,23 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         structuredData.put("periodEnd", command.periodEnd() == null ? null : command.periodEnd().toString());
         structuredData.put("reviewItemCount", reviewItems.size());
         structuredData.put("evidenceGapCount", evidenceGaps.size());
+        structuredData.put("missingRecordCount", missingRecordCount);
+        structuredData.put("missingRecordRate", roundRate(missingRecordCount, reviewItems.size()));
+        structuredData.put("falsePositiveCount", falsePositiveCount);
+        structuredData.put("falsePositiveRate", roundRate(falsePositiveCount, reviewItems.size()));
+        structuredData.put("convertedEventCount", convertedEventCount);
+        structuredData.put("semanticBacklogCount", semantic.staleReviewItemIds().size());
+        structuredData.put("semanticBacklogActions", semantic.recommendedActions());
+        structuredData.put("exportJobCount", exportJobs.size());
+        structuredData.put("exportFailureCount", exportFailureCount);
+        structuredData.put("exportFailureRate", roundRate(exportFailureCount, exportJobs.size()));
+        structuredData.put("responsibilityUnitDimensions", buildReportDimensions(
+                reviewItems,
+                SupervisionAlertReviewServiceImpl::reportResponsibilityUnit
+        ));
+        structuredData.put("areaDimensions", buildReportDimensions(reviewItems, ReviewItemAggregate::zoneCode));
+        structuredData.put("cameraDimensions", buildReportDimensions(reviewItems, ReviewItemAggregate::cameraId));
+        structuredData.put("ruleDimensions", buildReportDimensions(reviewItems, ReviewItemAggregate::ruleCode));
         structuredData.put("operatorUserId", command.operatorUserId());
         structuredData.put("generatedAt", generatedAt.toString());
         return new ReviewOperationsReport(
@@ -1519,6 +1734,62 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.operatorUserId(),
                 immutableNonNullMap(structuredData)
         );
+    }
+
+    private Map<String, Object> buildReportDimensions(List<ReviewItemAggregate> reviewItems,
+                                                      Function<ReviewItemAggregate, String> classifier) {
+        Map<String, List<ReviewItemAggregate>> grouped = new TreeMap<>();
+        for (ReviewItemAggregate item : reviewItems == null ? List.<ReviewItemAggregate>of() : reviewItems) {
+            String key = firstText(classifier.apply(item), "unknown");
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(item);
+        }
+        Map<String, Object> dimensions = new LinkedHashMap<>();
+        for (Map.Entry<String, List<ReviewItemAggregate>> entry : grouped.entrySet()) {
+            dimensions.put(entry.getKey(), reportDimensionSummary(entry.getValue()));
+        }
+        return immutableNonNullMap(dimensions);
+    }
+
+    private Map<String, Object> reportDimensionSummary(List<ReviewItemAggregate> reviewItems) {
+        int totalCount = reviewItems == null ? 0 : reviewItems.size();
+        int missingRecordCount = 0;
+        int falsePositiveCount = 0;
+        int convertedEventCount = 0;
+        for (ReviewItemAggregate item : reviewItems == null ? List.<ReviewItemAggregate>of() : reviewItems) {
+            if (hasRecordEvidenceGap(item)) {
+                missingRecordCount++;
+            }
+            if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {
+                falsePositiveCount++;
+            }
+            if (item.eventId() != null) {
+                convertedEventCount++;
+            }
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("reviewItemCount", totalCount);
+        summary.put("missingRecordCount", missingRecordCount);
+        summary.put("missingRecordRate", roundRate(missingRecordCount, totalCount));
+        summary.put("falsePositiveCount", falsePositiveCount);
+        summary.put("falsePositiveRate", roundRate(falsePositiveCount, totalCount));
+        summary.put("convertedEventCount", convertedEventCount);
+        return immutableNonNullMap(summary);
+    }
+
+    private static String reportResponsibilityUnit(ReviewItemAggregate item) {
+        if (item == null) {
+            return "unknown";
+        }
+        Object configuredUnit = item.reviewData() == null ? null : item.reviewData().get("responsibilityUnit");
+        return firstText(toText(configuredUnit), firstText(item.cameraId(), "unknown"));
+    }
+
+    private static boolean exportJobContainsAnyReviewItem(ReviewEvidenceExportJob job, Set<Long> reviewItemIds) {
+        if (job == null || job.exportPackage() == null || reviewItemIds == null || reviewItemIds.isEmpty()) {
+            return false;
+        }
+        List<Long> exportedIds = job.exportPackage().reviewItemIds();
+        return exportedIds != null && exportedIds.stream().anyMatch(reviewItemIds::contains);
     }
 
     @Override
@@ -2501,7 +2772,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (("record_storage_drift:" + RECORD_GAP_FILE_MISSING).equals(alert)) {
             return "review_missing_record_file";
         }
-        if (("record_storage_drift:" + RECORD_GAP_FILE_EXPIRED).equals(alert)) {
+        if (("record_storage_drift:" + RECORD_GAP_RETENTION_EXPIRED).equals(alert)) {
             return "verify_record_retention_cleanup";
         }
         if (("record_storage_drift:" + RECORD_GAP_DISK_FULL).equals(alert)) {
@@ -2564,24 +2835,34 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             return null;
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case RECORD_GAP_VIDEO_URL_NOT_CONFIGURED,
-                 RECORD_GAP_MISSING_LOOKUP_FIELDS,
-                 RECORD_GAP_RECORD_NOT_FOUND,
-                 "service_unavailable",
-                 "video_service_unavailable",
-                 "permission_denied",
-                 "retention_expired",
-                 "stream_interrupted",
-                 "recording_disabled",
-                 "record_space_not_found",
-                 "probe_failed",
-                 RECORD_GAP_FILE_MISSING,
-                 RECORD_GAP_FILE_EXPIRED,
-                 RECORD_GAP_DISK_FULL,
-                 RECORD_GAP_CACHE_FLUSH_FAILED -> normalized;
-            default -> RECORD_GAP_RECORD_NOT_FOUND;
-        };
+        return recordGapReasonDefinition(normalized)
+                .map(RecordGapReasonDefinition::code)
+                .orElse(RECORD_GAP_RECORD_NOT_FOUND);
+    }
+
+    private static Optional<RecordGapReasonDefinition> recordGapReasonDefinition(String value) {
+        if (!hasText(value)) {
+            return Optional.empty();
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return RECORD_GAP_REASON_CATALOG.stream()
+                .filter(definition -> definition.code().equals(normalized)
+                        || definition.aliases().contains(normalized))
+                .findFirst();
+    }
+
+    private static Map<String, Map<String, Object>> recordGapReasonCatalog() {
+        Map<String, Map<String, Object>> catalog = new LinkedHashMap<>();
+        for (RecordGapReasonDefinition definition : RECORD_GAP_REASON_CATALOG) {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("code", definition.code());
+            values.put("category", definition.category());
+            values.put("labelZh", definition.labelZh());
+            values.put("retryable", definition.retryable());
+            values.put("aliases", List.copyOf(definition.aliases()));
+            catalog.put(definition.code(), Map.copyOf(values));
+        }
+        return Map.copyOf(catalog);
     }
 
     private static Set<String> recordStorageGapReasons(ReviewItemAggregate item) {
@@ -2606,7 +2887,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static boolean isRecordStorageDriftReason(String reason) {
         return switch (reason) {
             case RECORD_GAP_FILE_MISSING,
-                 RECORD_GAP_FILE_EXPIRED,
+                 RECORD_GAP_RETENTION_EXPIRED,
                  RECORD_GAP_DISK_FULL,
                  RECORD_GAP_CACHE_FLUSH_FAILED -> true;
             default -> false;
@@ -3305,6 +3586,21 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         reviewItemStore.upsertUserReviewStatus(reviewItemId, reviewerUserId, true, reviewedAt);
     }
 
+    private static boolean isSameReviewStatus(ReviewItemAggregate item, String targetStatus) {
+        return Objects.equals(targetStatus, item.reviewStatus());
+    }
+
+    private static void assertReviewStatusTransitionAllowed(ReviewItemAggregate item, String targetStatus) {
+        String currentStatus = item.reviewStatus();
+        if (currentStatus == null || STATUS_PENDING_REVIEW.equals(currentStatus)) {
+            return;
+        }
+        if (Objects.equals(currentStatus, targetStatus)) {
+            return;
+        }
+        throw new IllegalStateException("review_item_status_conflict: " + currentStatus + " -> " + targetStatus);
+    }
+
     private boolean matchesReviewerStatus(Long reviewerUserId, Long reviewItemId) {
         return reviewerUserId == null || reviewItemStore.findUserReviewStatus(reviewItemId, reviewerUserId)
                 .map(ReviewUserStatusView::hasBeenReviewed)
@@ -3341,8 +3637,150 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
     }
 
-    private static ReviewAiSummary withStructuredAiSummaryData(ReviewAiSummary summary,
-                                                               List<ReviewItemAggregate> reviewItems) {
+    private record AiSummaryRedactionResult(ReviewAiSummaryRequest request,
+                                            List<String> redactedFields) {
+    }
+
+    private AiSummaryRedactionResult redactAiSummaryRequest(ReviewAiSummaryRequest request) {
+        if (request == null) {
+            return new AiSummaryRedactionResult(null, List.of());
+        }
+        List<String> redactedFields = new ArrayList<>();
+        List<ReviewCaseTimelineItem> redactedTimeline = new ArrayList<>();
+        List<ReviewCaseTimelineItem> timeline = request.timeline() == null ? List.of() : request.timeline();
+        for (int index = 0; index < timeline.size(); index++) {
+            ReviewCaseTimelineItem item = timeline.get(index);
+            if (item != null) {
+                redactedTimeline.add(new ReviewCaseTimelineItem(
+                        item.reviewCaseId(),
+                        item.reviewItemId(),
+                        item.cameraId(),
+                        item.sourceAlertId(),
+                        item.materialType(),
+                        redactAiSummaryTimelineText(
+                                item.materialUri(),
+                                "timeline[" + index + "].materialUri",
+                                redactedFields
+                        ),
+                        item.happenedAt(),
+                        redactAiSummaryTimelineText(
+                                item.actionNote(),
+                                "timeline[" + index + "].actionNote",
+                                redactedFields
+                        )
+                ));
+            }
+        }
+        List<ReviewItemSummaryContext> redactedItems = new ArrayList<>();
+        List<ReviewItemSummaryContext> items = request.items() == null ? List.of() : request.items();
+        for (int index = 0; index < items.size(); index++) {
+            ReviewItemSummaryContext item = items.get(index);
+            redactedItems.add(new ReviewItemSummaryContext(
+                    item.reviewItemId(),
+                    item.reviewItemNo(),
+                    item.cameraId(),
+                    item.zoneCode(),
+                    item.objectLabel(),
+                    item.reviewStatus(),
+                    item.recordEvidenceStatus(),
+                    item.eventId(),
+                    redactAiSummaryReviewData(
+                            item.reviewData(),
+                            "items[" + index + "].reviewData",
+                            redactedFields
+                    )
+            ));
+        }
+        return new AiSummaryRedactionResult(
+                new ReviewAiSummaryRequest(
+                        request.reviewCaseId(),
+                        request.operatorUserId(),
+                        request.reviewItemIds(),
+                        List.copyOf(redactedTimeline),
+                        List.copyOf(redactedItems)
+                ),
+                List.copyOf(new LinkedHashSet<>(redactedFields))
+        );
+    }
+
+    private String redactAiSummaryTimelineText(String value,
+                                               String path,
+                                               List<String> redactedFields) {
+        if (shouldRedactAiSummaryValue(path, value)) {
+            redactedFields.add(path);
+            return aiSummaryRedactionPolicy.getRedactedValue();
+        }
+        return value;
+    }
+
+    private Map<String, Object> redactAiSummaryReviewData(Map<String, Object> reviewData,
+                                                         String path,
+                                                         List<String> redactedFields) {
+        if (reviewData == null || reviewData.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> redacted = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : reviewData.entrySet()) {
+            if (entry.getKey() != null) {
+                redacted.put(entry.getKey(), redactAiSummaryValue(
+                        entry.getValue(),
+                        path + "." + entry.getKey(),
+                        entry.getKey(),
+                        redactedFields
+                ));
+            }
+        }
+        return immutableNonNullMap(redacted);
+    }
+
+    private Object redactAiSummaryValue(Object value,
+                                        String path,
+                                        String key,
+                                        List<String> redactedFields) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> redacted = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() != null) {
+                    String childKey = String.valueOf(entry.getKey());
+                    redacted.put(childKey, redactAiSummaryValue(
+                            entry.getValue(),
+                            path + "." + childKey,
+                            childKey,
+                            redactedFields
+                    ));
+                }
+            }
+            return immutableNonNullMap(redacted);
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> redacted = new ArrayList<>();
+            int index = 0;
+            for (Object item : iterable) {
+                redacted.add(redactAiSummaryValue(
+                        item,
+                        path + "[" + index + "]",
+                        key,
+                        redactedFields
+                ));
+                index++;
+            }
+            return List.copyOf(redacted);
+        }
+        if (shouldRedactAiSummaryValue(key, value)) {
+            redactedFields.add(path);
+            return aiSummaryRedactionPolicy.getRedactedValue();
+        }
+        return value;
+    }
+
+    private boolean shouldRedactAiSummaryValue(String key, Object value) {
+        return aiSummaryRedactionPolicy.shouldRedact(key, value);
+    }
+
+    private ReviewAiSummary withStructuredAiSummaryData(ReviewAiSummary summary,
+                                                        List<ReviewItemAggregate> reviewItems,
+                                                        ReviewAiSummaryRequest request,
+                                                        List<String> redactedFields) {
         Map<String, Object> defaults = buildStructuredAiSummaryData(
                 summary.reviewCaseId(),
                 summary.title(),
@@ -3355,6 +3793,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (summary.structuredData() != null) {
             merged.putAll(summary.structuredData());
         }
+        merged.putIfAbsent("aiProvenance", buildAiSummaryProvenance(
+                request,
+                summary.generatedBy(),
+                summary.generatedAt(),
+                firstText(summary.generatedBy(), "external-provider"),
+                redactedFields
+        ));
         return new ReviewAiSummary(
                 summary.reviewCaseId(),
                 summary.reviewItemIds(),
@@ -3365,7 +3810,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 summary.recommendedActions(),
                 summary.generatedAt(),
                 summary.generatedBy(),
-                Map.copyOf(merged)
+                immutableNonNullMap(merged)
         );
     }
 
@@ -3402,6 +3847,220 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         data.put("evidenceCompleteness", hasEvidenceGap ? "incomplete" : "complete");
         data.put("convertibleToEvent", !hasEvidenceGap || hasEvent);
         return Map.copyOf(data);
+    }
+
+    private Map<String, Object> buildAiSummaryProvenance(ReviewAiSummaryRequest request,
+                                                         String generatedBy,
+                                                         LocalDateTime generatedAt,
+                                                         String model,
+                                                         List<String> redactedFields) {
+        Map<String, Object> provenance = new LinkedHashMap<>();
+        provenance.put("provider", firstText(generatedBy, firstText(model, "unknown")));
+        provenance.put("model", firstText(model, firstText(generatedBy, "unknown")));
+        provenance.put("providerVersion", REVIEW_AI_SUMMARY_PROVIDER_VERSION);
+        provenance.put("promptVersion", REVIEW_AI_SUMMARY_PROMPT_VERSION);
+        provenance.put("redactionPolicyVersion", aiSummaryRedactionPolicy.getPolicyVersion());
+        provenance.put("promptHash", aiSummaryPromptHash(request));
+        List<String> redactions = redactedFields == null ? List.of() : List.copyOf(redactedFields);
+        provenance.put("redactionStatus", redactions.isEmpty() ? "not_required" : "applied");
+        provenance.put("redactedFields", redactions);
+        provenance.put("humanConfirmationStatus", "pending");
+        provenance.put("requestedBy", request == null ? null : request.operatorUserId());
+        provenance.put("generatedAt", generatedAt == null ? null : generatedAt.toString());
+        provenance.put("generatedBy", generatedBy);
+        provenance.put("reviewItemCount", request == null || request.reviewItemIds() == null
+                ? 0
+                : request.reviewItemIds().size());
+        return immutableNonNullMap(provenance);
+    }
+
+    private static String aiSummaryPromptHash(ReviewAiSummaryRequest request) {
+        return sha256Token(
+                REVIEW_AI_SUMMARY_PROMPT_VERSION,
+                request == null ? null : request.reviewCaseId(),
+                request == null ? null : request.operatorUserId(),
+                request == null ? List.of() : request.reviewItemIds(),
+                request == null || request.timeline() == null ? 0 : request.timeline().size(),
+                request == null || request.items() == null ? 0 : request.items().size()
+        );
+    }
+
+    private void persistAiSummaryAudit(ReviewAiSummary summary, Long operatorUserId) {
+        Map<String, Object> provenance = toStringObjectMap(summary == null || summary.structuredData() == null
+                ? null
+                : summary.structuredData().get("aiProvenance"));
+        reviewItemStore.recordCaseAudit(
+                summary.reviewCaseId(),
+                null,
+                AI_SUMMARY_GENERATED_ACTION,
+                aiSummaryAuditNote(summary, provenance),
+                operatorUserId,
+                summary.generatedAt(),
+                aiSummaryAuditMetadata(summary, provenance)
+        );
+    }
+
+    private static Map<String, Object> aiSummaryAuditMetadata(ReviewAiSummary summary,
+                                                              Map<String, Object> provenance) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("schemaVersion", 1);
+        metadata.put("reviewCaseId", summary.reviewCaseId());
+        metadata.put("reviewItemIds", summary.reviewItemIds());
+        metadata.put("title", summary.title());
+        metadata.put("summaryHash", sha256Token(summary.summary()));
+        metadata.put("keyFactCount", summary.keyFacts() == null ? 0 : summary.keyFacts().size());
+        metadata.put("evidenceGapCount", summary.evidenceGaps() == null ? 0 : summary.evidenceGaps().size());
+        metadata.put("recommendedActionCount", summary.recommendedActions() == null ? 0 : summary.recommendedActions().size());
+        metadata.put("generatedAt", summary.generatedAt() == null ? null : summary.generatedAt().toString());
+        metadata.put("generatedBy", summary.generatedBy());
+        metadata.put("provider", provenance.get("provider"));
+        metadata.put("model", provenance.get("model"));
+        metadata.put("providerVersion", provenance.get("providerVersion"));
+        metadata.put("promptVersion", provenance.get("promptVersion"));
+        metadata.put("redactionPolicyVersion", provenance.get("redactionPolicyVersion"));
+        metadata.put("promptHash", provenance.get("promptHash"));
+        metadata.put("redactionStatus", provenance.get("redactionStatus"));
+        metadata.put("redactedFields", provenance.get("redactedFields"));
+        metadata.put("humanConfirmationStatus", provenance.get("humanConfirmationStatus"));
+        metadata.put("aiProvenance", provenance);
+        return immutableNonNullMap(metadata);
+    }
+
+    private static String aiSummaryAuditNote(ReviewAiSummary summary, Map<String, Object> provenance) {
+        List<String> values = new ArrayList<>();
+        appendAuditNoteValue(values, "promptHash", provenance.get("promptHash"));
+        appendAuditNoteValue(values, "promptVersion", provenance.get("promptVersion"));
+        appendAuditNoteValue(values, "summaryHash", sha256Token(summary.summary()));
+        appendAuditNoteValue(values, "provider", provenance.get("provider"));
+        appendAuditNoteValue(values, "model", provenance.get("model"));
+        appendAuditNoteValue(values, "providerVersion", provenance.get("providerVersion"));
+        appendAuditNoteValue(values, "redactionPolicyVersion", provenance.get("redactionPolicyVersion"));
+        appendAuditNoteValue(values, "humanConfirmationStatus", provenance.get("humanConfirmationStatus"));
+        appendAuditNoteValue(values, "redactionStatus", provenance.get("redactionStatus"));
+        return String.join("; ", values);
+    }
+
+    private static void appendAuditNoteValue(List<String> values, String key, Object value) {
+        if (value != null) {
+            values.add(key + "=" + value);
+        }
+    }
+
+    private static String normalizeAiSummaryConfirmationStatus(String rawStatus) {
+        requireText(rawStatus, "confirmationStatus");
+        String normalized = rawStatus.trim().toLowerCase(Locale.ROOT);
+        if ("confirm".equals(normalized)
+                || "confirmed".equals(normalized)
+                || "accept".equals(normalized)
+                || "accepted".equals(normalized)) {
+            return AI_SUMMARY_CONFIRMATION_CONFIRMED;
+        }
+        if ("reject".equals(normalized) || "rejected".equals(normalized)) {
+            return AI_SUMMARY_CONFIRMATION_REJECTED;
+        }
+        throw new IllegalArgumentException("confirmationStatus must be confirmed or rejected");
+    }
+
+    private static Optional<ReviewCaseTimelineItem> latestCaseAudit(List<ReviewCaseTimelineItem> timeline,
+                                                                    String actionType) {
+        return timeline == null
+                ? Optional.empty()
+                : timeline.stream()
+                        .filter(item -> "case_audit".equals(item.materialType()))
+                        .filter(item -> Objects.equals(actionType, item.materialUri()))
+                        .max(Comparator.comparing(
+                                ReviewCaseTimelineItem::happenedAt,
+                                Comparator.nullsFirst(Comparator.naturalOrder())
+                        ));
+    }
+
+    private static Optional<ReviewCaseTimelineItem> latestAiSummaryConfirmation(List<ReviewCaseTimelineItem> timeline,
+                                                                                LocalDateTime generatedAt,
+                                                                                String promptHash) {
+        if (timeline == null) {
+            return Optional.empty();
+        }
+        return timeline.stream()
+                .filter(item -> "case_audit".equals(item.materialType()))
+                .filter(item -> AI_SUMMARY_CONFIRMED_ACTION.equals(item.materialUri())
+                        || AI_SUMMARY_REJECTED_ACTION.equals(item.materialUri()))
+                .filter(item -> generatedAt == null
+                        || item.happenedAt() == null
+                        || !item.happenedAt().isBefore(generatedAt))
+                .filter(item -> {
+                    if (!hasText(promptHash)) {
+                        return true;
+                    }
+                    return Objects.equals(promptHash, toText(parseAuditNote(item.actionNote()).get("promptHash")));
+                })
+                .max(Comparator.comparing(
+                        ReviewCaseTimelineItem::happenedAt,
+                        Comparator.nullsFirst(Comparator.naturalOrder())
+                ));
+    }
+
+    private static Map<String, Object> aiSummaryConfirmationMetadata(ReviewAiSummaryConfirmationCommand command,
+                                                                     String confirmationStatus,
+                                                                     String previousStatus,
+                                                                     ReviewCaseTimelineItem generatedAudit,
+                                                                     Map<String, Object> generatedNote,
+                                                                     LocalDateTime confirmedAt) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("schemaVersion", 1);
+        metadata.put("reviewCaseId", command.reviewCaseId());
+        metadata.put("humanConfirmationStatus", confirmationStatus);
+        metadata.put("previousHumanConfirmationStatus", previousStatus);
+        metadata.put("promptHash", generatedNote.get("promptHash"));
+        metadata.put("promptVersion", generatedNote.get("promptVersion"));
+        metadata.put("summaryHash", generatedNote.get("summaryHash"));
+        metadata.put("provider", generatedNote.get("provider"));
+        metadata.put("model", generatedNote.get("model"));
+        metadata.put("providerVersion", generatedNote.get("providerVersion"));
+        metadata.put("redactionStatus", generatedNote.get("redactionStatus"));
+        metadata.put("sourceActionType", generatedAudit.materialUri());
+        metadata.put("sourceGeneratedAt", generatedAudit.happenedAt() == null
+                ? null
+                : generatedAudit.happenedAt().toString());
+        metadata.put("operatorUserId", command.operatorUserId());
+        metadata.put("notes", command.notes());
+        metadata.put("confirmedAt", confirmedAt == null ? null : confirmedAt.toString());
+        return immutableNonNullMap(metadata);
+    }
+
+    private static String aiSummaryConfirmationAuditNote(Map<String, Object> metadata) {
+        List<String> values = new ArrayList<>();
+        appendAuditNoteValue(values, "humanConfirmationStatus", metadata.get("humanConfirmationStatus"));
+        appendAuditNoteValue(values, "previousHumanConfirmationStatus", metadata.get("previousHumanConfirmationStatus"));
+        appendAuditNoteValue(values, "promptHash", metadata.get("promptHash"));
+        appendAuditNoteValue(values, "promptVersion", metadata.get("promptVersion"));
+        appendAuditNoteValue(values, "summaryHash", metadata.get("summaryHash"));
+        appendAuditNoteValue(values, "operatorUserId", metadata.get("operatorUserId"));
+        appendAuditNoteValue(values, "redactionStatus", metadata.get("redactionStatus"));
+        return String.join("; ", values);
+    }
+
+    private static ReviewAiSummaryConfirmation buildAiSummaryConfirmation(ReviewAiSummaryConfirmationCommand command,
+                                                                          String confirmationStatus,
+                                                                          String previousStatus,
+                                                                          String promptHash,
+                                                                          String promptVersion,
+                                                                          String summaryHash,
+                                                                          LocalDateTime confirmedAt,
+                                                                          boolean duplicate,
+                                                                          Map<String, Object> metadata) {
+        return new ReviewAiSummaryConfirmation(
+                command.reviewCaseId(),
+                confirmationStatus,
+                previousStatus,
+                promptHash,
+                promptVersion,
+                summaryHash,
+                command.operatorUserId(),
+                command.notes(),
+                confirmedAt,
+                duplicate,
+                immutableNonNullMap(metadata)
+        );
     }
 
     private List<ReviewSemanticSearchCandidate> semanticCandidates(ReviewQuery filters) {
@@ -4275,31 +4934,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .orElse(item);
     }
 
-    private Optional<ReviewItemAggregate> findExistingIngestIdentity(AlertClueCommand command) {
-        Set<String> identityKeys = new LinkedHashSet<>(ingestIdentityKeys(command));
-        if (identityKeys.isEmpty()) {
+    private Optional<ReviewItemAggregate> findExistingIngestIdentity(AlertClueCommand command,
+                                                                    List<String> identityKeys) {
+        if ((identityKeys == null || identityKeys.isEmpty()) && !hasText(command.sourceAlertId())) {
             return Optional.empty();
         }
-        return reviewItemStore.listWorkbench(null).stream()
-                .filter(item -> Objects.equals(command.sourceSystem(), item.sourceSystem()))
-                .filter(item -> hasExistingIngestIdentity(item, command.sourceAlertId(), identityKeys))
-                .findFirst();
-    }
-
-    private static boolean hasExistingIngestIdentity(ReviewItemAggregate item,
-                                                     String sourceAlertId,
-                                                     Set<String> identityKeys) {
-        if (item.sourceAlertIds() != null && item.sourceAlertIds().contains(sourceAlertId)) {
-            return true;
-        }
-        Set<String> storedIdentityKeys = new LinkedHashSet<>();
-        collectStringValues(storedIdentityKeys, item.reviewData() == null ? null : item.reviewData().get("ingestIdentityKeys"));
-        for (String identityKey : identityKeys) {
-            if (storedIdentityKeys.contains(identityKey)) {
-                return true;
-            }
-        }
-        return false;
+        return reviewItemStore.findByIngestIdentity(command.sourceSystem(), command.sourceAlertId(), identityKeys);
     }
 
     private static Map<String, Object> buildReviewData(AlertClueCommand command, String ruleCode) {
@@ -4662,7 +5302,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return hasText(incomingStatus) ? incomingStatus : currentStatus;
     }
 
-    private static Map<String, Object> buildRuleSuggestion(ReviewItemAggregate item, String reason) {
+    private Map<String, Object> buildRuleSuggestion(ReviewItemAggregate item, String reason) {
         Map<String, Object> suggestion = new LinkedHashMap<>();
         suggestion.put("action", "suppress_label_zone");
         suggestion.put("candidateActions", DEFAULT_RULE_CANDIDATE_ACTIONS);
@@ -4675,8 +5315,74 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (hasText(reason)) {
             suggestion.put("reason", reason);
         }
+        suggestion.putAll(buildRuleSuggestionSafetySummary(item));
         suggestion.put("suggestedRuleName", "false_positive_" + item.cameraId() + "_" + item.zoneCode());
         return suggestion;
+    }
+
+    private Map<String, Object> buildRuleSuggestionSafetySummary(ReviewItemAggregate item) {
+        List<ReviewItemAggregate> scopedItems = listWorkbench(new ReviewQuery(
+                null,
+                item.cameraId(),
+                item.zoneCode(),
+                item.objectLabel(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        )).stream()
+                .filter(candidate -> Objects.equals(candidate.ruleCode(), item.ruleCode()))
+                .filter(candidate -> sameRuleScope(candidate, item))
+                .toList();
+        int beforeHitCount = Math.max(1, scopedItems.size());
+        int existingFalsePositiveCount = (int) scopedItems.stream()
+                .filter(candidate -> !Objects.equals(candidate.id(), item.id()))
+                .filter(candidate -> STATUS_FALSE_POSITIVE.equals(candidate.reviewStatus()))
+                .count();
+        int currentSampleCount = existingFalsePositiveCount + 1;
+        int afterEstimatedHitCount = 0;
+        int possibleMissedCount = Math.max(0, beforeHitCount - currentSampleCount);
+
+        Map<String, Object> impactScope = new LinkedHashMap<>();
+        impactScope.put("cameraIds", distinctValues(withScopeValue(scopedItems.stream()
+                .map(ReviewItemAggregate::cameraId)
+                .toList(), item.cameraId())));
+        impactScope.put("zoneCodes", distinctValues(withScopeValue(scopedItems.stream()
+                .map(ReviewItemAggregate::zoneCode)
+                .toList(), item.zoneCode())));
+        impactScope.put("objectLabels", distinctValues(withScopeValue(scopedItems.stream()
+                .map(ReviewItemAggregate::objectLabel)
+                .toList(), item.objectLabel())));
+
+        Map<String, Object> beforeAfter = new LinkedHashMap<>();
+        beforeAfter.put("beforeHitCount", beforeHitCount);
+        beforeAfter.put("afterEstimatedHitCount", afterEstimatedHitCount);
+        beforeAfter.put("falsePositiveBeforeCount", currentSampleCount);
+        beforeAfter.put("falsePositiveAfterCount", 0);
+        beforeAfter.put("possibleMissedCount", possibleMissedCount);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("minimumSampleCount", MIN_RULE_SUGGESTION_SAMPLE_COUNT);
+        summary.put("currentSampleCount", currentSampleCount);
+        summary.put("sampleRequirementMet", currentSampleCount >= MIN_RULE_SUGGESTION_SAMPLE_COUNT);
+        summary.put("riskNote", currentSampleCount < MIN_RULE_SUGGESTION_SAMPLE_COUNT
+                ? "low_sample_requires_more_review"
+                : possibleMissedCount > 0
+                ? "possible_recall_loss_requires_replay"
+                : "ready_for_shadow_evaluation");
+        summary.put("impactScope", immutableNonNullMap(impactScope));
+        summary.put("beforeAfterComparison", immutableNonNullMap(beforeAfter));
+        return immutableNonNullMap(summary);
+    }
+
+    private static List<String> withScopeValue(List<String> values, String value) {
+        List<String> merged = new ArrayList<>(values == null ? List.of() : values);
+        if (hasText(value)) {
+            merged.add(value);
+        }
+        return merged;
     }
 
     private List<ReviewCaseTimelineItem> buildCaseDerivedTimeline(Long reviewCaseId,
@@ -4895,18 +5601,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static String recordGapCategory(String gapReason) {
-        return switch (gapReason) {
-            case RECORD_GAP_VIDEO_URL_NOT_CONFIGURED -> "configuration";
-            case "retention_expired", RECORD_GAP_FILE_EXPIRED -> "retention";
-            case "stream_interrupted" -> "stream";
-            case "recording_disabled", "record_space_not_found", "record_not_found" -> "configuration";
-            case "permission_denied" -> "permission";
-            case "service_unavailable" -> "service";
-            case RECORD_GAP_FILE_MISSING -> "filesystem";
-            case RECORD_GAP_DISK_FULL -> "storage";
-            case RECORD_GAP_CACHE_FLUSH_FAILED -> "cache";
-            default -> "unknown";
-        };
+        return recordGapReasonDefinition(gapReason)
+                .map(RecordGapReasonDefinition::category)
+                .orElse("unknown");
     }
 
     private static int coverageSeconds(RecordCoverageSegment segment) {

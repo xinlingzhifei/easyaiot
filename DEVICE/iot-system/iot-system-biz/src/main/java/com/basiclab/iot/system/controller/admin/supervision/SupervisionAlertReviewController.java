@@ -1,6 +1,8 @@
 package com.basiclab.iot.system.controller.admin.supervision;
 
 import com.basiclab.iot.common.domain.CommonResult;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.AiSummaryConfirmationReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.AiSummaryConfirmationRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.AiSummaryRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.CaseCloseReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.CaseCreateReqVO;
@@ -56,6 +58,7 @@ import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertRevie
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.UserStatusRespVO;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.AlertClueCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummaryConfirmationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseCommand;
@@ -702,6 +705,21 @@ public class SupervisionAlertReviewController {
         return success(AiSummaryRespVO.from(supervisionAlertReviewService.summarizeReviewCase(
                 reviewCaseId,
                 operatorUserId
+        )));
+    }
+
+    @PostMapping("/cases/{reviewCaseId}/ai-summary/confirmation")
+    @Operation(summary = "Confirm alert review AI summary")
+    public CommonResult<AiSummaryConfirmationRespVO> confirmReviewCaseAiSummary(
+            @PathVariable("reviewCaseId") Long reviewCaseId,
+            @RequestBody AiSummaryConfirmationReqVO reqVO) {
+        return success(AiSummaryConfirmationRespVO.from(supervisionAlertReviewService.confirmReviewCaseAiSummary(
+                new ReviewAiSummaryConfirmationCommand(
+                        reviewCaseId,
+                        reqVO.getConfirmationStatus(),
+                        reqVO.getNotes(),
+                        currentOperatorUserId(reqVO.getOperatorUserId())
+                )
         )));
     }
 

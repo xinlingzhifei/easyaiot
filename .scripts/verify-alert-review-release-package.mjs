@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
-    match: /^\.scripts\/verify-alert-review-release-package(\.test)?\.mjs$/,
+    match: /^\.scripts\/(verify-alert-review-release-package|alert-review-postgres-migration-smoke)(\.test)?\.mjs$/,
   },
   {
     group: 'DEVICE review backend',
@@ -16,7 +16,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/V20260702__alert_review_frigate_hardening\.sql|sql\/supervision_event_closure_v1\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/V2026070[24]__alert_review_(frigate_hardening|segment_tenant_scope)\.sql|sql\/supervision_event_closure_v1\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
@@ -35,7 +35,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/alert-review-workbench-e2e-check\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
+      /^WEB\/(package\.json|scripts\/alert-review-workbench-e2e-check(\.test)?\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
   },
   {
     group: 'FR documentation package',
@@ -53,6 +53,8 @@ const MOJIBAKE_PATTERNS = [
 const TRACKED_RELEASE_PATHS = [
   '.scripts/verify-alert-review-release-package.mjs',
   '.scripts/verify-alert-review-release-package.test.mjs',
+  '.scripts/alert-review-postgres-migration-smoke.mjs',
+  '.scripts/alert-review-postgres-migration-smoke.test.mjs',
   'DEVICE/docker-compose.yml',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision',
@@ -62,6 +64,7 @@ const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/schemas',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/supervision_event_closure_v1.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/app/blueprints/record.py',
@@ -73,8 +76,10 @@ const TRACKED_RELEASE_PATHS = [
   'VIDEO/test_record_export.py',
   'WEB/package.json',
   'WEB/scripts/alert-review-workbench-e2e-check.mjs',
+  'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
   'WEB/scripts/fixtures/alert-review-workbench-e2e',
   'WEB/src/api/supervision/alertReview.ts',
+  'WEB/src/utils/withInstall.ts',
   'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
   'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
   'docs/superpowers/plans/2026-06-30-alert-review-phase-2.md',

@@ -76,6 +76,25 @@ function assertApiCalled(name: string) {
     throw new Error(`expected API call ${name}`)
 }
 
+function apiCall(name: string) {
+  return (window.__alertReviewE2EApiCalls || []).find(call => call.name === name)
+}
+
+function lastVideoEvent() {
+  const event = viewVideoEvents[viewVideoEvents.length - 1] as Record<string, unknown> | undefined
+  if (!event)
+    throw new Error('expected viewVideo event')
+  return event
+}
+
+function assertLastVideoSeek(label: string, expectedSeekTime: string, expectedRecordPath: string) {
+  const event = lastVideoEvent()
+  if (event.seek_time !== expectedSeekTime)
+    throw new Error(`${label} expected seek_time ${expectedSeekTime}, got ${String(event.seek_time)}`)
+  if (event.record_path !== expectedRecordPath)
+    throw new Error(`${label} expected record_path ${expectedRecordPath}, got ${String(event.record_path)}`)
+}
+
 async function runE2E() {
   const app = createApp(AlertReviewWorkbench, {
     onViewVideo: (payload: unknown) => viewVideoEvents.push(payload),
@@ -103,9 +122,26 @@ async function runE2E() {
 
   click('[data-testid="alert-review-detail-seek"]')
   await waitFor(() => viewVideoEvents.length > 0, 'detail seek video event')
+  assertLastVideoSeek('detail stream seek', '2026-07-02T08:00:02', 'mock://record/east-gate-080000.mp4')
 
   click('[data-testid="alert-review-unified-action"]')
   await waitFor(() => viewVideoEvents.length > 1, 'unified timeline video event')
+  assertLastVideoSeek('unified timeline seek', '2026-07-02T07:59:45', 'mock://record/east-gate-075945.mp4')
+
+  click('[data-testid="alert-review-coverage-seek"]')
+  await waitFor(() => viewVideoEvents.length > 2, 'coverage seek video event')
+  assertLastVideoSeek('coverage seek', '2026-07-02T07:59:45', 'mock://record/east-gate-075945.mp4')
+
+  click('[data-testid="alert-review-open-rule-drawer"]')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-region-drawer-stub"]'), 'region drawer')
+  click('[data-testid="alert-review-region-drawer-save"]')
+  await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'saveAlertReviewRule'), 'region save writes rule')
+  const saveRuleCall = apiCall('saveAlertReviewRule')
+  const savedRule = saveRuleCall?.payload as Record<string, unknown> | undefined
+  if (savedRule?.inertiaFrames !== 3)
+    throw new Error(`region save expected inertiaFrames 3, got ${String(savedRule?.inertiaFrames)}`)
+  if (savedRule?.loiteringSeconds !== 20)
+    throw new Error(`region save expected loiteringSeconds 20, got ${String(savedRule?.loiteringSeconds)}`)
 
   click('[data-testid="alert-review-create-case"]')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-panel"]'), 'review case panel')
@@ -119,6 +155,10 @@ async function runE2E() {
   setInputValue('[data-testid="alert-review-case-merge-source"]', '502')
   click('[data-testid="alert-review-case-merge"]')
   await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'mergeAlertReviewCases'), 'case merge action')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-timeline-seek"]'), 'case timeline seek button')
+  click('[data-testid="alert-review-case-timeline-seek"]')
+  await waitFor(() => viewVideoEvents.length > 3, 'case timeline seek video event')
+  assertLastVideoSeek('case timeline seek', '2026-07-02T08:00:00', 'mock://record/east-gate-080000.mp4')
   await waitFor(() => !requiredElement<HTMLButtonElement>('[data-testid="alert-review-case-split"]').disabled, 'case lifecycle idle')
 
   click('[data-testid="alert-review-case-split"]')

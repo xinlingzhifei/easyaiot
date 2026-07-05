@@ -2,6 +2,7 @@ package com.basiclab.iot.system.controller.admin.supervision.vo.review;
 
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordCoverageSegment;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummary;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummaryConfirmation;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseTimelineItem;
@@ -658,6 +659,7 @@ public final class AlertReviewVO {
         private Integer semanticBacklogCount;
         private Integer repairableCount;
         private Map<String, Integer> recordGapReasons;
+        private Map<String, Map<String, Object>> recordGapReasonCatalog;
         private List<String> alerts;
         private LocalDateTime measuredAt;
         private Long operatorUserId;
@@ -673,6 +675,7 @@ public final class AlertReviewVO {
             respVO.setSemanticBacklogCount(report.semanticBacklogCount());
             respVO.setRepairableCount(report.repairableCount());
             respVO.setRecordGapReasons(report.recordGapReasons());
+            respVO.setRecordGapReasonCatalog(report.recordGapReasonCatalog());
             respVO.setAlerts(report.alerts());
             respVO.setMeasuredAt(report.measuredAt());
             respVO.setOperatorUserId(report.operatorUserId());
@@ -901,6 +904,50 @@ public final class AlertReviewVO {
             respVO.setGeneratedAt(summary.generatedAt());
             respVO.setGeneratedBy(summary.generatedBy());
             respVO.setStructuredData(summary.structuredData());
+            return respVO;
+        }
+
+    }
+
+    @Schema(description = "Alert review AI summary confirmation request")
+    @Data
+    public static class AiSummaryConfirmationReqVO {
+
+        private String confirmationStatus;
+        private String notes;
+        private Long operatorUserId;
+
+    }
+
+    @Schema(description = "Alert review AI summary confirmation response")
+    @Data
+    public static class AiSummaryConfirmationRespVO {
+
+        private Long reviewCaseId;
+        private String confirmationStatus;
+        private String previousConfirmationStatus;
+        private String promptHash;
+        private String promptVersion;
+        private String summaryHash;
+        private Long operatorUserId;
+        private String notes;
+        private LocalDateTime confirmedAt;
+        private Boolean duplicate;
+        private Map<String, Object> metadata;
+
+        public static AiSummaryConfirmationRespVO from(ReviewAiSummaryConfirmation confirmation) {
+            AiSummaryConfirmationRespVO respVO = new AiSummaryConfirmationRespVO();
+            respVO.setReviewCaseId(confirmation.reviewCaseId());
+            respVO.setConfirmationStatus(confirmation.confirmationStatus());
+            respVO.setPreviousConfirmationStatus(confirmation.previousConfirmationStatus());
+            respVO.setPromptHash(confirmation.promptHash());
+            respVO.setPromptVersion(confirmation.promptVersion());
+            respVO.setSummaryHash(confirmation.summaryHash());
+            respVO.setOperatorUserId(confirmation.operatorUserId());
+            respVO.setNotes(confirmation.notes());
+            respVO.setConfirmedAt(confirmation.confirmedAt());
+            respVO.setDuplicate(confirmation.duplicate());
+            respVO.setMetadata(confirmation.metadata());
             return respVO;
         }
 

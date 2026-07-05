@@ -20,6 +20,13 @@ public interface SupervisionAlertReviewService {
     String RECORD_GAP_RECORD_NOT_FOUND = "record_not_found";
     String RECORD_GAP_VIDEO_URL_NOT_CONFIGURED = "video_url_not_configured";
     String RECORD_GAP_MISSING_LOOKUP_FIELDS = "missing_lookup_fields";
+    String RECORD_GAP_FILE_MISSING = "file_missing";
+    String RECORD_GAP_RETENTION_EXPIRED = "retention_expired";
+    String RECORD_GAP_RECORD_SPACE_NOT_FOUND = "record_space_not_found";
+    String RECORD_GAP_PROBE_FAILED = "probe_failed";
+    String RECORD_GAP_PERMISSION_DENIED = "permission_denied";
+    String RECORD_GAP_DISK_FULL = "disk_full";
+    String RECORD_GAP_CACHE_FLUSH_FAILED = "cache_flush_failed";
     String RECORD_COVERAGE_AVAILABLE = "available";
     String RECORD_COVERAGE_MISSING = "missing";
     String RECORD_COVERAGE_MOTION = "motion";
@@ -131,6 +138,8 @@ public interface SupervisionAlertReviewService {
     ReviewSemanticTriggerResult evaluateSemanticTrigger(ReviewSemanticTriggerCommand command);
 
     ReviewAiSummary summarizeReviewCase(Long reviewCaseId, Long operatorUserId);
+
+    ReviewAiSummaryConfirmation confirmReviewCaseAiSummary(ReviewAiSummaryConfirmationCommand command);
 
     ReviewOperationsReport generateReviewReport(ReviewReportCommand command);
 
@@ -574,6 +583,7 @@ public interface SupervisionAlertReviewService {
                                      Integer semanticBacklogCount,
                                      Integer repairableCount,
                                      Map<String, Integer> recordGapReasons,
+                                     Map<String, Map<String, Object>> recordGapReasonCatalog,
                                      List<String> alerts,
                                      LocalDateTime measuredAt,
                                      Long operatorUserId) {
@@ -739,6 +749,25 @@ public interface SupervisionAlertReviewService {
             this(reviewCaseId, reviewItemIds, title, summary, keyFacts, evidenceGaps,
                     recommendedActions, generatedAt, generatedBy, Map.of());
         }
+    }
+
+    record ReviewAiSummaryConfirmationCommand(Long reviewCaseId,
+                                              String confirmationStatus,
+                                              String notes,
+                                              Long operatorUserId) {
+    }
+
+    record ReviewAiSummaryConfirmation(Long reviewCaseId,
+                                       String confirmationStatus,
+                                       String previousConfirmationStatus,
+                                       String promptHash,
+                                       String promptVersion,
+                                       String summaryHash,
+                                       Long operatorUserId,
+                                       String notes,
+                                       LocalDateTime confirmedAt,
+                                       boolean duplicate,
+                                       Map<String, Object> metadata) {
     }
 
     record ReviewReportCommand(String reportType,
@@ -1102,6 +1131,17 @@ public interface SupervisionAlertReviewService {
                                                          LocalDateTime windowStart,
                                                          LocalDateTime windowEnd);
 
+        default Optional<ReviewItemAggregate> findByIngestIdentity(String sourceSystem,
+                                                                   String sourceAlertId,
+                                                                   List<String> identityKeys) {
+            List<String> keys = identityKeys == null ? List.of() : identityKeys;
+            return listWorkbench(null).stream()
+                    .filter(item -> Objects.equals(sourceSystem, item.sourceSystem()))
+                    .filter(item -> hasSourceAlertId(item, sourceAlertId)
+                            || hasReviewDataIdentityKey(item.reviewData(), keys))
+                    .findFirst();
+        }
+
         ReviewItemAggregate create(ReviewItemDraft draft, List<ReviewEvidenceItem> evidenceItems);
 
         ReviewItemAggregate appendClue(Long reviewItemId,
@@ -1275,13 +1315,44 @@ public interface SupervisionAlertReviewService {
 
         Optional<ReviewEvidenceExportJob> findExportJobByNo(String jobNo);
 
+        default void recordCaseAudit(Long reviewCaseId,
+                                     Long reviewItemId,
+                                     String actionType,
+                                     String actionNote,
+                                     Long operatorUserId,
+                                     LocalDateTime happenedAt) {
+            recordCaseAudit(reviewCaseId, reviewItemId, actionType, actionNote, operatorUserId, happenedAt, Map.of());
+        }
+
         void recordCaseAudit(Long reviewCaseId,
                              Long reviewItemId,
                              String actionType,
                              String actionNote,
                              Long operatorUserId,
-                             LocalDateTime happenedAt);
+                             LocalDateTime happenedAt,
+                             Map<String, Object> metadata);
 
+    }
+
+    private static boolean hasSourceAlertId(ReviewItemAggregate item, String sourceAlertId) {
+        return sourceAlertId != null
+                && item.sourceAlertIds() != null
+                && item.sourceAlertIds().contains(sourceAlertId);
+    }
+
+    private static boolean hasReviewDataIdentityKey(Map<String, Object> reviewData, List<String> identityKeys) {
+        if (reviewData == null || identityKeys == null || identityKeys.isEmpty()) {
+            return false;
+        }
+        Object stored = reviewData.get("ingestIdentityKeys");
+        if (stored instanceof Iterable<?> values) {
+            for (Object value : values) {
+                if (value != null && identityKeys.contains(String.valueOf(value))) {
+                    return true;
+                }
+            }
+        }
+        return stored != null && identityKeys.contains(String.valueOf(stored));
     }
 
     interface ReviewRuleStore {

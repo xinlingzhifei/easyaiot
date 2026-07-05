@@ -11,6 +11,7 @@ const harnessRoot = resolve(root, 'scripts/fixtures/alert-review-workbench-e2e')
 const workbenchPath = resolve(root, 'src/views/alert/components/AlertReviewWorkbench.vue')
 const apiPath = resolve(root, 'src/api/supervision/alertReview.ts')
 const mockApiPath = resolve(harnessRoot, 'mockAlertReviewApi.ts')
+const mode = parseMode(process.argv.slice(2))
 const browserHarnessFiles = [
   'scripts/fixtures/alert-review-workbench-e2e/index.html',
   'scripts/fixtures/alert-review-workbench-e2e/main.ts',
@@ -22,6 +23,29 @@ const mockApiSource = readFileSync(mockApiPath, 'utf8')
 const parsed = parse(workbenchSource, { filename: workbenchPath })
 
 const failures = []
+
+function parseMode(args) {
+  const supportedModes = ['all', 'contract', 'dev-api-mock']
+  let selectedMode = 'all'
+  for (const arg of args) {
+    if (arg === '--help' || arg === '-h') {
+      console.log(`Usage: node scripts/alert-review-workbench-e2e-check.mjs [--mode=${supportedModes.join('|')}]`)
+      process.exit(0)
+    }
+    if (arg.startsWith('--mode=')) {
+      selectedMode = arg.slice('--mode='.length)
+      continue
+    }
+    console.error(`unsupported alert review E2E argument ${arg}`)
+    process.exit(1)
+  }
+  if (!supportedModes.includes(selectedMode)) {
+    console.error(`unsupported alert review E2E mode ${selectedMode}. Supported modes: ${supportedModes.join(', ')}`)
+    process.exit(1)
+  }
+  return selectedMode
+}
+
 const mojibakeFragments = [
   '\uFFFD',
   '寰呭',
@@ -458,7 +482,7 @@ function toVitePath(path) {
   return path.replace(/\\/g, '/')
 }
 
-if (!failures.length) {
+if (!failures.length && mode !== 'contract') {
   await runBrowserE2E(failures)
 }
 
@@ -470,4 +494,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Alert review workbench E2E contract OK')
+console.log(`Alert review workbench E2E ${mode} OK`)

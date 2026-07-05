@@ -12,6 +12,26 @@ import java.util.List;
 @Mapper
 public interface SupervisionAlertReviewItemMapper extends BaseMapperX<SupervisionAlertReviewItemDO> {
 
+    default int updateReviewStatusIfCurrent(Long reviewItemId,
+                                            String expectedReviewStatus,
+                                            Integer expectedVersion,
+                                            SupervisionAlertReviewItemDO updateObj) {
+        LambdaQueryWrapperX<SupervisionAlertReviewItemDO> query =
+                new LambdaQueryWrapperX<SupervisionAlertReviewItemDO>()
+                        .eq(SupervisionAlertReviewItemDO::getId, reviewItemId);
+        if (expectedReviewStatus == null) {
+            query.isNull(SupervisionAlertReviewItemDO::getReviewStatus);
+        } else {
+            query.eq(SupervisionAlertReviewItemDO::getReviewStatus, expectedReviewStatus);
+        }
+        if (expectedVersion == null) {
+            query.isNull(SupervisionAlertReviewItemDO::getVersion);
+        } else {
+            query.eq(SupervisionAlertReviewItemDO::getVersion, expectedVersion);
+        }
+        return update(updateObj, query);
+    }
+
     default SupervisionAlertReviewItemDO selectMergeCandidate(Long tenantId,
                                                              String sourceSystem,
                                                              String cameraId,

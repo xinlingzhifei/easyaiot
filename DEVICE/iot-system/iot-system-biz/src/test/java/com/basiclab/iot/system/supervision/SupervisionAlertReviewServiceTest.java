@@ -40,6 +40,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticHit;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummary;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummaryConfirmation;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummaryConfirmationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportPackage;
@@ -85,6 +87,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResolver;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResult;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider;
+import com.basiclab.iot.system.service.supervision.ReviewAiSummaryRedactionPolicy;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewAiSummaryRequest;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewServiceImpl;
@@ -361,10 +364,43 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(9001L, reviewed.reviewerUserId());
         assertTrue(reviewed.reviewedAt() != null);
 
-        ReviewItemAggregate ignored = service.ignore(new ReviewOperationCommand(item.id(), 9002L, "duplicate"));
+        ReviewItemAggregate ignoredItem = service.ingestClue(newClue(
+                "alert-002",
+                LocalDateTime.of(2026, 6, 30, 10, 10),
+                "snap-002.jpg",
+                "record-002.mp4"
+        ));
+        ReviewItemAggregate ignored = service.ignore(new ReviewOperationCommand(ignoredItem.id(), 9002L, "duplicate"));
         assertEquals("ignored", ignored.reviewStatus());
         assertEquals(9002L, ignored.reviewerUserId());
         assertEquals("duplicate", ignored.ignoreReason());
+    }
+
+    @Test
+    void reviewStatusActionsAreIdempotentAndRejectConflictingReviewerActions() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-review-conflict",
+                LocalDateTime.of(2026, 6, 30, 10, 0),
+                "snap-review-conflict.jpg",
+                "record-review-conflict.mp4"
+        ));
+
+        ReviewItemAggregate firstReviewed = service.markReviewed(new ReviewOperationCommand(item.id(), 9001L, null));
+        ReviewItemAggregate repeatedReviewed = service.markReviewed(new ReviewOperationCommand(item.id(), 9001L, null));
+
+        assertEquals("reviewed", repeatedReviewed.reviewStatus());
+        assertEquals(firstReviewed.reviewerUserId(), repeatedReviewed.reviewerUserId());
+        assertEquals(firstReviewed.reviewedAt(), repeatedReviewed.reviewedAt());
+        IllegalStateException rejectedIgnore = assertThrows(IllegalStateException.class,
+                () -> service.ignore(new ReviewOperationCommand(item.id(), 9002L, "duplicate")));
+        assertEquals("review_item_status_conflict: reviewed -> ignored", rejectedIgnore.getMessage());
+        IllegalStateException rejectedFalsePositive = assertThrows(IllegalStateException.class,
+                () -> service.markFalsePositive(new ReviewOperationCommand(item.id(), 9003L, "zone too wide")));
+        assertEquals("review_item_status_conflict: reviewed -> false_positive", rejectedFalsePositive.getMessage());
+        assertEquals("reviewed", itemStore.findById(item.id()).orElseThrow().reviewStatus());
+        assertEquals(9001L, itemStore.findById(item.id()).orElseThrow().reviewerUserId());
     }
 
     @Test
@@ -471,7 +507,7 @@ class SupervisionAlertReviewServiceTest {
         service.saveRule(new ReviewRuleCommand(
                 null,
                 SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
-                "A区禁入复核",
+                "A\u533A\u7981\u5165\u590D\u6838",
                 "video",
                 "camera-01",
                 "zone-a",
@@ -789,6 +825,20 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("camera-01", falsePositive.ruleSuggestion().get("cameraId"));
         assertEquals("zone-a", falsePositive.ruleSuggestion().get("zoneCode"));
         assertEquals("person", falsePositive.ruleSuggestion().get("objectLabel"));
+        assertEquals(3, falsePositive.ruleSuggestion().get("minimumSampleCount"));
+        assertEquals(1, falsePositive.ruleSuggestion().get("currentSampleCount"));
+        assertEquals(false, falsePositive.ruleSuggestion().get("sampleRequirementMet"));
+        assertEquals("low_sample_requires_more_review", falsePositive.ruleSuggestion().get("riskNote"));
+        Map<?, ?> impactScope = (Map<?, ?>) falsePositive.ruleSuggestion().get("impactScope");
+        assertEquals(List.of("camera-01"), impactScope.get("cameraIds"));
+        assertEquals(List.of("zone-a"), impactScope.get("zoneCodes"));
+        assertEquals(List.of("person"), impactScope.get("objectLabels"));
+        Map<?, ?> beforeAfter = (Map<?, ?>) falsePositive.ruleSuggestion().get("beforeAfterComparison");
+        assertEquals(1, beforeAfter.get("beforeHitCount"));
+        assertEquals(0, beforeAfter.get("afterEstimatedHitCount"));
+        assertEquals(1, beforeAfter.get("falsePositiveBeforeCount"));
+        assertEquals(0, beforeAfter.get("falsePositiveAfterCount"));
+        assertEquals(0, beforeAfter.get("possibleMissedCount"));
     }
 
     @Test
@@ -1305,6 +1355,61 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(fileMissingOutbox.recommendedActions().contains("review_missing_record_file"));
         assertEquals(patrol.metadata().get("historyRunId"), fileMissingOutbox.runId());
         assertEquals("pending", fileMissingOutbox.status());
+    }
+
+    @Test
+    void runtimeHealthExposesStandardRecordGapReasonCatalogAndNormalizesAliases() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 11, 30);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-standard-record-gap-reasons",
+                alertTime,
+                "standard-gap-reasons.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9005L,
+                List.of(
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(6), alertTime.minusMinutes(5),
+                                0, null, 0, Map.of("gapReason", "file_expired")),
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(5), alertTime.minusMinutes(4),
+                                0, null, 0, Map.of("gapReason", "permission_denied")),
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(4), alertTime.minusMinutes(3),
+                                0, null, 0, Map.of("gapReason", "record_space_not_found")),
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(3), alertTime.minusMinutes(2),
+                                0, null, 0, Map.of("gapReason", "probe_failed"))
+                )
+        ));
+
+        ReviewRuntimeHealthReport health = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9006L
+        ));
+
+        assertEquals(1, health.recordGapReasons().get("retention_expired"));
+        assertFalse(health.recordGapReasons().containsKey("file_expired"));
+        assertEquals(1, health.recordGapReasons().get("permission_denied"));
+        assertEquals(1, health.recordGapReasons().get("record_space_not_found"));
+        assertEquals(1, health.recordGapReasons().get("probe_failed"));
+        Map<String, Map<String, Object>> catalog = health.recordGapReasonCatalog();
+        assertTrue(catalog.keySet().containsAll(List.of(
+                "video_url_not_configured",
+                "record_space_not_found",
+                "file_missing",
+                "probe_failed",
+                "permission_denied",
+                "retention_expired"
+        )));
+        assertEquals("\u8FC7\u671F", catalog.get("retention_expired").get("labelZh"));
+        assertEquals(List.of("file_expired"), catalog.get("retention_expired").get("aliases"));
+        assertEquals("permission", catalog.get("permission_denied").get("category"));
+        assertEquals(false, catalog.get("permission_denied").get("retryable"));
     }
 
     @Test
@@ -2642,6 +2747,90 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void dailyReportAggregatesOperationalMetricsByUnitAreaCameraAndRule() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> Optional.empty(),
+                noEventProjectionStore()
+        );
+        LocalDateTime dayStart = LocalDateTime.of(2026, 7, 1, 0, 0);
+        ReviewItemAggregate missing = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-report-daily-missing",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                dayStart.plusHours(1),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "daily-missing.jpg",
+                null,
+                "payload-report-daily-missing"
+        ));
+        ReviewItemAggregate falsePositive = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-report-daily-fp",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                dayStart.plusHours(2),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                12,
+                "daily-fp.jpg",
+                "daily-fp.mp4",
+                "payload-report-daily-fp"
+        ));
+        service.markFalsePositive(new ReviewOperationCommand(falsePositive.id(), 9002L, "known staff"));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "daily report case",
+                missing.id(),
+                List.of(missing.id(), falsePositive.id())
+        ));
+        ReviewEvidenceExportJob exportJob = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(missing.id(), falsePositive.id()),
+                9001L,
+                "manifest"
+        ));
+        itemStore.replaceExportJobStatus(exportJob.jobNo(), SupervisionAlertReviewService.EXPORT_JOB_FAILED);
+
+        ReviewOperationsReport report = service.generateReviewReport(new ReviewReportCommand(
+                "daily",
+                new ReviewQuery(null, null, null, null, null, null, null, null, dayStart, dayStart.plusDays(1)),
+                dayStart,
+                dayStart.plusDays(1),
+                9001L
+        ));
+
+        Map<String, Object> data = report.structuredData();
+        assertEquals("daily", report.reportType());
+        assertEquals(2, data.get("reviewItemCount"));
+        assertEquals(1, data.get("missingRecordCount"));
+        assertEquals(0.5D, data.get("missingRecordRate"));
+        assertEquals(1, data.get("falsePositiveCount"));
+        assertEquals(0.5D, data.get("falsePositiveRate"));
+        assertEquals(2, data.get("semanticBacklogCount"));
+        assertEquals(1, data.get("exportJobCount"));
+        assertEquals(1, data.get("exportFailureCount"));
+        assertEquals(1.0D, data.get("exportFailureRate"));
+        Map<?, ?> responsibilityDimensions = (Map<?, ?>) data.get("responsibilityUnitDimensions");
+        Map<?, ?> cameraDimensions = (Map<?, ?>) data.get("cameraDimensions");
+        Map<?, ?> areaDimensions = (Map<?, ?>) data.get("areaDimensions");
+        Map<?, ?> ruleDimensions = (Map<?, ?>) data.get("ruleDimensions");
+        assertEquals(1, ((Map<?, ?>) responsibilityDimensions.get("camera-01")).get("missingRecordCount"));
+        assertEquals(1, ((Map<?, ?>) cameraDimensions.get("camera-02")).get("falsePositiveCount"));
+        assertEquals(1, ((Map<?, ?>) areaDimensions.get("zone-a")).get("missingRecordCount"));
+        assertEquals(1, ((Map<?, ?>) ruleDimensions.get(SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING)).get("falsePositiveCount"));
+    }
+
+    @Test
     void aiSummaryAndEvidenceExportUseCaseTimelineEvidenceCoverageAndActions() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         LocalDateTime baseTime = LocalDateTime.of(2026, 6, 30, 14, 20);
@@ -2907,6 +3096,375 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("medium", summary.structuredData().get("threatLevel"));
         assertEquals(List.of("provider gap"), summary.structuredData().get("evidenceGaps"));
         assertEquals(List.of("provider action"), summary.structuredData().get("disposalSuggestion"));
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+        assertTrue(provenance != null);
+        assertEquals("external-review-provider", provenance.get("provider"));
+        assertEquals("external-review-provider", provenance.get("model"));
+        assertEquals("review-ai-provider-v1", provenance.get("providerVersion"));
+        assertEquals("review-ai-summary-prompt-v1", provenance.get("promptVersion"));
+        assertTrue(String.valueOf(provenance.get("promptHash")).startsWith("sha256:"));
+        assertEquals("not_required", provenance.get("redactionStatus"));
+        assertEquals(List.of(), provenance.get("redactedFields"));
+        assertEquals("pending", provenance.get("humanConfirmationStatus"));
+        assertEquals(9004L, provenance.get("requestedBy"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .filter(item -> "case_audit".equals(item.materialType()))
+                .filter(item -> "ai_summary_generated".equals(item.materialUri()))
+                .anyMatch(item -> item.actionNote().contains("promptHash=sha256:")
+                        && item.actionNote().contains("promptVersion=review-ai-summary-prompt-v1")
+                        && item.actionNote().contains("provider=external-review-provider")
+                        && item.actionNote().contains("humanConfirmationStatus=pending")
+                        && item.actionNote().contains("redactionStatus=not_required")));
+    }
+
+    @Test
+    void aiSummaryRedactsSensitiveReviewDataBeforeProviderAndAuditProvenance() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> {
+                            Map<?, ?> reviewData = request.items().get(0).reviewData();
+                            Map<?, ?> motion = (Map<?, ?>) reviewData.get("motion");
+                            assertEquals("[REDACTED]", motion.get("personName"));
+                            assertEquals("[REDACTED]", motion.get("phoneNumber"));
+                            assertEquals("[REDACTED]", motion.get("idCard"));
+                            assertEquals(7, motion.get("consecutiveZoneFrames"));
+                            assertFalse(String.valueOf(request.items()).contains("Resident Alice"));
+                            assertFalse(String.valueOf(request.items()).contains("13812345678"));
+                            assertFalse(String.valueOf(request.items()).contains("110101199001011234"));
+                            return Optional.of(new ReviewAiSummary(
+                                    request.reviewCaseId(),
+                                    request.reviewItemIds(),
+                                    "redacted provider case",
+                                    "provider summary after redaction",
+                                    List.of("redacted fact"),
+                                    List.of(),
+                                    List.of("confirm redacted context"),
+                                    LocalDateTime.of(2026, 6, 30, 15, 20),
+                                    "external-review-provider"
+                            ));
+                        }
+                )
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-ai-redaction",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 30, 15, 15),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "ai-redaction.jpg",
+                "ai-redaction.mp4",
+                "payload-redaction",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-redaction"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-redaction",
+                List.of("obj-redaction"),
+                LocalDateTime.of(2026, 6, 30, 15, 15, 5),
+                List.of("voice"),
+                Map.of(
+                        "personName", "Resident Alice",
+                        "phoneNumber", "13812345678",
+                        "idCard", "110101199001011234",
+                        "consecutiveZoneFrames", 7
+                )
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI redaction case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+        assertEquals("applied", provenance.get("redactionStatus"));
+        List<?> redactedFields = (List<?>) provenance.get("redactedFields");
+        assertTrue(redactedFields.contains("items[0].reviewData.motion.personName"));
+        assertTrue(redactedFields.contains("items[0].reviewData.motion.phoneNumber"));
+        assertTrue(redactedFields.contains("items[0].reviewData.motion.idCard"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .filter(timelineItem -> "case_audit".equals(timelineItem.materialType()))
+                .filter(timelineItem -> "ai_summary_generated".equals(timelineItem.materialUri()))
+                .anyMatch(timelineItem -> timelineItem.actionNote().contains("redactionStatus=applied")));
+    }
+
+    @Test
+    void aiSummaryRedactsTimelineNotesAndMaterialUrisBeforeProvider() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> {
+                            String timelineText = String.valueOf(request.timeline());
+                            assertFalse(timelineText.contains("Resident Alice"));
+                            assertFalse(timelineText.contains("13812345678"));
+                            assertFalse(timelineText.contains("110101199001011234"));
+                            assertTrue(request.timeline().stream()
+                                    .filter(timelineItem -> "record".equals(timelineItem.materialType()))
+                                    .anyMatch(timelineItem -> "[REDACTED]".equals(timelineItem.materialUri())));
+                            assertTrue(request.timeline().stream()
+                                    .filter(timelineItem -> "case_audit".equals(timelineItem.materialType()))
+                                    .anyMatch(timelineItem -> "[REDACTED]".equals(timelineItem.actionNote())));
+                            return Optional.of(new ReviewAiSummary(
+                                    request.reviewCaseId(),
+                                    request.reviewItemIds(),
+                                    "timeline redaction case",
+                                    "provider summary after timeline redaction",
+                                    List.of("timeline redacted fact"),
+                                    List.of(),
+                                    List.of("confirm sanitized timeline"),
+                                    LocalDateTime.of(2026, 6, 30, 15, 40),
+                                    "external-review-provider"
+                            ));
+                        }
+                )
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-ai-timeline-redaction",
+                LocalDateTime.of(2026, 6, 30, 15, 35),
+                "https://snapshot.example/Resident-Alice/110101199001011234.jpg",
+                "https://video.example/records/13812345678/clip-110101199001011234.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI timeline redaction case",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.assignReviewCaseOwner(new ReviewCaseOwnerCommand(
+                reviewCase.id(),
+                9100L,
+                9004L,
+                "handoff Resident Alice phone 13812345678 id 110101199001011234"
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+        assertEquals("applied", provenance.get("redactionStatus"));
+        List<?> redactedFields = (List<?>) provenance.get("redactedFields");
+        assertTrue(redactedFields.stream()
+                .map(String::valueOf)
+                .anyMatch(path -> path.startsWith("timeline[") && path.endsWith(".materialUri")));
+        assertTrue(redactedFields.stream()
+                .map(String::valueOf)
+                .anyMatch(path -> path.startsWith("timeline[") && path.endsWith(".actionNote")));
+        List<ReviewCaseTimelineItem> persistedTimeline = service.getReviewCaseTimeline(reviewCase.id());
+        assertTrue(persistedTimeline.stream()
+                .anyMatch(timelineItem -> String.valueOf(timelineItem.materialUri()).contains("13812345678")));
+        assertTrue(persistedTimeline.stream()
+                .anyMatch(timelineItem -> String.valueOf(timelineItem.actionNote()).contains("Resident Alice")));
+    }
+
+    @Test
+    void aiSummaryRedactionPolicyCanBeOverriddenAndRecordedInProvenance() {
+        ReviewAiSummaryRedactionPolicy policy = new ReviewAiSummaryRedactionPolicy();
+        policy.setPolicyVersion("custom-redaction-v2");
+        policy.setSensitiveKeys(List.of("residentAlias"));
+        policy.setSensitiveValuePatterns(List.of("(?s).*custom-secret-[0-9]+.*"));
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> {
+                            Map<?, ?> reviewData = request.items().get(0).reviewData();
+                            Map<?, ?> motion = (Map<?, ?>) reviewData.get("motion");
+                            assertEquals("[REDACTED]", motion.get("residentAlias"));
+                            assertFalse(String.valueOf(request).contains("Dormitory Lead"));
+                            assertFalse(String.valueOf(request).contains("custom-secret-42"));
+                            return Optional.of(new ReviewAiSummary(
+                                    request.reviewCaseId(),
+                                    request.reviewItemIds(),
+                                    "custom policy case",
+                                    "provider summary after custom policy",
+                                    List.of("custom policy fact"),
+                                    List.of(),
+                                    List.of("confirm policy version"),
+                                    LocalDateTime.of(2026, 6, 30, 16, 0),
+                                    "external-review-provider"
+                            ));
+                        }
+                ),
+                policy
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-ai-policy-redaction",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                LocalDateTime.of(2026, 6, 30, 15, 55),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                12,
+                "custom-secret-42-snapshot.jpg",
+                "custom-secret-42-record.mp4",
+                "payload-policy-redaction",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-policy"),
+                0.92D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-policy",
+                List.of("obj-policy"),
+                LocalDateTime.of(2026, 6, 30, 15, 55, 5),
+                List.of("voice"),
+                Map.of(
+                        "residentAlias", "Dormitory Lead",
+                        "consecutiveZoneFrames", 9
+                )
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI custom policy case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+        assertEquals("custom-redaction-v2", provenance.get("redactionPolicyVersion"));
+        assertEquals("applied", provenance.get("redactionStatus"));
+        List<?> redactedFields = (List<?>) provenance.get("redactedFields");
+        assertTrue(redactedFields.contains("items[0].reviewData.motion.residentAlias"));
+        assertTrue(redactedFields.stream()
+                .map(String::valueOf)
+                .anyMatch(path -> path.startsWith("timeline[") && path.endsWith(".materialUri")));
+    }
+    @Test
+    void aiSummaryConfirmationKeepsGeneratedProvenanceAndIsIdempotentForSameStatus() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> Optional.of(new ReviewAiSummary(
+                                request.reviewCaseId(),
+                                request.reviewItemIds(),
+                                "confirmation case",
+                                "summary needing human confirmation",
+                                List.of("person stayed in zone"),
+                                List.of(),
+                                List.of("confirm with recording"),
+                                LocalDateTime.of(2026, 6, 30, 15, 30),
+                                "external-review-provider"
+                        ))
+                )
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-ai-confirmation",
+                LocalDateTime.of(2026, 6, 30, 15, 25),
+                "ai-confirmation.jpg",
+                "ai-confirmation.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI confirmation case",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+
+        ReviewAiSummaryConfirmation confirmed = service.confirmReviewCaseAiSummary(
+                new ReviewAiSummaryConfirmationCommand(
+                        reviewCase.id(),
+                        "confirmed",
+                        "checked recording and snapshot",
+                        9100L
+                ));
+        ReviewAiSummaryConfirmation duplicate = service.confirmReviewCaseAiSummary(
+                new ReviewAiSummaryConfirmationCommand(
+                        reviewCase.id(),
+                        "confirmed",
+                        "checked recording and snapshot",
+                        9100L
+                ));
+        ReviewAiSummaryConfirmation rejected = service.confirmReviewCaseAiSummary(
+                new ReviewAiSummaryConfirmationCommand(
+                        reviewCase.id(),
+                        "rejected",
+                        "summary missed the timeline gap",
+                        9101L
+                ));
+
+        assertEquals("confirmed", confirmed.confirmationStatus());
+        assertFalse(confirmed.duplicate());
+        assertEquals(provenance.get("promptHash"), confirmed.promptHash());
+        assertEquals("review-ai-summary-prompt-v1", confirmed.promptVersion());
+        assertTrue(confirmed.summaryHash().startsWith("sha256:"));
+        assertEquals(9100L, confirmed.operatorUserId());
+        assertEquals("checked recording and snapshot", confirmed.notes());
+        assertEquals("confirmed", duplicate.confirmationStatus());
+        assertTrue(duplicate.duplicate());
+        assertEquals("rejected", rejected.confirmationStatus());
+        assertFalse(rejected.duplicate());
+        assertEquals("confirmed", rejected.previousConfirmationStatus());
+
+        List<ReviewCaseTimelineItem> aiConfirmationAudits = service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .filter(timelineItem -> "case_audit".equals(timelineItem.materialType()))
+                .filter(timelineItem -> timelineItem.materialUri().startsWith("ai_summary_"))
+                .filter(timelineItem -> !"ai_summary_generated".equals(timelineItem.materialUri()))
+                .toList();
+        assertEquals(2, aiConfirmationAudits.size());
+        assertTrue(aiConfirmationAudits.stream().anyMatch(timelineItem -> "ai_summary_confirmed".equals(timelineItem.materialUri())
+                && timelineItem.actionNote().contains("humanConfirmationStatus=confirmed")
+                && timelineItem.actionNote().contains("promptHash=" + provenance.get("promptHash"))
+                && timelineItem.actionNote().contains("summaryHash=sha256:")
+                && timelineItem.actionNote().contains("operatorUserId=9100")));
+        assertTrue(aiConfirmationAudits.stream().anyMatch(timelineItem -> "ai_summary_rejected".equals(timelineItem.materialUri())
+                && timelineItem.actionNote().contains("humanConfirmationStatus=rejected")
+                && timelineItem.actionNote().contains("previousHumanConfirmationStatus=confirmed")
+                && timelineItem.actionNote().contains("operatorUserId=9101")));
+    }
+
+    @Test
+    void aiSummaryConfirmationRequiresGeneratedSummaryAudit() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-ai-confirmation-missing",
+                LocalDateTime.of(2026, 6, 30, 16, 5),
+                "ai-confirmation-missing.jpg",
+                "ai-confirmation-missing.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI confirmation missing case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        IllegalStateException rejected = assertThrows(IllegalStateException.class,
+                () -> service.confirmReviewCaseAiSummary(new ReviewAiSummaryConfirmationCommand(
+                        reviewCase.id(),
+                        "confirmed",
+                        "no generated summary",
+                        9100L
+                )));
+
+        assertTrue(rejected.getMessage().contains("AI summary generation audit is required"));
     }
 
     @Test
@@ -4139,6 +4697,25 @@ class SupervisionAlertReviewServiceTest {
         );
     }
 
+    private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
+                                                            InMemoryRuleStore ruleStore,
+                                                            SupervisionEventService eventService,
+                                                            RecordCoverageResolver recordCoverageResolver,
+                                                            ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                                            ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy) {
+        return new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                ruleStore,
+                eventService,
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                recordCoverageResolver,
+                reviewIntelligenceProvider,
+                VideoEvidenceExportProvider.unavailable(),
+                ReviewCameraPermissionResolver.unrestricted(),
+                aiSummaryRedactionPolicy
+        );
+    }
     private static AlertClueCommand newClue(String sourceAlertId,
                                             LocalDateTime alertTime,
                                             String snapshotUri,
@@ -5149,6 +5726,24 @@ class SupervisionAlertReviewServiceTest {
             return List.copyOf(exportJobs.values());
         }
 
+        void replaceExportJobStatus(String jobNo, String status) {
+            ReviewEvidenceExportJob job = exportJobs.get(jobNo);
+            if (job == null) {
+                throw new IllegalArgumentException("export job not found: " + jobNo);
+            }
+            exportJobs.put(jobNo, new ReviewEvidenceExportJob(
+                    job.jobNo(),
+                    status,
+                    job.exportPackage(),
+                    job.fileHash(),
+                    job.expiresAt(),
+                    job.operatorUserId(),
+                    job.reason(),
+                    job.boundEventIds(),
+                    job.createdAt()
+            ));
+        }
+
         @Override
         public int enqueueRuntimePatrolAlerts(String runId,
                                               List<String> alerts,
@@ -5310,7 +5905,8 @@ class SupervisionAlertReviewServiceTest {
                                     String actionType,
                                     String actionNote,
                                     Long operatorUserId,
-                                    LocalDateTime happenedAt) {
+                                    LocalDateTime happenedAt,
+                                    Map<String, Object> metadata) {
             if (!cases.containsKey(reviewCaseId)) {
                 throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
             }
