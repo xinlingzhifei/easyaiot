@@ -53,7 +53,7 @@ FR-01 to FR-38 are directionally correct and most core contracts now exist in DE
 | FR-25 | Runtime locks and patrol profile | Tests cover runtime patrol profile, locks, gap reasons, and `configure_video_record_query_url` action. | Add clustered deployment lock verification and stale-lock recovery. |
 | FR-26 | Missing config degradation | Resolver failure now degrades to missing with standardized `video_url_not_configured`; runtime health exposes a standard missing-record reason catalog for unconfigured query, missing record space, missing file, probe failure, permission denial, and retention expiry; workbench displays item and health reason summaries; compose defaults reduce local missing-config drift while env overrides can still intentionally degrade. | Prove live recording availability in production smoke. |
 | FR-27 | Reproducible video export | VIDEO manifest stores file hash, source segment facts, clip params, ffmpeg command hash, and preserves the original source hash after download audit refresh. | Prove the same path with real VIDEO service recordings in production smoke. |
-| FR-28 | Manifest v2 and verifier | Tests cover `manifestVersion=2`, `yfeieye.record-export.manifest.v2`, HMAC signature, offline verifier, and tampering. | Add key rotation plan and publish verifier artifact with release package. |
+| FR-28 | Manifest v2 and verifier | Tests cover `manifestVersion=2`, `yfeieye.record-export.manifest.v2`, HMAC signature, HMAC keyring rotation by `keyId`, offline verifier wrapper, and tampering. | Run verifier against production key custody/escrow and real exported evidence packages. |
 | FR-29 | Rule semantic consistency | Tests cover bottom-center geometry, inertia frames, loitering seconds; workbench region drawer save now preserves `minStaySeconds`, `inertiaFrames`, and `loiteringSeconds` into review rule saves in the dev/API mock browser gate. | Repeat with the real `DeviceRegionDrawer` and backend rule save in release smoke. |
 | FR-30 | Event reverse status linkage | Review rows persist `reviewData.eventProjection`; `SupervisionAlertReviewEventReconcileJob` reconciles converted clues from event projection outside list query time; converted review items can still sync record evidence and export evidence packages but are guarded against late false-positive rollback. | Configure the production scheduler trigger and define conflict policy after event rollback. |
 | FR-31 | Review case lifecycle | Case grouping, timeline, clue dedupe, owner handoff, close state, closed-case add rejection, merge-to-target, split-to-new-case, source case `merged` status, `case_audit` entries, owner/close/merge/split controller command mapping, and workbench lifecycle controls are covered at service/store/controller/browser-contract level. | Run release smoke against the real backend and operator workflow. |
@@ -110,7 +110,7 @@ Command aliases used below:
 | FR-25 | runtime lock/run/outbox service path | `system_supervision_alert_review_runtime_lock`, `runtime_run`, `runtime_outbox` | `runtimePatrolProfileTraceAndGapReasonsHardenReviewOperations`, `runtimePatrolAndOutboxJobsCloseScheduledAlertDispatchLoop` | `J1`; clustered lock smoke required |
 | FR-26 | missing VIDEO URL resolver branch, UI record reason display | `application.yaml`, workbench record reason labels, runtime gap reason catalog | `alertRecordResolverReportsVideoUrlNotConfiguredWhenUrlIsEmpty`, `runtimeHealthReportsVideoUrlNotConfiguredReasonWhenResolverIsUnconfigured`, `runtimeHealthExposesStandardRecordGapReasonCatalogAndNormalizesAliases`, workbench reason contract | `J1`, `W1` |
 | FR-27 | VIDEO export manifest source segment path | VIDEO manifest files and export artifacts | `test_real_ffmpeg_export_keeps_original_source_hash_after_download_audit`, `test_manifest_hmac_signature_verifier_checks_files_source_segments_and_clip_params` | `V1`, `Smoke` |
-| FR-28 | `/video/record/export/{id}/manifest`, offline verifier | `record_export_manifest_verifier.py`, manifest v2 JSON | `test_manifest_verifier_cli_validates_canonical_hash_signature_and_tampering`, `test_manifest_hmac_signature_verifier_checks_files_source_segments_and_clip_params` | `V1`; release verifier artifact required |
+| FR-28 | `/video/record/export/{id}/manifest`, offline verifier | `record_export_manifest_verifier.py`, `.scripts/record-export-manifest-verifier.mjs`, manifest v2 JSON | `test_manifest_verifier_cli_validates_canonical_hash_signature_and_tampering`, `test_manifest_hmac_signature_verifier_checks_files_source_segments_and_clip_params`, `test_manifest_hmac_keyring_verifier_uses_manifest_key_id_after_rotation` | `V1`, `Pkg`; production key escrow smoke required |
 | FR-29 | `POST /rules/geometry-evaluate`, rule drawer path | `system_supervision_alert_review_rule.geometry`, workbench region drawer save payload | `ruleGeometryUsesBottomCenterSemanticsAndReplayRequiresSafeVersionLifecycle`, `ruleGeometryAndReplayUseZoneInertiaAndLoiteringSemanticsFromSavedRule`, workbench `saveAlertReviewRule` payload assertion for `inertiaFrames` and `loiteringSeconds` | `J1`, `W1`; real `DeviceRegionDrawer` save smoke required |
 | FR-30 | event projection reconciliation path | `system_supervision_alert_review_item.event_id`, `review_data.eventProjection` | `convertedReviewItemCarriesLinkedEventProjection`, `convertedReviewItemAllowsEvidenceHardeningButRejectsFalsePositiveRollback` | `J1` |
 | FR-31 | `/cases/{id}/owner`, `/close`, `/merge`, `/split` | `system_supervision_alert_review_case*` | `reviewCaseLifecycleKeepsOwnerDedupCloseAndAuditTrail`, `reviewCaseMergeAndSplitMoveCluesWithAuditTrail`, `caseLifecycleEndpointsMapHttpRequestsToServiceCommands` | `J1`, `W1` |
@@ -124,17 +124,17 @@ Command aliases used below:
 
 ## Release Packaging Audit
 
-Current local audit started on 2026-07-04: the FR implementation had been staged as one intentional pre-commit release package. The executable `Pkg` gate first reported 75 FR release blockers (67 untracked files and 8 unstaged files); after targeted staging it passed in default pre-commit mode. On 2026-07-05 the verifier was extended to include `V20260704`, PG1 PostgreSQL smoke tooling, the workbench runner test, and `WEB/src/utils/withInstall.ts`; after targeted staging it passes over 29 current FR release paths. `Pkg --require-clean` remains a release-artifact blocker until the package is committed and the release is built from HEAD.
+Current local audit started on 2026-07-04: the FR implementation had been staged as one intentional pre-commit release package. The executable `Pkg` gate first reported 75 FR release blockers (67 untracked files and 8 unstaged files); after targeted staging it passed in default pre-commit mode. On 2026-07-05 the verifier was extended to include `V20260704`, PG1 PostgreSQL smoke tooling, the workbench runner test, and `WEB/src/utils/withInstall.ts`. On 2026-07-06 it also tracks the offline manifest verifier wrapper. `Pkg --require-clean` remains a release-artifact blocker until the package is committed and the release is built from HEAD.
 
 | Package group | Current examples | Current state | Release action |
 | --- | --- | --- | --- |
 | DEVICE review backend | `SupervisionAlertReviewController.java`, `SupervisionAlertReviewServiceImpl.java`, review DOs, mapper store, resolver/provider classes | Staged in the FR pre-commit package | Keep as one intentional FR backend package or the workbench endpoints will not exist after release |
 | DEVICE schema and migration | `supervision_event_closure_v1.sql`, `V20260702__alert_review_frigate_hardening.sql`, `V20260704__alert_review_segment_tenant_scope.sql`, `SupervisionSchemaSqlTest.java` | Staged in the FR pre-commit package | Commit both schema baseline and production migration; run PostgreSQL smoke with `btree_gist` before deploy |
 | DEVICE regression tests | `SupervisionAlertReviewServiceTest.java`, `SupervisionAlertReviewControllerTest.java`, `HttpVideoResolverTest.java`, mapper/schema/permission tests | Staged in the FR pre-commit package | Keep tests with the feature package so future FR regressions remain executable |
-| VIDEO evidence package | `record_export_service.py`, `record_video_service.py`, `record_export_manifest_verifier.py`, `test_record_export.py`, `test_record_availability.py` | Staged in the FR pre-commit package | Commit together with manifest verifier artifact and real recording smoke |
+| VIDEO evidence package | `record_export_service.py`, `record_video_service.py`, `record_export_manifest_verifier.py`, `.scripts/record-export-manifest-verifier.mjs`, `test_record_export.py`, `test_record_availability.py` | Staged in the FR pre-commit package | Commit together with real recording smoke |
 | WEB workbench package | `AlertReviewWorkbench.vue`, `WEB/src/api/supervision/alertReview.ts`, workbench E2E script and fixtures | Staged in the FR pre-commit package | Commit workbench assets and run contract plus full frontend type gate before publishing |
 | Documentation | This FR-01 to FR-38 hardening review document | Staged in the FR pre-commit package | Keep with release notes so each FR maps to API, artifact, test, and gate |
-| Release gate tooling | `.scripts/verify-alert-review-release-package.mjs`, `.scripts/verify-alert-review-release-package.test.mjs`, `.scripts/alert-review-postgres-migration-smoke.mjs`, `.scripts/alert-review-postgres-migration-smoke.test.mjs` | Staged in the FR pre-commit package | Commit the verifier and PostgreSQL smoke tooling so packaging drift and migration drift are checked before every release |
+| Release gate tooling | `.scripts/verify-alert-review-release-package.mjs`, `.scripts/verify-alert-review-release-package.test.mjs`, `.scripts/record-export-manifest-verifier.mjs`, `.scripts/alert-review-postgres-migration-smoke.mjs`, `.scripts/alert-review-postgres-migration-smoke.test.mjs` | Staged in the FR pre-commit package | Commit the verifier and PostgreSQL smoke tooling so packaging drift and migration drift are checked before every release |
 
 Release packaging gates:
 
@@ -145,6 +145,12 @@ Release packaging gates:
 - The production migration `DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql` has local PostgreSQL 16 `btree_gist` smoke coverage for tenant-scoped historical segment overlap; rerun it against the release database shape before deploy.
 - The release smoke must use real DEVICE and VIDEO services, with configured alert record, record coverage, export, manifest, download audit, detail-stream seek, and case/event reverse-link paths.
 - Do not ship while the worktree-only FR files remain outside the release package, while `pnpm run type:check` fails, or before real VIDEO recording smoke proves playable/exportable evidence.
+
+Manifest verifier and HMAC key rotation:
+
+- Sign new exports with `YFEIEYE_RECORD_EXPORT_HMAC_KEYS='{"2026-q3":"<active-secret>","2026-q2":"<previous-secret>"}'` and `YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID=2026-q3`; the legacy `YFEIEYE_RECORD_EXPORT_HMAC_SECRET` / `YFEIEYE_RECORD_EXPORT_KEY_ID` pair remains supported for non-keyring deployments.
+- Keep retired keys in the verifier keyring until every manifest signed by that `keyId` has expired or been archived with an escrowed verifier bundle; the verifier reads the manifest `signature.keyId` rather than the current active key.
+- Verify release evidence with `node .scripts/record-export-manifest-verifier.mjs --manifest <manifest.json>` from the packaged tree, then archive the verifier output with the evidence package download audit.
 
 ## Required Release Gates
 
@@ -173,13 +179,18 @@ Release packaging gates:
 ### P2 gates
 
 - ReviewData production batch migration/backfill check for historical rows.
-- Manifest verifier artifact and HMAC key rotation notes.
+- Production HMAC key custody/escrow smoke for the manifest verifier.
 - Semantic worker backlog and rebuild progress.
 - Shift/daily report with responsibility, area, camera, and rule dimensions.
 
 ## Latest Local Verification
 
-2026-07-03 to 2026-07-05 local checks:
+2026-07-03 to 2026-07-06 local checks:
+
+- FR-28 manifest HMAC keyring rotation and release verifier artifact passed after RED failures showed keyring exports still signed as plain sha256 and the release package gate did not recognize the wrapper:
+  `python -m pytest test_record_export.py::TestRecordExportService::test_manifest_hmac_keyring_verifier_uses_manifest_key_id_after_rotation -q`
+  `node .scripts/verify-alert-review-release-package.test.mjs`
+  Result: 1 Python test passed; `alert review release package verifier tests OK`.
 
 - FR-01 ingest identity DB hardening and FR-20 ReviewSegment SQL constraints passed:
   `mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionSchemaSqlTest" -DfailIfNoTests=false test`
@@ -318,7 +329,7 @@ Release packaging gates:
   Result: 74 tests, 0 failures, 0 errors.
 - Release package verifier self-test passed:
   `node .scripts/verify-alert-review-release-package.test.mjs`
-  Result: `alert review release package verifier tests OK`; the verifier now tracks `V20260704`, PG1 PostgreSQL smoke tooling, LiveVideo smoke tooling, LivePlayer smoke tooling, the workbench runner test, playback contract test, and `WEB/src/utils/withInstall.ts`.
+  Result: `alert review release package verifier tests OK`; the verifier now tracks `V20260704`, PG1 PostgreSQL smoke tooling, offline manifest verifier wrapper, LiveVideo smoke tooling, LivePlayer smoke tooling, the workbench runner test, playback contract test, and `WEB/src/utils/withInstall.ts`.
 - Live VIDEO smoke script self-test passed:
   `node .scripts/alert-review-video-live-smoke.test.mjs`
   Result: `alert review VIDEO live smoke tests OK`.

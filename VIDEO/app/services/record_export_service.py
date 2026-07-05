@@ -16,6 +16,8 @@ _EXPORT_AUDIT = {}
 _STORE_ENV = 'YFEIEYE_RECORD_EXPORT_STORE_DIR'
 _SIGNING_SECRET_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_SECRET'
 _SIGNING_KEY_ID_ENV = 'YFEIEYE_RECORD_EXPORT_KEY_ID'
+_SIGNING_KEYS_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_KEYS'
+_SIGNING_ACTIVE_KEY_ID_ENV = 'YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID'
 
 
 def create_record_export(payload: dict, record_resolver=None, async_worker=False, worker_runner=None) -> dict:
@@ -504,19 +506,27 @@ def _expected_manifest_hash(manifest: dict) -> str:
 
 
 def _manifest_signature(manifest: dict, manifest_hash: str) -> dict:
-    secret = _text(os.environ.get(_SIGNING_SECRET_ENV))
+    signing_key = _select_manifest_signing_key()
+    secret = signing_key.get('secret') or ''
     algorithm = 'hmac-sha256' if secret else 'sha256'
-    return {
+    signature = {
         'algorithm': algorithm,
-        'algorithmVersion': 'v1',
-        'keyId': _text(os.environ.get(_SIGNING_KEY_ID_ENV)) or ('local-hmac' if secret else 'local-sha256'),
+        'algorithmVersion': 'v2' if signing_key.get('keyring') else 'v1',
+        'signatureVersion': 'v2' if signing_key.get('keyring') else 'v1',
+        'keyId': signing_key.get('keyId') or ('local-hmac' if secret else 'local-sha256'),
         'signer': 'yFeiEye-video-evidence',
         'signedAt': manifest.get('generatedAt') or manifest.get('finishedAt'),
-        'value': _expected_manifest_signature(manifest, manifest_hash),
+        'value': _expected_manifest_signature(manifest, manifest_hash, secret),
     }
+    if signing_key.get('keyring'):
+        signature['keyRotation'] = {
+            'activeKeyId': signing_key.get('keyId'),
+            'acceptedPreviousKeyIds': signing_key.get('previousKeyIds') or [],
+        }
+    return signature
 
 
-def _expected_manifest_signature(manifest: dict, manifest_hash: str) -> str:
+def _expected_manifest_signature(manifest: dict, manifest_hash: str, secret=None) -> str:
     approval = manifest.get('approval') if isinstance(manifest.get('approval'), dict) else {}
     payload = [
         manifest.get('packageChecksum'),
@@ -524,11 +534,58 @@ def _expected_manifest_signature(manifest: dict, manifest_hash: str) -> str:
         manifest.get('generatedBy'),
         approval.get('approvedBy'),
     ]
-    secret = _text(os.environ.get(_SIGNING_SECRET_ENV))
-    if secret:
-        digest = hmac.new(secret.encode('utf-8'), _canonical_json(payload).encode('utf-8'), hashlib.sha256).hexdigest()
+    signing_secret = _text(os.environ.get(_SIGNING_SECRET_ENV)) if secret is None else _text(secret)
+    if signing_secret:
+        digest = hmac.new(signing_secret.encode('utf-8'), _canonical_json(payload).encode('utf-8'), hashlib.sha256).hexdigest()
         return 'hmac-sha256:' + digest
     return _sha256_text(_canonical_json(payload))
+
+
+def _select_manifest_signing_key() -> dict:
+    keyring, configured_active_key_id = _hmac_keyring_config()
+    if keyring:
+        active_key_id = (
+            _text(os.environ.get(_SIGNING_ACTIVE_KEY_ID_ENV))
+            or _text(os.environ.get(_SIGNING_KEY_ID_ENV))
+            or configured_active_key_id
+        )
+        if active_key_id not in keyring:
+            active_key_id = sorted(keyring.keys())[0]
+        return {
+            'keyId': active_key_id,
+            'secret': keyring[active_key_id],
+            'keyring': True,
+            'previousKeyIds': sorted(key_id for key_id in keyring.keys() if key_id != active_key_id),
+        }
+    secret = _text(os.environ.get(_SIGNING_SECRET_ENV))
+    return {
+        'keyId': _text(os.environ.get(_SIGNING_KEY_ID_ENV)) or ('local-hmac' if secret else 'local-sha256'),
+        'secret': secret,
+        'keyring': False,
+        'previousKeyIds': [],
+    }
+
+
+def _hmac_keyring_config() -> tuple:
+    raw = _text(os.environ.get(_SIGNING_KEYS_ENV))
+    if not raw:
+        return {}, ''
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}, ''
+    if not isinstance(parsed, dict):
+        return {}, ''
+    configured_active_key_id = _text(parsed.get('activeKeyId') or parsed.get('active_key_id'))
+    raw_keys = parsed.get('keys') if isinstance(parsed.get('keys'), dict) else parsed
+    reserved = {'activeKeyId', 'active_key_id', 'keys'}
+    keyring = {}
+    for raw_key_id, raw_secret in raw_keys.items():
+        key_id = _text(raw_key_id)
+        secret = _text(raw_secret)
+        if key_id and key_id not in reserved and secret:
+            keyring[key_id] = secret
+    return keyring, configured_active_key_id
 
 
 def _manifest_event_references(job: dict) -> list:

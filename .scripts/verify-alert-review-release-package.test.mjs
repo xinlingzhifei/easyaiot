@@ -56,13 +56,14 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'WEB/src/components/Player/module/jessibuca.vue',
   'WEB/src/utils/withInstall.ts',
   '.scripts/verify-alert-review-release-package.mjs',
+  '.scripts/record-export-manifest-verifier.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
   '.scripts/alert-review-player-live-smoke.test.mjs',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 12);
+assert.equal(trackedReleaseEntries.length, 13);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -73,6 +74,7 @@ assert.deepEqual(
     ['  ', 'WEB/src/components/Player/module/jessibuca.vue', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/utils/withInstall.ts', 'WEB alert review workbench package'],
     ['  ', '.scripts/verify-alert-review-release-package.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/record-export-manifest-verifier.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.mjs', 'FR release gate tooling'],

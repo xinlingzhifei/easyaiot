@@ -423,6 +423,68 @@ class TestRecordExportService(unittest.TestCase):
             os.environ.pop('YFEIEYE_RECORD_EXPORT_KEY_ID', None)
             importlib.reload(export_service)
 
+    def test_manifest_hmac_keyring_verifier_uses_manifest_key_id_after_rotation(self):
+        with tempfile.TemporaryDirectory() as store_dir:
+            os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = store_dir
+            os.environ.pop('YFEIEYE_RECORD_EXPORT_HMAC_SECRET', None)
+            os.environ.pop('YFEIEYE_RECORD_EXPORT_KEY_ID', None)
+            os.environ['YFEIEYE_RECORD_EXPORT_HMAC_KEYS'] = json.dumps({
+                '2026-q2': 'old-manifest-secret',
+                '2026-q3': 'new-manifest-secret',
+            }, sort_keys=True)
+            os.environ['YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID'] = '2026-q2'
+
+            import app.services.record_export_service as export_service
+            export_service = importlib.reload(export_service)
+
+            try:
+                started = export_service.create_record_export({
+                    'review_case_id': 3002,
+                    'review_item_id': 1002,
+                    'device_id': 'device-01',
+                    'camera_id': 'camera-01',
+                    'source_alert_id': 'alert-export-keyring',
+                    'start_time': '2026-06-30T10:10:10',
+                    'end_time': '2026-06-30T10:10:40',
+                    'record_uri': '/video/record/space/7/video/live/device-01/clip.flv',
+                    'format': 'mp4',
+                    'operator_user_id': '9004',
+                    'approved_by': '9008',
+                }, async_worker=True, worker_runner=lambda job: {'content': b'keyring-export-content'})
+                export_service.poll_record_export(started['export_id'])
+                manifest = export_service.get_record_export_manifest(started['export_id'])
+                self.assertEqual('hmac-sha256', manifest['signature']['algorithm'])
+                self.assertEqual('2026-q2', manifest['signature']['keyId'])
+                self.assertEqual('v2', manifest['signature']['algorithmVersion'])
+                self.assertEqual('v2', manifest['signature']['signatureVersion'])
+
+                manifest_path = os.path.join(store_dir, 'manifest-keyring.json')
+                with open(manifest_path, 'w', encoding='utf-8') as file_obj:
+                    json.dump(manifest, file_obj, ensure_ascii=False, sort_keys=True)
+
+                os.environ['YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID'] = '2026-q3'
+                from app.services.record_export_manifest_verifier import verify_manifest_file
+
+                rotated_report = verify_manifest_file(manifest_path)
+                self.assertTrue(rotated_report['valid'])
+                self.assertTrue(rotated_report['signatureValid'])
+                self.assertTrue(rotated_report['signatureKeyAvailable'])
+                self.assertEqual('keyring', rotated_report['signatureKeySource'])
+                self.assertEqual('2026-q2', rotated_report['keyId'])
+
+                os.environ['YFEIEYE_RECORD_EXPORT_HMAC_KEYS'] = json.dumps({
+                    '2026-q3': 'new-manifest-secret',
+                }, sort_keys=True)
+                missing_key_report = verify_manifest_file(manifest_path)
+                self.assertFalse(missing_key_report['valid'])
+                self.assertFalse(missing_key_report['signatureKeyAvailable'])
+                self.assertIn('missing_hmac_key', missing_key_report['violations'])
+            finally:
+                os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
+                os.environ.pop('YFEIEYE_RECORD_EXPORT_HMAC_KEYS', None)
+                os.environ.pop('YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID', None)
+                importlib.reload(export_service)
+
     def test_real_ffmpeg_export_keeps_original_source_hash_after_download_audit(self):
         ffmpeg = shutil.which('ffmpeg')
         if not ffmpeg:
