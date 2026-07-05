@@ -26,9 +26,11 @@ assert.equal(untrackedBackend.blockers[0].reason, 'untracked');
 
 const unstagedWorkbench = evaluateStatus(`
  M WEB/src/views/alert/components/AlertReviewWorkbench.vue
+ M WEB/src/components/VideoPlayer/DialogPlayer.vue
 `);
 assert.equal(unstagedWorkbench.ok, false);
 assert.equal(unstagedWorkbench.blockers[0].reason, 'unstaged');
+assert.equal(unstagedWorkbench.blockers[1].group, 'WEB alert review workbench package');
 
 const stagedWorkbench = evaluateStatus(`
 A  WEB/src/views/alert/components/AlertReviewWorkbench.vue
@@ -50,23 +52,31 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
   'WEB/scripts/alert-review-playback-contract.test.mjs',
+  'WEB/src/components/VideoPlayer/DialogPlayer.vue',
+  'WEB/src/components/Player/module/jessibuca.vue',
   'WEB/src/utils/withInstall.ts',
   '.scripts/verify-alert-review-release-package.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
   '.scripts/alert-review-visible-copy-scan.test.mjs',
+  '.scripts/alert-review-player-live-smoke.mjs',
+  '.scripts/alert-review-player-live-smoke.test.mjs',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 8);
+assert.equal(trackedReleaseEntries.length, 12);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
     ['  ', 'WEB/src/api/supervision/alertReview.ts', 'WEB alert review workbench package'],
     ['  ', 'WEB/scripts/alert-review-workbench-e2e-check.test.mjs', 'WEB alert review workbench package'],
     ['  ', 'WEB/scripts/alert-review-playback-contract.test.mjs', 'WEB alert review workbench package'],
+    ['  ', 'WEB/src/components/VideoPlayer/DialogPlayer.vue', 'WEB alert review workbench package'],
+    ['  ', 'WEB/src/components/Player/module/jessibuca.vue', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/utils/withInstall.ts', 'WEB alert review workbench package'],
     ['  ', '.scripts/verify-alert-review-release-package.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.test.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/alert-review-player-live-smoke.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/alert-review-player-live-smoke.test.mjs', 'FR release gate tooling'],
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',

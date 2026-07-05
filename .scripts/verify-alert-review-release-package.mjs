@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
-    match: /^\.scripts\/(verify-alert-review-release-package|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-visible-copy-scan)(\.test)?\.mjs$/,
+    match: /^\.scripts\/(verify-alert-review-release-package|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke)(\.test)?\.mjs$/,
   },
   {
     group: 'DEVICE review backend',
@@ -35,7 +35,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
+      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
   },
   {
     group: 'FR documentation package',
@@ -59,6 +59,8 @@ const TRACKED_RELEASE_PATHS = [
   '.scripts/alert-review-video-live-smoke.test.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
   '.scripts/alert-review-visible-copy-scan.test.mjs',
+  '.scripts/alert-review-player-live-smoke.mjs',
+  '.scripts/alert-review-player-live-smoke.test.mjs',
   'DEVICE/docker-compose.yml',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision',
@@ -84,6 +86,8 @@ const TRACKED_RELEASE_PATHS = [
   'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/scripts/fixtures/alert-review-workbench-e2e',
   'WEB/src/api/supervision/alertReview.ts',
+  'WEB/src/components/VideoPlayer/DialogPlayer.vue',
+  'WEB/src/components/Player/module/jessibuca.vue',
   'WEB/src/utils/withInstall.ts',
   'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
   'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',

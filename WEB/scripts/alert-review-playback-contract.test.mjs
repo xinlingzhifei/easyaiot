@@ -15,6 +15,9 @@ assert.match(workbenchSource, /record_start_time: reviewSegment\.value\?\.startT
 assert.match(workbenchSource, /record_start_time: segment\.startTime/)
 
 assert.match(dialogPlayerSource, /seekOffsetSeconds: 0/)
+assert.match(dialogPlayerSource, /data-testid="alert-review-dialog-player-stage"/)
+assert.match(dialogPlayerSource, /:data-seek-time="state\.seekTime"/)
+assert.match(dialogPlayerSource, /:data-playback-offset-seconds="state\.seekOffsetSeconds"/)
 assert.match(dialogPlayerSource, /:seekOffsetSeconds="state\.seekOffsetSeconds"/)
 assert.match(dialogPlayerSource, /shouldUseNativeSeekPlayback\(streamUrl, state\.seekOffsetSeconds\)/)
 

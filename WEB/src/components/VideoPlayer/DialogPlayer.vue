@@ -12,7 +12,14 @@
       <div class="ant-modal-body" style="padding: 0px;">
         <div style="min-height: 200px; max-height: 680px;">
           <!-- 播放器：有 URL 再挂载，避免 destroyOnClose + 快速二次 openModal 时 vodMode/playUrl 竞态 -->
-          <div class="player-stage">
+          <div
+            class="player-stage"
+            data-testid="alert-review-dialog-player-stage"
+            :data-current-url="state.currentUrl"
+            :data-record-path="state.recordPath"
+            :data-seek-time="state.seekTime"
+            :data-playback-offset-seconds="state.seekOffsetSeconds"
+          >
             <RtcPlayer
               v-if="state.currentUrl && state.playerEngine === 'webrtc'"
               :videoUrl="state.currentUrl"
@@ -173,6 +180,8 @@ const state = reactive({
   playLoading: false,
   vodMode: false,
   seekOffsetSeconds: 0,
+  seekTime: '',
+  recordPath: '',
   playerOptions: {
     aspectRatio: '16:5',
     controls: true,
@@ -193,6 +202,8 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.playLoading = false;
   state.vodMode = false;
   state.seekOffsetSeconds = 0;
+  state.seekTime = '';
+  state.recordPath = '';
 
   const gbIds = getGb28181PlayIds(record);
   const sipDeviceId = gbIds?.sipDeviceId ?? '';
@@ -239,6 +250,8 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   const streamUrl = String(record['http_stream'] ?? '').trim();
   const rawSeekOffset = Number(record['playback_offset_seconds']);
   state.seekOffsetSeconds = Number.isFinite(rawSeekOffset) && rawSeekOffset > 0 ? rawSeekOffset : 0;
+  state.seekTime = String(record['seek_time'] ?? '');
+  state.recordPath = String(record['record_path'] ?? streamUrl);
 
   // 告警录像解析中：仅展示加载占位，不挂载 Jessibuca
   if (!streamUrl && record['_pendingRecord']) {
