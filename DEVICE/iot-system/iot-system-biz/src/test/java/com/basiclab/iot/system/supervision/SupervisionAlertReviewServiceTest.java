@@ -2259,6 +2259,20 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("review_before_apply", acceptedReplayReport.get("decision"));
         assertEquals(2, acceptedReplayReport.get("evaluatedCount"));
         assertEquals(2, acceptedReplayReport.get("falsePositiveReduction"));
+        Map<?, ?> replayRuleVersion = (Map<?, ?>) acceptedReplayReport.get("ruleVersion");
+        Map<?, ?> sampleWindow = (Map<?, ?>) acceptedReplayReport.get("sampleWindow");
+        Map<?, ?> hitComparison = (Map<?, ?>) acceptedReplayReport.get("hitComparison");
+        Map<?, ?> falseNegativeEstimate = (Map<?, ?>) acceptedReplayReport.get("falseNegativeEstimate");
+        assertEquals(SupervisionRuleSeeds.RULE_RESTRICTED_AREA, replayRuleVersion.get("ruleCode"));
+        assertEquals("camera-01", replayRuleVersion.get("cameraId"));
+        assertEquals(baseTime.toString(), sampleWindow.get("startTime"));
+        assertEquals(baseTime.plusMinutes(20).toString(), sampleWindow.get("endTime"));
+        assertEquals(2, sampleWindow.get("sampleCount"));
+        assertEquals(2, hitComparison.get("beforeCount"));
+        assertEquals(0, hitComparison.get("afterCount"));
+        assertEquals(2, hitComparison.get("difference"));
+        assertEquals(2, falseNegativeEstimate.get("possibleMissedCount"));
+        assertEquals("review_required", falseNegativeEstimate.get("riskLevel"));
 
         ReviewItemAggregate applied = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                 first.id(),

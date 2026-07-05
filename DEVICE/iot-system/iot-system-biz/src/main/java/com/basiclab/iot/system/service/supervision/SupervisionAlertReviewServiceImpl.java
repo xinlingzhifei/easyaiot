@@ -3680,16 +3680,21 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .filter(candidate -> STATUS_FALSE_POSITIVE.equals(candidate.reviewStatus()))
                 .count();
         List<String> recommendedActions = List.of("safe_to_apply", "check_recall_risk");
+        Map<String, Object> ruleVersion = ruleVersionFromRuleSuggestionItem(item);
         Map<String, Object> report = new LinkedHashMap<>(buildReplayReport(
                 scopedItems,
                 scopedItems.size(),
                 0,
                 falsePositiveCount,
                 0,
-                recommendedActions
+                recommendedActions,
+                ruleVersion
         ));
         report.put("evaluatedReviewItemIds", scopedItems.stream().map(ReviewItemAggregate::id).toList());
         report.put("evaluatedCount", scopedItems.size());
+        report.put("sampleWindow", replaySampleWindow(scopedItems, item));
+        report.put("hitComparison", replayHitComparison(scopedItems.size(), 0, falsePositiveCount, 0));
+        report.put("falseNegativeEstimate", replayFalseNegativeEstimate(toInteger(report.get("possibleMissedCount"))));
         Map<String, Object> scope = new LinkedHashMap<>();
         scope.put("sourceSystem", item.sourceSystem());
         scope.put("ruleCode", item.ruleCode());
@@ -3701,6 +3706,69 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         report.put("shadowEvaluation", shadowEvaluation);
         report.put("replayedAt", LocalDateTime.now().toString());
         return immutableNonNullMap(report);
+    }
+
+    private static Map<String, Object> ruleVersionFromRuleSuggestionItem(ReviewItemAggregate item) {
+        Map<String, Object> suggestion = item.ruleSuggestion() == null ? Map.of() : item.ruleSuggestion();
+        Integer minStaySeconds = firstNonNull(toInteger(suggestion.get("minStaySeconds")), 15);
+        Integer loiteringSeconds = firstNonNull(toInteger(suggestion.get("loiteringSeconds")), minStaySeconds);
+        Map<String, Object> version = new LinkedHashMap<>();
+        version.put("ruleCode", item.ruleCode());
+        version.put("sourceSystem", item.sourceSystem());
+        version.put("cameraId", item.cameraId());
+        version.put("zoneCode", item.zoneCode());
+        version.put("objectLabel", item.objectLabel());
+        version.put("minStaySeconds", minStaySeconds);
+        version.put("inertiaFrames", normalizeZoneInertiaFrames(toInteger(suggestion.get("inertiaFrames"))));
+        version.put("loiteringSeconds", loiteringSeconds);
+        version.put("semanticEngine", "yfeieye-rule-geometry-v1");
+        version.put("source", "rule_suggestion");
+        version.put("suggestionAction", suggestion.get("action"));
+        version.put("lifecycleStatus", firstText(suggestion.get("lifecycleStatus"), item.ruleSuggestionStatus()));
+        return immutableNonNullMap(version);
+    }
+
+    private static Map<String, Object> replaySampleWindow(List<ReviewItemAggregate> scopedItems,
+                                                          ReviewItemAggregate fallbackItem) {
+        LocalDateTime startTime = scopedItems.stream()
+                .map(candidate -> firstNonNull(candidate.firstAlertTime(), candidate.lastAlertTime()))
+                .filter(Objects::nonNull)
+                .min(Comparator.naturalOrder())
+                .orElse(firstNonNull(fallbackItem.firstAlertTime(), fallbackItem.lastAlertTime()));
+        LocalDateTime endTime = scopedItems.stream()
+                .map(candidate -> firstNonNull(candidate.lastAlertTime(), candidate.firstAlertTime()))
+                .filter(Objects::nonNull)
+                .max(Comparator.naturalOrder())
+                .orElse(firstNonNull(fallbackItem.lastAlertTime(), fallbackItem.firstAlertTime()));
+        Map<String, Object> window = new LinkedHashMap<>();
+        window.put("startTime", startTime == null ? null : startTime.toString());
+        window.put("endTime", endTime == null ? null : endTime.toString());
+        window.put("sampleCount", scopedItems.size());
+        window.put("reviewItemIds", scopedItems.stream().map(ReviewItemAggregate::id).toList());
+        return immutableNonNullMap(window);
+    }
+
+    private static Map<String, Object> replayHitComparison(int beforeCount,
+                                                           int afterCount,
+                                                           int falsePositiveBeforeCount,
+                                                           int falsePositiveAfterCount) {
+        Map<String, Object> comparison = new LinkedHashMap<>();
+        comparison.put("beforeCount", beforeCount);
+        comparison.put("afterCount", afterCount);
+        comparison.put("difference", Math.max(0, beforeCount - afterCount));
+        comparison.put("falsePositiveBeforeCount", falsePositiveBeforeCount);
+        comparison.put("falsePositiveAfterCount", falsePositiveAfterCount);
+        comparison.put("falsePositiveReduction", Math.max(0, falsePositiveBeforeCount - falsePositiveAfterCount));
+        return immutableNonNullMap(comparison);
+    }
+
+    private static Map<String, Object> replayFalseNegativeEstimate(Integer possibleMissedCount) {
+        int missedCount = possibleMissedCount == null ? 0 : Math.max(0, possibleMissedCount);
+        Map<String, Object> estimate = new LinkedHashMap<>();
+        estimate.put("possibleMissedCount", missedCount);
+        estimate.put("riskLevel", missedCount > 0 ? "review_required" : "low");
+        estimate.put("recommendedAction", missedCount > 0 ? "check_recall_risk" : "none");
+        return immutableNonNullMap(estimate);
     }
 
     private static boolean sameRuleScope(ReviewItemAggregate left, ReviewItemAggregate right) {
