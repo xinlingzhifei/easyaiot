@@ -55,6 +55,14 @@ function click(selector: string) {
   requiredElement<HTMLElement>(selector).click()
 }
 
+function clickButtonByText(label: string) {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    .find(candidate => candidate.textContent?.trim() === label)
+  if (!button)
+    throw new Error(`missing button ${label}`)
+  button.click()
+}
+
 function setInputValue(selector: string, value: string) {
   const input = requiredElement<HTMLInputElement>(selector)
   input.value = value
@@ -188,6 +196,13 @@ async function runE2E() {
     throw new Error(`region save expected inertiaFrames 3, got ${String(savedRule?.inertiaFrames)}`)
   if (savedRule?.loiteringSeconds !== 20)
     throw new Error(`region save expected loiteringSeconds 20, got ${String(savedRule?.loiteringSeconds)}`)
+
+  clickButtonByText('Replay')
+  await waitFor(() => text().includes('Rule replay report'), 'rule replay panel')
+  await waitFor(() => text().includes('rule version shadow / yfeieye-rule-geometry-v1'), 'rule replay rule version')
+  await waitFor(() => text().includes('sample window 2026-07-02T08:00:00 -> 2026-07-02T08:20:00 / 2'), 'rule replay sample window')
+  await waitFor(() => text().includes('hit comparison 2 -> 0 / diff 2'), 'rule replay hit comparison')
+  await waitFor(() => text().includes('false negative review_required / possible missed 2'), 'rule replay false negative estimate')
 
   click('[data-testid="alert-review-create-case"]')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-panel"]'), 'review case panel')

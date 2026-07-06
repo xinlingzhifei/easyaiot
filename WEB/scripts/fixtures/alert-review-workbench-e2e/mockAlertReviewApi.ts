@@ -532,7 +532,36 @@ export async function replayAlertReviewRule(payload: unknown) {
     falsePositiveAfterRate: 0,
     recommendedActions: ['keep_rule'],
     scope: {},
-    report: { decision: 'safe', shouldApply: true },
+    report: {
+      decision: 'safe',
+      shouldApply: true,
+      falsePositiveReduction: 2,
+      possibleMissedCount: 2,
+      impactScope: {
+        cameraIds: ['cam-east-gate'],
+        zoneCodes: ['gate-zone'],
+      },
+      ruleVersion: {
+        applicationMode: 'shadow',
+        semanticEngine: 'yfeieye-rule-geometry-v1',
+        zoneInertiaFrames: 3,
+        loiteringSeconds: 20,
+      },
+      sampleWindow: {
+        startTime: '2026-07-02T08:00:00',
+        endTime: '2026-07-02T08:20:00',
+        sampleCount: 2,
+      },
+      hitComparison: {
+        beforeCount: 2,
+        afterCount: 0,
+        difference: 2,
+      },
+      falseNegativeEstimate: {
+        riskLevel: 'review_required',
+        possibleMissedCount: 2,
+      },
+    },
     replayedAt: '2026-07-02T08:08:00',
   }
 }

@@ -1227,6 +1227,26 @@ function compactValueList(value: unknown) {
   return value === undefined || value === null || value === '' ? '-' : String(value)
 }
 
+function replayRuleVersionText(replay?: AlertReviewRuleReplayResult | null) {
+  const ruleVersion = replay?.report?.ruleVersion as Record<string, unknown> | undefined
+  return `${compactValueList(ruleVersion?.applicationMode)} / ${compactValueList(ruleVersion?.semanticEngine)}`
+}
+
+function replaySampleWindowText(replay?: AlertReviewRuleReplayResult | null) {
+  const sampleWindow = replay?.report?.sampleWindow as Record<string, unknown> | undefined
+  return `${compactValueList(sampleWindow?.startTime)} -> ${compactValueList(sampleWindow?.endTime)} / ${compactValueList(sampleWindow?.sampleCount)}`
+}
+
+function replayHitComparisonText(replay?: AlertReviewRuleReplayResult | null) {
+  const hitComparison = replay?.report?.hitComparison as Record<string, unknown> | undefined
+  return `${compactValueList(hitComparison?.beforeCount)} -> ${compactValueList(hitComparison?.afterCount)} / diff ${compactValueList(hitComparison?.difference)}`
+}
+
+function replayFalseNegativeText(replay?: AlertReviewRuleReplayResult | null) {
+  const estimate = replay?.report?.falseNegativeEstimate as Record<string, unknown> | undefined
+  return `${compactValueList(estimate?.riskLevel)} / possible missed ${compactValueList(estimate?.possibleMissedCount)}`
+}
+
 function eventStatusText(status?: string) {
   const map: Record<string, string> = {
     created: '已创建',
@@ -1848,6 +1868,18 @@ defineExpose({
             </div>
             <div class="muted">
               scope {{ (ruleReplay.report?.impactScope?.cameraIds || []).join(' / ') || '-' }} / {{ (ruleReplay.report?.impactScope?.zoneCodes || []).join(' / ') || '-' }}
+            </div>
+            <div class="muted">
+              rule version {{ replayRuleVersionText(ruleReplay) }}
+            </div>
+            <div class="muted">
+              sample window {{ replaySampleWindowText(ruleReplay) }}
+            </div>
+            <div class="muted">
+              hit comparison {{ replayHitComparisonText(ruleReplay) }}
+            </div>
+            <div class="muted">
+              false negative {{ replayFalseNegativeText(ruleReplay) }}
             </div>
           </div>
 
