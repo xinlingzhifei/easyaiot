@@ -198,6 +198,26 @@ VALUES (3003, 3003, 'video', 'video:alert:a-race', 'a-race', false);
 `;
 }
 
+export function buildConcurrentReviewSegmentBootstrapSql() {
+  return `
+INSERT INTO system_supervision_alert_review_item(
+  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+)
+VALUES
+  (7001, 4004, 'video', 'a-segment-race-1', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false),
+  (7002, 4004, 'video', 'a-segment-race-2', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false);
+`;
+}
+
+export function buildConcurrentReviewSegmentInsertSql({ reviewItemId, segmentNo }) {
+  return `
+INSERT INTO system_supervision_alert_review_segment(
+  review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+)
+VALUES (${reviewItemId}, '${segmentNo}', 4004, 'camera-segment-race-01', 'detection', 'active', '2026-07-05 12:00', NULL, false);
+`;
+}
+
 export function summarizeConcurrentDuplicateResults(results) {
   const successCount = results.filter((result) => result.status === 0).length;
   const duplicateCount = results.filter((result) =>
@@ -216,12 +236,30 @@ export function summarizeConcurrentDuplicateResults(results) {
   return 'concurrent duplicate ingest identity smoke passed';
 }
 
+export function summarizeConcurrentReviewSegmentResults(results) {
+  const successCount = results.filter((result) => result.status === 0).length;
+  const exclusionCount = results.filter((result) =>
+    `${result.stdout ?? ''}\n${result.stderr ?? ''}`.includes('violates exclusion constraint'),
+  ).length;
+  if (successCount !== 1 || exclusionCount !== 1) {
+    throw new Error(
+      [
+        'expected exactly one concurrent ReviewSegment insert to succeed and one to hit the exclusion constraint',
+        ...results.map((result, index) =>
+          `process ${index + 1}: status=${result.status} stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`,
+        ),
+      ].join('\n'),
+    );
+  }
+  return 'concurrent ReviewSegment overlap smoke passed';
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-postgres-migration-smoke.mjs --container=NAME [--database=NAME] [--repo-root=PATH] [--keep-database]
 
 Runs FR-01/FR-20 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702 and V20260704, and verifies ingest identity and ReviewSegment constraints.`);
+The smoke creates a temporary database, applies V20260702 and V20260704, and verifies ingest identity and ReviewSegment constraints, including concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {
@@ -326,7 +364,9 @@ export async function runSmoke(options) {
     }
     const assertionOutput = runDockerPsql(options.container, options.database, buildPostMigrationAssertionSql());
     const concurrentOutput = await runConcurrentDuplicateIdentitySmoke(options);
-    return `${assertionOutput}${concurrentOutput}\n`;
+    runDockerPsql(options.container, options.database, buildConcurrentReviewSegmentBootstrapSql());
+    const concurrentSegmentOutput = await runConcurrentReviewSegmentSmoke(options);
+    return `${assertionOutput}${concurrentOutput}\n${concurrentSegmentOutput}\n`;
   } finally {
     if (!options.keepDatabase) {
       runDockerPsql(options.container, 'postgres', `DROP DATABASE IF EXISTS ${options.database};\n`);
@@ -340,6 +380,22 @@ async function runConcurrentDuplicateIdentitySmoke(options) {
     runDockerPsqlAsync(options.container, options.database, buildConcurrentDuplicateIdentityInsertSql()),
   ]);
   return summarizeConcurrentDuplicateResults(results);
+}
+
+async function runConcurrentReviewSegmentSmoke(options) {
+  const results = await Promise.all([
+    runDockerPsqlAsync(
+      options.container,
+      options.database,
+      buildConcurrentReviewSegmentInsertSql({ reviewItemId: 7001, segmentNo: 'seg-race-1' }),
+    ),
+    runDockerPsqlAsync(
+      options.container,
+      options.database,
+      buildConcurrentReviewSegmentInsertSql({ reviewItemId: 7002, segmentNo: 'seg-race-2' }),
+    ),
+  ]);
+  return summarizeConcurrentReviewSegmentResults(results);
 }
 
 async function runCli() {

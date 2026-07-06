@@ -4,9 +4,12 @@ import {
   MIGRATION_FILES,
   buildBootstrapSql,
   buildConcurrentDuplicateIdentityInsertSql,
+  buildConcurrentReviewSegmentBootstrapSql,
+  buildConcurrentReviewSegmentInsertSql,
   buildPostMigrationAssertionSql,
   parseArgs,
   summarizeConcurrentDuplicateResults,
+  summarizeConcurrentReviewSegmentResults,
 } from './alert-review-postgres-migration-smoke.mjs';
 import {
   evaluateStatus,
@@ -35,6 +38,20 @@ const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);
 assert.match(concurrentInsertSql, /system_supervision_alert_review_ingest_identity/);
 
+const concurrentSegmentBootstrapSql = buildConcurrentReviewSegmentBootstrapSql();
+assert.match(concurrentSegmentBootstrapSql, /a-segment-race-1/);
+assert.match(concurrentSegmentBootstrapSql, /a-segment-race-2/);
+assert.match(concurrentSegmentBootstrapSql, /camera-segment-race-01/);
+
+const concurrentSegmentInsertSql = buildConcurrentReviewSegmentInsertSql({
+  reviewItemId: 7001,
+  segmentNo: 'seg-race-1',
+});
+assert.match(concurrentSegmentInsertSql, /review_item_id, segment_no, tenant_id, camera_id/);
+assert.match(concurrentSegmentInsertSql, /7001, 'seg-race-1'/);
+assert.match(concurrentSegmentInsertSql, /camera-segment-race-01/);
+assert.match(concurrentSegmentInsertSql, /NULL, false/);
+
 assert.equal(
   summarizeConcurrentDuplicateResults([
     { status: 0, stdout: 'INSERT 0 1', stderr: '' },
@@ -52,6 +69,25 @@ assert.throws(
     { status: 0, stdout: 'INSERT 0 1', stderr: '' },
   ]),
   /expected exactly one concurrent duplicate identity insert to succeed/,
+);
+
+assert.equal(
+  summarizeConcurrentReviewSegmentResults([
+    { status: 0, stdout: 'INSERT 0 1', stderr: '' },
+    {
+      status: 3,
+      stdout: '',
+      stderr: 'ERROR: conflicting key value violates exclusion constraint "ex_supervision_alert_review_segment_camera_time"',
+    },
+  ]),
+  'concurrent ReviewSegment overlap smoke passed',
+);
+assert.throws(
+  () => summarizeConcurrentReviewSegmentResults([
+    { status: 0, stdout: 'INSERT 0 1', stderr: '' },
+    { status: 0, stdout: 'INSERT 0 1', stderr: '' },
+  ]),
+  /expected exactly one concurrent ReviewSegment insert to succeed/,
 );
 
 assert.deepEqual(parseArgs(['--container=pg-review', '--database=yfeieye_smoke']), {
