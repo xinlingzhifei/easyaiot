@@ -161,6 +161,30 @@ BEGIN
   END;
 END $$;
 
+INSERT INTO system_supervision_alert_review_item(
+  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+)
+VALUES
+  (5, 1001, 'video', 'a-open-active-1', 'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:00', false),
+  (6, 1001, 'video', 'a-open-active-2', 'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:01', false);
+
+DO $$
+BEGIN
+  INSERT INTO system_supervision_alert_review_segment(
+    review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+  )
+  VALUES (5, 'seg-open-active-tenant-1001', 1001, 'camera-open-01', 'detection', 'active', '2026-07-05 11:00', NULL, false);
+  BEGIN
+    INSERT INTO system_supervision_alert_review_segment(
+      review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+    )
+    VALUES (6, 'seg-open-active-overlap-tenant-1001', 1001, 'camera-open-01', 'detection', 'active', '2026-07-05 11:01', NULL, false);
+    RAISE EXCEPTION 'expected open active ReviewSegment to block later same-camera segment';
+  EXCEPTION WHEN exclusion_violation THEN
+    NULL;
+  END;
+END $$;
+
 SELECT 'alert review postgres migration smoke passed' AS result;
 `;
 }

@@ -29,6 +29,7 @@ assert.match(assertionSql, /system_supervision_alert_review_ingest_identity/);
 assert.match(assertionSql, /expected tenant-scoped ingest identity backfill/);
 assert.match(assertionSql, /unique_violation/);
 assert.match(assertionSql, /exclusion_violation/);
+assert.match(assertionSql, /expected open active ReviewSegment to block later same-camera segment/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);

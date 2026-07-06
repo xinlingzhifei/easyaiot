@@ -1165,13 +1165,20 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                     .setReviewItemId(itemDO.getId())
                     .setVersion(0);
         }
+        String segmentStatus = toText(segment.get("status"), "active");
+        LocalDateTime segmentStartTime = toLocalDateTime(segment.get("startTime"), itemDO.getFirstAlertTime());
+        LocalDateTime segmentEndTime = reviewSegmentPersistenceEndTime(
+                segmentStatus,
+                segmentStartTime,
+                toLocalDateTime(segment.get("endTime"), itemDO.getLastAlertTime())
+        );
         segmentDO.setTenantId(reviewSegmentTenantId(itemDO.getTenantId()));
         segmentDO.setSegmentNo(toText(segment.get("segmentId"), itemDO.getReviewItemNo()))
                 .setCameraId(toText(segment.get("cameraId"), itemDO.getCameraId()))
                 .setSeverity(toText(segment.get("severity"), "alert"))
-                .setSegmentStatus(toText(segment.get("status"), "active"))
-                .setStartTime(toLocalDateTime(segment.get("startTime"), itemDO.getFirstAlertTime()))
-                .setEndTime(toLocalDateTime(segment.get("endTime"), itemDO.getLastAlertTime()))
+                .setSegmentStatus(segmentStatus)
+                .setStartTime(segmentStartTime)
+                .setEndTime(segmentEndTime)
                 .setObjectIds(joinCsv(toStringList(segment.get("objectIds"))))
                 .setZoneCodes(joinCsv(toStringList(segment.get("zones"))))
                 .setSourceAlertIds(joinCsv(toStringList(segment.get("sourceAlertIds"))))
@@ -1206,6 +1213,15 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                         + segmentDO.getCameraId() + ": " + overlap.getReviewItemId());
             }
         }
+    }
+
+    private static LocalDateTime reviewSegmentPersistenceEndTime(String status,
+                                                                 LocalDateTime startTime,
+                                                                 LocalDateTime endTime) {
+        if (!"ended".equals(status)) {
+            return null;
+        }
+        return endTime == null ? startTime : endTime;
     }
 
     private static void assertReviewSegmentStatusAllowed(String status, Long reviewItemId) {

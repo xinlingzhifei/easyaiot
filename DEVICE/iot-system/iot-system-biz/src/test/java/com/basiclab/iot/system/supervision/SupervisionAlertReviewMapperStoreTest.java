@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -332,6 +333,68 @@ class SupervisionAlertReviewMapperStoreTest {
         assertEquals(4, overlapArgCount.get());
         assertEquals(1001L, overlapArgs.get()[0]);
         assertEquals("camera-01", overlapArgs.get()[1]);
+    }
+
+    @Test
+    void createPersistsNonEndedReviewSegmentAsOpenInterval() {
+        LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 50);
+        AtomicReference<Object[]> overlapArgs = new AtomicReference<>();
+        AtomicReference<SupervisionAlertReviewSegmentDO> insertedSegment = new AtomicReference<>();
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                SupervisionAlertReviewItemDO itemDO = (SupervisionAlertReviewItemDO) args[0];
+                itemDO.setId(104L);
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewSegmentMapper reviewSegmentMapper = mapper(SupervisionAlertReviewSegmentMapper.class, (proxy, method, args) -> {
+            if ("selectOverlapping".equals(method.getName())) {
+                overlapArgs.set(args);
+                return List.of();
+            }
+            if ("insert".equals(method.getName())) {
+                insertedSegment.set((SupervisionAlertReviewSegmentDO) args[0]);
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        store.create(new ReviewItemDraft(
+                "video",
+                "alert-open-segment-store",
+                "restricted_area",
+                "motion_detection",
+                startTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                "hash-open-segment-store",
+                Map.of("reviewSegment", Map.of(
+                        "segmentId", "seg-open-store",
+                        "cameraId", "camera-01",
+                        "status", "active",
+                        "severity", "detection",
+                        "startTime", startTime.toString(),
+                        "endTime", startTime.toString(),
+                        "objectIds", List.of("obj-open-store"),
+                        "zones", List.of("zone-a"),
+                        "sourceAlertIds", List.of("alert-open-segment-store")
+                )),
+                "not_required",
+                startTime,
+                null
+        ), List.of());
+
+        assertNull(overlapArgs.get()[3]);
+        assertNull(insertedSegment.get().getEndTime());
+        assertEquals("active", insertedSegment.get().getSegmentStatus());
     }
 
     @Test
