@@ -830,7 +830,21 @@ public interface SupervisionAlertReviewService {
                                   List<String> recommendedActions,
                                   LocalDateTime generatedAt,
                                   Long operatorUserId,
-                                  Map<String, Object> structuredData) {
+                                  Map<String, Object> structuredData,
+                                  Map<String, Object> deliveryPlan,
+                                  Map<String, Object> acknowledgement) {
+        public ReviewOperationsReport(String reportType,
+                                      List<Long> reviewItemIds,
+                                      String title,
+                                      String summary,
+                                      List<String> evidenceGaps,
+                                      List<String> recommendedActions,
+                                      LocalDateTime generatedAt,
+                                      Long operatorUserId,
+                                      Map<String, Object> structuredData) {
+            this(reportType, reviewItemIds, title, summary, evidenceGaps, recommendedActions,
+                    generatedAt, operatorUserId, structuredData, Map.of(), Map.of());
+        }
     }
 
     record ReviewEvidenceExportCommand(Long reviewCaseId,

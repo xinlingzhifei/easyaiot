@@ -1920,6 +1920,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         structuredData.put("ruleDimensions", buildReportDimensions(reviewItems, ReviewItemAggregate::ruleCode));
         structuredData.put("operatorUserId", command.operatorUserId());
         structuredData.put("generatedAt", generatedAt.toString());
+        Map<String, Object> deliveryPlan = buildReportDeliveryPlan(command, reportType, reviewItemIds, generatedAt);
+        Map<String, Object> acknowledgement = buildReportAcknowledgement(command, reportType);
+        structuredData.put("deliveryPlan", deliveryPlan);
+        structuredData.put("acknowledgement", acknowledgement);
         return new ReviewOperationsReport(
                 reportType,
                 reviewItemIds,
@@ -1929,7 +1933,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 distinctActions,
                 generatedAt,
                 command.operatorUserId(),
-                immutableNonNullMap(structuredData)
+                immutableNonNullMap(structuredData),
+                deliveryPlan,
+                acknowledgement
         );
     }
 
@@ -1977,6 +1983,32 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         summary.put("falsePositiveRate", roundRate(falsePositiveCount, totalCount));
         summary.put("convertedEventCount", convertedEventCount);
         return immutableNonNullMap(summary);
+    }
+
+    private static Map<String, Object> buildReportDeliveryPlan(ReviewReportCommand command,
+                                                               String reportType,
+                                                               List<Long> reviewItemIds,
+                                                               LocalDateTime generatedAt) {
+        Map<String, Object> deliveryPlan = new LinkedHashMap<>();
+        deliveryPlan.put("deliveryStatus", "pending");
+        deliveryPlan.put("channels", List.of("dashboard", "supervision_console"));
+        deliveryPlan.put("reportType", reportType);
+        deliveryPlan.put("periodStart", command.periodStart() == null ? null : command.periodStart().toString());
+        deliveryPlan.put("periodEnd", command.periodEnd() == null ? null : command.periodEnd().toString());
+        deliveryPlan.put("reviewItemCount", reviewItemIds == null ? 0 : reviewItemIds.size());
+        deliveryPlan.put("deliverAfter", generatedAt == null ? null : generatedAt.toString());
+        deliveryPlan.put("requiresOperatorAcknowledgement", true);
+        deliveryPlan.put("requestedBy", command.operatorUserId());
+        return immutableNonNullMap(deliveryPlan);
+    }
+
+    private static Map<String, Object> buildReportAcknowledgement(ReviewReportCommand command, String reportType) {
+        Map<String, Object> acknowledgement = new LinkedHashMap<>();
+        acknowledgement.put("required", true);
+        acknowledgement.put("status", "pending");
+        acknowledgement.put("reportType", reportType);
+        acknowledgement.put("requestedBy", command.operatorUserId());
+        return immutableNonNullMap(acknowledgement);
     }
 
     private static boolean isUnreviewedBacklog(ReviewItemAggregate item) {

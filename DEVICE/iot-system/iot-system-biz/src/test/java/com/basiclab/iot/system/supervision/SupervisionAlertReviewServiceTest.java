@@ -3049,6 +3049,14 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(shiftStart.plusHours(1).toString(), report.structuredData().get("periodEnd"));
         assertEquals(1, report.structuredData().get("evidenceGapCount"));
         assertEquals("camera-01", report.structuredData().get("responsibilityUnit"));
+        assertEquals("pending", report.deliveryPlan().get("deliveryStatus"));
+        assertEquals(List.of("dashboard", "supervision_console"), report.deliveryPlan().get("channels"));
+        assertEquals(true, report.deliveryPlan().get("requiresOperatorAcknowledgement"));
+        assertEquals("pending", report.acknowledgement().get("status"));
+        assertEquals(true, report.acknowledgement().get("required"));
+        assertEquals(9001L, report.acknowledgement().get("requestedBy"));
+        assertEquals(report.deliveryPlan(), report.structuredData().get("deliveryPlan"));
+        assertEquals(report.acknowledgement(), report.structuredData().get("acknowledgement"));
     }
 
     @Test
