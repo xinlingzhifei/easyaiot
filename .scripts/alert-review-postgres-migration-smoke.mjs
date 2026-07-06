@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -42,12 +43,16 @@ CREATE TABLE system_supervision_alert_review_item (
   id BIGINT PRIMARY KEY,
   tenant_id BIGINT,
   source_system VARCHAR(64) NOT NULL,
+  source_alert_type VARCHAR(128),
   source_alert_ids TEXT,
+  object_label VARCHAR(128),
+  first_alert_time TIMESTAMP,
   review_status VARCHAR(64),
   camera_id VARCHAR(128),
   zone_code VARCHAR(128),
   rule_code VARCHAR(128),
   last_alert_time TIMESTAMP,
+  review_data TEXT,
   deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
@@ -79,12 +84,18 @@ CREATE TABLE system_supervision_alert_review_segment (
 );
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES
-  (1, 1001, 'video', E'a-shared\\na-unique-1\\na-shared', 'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00', false),
-  (2, 2002, 'video', E'a-shared\\na-unique-2', 'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00', false),
-  (3, 1001, 'video', 'a-shared', 'pending_review', 'camera-02', 'zone-b', 'rule-b', '2026-07-05 10:10', false);
+  (1, 1001, 'video', 'motion', E'a-shared\\na-unique-1\\na-shared', 'person', '2026-07-05 10:00',
+   'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00',
+   '{"correlationId":"legacy-correlation","confidence":0.87,"bbox":[1,2,3,4]}', false),
+  (2, 2002, 'video', 'alert', E'a-shared\\na-unique-2', 'car', '2026-07-05 10:00',
+   'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00', NULL, false),
+  (3, 1001, 'video', 'alert', 'a-shared', 'dog', '2026-07-05 10:10',
+   'pending_review', 'camera-02', 'zone-b', 'rule-b', '2026-07-05 10:10',
+   '{"reviewDataVersion":1,"labels":["dog"],"zones":["zone-b"],"objectIds":[],"objects":[{"label":"dog"}],"detections":[{"sourceAlertId":"a-shared","alertTime":"2026-07-05 10:10:00","cameraId":"camera-02"}],"reviewSegment":{"segmentId":"legacy-seg","cameraId":"camera-02","severity":"alert","status":"active","startTime":"2026-07-05 10:10:00","endTime":"2026-07-05 10:10:00","sourceAlertIds":["a-shared"]}}', false);
 
 INSERT INTO system_supervision_alert_review_segment(
   review_item_id, segment_no, camera_id, severity, segment_status, start_time, end_time, deleted
@@ -128,6 +139,46 @@ BEGIN
   ) <> 1 THEN
     RAISE EXCEPTION 'expected tenant-scoped ingest identity backfill for tenant 2002 shared alert';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_item
+    WHERE id = 1
+      AND (review_data::jsonb ->> 'reviewDataVersion') = '1'
+      AND (review_data::jsonb -> 'labels') @> '["person"]'::jsonb
+      AND (review_data::jsonb -> 'zones') @> '["zone-a"]'::jsonb
+      AND jsonb_array_length(review_data::jsonb -> 'objectIds') = 0
+      AND jsonb_array_length(review_data::jsonb -> 'objects') = 1
+      AND jsonb_array_length(review_data::jsonb -> 'detections') = 1
+      AND (review_data::jsonb #>> '{detections,0,source}') = 'migration_backfill'
+      AND (review_data::jsonb #>> '{detections,0,sourceAlertId}') = 'a-shared'
+      AND (review_data::jsonb #>> '{reviewSegment,cameraId}') = 'camera-01'
+      AND (review_data::jsonb #>> '{reviewSegment,severity}') = 'detection'
+      AND (review_data::jsonb #>> '{reviewSegment,status}') = 'active'
+      AND (review_data::jsonb -> 'reviewSegment' -> 'sourceAlertIds') @> '["a-shared","a-unique-1"]'::jsonb
+      AND (review_data::jsonb ->> 'correlationId') = 'legacy-correlation'
+  ) THEN
+    RAISE EXCEPTION 'expected ReviewData backfill to normalize legacy rows';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM system_supervision_alert_review_item
+    WHERE deleted = FALSE
+      AND (
+        review_data IS NULL
+        OR btrim(review_data) = ''
+        OR (review_data::jsonb ->> 'reviewDataVersion') IS DISTINCT FROM '1'
+        OR jsonb_typeof(review_data::jsonb -> 'labels') IS DISTINCT FROM 'array'
+        OR jsonb_typeof(review_data::jsonb -> 'zones') IS DISTINCT FROM 'array'
+        OR jsonb_typeof(review_data::jsonb -> 'objectIds') IS DISTINCT FROM 'array'
+        OR jsonb_typeof(review_data::jsonb -> 'objects') IS DISTINCT FROM 'array'
+        OR jsonb_typeof(review_data::jsonb -> 'detections') IS DISTINCT FROM 'array'
+        OR jsonb_typeof(review_data::jsonb -> 'reviewSegment') IS DISTINCT FROM 'object'
+      )
+  ) <> 0 THEN
+    RAISE EXCEPTION 'expected ReviewData backfill to leave no legacy schema drift rows';
+  END IF;
 END $$;
 
 DO $$
@@ -144,9 +195,11 @@ BEGIN
 END $$;
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
-VALUES (4, 1001, 'video', 'a-overlap', 'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:02', false);
+VALUES (4, 1001, 'video', 'alert', 'a-overlap', 'person', '2026-07-05 10:02',
+  'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:02', NULL, false);
 
 DO $$
 BEGIN
@@ -162,11 +215,14 @@ BEGIN
 END $$;
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES
-  (5, 1001, 'video', 'a-open-active-1', 'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:00', false),
-  (6, 1001, 'video', 'a-open-active-2', 'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:01', false);
+  (5, 1001, 'video', 'motion', 'a-open-active-1', 'person', '2026-07-05 11:00',
+   'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:00', NULL, false),
+  (6, 1001, 'video', 'motion', 'a-open-active-2', 'person', '2026-07-05 11:01',
+   'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:01', NULL, false);
 
 DO $$
 BEGIN

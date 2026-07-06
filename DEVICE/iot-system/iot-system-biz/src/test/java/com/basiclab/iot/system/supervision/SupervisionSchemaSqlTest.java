@@ -320,6 +320,24 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void alertReviewReviewDataBackfillMigrationNormalizesLegacyRows() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql");
+
+        assertTrue(Files.exists(migration), "reviewData backfill migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("system_supervision_alert_review_item"));
+        assertTrue(migrationSql.contains("review_data::jsonb"));
+        assertTrue(migrationSql.contains("reviewDataVersion"));
+        assertTrue(migrationSql.contains("labels"));
+        assertTrue(migrationSql.contains("zones"));
+        assertTrue(migrationSql.contains("objectIds"));
+        assertTrue(migrationSql.contains("objects"));
+        assertTrue(migrationSql.contains("detections"));
+        assertTrue(migrationSql.contains("reviewSegment"));
+        assertTrue(migrationSql.contains("migration_backfill"));
+    }
+
+    @Test
     void reviewDataJsonSchemaArtifactDefinesVersionedFrigateReviewFields() throws IOException {
         Path schema = Path.of("src/main/resources/schemas/alert-review-review-data-v1.schema.json");
 

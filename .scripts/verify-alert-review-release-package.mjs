@@ -16,7 +16,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/V2026070[24]__alert_review_(frigate_hardening|segment_tenant_scope)\.sql|sql\/supervision_event_closure_v1\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/V2026070[245]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill)\.sql|sql\/supervision_event_closure_v1\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
@@ -72,6 +72,7 @@ const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/schemas',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/supervision_event_closure_v1.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/app/blueprints/record.py',

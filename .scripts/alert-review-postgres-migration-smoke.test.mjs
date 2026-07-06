@@ -19,6 +19,7 @@ import {
 assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
 ]);
 
 const bootstrapSql = buildBootstrapSql();
@@ -26,6 +27,8 @@ assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
 assert.match(bootstrapSql, /source_alert_ids TEXT/);
 assert.match(bootstrapSql, /a-shared/);
 assert.match(bootstrapSql, /system_supervision_alert_review_segment/);
+assert.match(bootstrapSql, /review_data TEXT/);
+assert.match(bootstrapSql, /legacy-correlation/);
 
 const assertionSql = buildPostMigrationAssertionSql();
 assert.match(assertionSql, /system_supervision_alert_review_ingest_identity/);
@@ -33,6 +36,9 @@ assert.match(assertionSql, /expected tenant-scoped ingest identity backfill/);
 assert.match(assertionSql, /unique_violation/);
 assert.match(assertionSql, /exclusion_violation/);
 assert.match(assertionSql, /expected open active ReviewSegment to block later same-camera segment/);
+assert.match(assertionSql, /expected ReviewData backfill to normalize legacy rows/);
+assert.match(assertionSql, /reviewDataVersion/);
+assert.match(assertionSql, /reviewSegment/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);
