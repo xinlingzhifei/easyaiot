@@ -338,6 +338,21 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void alertReviewMediaPermissionMigrationSeedsMenuPermissions() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql");
+
+        assertTrue(Files.exists(migration), "review media permission migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("system_menu"));
+        assertTrue(migrationSql.contains("system_menu_seq"));
+        assertTrue(migrationSql.contains("type = 3"));
+        assertTrue(migrationSql.contains("system:supervision-alert-review:media:playback"));
+        assertTrue(migrationSql.contains("system:supervision-alert-review:media:export"));
+        assertTrue(migrationSql.contains("system:supervision-alert-review:media:download"));
+        assertTrue(migrationSql.contains("system:supervision-alert-review:media:manifest"));
+    }
+
+    @Test
     void reviewDataJsonSchemaArtifactDefinesVersionedFrigateReviewFields() throws IOException {
         Path schema = Path.of("src/main/resources/schemas/alert-review-review-data-v1.schema.json");
 

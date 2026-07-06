@@ -7,6 +7,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -39,6 +40,39 @@ export function parseArgs(args, cwd = process.cwd()) {
 
 export function buildBootstrapSql() {
   return `
+CREATE SEQUENCE system_menu_seq START WITH 10000;
+
+CREATE TABLE system_menu (
+  id BIGINT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  permission VARCHAR(100) NOT NULL DEFAULT '',
+  type SMALLINT NOT NULL,
+  sort INTEGER NOT NULL DEFAULT 0,
+  parent_id BIGINT NOT NULL DEFAULT 0,
+  path VARCHAR(200),
+  icon VARCHAR(100),
+  component VARCHAR(255),
+  component_name VARCHAR(255),
+  status SMALLINT NOT NULL DEFAULT 0,
+  visible BOOLEAN NOT NULL DEFAULT TRUE,
+  keep_alive BOOLEAN NOT NULL DEFAULT TRUE,
+  always_show BOOLEAN NOT NULL DEFAULT TRUE,
+  creator VARCHAR(64),
+  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updater VARCHAR(64),
+  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted SMALLINT NOT NULL DEFAULT 0
+);
+
+INSERT INTO system_menu(
+  id, name, permission, type, sort, parent_id, path, icon, component, component_name,
+  status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted
+)
+VALUES (
+  9001, '旧复核录像播放', 'system:supervision-alert-review:media:playback', 3, 10, 0, '', '#', NULL, NULL,
+  0, TRUE, TRUE, TRUE, 'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP, 1
+);
+
 CREATE TABLE system_supervision_alert_review_item (
   id BIGINT PRIMARY KEY,
   tenant_id BIGINT,
@@ -110,6 +144,31 @@ export function buildPostMigrationAssertionSql() {
   return `
 DO $$
 BEGIN
+  IF (
+    SELECT count(*)
+    FROM system_menu
+    WHERE permission IN (
+      'system:supervision-alert-review:media:playback',
+      'system:supervision-alert-review:media:export',
+      'system:supervision-alert-review:media:download',
+      'system:supervision-alert-review:media:manifest'
+    )
+      AND type = 3
+      AND status = 0
+      AND deleted = 0
+  ) <> 4 THEN
+    RAISE EXCEPTION 'expected review media permission seeds to be present';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM system_menu
+    WHERE permission = 'system:supervision-alert-review:media:playback'
+      AND deleted = 0
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected review media permission migration to restore existing playback seed without duplicates';
+  END IF;
+
   IF (
     SELECT count(*)
     FROM system_supervision_alert_review_ingest_identity
@@ -315,7 +374,7 @@ function printHelp() {
 
 Runs FR-01/FR-20 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702 and V20260704, and verifies ingest identity and ReviewSegment constraints, including concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, and V20260706, and verifies ingest identity, ReviewSegment constraints, ReviewData backfill, media permission seeds, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {
