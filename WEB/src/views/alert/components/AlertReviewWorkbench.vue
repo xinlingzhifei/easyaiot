@@ -1276,6 +1276,10 @@ function canRetryRecordEvidence(item?: AlertReviewItem | null) {
   return item?.recordEvidenceStatus === 'missing' || item?.recordEvidenceStatus === 'failed'
 }
 
+function canMarkFalsePositive(item?: AlertReviewItem | null) {
+  return !!item && item.reviewStatus !== 'converted' && !item.eventId
+}
+
 function pickRuleRegion(item: AlertReviewItem, regions: DeviceDetectionRegion[]) {
   if (!regions.length)
     return null
@@ -1609,7 +1613,7 @@ defineExpose({
                   <Button size="small" type="link" @click="markReviewed(item)">
                     复核
                   </Button>
-                  <Button size="small" type="link" @click="markFalsePositive(item)">
+                  <Button v-if="canMarkFalsePositive(item)" size="small" type="link" @click="markFalsePositive(item)">
                     误报
                   </Button>
                   <Button

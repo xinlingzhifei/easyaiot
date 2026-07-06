@@ -63,6 +63,11 @@ function clickButtonByText(label: string) {
   button.click()
 }
 
+function hasButtonByText(label: string) {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    .some(candidate => candidate.textContent?.trim() === label)
+}
+
 function setInputValue(selector: string, value: string) {
   const input = requiredElement<HTMLInputElement>(selector)
   input.value = value
@@ -203,6 +208,17 @@ async function runE2E() {
   await waitFor(() => text().includes('sample window 2026-07-02T08:00:00 -> 2026-07-02T08:20:00 / 2'), 'rule replay sample window')
   await waitFor(() => text().includes('hit comparison 2 -> 0 / diff 2'), 'rule replay hit comparison')
   await waitFor(() => text().includes('false negative review_required / possible missed 2'), 'rule replay false negative estimate')
+
+  if (!hasButtonByText('误报'))
+    throw new Error('expected false-positive action before conversion')
+  clickButtonByText('转事件')
+  await waitFor(() => convertedEvents.length === 1, 'converted event emission')
+  if (hasButtonByText('误报'))
+    throw new Error('converted review item should hide false-positive action')
+  if (!hasButtonByText('证据'))
+    throw new Error('converted review item should keep evidence action')
+  if (!hasButtonByText('覆盖度'))
+    throw new Error('converted review item should keep record coverage action')
 
   click('[data-testid="alert-review-create-case"]')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-panel"]'), 'review case panel')

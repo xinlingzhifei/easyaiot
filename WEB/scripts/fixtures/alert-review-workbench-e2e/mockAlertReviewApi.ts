@@ -87,6 +87,13 @@ const summary = {
   inReviewCase: 0,
 }
 
+let currentReviewItem = { ...reviewItem }
+
+function updateReviewItem(patch: Record<string, unknown>) {
+  currentReviewItem = { ...currentReviewItem, ...patch }
+  return currentReviewItem
+}
+
 const timeline = [
   {
     reviewItemId: 101,
@@ -237,7 +244,7 @@ function record(name: string, payload?: unknown) {
 
 export async function listAlertReviewItems(payload?: unknown) {
   record('listAlertReviewItems', payload)
-  return [reviewItem]
+  return [currentReviewItem]
 }
 
 export async function getAlertReviewSummary(payload?: unknown) {
@@ -485,12 +492,12 @@ export async function splitAlertReviewCase(sourceReviewCaseId: number, payload: 
 
 export async function markAlertReviewFalsePositive(reviewItemId: number, payload?: unknown) {
   record('markAlertReviewFalsePositive', { reviewItemId, payload })
-  return { ...reviewItem, reviewStatus: 'false_positive' }
+  return updateReviewItem({ reviewStatus: 'false_positive' })
 }
 
 export async function markAlertReviewReviewed(reviewItemId: number) {
   record('markAlertReviewReviewed', reviewItemId)
-  return { ...reviewItem, reviewStatus: 'reviewed' }
+  return updateReviewItem({ reviewStatus: 'reviewed' })
 }
 
 export async function markAlertReviewUserStatus(reviewItemId: number, payload: unknown) {
@@ -500,12 +507,12 @@ export async function markAlertReviewUserStatus(reviewItemId: number, payload: u
 
 export async function retryAlertReviewRecordEvidence(reviewItemId: number) {
   record('retryAlertReviewRecordEvidence', reviewItemId)
-  return { ...reviewItem, recordEvidenceStatus: 'found' }
+  return updateReviewItem({ recordEvidenceStatus: 'found' })
 }
 
 export async function updateAlertReviewRuleSuggestionStatus(reviewItemId: number, payload: unknown) {
   record('updateAlertReviewRuleSuggestionStatus', { reviewItemId, payload })
-  return { ...reviewItem, ruleSuggestionStatus: 'accepted' }
+  return updateReviewItem({ ruleSuggestionStatus: 'accepted' })
 }
 
 export async function previewAlertReviewRuleSuggestion(reviewItemId: number) {
@@ -590,7 +597,7 @@ export async function evaluateAlertReviewRuleGeometry(payload: unknown) {
 
 export async function revertAlertReviewRuleSuggestion(reviewItemId: number, payload: unknown) {
   record('revertAlertReviewRuleSuggestion', { reviewItemId, payload })
-  return { ...reviewItem, ruleSuggestionStatus: 'reverted' }
+  return updateReviewItem({ ruleSuggestionStatus: 'reverted' })
 }
 
 export async function saveAlertReviewRule(payload: unknown) {
@@ -600,10 +607,16 @@ export async function saveAlertReviewRule(payload: unknown) {
 
 export async function ignoreAlertReviewItem(reviewItemId: number, payload?: unknown) {
   record('ignoreAlertReviewItem', { reviewItemId, payload })
-  return { ...reviewItem, reviewStatus: 'ignored' }
+  return updateReviewItem({ reviewStatus: 'ignored' })
 }
 
 export async function convertAlertReviewToEvent(reviewItemId: number) {
   record('convertAlertReviewToEvent', reviewItemId)
+  updateReviewItem({
+    reviewStatus: 'converted',
+    eventId: 7001,
+    eventStatus: 'created',
+    eventReviewStatus: 'converted',
+  })
   return { reviewItemId, reviewStatus: 'converted', eventId: 7001, reused: false }
 }
