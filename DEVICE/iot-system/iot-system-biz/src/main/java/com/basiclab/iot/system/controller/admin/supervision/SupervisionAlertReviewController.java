@@ -813,7 +813,7 @@ public class SupervisionAlertReviewController {
             @PathVariable("jobNo") String jobNo,
             @RequestParam(value = "operatorUserId", required = false) Long operatorUserId) {
         return success(EvidenceVerificationRespVO.from(supervisionAlertReviewService.verifyEvidencePackage(
-                new ReviewEvidenceVerificationCommand(jobNo, operatorUserId)
+                new ReviewEvidenceVerificationCommand(jobNo, currentOperatorUserId(operatorUserId))
         )));
     }
 

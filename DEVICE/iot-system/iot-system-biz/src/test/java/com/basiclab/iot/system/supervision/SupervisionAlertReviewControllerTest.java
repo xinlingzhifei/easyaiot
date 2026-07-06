@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.supervision;
 
+import com.basiclab.iot.common.domain.LoginUser;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionAlertReviewController;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleReplayReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleSuggestionStatusReqVO;
@@ -11,8 +12,13 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -27,6 +33,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -104,6 +111,31 @@ class SupervisionAlertReviewControllerTest {
                 reviewService.command("mergeReviewCases"));
         assertEquals(new ReviewCaseSplitCommand(10L, List.of(103L), "camera-03 follow-up", 2002L, 9004L, "separate lead"),
                 reviewService.command("splitReviewCase"));
+    }
+
+    @Test
+    void evidencePackageVerificationUsesLoginUserInsteadOfRequestOperator() throws Exception {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SupervisionAlertReviewController(reviewService.proxy()))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser().setId(777L),
+                null,
+                List.of()
+        ));
+        try {
+            mockMvc.perform(get("/system/supervision/alert-review/evidence-export-jobs/JOB-1/verify")
+                            .param("operatorUserId", "9999"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.operatorUserId").value(777));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertEquals(new ReviewEvidenceVerificationCommand("JOB-1", 777L),
+                reviewService.command("verifyEvidencePackage"));
     }
 
     @Test
@@ -189,6 +221,7 @@ class SupervisionAlertReviewControllerTest {
                         caseView(10L, "open", List.of(101L, 102L), 2001L, "source"),
                         caseView(12L, "open", List.of(103L), 2002L, "separate lead")
                 );
+                case "verifyEvidencePackage" -> verificationReport((ReviewEvidenceVerificationCommand) command);
                 default -> throw new AssertionError("unexpected service method: " + method.getName());
             };
         }
@@ -197,6 +230,29 @@ class SupervisionAlertReviewControllerTest {
             return commands.get(methodName);
         }
 
+    }
+
+    private static ReviewEvidenceVerificationReport verificationReport(ReviewEvidenceVerificationCommand command) {
+        ReviewManifestVerification manifestVerification = new ReviewManifestVerification(
+                command.jobNo(),
+                true,
+                "sha256:expected",
+                "sha256:expected",
+                "sha256:package",
+                List.of(),
+                LocalDateTime.of(2026, 7, 6, 10, 0)
+        );
+        return new ReviewEvidenceVerificationReport(
+                command.jobNo(),
+                true,
+                manifestVerification,
+                Map.of(),
+                List.of(),
+                List.of("manifest_hash_valid"),
+                List.of(),
+                LocalDateTime.of(2026, 7, 6, 10, 0),
+                command.operatorUserId()
+        );
     }
 
 }
