@@ -1611,6 +1611,87 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidenceAuditTrailIncludesMediaAccessReadsWithOperatorAndReverseLookup() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7600L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.DISPATCHED.getCode(),
+                        false
+                )
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 6, 12, 10);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-media-trail",
+                baseTime,
+                "media-trail.jpg",
+                "media-trail.mp4"
+        ));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9100L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "media access evidence trail",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        service.auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCase.id(),
+                item.id(),
+                9101L,
+                "camera-01",
+                "media-trail.mp4",
+                "playback",
+                List.of("camera-01"),
+                "operator reviewed playable evidence"
+        ));
+        service.auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCase.id(),
+                item.id(),
+                9102L,
+                "camera-01",
+                "media-trail.mp4",
+                "download",
+                List.of("camera-02"),
+                "outside assigned scope"
+        ));
+
+        List<ReviewEvidenceAuditEntry> auditTrail = service.getEvidenceAuditTrail(reviewCase.id());
+        ReviewEvidenceAuditEntry granted = auditTrail.stream()
+                .filter(entry -> "media_access_granted".equals(entry.actionType()))
+                .findFirst()
+                .orElseThrow();
+        ReviewEvidenceAuditEntry denied = auditTrail.stream()
+                .filter(entry -> "media_access_denied".equals(entry.actionType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(9101L, granted.operatorUserId());
+        assertEquals(List.of("media-trail.mp4"), granted.evidenceUris());
+        assertEquals(List.of(7600L), granted.boundEventIds());
+        assertEquals(reviewCase.id(), granted.metadata().get("reviewCaseId"));
+        assertEquals(List.of(item.id()), granted.metadata().get("reviewItemIds"));
+        assertEquals(List.of(7600L), granted.metadata().get("eventIds"));
+        assertEquals("granted", granted.metadata().get("decision"));
+        assertEquals("playback", granted.metadata().get("mediaAction"));
+        assertEquals("camera-01", granted.metadata().get("cameraId"));
+        assertEquals("media-trail.mp4", granted.metadata().get("materialUri"));
+
+        assertEquals(9102L, denied.operatorUserId());
+        assertEquals(List.of("media-trail.mp4"), denied.evidenceUris());
+        assertEquals(List.of(7600L), denied.boundEventIds());
+        assertEquals("denied", denied.metadata().get("decision"));
+        assertEquals("download", denied.metadata().get("mediaAction"));
+        assertEquals(List.of("camera_not_allowed"), denied.metadata().get("deniedReasons"));
+        assertEquals("outside assigned scope", denied.actionNote());
+    }
+
+    @Test
     void evidenceExportRejectsUnauthorizedCameraMediaAndAuditsDenial() {
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),

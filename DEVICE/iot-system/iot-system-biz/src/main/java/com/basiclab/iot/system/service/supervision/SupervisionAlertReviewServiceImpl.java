@@ -2139,10 +2139,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
         for (ReviewCaseTimelineItem timelineItem : reviewItemStore.listCaseTimeline(reviewCaseId)) {
             if (!"case_audit".equals(timelineItem.materialType())
-                    || !"export_downloaded".equals(timelineItem.materialUri())) {
+                    || (!"export_downloaded".equals(timelineItem.materialUri())
+                    && !isMediaAccessAuditAction(timelineItem.materialUri()))) {
                 continue;
             }
-            auditTrail.add(downloadAuditEntry(reviewCaseId, timelineItem));
+            if ("export_downloaded".equals(timelineItem.materialUri())) {
+                auditTrail.add(downloadAuditEntry(reviewCaseId, timelineItem));
+            } else {
+                auditTrail.add(mediaAccessAuditEntry(reviewCaseId, timelineItem));
+            }
         }
         List<ReviewEvidenceAuditEntry> sortedTrail = auditTrail.stream()
                 .sorted(Comparator
@@ -2231,6 +2236,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 + "; action=" + actionType
                 + "; cameraId=" + command.cameraId()
                 + "; materialUri=" + command.materialUri()
+                + (command.operatorUserId() == null ? "" : "; operatorUserId=" + command.operatorUserId())
                 + (deniedReasons.isEmpty() ? "" : "; deniedReasons=" + String.join(",", deniedReasons))
                 + (hasText(command.reason()) ? "; reason=" + command.reason() : "");
         reviewItemStore.recordCaseAudit(
@@ -2824,6 +2830,67 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 timelineItem.happenedAt(),
                 immutableNonNullMap(metadata)
         );
+    }
+
+    private ReviewEvidenceAuditEntry mediaAccessAuditEntry(Long reviewCaseId, ReviewCaseTimelineItem timelineItem) {
+        Map<String, Object> note = parseAuditNote(timelineItem.actionNote());
+        Optional<ReviewItemAggregate> reviewItem = timelineItem.reviewItemId() == null
+                ? Optional.empty()
+                : reviewItemStore.findById(timelineItem.reviewItemId());
+        List<Long> reviewItemIds = timelineItem.reviewItemId() == null
+                ? List.of()
+                : List.of(timelineItem.reviewItemId());
+        List<Long> eventIds = reviewItem
+                .map(ReviewItemAggregate::eventId)
+                .map(List::of)
+                .orElse(List.of());
+        String materialUri = toText(note.get("materialUri"));
+        Map<String, Object> metadata = new LinkedHashMap<>(note);
+        metadata.put("decision", firstText(note.get("decision"), mediaAccessDecision(timelineItem.materialUri())));
+        metadata.put("mediaAction", note.get("action"));
+        metadata.put("deniedReasons", splitAuditCsv(note.get("deniedReasons")));
+        putAuditReverseLookupMetadata(metadata, reviewCaseId, reviewItemIds, eventIds, null);
+        return new ReviewEvidenceAuditEntry(
+                reviewCaseId,
+                timelineItem.reviewItemId(),
+                timelineItem.materialUri(),
+                null,
+                null,
+                toLong(note.get("operatorUserId")),
+                toText(note.get("reason")),
+                hasText(materialUri) ? List.of(materialUri) : List.of(),
+                eventIds,
+                timelineItem.happenedAt(),
+                immutableNonNullMap(metadata)
+        );
+    }
+
+    private static boolean isMediaAccessAuditAction(String actionType) {
+        return "media_access_granted".equals(actionType) || "media_access_denied".equals(actionType);
+    }
+
+    private static String mediaAccessDecision(String actionType) {
+        if ("media_access_granted".equals(actionType)) {
+            return "granted";
+        }
+        if ("media_access_denied".equals(actionType)) {
+            return "denied";
+        }
+        return null;
+    }
+
+    private static List<String> splitAuditCsv(Object value) {
+        String text = toText(value);
+        if (!hasText(text)) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (String part : text.split(",")) {
+            if (hasText(part)) {
+                values.add(part.trim());
+            }
+        }
+        return List.copyOf(values);
     }
 
     private static void putAuditReverseLookupMetadata(Map<String, Object> metadata,
