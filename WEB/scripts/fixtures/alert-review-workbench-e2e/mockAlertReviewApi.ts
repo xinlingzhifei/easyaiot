@@ -303,6 +303,22 @@ export async function getAlertReviewEvidenceAudit(reviewCaseId: number) {
   return evidenceAudit
 }
 
+export async function auditAlertReviewMediaAccess(reviewCaseId: number, payload?: unknown) {
+  record('auditAlertReviewMediaAccess', { reviewCaseId, payload })
+  return {
+    reviewCaseId,
+    reviewItemId: (payload as any)?.reviewItemId,
+    operatorUserId: (payload as any)?.operatorUserId,
+    cameraId: (payload as any)?.cameraId,
+    materialUri: (payload as any)?.materialUri,
+    actionType: (payload as any)?.actionType || 'playback',
+    decision: 'granted',
+    deniedReasons: [],
+    happenedAt: '2026-07-02T08:04:00',
+    metadata: { source: 'e2e-media-audit' },
+  }
+}
+
 export async function summarizeAlertReviewCase(reviewCaseId: number, operatorUserId?: number) {
   record('summarizeAlertReviewCase', { reviewCaseId, operatorUserId })
   return {

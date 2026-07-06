@@ -31,6 +31,7 @@ import {
   type AlertReviewSummary,
   addAlertReviewItemToCase,
   assignAlertReviewCaseOwner,
+  auditAlertReviewMediaAccess,
   convertAlertReviewToEvent,
   closeAlertReviewCase,
   createAlertReviewCase,
@@ -1050,11 +1051,13 @@ function openUnifiedTimelineEntry(entry: UnifiedTimelineEntry) {
   })
 }
 
-function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
+async function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
   if (!entry.materialUri) {
     createMessage.warn('material uri is empty')
     return
   }
+  if (!(await guardCaseTimelineMediaAccess(entry)))
+    return
   if (entry.materialType === 'snapshot') {
     emit('viewImage', { image_url: entry.materialUri })
     return
@@ -1067,6 +1070,28 @@ function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
     record_start_time: reviewSegment.value?.startTime || activeCase.value?.startTime,
     record_path: entry.materialUri,
   })
+}
+
+async function guardCaseTimelineMediaAccess(entry: AlertReviewCaseTimelineItem) {
+  const reviewCaseId = entry.reviewCaseId || activeCase.value?.id
+  const reviewItemId = entry.reviewItemId || selectedItem.value?.id
+  const cameraId = entry.cameraId || selectedItem.value?.cameraId || selectedItem.value?.deviceId
+  if (!reviewCaseId || !reviewItemId || !cameraId || !entry.materialUri)
+    return true
+  try {
+    await auditAlertReviewMediaAccess(reviewCaseId, {
+      reviewItemId,
+      cameraId,
+      materialUri: entry.materialUri,
+      actionType: 'playback',
+      reason: 'workbench playback',
+    })
+    return true
+  }
+  catch (error: any) {
+    createMessage.error(error?.message || 'Media access denied')
+    return false
+  }
 }
 
 function openCoverageSegment(segment: AlertReviewCoverageSegment) {

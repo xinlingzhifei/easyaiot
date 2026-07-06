@@ -102,6 +102,31 @@ function assertLastVideoSeek(
     throw new Error(`${label} expected record_start_time ${expectedRecordStartTime}, got ${String(event.record_start_time)}`)
 }
 
+function assertLastMediaAudit(
+  label: string,
+  expected: {
+    reviewCaseId: number
+    reviewItemId: number
+    cameraId: string
+    materialUri: string
+    actionType: string
+  },
+) {
+  const calls = window.__alertReviewE2EApiCalls || []
+  const call = calls[calls.length - 1]
+  if (call?.name !== 'auditAlertReviewMediaAccess')
+    throw new Error(`${label} expected auditAlertReviewMediaAccess before opening media, got ${String(call?.name)}`)
+  const payload = call.payload as { reviewCaseId?: number; payload?: Record<string, unknown> } | undefined
+  if (payload?.reviewCaseId !== expected.reviewCaseId)
+    throw new Error(`${label} expected audit reviewCaseId ${expected.reviewCaseId}, got ${String(payload?.reviewCaseId)}`)
+  for (const [key, value] of Object.entries(expected)) {
+    if (key === 'reviewCaseId')
+      continue
+    if (payload?.payload?.[key] !== value)
+      throw new Error(`${label} expected audit ${key} ${value}, got ${String(payload?.payload?.[key])}`)
+  }
+}
+
 async function runE2E() {
   const app = createApp(AlertReviewWorkbench, {
     onViewVideo: (payload: unknown) => viewVideoEvents.push(payload),
@@ -181,6 +206,13 @@ async function runE2E() {
     'mock://record/east-gate-080000.mp4',
     '2026-07-02T08:00:00',
   )
+  assertLastMediaAudit('case timeline seek', {
+    reviewCaseId: 501,
+    reviewItemId: 101,
+    cameraId: 'cam-east-gate',
+    materialUri: 'mock://record/east-gate-080000.mp4',
+    actionType: 'playback',
+  })
   await waitFor(() => !requiredElement<HTMLButtonElement>('[data-testid="alert-review-case-split"]').disabled, 'case lifecycle idle')
 
   click('[data-testid="alert-review-case-split"]')
@@ -206,6 +238,7 @@ async function runE2E() {
   assertApiCalled('summarizeAlertReviewCase')
   assertApiCalled('createAlertReviewEvidenceExportJob')
   assertApiCalled('getAlertReviewEvidenceAudit')
+  assertApiCalled('auditAlertReviewMediaAccess')
 
   const errorMessages = getAlertReviewE2EMessages().filter(message => message.type === 'error')
   if (errorMessages.length)
