@@ -990,11 +990,16 @@ function convertToEvent(item: AlertReviewItem) {
   })
 }
 
-function openEvidence(evidence: AlertReviewEvidence) {
+async function openEvidence(evidence: AlertReviewEvidence) {
   if (!evidence.materialUri) {
     createMessage.warn('证据地址为空')
     return
   }
+  if (!(await guardWorkbenchMediaAccess({
+    reviewItemId: evidence.reviewItemId,
+    materialUri: evidence.materialUri,
+  })))
+    return
   if (evidence.materialType === 'snapshot') {
     emit('viewImage', { image_url: evidence.materialUri })
     return
@@ -1007,11 +1012,17 @@ function openEvidence(evidence: AlertReviewEvidence) {
   })
 }
 
-function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
+async function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
   if (!entry.materialUri) {
     createMessage.warn('material uri is empty')
     return
   }
+  if (!(await guardWorkbenchMediaAccess({
+    reviewItemId: entry.reviewItemId,
+    cameraId: entry.cameraId,
+    materialUri: entry.materialUri,
+  })))
+    return
   if (entry.materialType === 'snapshot') {
     emit('viewImage', { image_url: entry.materialUri })
     return
@@ -1026,23 +1037,32 @@ function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
   })
 }
 
-function openUnifiedTimelineEntry(entry: UnifiedTimelineEntry) {
+async function openUnifiedTimelineEntry(entry: UnifiedTimelineEntry) {
   if (entry.kind === 'object') {
-    openDetailStreamEntry(entry.payload as AlertReviewDetailStreamItem)
+    await openDetailStreamEntry(entry.payload as AlertReviewDetailStreamItem)
     return
   }
   if (entry.kind === 'evidence') {
-    openEvidence(entry.payload as AlertReviewEvidence)
+    await openEvidence(entry.payload as AlertReviewEvidence)
+    return
+  }
+  if (entry.kind === 'coverage') {
+    await openCoverageSegment(entry.payload as AlertReviewCoverageSegment)
     return
   }
   if (entry.kind === 'case') {
-    openCaseTimelineEntry(entry.payload as AlertReviewCaseTimelineItem)
+    await openCaseTimelineEntry(entry.payload as AlertReviewCaseTimelineItem)
     return
   }
   if (!entry.uri) {
     createMessage.warn('record uri is empty')
     return
   }
+  if (!(await guardWorkbenchMediaAccess({
+    reviewItemId: selectedItem.value?.id,
+    materialUri: entry.uri,
+  })))
+    return
   emit('viewVideo', {
     device_id: selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.startTime,
@@ -1073,16 +1093,30 @@ async function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
 }
 
 async function guardCaseTimelineMediaAccess(entry: AlertReviewCaseTimelineItem) {
-  const reviewCaseId = entry.reviewCaseId || activeCase.value?.id
-  const reviewItemId = entry.reviewItemId || selectedItem.value?.id
-  const cameraId = entry.cameraId || selectedItem.value?.cameraId || selectedItem.value?.deviceId
-  if (!reviewCaseId || !reviewItemId || !cameraId || !entry.materialUri)
+  return guardWorkbenchMediaAccess({
+    reviewCaseId: entry.reviewCaseId,
+    reviewItemId: entry.reviewItemId,
+    cameraId: entry.cameraId,
+    materialUri: entry.materialUri,
+  })
+}
+
+async function guardWorkbenchMediaAccess(target: {
+  reviewCaseId?: number
+  reviewItemId?: number
+  cameraId?: string
+  materialUri?: string
+}) {
+  const reviewCaseId = target.reviewCaseId || activeCase.value?.id
+  const reviewItemId = target.reviewItemId || selectedItem.value?.id
+  const cameraId = target.cameraId || selectedItem.value?.cameraId || selectedItem.value?.deviceId
+  if (!reviewCaseId || !reviewItemId || !cameraId || !target.materialUri)
     return true
   try {
     await auditAlertReviewMediaAccess(reviewCaseId, {
       reviewItemId,
       cameraId,
-      materialUri: entry.materialUri,
+      materialUri: target.materialUri,
       actionType: 'playback',
       reason: 'workbench playback',
     })
@@ -1094,11 +1128,16 @@ async function guardCaseTimelineMediaAccess(entry: AlertReviewCaseTimelineItem) 
   }
 }
 
-function openCoverageSegment(segment: AlertReviewCoverageSegment) {
+async function openCoverageSegment(segment: AlertReviewCoverageSegment) {
   if (!segment.recordUri) {
     createMessage.warn('record uri is empty')
     return
   }
+  if (!(await guardWorkbenchMediaAccess({
+    reviewItemId: selectedItem.value?.id,
+    materialUri: segment.recordUri,
+  })))
+    return
   emit('viewVideo', {
     device_id: selectedItem.value?.cameraId || selectedItem.value?.deviceId,
     time: segment.startTime,
