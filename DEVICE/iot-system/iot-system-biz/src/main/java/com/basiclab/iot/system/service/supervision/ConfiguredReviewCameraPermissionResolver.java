@@ -92,7 +92,18 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
     }
 
     public void setActionPermissions(Map<String, List<String>> actionPermissions) {
-        this.actionPermissions = actionPermissions == null ? new LinkedHashMap<>() : actionPermissions;
+        if (actionPermissions == null) {
+            this.actionPermissions = new LinkedHashMap<>();
+            return;
+        }
+        Map<String, List<String>> normalizedActionPermissions = new LinkedHashMap<>();
+        actionPermissions.forEach((actionType, permissions) -> {
+            String actionKey = normalizeActionType(actionType);
+            if (!actionKey.isEmpty()) {
+                normalizedActionPermissions.put(actionKey, permissions);
+            }
+        });
+        this.actionPermissions = normalizedActionPermissions;
     }
 
     public List<String> getDefaultAllowedCameraIds() {

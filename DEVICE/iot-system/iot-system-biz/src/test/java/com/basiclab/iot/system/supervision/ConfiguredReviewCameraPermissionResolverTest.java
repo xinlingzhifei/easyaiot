@@ -88,6 +88,19 @@ class ConfiguredReviewCameraPermissionResolverTest {
         assertEquals(List.of("camera-01"), resolver.resolveAllowedCameraIds(request));
     }
 
+    @Test
+    void actionPermissionKeysAreNormalizedBeforeGateLookup() {
+        ConfiguredReviewCameraPermissionResolver resolver = new ConfiguredReviewCameraPermissionResolver();
+        resolver.setUsers(Map.of(7L, List.of("camera-01")));
+        resolver.setActionPermissions(Map.of(" Download ", List.of("system:supervision-alert-review:media:download")));
+        CapturingPermissionService permissionService = new CapturingPermissionService();
+        resolver.setPermissionService(permissionService);
+
+        assertEquals(List.of(), resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(1L, 7L, 10L, "download", null)));
+        assertEquals(List.of("system:supervision-alert-review:media:download"), permissionService.checkedPermissions);
+    }
+
     private static final class CapturingPermissionService implements PermissionService {
 
         private boolean allowed;
