@@ -412,6 +412,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             reviewData.put("motion", mergeMotionMetadata(reviewData.get("motion"), command.motionMetadata(), event));
         }
         reviewData.put("reviewSegment", updateReviewSegmentLifecycle(item, reviewData, event, state, happenedAt));
+        assertReviewSegmentDoesNotOverlapOtherItems(item.id(), toStringObjectMap(reviewData.get("reviewSegment")));
 
         List<ReviewEvidenceItem> evidenceItems = new ArrayList<>();
         String recordEvidenceStatus = item.recordEvidenceStatus();
@@ -5527,6 +5528,49 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (happenedAt != null && startTime != null && happenedAt.isBefore(startTime)) {
             throw new IllegalArgumentException("review segment lifecycle time cannot be before review segment start: " + item.id());
         }
+    }
+
+    private void assertReviewSegmentDoesNotOverlapOtherItems(Long reviewItemId, Map<String, Object> segment) {
+        String cameraId = firstText(segment.get("cameraId"), null);
+        LocalDateTime startTime = toLocalDateTime(segment.get("startTime"));
+        LocalDateTime endTime = reviewSegmentEffectiveEnd(segment);
+        if (!hasText(cameraId) || startTime == null || endTime == null) {
+            return;
+        }
+        for (ReviewItemAggregate other : listWorkbench(new ReviewQuery(null, cameraId, null, null))) {
+            if (Objects.equals(reviewItemId, other.id())) {
+                continue;
+            }
+            Map<String, Object> otherSegment = toStringObjectMap(other.reviewData() == null
+                    ? null
+                    : other.reviewData().get("reviewSegment"));
+            if (!Objects.equals(cameraId, firstText(otherSegment.get("cameraId"), other.cameraId()))) {
+                continue;
+            }
+            LocalDateTime otherStartTime = toLocalDateTime(firstText(otherSegment.get("startTime"),
+                    other.firstAlertTime() == null ? null : other.firstAlertTime().toString()));
+            LocalDateTime otherEndTime = reviewSegmentEffectiveEnd(otherSegment);
+            if (otherStartTime != null && otherEndTime != null
+                    && reviewSegmentsOverlap(startTime, endTime, otherStartTime, otherEndTime)) {
+                throw new IllegalStateException("overlapping review segment for camera " + cameraId + ": " + other.id());
+            }
+        }
+    }
+
+    private static LocalDateTime reviewSegmentEffectiveEnd(Map<String, Object> segment) {
+        String status = firstText(segment.get("status"), "active");
+        if (!"ended".equals(status)) {
+            return LocalDateTime.MAX;
+        }
+        LocalDateTime endTime = toLocalDateTime(segment.get("endTime"));
+        return endTime == null ? toLocalDateTime(segment.get("startTime")) : endTime;
+    }
+
+    private static boolean reviewSegmentsOverlap(LocalDateTime startTime,
+                                                 LocalDateTime endTime,
+                                                 LocalDateTime otherStartTime,
+                                                 LocalDateTime otherEndTime) {
+        return startTime.isBefore(otherEndTime) && otherStartTime.isBefore(endTime);
     }
 
     private static Map<String, Object> updateReviewSegmentLifecycle(ReviewItemAggregate item,

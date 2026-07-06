@@ -4690,6 +4690,59 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void reviewSegmentLifecycleRejectsEndedExtensionOverlappingLaterActiveSegment() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 46);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-segment-overlap-old",
+                alertTime,
+                "segment-overlap-old.jpg",
+                null
+        ));
+        ReviewItemAggregate ended = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                first.id(),
+                "ended",
+                alertTime.plusSeconds(30),
+                List.of("obj-overlap-old"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(),
+                Map.of(),
+                null
+        ));
+        ReviewItemAggregate laterActive = service.ingestClue(newClue(
+                "alert-segment-overlap-new",
+                alertTime.plusSeconds(90),
+                "segment-overlap-new.jpg",
+                null
+        ));
+
+        IllegalStateException overlap = assertThrows(IllegalStateException.class,
+                () -> service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                        ended.id(),
+                        "ended",
+                        alertTime.plusSeconds(120),
+                        List.of("obj-overlap-old"),
+                        List.of("person"),
+                        List.of("zone-a"),
+                        List.of(),
+                        Map.of(),
+                        null
+                )));
+        ReviewSegmentView oldSegment = service.getReviewSegment(ended.id());
+        ReviewSegmentView newSegment = service.getReviewSegment(laterActive.id());
+
+        assertTrue(overlap.getMessage().contains("overlapping review segment"));
+        assertEquals(alertTime.plusSeconds(30), oldSegment.endTime());
+        assertEquals("active", newSegment.status());
+        assertEquals(alertTime.plusSeconds(90), newSegment.startTime());
+    }
+
+    @Test
     void reviewSegmentAlertStateDoesNotDowngradeWhenLaterDetectionHeartbeatArrives() {
         LocalDateTime alertTime = LocalDateTime.of(2026, 7, 4, 9, 50);
         SupervisionAlertReviewService service = newService(
