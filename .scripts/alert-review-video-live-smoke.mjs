@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 const DEFAULT_TIME_RANGE_SECONDS = 300;
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_EXPORT_POLL_ATTEMPTS = 5;
+const DEFAULT_EXPORT_POLL_INTERVAL_MS = 1_000;
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -19,6 +21,8 @@ export function parseArgs(args, env = process.env) {
     reviewItemId: env.YFEIEYE_VIDEO_SMOKE_REVIEW_ITEM_ID || 'live-smoke-item',
     format: env.YFEIEYE_VIDEO_SMOKE_EXPORT_FORMAT || 'mp4',
     timeoutMs: Number(env.YFEIEYE_VIDEO_SMOKE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
+    exportPollAttempts: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_ATTEMPTS || DEFAULT_EXPORT_POLL_ATTEMPTS),
+    exportPollIntervalMs: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_INTERVAL_MS || DEFAULT_EXPORT_POLL_INTERVAL_MS),
     help: false,
   };
 
@@ -51,6 +55,10 @@ export function parseArgs(args, env = process.env) {
       parsed.format = arg.slice('--format='.length);
     } else if (arg.startsWith('--timeout-ms=')) {
       parsed.timeoutMs = Number(arg.slice('--timeout-ms='.length));
+    } else if (arg.startsWith('--export-poll-attempts=')) {
+      parsed.exportPollAttempts = Number(arg.slice('--export-poll-attempts='.length));
+    } else if (arg.startsWith('--export-poll-interval-ms=')) {
+      parsed.exportPollIntervalMs = Number(arg.slice('--export-poll-interval-ms='.length));
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -67,6 +75,12 @@ export function parseArgs(args, env = process.env) {
   }
   if (!Number.isFinite(parsed.timeoutMs) || parsed.timeoutMs <= 0) {
     parsed.timeoutMs = DEFAULT_TIMEOUT_MS;
+  }
+  if (!Number.isFinite(parsed.exportPollAttempts) || parsed.exportPollAttempts <= 0) {
+    parsed.exportPollAttempts = DEFAULT_EXPORT_POLL_ATTEMPTS;
+  }
+  if (!Number.isFinite(parsed.exportPollIntervalMs) || parsed.exportPollIntervalMs < 0) {
+    parsed.exportPollIntervalMs = DEFAULT_EXPORT_POLL_INTERVAL_MS;
   }
 
   return parsed;
@@ -214,6 +228,8 @@ export async function runSmoke(options, dependencies = {}) {
     throw new Error('record export response did not include export_id or download_url');
   }
   checkpoints.push('record_export_posted');
+  const readyExportResult = await waitForExportDownload(fetchImpl, options, exportResult);
+  checkpoints.push('record_export_download_ready');
 
   return {
     ok: true,
@@ -221,7 +237,7 @@ export async function runSmoke(options, dependencies = {}) {
     alertRecord: { segment: alertSegment },
     coverage: { segment: coverageSegment },
     recordSpace: spaceData,
-    exportResult,
+    exportResult: readyExportResult,
   };
 }
 
@@ -261,6 +277,44 @@ function normalizeExportResult(payload) {
     status: firstText(data.status, data.state),
     message: firstText(data.message, data.msg),
   };
+}
+
+async function waitForExportDownload(fetchImpl, options, exportResult) {
+  if (hasText(exportResult.downloadUrl)) {
+    return exportResult;
+  }
+  if (!hasText(exportResult.exportId)) {
+    throw new Error('record export response did not include a download_url and cannot be polled without export_id');
+  }
+  let latest = exportResult;
+  for (let attempt = 0; attempt < options.exportPollAttempts; attempt += 1) {
+    if (attempt > 0 && options.exportPollIntervalMs > 0) {
+      await delay(options.exportPollIntervalMs);
+    }
+    const statusPayload = await fetchJson(fetchImpl, buildExportStatusUrl(options.recordExportUrl, exportResult.exportId), {
+      timeoutMs: options.timeoutMs,
+      label: 'record export status',
+    });
+    latest = normalizeExportResult(statusPayload);
+    if (!hasText(latest.exportId)) {
+      latest.exportId = exportResult.exportId;
+    }
+    if (hasText(latest.downloadUrl)) {
+      return latest;
+    }
+    if (String(latest.status || '').toLowerCase() === 'failed') {
+      throw new Error(`record export failed before download was ready: ${latest.message || latest.exportId}`);
+    }
+  }
+  throw new Error(`record export did not expose a download_url after ${options.exportPollAttempts} poll attempt(s): ${exportResult.exportId}`);
+}
+
+function buildExportStatusUrl(recordExportUrl, exportId) {
+  return `${stripTrailingSlash(recordExportUrl)}/${encodeURIComponent(exportId)}`;
+}
+
+function delay(ms) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }
 
 function responseData(payload) {
@@ -308,11 +362,13 @@ function printHelp() {
   --record-coverage-query-url=http://VIDEO/video/record/availability \\
   --record-base-url=http://VIDEO/video/record \\
   --record-export-url=http://VIDEO/video/record/export \\
-  --device-id=DEVICE_ID --alert-time="YYYY-MM-DD HH:mm:ss" [--camera-id=CAMERA_ID]
+  --device-id=DEVICE_ID --alert-time="YYYY-MM-DD HH:mm:ss" [--camera-id=CAMERA_ID] \\
+  [--export-poll-attempts=5] [--export-poll-interval-ms=1000]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
-record-base space lookup, and export POST. The smoke must use a real device
-with real recording metadata; no mock server is started.`);
+record-base space lookup, export POST, and export download readiness check.
+The smoke must use a real device with real recording metadata; no mock server
+is started.`);
 }
 
 async function runCli() {

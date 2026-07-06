@@ -103,6 +103,9 @@ const fakeFetch = async (url, init = {}) => {
   if (String(url).includes('/space/device/device-01')) {
     return jsonResponse({ code: 0, data: { id: 7, device_id: 'device-01' } });
   }
+  if (String(url).endsWith('/video/record/export/review-export-1')) {
+    return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
+  }
   if (init.method === 'POST') {
     assert.equal(JSON.parse(init.body).record_uri, '/video/record/space/7/video/live/device-01/clip.mp4');
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'pending' } });
@@ -129,9 +132,11 @@ assert.deepEqual(smoke.checkpoints, [
   'record_coverage_query_ok',
   'record_base_space_resolved',
   'record_export_posted',
+  'record_export_download_ready',
 ]);
 assert.equal(smoke.exportResult.exportId, 'review-export-1');
-assert.equal(calls.length, 4);
+assert.equal(smoke.exportResult.downloadUrl, '/downloads/review-export-1.mp4');
+assert.equal(calls.length, 5);
 
 await assert.rejects(
   () => runSmoke(parseArgs([], {}), { fetchImpl: fakeFetch }),
