@@ -59,6 +59,22 @@ const reviewItem = {
     proposedRule: {
       minStaySeconds: 15,
     },
+    minimumSampleCount: 3,
+    currentSampleCount: 1,
+    sampleRequirementMet: false,
+    riskNote: 'low_sample_requires_more_review',
+    impactScope: {
+      cameraIds: ['cam-east-gate'],
+      zoneCodes: ['gate-zone'],
+      objectLabels: ['person'],
+    },
+    beforeAfterComparison: {
+      beforeHitCount: 4,
+      afterEstimatedHitCount: 0,
+      falsePositiveBeforeCount: 1,
+      falsePositiveAfterCount: 0,
+      possibleMissedCount: 3,
+    },
   },
 }
 

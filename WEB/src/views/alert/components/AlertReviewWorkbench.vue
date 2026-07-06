@@ -1193,6 +1193,40 @@ function recordGapReasonSummary(reasons?: Record<string, number>) {
   return entries.map(([reason, count]) => `${recordReasonText(reason)} ${count}`).join(' / ')
 }
 
+function ruleSuggestionSafetyRows(item: AlertReviewItem) {
+  const suggestion = item.ruleSuggestion || {}
+  const rows: string[] = []
+  const currentSampleCount = toOptionalNumber(suggestion.currentSampleCount)
+  const minimumSampleCount = toOptionalNumber(suggestion.minimumSampleCount)
+  if (currentSampleCount !== undefined || minimumSampleCount !== undefined)
+    rows.push(`sample ${currentSampleCount ?? '-'}/${minimumSampleCount ?? '-'}`)
+  if (suggestion.riskNote)
+    rows.push(`risk ${String(suggestion.riskNote)}`)
+  const impactScope = suggestion.impactScope as Record<string, unknown> | undefined
+  const impactText = [
+    compactValueList(impactScope?.cameraIds),
+    compactValueList(impactScope?.zoneCodes),
+    compactValueList(impactScope?.objectLabels),
+  ].filter(value => value !== '-')
+  if (impactText.length)
+    rows.push(`impact ${impactText.join(' / ')}`)
+  const beforeAfter = suggestion.beforeAfterComparison as Record<string, unknown> | undefined
+  const beforeHitCount = toOptionalNumber(beforeAfter?.beforeHitCount)
+  const afterEstimatedHitCount = toOptionalNumber(beforeAfter?.afterEstimatedHitCount)
+  if (beforeHitCount !== undefined || afterEstimatedHitCount !== undefined)
+    rows.push(`hits ${beforeHitCount ?? '-'} -> ${afterEstimatedHitCount ?? '-'}`)
+  const possibleMissedCount = toOptionalNumber(beforeAfter?.possibleMissedCount)
+  if (possibleMissedCount !== undefined)
+    rows.push(`possible missed ${possibleMissedCount}`)
+  return rows
+}
+
+function compactValueList(value: unknown) {
+  if (Array.isArray(value))
+    return value.map(item => String(item)).filter(Boolean).join(',') || '-'
+  return value === undefined || value === null || value === '' ? '-' : String(value)
+}
+
 function eventStatusText(status?: string) {
   const map: Record<string, string> = {
     created: '已创建',
@@ -1520,6 +1554,15 @@ defineExpose({
                   </span>
                   <span v-if="item.ruleSuggestionStatus" class="event-status-pill">
                     {{ item.ruleSuggestionStatus }}
+                  </span>
+                  <span v-if="ruleSuggestionSafetyRows(item).length" class="rule-suggestion-safety">
+                    <span
+                      v-for="row in ruleSuggestionSafetyRows(item)"
+                      :key="row"
+                      class="rule-suggestion-safety-line"
+                    >
+                      {{ row }}
+                    </span>
                   </span>
                 </div>
               </td>
@@ -2270,6 +2313,21 @@ defineExpose({
   color: #b42318;
   font-size: 12px;
   line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-suggestion-safety {
+  display: grid;
+  gap: 2px;
+  max-width: 220px;
+  color: #475467;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.rule-suggestion-safety-line {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
