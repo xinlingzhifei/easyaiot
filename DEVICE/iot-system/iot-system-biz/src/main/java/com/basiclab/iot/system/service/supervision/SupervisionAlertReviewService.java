@@ -757,7 +757,19 @@ public interface SupervisionAlertReviewService {
                                        String data,
                                        List<Long> matchedReviewItemIds,
                                        List<Map<String, Object>> actionPayloads,
-                                       LocalDateTime evaluatedAt) {
+                                       LocalDateTime evaluatedAt,
+                                       List<Map<String, Object>> hitExplanations,
+                                       List<Map<String, Object>> actionPreviews,
+                                       String humanConfirmationStatus) {
+        public ReviewSemanticTriggerResult(String triggerName,
+                                           String triggerType,
+                                           String data,
+                                           List<Long> matchedReviewItemIds,
+                                           List<Map<String, Object>> actionPayloads,
+                                           LocalDateTime evaluatedAt) {
+            this(triggerName, triggerType, data, matchedReviewItemIds, actionPayloads, evaluatedAt,
+                    List.of(), List.of(), "pending");
+        }
     }
 
     record ReviewAiSummary(Long reviewCaseId,

@@ -2999,6 +2999,25 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(result.actionPayloads().stream()
                 .anyMatch(action -> Objects.equals("attribute", action.get("action"))
                         && Objects.equals(item.id(), action.get("reviewItemId"))));
+        assertEquals("pending", result.humanConfirmationStatus());
+        assertEquals(1, result.hitExplanations().size());
+        Map<String, Object> explanation = result.hitExplanations().get(0);
+        assertEquals(item.id(), explanation.get("reviewItemId"));
+        assertEquals("camera-01", explanation.get("cameraId"));
+        assertEquals(List.of("helmet", "doorway"), explanation.get("matchedTerms"));
+        assertEquals("person", explanation.get("objectLabel"));
+        assertEquals("doorway", explanation.get("zoneCode"));
+        assertTrue(String.valueOf(explanation.get("snippet")).contains("helmet"));
+        assertEquals(result.actionPayloads().size(), result.actionPreviews().size());
+        assertTrue(result.actionPreviews().stream()
+                .anyMatch(preview -> Objects.equals("sub_label", preview.get("action"))
+                        && Objects.equals(item.id(), preview.get("reviewItemId"))
+                        && Boolean.TRUE.equals(preview.get("previewOnly"))
+                        && Boolean.TRUE.equals(preview.get("requiresHumanConfirmation"))
+                        && Objects.equals("pending", preview.get("humanConfirmationStatus"))));
+        assertTrue(result.actionPayloads().stream()
+                .allMatch(action -> Boolean.TRUE.equals(action.get("requiresHumanConfirmation"))
+                        && Objects.equals("pending", action.get("humanConfirmationStatus"))));
     }
 
     @Test

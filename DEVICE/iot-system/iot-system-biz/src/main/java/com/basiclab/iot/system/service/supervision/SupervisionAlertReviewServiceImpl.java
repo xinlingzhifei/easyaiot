@@ -1656,9 +1656,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 : List.copyOf(command.actions());
         LocalDateTime evaluatedAt = LocalDateTime.now();
         List<Map<String, Object>> actionPayloads = new ArrayList<>();
+        List<Map<String, Object>> actionPreviews = new ArrayList<>();
         for (ReviewSemanticHit hit : hits) {
             for (String action : actions) {
-                actionPayloads.add(buildSemanticTriggerAction(command, hit, action, evaluatedAt));
+                Map<String, Object> actionPayload = buildSemanticTriggerAction(command, hit, action, evaluatedAt);
+                actionPayloads.add(actionPayload);
+                actionPreviews.add(buildSemanticTriggerActionPreview(actionPayload));
             }
         }
         return new ReviewSemanticTriggerResult(
@@ -1667,7 +1670,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.data(),
                 hits.stream().map(hit -> hit.item().id()).toList(),
                 List.copyOf(actionPayloads),
-                evaluatedAt
+                evaluatedAt,
+                hits.stream().map(hit -> buildSemanticTriggerHitExplanation(command, hit)).toList(),
+                List.copyOf(actionPreviews),
+                "pending"
         );
     }
 
@@ -3702,6 +3708,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         payload.put("score", hit.score());
         payload.put("matchedTerms", hit.matchedTerms());
         payload.put("evaluatedAt", evaluatedAt.toString());
+        payload.put("requiresHumanConfirmation", true);
+        payload.put("humanConfirmationStatus", "pending");
         if ("sub_label".equals(action)) {
             payload.put("value", command.triggerName());
         }
@@ -3710,6 +3718,41 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             payload.put("value", command.data());
         }
         return immutableNonNullMap(payload);
+    }
+
+    private static Map<String, Object> buildSemanticTriggerHitExplanation(ReviewSemanticTriggerCommand command,
+                                                                          ReviewSemanticHit hit) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("triggerName", command.triggerName());
+        payload.put("triggerType", command.triggerType());
+        payload.put("data", command.data());
+        payload.put("threshold", command.threshold());
+        payload.put("reviewItemId", hit.item().id());
+        payload.put("cameraId", hit.item().cameraId());
+        payload.put("zoneCode", hit.item().zoneCode());
+        payload.put("objectLabel", hit.item().objectLabel());
+        payload.put("score", hit.score());
+        payload.put("matchedTerms", hit.matchedTerms());
+        payload.put("snippet", hit.snippet());
+        payload.put("sourceAlertIds", hit.item().sourceAlertIds());
+        payload.put("correlationId", hit.item().reviewData() == null
+                ? null
+                : hit.item().reviewData().get("correlationId"));
+        return immutableNonNullMap(payload);
+    }
+
+    private static Map<String, Object> buildSemanticTriggerActionPreview(Map<String, Object> actionPayload) {
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("action", actionPayload.get("action"));
+        preview.put("triggerName", actionPayload.get("triggerName"));
+        preview.put("reviewItemId", actionPayload.get("reviewItemId"));
+        preview.put("cameraId", actionPayload.get("cameraId"));
+        preview.put("value", actionPayload.get("value"));
+        preview.put("key", actionPayload.get("key"));
+        preview.put("previewOnly", true);
+        preview.put("requiresHumanConfirmation", actionPayload.get("requiresHumanConfirmation"));
+        preview.put("humanConfirmationStatus", actionPayload.get("humanConfirmationStatus"));
+        return immutableNonNullMap(preview);
     }
 
     private static ReviewQuery reportQuery(ReviewReportCommand command) {
