@@ -912,7 +912,12 @@ public interface SupervisionAlertReviewService {
     }
 
     record ReviewEvidenceVerificationCommand(String jobNo,
-                                             Long operatorUserId) {
+                                             Long operatorUserId,
+                                             List<String> allowedCameraIds) {
+        public ReviewEvidenceVerificationCommand(String jobNo,
+                                                 Long operatorUserId) {
+            this(jobNo, operatorUserId, null);
+        }
     }
 
     record ReviewEvidenceVerificationReport(String jobNo,

@@ -2001,6 +2001,57 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidencePackageVerificationRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 45);
+        ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-package-scope-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime,
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                20,
+                "package-scope-b.jpg",
+                "package-scope-b.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "package scope case",
+                gate.id(),
+                List.of(gate.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(gate.id()),
+                9010L,
+                "manifest",
+                "prepare package verify"
+        ));
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.verifyEvidencePackage(new ReviewEvidenceVerificationCommand(
+                        job.jobNo(),
+                        9010L,
+                        List.of("camera-01")
+                )));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(item -> "case_audit".equals(item.materialType())
+                        && "media_access_denied".equals(item.materialUri())
+                        && item.actionNote().contains("action=manifest_verify")
+                        && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
     void requestedCameraScopeCannotExpandServiceSideCameraPermission() {
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),

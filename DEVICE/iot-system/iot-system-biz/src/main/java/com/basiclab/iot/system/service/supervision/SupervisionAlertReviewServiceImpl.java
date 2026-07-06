@@ -2108,7 +2108,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     public ReviewEvidenceVerificationReport verifyEvidencePackage(ReviewEvidenceVerificationCommand command) {
         Objects.requireNonNull(command, "command");
         requireText(command.jobNo(), "jobNo");
-        ReviewManifestVerification manifestVerification = verifyEvidenceExportManifest(command.jobNo());
+        ReviewManifestVerification manifestVerification = verifyEvidenceExportManifest(
+                command.jobNo(),
+                command.operatorUserId(),
+                command.allowedCameraIds()
+        );
         ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(command.jobNo())
                 .orElseThrow(() -> new IllegalArgumentException("export job not found: " + command.jobNo()));
         Map<String, Object> manifest = new LinkedHashMap<>(job.exportPackage().manifest());

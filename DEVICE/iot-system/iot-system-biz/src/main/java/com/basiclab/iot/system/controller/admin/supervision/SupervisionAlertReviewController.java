@@ -811,9 +811,10 @@ public class SupervisionAlertReviewController {
     @Operation(summary = "Verify alert review evidence package reproducibility")
     public CommonResult<EvidenceVerificationRespVO> verifyEvidencePackage(
             @PathVariable("jobNo") String jobNo,
-            @RequestParam(value = "operatorUserId", required = false) Long operatorUserId) {
+            @RequestParam(value = "operatorUserId", required = false) Long operatorUserId,
+            @RequestParam(value = "allowedCameraIds", required = false) List<String> allowedCameraIds) {
         return success(EvidenceVerificationRespVO.from(supervisionAlertReviewService.verifyEvidencePackage(
-                new ReviewEvidenceVerificationCommand(jobNo, currentOperatorUserId(operatorUserId))
+                new ReviewEvidenceVerificationCommand(jobNo, currentOperatorUserId(operatorUserId), allowedCameraIds)
         )));
     }
 

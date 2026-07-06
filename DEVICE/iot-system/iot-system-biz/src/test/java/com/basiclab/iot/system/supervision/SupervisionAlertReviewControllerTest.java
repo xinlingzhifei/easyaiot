@@ -126,7 +126,8 @@ class SupervisionAlertReviewControllerTest {
         ));
         try {
             mockMvc.perform(get("/system/supervision/alert-review/evidence-export-jobs/JOB-1/verify")
-                            .param("operatorUserId", "9999"))
+                            .param("operatorUserId", "9999")
+                            .param("allowedCameraIds", "camera-01", "camera-02"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data.operatorUserId").value(777));
@@ -134,7 +135,7 @@ class SupervisionAlertReviewControllerTest {
             SecurityContextHolder.clearContext();
         }
 
-        assertEquals(new ReviewEvidenceVerificationCommand("JOB-1", 777L),
+        assertEquals(new ReviewEvidenceVerificationCommand("JOB-1", 777L, List.of("camera-01", "camera-02")),
                 reviewService.command("verifyEvidencePackage"));
     }
 
