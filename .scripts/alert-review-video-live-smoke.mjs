@@ -230,6 +230,8 @@ export async function runSmoke(options, dependencies = {}) {
   checkpoints.push('record_export_posted');
   const readyExportResult = await waitForExportDownload(fetchImpl, options, exportResult);
   checkpoints.push('record_export_download_ready');
+  await probeDownloadUrl(fetchImpl, options, readyExportResult.downloadUrl);
+  checkpoints.push('record_export_download_probed');
 
   return {
     ok: true,
@@ -309,6 +311,28 @@ async function waitForExportDownload(fetchImpl, options, exportResult) {
   throw new Error(`record export did not expose a download_url after ${options.exportPollAttempts} poll attempt(s): ${exportResult.exportId}`);
 }
 
+async function probeDownloadUrl(fetchImpl, options, downloadUrl) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
+  try {
+    const response = await fetchImpl(resolveDownloadUrl(downloadUrl, options.recordExportUrl), {
+      method: 'HEAD',
+      signal: controller?.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`record export download probe failed with HTTP ${response.status} ${response.statusText || ''}`.trim());
+    }
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function resolveDownloadUrl(downloadUrl, baseUrl) {
+  return new URL(downloadUrl, baseUrl).toString();
+}
+
 function buildExportStatusUrl(recordExportUrl, exportId) {
   return `${stripTrailingSlash(recordExportUrl)}/${encodeURIComponent(exportId)}`;
 }
@@ -366,7 +390,8 @@ function printHelp() {
   [--export-poll-attempts=5] [--export-poll-interval-ms=1000]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
-record-base space lookup, export POST, and export download readiness check.
+record-base space lookup, export POST, export download readiness, and a HEAD
+probe against the resolved download URL.
 The smoke must use a real device with real recording metadata; no mock server
 is started.`);
 }

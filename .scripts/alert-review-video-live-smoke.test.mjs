@@ -106,6 +106,10 @@ const fakeFetch = async (url, init = {}) => {
   if (String(url).endsWith('/video/record/export/review-export-1')) {
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
   }
+  if (String(url).endsWith('/downloads/review-export-1.mp4')) {
+    assert.equal(init.method, 'HEAD');
+    return jsonResponse({}, 200);
+  }
   if (init.method === 'POST') {
     assert.equal(JSON.parse(init.body).record_uri, '/video/record/space/7/video/live/device-01/clip.mp4');
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'pending' } });
@@ -133,10 +137,23 @@ assert.deepEqual(smoke.checkpoints, [
   'record_base_space_resolved',
   'record_export_posted',
   'record_export_download_ready',
+  'record_export_download_probed',
 ]);
 assert.equal(smoke.exportResult.exportId, 'review-export-1');
 assert.equal(smoke.exportResult.downloadUrl, '/downloads/review-export-1.mp4');
-assert.equal(calls.length, 5);
+assert.equal(calls.length, 6);
+
+const failedDownloadFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/downloads/review-export-1.mp4')) {
+    assert.equal(init.method, 'HEAD');
+    return jsonResponse({ message: 'missing export file' }, 404);
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: failedDownloadFetch }),
+  /record export download probe failed with HTTP 404/,
+);
 
 await assert.rejects(
   () => runSmoke(parseArgs([], {}), { fetchImpl: fakeFetch }),
