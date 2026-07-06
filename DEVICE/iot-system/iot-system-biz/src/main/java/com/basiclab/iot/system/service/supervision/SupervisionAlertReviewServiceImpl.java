@@ -1844,6 +1844,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         int missingRecordCount = 0;
         int falsePositiveCount = 0;
         int convertedEventCount = 0;
+        int unreviewedBacklogCount = 0;
         for (ReviewItemAggregate item : reviewItems) {
             if (hasRecordEvidenceGap(item)) {
                 missingRecordCount++;
@@ -1858,6 +1859,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             if (item.eventId() != null) {
                 convertedEventCount++;
                 recommendedActions.add("track supervision event " + item.eventId());
+            }
+            if (isUnreviewedBacklog(item)) {
+                unreviewedBacklogCount++;
             }
         }
         ReviewSemanticIndexEvaluation semantic = evaluateSemanticIndex(
@@ -1891,6 +1895,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         structuredData.put("evidenceGapCount", evidenceGaps.size());
         structuredData.put("missingRecordCount", missingRecordCount);
         structuredData.put("missingRecordRate", roundRate(missingRecordCount, reviewItems.size()));
+        structuredData.put("unreviewedBacklogCount", unreviewedBacklogCount);
+        structuredData.put("unreviewedBacklogRate", roundRate(unreviewedBacklogCount, reviewItems.size()));
         structuredData.put("falsePositiveCount", falsePositiveCount);
         structuredData.put("falsePositiveRate", roundRate(falsePositiveCount, reviewItems.size()));
         structuredData.put("convertedEventCount", convertedEventCount);
@@ -1940,6 +1946,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         int missingRecordCount = 0;
         int falsePositiveCount = 0;
         int convertedEventCount = 0;
+        int unreviewedBacklogCount = 0;
         for (ReviewItemAggregate item : reviewItems == null ? List.<ReviewItemAggregate>of() : reviewItems) {
             if (hasRecordEvidenceGap(item)) {
                 missingRecordCount++;
@@ -1950,15 +1957,24 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             if (item.eventId() != null) {
                 convertedEventCount++;
             }
+            if (isUnreviewedBacklog(item)) {
+                unreviewedBacklogCount++;
+            }
         }
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("reviewItemCount", totalCount);
         summary.put("missingRecordCount", missingRecordCount);
         summary.put("missingRecordRate", roundRate(missingRecordCount, totalCount));
+        summary.put("unreviewedBacklogCount", unreviewedBacklogCount);
+        summary.put("unreviewedBacklogRate", roundRate(unreviewedBacklogCount, totalCount));
         summary.put("falsePositiveCount", falsePositiveCount);
         summary.put("falsePositiveRate", roundRate(falsePositiveCount, totalCount));
         summary.put("convertedEventCount", convertedEventCount);
         return immutableNonNullMap(summary);
+    }
+
+    private static boolean isUnreviewedBacklog(ReviewItemAggregate item) {
+        return item != null && (item.reviewStatus() == null || STATUS_PENDING_REVIEW.equals(item.reviewStatus()));
     }
 
     private static String reportResponsibilityUnit(ReviewItemAggregate item) {

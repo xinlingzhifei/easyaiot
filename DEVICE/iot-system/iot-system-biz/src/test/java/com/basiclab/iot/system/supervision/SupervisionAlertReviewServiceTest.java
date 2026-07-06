@@ -3100,6 +3100,8 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(2, data.get("reviewItemCount"));
         assertEquals(1, data.get("missingRecordCount"));
         assertEquals(0.5D, data.get("missingRecordRate"));
+        assertEquals(1, data.get("unreviewedBacklogCount"));
+        assertEquals(0.5D, data.get("unreviewedBacklogRate"));
         assertEquals(1, data.get("falsePositiveCount"));
         assertEquals(0.5D, data.get("falsePositiveRate"));
         assertEquals(2, data.get("semanticBacklogCount"));
@@ -3111,6 +3113,8 @@ class SupervisionAlertReviewServiceTest {
         Map<?, ?> areaDimensions = (Map<?, ?>) data.get("areaDimensions");
         Map<?, ?> ruleDimensions = (Map<?, ?>) data.get("ruleDimensions");
         assertEquals(1, ((Map<?, ?>) responsibilityDimensions.get("camera-01")).get("missingRecordCount"));
+        assertEquals(1, ((Map<?, ?>) responsibilityDimensions.get("camera-01")).get("unreviewedBacklogCount"));
+        assertEquals(0.0D, ((Map<?, ?>) cameraDimensions.get("camera-02")).get("unreviewedBacklogRate"));
         assertEquals(1, ((Map<?, ?>) cameraDimensions.get("camera-02")).get("falsePositiveCount"));
         assertEquals(1, ((Map<?, ?>) areaDimensions.get("zone-a")).get("missingRecordCount"));
         assertEquals(1, ((Map<?, ?>) ruleDimensions.get(SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING)).get("falsePositiveCount"));
