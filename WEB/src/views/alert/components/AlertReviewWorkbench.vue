@@ -1162,7 +1162,7 @@ function recordStatusText(status?: string) {
     not_required: '无需录像',
     pending: '待补证',
     found: '录像已补',
-    missing: '缺录像',
+    missing: '缺录像/待手动补证',
     failed: '补证失败',
   }
   return (status && map[status]) || status || '-'
@@ -1170,7 +1170,7 @@ function recordStatusText(status?: string) {
 
 function recordReasonText(reason?: string) {
   const map: Record<string, string> = {
-    video_url_not_configured: 'VIDEO URL not configured',
+    video_url_not_configured: 'VIDEO URL 未配置',
     record_not_found: 'record not found',
     missing_lookup_fields: 'missing lookup fields',
     service_unavailable: 'video service unavailable',

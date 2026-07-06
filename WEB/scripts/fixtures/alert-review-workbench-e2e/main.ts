@@ -164,6 +164,8 @@ async function runE2E() {
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-detail-stream"]'), 'detail stream')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-review-segment"]'), 'review segment')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-record-coverage"]'), 'record coverage')
+  await waitFor(() => text().includes('待手动补证'), 'manual record evidence fallback label')
+  await waitFor(() => text().includes('VIDEO URL 未配置'), 'missing VIDEO URL reason label')
   await waitFor(() => text().includes('sample 1/3'), 'rule suggestion sample safety summary')
   await waitFor(() => text().includes('risk low_sample_requires_more_review'), 'rule suggestion risk note')
   await waitFor(() => text().includes('impact cam-east-gate / gate-zone / person'), 'rule suggestion impact scope')
