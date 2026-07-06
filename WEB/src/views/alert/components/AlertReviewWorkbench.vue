@@ -4,6 +4,7 @@ import moment from 'moment'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { useMessage } from '@/hooks/web/useMessage'
+import { usePermission } from '@/hooks/web/usePermission'
 import DeviceRegionDrawer from '@/views/camera/components/DeviceRegionDrawer/index.vue'
 import type { DeviceDetectionRegion } from '@/api/device/device_detection_region'
 import {
@@ -74,6 +75,14 @@ const emit = defineEmits<{
 }>()
 
 const { createMessage, createConfirm } = useMessage()
+const { hasPermission } = usePermission()
+
+const RULE_SUGGESTION_UPDATE_PERMISSION = 'system:supervision-alert-review:rule-suggestion:update'
+const RULE_SUGGESTION_REVERT_PERMISSION = 'system:supervision-alert-review:rule-suggestion:revert'
+const RULE_REPLAY_PERMISSION = 'system:supervision-alert-review:rules:replay'
+const canUpdateRuleSuggestion = computed(() => hasPermission(RULE_SUGGESTION_UPDATE_PERMISSION))
+const canRevertRuleSuggestion = computed(() => hasPermission(RULE_SUGGESTION_REVERT_PERMISSION))
+const canReplayRule = computed(() => hasPermission(RULE_REPLAY_PERMISSION))
 
 const statusOptions = [
   { value: 'pending_review', label: '待复核' },
@@ -544,6 +553,10 @@ function markFalsePositive(item: AlertReviewItem) {
 }
 
 async function updateRuleSuggestion(item: AlertReviewItem, status: string) {
+  if (!canUpdateRuleSuggestion.value) {
+    createMessage.error('rule suggestion approval permission required')
+    return
+  }
   try {
     replaceItem(await updateAlertReviewRuleSuggestionStatus(item.id, {
       status,
@@ -571,6 +584,10 @@ async function previewRuleSuggestion(item: AlertReviewItem) {
 }
 
 async function replayRuleForItem(item?: AlertReviewItem | null) {
+  if (!canReplayRule.value) {
+    createMessage.error('rule replay permission required')
+    return
+  }
   const target = item || selectedItem.value
   if (!target?.ruleCode) {
     createMessage.warn('ruleCode is required')
@@ -605,6 +622,10 @@ async function replayRuleForItem(item?: AlertReviewItem | null) {
 }
 
 function revertRuleSuggestion(item: AlertReviewItem) {
+  if (!canRevertRuleSuggestion.value) {
+    createMessage.error('rule suggestion rollback permission required')
+    return
+  }
   createConfirm({
     title: '回滚规则建议',
     iconType: 'warning',
@@ -1465,7 +1486,7 @@ defineExpose({
                     误报
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus === 'pending'"
+                    v-if="item.ruleSuggestionStatus === 'pending' && canUpdateRuleSuggestion"
                     size="small"
                     type="link"
                     @click="updateRuleSuggestion(item, 'accepted')"
@@ -1473,7 +1494,7 @@ defineExpose({
                     accept
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus === 'accepted'"
+                    v-if="item.ruleSuggestionStatus === 'accepted' && canUpdateRuleSuggestion"
                     size="small"
                     type="link"
                     @click="updateRuleSuggestion(item, 'applied')"
@@ -1490,7 +1511,7 @@ defineExpose({
                     预览
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus && item.ruleSuggestionStatus !== 'reverted'"
+                    v-if="item.ruleSuggestionStatus && item.ruleSuggestionStatus !== 'reverted' && canRevertRuleSuggestion"
                     size="small"
                     type="link"
                     @click="revertRuleSuggestion(item)"
@@ -1498,7 +1519,7 @@ defineExpose({
                     回滚
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus"
+                    v-if="item.ruleSuggestionStatus && canReplayRule"
                     size="small"
                     type="link"
                     :loading="ruleReplayLoading && selectedItem?.id === item.id"

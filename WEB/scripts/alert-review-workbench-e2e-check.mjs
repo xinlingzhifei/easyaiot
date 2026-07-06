@@ -199,6 +199,27 @@ for (const route of requiredApiRoutes) {
   }
 }
 
+const requiredRuleGovernancePermissionSnippets = [
+  "import { usePermission } from '@/hooks/web/usePermission'",
+  'const { hasPermission } = usePermission()',
+  "RULE_SUGGESTION_UPDATE_PERMISSION = 'system:supervision-alert-review:rule-suggestion:update'",
+  "RULE_SUGGESTION_REVERT_PERMISSION = 'system:supervision-alert-review:rule-suggestion:revert'",
+  "RULE_REPLAY_PERMISSION = 'system:supervision-alert-review:rules:replay'",
+  'canUpdateRuleSuggestion',
+  'canRevertRuleSuggestion',
+  'canReplayRule',
+  "v-if=\"item.ruleSuggestionStatus === 'pending' && canUpdateRuleSuggestion\"",
+  "v-if=\"item.ruleSuggestionStatus === 'accepted' && canUpdateRuleSuggestion\"",
+  "v-if=\"item.ruleSuggestionStatus && item.ruleSuggestionStatus !== 'reverted' && canRevertRuleSuggestion\"",
+  'v-if="item.ruleSuggestionStatus && canReplayRule"',
+]
+
+for (const snippet of requiredRuleGovernancePermissionSnippets) {
+  if (!workbenchSource.includes(snippet)) {
+    failures.push(`missing rule governance permission contract ${snippet}`)
+  }
+}
+
 const requiredReasonSnippets = [
   'recordGapReasons?: Record<string, number>',
   'recordGapReasonSummary',
@@ -251,6 +272,10 @@ async function runBrowserE2E(failures) {
           replacement: toVitePath(resolve(harnessRoot, 'messageStub.ts')),
         },
         {
+          find: '@/hooks/web/usePermission',
+          replacement: toVitePath(resolve(harnessRoot, 'permissionStub.ts')),
+        },
+        {
           find: '@/views/camera/components/DeviceRegionDrawer/index.vue',
           replacement: toVitePath(resolve(harnessRoot, 'DeviceRegionDrawerStub.ts')),
         },
@@ -269,6 +294,9 @@ async function runBrowserE2E(failures) {
       fs: {
         allow: [root],
       },
+    },
+    optimizeDeps: {
+      entries: ['scripts/fixtures/alert-review-workbench-e2e/index.html'],
     },
     define: {
       __APP_INFO__: JSON.stringify({ name: 'alert-review-workbench-e2e' }),
