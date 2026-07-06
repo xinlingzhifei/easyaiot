@@ -2246,6 +2246,64 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void allowedRecordCoverageReadAuditsReturnedRecordUrisInEvidenceTrail() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 6, 12, 40);
+        CapturingRecordCoverageResolver coverageResolver = new CapturingRecordCoverageResolver(List.of(
+                new RecordCoverageSegment("available", alertTime.minusSeconds(240), alertTime.minusSeconds(60),
+                        0, "https://eye.yfeiai.com/records/coverage-a.mp4", 0, Map.of("source", "video-index")),
+                new RecordCoverageSegment("motion", alertTime.plusSeconds(60), alertTime.plusSeconds(180),
+                        37, "https://eye.yfeiai.com/records/coverage-b.mp4", 2, Map.of("source", "video-index"))
+        ));
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7610L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.DISPATCHED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                coverageResolver
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue("alert-coverage-audit", alertTime, "coverage.jpg", null));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9103L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "coverage audit case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        List<RecordCoverageSegment> coverage = service.getRecordCoverage(
+                item.id(),
+                reviewCase.id(),
+                9104L,
+                List.of("camera-01")
+        );
+
+        assertEquals(List.of("missing", "available", "missing", "motion", "missing"),
+                coverage.stream().map(RecordCoverageSegment::status).toList());
+        List<ReviewEvidenceAuditEntry> coverageAudits = service.getEvidenceAuditTrail(reviewCase.id()).stream()
+                .filter(entry -> "media_access_granted".equals(entry.actionType()))
+                .filter(entry -> "coverage".equals(entry.metadata().get("mediaAction")))
+                .toList();
+        assertEquals(List.of(
+                        List.of("https://eye.yfeiai.com/records/coverage-a.mp4"),
+                        List.of("https://eye.yfeiai.com/records/coverage-b.mp4")
+                ),
+                coverageAudits.stream().map(ReviewEvidenceAuditEntry::evidenceUris).toList());
+        assertTrue(coverageAudits.stream().allMatch(entry -> Objects.equals(9104L, entry.operatorUserId())));
+        assertTrue(coverageAudits.stream().allMatch(entry -> entry.boundEventIds().contains(7610L)));
+        assertTrue(coverageAudits.stream().allMatch(entry -> Objects.equals("camera-01", entry.metadata().get("cameraId"))));
+    }
+
+    @Test
     void falsePositiveRuleSuggestionAppliesRuleConfigOnlyAfterApprovalAndCanRollback() {
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(

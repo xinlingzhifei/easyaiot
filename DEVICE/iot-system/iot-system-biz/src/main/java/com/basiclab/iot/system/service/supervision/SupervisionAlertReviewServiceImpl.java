@@ -720,7 +720,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                          Long reviewCaseId,
                                                          Long operatorUserId,
                                                          List<String> allowedCameraIds) {
+        requirePositive(reviewCaseId, "reviewCaseId");
         List<RecordCoverageSegment> coverage = getRecordCoverage(reviewItemId);
+        ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        if (canAttachRecordCoverageEvidence(reviewCaseId, item, operatorUserId, allowedCameraIds)) {
+            ensureRecordCoverageEvidence(item, coverage);
+        }
         enforceItemMediaReadScope(
                 reviewCaseId,
                 reviewItemId,
@@ -728,9 +734,56 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 "coverage",
                 allowedCameraIds,
                 "record coverage read",
-                List.of()
+                coverage.stream()
+                        .map(segment -> new MediaAccessRef(MATERIAL_RECORD, segment.recordUri()))
+                        .toList()
         );
         return coverage;
+    }
+
+    private boolean canAttachRecordCoverageEvidence(Long reviewCaseId,
+                                                    ReviewItemAggregate item,
+                                                    Long operatorUserId,
+                                                    List<String> allowedCameraIds) {
+        List<String> effectiveAllowedCameraIds = resolveEffectiveAllowedCameraIds(
+                reviewCaseId,
+                operatorUserId,
+                "coverage",
+                allowedCameraIds
+        );
+        if (effectiveAllowedCameraIds == null || !effectiveAllowedCameraIds.contains(item.cameraId())) {
+            return false;
+        }
+        return getReviewCaseTimeline(reviewCaseId).stream()
+                .anyMatch(row -> Objects.equals(item.id(), row.reviewItemId()));
+    }
+
+    private void ensureRecordCoverageEvidence(ReviewItemAggregate item, List<RecordCoverageSegment> coverage) {
+        List<RecordCoverageSegment> segments = coverage == null ? List.of() : coverage;
+        if (segments.stream().noneMatch(segment -> segment != null && hasText(segment.recordUri()))) {
+            return;
+        }
+        Set<String> knownRecordUris = reviewItemStore.listTimeline(item.id()).stream()
+                .filter(evidence -> MATERIAL_RECORD.equals(evidence.materialType()))
+                .map(ReviewEvidenceItem::materialUri)
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<ReviewEvidenceItem> evidenceItems = new ArrayList<>();
+        for (RecordCoverageSegment segment : segments) {
+            if (segment == null || !hasText(segment.recordUri()) || !knownRecordUris.add(segment.recordUri())) {
+                continue;
+            }
+            evidenceItems.add(new ReviewEvidenceItem(
+                    item.id(),
+                    firstSourceAlertId(item),
+                    MATERIAL_RECORD,
+                    segment.recordUri(),
+                    segment.startTime() == null ? item.firstAlertTime() : segment.startTime()
+            ));
+        }
+        if (!evidenceItems.isEmpty()) {
+            reviewItemStore.appendEvidence(item.id(), evidenceItems);
+        }
     }
 
     @Override
