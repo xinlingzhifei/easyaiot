@@ -55,6 +55,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
   'WEB/src/utils/withInstall.ts',
+  'WEB/src/api/device/patrol.ts',
   '.scripts/verify-alert-review-release-package.mjs',
   '.scripts/record-export-manifest-verifier.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
@@ -66,7 +67,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 16);
+assert.equal(trackedReleaseEntries.length, 17);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -76,6 +77,7 @@ assert.deepEqual(
     ['  ', 'WEB/src/components/VideoPlayer/DialogPlayer.vue', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/components/Player/module/jessibuca.vue', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/utils/withInstall.ts', 'WEB alert review workbench package'],
+    ['  ', 'WEB/src/api/device/patrol.ts', 'WEB alert review workbench package'],
     ['  ', '.scripts/verify-alert-review-release-package.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/record-export-manifest-verifier.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.mjs', 'FR release gate tooling'],
@@ -147,6 +149,15 @@ const mojibakeScan = scanTextQuality([
 ]);
 assert.equal(mojibakeScan.ok, false);
 assert.equal(mojibakeScan.blockers[0].reason, 'encoding_mojibake');
+
+const patrolMojibakeScan = scanTextQuality([
+  {
+    path: 'WEB/src/api/device/patrol.ts',
+    content: "/** \u93bd\u52eb\u511a\u6f8e\u6751\u8d30\u59ab\u20ac\u6d7c\u6c33\u7629 API */",
+  },
+]);
+assert.equal(patrolMojibakeScan.ok, false);
+assert.equal(patrolMojibakeScan.blockers[0].reason, 'encoding_mojibake');
 
 const cleanTextScan = scanTextQuality([
   {

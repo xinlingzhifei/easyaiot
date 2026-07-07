@@ -35,7 +35,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/supervision\/alertReview\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
+      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/patrol)\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
   },
   {
     group: 'FR documentation package',
@@ -45,6 +45,8 @@ export const FR_RELEASE_PATH_RULES = [
 
 const MOJIBAKE_PATTERNS = [
   '\uFFFD',
+  '\u93bd\u52eb\u511a',
+  '\u5bb8\u2103',
   '\u9352\u6d98\u7f13',
   '\u93c8\u5d85\u59df',
   '\u9363\u3125\u5534\u95ae\u3129\u654a\u7487',
@@ -89,6 +91,7 @@ const TRACKED_RELEASE_PATHS = [
   'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
   'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/scripts/fixtures/alert-review-workbench-e2e',
+  'WEB/src/api/device/patrol.ts',
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',

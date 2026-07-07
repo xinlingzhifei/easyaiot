@@ -62,7 +62,7 @@ FR-01 to FR-38 are directionally correct and most core contracts now exist in DE
 | FR-34 | AI provenance | AI summary `structuredData.aiProvenance` now returns provider, model, providerVersion, promptVersion, promptHash, redaction policy version, redaction status, redacted fields, human confirmation status, requester, and generated metadata; generation writes `case_audit.metadata` with provenance/hash counts and policy version; confirmation/rejection writes idempotent `ai_summary_confirmed` / `ai_summary_rejected` audit entries bound to prompt and summary hashes; provider requests redact reviewData sensitive keys plus timeline action notes/material URIs containing phone / ID values before prompt construction through `yfeieye.review.ai-summary.redaction.*` policy. | Sign off the production sensitive-key/value catalog and keep provider payload expansion behind the same sanitizer. |
 | FR-35 | Operational reports | Shift and daily reports cover delivery plan, pending acknowledgement, unreviewed backlog count/rate, missing-record rate, export failure rate, semantic backlog, false-positive rate, and responsibility-unit / area / camera / rule dimensions. | Wire reports to production schedule, delivery channel, acknowledgement persistence, and real operator dashboards. |
 | FR-36 | Frontend E2E | Workbench E2E now has explicit `all`, `contract`, and `dev-api-mock` modes, package-script aliases, invalid-mode runner coverage, exact player seek payload assertions, playback offset contract coverage, release player smoke tooling, and region-rule save assertions. | Keep full `vue-tsc` and real release API/player smoke execution as separate release blockers. |
-| FR-37 | Chinese encoding quality | Workbench contract now rejects replacement characters and common mojibake fragments, asserts the required UTF-8 Chinese review/record/event labels, and `alert-review-visible-copy-scan.mjs` covers workbench, player, patrol, and VIDEO record/export visible-copy files. | Keep expanding W4 targets as new release-visible review/player/report files are added. |
+| FR-37 | Chinese encoding quality | Workbench contract now rejects replacement characters and common mojibake fragments, asserts the required UTF-8 Chinese review/record/event labels, `alert-review-visible-copy-scan.mjs` covers workbench, player, patrol, and VIDEO record/export visible-copy files, and the release package verifier now includes `WEB/src/api/device/patrol.ts` in the same text-quality gate. | Keep expanding W4 targets as new release-visible review/player/report files are added. |
 | FR-38 | Traceability | This document maps FRs to evidence and remaining gates. | Keep it updated with endpoint, table, test, and deployment command per FR. |
 
 ## FR Traceability Register
@@ -124,7 +124,7 @@ Command aliases used below:
 
 ## Release Packaging Audit
 
-Current local audit started on 2026-07-04: the FR implementation had been staged as one intentional pre-commit release package. The executable `Pkg` gate first reported 75 FR release blockers (67 untracked files and 8 unstaged files); after targeted staging it passed in default pre-commit mode. On 2026-07-05 the verifier was extended to include `V20260704`, PG1 PostgreSQL smoke tooling, the workbench runner test, and `WEB/src/utils/withInstall.ts`. On 2026-07-06 it also tracks the offline manifest verifier wrapper, `V20260705` ReviewData backfill migration, and `V20260706` media permission seed migration. `Pkg --require-clean` remains a release-artifact blocker until the package is committed and the release is built from HEAD.
+Current local audit started on 2026-07-04: the FR implementation had been staged as one intentional pre-commit release package. The executable `Pkg` gate first reported 75 FR release blockers (67 untracked files and 8 unstaged files); after targeted staging it passed in default pre-commit mode. On 2026-07-05 the verifier was extended to include `V20260704`, PG1 PostgreSQL smoke tooling, the workbench runner test, and `WEB/src/utils/withInstall.ts`. On 2026-07-06 it also tracks the offline manifest verifier wrapper, `V20260705` ReviewData backfill migration, and `V20260706` media permission seed migration. On 2026-07-07 it also tracks `WEB/src/api/device/patrol.ts` so patrol visible-copy encoding drift cannot sit outside the release package text scan. `Pkg --require-clean` remains a release-artifact blocker until the package is committed and the release is built from HEAD.
 
 | Package group | Current examples | Current state | Release action |
 | --- | --- | --- | --- |
@@ -374,6 +374,11 @@ Manifest verifier and HMAC key rotation:
 - Release visible-copy scan passed after the RED failure showed no reusable release scanner for player/patrol/VIDEO copy:
   `node .scripts/alert-review-visible-copy-scan.mjs`
   Result: `Alert review visible copy scan OK: 9 file(s) checked.`
+- Patrol API mojibake guard passed after RED showed the visible-copy scanner and release verifier skipped the patrol mojibake pattern:
+  `node .scripts/alert-review-visible-copy-scan.test.mjs`
+  `node .scripts/verify-alert-review-release-package.test.mjs`
+  `node .scripts/alert-review-visible-copy-scan.mjs`
+  Result: RED first failed because the scanner returned `ok=true` for the patrol mojibake fixture, then the release verifier returned `ok=true` because `WEB/src/api/device/patrol.ts` was not part of the FR release path rules; GREEN reruns passed after both guards recognized the pattern and the release package verifier tracked the patrol API file.
 - Workbench all-mode package gate passed:
   `pnpm test:alert-review-workbench`
   Result: `Alert review workbench E2E all OK`.
@@ -446,7 +451,7 @@ Manifest verifier and HMAC key rotation:
   Result: 74 tests, 0 failures, 0 errors.
 - Release package verifier self-test passed:
   `node .scripts/verify-alert-review-release-package.test.mjs`
-  Result: `alert review release package verifier tests OK`; the verifier now tracks `V20260704`, `V20260705`, `V20260706`, PG1 PostgreSQL smoke tooling, offline manifest verifier wrapper, LiveVideo smoke tooling, LivePlayer smoke tooling, the workbench runner test, playback contract test, and `WEB/src/utils/withInstall.ts`.
+  Result: `alert review release package verifier tests OK`; the verifier now tracks `V20260704`, `V20260705`, `V20260706`, PG1 PostgreSQL smoke tooling, offline manifest verifier wrapper, LiveVideo smoke tooling, LivePlayer smoke tooling, the workbench runner test, playback contract test, `WEB/src/utils/withInstall.ts`, and `WEB/src/api/device/patrol.ts`.
 - Live VIDEO smoke script self-test passed:
   `node .scripts/alert-review-video-live-smoke.test.mjs`
   Result: `alert review VIDEO live smoke tests OK`; the smoke now polls `record-export-url/{export_id}` when VIDEO returns an async export id and refuses to pass until `download_url` is available and reachable through a HEAD probe.

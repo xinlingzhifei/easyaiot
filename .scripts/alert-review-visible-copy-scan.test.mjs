@@ -47,4 +47,14 @@ assert.equal(mojibake.ok, false);
 assert.equal(mojibake.blockers[0].reason, 'encoding_mojibake');
 assert.equal(mojibake.blockers[0].line, 1);
 
+const patrolMojibake = scanVisibleCopyFiles([
+  {
+    path: 'WEB/src/api/device/patrol.ts',
+    content: '/** \u93bd\u52eb\u511a\u6f8e\u6751\u8d30\u59ab\u20ac\u6d7c\u6c33\u7629 API */',
+  },
+]);
+assert.equal(patrolMojibake.ok, false);
+assert.equal(patrolMojibake.blockers[0].reason, 'encoding_mojibake');
+assert.equal(patrolMojibake.blockers[0].line, 1);
+
 console.log('alert review visible copy scan tests OK');

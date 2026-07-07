@@ -15,6 +15,8 @@ export const VISIBLE_COPY_TARGETS = [
 ];
 
 const MOJIBAKE_PATTERNS = [
+  { pattern: '\u93bd\u52eb\u511a', reason: 'encoding_mojibake' },
+  { pattern: '\u5bb8\u2103', reason: 'encoding_mojibake' },
   { pattern: '\uFFFD', reason: 'encoding_replacement_character' },
   { pattern: '鍛婅', reason: 'encoding_mojibake' },
   { pattern: '绾跨', reason: 'encoding_mojibake' },
