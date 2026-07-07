@@ -232,6 +232,8 @@ export async function runSmoke(options, dependencies = {}) {
   checkpoints.push('record_export_download_ready');
   await probeDownloadUrl(fetchImpl, options, readyExportResult.downloadUrl);
   checkpoints.push('record_export_download_probed');
+  await verifyExportManifest(fetchImpl, options, readyExportResult);
+  checkpoints.push('record_export_manifest_verified');
 
   return {
     ok: true,
@@ -276,6 +278,7 @@ function normalizeExportResult(payload) {
   return {
     exportId: firstText(data.export_id, data.exportId, data.id, data.task_id, data.taskId),
     downloadUrl: firstText(data.download_url, data.downloadUrl, data.export_uri, data.exportUri, data.url),
+    manifestUrl: firstText(data.manifest_url, data.manifestUrl, data.manifest_uri, data.manifestUri),
     status: firstText(data.status, data.state),
     message: firstText(data.message, data.msg),
   };
@@ -326,6 +329,56 @@ async function probeDownloadUrl(fetchImpl, options, downloadUrl) {
     if (timer) {
       clearTimeout(timer);
     }
+  }
+}
+
+async function verifyExportManifest(fetchImpl, options, exportResult) {
+  if (!hasText(exportResult.manifestUrl)) {
+    throw new Error('record export response did not include manifest_url for reproducible evidence verification');
+  }
+  const manifest = responseData(await fetchJson(fetchImpl, resolveDownloadUrl(exportResult.manifestUrl, options.recordExportUrl), {
+    timeoutMs: options.timeoutMs,
+    label: 'record export manifest',
+  }));
+  const version = firstText(manifest.manifestVersion, manifest.manifest_version, manifest.version);
+  if (Number(version) !== 2) {
+    throw new Error('record export manifest is not manifestVersion 2');
+  }
+  if (!hasText(firstText(
+    manifest.ffmpegCommandHash,
+    manifest.ffmpeg_command_hash,
+    manifest.commandHash,
+    manifest.command_hash,
+  ))) {
+    throw new Error('record export manifest missing ffmpeg command hash');
+  }
+  const clipParams = firstPresent(manifest.clipParams, manifest.clip_params, manifest.clip, manifest.trim);
+  if (!clipParams || typeof clipParams !== 'object') {
+    throw new Error('record export manifest missing clip params');
+  }
+  const concatOrder = firstList(manifest, 'concatOrder', 'concat_order', 'stitchOrder', 'stitch_order');
+  if (!concatOrder.length) {
+    throw new Error('record export manifest missing concat order');
+  }
+  const sourceSegments = firstList(manifest, 'sourceSegments', 'source_segments', 'sources', 'inputs');
+  if (!sourceSegments.length || sourceSegments.some((segment) => !hasText(firstText(
+    segment.sourceHash,
+    segment.source_hash,
+    segment.sha256,
+    segment.hash,
+    segment.checksum,
+  )))) {
+    throw new Error('record export manifest missing source segment hashes');
+  }
+  const outputs = firstList(manifest, 'outputs', 'files', 'artifacts');
+  if (!outputs.length || outputs.some((output) => !hasText(firstText(
+    output.fileHash,
+    output.file_hash,
+    output.sha256,
+    output.hash,
+    output.checksum,
+  )))) {
+    throw new Error('record export manifest missing output file hashes');
   }
 }
 
@@ -390,8 +443,9 @@ function printHelp() {
   [--export-poll-attempts=5] [--export-poll-interval-ms=1000]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
-record-base space lookup, export POST, export download readiness, and a HEAD
-probe against the resolved download URL.
+record-base space lookup, export POST, export download readiness, a HEAD probe
+against the resolved download URL, and manifest v2 reproducibility fields
+(ffmpeg command hash, source hashes, clip params, concat order, output hashes).
 The smoke must use a real device with real recording metadata; no mock server
 is started.`);
 }

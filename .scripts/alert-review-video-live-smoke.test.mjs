@@ -103,8 +103,43 @@ const fakeFetch = async (url, init = {}) => {
   if (String(url).includes('/space/device/device-01')) {
     return jsonResponse({ code: 0, data: { id: 7, device_id: 'device-01' } });
   }
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      ffmpegCommandHash: 'sha256:ffmpeg-command',
+      clipParams: {
+        startTime: '2026-07-05T10:00:00',
+        endTime: '2026-07-05T10:01:00',
+      },
+      concatOrder: [
+        '/video/record/space/7/video/live/device-01/clip.mp4',
+      ],
+      sourceSegments: [
+        {
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: 'sha256:source-segment',
+          startTime: '2026-07-05T10:00:00',
+          endTime: '2026-07-05T10:01:00',
+        },
+      ],
+      outputs: [
+        {
+          path: 'review-export-1.mp4',
+          sha256: 'output-sha256',
+        },
+      ],
+    });
+  }
   if (String(url).endsWith('/video/record/export/review-export-1')) {
-    return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
+    return jsonResponse({
+      code: 0,
+      data: {
+        export_id: 'review-export-1',
+        status: 'ready',
+        download_url: '/downloads/review-export-1.mp4',
+        manifest_url: '/manifests/review-export-1.json',
+      },
+    });
   }
   if (String(url).endsWith('/downloads/review-export-1.mp4')) {
     assert.equal(init.method, 'HEAD');
@@ -138,10 +173,12 @@ assert.deepEqual(smoke.checkpoints, [
   'record_export_posted',
   'record_export_download_ready',
   'record_export_download_probed',
+  'record_export_manifest_verified',
 ]);
 assert.equal(smoke.exportResult.exportId, 'review-export-1');
 assert.equal(smoke.exportResult.downloadUrl, '/downloads/review-export-1.mp4');
-assert.equal(calls.length, 6);
+assert.equal(smoke.exportResult.manifestUrl, '/manifests/review-export-1.json');
+assert.equal(calls.length, 7);
 
 const failedDownloadFetch = async (url, init = {}) => {
   if (String(url).endsWith('/downloads/review-export-1.mp4')) {
@@ -153,6 +190,43 @@ const failedDownloadFetch = async (url, init = {}) => {
 await assert.rejects(
   () => runSmoke(parsed, { fetchImpl: failedDownloadFetch }),
   /record export download probe failed with HTTP 404/,
+);
+
+const missingManifestFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/video/record/export/review-export-1')) {
+    return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: missingManifestFetch }),
+  /record export response did not include manifest_url/,
+);
+
+const incompleteManifestFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      ffmpegCommandHash: 'sha256:ffmpeg-command',
+      sourceSegments: [
+        {
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: 'sha256:source-segment',
+        },
+      ],
+      outputs: [
+        {
+          path: 'review-export-1.mp4',
+          sha256: 'output-sha256',
+        },
+      ],
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: incompleteManifestFetch }),
+  /record export manifest missing clip params/,
 );
 
 await assert.rejects(
