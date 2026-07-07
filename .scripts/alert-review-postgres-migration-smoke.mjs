@@ -9,6 +9,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -370,6 +371,51 @@ BEGIN
   END;
 END $$;
 
+INSERT INTO system_supervision_alert_review_item(
+  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
+)
+VALUES
+  (7, 1001, 'video', 'motion', 'a-transition-1', 'person', '2026-07-05 11:10',
+   'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:10', NULL, false),
+  (8, 1001, 'video', 'motion', 'a-transition-2', 'person', '2026-07-05 11:20',
+   'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:20', NULL, false);
+
+INSERT INTO system_supervision_alert_review_segment(
+  review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+)
+VALUES
+  (7, 'seg-transition-active', 1001, 'camera-transition-01', 'detection', 'active', '2026-07-05 11:10', NULL, false),
+  (8, 'seg-transition-ended', 1001, 'camera-transition-01', 'alert', 'ended', '2026-07-05 11:20', '2026-07-05 11:21', false);
+
+UPDATE system_supervision_alert_review_segment
+SET segment_status = 'alert',
+    severity = 'alert'
+WHERE segment_no = 'seg-transition-active';
+
+DO $$
+BEGIN
+  BEGIN
+    UPDATE system_supervision_alert_review_segment
+    SET segment_status = 'active'
+    WHERE segment_no = 'seg-transition-ended';
+    RAISE EXCEPTION 'expected ended ReviewSegment reopen to be rejected';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'tr_supervision_alert_review_segment_status_transition'
+  ) THEN
+    RAISE EXCEPTION 'expected ReviewSegment status transition trigger to exist';
+  END IF;
+END $$;
+
 SELECT 'alert review postgres migration smoke passed' AS result;
 `;
 }
@@ -484,7 +530,7 @@ function printHelp() {
 
 Runs FR-01/FR-20 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, and V20260707, and verifies ingest identity, ReviewSegment constraints, ReviewData backfill, media permission seeds, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, and V20260708, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

@@ -25,6 +25,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
 ]);
 
 const bootstrapSql = buildBootstrapSql();
@@ -53,6 +54,8 @@ assert.match(assertionSql, /expected review case audit to allow pre-case media a
 assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 assert.match(assertionSql, /expected stale review status version update to affect no rows/);
 assert.match(assertionSql, /expected repeated same-status reviewer update to be idempotent/);
+assert.match(assertionSql, /expected ended ReviewSegment reopen to be rejected/);
+assert.match(assertionSql, /tr_supervision_alert_review_segment_status_transition/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);
