@@ -58,6 +58,8 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'WEB/src/api/device/patrol.ts',
   '.scripts/verify-alert-review-release-package.mjs',
   '.scripts/record-export-manifest-verifier.mjs',
+  '.scripts/alert-review-device-integration-smoke.mjs',
+  '.scripts/alert-review-device-integration-smoke.test.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
@@ -67,7 +69,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 17);
+assert.equal(trackedReleaseEntries.length, 19);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -80,6 +82,8 @@ assert.deepEqual(
     ['  ', 'WEB/src/api/device/patrol.ts', 'WEB alert review workbench package'],
     ['  ', '.scripts/verify-alert-review-release-package.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/record-export-manifest-verifier.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/alert-review-device-integration-smoke.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/alert-review-device-integration-smoke.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.mjs', 'FR release gate tooling'],

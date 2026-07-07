@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
-    match: /^\.scripts\/(verify-alert-review-release-package|record-export-manifest-verifier|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke)(\.test)?\.mjs$/,
+    match: /^\.scripts\/(verify-alert-review-release-package|record-export-manifest-verifier|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-device-integration-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke)(\.test)?\.mjs$/,
   },
   {
     group: 'DEVICE review backend',
@@ -60,6 +60,8 @@ const TRACKED_RELEASE_PATHS = [
   '.scripts/alert-review-postgres-migration-smoke.test.mjs',
   '.scripts/alert-review-video-live-smoke.mjs',
   '.scripts/alert-review-video-live-smoke.test.mjs',
+  '.scripts/alert-review-device-integration-smoke.mjs',
+  '.scripts/alert-review-device-integration-smoke.test.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
