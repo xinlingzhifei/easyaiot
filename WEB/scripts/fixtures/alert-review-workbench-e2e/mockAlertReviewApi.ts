@@ -79,6 +79,36 @@ const reviewItem = {
   },
 }
 
+const topologyCandidate = {
+  id: 102,
+  reviewItemNo: 'RV-20260702-002',
+  sourceSystem: 'frigate',
+  ruleCode: 'person_loitering',
+  sourceAlertType: 'object',
+  deviceId: 'device-yard-east',
+  cameraId: 'cam-yard-east',
+  zoneCode: 'yard-zone',
+  objectLabel: 'person',
+  firstAlertTime: '2026-07-02T08:01:10',
+  lastAlertTime: '2026-07-02T08:02:10',
+  alertCount: 1,
+  sourceAlertIds: ['frigate-event-3'],
+  reviewStatus: 'pending_review',
+  recordEvidenceStatus: 'found',
+  eventStatus: 'pending',
+  closeCheckStatus: 'waiting',
+  evidenceStatus: 'complete',
+  eventReviewStatus: 'pending',
+  inReviewCase: false,
+  reviewData: {
+    regulatoryArea: 'yard-east',
+    adjacentCameras: ['cam-east-gate'],
+    objectIds: ['person-1'],
+    zones: ['yard-zone'],
+    correlationId: 'corr-east-gate-001',
+  },
+}
+
 const summary = {
   total: 1,
   pendingReview: 1,
@@ -325,7 +355,7 @@ export async function getAlertReviewRecordCoverage(reviewItemId: number) {
 
 export async function suggestAlertReviewCaseCandidates(reviewItemId: number) {
   record('suggestAlertReviewCaseCandidates', reviewItemId)
-  return []
+  return [topologyCandidate]
 }
 
 export async function createAlertReviewCase(payload: unknown) {

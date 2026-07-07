@@ -192,6 +192,11 @@ async function runE2E() {
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-detail-stream"]'), 'detail stream')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-review-segment"]'), 'review segment')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-record-coverage"]'), 'record coverage')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-candidate"]'), 'topology candidate')
+  await waitFor(() => text().includes('RV-20260702-002'), 'topology candidate id')
+  await waitFor(() => text().includes('topology area yard-east'), 'topology candidate area reason')
+  await waitFor(() => text().includes('adjacent cam-east-gate -> cam-yard-east'), 'topology candidate adjacency reason')
+  await waitFor(() => text().includes('shared object person-1'), 'topology candidate object reason')
   await waitFor(() => text().includes('待手动补证'), 'manual record evidence fallback label')
   await waitFor(() => text().includes('VIDEO URL 未配置'), 'missing VIDEO URL reason label')
   await waitFor(() => text().includes('sample 1/3'), 'rule suggestion sample safety summary')
@@ -270,6 +275,8 @@ async function runE2E() {
 
   click('[data-testid="alert-review-create-case"]')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-panel"]'), 'review case panel')
+  click('[data-testid="alert-review-candidate-add"]')
+  await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'addAlertReviewItemToCase'), 'candidate add action')
 
   click('[data-testid="alert-review-detail-seek"]')
   await waitFor(() => viewVideoEvents.length > 3, 'detail seek with active case video event')
@@ -357,6 +364,7 @@ async function runE2E() {
   assertApiCalled('getAlertReviewSegment')
   assertApiCalled('getAlertReviewRecordCoverage')
   assertApiCalled('createAlertReviewCase')
+  assertApiCalled('addAlertReviewItemToCase')
   assertApiCalled('assignAlertReviewCaseOwner')
   assertApiCalled('closeAlertReviewCase')
   assertApiCalled('mergeAlertReviewCases')

@@ -1386,6 +1386,68 @@ function timelineRange(entry: UnifiedTimelineEntry) {
   return formatTime(entry.startTime)
 }
 
+const topologyAreaKeys = ['regulatoryArea', 'regulatory_area', 'regulatoryAreaCode', 'regulatory_area_code', 'supervisionArea', 'supervision_area']
+const adjacentCameraKeys = ['adjacentCameras', 'adjacent_cameras']
+const objectIdKeys = ['objectIds', 'object_ids']
+const correlationKeys = ['correlationId', 'correlation_id']
+
+function reviewDataValue(item: AlertReviewItem | null | undefined, keys: string[]): unknown {
+  const reviewData = item?.reviewData || {}
+  for (const key of keys) {
+    const value = reviewData[key]
+    if (value !== undefined && value !== null && value !== '')
+      return value
+  }
+  const motion = reviewData.motion as Record<string, unknown> | undefined
+  if (motion) {
+    for (const key of keys) {
+      const value = motion[key]
+      if (value !== undefined && value !== null && value !== '')
+        return value
+    }
+  }
+  return undefined
+}
+
+function textValues(value: unknown): string[] {
+  if (Array.isArray(value))
+    return value.map(item => String(item).trim()).filter(Boolean)
+  if (value === undefined || value === null || value === '')
+    return []
+  return [String(value).trim()].filter(Boolean)
+}
+
+function firstText(value: unknown): string | undefined {
+  return textValues(value)[0]
+}
+
+function candidateMatchReasons(candidate: AlertReviewItem) {
+  const base = selectedItem.value
+  const reasons: string[] = []
+  const area = firstText(reviewDataValue(candidate, topologyAreaKeys)) || firstText(reviewDataValue(base, topologyAreaKeys))
+  if (area)
+    reasons.push(`topology area ${area}`)
+
+  const baseCamera = base?.cameraId || base?.deviceId
+  const candidateCamera = candidate.cameraId || candidate.deviceId
+  const candidateAdjacent = textValues(reviewDataValue(candidate, adjacentCameraKeys))
+  const baseAdjacent = textValues(reviewDataValue(base, adjacentCameraKeys))
+  if ((baseCamera && candidateAdjacent.includes(baseCamera)) || (candidateCamera && baseAdjacent.includes(candidateCamera)))
+    reasons.push(`adjacent ${baseCamera || '-'} -> ${candidateCamera || '-'}`)
+
+  const baseObjects = textValues(reviewDataValue(base, objectIdKeys))
+  const candidateObjects = textValues(reviewDataValue(candidate, objectIdKeys))
+  const sharedObject = candidateObjects.find(objectId => baseObjects.includes(objectId))
+  if (sharedObject)
+    reasons.push(`shared object ${sharedObject}`)
+
+  const correlationId = firstText(reviewDataValue(candidate, correlationKeys)) || firstText(reviewDataValue(base, correlationKeys))
+  if (correlationId)
+    reasons.push(`correlation ${correlationId}`)
+
+  return reasons.length ? reasons : ['time window match']
+}
+
 function toOptionalNumber(value: unknown): number | undefined {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : undefined
@@ -2079,10 +2141,19 @@ defineExpose({
           </div>
 
           <div v-if="caseCandidates.length" class="candidate-list">
-            <div v-for="candidate in caseCandidates" :key="candidate.id" class="candidate-item">
-              <span>{{ candidate.cameraId || candidate.deviceId || '-' }}</span>
-              <span>{{ formatTime(candidate.firstAlertTime) }}</span>
-              <Button v-if="activeCase" size="small" type="link" @click="addItemToActiveCase(candidate)">
+            <div v-for="candidate in caseCandidates" :key="candidate.id" class="candidate-item" data-testid="alert-review-case-candidate">
+              <div class="candidate-main">
+                <div class="strong">
+                  {{ candidate.reviewItemNo || candidate.id }}
+                </div>
+                <div class="muted">
+                  {{ candidate.cameraId || candidate.deviceId || '-' }} / {{ formatTime(candidate.firstAlertTime) }}
+                </div>
+                <div class="candidate-reasons">
+                  <span v-for="reason in candidateMatchReasons(candidate)" :key="reason">{{ reason }}</span>
+                </div>
+              </div>
+              <Button v-if="activeCase" size="small" type="link" data-testid="alert-review-candidate-add" @click="addItemToActiveCase(candidate)">
                 add
               </Button>
             </div>
@@ -2618,13 +2689,32 @@ defineExpose({
 
 .candidate-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   padding: 6px 8px;
   border: 1px solid #eef1f5;
   border-radius: 4px;
   font-size: 12px;
+}
+
+.candidate-main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.candidate-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.candidate-reasons span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #3154b8;
+  background: #edf2ff;
 }
 
 .timeline-list {
