@@ -216,8 +216,26 @@ const smokeWithEvidence = await runProductionSmoke({
   },
   runCommand: async (step) => ({
     status: 0,
-    stdout: step.name === 'LiveVideo'
-      ? `alert review VIDEO live smoke passed
+    stdout: step.name === 'LiveDevice'
+      ? `alert review DEVICE integration smoke passed
+{
+  "status": "passed",
+  "profile": "device-video-web",
+  "reviewItemId": 1001,
+  "reviewCaseId": 2001,
+  "exportJobNo": "EXP-20260707-001",
+  "manifestValid": true,
+  "videoExportRequested": true,
+  "playback": {
+    "grantedDecision": "granted",
+    "deniedDecision": "denied",
+    "deniedReasons": ["camera_not_allowed"]
+  },
+  "checkpoints": ["ingest_created", "record_coverage_synced", "evidence_download_audited"]
+}
+`
+      : step.name === 'LiveVideo'
+        ? `alert review VIDEO live smoke passed
 {
   "checkpoints": ["alert_record_query_ok", "record_storage_drift_patrol_ok", "record_export_manifest_verified"],
   "storageDriftSummary": {
@@ -233,7 +251,7 @@ const smokeWithEvidence = await runProductionSmoke({
   }
 }
 `
-      : '',
+        : '',
   }),
 });
 assert.equal(smokeWithEvidence.ok, true);
@@ -248,6 +266,21 @@ assert.equal(evidenceReport.durationMs, 2000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
 assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed']);
 assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
+assert.deepEqual(evidenceReport.steps[0].summary, {
+  checkpoints: ['ingest_created', 'record_coverage_synced', 'evidence_download_audited'],
+  playback: {
+    grantedDecision: 'granted',
+    deniedDecision: 'denied',
+    deniedReasons: ['camera_not_allowed'],
+  },
+  status: 'passed',
+  profile: 'device-video-web',
+  reviewItemId: 1001,
+  reviewCaseId: 2001,
+  exportJobNo: 'EXP-20260707-001',
+  manifestValid: true,
+  videoExportRequested: true,
+});
 assert.deepEqual(evidenceReport.steps[1].summary.storageDriftSummary, {
   healthy: true,
   recordCount: 3,

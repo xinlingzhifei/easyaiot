@@ -311,7 +311,21 @@ function childSmokeSummary(result) {
   if (hasText(payload.status)) {
     summary.status = payload.status;
   }
+  if (hasText(payload.profile)) {
+    summary.profile = payload.profile;
+  }
+  copyIfPresent(summary, payload, 'reviewItemId');
+  copyIfPresent(summary, payload, 'reviewCaseId');
+  copyIfPresent(summary, payload, 'exportJobNo');
+  copyIfPresent(summary, payload, 'manifestValid');
+  copyIfPresent(summary, payload, 'videoExportRequested');
   return Object.keys(summary).length ? summary : null;
+}
+
+function copyIfPresent(target, source, key) {
+  if (source[key] !== undefined && source[key] !== null) {
+    target[key] = source[key];
+  }
 }
 
 function parseLastJsonObject(value) {
