@@ -49,6 +49,9 @@ assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.allowLocalEndpoints, false);
 
+const evidenceOutputParsed = parseArgs(['--evidence-output-file=artifacts/review-smoke.json'], {});
+assert.equal(evidenceOutputParsed.evidenceOutputFile, 'artifacts/review-smoke.json');
+
 const localEndpointsAllowed = parseArgs([
   '--device-base-url=http://127.0.0.1:48080/admin-api',
   '--token=token-1',
@@ -91,12 +94,14 @@ const fromEnv = parseArgs([], {
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS: 'env-device',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS: '10',
   YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS: 'true',
+  YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE: 'artifacts/env-smoke.json',
 });
 assert.equal(fromEnv.deviceBaseUrl, 'https://device.env/admin-api');
 assert.deepEqual(fromEnv.devicePlaybackAllowedCameraIds, ['env-camera-allow']);
 assert.deepEqual(fromEnv.devicePlaybackDeniedCameraIds, ['env-camera-deny']);
 assert.equal(fromEnv.videoDeviceId, 'env-device');
 assert.equal(fromEnv.playerExpectedOffsetSeconds, 10);
+assert.equal(fromEnv.evidenceOutputFile, 'artifacts/env-smoke.json');
 
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL',
@@ -181,6 +186,43 @@ assert.equal(smoke.ok, true);
 assert.deepEqual(calls, ['LiveDevice', 'LiveVideo', 'LivePlayer']);
 assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed']);
 
+const evidenceWrites = [];
+const smokeWithEvidence = await runProductionSmoke({
+  ...parsed,
+  evidenceOutputFile: 'artifacts/review-smoke.json',
+}, {
+  nodePath: 'node',
+  scriptDir: '.scripts',
+  now: sequencedNow([
+    '2026-07-07T00:00:00.000Z',
+    '2026-07-07T00:00:00.100Z',
+    '2026-07-07T00:00:00.300Z',
+    '2026-07-07T00:00:00.400Z',
+    '2026-07-07T00:00:00.900Z',
+    '2026-07-07T00:00:01.000Z',
+    '2026-07-07T00:00:01.700Z',
+    '2026-07-07T00:00:02.000Z',
+  ]),
+  writeFile: (file, content) => {
+    evidenceWrites.push({ file, content });
+  },
+  runCommand: async () => ({ status: 0 }),
+});
+assert.equal(smokeWithEvidence.ok, true);
+assert.equal(evidenceWrites.length, 1);
+assert.equal(evidenceWrites[0].file, 'artifacts/review-smoke.json');
+const evidenceReport = JSON.parse(evidenceWrites[0].content);
+assert.equal(evidenceReport.ok, true);
+assert.equal(evidenceReport.status, 'passed');
+assert.equal(evidenceReport.startedAt, '2026-07-07T00:00:00.000Z');
+assert.equal(evidenceReport.finishedAt, '2026-07-07T00:00:02.000Z');
+assert.equal(evidenceReport.durationMs, 2000);
+assert.equal(evidenceReport.allowLocalEndpoints, false);
+assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed']);
+assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
+assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
+
+const failedEvidenceWrites = [];
 await assert.rejects(
   () => runProductionSmoke(parsed, {
     nodePath: 'node',
@@ -189,6 +231,40 @@ await assert.rejects(
   }),
   /LiveVideo failed with exit code 1/,
 );
+
+await assert.rejects(
+  () => runProductionSmoke({
+    ...parsed,
+    evidenceOutputFile: 'artifacts/review-smoke-failed.json',
+  }, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    now: sequencedNow([
+      '2026-07-07T00:00:00.000Z',
+      '2026-07-07T00:00:00.100Z',
+      '2026-07-07T00:00:00.200Z',
+      '2026-07-07T00:00:00.300Z',
+      '2026-07-07T00:00:00.600Z',
+      '2026-07-07T00:00:00.700Z',
+    ]),
+    writeFile: (file, content) => {
+      failedEvidenceWrites.push({ file, content });
+    },
+    runCommand: async (step) => ({ status: step.name === 'LiveVideo' ? 2 : 0 }),
+  }),
+  /LiveVideo failed with exit code 2/,
+);
+assert.equal(failedEvidenceWrites.length, 1);
+assert.equal(failedEvidenceWrites[0].file, 'artifacts/review-smoke-failed.json');
+const failedEvidenceReport = JSON.parse(failedEvidenceWrites[0].content);
+assert.equal(failedEvidenceReport.ok, false);
+assert.equal(failedEvidenceReport.status, 'failed');
+assert.equal(failedEvidenceReport.finishedAt, '2026-07-07T00:00:00.700Z');
+assert.deepEqual(failedEvidenceReport.steps.map((step) => step.status), ['passed', 'failed']);
+assert.equal(failedEvidenceReport.steps[1].name, 'LiveVideo');
+assert.equal(failedEvidenceReport.steps[1].exitCode, 2);
+assert.equal(failedEvidenceReport.steps[1].error, 'LiveVideo failed with exit code 2');
+assert.equal(JSON.stringify(failedEvidenceReport).includes('token-1'), false);
 
 const untrackedProductionSmoke = evaluateStatus(`
 ?? .scripts/alert-review-production-smoke.mjs
@@ -205,3 +281,8 @@ const trackedProductionSmokeEntries = releaseEntriesForTrackedPaths([
 assert.equal(trackedProductionSmokeEntries.length, 2);
 
 console.log('alert review production smoke tests OK');
+
+function sequencedNow(values) {
+  let index = 0;
+  return () => new Date(values[Math.min(index++, values.length - 1)]);
+}

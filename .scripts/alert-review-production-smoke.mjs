@@ -1,5 +1,6 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export function parseArgs(args, env = process.env) {
@@ -30,6 +31,7 @@ export function parseArgs(args, env = process.env) {
     playerExpectedOffsetSeconds: numberOrNaN(env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS),
     playerWaitText: env.YFEIEYE_REVIEW_PLAYER_SMOKE_WAIT_TEXT || '',
     allowLocalEndpoints: parseBoolean(env.YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
+    evidenceOutputFile: env.YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE || '',
     help: false,
   };
 
@@ -38,6 +40,8 @@ export function parseArgs(args, env = process.env) {
       parsed.help = true;
     } else if (arg === '--allow-local-endpoints') {
       parsed.allowLocalEndpoints = true;
+    } else if (arg.startsWith('--evidence-output-file=')) {
+      parsed.evidenceOutputFile = arg.slice('--evidence-output-file='.length);
     } else if (arg.startsWith('--device-base-url=')) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
@@ -184,20 +188,49 @@ export async function runProductionSmoke(options, dependencies = {}) {
   if (errors.length) {
     throw new Error(errors.join('\n'));
   }
+  const reportStartedAt = currentInstant(dependencies);
+  const evidenceReport = {
+    ok: false,
+    status: 'running',
+    startedAt: reportStartedAt.iso,
+    finishedAt: null,
+    durationMs: null,
+    allowLocalEndpoints: options.allowLocalEndpoints === true,
+    steps: [],
+  };
   const steps = buildSmokeSteps(options, dependencies);
   const runCommand = dependencies.runCommand || defaultRunCommand;
   const results = [];
   for (const step of steps) {
-    const result = await runCommand(step);
+    const stepStartedAt = currentInstant(dependencies);
+    let result;
+    try {
+      result = await runCommand(step);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stepFinishedAt = currentInstant(dependencies);
+      evidenceReport.steps.push(buildEvidenceStep(step, 'failed', stepStartedAt, stepFinishedAt, null, message));
+      finishEvidenceReport(evidenceReport, false, reportStartedAt, currentInstant(dependencies));
+      writeEvidenceReport(options, evidenceReport, dependencies);
+      throw error;
+    }
     const status = Number(result?.status ?? 1);
+    const stepFinishedAt = currentInstant(dependencies);
     if (status !== 0) {
-      throw new Error(`${step.name} failed with exit code ${status}`);
+      const message = `${step.name} failed with exit code ${status}`;
+      evidenceReport.steps.push(buildEvidenceStep(step, 'failed', stepStartedAt, stepFinishedAt, status, message));
+      finishEvidenceReport(evidenceReport, false, reportStartedAt, currentInstant(dependencies));
+      writeEvidenceReport(options, evidenceReport, dependencies);
+      throw new Error(message);
     }
     results.push({
       name: step.name,
       status: 'passed',
     });
+    evidenceReport.steps.push(buildEvidenceStep(step, 'passed', stepStartedAt, stepFinishedAt, status));
   }
+  finishEvidenceReport(evidenceReport, true, reportStartedAt, currentInstant(dependencies));
+  writeEvidenceReport(options, evidenceReport, dependencies);
   return {
     ok: true,
     steps: results,
@@ -219,6 +252,55 @@ function defaultRunCommand(step) {
 
 function maskSensitiveArg(arg) {
   return String(arg).startsWith('--token=') ? '--token=***' : arg;
+}
+
+function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error) {
+  const entry = {
+    name: step.name,
+    status,
+    command: formatStepCommand(step),
+    exitCode,
+    startedAt: startedAt.iso,
+    finishedAt: finishedAt.iso,
+    durationMs: durationMs(startedAt, finishedAt),
+  };
+  if (hasText(error)) {
+    entry.error = error;
+  }
+  return entry;
+}
+
+function finishEvidenceReport(report, ok, startedAt, finishedAt) {
+  report.ok = ok;
+  report.status = ok ? 'passed' : 'failed';
+  report.finishedAt = finishedAt.iso;
+  report.durationMs = durationMs(startedAt, finishedAt);
+}
+
+function writeEvidenceReport(options, report, dependencies) {
+  if (!hasText(options.evidenceOutputFile)) {
+    return;
+  }
+  const content = JSON.stringify(report, null, 2);
+  if (dependencies.writeFile) {
+    dependencies.writeFile(options.evidenceOutputFile, content);
+    return;
+  }
+  mkdirSync(dirname(options.evidenceOutputFile), { recursive: true });
+  writeFileSync(options.evidenceOutputFile, content, 'utf8');
+}
+
+function currentInstant(dependencies) {
+  const value = dependencies.now ? dependencies.now() : new Date();
+  const date = value instanceof Date ? value : new Date(value);
+  return {
+    iso: date.toISOString(),
+    time: date.getTime(),
+  };
+}
+
+function durationMs(startedAt, finishedAt) {
+  return Math.max(0, finishedAt.time - startedAt.time);
 }
 
 function requireText(errors, value, message) {
@@ -321,14 +403,15 @@ function printHelp() {
   --player-workbench-url=http://WEB/... --player-review-row-text=RV-... \\
   --player-expected-seek-time="2026-07-05T10:00:30" \\
   --player-expected-record-path-contains=DEVICE_ID \\
-  --player-expected-offset-seconds=30 [--allow-local-endpoints]
+  --player-expected-offset-seconds=30 [--evidence-output-file=artifacts/production-smoke.json] [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
 LiveDevice -> LiveVideo -> LivePlayer. Each step uses real deployed services,
 real recording metadata, export verification, download audit, playback-url
 allow/deny authorization, and player seek assertions from the dedicated smoke
 scripts. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
-is supplied for co-located real-service smoke.`);
+is supplied for co-located real-service smoke. Evidence output is written as a
+sanitized JSON report with masked token-bearing step commands.`);
 }
 
 async function runCli() {
