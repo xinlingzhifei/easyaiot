@@ -30,10 +30,22 @@ def create_record_export(payload: dict, record_resolver=None, async_worker=False
     payload = payload or {}
     async_worker = async_worker or _as_bool(payload.get('async_worker') or payload.get('asyncWorker'))
     result = _build_record_export(payload, record_resolver)
-    if not async_worker:
-        return result
-
     export_id = result['export_id']
+    if not async_worker:
+        now = datetime.now(timezone.utc).isoformat()
+        job = dict(result)
+        job.setdefault('status_url', f'/video/record/export/{export_id}')
+        job.setdefault('created_at', now)
+        job.setdefault('finished_at', now)
+        _EXPORT_JOBS[export_id] = job
+        _persist_job(job)
+        _append_export_audit(export_id, 'ready', None, None, {
+            'source': job.get('source'),
+            'download_url': job.get('download_url'),
+        })
+        _persist_manifest(export_id)
+        return _public_job(job)
+
     job = dict(result)
     job.update({
         'status': 'pending',
@@ -347,7 +359,11 @@ def _content_bytes(content):
 
 
 def _public_job(job: dict) -> dict:
-    return {key: value for key, value in job.items() if not str(key).startswith('_')}
+    public = {key: value for key, value in job.items() if not str(key).startswith('_')}
+    export_id = _text(public.get('export_id'))
+    if export_id:
+        public.setdefault('manifest_url', f'/video/record/export/{export_id}/manifest')
+    return public
 
 
 def _append_export_audit(export_id: str, action: str, operator_user_id=None, reason=None, extra=None):

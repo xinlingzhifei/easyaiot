@@ -16,7 +16,7 @@ from flask import Flask
 
 class TestRecordExportService(unittest.TestCase):
     def test_create_record_export_reuses_local_record_uri_as_download_url(self):
-        from app.services.record_export_service import create_record_export
+        from app.services.record_export_service import create_record_export, get_record_export_manifest
 
         result = create_record_export({
             'review_case_id': 3000,
@@ -37,6 +37,10 @@ class TestRecordExportService(unittest.TestCase):
             '/video/alert/record?path=%2Fdata%2Fplaybacks%2Flive%2Fdevice-01%2F2026%2F06%2F30%2Fclip.flv',
             result['download_url'],
         )
+        self.assertEqual('/video/record/export/' + result['export_id'] + '/manifest', result['manifest_url'])
+        manifest = get_record_export_manifest(result['export_id'])
+        self.assertEqual(2, manifest['manifestVersion'])
+        self.assertEqual(result['export_id'], manifest['exportId'])
 
     def test_create_record_export_resolves_record_uri_from_time_window(self):
         from app.services.record_export_service import create_record_export
@@ -119,6 +123,7 @@ class TestRecordExportService(unittest.TestCase):
         self.assertEqual('pending', started['status'])
         self.assertIn('export_id', started)
         self.assertEqual('/video/record/export/' + started['export_id'], started['status_url'])
+        self.assertEqual('/video/record/export/' + started['export_id'] + '/manifest', started['manifest_url'])
 
         ready = poll_record_export(started['export_id'])
 
@@ -126,6 +131,7 @@ class TestRecordExportService(unittest.TestCase):
         self.assertEqual('ready', ready['status'])
         self.assertTrue(ready['file_hash'].startswith('sha256:'))
         self.assertEqual('/video/record/export/' + started['export_id'] + '/download', ready['download_url'])
+        self.assertEqual('/video/record/export/' + started['export_id'] + '/manifest', ready['manifest_url'])
         self.assertEqual('ffmpeg clipped and stitched evidence', ready['message'])
 
     def test_failed_async_record_export_can_retry_and_records_download_audit(self):

@@ -344,23 +344,41 @@ async function verifyExportManifest(fetchImpl, options, exportResult) {
   if (Number(version) !== 2) {
     throw new Error('record export manifest is not manifestVersion 2');
   }
+  const recordSegments = firstList(manifest, 'recordSegments', 'record_segments');
+  const sourceSegments = firstList(manifest, 'sourceSegments', 'source_segments', 'sources', 'inputs', 'recordSegments', 'record_segments');
   if (!hasText(firstText(
     manifest.ffmpegCommandHash,
     manifest.ffmpeg_command_hash,
     manifest.commandHash,
     manifest.command_hash,
-  ))) {
+  )) && !sourceSegments.some((segment) => hasText(firstText(
+    segment.ffmpegCommandHash,
+    segment.ffmpeg_command_hash,
+    segment.commandHash,
+    segment.command_hash,
+  )))) {
     throw new Error('record export manifest missing ffmpeg command hash');
   }
   const clipParams = firstPresent(manifest.clipParams, manifest.clip_params, manifest.clip, manifest.trim);
-  if (!clipParams || typeof clipParams !== 'object') {
+  const hasSegmentClipParams = sourceSegments.some((segment) => hasText(firstText(
+    segment.clipStartTime,
+    segment.clip_start_time,
+  )) && hasText(firstText(
+    segment.clipEndTime,
+    segment.clip_end_time,
+  )));
+  if ((!clipParams || typeof clipParams !== 'object') && !hasSegmentClipParams) {
     throw new Error('record export manifest missing clip params');
   }
   const concatOrder = firstList(manifest, 'concatOrder', 'concat_order', 'stitchOrder', 'stitch_order');
-  if (!concatOrder.length) {
+  const hasSegmentConcatOrder = recordSegments.length > 0 && recordSegments.every((segment) => hasText(firstText(
+    segment.recordUri,
+    segment.record_uri,
+    segment.uri,
+  )) && firstPresent(segment.index, segment.order, segment.sequence) !== undefined);
+  if (!concatOrder.length && !hasSegmentConcatOrder) {
     throw new Error('record export manifest missing concat order');
   }
-  const sourceSegments = firstList(manifest, 'sourceSegments', 'source_segments', 'sources', 'inputs');
   if (!sourceSegments.length || sourceSegments.some((segment) => !hasText(firstText(
     segment.sourceHash,
     segment.source_hash,

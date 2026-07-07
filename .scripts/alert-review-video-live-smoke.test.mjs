@@ -106,26 +106,21 @@ const fakeFetch = async (url, init = {}) => {
   if (String(url).endsWith('/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
-      ffmpegCommandHash: 'sha256:ffmpeg-command',
-      clipParams: {
-        startTime: '2026-07-05T10:00:00',
-        endTime: '2026-07-05T10:01:00',
-      },
-      concatOrder: [
-        '/video/record/space/7/video/live/device-01/clip.mp4',
-      ],
-      sourceSegments: [
+      recordSegments: [
         {
+          index: 0,
           recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
           sourceHash: 'sha256:source-segment',
-          startTime: '2026-07-05T10:00:00',
-          endTime: '2026-07-05T10:01:00',
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: 'sha256:ffmpeg-command',
         },
       ],
-      outputs: [
+      files: [
         {
           path: 'review-export-1.mp4',
-          sha256: 'output-sha256',
+          role: 'export_package',
+          hash: 'sha256:output-file',
         },
       ],
     });
