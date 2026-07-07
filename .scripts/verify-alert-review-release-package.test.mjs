@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   evaluateStatus,
   releaseEntriesForTrackedPaths,
+  scanLiveVideoEvidenceGate,
   scanWebTypecheckGate,
   scanTextQuality,
 } from './verify-alert-review-release-package.mjs';
@@ -214,6 +215,34 @@ const weakenedTypecheckGateScan = scanWebTypecheckGate([
 ]);
 assert.equal(weakenedTypecheckGateScan.ok, false);
 assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_weakened');
+
+const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: 'validateManifestSignature(manifest); manifestSignature; hmac-sha256; signatureVersion; keyId;',
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature;',
+  },
+]);
+assert.equal(liveVideoEvidenceGateScan.ok, true);
+
+const missingLiveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: 'validateManifestSignature(manifest); hmac-sha256;',
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: 'payload.exportResult;',
+  },
+]);
+assert.equal(missingLiveVideoEvidenceGateScan.ok, false);
+assert.deepEqual(missingLiveVideoEvidenceGateScan.blockers.map((blocker) => blocker.reason), [
+  'live_video_manifest_signature_summary_missing',
+  'production_smoke_manifest_signature_summary_missing',
+]);
 
 const requireClean = evaluateStatus(`
 A  WEB/src/views/alert/components/AlertReviewWorkbench.vue

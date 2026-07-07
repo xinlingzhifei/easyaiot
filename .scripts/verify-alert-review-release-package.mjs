@@ -254,6 +254,39 @@ export function scanWebTypecheckGate(files) {
   };
 }
 
+export function scanLiveVideoEvidenceGate(files) {
+  const blockers = [];
+  const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
+  if (liveVideo && !containsAll(liveVideo.content, [
+    'validateManifestSignature',
+    'manifestSignature',
+    'hmac-sha256',
+    'signatureVersion',
+    'keyId',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_manifest_signature_summary_missing',
+    });
+  }
+  const productionSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-production-smoke.mjs');
+  if (productionSmoke && !containsAll(productionSmoke.content, [
+    'payload.manifestSignature',
+    'summary.manifestSignature',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_signature_summary_missing',
+    });
+  }
+  return {
+    ok: blockers.length === 0,
+    blockers,
+  };
+}
+
 function _lineNumberAt(content, index) {
   return content.slice(0, index).split(/\r?\n/).length;
 }
@@ -264,6 +297,11 @@ function _looksBinaryPath(path) {
 
 function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+function containsAll(content, fragments) {
+  const text = String(content ?? '');
+  return fragments.every((fragment) => text.includes(fragment));
 }
 
 function readStatusText(args) {
@@ -339,8 +377,10 @@ function runCli() {
   const releaseTextFiles = readReleaseTextFiles(entriesForTextScan);
   const textResult = scanTextQuality(releaseTextFiles);
   const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
+  const liveVideoEvidenceResult = scanLiveVideoEvidenceGate(releaseTextFiles);
   result.blockers.push(...textResult.blockers);
   result.blockers.push(...webTypecheckResult.blockers);
+  result.blockers.push(...liveVideoEvidenceResult.blockers);
   result.ok = result.blockers.length === 0;
 
   if (!result.ok) {
