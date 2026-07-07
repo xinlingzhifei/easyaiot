@@ -270,6 +270,17 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'live_video_manifest_signature_summary_missing',
     });
   }
+  if (liveVideo && !containsAll(liveVideo.content, [
+    'runManifestVerifierIfConfigured',
+    'manifestVerification',
+    'manifestVerifierScript',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_manifest_verifier_summary_missing',
+    });
+  }
   const productionSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-production-smoke.mjs');
   if (productionSmoke && !containsAll(productionSmoke.content, [
     'payload.manifestSignature',
@@ -279,6 +290,16 @@ export function scanLiveVideoEvidenceGate(files) {
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
       reason: 'production_smoke_manifest_signature_summary_missing',
+    });
+  }
+  if (productionSmoke && !containsAll(productionSmoke.content, [
+    'payload.manifestVerification',
+    'summary.manifestVerification',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_verifier_summary_missing',
     });
   }
   return {

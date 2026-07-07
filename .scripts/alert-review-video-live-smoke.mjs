@@ -1,4 +1,7 @@
-import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_TIME_RANGE_SECONDS = 300;
@@ -24,6 +27,7 @@ export function parseArgs(args, env = process.env) {
     exportPollAttempts: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_ATTEMPTS || DEFAULT_EXPORT_POLL_ATTEMPTS),
     exportPollIntervalMs: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_INTERVAL_MS || DEFAULT_EXPORT_POLL_INTERVAL_MS),
     recordDriftRetentionHours: Number(env.YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS),
+    manifestVerifierScript: env.YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT || '',
     allowLocalEndpoints: parseBoolean(env.YFEIEYE_VIDEO_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
     help: false,
   };
@@ -65,6 +69,8 @@ export function parseArgs(args, env = process.env) {
       parsed.exportPollIntervalMs = Number(arg.slice('--export-poll-interval-ms='.length));
     } else if (arg.startsWith('--record-drift-retention-hours=')) {
       parsed.recordDriftRetentionHours = Number(arg.slice('--record-drift-retention-hours='.length));
+    } else if (arg.startsWith('--manifest-verifier-script=')) {
+      parsed.manifestVerifierScript = arg.slice('--manifest-verifier-script='.length);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -256,7 +262,7 @@ export async function runSmoke(options, dependencies = {}) {
   checkpoints.push('record_export_download_ready');
   await probeDownloadUrl(fetchImpl, options, readyExportResult.downloadUrl);
   checkpoints.push('record_export_download_probed');
-  const manifestSignature = await verifyExportManifest(fetchImpl, options, readyExportResult);
+  const manifestEvidence = await verifyExportManifest(fetchImpl, options, readyExportResult, dependencies);
   checkpoints.push('record_export_manifest_verified');
 
   return {
@@ -267,7 +273,8 @@ export async function runSmoke(options, dependencies = {}) {
     recordSpace: spaceData,
     storageDrift,
     exportResult: readyExportResult,
-    manifestSignature,
+    manifestSignature: manifestEvidence.signature,
+    ...(manifestEvidence.verification ? { manifestVerification: manifestEvidence.verification } : {}),
   };
 }
 
@@ -285,6 +292,7 @@ export function summarizeCliResult(result) {
     },
     exportResult: result?.exportResult || {},
     ...(result?.manifestSignature ? { manifestSignature: result.manifestSignature } : {}),
+    ...(result?.manifestVerification ? { manifestVerification: result.manifestVerification } : {}),
   };
 }
 
@@ -375,11 +383,12 @@ async function probeDownloadUrl(fetchImpl, options, downloadUrl) {
   }
 }
 
-async function verifyExportManifest(fetchImpl, options, exportResult) {
+async function verifyExportManifest(fetchImpl, options, exportResult, dependencies = {}) {
   if (!hasText(exportResult.manifestUrl)) {
     throw new Error('record export response did not include manifest_url for reproducible evidence verification');
   }
-  const manifest = responseData(await fetchJson(fetchImpl, resolveDownloadUrl(exportResult.manifestUrl, options.recordExportUrl), {
+  const manifestUrl = resolveDownloadUrl(exportResult.manifestUrl, options.recordExportUrl);
+  const manifest = responseData(await fetchJson(fetchImpl, manifestUrl, {
     timeoutMs: options.timeoutMs,
     label: 'record export manifest',
   }));
@@ -442,7 +451,77 @@ async function verifyExportManifest(fetchImpl, options, exportResult) {
   )))) {
     throw new Error('record export manifest missing output file hashes');
   }
-  return manifestSignature;
+  const manifestVerification = await runManifestVerifierIfConfigured({
+    manifest,
+    manifestUrl,
+    options,
+    dependencies,
+  });
+  return {
+    signature: manifestSignature,
+    ...(manifestVerification ? { verification: manifestVerification } : {}),
+  };
+}
+
+async function runManifestVerifierIfConfigured({ manifest, manifestUrl, options, dependencies }) {
+  const injectedVerifier = dependencies && typeof dependencies.verifyManifest === 'function'
+    ? dependencies.verifyManifest
+    : null;
+  if (!injectedVerifier && !hasText(options.manifestVerifierScript)) {
+    return null;
+  }
+  const report = injectedVerifier
+    ? await injectedVerifier({ manifest, manifestUrl, options })
+    : runManifestVerifierScript(options.manifestVerifierScript, manifest);
+  const normalized = normalizeManifestVerificationReport(report);
+  if (normalized.valid !== true) {
+    const detail = normalized.violations.length ? normalized.violations.join(', ') : 'invalid_manifest';
+    throw new Error(`record export manifest verifier failed: ${detail}`);
+  }
+  return normalized;
+}
+
+function runManifestVerifierScript(scriptPath, manifest) {
+  const tempDir = mkdtempSync(join(tmpdir(), 'yfeieye-manifest-'));
+  const manifestPath = join(tempDir, 'manifest.json');
+  try {
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    const result = spawnSync(process.execPath, [resolve(scriptPath), '--manifest', manifestPath], {
+      encoding: 'utf8',
+      env: process.env,
+    });
+    if (result.error) {
+      throw new Error(`record export manifest verifier failed to start: ${result.error.message}`);
+    }
+    const output = String(result.stdout || '').trim();
+    try {
+      return output ? JSON.parse(output) : {};
+    } catch {
+      const detail = String(result.stderr || output || `exit ${result.status ?? 1}`).trim();
+      throw new Error(`record export manifest verifier returned invalid JSON: ${detail}`);
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+function normalizeManifestVerificationReport(report) {
+  if (!report || typeof report !== 'object') {
+    throw new Error('record export manifest verifier returned no JSON object');
+  }
+  return {
+    valid: report.valid === true,
+    signatureValid: report.signatureValid === true,
+    signatureKeyAvailable: report.signatureKeyAvailable === true,
+    keyId: firstText(report.keyId, report.key_id),
+    signatureVersion: firstText(
+      report.signatureVersion,
+      report.signature_version,
+      report.algorithmVersion,
+      report.algorithm_version,
+    ),
+    violations: Array.isArray(report.violations) ? report.violations.map((violation) => String(violation)) : [],
+  };
 }
 
 function validateManifestSignature(manifest) {
@@ -607,12 +686,15 @@ function printHelp() {
   --record-export-url=http://VIDEO/video/record/export \\
   --device-id=DEVICE_ID --alert-time="YYYY-MM-DD HH:mm:ss" [--camera-id=CAMERA_ID] \\
   --record-drift-retention-hours=24 [--export-poll-attempts=5] [--export-poll-interval-ms=1000] \\
+  [--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs] \\
   [--allow-local-endpoints]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
 record-base space lookup, recording DB/disk drift patrol, export POST, export
 download readiness, a HEAD probe against the resolved download URL, and manifest v2 reproducibility fields
 (ffmpeg command hash, source hashes, clip params, concat order, output hashes).
+When --manifest-verifier-script is supplied, the fetched manifest is also checked by the
+record export verifier; run that mode only where the manifest's referenced files are accessible.
 The smoke must use a real device with real recording metadata; no mock server
 is started. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
 is supplied for co-located real-service smoke.`);

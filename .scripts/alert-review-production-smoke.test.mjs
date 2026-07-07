@@ -31,6 +31,7 @@ const parsed = parseArgs([
   '--video-camera-id=camera-01',
   '--video-alert-time=2026-07-05 10:00:00',
   '--video-record-drift-retention-hours=24',
+  '--video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
   '--player-workbench-url=https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag',
   '--player-review-row-text=RV-20260705-001',
   '--player-action-testid=alert-review-detail-seek',
@@ -58,6 +59,7 @@ assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.videoRecordDriftRetentionHours, 24);
+assert.equal(parsed.videoManifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 assert.equal(parsed.playerWorkbenchUrl, 'https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag');
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
@@ -114,6 +116,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_SMOKE_DEVICE_ID: 'env-device',
   YFEIEYE_VIDEO_SMOKE_ALERT_TIME: '2026-07-05 11:00:00',
   YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS: '72',
+  YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT: '.scripts/record-export-manifest-verifier.mjs',
   YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://web.env/review',
   YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT: 'RV-ENV',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:10',
@@ -133,6 +136,7 @@ assert.deepEqual(fromEnv.devicePlaybackAllowedCameraIds, ['env-camera-allow']);
 assert.deepEqual(fromEnv.devicePlaybackDeniedCameraIds, ['env-camera-deny']);
 assert.equal(fromEnv.videoDeviceId, 'env-device');
 assert.equal(fromEnv.videoRecordDriftRetentionHours, 72);
+assert.equal(fromEnv.videoManifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 assert.equal(fromEnv.playerExpectedOffsetSeconds, 10);
 assert.equal(fromEnv.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(fromEnv.playerCaseTimelineExpectedOffsetSeconds, 0);
@@ -225,6 +229,7 @@ assert.ok(steps[0].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[1].args.includes('--record-export-url=https://video.release.example/video/record/export'));
 assert.ok(steps[1].args.includes('--camera-id=camera-01'));
 assert.ok(steps[1].args.includes('--record-drift-retention-hours=24'));
+assert.ok(steps[1].args.includes('--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs'));
 assert.ok(steps[2].args.includes('--action-testid=alert-review-detail-seek'));
 assert.ok(steps[2].args.includes('--expected-offset-seconds=30'));
 assert.ok(steps[3].args.includes('--action-testid=alert-review-coverage-seek'));
@@ -312,6 +317,14 @@ const smokeWithEvidence = await runProductionSmoke({
     "algorithm": "hmac-sha256",
     "keyId": "2026-q2",
     "signatureVersion": "v2"
+  },
+  "manifestVerification": {
+    "valid": true,
+    "signatureValid": true,
+    "signatureKeyAvailable": true,
+    "keyId": "2026-q2",
+    "signatureVersion": "v2",
+    "violations": []
   }
 }
 `
@@ -398,6 +411,14 @@ assert.deepEqual(evidenceReport.steps[1].summary.manifestSignature, {
   algorithm: 'hmac-sha256',
   keyId: '2026-q2',
   signatureVersion: 'v2',
+});
+assert.deepEqual(evidenceReport.steps[1].summary.manifestVerification, {
+  valid: true,
+  signatureValid: true,
+  signatureKeyAvailable: true,
+  keyId: '2026-q2',
+  signatureVersion: 'v2',
+  violations: [],
 });
 assert.deepEqual(evidenceReport.steps[2].summary.player, {
   entry: 'detail',

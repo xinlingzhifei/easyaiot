@@ -39,6 +39,22 @@ assert.equal(parsed.sourceAlertId, 'alert-001');
 assert.equal(parsed.recordDriftRetentionHours, 24);
 assert.equal(parsed.allowLocalEndpoints, true);
 
+const parsedWithVerifier = parseArgs([
+  '--alert-record-query-url=http://video.local/video/record/availability',
+  '--record-coverage-query-url=http://video.local/video/record/availability',
+  '--record-base-url=http://video.local/video/record',
+  '--record-export-url=http://video.local/video/record/export',
+  '--device-id=device-01',
+  '--camera-id=camera-01',
+  '--alert-time=2026-07-05 10:00:00',
+  '--time-range=120',
+  '--source-alert-id=alert-001',
+  '--record-drift-retention-hours=24',
+  '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
+  '--allow-local-endpoints',
+]);
+assert.equal(parsedWithVerifier.manifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
+
 const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL: 'http://env/video/record/availability',
   YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL: 'http://env/video/record/availability',
@@ -47,11 +63,13 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_SMOKE_DEVICE_ID: 'env-device',
   YFEIEYE_VIDEO_SMOKE_ALERT_TIME: '2026-07-05 11:00:00',
   YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS: '72',
+  YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT: '.scripts/record-export-manifest-verifier.mjs',
 });
 assert.equal(fromEnv.deviceId, 'env-device');
 assert.equal(fromEnv.cameraId, 'env-device');
 assert.equal(fromEnv.timeRangeSeconds, 300);
 assert.equal(fromEnv.recordDriftRetentionHours, 72);
+assert.equal(fromEnv.manifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 assert.equal(fromEnv.allowLocalEndpoints, false);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
@@ -247,6 +265,49 @@ assert.deepEqual(cliSummary.manifestSignature, {
   keyId: '2026-q2',
   signatureVersion: 'v2',
 });
+
+const verifierCalls = [];
+const smokeWithVerifier = await runSmoke(parsedWithVerifier, {
+  fetchImpl: fakeFetch,
+  verifyManifest: async ({ manifest, manifestUrl }) => {
+    verifierCalls.push({ manifest, manifestUrl });
+    return {
+      valid: true,
+      signatureValid: true,
+      signatureKeyAvailable: true,
+      keyId: '2026-q2',
+      signatureVersion: 'v2',
+      violations: [],
+    };
+  },
+});
+assert.equal(verifierCalls.length, 1);
+assert.equal(verifierCalls[0].manifest.signature.keyId, '2026-q2');
+assert.equal(verifierCalls[0].manifestUrl, 'http://video.local/manifests/review-export-1.json');
+assert.deepEqual(smokeWithVerifier.manifestVerification, {
+  valid: true,
+  signatureValid: true,
+  signatureKeyAvailable: true,
+  keyId: '2026-q2',
+  signatureVersion: 'v2',
+  violations: [],
+});
+assert.deepEqual(summarizeCliResult(smokeWithVerifier).manifestVerification, smokeWithVerifier.manifestVerification);
+
+await assert.rejects(
+  () => runSmoke(parsedWithVerifier, {
+    fetchImpl: fakeFetch,
+    verifyManifest: async () => ({
+      valid: false,
+      signatureValid: false,
+      signatureKeyAvailable: false,
+      keyId: '2026-q2',
+      signatureVersion: 'v2',
+      violations: ['missing_hmac_key'],
+    }),
+  }),
+  /record export manifest verifier failed: missing_hmac_key/,
+);
 
 const failedDriftFetch = async (url, init = {}) => {
   if (String(url).includes('/space/7/videos/drift')) {

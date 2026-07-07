@@ -24,6 +24,7 @@ export function parseArgs(args, env = process.env) {
     videoCameraId: env.YFEIEYE_VIDEO_SMOKE_CAMERA_ID || '',
     videoAlertTime: env.YFEIEYE_VIDEO_SMOKE_ALERT_TIME || '',
     videoRecordDriftRetentionHours: numberOrNaN(env.YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS),
+    videoManifestVerifierScript: env.YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT || '',
     playerWorkbenchUrl: env.YFEIEYE_REVIEW_PLAYER_SMOKE_URL || '',
     playerReviewRowText: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT || '',
     playerActionTestId: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ACTION_TESTID || 'alert-review-detail-seek',
@@ -89,6 +90,8 @@ export function parseArgs(args, env = process.env) {
       parsed.videoAlertTime = arg.slice('--video-alert-time='.length);
     } else if (arg.startsWith('--video-record-drift-retention-hours=')) {
       parsed.videoRecordDriftRetentionHours = numberOrNaN(arg.slice('--video-record-drift-retention-hours='.length));
+    } else if (arg.startsWith('--video-manifest-verifier-script=')) {
+      parsed.videoManifestVerifierScript = arg.slice('--video-manifest-verifier-script='.length);
     } else if (arg.startsWith('--player-workbench-url=')) {
       parsed.playerWorkbenchUrl = arg.slice('--player-workbench-url='.length);
     } else if (arg.startsWith('--player-review-row-text=')) {
@@ -199,6 +202,7 @@ export function buildSmokeSteps(options, runtime = {}) {
         hasText(options.videoCameraId) ? `--camera-id=${options.videoCameraId}` : '',
         `--alert-time=${options.videoAlertTime}`,
         `--record-drift-retention-hours=${options.videoRecordDriftRetentionHours}`,
+        hasText(options.videoManifestVerifierScript) ? `--manifest-verifier-script=${options.videoManifestVerifierScript}` : '',
         options.allowLocalEndpoints ? '--allow-local-endpoints' : '',
       ]),
     },
@@ -390,6 +394,9 @@ function childSmokeSummary(result) {
   }
   if (payload.manifestSignature && typeof payload.manifestSignature === 'object') {
     summary.manifestSignature = payload.manifestSignature;
+  }
+  if (payload.manifestVerification && typeof payload.manifestVerification === 'object') {
+    summary.manifestVerification = payload.manifestVerification;
   }
   if (payload.playback && typeof payload.playback === 'object') {
     summary.playback = payload.playback;
@@ -618,7 +625,7 @@ function printHelp() {
   --video-record-base-url=http://VIDEO/video/record \\
   --video-record-export-url=http://VIDEO/video/record/export \\
   --video-device-id=DEVICE_ID --video-alert-time="2026-07-05 10:00:00" \\
-  --video-record-drift-retention-hours=24 \\
+  --video-record-drift-retention-hours=24 [--video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs] \\
   --player-workbench-url=http://WEB/... --player-review-row-text=RV-... \\
   --player-expected-seek-time="2026-07-05T10:00:30" \\
   --player-expected-record-path-contains=DEVICE_ID \\
@@ -636,7 +643,8 @@ LiveDevice -> LiveVideo -> LivePlayer:detail -> LivePlayer:coverage ->
 LivePlayer:case-timeline. Each step uses real deployed services, real recording
 metadata, export verification, download audit, playback-url allow/deny authorization,
 recording DB/disk drift patrol, and player seek assertions from the dedicated smoke
-scripts. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
+scripts. The optional video manifest verifier script should be enabled only where
+manifest-referenced evidence files are reachable. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
 is supplied for co-located real-service smoke. Evidence output is written as a
 sanitized JSON report with masked token-bearing step commands.`);
 }

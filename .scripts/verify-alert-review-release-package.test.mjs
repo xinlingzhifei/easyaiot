@@ -219,11 +219,11 @@ assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_w
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
-    content: 'validateManifestSignature(manifest); manifestSignature; hmac-sha256; signatureVersion; keyId;',
+    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId;',
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
   },
 ]);
 assert.equal(liveVideoEvidenceGateScan.ok, true);
@@ -241,7 +241,9 @@ const missingLiveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
 assert.equal(missingLiveVideoEvidenceGateScan.ok, false);
 assert.deepEqual(missingLiveVideoEvidenceGateScan.blockers.map((blocker) => blocker.reason), [
   'live_video_manifest_signature_summary_missing',
+  'live_video_manifest_verifier_summary_missing',
   'production_smoke_manifest_signature_summary_missing',
+  'production_smoke_manifest_verifier_summary_missing',
 ]);
 
 const requireClean = evaluateStatus(`
