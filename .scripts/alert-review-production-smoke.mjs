@@ -388,6 +388,9 @@ function childSmokeSummary(result) {
   if (payload.exportResult && typeof payload.exportResult === 'object') {
     summary.exportResult = payload.exportResult;
   }
+  if (payload.manifestSignature && typeof payload.manifestSignature === 'object') {
+    summary.manifestSignature = payload.manifestSignature;
+  }
   if (payload.playback && typeof payload.playback === 'object') {
     summary.playback = payload.playback;
   }

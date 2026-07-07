@@ -235,11 +235,17 @@ assert.equal(smoke.exportResult.downloadUrl, '/downloads/review-export-1.mp4');
 assert.equal(smoke.exportResult.manifestUrl, '/manifests/review-export-1.json');
 assert.equal(smoke.storageDrift.summary.record_count, 3);
 assert.equal(calls.length, 8);
-assert.deepEqual(summarizeCliResult(smoke).storageDriftSummary, {
+const cliSummary = summarizeCliResult(smoke);
+assert.deepEqual(cliSummary.storageDriftSummary, {
   healthy: true,
   recordCount: 3,
   issueCount: 0,
   issueReasons: {},
+});
+assert.deepEqual(cliSummary.manifestSignature, {
+  algorithm: 'hmac-sha256',
+  keyId: '2026-q2',
+  signatureVersion: 'v2',
 });
 
 const failedDriftFetch = async (url, init = {}) => {

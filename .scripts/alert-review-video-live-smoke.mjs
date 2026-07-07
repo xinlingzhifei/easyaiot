@@ -256,7 +256,7 @@ export async function runSmoke(options, dependencies = {}) {
   checkpoints.push('record_export_download_ready');
   await probeDownloadUrl(fetchImpl, options, readyExportResult.downloadUrl);
   checkpoints.push('record_export_download_probed');
-  await verifyExportManifest(fetchImpl, options, readyExportResult);
+  const manifestSignature = await verifyExportManifest(fetchImpl, options, readyExportResult);
   checkpoints.push('record_export_manifest_verified');
 
   return {
@@ -267,6 +267,7 @@ export async function runSmoke(options, dependencies = {}) {
     recordSpace: spaceData,
     storageDrift,
     exportResult: readyExportResult,
+    manifestSignature,
   };
 }
 
@@ -283,6 +284,7 @@ export function summarizeCliResult(result) {
       issueReasons: summary.issue_reasons || summary.issueReasons || {},
     },
     exportResult: result?.exportResult || {},
+    ...(result?.manifestSignature ? { manifestSignature: result.manifestSignature } : {}),
   };
 }
 
@@ -385,7 +387,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult) {
   if (Number(version) !== 2) {
     throw new Error('record export manifest is not manifestVersion 2');
   }
-  validateManifestSignature(manifest);
+  const manifestSignature = validateManifestSignature(manifest);
   const recordSegments = firstList(manifest, 'recordSegments', 'record_segments');
   const sourceSegments = firstList(manifest, 'sourceSegments', 'source_segments', 'sources', 'inputs', 'recordSegments', 'record_segments');
   if (!hasText(firstText(
@@ -440,6 +442,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult) {
   )))) {
     throw new Error('record export manifest missing output file hashes');
   }
+  return manifestSignature;
 }
 
 function validateManifestSignature(manifest) {
@@ -460,6 +463,11 @@ function validateManifestSignature(manifest) {
   if (!hasText(value) || !value.startsWith('hmac-sha256:')) {
     throw new Error('record export manifest signature missing hmac-sha256 value');
   }
+  return {
+    algorithm: 'hmac-sha256',
+    keyId: firstText(signature.keyId, signature.key_id),
+    signatureVersion: firstText(signature.signatureVersion, signature.signature_version, signature.algorithmVersion, signature.algorithm_version),
+  };
 }
 
 function resolveDownloadUrl(downloadUrl, baseUrl) {

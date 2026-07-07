@@ -307,6 +307,11 @@ const smokeWithEvidence = await runProductionSmoke({
     "exportId": "review-export-1",
     "downloadUrl": "/downloads/review-export-1.mp4",
     "manifestUrl": "/manifests/review-export-1.json"
+  },
+  "manifestSignature": {
+    "algorithm": "hmac-sha256",
+    "keyId": "2026-q2",
+    "signatureVersion": "v2"
   }
 }
 `
@@ -389,6 +394,11 @@ assert.deepEqual(evidenceReport.steps[1].summary.checkpoints, [
   'record_storage_drift_patrol_ok',
   'record_export_manifest_verified',
 ]);
+assert.deepEqual(evidenceReport.steps[1].summary.manifestSignature, {
+  algorithm: 'hmac-sha256',
+  keyId: '2026-q2',
+  signatureVersion: 'v2',
+});
 assert.deepEqual(evidenceReport.steps[2].summary.player, {
   entry: 'detail',
   actionTestId: 'alert-review-detail-seek',
