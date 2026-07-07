@@ -47,6 +47,30 @@ assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
+assert.equal(parsed.allowLocalEndpoints, false);
+
+const localEndpointsAllowed = parseArgs([
+  '--device-base-url=http://127.0.0.1:48080/admin-api',
+  '--token=token-1',
+  '--operator-user-id=9001',
+  '--device-alert-time=2026-07-05T10:00:00',
+  '--device-playback-allowed-camera-ids=camera-01',
+  '--device-playback-denied-camera-ids=camera-02',
+  '--video-alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
+  '--video-record-coverage-query-url=http://127.0.0.1:6000/video/record/availability',
+  '--video-record-base-url=http://127.0.0.1:6000/video/record',
+  '--video-record-export-url=http://127.0.0.1:6000/video/record/export',
+  '--video-device-id=device-01',
+  '--video-alert-time=2026-07-05 10:00:00',
+  '--player-workbench-url=http://127.0.0.1:5173/yfeieye/alert/review',
+  '--player-review-row-text=RV-20260705-001',
+  '--player-expected-seek-time=2026-07-05T10:00:30',
+  '--player-expected-record-path-contains=device-01',
+  '--player-expected-offset-seconds=30',
+  '--allow-local-endpoints',
+], {});
+assert.equal(localEndpointsAllowed.allowLocalEndpoints, true);
+assert.deepEqual(requiredOptionErrors(localEndpointsAllowed), []);
 
 const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_BASE_URL: 'https://device.env/admin-api',
@@ -66,6 +90,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:10',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS: 'env-device',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS: '10',
+  YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS: 'true',
 });
 assert.equal(fromEnv.deviceBaseUrl, 'https://device.env/admin-api');
 assert.deepEqual(fromEnv.devicePlaybackAllowedCameraIds, ['env-camera-allow']);
@@ -91,6 +116,33 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME',
   'missing --player-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS',
   'missing --player-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS',
+]);
+
+assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--device-base-url=http://localhost:48080/admin-api',
+  '--token=token-1',
+  '--operator-user-id=9001',
+  '--device-alert-time=2026-07-05T10:00:00',
+  '--device-playback-allowed-camera-ids=camera-01',
+  '--device-playback-denied-camera-ids=camera-02',
+  '--video-alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
+  '--video-record-coverage-query-url=http://video.mock/video/record/availability',
+  '--video-record-base-url=file:///tmp/video/record',
+  '--video-record-export-url=http://localhost:6000/video/record/export',
+  '--video-device-id=device-01',
+  '--video-alert-time=2026-07-05 10:00:00',
+  '--player-workbench-url=http://localhost:5173/mock-workbench',
+  '--player-review-row-text=RV-20260705-001',
+  '--player-expected-seek-time=2026-07-05T10:00:30',
+  '--player-expected-record-path-contains=device-01',
+  '--player-expected-offset-seconds=30',
+], {})), [
+  'production smoke endpoint --device-base-url must not use a local/mock URL without --allow-local-endpoints',
+  'production smoke endpoint --video-alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
+  'production smoke endpoint --video-record-coverage-query-url must not use a local/mock URL without --allow-local-endpoints',
+  'production smoke endpoint --video-record-base-url must not use a local/mock URL without --allow-local-endpoints',
+  'production smoke endpoint --video-record-export-url must not use a local/mock URL without --allow-local-endpoints',
+  'production smoke endpoint --player-workbench-url must not use a local/mock URL without --allow-local-endpoints',
 ]);
 
 const steps = buildSmokeSteps(parsed, {

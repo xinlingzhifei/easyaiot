@@ -29,12 +29,15 @@ export function parseArgs(args, env = process.env) {
     playerExpectedRecordPathContains: env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS || '',
     playerExpectedOffsetSeconds: numberOrNaN(env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS),
     playerWaitText: env.YFEIEYE_REVIEW_PLAYER_SMOKE_WAIT_TEXT || '',
+    allowLocalEndpoints: parseBoolean(env.YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
     help: false,
   };
 
   for (const arg of args) {
     if (arg === '--help' || arg === '-h') {
       parsed.help = true;
+    } else if (arg === '--allow-local-endpoints') {
+      parsed.allowLocalEndpoints = true;
     } else if (arg.startsWith('--device-base-url=')) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
@@ -112,6 +115,14 @@ export function requiredOptionErrors(options) {
   requireText(errors, options.playerExpectedSeekTime, 'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME');
   requireText(errors, options.playerExpectedRecordPathContains, 'missing --player-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS');
   requirePositiveNumber(errors, options.playerExpectedOffsetSeconds, 'missing --player-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS');
+  if (!options.allowLocalEndpoints) {
+    requireReleaseEndpoint(errors, '--device-base-url', options.deviceBaseUrl);
+    requireReleaseEndpoint(errors, '--video-alert-record-query-url', options.videoAlertRecordQueryUrl);
+    requireReleaseEndpoint(errors, '--video-record-coverage-query-url', options.videoRecordCoverageQueryUrl);
+    requireReleaseEndpoint(errors, '--video-record-base-url', options.videoRecordBaseUrl);
+    requireReleaseEndpoint(errors, '--video-record-export-url', options.videoRecordExportUrl);
+    requireReleaseEndpoint(errors, '--player-workbench-url', options.playerWorkbenchUrl);
+  }
   return errors;
 }
 
@@ -228,6 +239,13 @@ function requireList(errors, values, message) {
   }
 }
 
+function requireReleaseEndpoint(errors, optionName, value) {
+  if (!hasText(value) || !looksLocalOrMockEndpoint(value)) {
+    return;
+  }
+  errors.push(`production smoke endpoint ${optionName} must not use a local/mock URL without --allow-local-endpoints`);
+}
+
 function positiveNumberArg(name, value) {
   return Number.isFinite(value) && value > 0 ? `${name}=${value}` : '';
 }
@@ -261,6 +279,35 @@ function parseCsvList(value) {
     .filter(Boolean);
 }
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+  return !['0', 'false', 'no'].includes(String(value).trim().toLowerCase());
+}
+
+function looksLocalOrMockEndpoint(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return false;
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return true;
+  }
+  const hostname = String(url.hostname || '').toLowerCase();
+  return url.protocol === 'file:'
+    || hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || hostname === '0.0.0.0'
+    || hostname.includes('mock')
+    || raw.toLowerCase().includes('/mock');
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-production-smoke.mjs \\
   --device-base-url=http://DEVICE/admin-api --token=JWT_TOKEN \\
@@ -274,13 +321,14 @@ function printHelp() {
   --player-workbench-url=http://WEB/... --player-review-row-text=RV-... \\
   --player-expected-seek-time="2026-07-05T10:00:30" \\
   --player-expected-record-path-contains=DEVICE_ID \\
-  --player-expected-offset-seconds=30
+  --player-expected-offset-seconds=30 [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
 LiveDevice -> LiveVideo -> LivePlayer. Each step uses real deployed services,
 real recording metadata, export verification, download audit, playback-url
 allow/deny authorization, and player seek assertions from the dedicated smoke
-scripts.`);
+scripts. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
+is supplied for co-located real-service smoke.`);
 }
 
 async function runCli() {
