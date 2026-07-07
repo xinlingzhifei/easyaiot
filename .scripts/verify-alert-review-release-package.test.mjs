@@ -60,6 +60,8 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   '.scripts/record-export-manifest-verifier.mjs',
   '.scripts/alert-review-device-integration-smoke.mjs',
   '.scripts/alert-review-device-integration-smoke.test.mjs',
+  '.scripts/alert-review-production-smoke.mjs',
+  '.scripts/alert-review-production-smoke.test.mjs',
   '.scripts/alert-review-visible-copy-scan.mjs',
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
@@ -69,7 +71,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 19);
+assert.equal(trackedReleaseEntries.length, 21);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -84,6 +86,8 @@ assert.deepEqual(
     ['  ', '.scripts/record-export-manifest-verifier.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-device-integration-smoke.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-device-integration-smoke.test.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/alert-review-production-smoke.mjs', 'FR release gate tooling'],
+    ['  ', '.scripts/alert-review-production-smoke.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-visible-copy-scan.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.mjs', 'FR release gate tooling'],
