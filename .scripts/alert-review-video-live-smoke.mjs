@@ -261,6 +261,22 @@ export async function runSmoke(options, dependencies = {}) {
   };
 }
 
+export function summarizeCliResult(result) {
+  const summary = result?.storageDrift?.summary && typeof result.storageDrift.summary === 'object'
+    ? result.storageDrift.summary
+    : {};
+  return {
+    checkpoints: Array.isArray(result?.checkpoints) ? result.checkpoints : [],
+    storageDriftSummary: {
+      healthy: summary.healthy === true,
+      recordCount: numberValue(firstPresent(summary.record_count, summary.recordCount)),
+      issueCount: numberValue(firstPresent(summary.issue_count, summary.issueCount)),
+      issueReasons: summary.issue_reasons || summary.issueReasons || {},
+    },
+    exportResult: result?.exportResult || {},
+  };
+}
+
 async function fetchJson(fetchImpl, url, options) {
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
@@ -532,10 +548,7 @@ async function runCli() {
   }
   const result = await runSmoke(options);
   console.log('alert review VIDEO live smoke passed');
-  console.log(JSON.stringify({
-    checkpoints: result.checkpoints,
-    exportResult: result.exportResult,
-  }, null, 2));
+  console.log(JSON.stringify(summarizeCliResult(result), null, 2));
 }
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {

@@ -7,6 +7,7 @@ import {
   requiredOptionErrors,
   runSmoke,
   selectPlayableSegment,
+  summarizeCliResult,
 } from './alert-review-video-live-smoke.mjs';
 import {
   evaluateStatus,
@@ -199,6 +200,12 @@ assert.equal(smoke.exportResult.downloadUrl, '/downloads/review-export-1.mp4');
 assert.equal(smoke.exportResult.manifestUrl, '/manifests/review-export-1.json');
 assert.equal(smoke.storageDrift.summary.record_count, 3);
 assert.equal(calls.length, 8);
+assert.deepEqual(summarizeCliResult(smoke).storageDriftSummary, {
+  healthy: true,
+  recordCount: 3,
+  issueCount: 0,
+  issueReasons: {},
+});
 
 const failedDriftFetch = async (url, init = {}) => {
   if (String(url).includes('/space/7/videos/drift')) {
