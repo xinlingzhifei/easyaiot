@@ -385,6 +385,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult) {
   if (Number(version) !== 2) {
     throw new Error('record export manifest is not manifestVersion 2');
   }
+  validateManifestSignature(manifest);
   const recordSegments = firstList(manifest, 'recordSegments', 'record_segments');
   const sourceSegments = firstList(manifest, 'sourceSegments', 'source_segments', 'sources', 'inputs', 'recordSegments', 'record_segments');
   if (!hasText(firstText(
@@ -438,6 +439,26 @@ async function verifyExportManifest(fetchImpl, options, exportResult) {
     output.checksum,
   )))) {
     throw new Error('record export manifest missing output file hashes');
+  }
+}
+
+function validateManifestSignature(manifest) {
+  const signature = manifest.signature && typeof manifest.signature === 'object' ? manifest.signature : null;
+  if (!signature) {
+    throw new Error('record export manifest missing HMAC signature metadata');
+  }
+  if (firstText(signature.algorithm, signature.alg) !== 'hmac-sha256') {
+    throw new Error('record export manifest signature algorithm is not hmac-sha256');
+  }
+  if (!hasText(firstText(signature.keyId, signature.key_id))) {
+    throw new Error('record export manifest signature missing keyId');
+  }
+  if (!hasText(firstText(signature.signatureVersion, signature.signature_version, signature.algorithmVersion, signature.algorithm_version))) {
+    throw new Error('record export manifest signature missing version');
+  }
+  const value = firstText(signature.value, signature.signature, signature.digest);
+  if (!hasText(value) || !value.startsWith('hmac-sha256:')) {
+    throw new Error('record export manifest signature missing hmac-sha256 value');
   }
 }
 

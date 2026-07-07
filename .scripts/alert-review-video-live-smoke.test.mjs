@@ -176,6 +176,12 @@ const fakeFetch = async (url, init = {}) => {
           hash: 'sha256:output-file',
         },
       ],
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:signed-manifest',
+      },
     });
   }
   if (String(url).endsWith('/video/record/export/review-export-1')) {
@@ -283,6 +289,36 @@ await assert.rejects(
   /record export response did not include manifest_url/,
 );
 
+const unsignedManifestFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      recordSegments: [
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: 'sha256:source-segment',
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: 'sha256:ffmpeg-command',
+        },
+      ],
+      files: [
+        {
+          path: 'review-export-1.mp4',
+          role: 'export_package',
+          hash: 'sha256:output-file',
+        },
+      ],
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: unsignedManifestFetch }),
+  /record export manifest missing HMAC signature metadata/,
+);
+
 const incompleteManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/manifests/review-export-1.json')) {
     return jsonResponse({
@@ -300,6 +336,12 @@ const incompleteManifestFetch = async (url, init = {}) => {
           sha256: 'output-sha256',
         },
       ],
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:signed-manifest',
+      },
     });
   }
   return fakeFetch(url, init);
