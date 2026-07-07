@@ -4,11 +4,14 @@ import {
   MIGRATION_FILES,
   buildBootstrapSql,
   buildConcurrentDuplicateIdentityInsertSql,
+  buildConcurrentReviewStatusBootstrapSql,
+  buildConcurrentReviewStatusUpdateSql,
   buildConcurrentReviewSegmentBootstrapSql,
   buildConcurrentReviewSegmentInsertSql,
   buildPostMigrationAssertionSql,
   parseArgs,
   summarizeConcurrentDuplicateResults,
+  summarizeConcurrentReviewStatusResults,
   summarizeConcurrentReviewSegmentResults,
 } from './alert-review-postgres-migration-smoke.mjs';
 import {
@@ -48,10 +51,24 @@ assert.match(assertionSql, /system:supervision-alert-review:media:playback/);
 assert.match(assertionSql, /expected review media permission seeds to be present/);
 assert.match(assertionSql, /expected review case audit to allow pre-case media audit rows/);
 assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
+assert.match(assertionSql, /expected stale review status version update to affect no rows/);
+assert.match(assertionSql, /expected repeated same-status reviewer update to be idempotent/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);
 assert.match(concurrentInsertSql, /system_supervision_alert_review_ingest_identity/);
+
+const concurrentReviewStatusBootstrapSql = buildConcurrentReviewStatusBootstrapSql();
+assert.match(concurrentReviewStatusBootstrapSql, /review-status-race/);
+assert.match(concurrentReviewStatusBootstrapSql, /pending_review/);
+assert.match(concurrentReviewStatusBootstrapSql, /8001/);
+
+const concurrentReviewStatusUpdateSql = buildConcurrentReviewStatusUpdateSql();
+assert.match(concurrentReviewStatusUpdateSql, /UPDATE system_supervision_alert_review_item/);
+assert.match(concurrentReviewStatusUpdateSql, /review_status = 'reviewed'/);
+assert.match(concurrentReviewStatusUpdateSql, /version = version \+ 1/);
+assert.match(concurrentReviewStatusUpdateSql, /id = 8001/);
+assert.match(concurrentReviewStatusUpdateSql, /version = 0/);
 
 const concurrentSegmentBootstrapSql = buildConcurrentReviewSegmentBootstrapSql();
 assert.match(concurrentSegmentBootstrapSql, /a-segment-race-1/);
@@ -84,6 +101,21 @@ assert.throws(
     { status: 0, stdout: 'INSERT 0 1', stderr: '' },
   ]),
   /expected exactly one concurrent duplicate identity insert to succeed/,
+);
+
+assert.equal(
+  summarizeConcurrentReviewStatusResults([
+    { status: 0, stdout: 'UPDATE 1', stderr: '' },
+    { status: 0, stdout: 'UPDATE 0', stderr: '' },
+  ]),
+  'concurrent review status version smoke passed',
+);
+assert.throws(
+  () => summarizeConcurrentReviewStatusResults([
+    { status: 0, stdout: 'UPDATE 1', stderr: '' },
+    { status: 0, stdout: 'UPDATE 1', stderr: '' },
+  ]),
+  /expected exactly one concurrent review status update to win the version race/,
 );
 
 assert.equal(

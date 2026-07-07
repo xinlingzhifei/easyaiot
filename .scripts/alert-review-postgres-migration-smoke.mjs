@@ -88,6 +88,7 @@ CREATE TABLE system_supervision_alert_review_item (
   rule_code VARCHAR(128),
   last_alert_time TIMESTAMP,
   review_data TEXT,
+  version INTEGER NOT NULL DEFAULT 0,
   deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
@@ -264,6 +265,52 @@ BEGIN
 END $$;
 
 DO $$
+DECLARE
+  affected_rows INTEGER;
+BEGIN
+  UPDATE system_supervision_alert_review_item
+  SET review_status = 'reviewed',
+      version = version + 1
+  WHERE id = 1
+    AND review_status = 'pending_review'
+    AND version = 0;
+  GET DIAGNOSTICS affected_rows = ROW_COUNT;
+  IF affected_rows <> 1 THEN
+    RAISE EXCEPTION 'expected first review status version update to affect one row';
+  END IF;
+
+  UPDATE system_supervision_alert_review_item
+  SET review_status = 'ignored',
+      version = version + 1
+  WHERE id = 1
+    AND version = 0;
+  GET DIAGNOSTICS affected_rows = ROW_COUNT;
+  IF affected_rows <> 0 THEN
+    RAISE EXCEPTION 'expected stale review status version update to affect no rows';
+  END IF;
+
+  UPDATE system_supervision_alert_review_item
+  SET review_status = 'reviewed'
+  WHERE id = 1
+    AND review_status = 'reviewed'
+    AND version = 1;
+  GET DIAGNOSTICS affected_rows = ROW_COUNT;
+  IF affected_rows <> 1 THEN
+    RAISE EXCEPTION 'expected repeated same-status reviewer update to be idempotent';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_item
+    WHERE id = 1
+      AND review_status = 'reviewed'
+      AND version = 1
+  ) THEN
+    RAISE EXCEPTION 'expected repeated same-status reviewer update to keep version stable';
+  END IF;
+END $$;
+
+DO $$
 BEGIN
   BEGIN
     INSERT INTO system_supervision_alert_review_ingest_identity(
@@ -336,6 +383,26 @@ VALUES (3003, 3003, 'video', 'video:alert:a-race', 'a-race', false);
 `;
 }
 
+export function buildConcurrentReviewStatusBootstrapSql() {
+  return `
+INSERT INTO system_supervision_alert_review_item(
+  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, version, deleted
+)
+VALUES (8001, 5005, 'video', 'review-status-race', 'pending_review', 'camera-review-status-race-01', 'zone-a', 'rule-a', '2026-07-05 13:00', 0, false);
+`;
+}
+
+export function buildConcurrentReviewStatusUpdateSql() {
+  return `
+UPDATE system_supervision_alert_review_item
+SET review_status = 'reviewed',
+    version = version + 1
+WHERE id = 8001
+  AND review_status = 'pending_review'
+  AND version = 0;
+`;
+}
+
 export function buildConcurrentReviewSegmentBootstrapSql() {
   return `
 INSERT INTO system_supervision_alert_review_item(
@@ -372,6 +439,26 @@ export function summarizeConcurrentDuplicateResults(results) {
     );
   }
   return 'concurrent duplicate ingest identity smoke passed';
+}
+
+export function summarizeConcurrentReviewStatusResults(results) {
+  const updateOneCount = results.filter((result) =>
+    result.status === 0 && /\bUPDATE 1\b/.test(`${result.stdout ?? ''}\n${result.stderr ?? ''}`),
+  ).length;
+  const updateZeroCount = results.filter((result) =>
+    result.status === 0 && /\bUPDATE 0\b/.test(`${result.stdout ?? ''}\n${result.stderr ?? ''}`),
+  ).length;
+  if (updateOneCount !== 1 || updateZeroCount !== 1) {
+    throw new Error(
+      [
+        'expected exactly one concurrent review status update to win the version race and one stale update to affect zero rows',
+        ...results.map((result, index) =>
+          `process ${index + 1}: status=${result.status} stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`,
+        ),
+      ].join('\n'),
+    );
+  }
+  return 'concurrent review status version smoke passed';
 }
 
 export function summarizeConcurrentReviewSegmentResults(results) {
@@ -502,9 +589,11 @@ export async function runSmoke(options) {
     }
     const assertionOutput = runDockerPsql(options.container, options.database, buildPostMigrationAssertionSql());
     const concurrentOutput = await runConcurrentDuplicateIdentitySmoke(options);
+    runDockerPsql(options.container, options.database, buildConcurrentReviewStatusBootstrapSql());
+    const concurrentReviewStatusOutput = await runConcurrentReviewStatusSmoke(options);
     runDockerPsql(options.container, options.database, buildConcurrentReviewSegmentBootstrapSql());
     const concurrentSegmentOutput = await runConcurrentReviewSegmentSmoke(options);
-    return `${assertionOutput}${concurrentOutput}\n${concurrentSegmentOutput}\n`;
+    return `${assertionOutput}${concurrentOutput}\n${concurrentReviewStatusOutput}\n${concurrentSegmentOutput}\n`;
   } finally {
     if (!options.keepDatabase) {
       runDockerPsql(options.container, 'postgres', `DROP DATABASE IF EXISTS ${options.database};\n`);
@@ -518,6 +607,14 @@ async function runConcurrentDuplicateIdentitySmoke(options) {
     runDockerPsqlAsync(options.container, options.database, buildConcurrentDuplicateIdentityInsertSql()),
   ]);
   return summarizeConcurrentDuplicateResults(results);
+}
+
+async function runConcurrentReviewStatusSmoke(options) {
+  const results = await Promise.all([
+    runDockerPsqlAsync(options.container, options.database, buildConcurrentReviewStatusUpdateSql()),
+    runDockerPsqlAsync(options.container, options.database, buildConcurrentReviewStatusUpdateSql()),
+  ]);
+  return summarizeConcurrentReviewStatusResults(results);
 }
 
 async function runConcurrentReviewSegmentSmoke(options) {
