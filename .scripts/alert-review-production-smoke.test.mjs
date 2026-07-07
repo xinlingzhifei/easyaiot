@@ -78,6 +78,8 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN',
   'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID',
   'missing --device-alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME',
+  'missing --device-playback-allowed-camera-ids or YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS',
+  'missing --device-playback-denied-camera-ids or YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS',
   'missing --video-alert-record-query-url or YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL',
   'missing --video-record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
   'missing --video-record-base-url or YFEIEYE_VIDEO_RECORD_BASE_URL',

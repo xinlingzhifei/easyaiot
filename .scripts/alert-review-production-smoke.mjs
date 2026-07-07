@@ -99,6 +99,8 @@ export function requiredOptionErrors(options) {
   requireText(errors, options.token, 'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN');
   requirePositiveNumber(errors, options.operatorUserId, 'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID');
   requireText(errors, options.deviceAlertTime, 'missing --device-alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME');
+  requireList(errors, options.devicePlaybackAllowedCameraIds, 'missing --device-playback-allowed-camera-ids or YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS');
+  requireList(errors, options.devicePlaybackDeniedCameraIds, 'missing --device-playback-denied-camera-ids or YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS');
   requireText(errors, options.videoAlertRecordQueryUrl, 'missing --video-alert-record-query-url or YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL');
   requireText(errors, options.videoRecordCoverageQueryUrl, 'missing --video-record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL');
   requireText(errors, options.videoRecordBaseUrl, 'missing --video-record-base-url or YFEIEYE_VIDEO_RECORD_BASE_URL');
@@ -220,6 +222,12 @@ function requirePositiveNumber(errors, value, message) {
   }
 }
 
+function requireList(errors, values, message) {
+  if (!Array.isArray(values) || values.length === 0) {
+    errors.push(message);
+  }
+}
+
 function positiveNumberArg(name, value) {
   return Number.isFinite(value) && value > 0 ? `${name}=${value}` : '';
 }
@@ -257,7 +265,7 @@ function printHelp() {
   console.log(`Usage: node .scripts/alert-review-production-smoke.mjs \\
   --device-base-url=http://DEVICE/admin-api --token=JWT_TOKEN \\
   --operator-user-id=9200 --device-alert-time="2026-07-05T10:00:00" \\
-  [--device-playback-allowed-camera-ids=camera-01 --device-playback-denied-camera-ids=camera-02] \\
+  --device-playback-allowed-camera-ids=camera-01 --device-playback-denied-camera-ids=camera-02 \\
   --video-alert-record-query-url=http://VIDEO/video/record/availability \\
   --video-record-coverage-query-url=http://VIDEO/video/record/availability \\
   --video-record-base-url=http://VIDEO/video/record \\
@@ -270,9 +278,9 @@ function printHelp() {
 
 Runs the release FR-32 production smoke in order:
 LiveDevice -> LiveVideo -> LivePlayer. Each step uses real deployed services,
-real recording metadata, export verification, download audit, and player seek
-assertions from the dedicated smoke scripts. Optional device playback camera
-ids enable the audited playback-url allow/deny probe inside LiveDevice.`);
+real recording metadata, export verification, download audit, playback-url
+allow/deny authorization, and player seek assertions from the dedicated smoke
+scripts.`);
 }
 
 async function runCli() {
