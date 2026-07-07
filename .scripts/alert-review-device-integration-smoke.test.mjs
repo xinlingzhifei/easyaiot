@@ -14,6 +14,8 @@ import {
   releaseEntriesForTrackedPaths,
 } from './verify-alert-review-release-package.mjs';
 
+assert.ok(REQUIRED_CHECKPOINTS.includes('review_rule_saved'));
+
 const parsed = parseArgs([
   '--device-base-url=http://device.local/api',
   '--token=token-1',

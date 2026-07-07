@@ -287,7 +287,7 @@ const smokeWithEvidence = await runProductionSmoke({
     "deniedDecision": "denied",
     "deniedReasons": ["camera_not_allowed"]
   },
-  "checkpoints": ["ingest_created", "record_coverage_synced", "evidence_download_audited"]
+  "checkpoints": ["ingest_created", "review_rule_saved", "record_coverage_synced", "evidence_download_audited"]
 }
 `
       : step.name === 'LiveVideo'
@@ -361,7 +361,7 @@ assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'pa
 assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
 assert.equal(evidenceReport.steps[2].command.includes('--workbench-url=http://web.local/yfeieye/alert/review '), true);
 assert.deepEqual(evidenceReport.steps[0].summary, {
-  checkpoints: ['ingest_created', 'record_coverage_synced', 'evidence_download_audited'],
+  checkpoints: ['ingest_created', 'review_rule_saved', 'record_coverage_synced', 'evidence_download_audited'],
   playback: {
     grantedDecision: 'granted',
     deniedDecision: 'denied',

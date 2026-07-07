@@ -4190,9 +4190,10 @@ class SupervisionAlertReviewServiceTest {
                         "smoke export ready"
                 ))
         );
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
-                new InMemoryRuleStore(),
+                ruleStore,
                 command -> new AlertToEventResult(
                         7600L,
                         command.sourceSystem(),
@@ -4235,6 +4236,14 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(smoke.checkpoints().contains("evidence_export_ready"));
         assertTrue(smoke.checkpoints().contains("manifest_verified"));
         assertTrue(smoke.checkpoints().contains("evidence_download_audited"));
+        assertTrue(smoke.checkpoints().contains("review_rule_saved"));
+        assertEquals(1, ruleStore.listAll().size());
+        ReviewRuleView smokeRule = ruleStore.listAll().get(0);
+        assertEquals("camera-smoke", smokeRule.cameraId());
+        assertEquals("zone-smoke", smokeRule.zoneCode());
+        assertEquals("person", smokeRule.objectLabel());
+        assertEquals(3, smokeRule.inertiaFrames());
+        assertEquals(20, smokeRule.loiteringSeconds());
         assertTrue(service.getEvidenceAuditTrail(smoke.reviewCaseId()).stream()
                 .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
                         && Objects.equals(9200L, entry.operatorUserId())

@@ -2217,6 +2217,22 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if ("device-video-web".equals(profile)) {
             checkpoints.add("sample_alert_ingested");
         }
+        saveRule(new ReviewRuleCommand(
+                null,
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "integration smoke zone rule",
+                "video",
+                "camera-smoke",
+                "zone-smoke",
+                "person",
+                15,
+                alertTime.minusMinutes(5),
+                null,
+                true,
+                3,
+                20
+        ));
+        checkpoints.add("review_rule_saved");
         List<RecordCoverageSegment> coverage = getRecordCoverage(item.id());
         syncRecordStorage(new ReviewRecordStorageSyncCommand(item.id(), command.operatorUserId(), coverage));
         checkpoints.add("record_coverage_synced");

@@ -5,6 +5,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 export const REQUIRED_CHECKPOINTS = [
   'ingest_review_item',
+  'review_rule_saved',
   'record_coverage_synced',
   'review_case_created',
   'evidence_export_ready',
@@ -391,8 +392,8 @@ function printHelp() {
   [--playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02]
 
 Runs the deployed FR-32 DEVICE smoke endpoint and requires the full review loop:
-ingest -> record coverage sync -> review case -> export -> manifest verify ->
-download audit. It expects the release DEVICE service to be connected to real
+ingest -> review rule save -> record coverage sync -> review case -> export ->
+manifest verify -> download audit. It expects the release DEVICE service to be connected to real
 VIDEO record/export configuration before this can pass. When playback camera
 ids are provided, it also checks audited playback-url allow/deny decisions.`);
 }
