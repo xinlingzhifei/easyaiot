@@ -31,7 +31,7 @@ const parsed = parseArgs([
   '--video-camera-id=camera-01',
   '--video-alert-time=2026-07-05 10:00:00',
   '--video-record-drift-retention-hours=24',
-  '--player-workbench-url=http://web.local/yfeieye/alert/review',
+  '--player-workbench-url=http://web.local/yfeieye/alert/review?token=command-secret&signature=cmd#frag',
   '--player-review-row-text=RV-20260705-001',
   '--player-action-testid=alert-review-detail-seek',
   '--player-expected-seek-time=2026-07-05T10:00:30',
@@ -58,6 +58,7 @@ assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.videoRecordDriftRetentionHours, 24);
+assert.equal(parsed.playerWorkbenchUrl, 'http://web.local/yfeieye/alert/review?token=command-secret&signature=cmd#frag');
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
@@ -358,6 +359,7 @@ assert.equal(evidenceReport.durationMs, 3000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
 assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed']);
 assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
+assert.equal(evidenceReport.steps[2].command.includes('--workbench-url=http://web.local/yfeieye/alert/review '), true);
 assert.deepEqual(evidenceReport.steps[0].summary, {
   checkpoints: ['ingest_created', 'record_coverage_synced', 'evidence_download_audited'],
   playback: {
@@ -440,6 +442,7 @@ assert.equal(evidenceReport.steps[2].stdout, undefined);
 assert.equal(evidenceReport.steps[3].stdout, undefined);
 assert.equal(evidenceReport.steps[4].stdout, undefined);
 assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('command-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('media-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('wrapped-media-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('wrapped-debug-secret'), false);

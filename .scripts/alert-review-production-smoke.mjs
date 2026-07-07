@@ -318,7 +318,19 @@ function defaultRunCommand(step) {
 }
 
 function maskSensitiveArg(arg) {
-  return String(arg).startsWith('--token=') ? '--token=***' : arg;
+  const value = String(arg);
+  if (value.startsWith('--token=')) {
+    return '--token=***';
+  }
+  const match = value.match(/^(--[^=]+=)(https?:\/\/.+)$/);
+  if (!match) {
+    return arg;
+  }
+  return `${match[1]}${stripUrlSecrets(match[2])}`;
+}
+
+function stripUrlSecrets(value) {
+  return String(value).replace(/[?#].*$/, '');
 }
 
 function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error, result) {
@@ -425,7 +437,7 @@ function copyTextIfPresent(target, source, key) {
 
 function copySanitizedUrlIfPresent(target, source, key) {
   if (hasText(source[key])) {
-    target[key] = String(source[key]).replace(/[?#].*$/, '');
+    target[key] = stripUrlSecrets(source[key]);
   }
 }
 
