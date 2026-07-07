@@ -466,6 +466,11 @@ Manifest verifier and HMAC key rotation:
   `node .scripts/alert-review-visible-copy-scan.mjs`
   Result: RED first failed because `scanTextQuality` returned `ok=true` for the W4-visible `\u935b\u5a45` mojibake fixture; GREEN reruns passed after `Pkg` reused `VISIBLE_COPY_MOJIBAKE_PATTERNS` while preserving its extra historical release-text patterns.
 
+- FR-37 release text-quality gate no longer carries raw mojibake fixtures in source:
+  `node .scripts/verify-alert-review-release-package.mjs --require-clean`
+  `node scripts/alert-review-workbench-e2e-check.test.mjs` from `WEB`
+  Result: RED first failed because `Pkg --require-clean` found a raw mojibake fragment in `WEB/scripts/alert-review-workbench-e2e-check.mjs`; GREEN reruns passed after the workbench E2E mojibake fragment catalog and test fixtures used escaped codepoints while preserving runtime detection.
+
 - Workbench all-mode package gate passed:
   `pnpm test:alert-review-workbench`
   Result: `Alert review workbench E2E all OK`.
