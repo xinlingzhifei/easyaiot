@@ -1398,6 +1398,14 @@ function reviewDataValue(item: AlertReviewItem | null | undefined, keys: string[
     if (value !== undefined && value !== null && value !== '')
       return value
   }
+  const caseCandidateMatch = reviewData.caseCandidateMatch as Record<string, unknown> | undefined
+  if (caseCandidateMatch) {
+    for (const key of keys) {
+      const value = caseCandidateMatch[key]
+      if (value !== undefined && value !== null && value !== '')
+        return value
+    }
+  }
   const motion = reviewData.motion as Record<string, unknown> | undefined
   if (motion) {
     for (const key of keys) {

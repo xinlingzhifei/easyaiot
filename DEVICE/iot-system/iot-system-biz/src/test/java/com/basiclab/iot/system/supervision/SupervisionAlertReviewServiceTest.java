@@ -2780,6 +2780,10 @@ class SupervisionAlertReviewServiceTest {
 
         assertEquals(List.of(adjacentFromConfig.id(), sameAreaFromConfig.id()),
                 candidates.stream().map(ReviewItemAggregate::id).toList());
+        Map<?, ?> adjacentMatch = (Map<?, ?>) candidates.get(0).reviewData().get("caseCandidateMatch");
+        assertEquals("configured_camera_topology", adjacentMatch.get("source"));
+        assertEquals("yard-east", adjacentMatch.get("regulatoryArea"));
+        assertEquals(List.of("camera-01"), adjacentMatch.get("adjacentCameras"));
     }
 
     @Test

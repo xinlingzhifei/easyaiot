@@ -1014,6 +1014,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                         .reversed()
                         .thenComparing(ReviewItemAggregate::firstAlertTime,
                                 Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(candidate -> withCaseCandidateMatch(base, candidate))
                 .toList();
     }
 
@@ -6240,6 +6241,104 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return correlationScore(base, candidate) > 0;
     }
 
+    private ReviewItemAggregate withCaseCandidateMatch(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        Map<String, Object> match = new LinkedHashMap<>();
+        boolean configuredTopologyMatch = false;
+        String baseCorrelationId = toText(reviewDataValue(base, "correlationId", "correlation_id"));
+        String candidateCorrelationId = toText(reviewDataValue(candidate, "correlationId", "correlation_id"));
+        if (hasText(baseCorrelationId) && Objects.equals(baseCorrelationId, candidateCorrelationId)) {
+            match.put("correlationId", candidateCorrelationId);
+        }
+
+        Set<String> sharedObjectIds = intersection(objectIds(base), objectIds(candidate));
+        if (!sharedObjectIds.isEmpty()) {
+            match.put("objectIds", List.copyOf(sharedObjectIds));
+        }
+
+        String baseArea = regulatoryArea(base);
+        String candidateArea = regulatoryArea(candidate);
+        if (hasText(baseArea) && Objects.equals(baseArea, candidateArea)) {
+            match.put("regulatoryArea", candidateArea);
+            configuredTopologyMatch = hasConfiguredRegulatoryAreaMatch(base, candidate, baseArea, candidateArea);
+        }
+
+        Set<String> matchedAdjacentCameras = matchedAdjacentCameras(base, candidate);
+        if (!matchedAdjacentCameras.isEmpty()) {
+            match.put("adjacentCameras", List.copyOf(matchedAdjacentCameras));
+            configuredTopologyMatch = configuredTopologyMatch || hasConfiguredAdjacentCameraMatch(base, candidate);
+        }
+
+        if (match.isEmpty()) {
+            return candidate;
+        }
+        match.put("source", configuredTopologyMatch ? "configured_camera_topology" : "review_data");
+        Map<String, Object> reviewData = new LinkedHashMap<>(
+                candidate.reviewData() == null ? Map.of() : candidate.reviewData());
+        reviewData.put("caseCandidateMatch", Map.copyOf(match));
+        return withReviewData(candidate, Map.copyOf(reviewData));
+    }
+
+    private static ReviewItemAggregate withReviewData(ReviewItemAggregate item, Map<String, Object> reviewData) {
+        return new ReviewItemAggregate(
+                item.id(),
+                item.reviewItemNo(),
+                item.sourceSystem(),
+                item.ruleCode(),
+                item.sourceAlertType(),
+                item.deviceId(),
+                item.cameraId(),
+                item.zoneCode(),
+                item.objectLabel(),
+                item.firstAlertTime(),
+                item.lastAlertTime(),
+                item.alertCount(),
+                item.sourceAlertIds(),
+                reviewData,
+                item.reviewStatus(),
+                item.reviewerUserId(),
+                item.reviewedAt(),
+                item.ignoreReason(),
+                item.ruleSuggestion(),
+                item.eventId(),
+                item.convertedAt(),
+                item.recordEvidenceStatus(),
+                item.recordEvidenceCheckedAt(),
+                item.recordEvidenceMessage(),
+                item.eventStatus(),
+                item.closeCheckStatus(),
+                item.evidenceStatus(),
+                item.eventReviewStatus(),
+                item.inReviewCase(),
+                item.ruleSuggestionStatus(),
+                item.ruleSuggestionUpdatedAt()
+        );
+    }
+
+    private boolean hasConfiguredRegulatoryAreaMatch(ReviewItemAggregate base,
+                                                    ReviewItemAggregate candidate,
+                                                    String baseArea,
+                                                    String candidateArea) {
+        ReviewCameraTopology baseTopology = cameraTopology(base.cameraId());
+        ReviewCameraTopology candidateTopology = cameraTopology(candidate.cameraId());
+        return Objects.equals(baseTopology.regulatoryArea(), baseArea)
+                || Objects.equals(candidateTopology.regulatoryArea(), candidateArea);
+    }
+
+    private boolean hasConfiguredAdjacentCameraMatch(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        ReviewCameraTopology baseTopology = cameraTopology(base.cameraId());
+        ReviewCameraTopology candidateTopology = cameraTopology(candidate.cameraId());
+        return baseTopology.adjacentCameraIds().contains(candidate.cameraId())
+                || candidateTopology.adjacentCameraIds().contains(base.cameraId());
+    }
+
+    private Set<String> matchedAdjacentCameras(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        Set<String> values = new LinkedHashSet<>();
+        if (hasText(base.cameraId()) && hasAdjacentCamera(base, candidate)) {
+            values.add(base.cameraId());
+        }
+        return values;
+    }
+
     private int correlationScore(ReviewItemAggregate base, ReviewItemAggregate candidate) {
         int score = 0;
         String baseCorrelationId = toText(base.reviewData().get("correlationId"));
@@ -6337,6 +6436,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         Set<String> intersection = new LinkedHashSet<>(left);
         intersection.retainAll(right);
         return !intersection.isEmpty();
+    }
+
+    private static Set<String> intersection(Set<String> left, Set<String> right) {
+        if (left.isEmpty() || right.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> intersection = new LinkedHashSet<>(left);
+        intersection.retainAll(right);
+        return intersection;
     }
 
     private static String requireRuleSuggestionStatus(String status) {

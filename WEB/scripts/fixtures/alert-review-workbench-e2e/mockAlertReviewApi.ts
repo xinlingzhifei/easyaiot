@@ -101,11 +101,14 @@ const topologyCandidate = {
   eventReviewStatus: 'pending',
   inReviewCase: false,
   reviewData: {
-    regulatoryArea: 'yard-east',
-    adjacentCameras: ['cam-east-gate'],
     objectIds: ['person-1'],
     zones: ['yard-zone'],
     correlationId: 'corr-east-gate-001',
+    caseCandidateMatch: {
+      source: 'configured_camera_topology',
+      regulatoryArea: 'yard-east',
+      adjacentCameras: ['cam-east-gate'],
+    },
   },
 }
 
