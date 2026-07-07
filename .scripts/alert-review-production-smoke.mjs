@@ -379,7 +379,7 @@ function childSmokeSummary(result) {
     summary.playback = payload.playback;
   }
   if (payload.player && typeof payload.player === 'object') {
-    summary.player = payload.player;
+    summary.player = buildPlayerSmokeSummary(payload.player);
   }
   const playerSummary = buildPlayerSmokeSummary(payload);
   if (playerSummary) {

@@ -332,13 +332,16 @@ const smokeWithEvidence = await runProductionSmoke({
 `
             : `alert review player live smoke passed
 {
-  "clickedRow": true,
-  "clickedAction": true,
-  "seekTime": "2026-07-05T10:00:30",
-  "recordPath": "mock://record/device-01/20260705-100000.mp4",
-  "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=media-secret&signature=abc#playback",
-  "playbackOffsetSeconds": 30,
-  "nativeCurrentTime": 30.25
+  "player": {
+    "clickedRow": true,
+    "clickedAction": true,
+    "seekTime": "2026-07-05T10:00:30",
+    "recordPath": "mock://record/device-01/20260705-100000.mp4",
+    "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=wrapped-media-secret&signature=abc#playback",
+    "playbackOffsetSeconds": 30,
+    "nativeCurrentTime": 30.25,
+    "debugToken": "wrapped-debug-secret"
+  }
 }
 `,
   }),
@@ -438,6 +441,8 @@ assert.equal(evidenceReport.steps[3].stdout, undefined);
 assert.equal(evidenceReport.steps[4].stdout, undefined);
 assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('media-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('wrapped-media-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('wrapped-debug-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('coverage-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('case-secret'), false);
 
