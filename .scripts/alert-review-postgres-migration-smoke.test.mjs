@@ -21,6 +21,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
 ]);
 
 const bootstrapSql = buildBootstrapSql();
@@ -30,6 +31,7 @@ assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
 assert.match(bootstrapSql, /source_alert_ids TEXT/);
 assert.match(bootstrapSql, /a-shared/);
 assert.match(bootstrapSql, /system_supervision_alert_review_segment/);
+assert.match(bootstrapSql, /review_case_id BIGINT NOT NULL/);
 assert.match(bootstrapSql, /review_data TEXT/);
 assert.match(bootstrapSql, /legacy-correlation/);
 
@@ -44,6 +46,8 @@ assert.match(assertionSql, /reviewDataVersion/);
 assert.match(assertionSql, /reviewSegment/);
 assert.match(assertionSql, /system:supervision-alert-review:media:playback/);
 assert.match(assertionSql, /expected review media permission seeds to be present/);
+assert.match(assertionSql, /expected review case audit to allow pre-case media audit rows/);
+assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);

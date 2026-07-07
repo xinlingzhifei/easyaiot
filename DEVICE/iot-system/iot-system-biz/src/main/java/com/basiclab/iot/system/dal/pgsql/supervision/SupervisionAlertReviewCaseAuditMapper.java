@@ -17,4 +17,11 @@ public interface SupervisionAlertReviewCaseAuditMapper extends BaseMapperX<Super
                 .orderByAsc(SupervisionAlertReviewCaseAuditDO::getId));
     }
 
+    default List<SupervisionAlertReviewCaseAuditDO> selectByReviewItemId(Long reviewItemId) {
+        return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewCaseAuditDO>()
+                .eq(SupervisionAlertReviewCaseAuditDO::getReviewItemId, reviewItemId)
+                .orderByAsc(SupervisionAlertReviewCaseAuditDO::getHappenedAt)
+                .orderByAsc(SupervisionAlertReviewCaseAuditDO::getId));
+    }
+
 }

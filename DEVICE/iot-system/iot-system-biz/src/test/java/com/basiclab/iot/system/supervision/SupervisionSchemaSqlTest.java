@@ -234,11 +234,13 @@ class SupervisionSchemaSqlTest {
         assertTrue(caseItemTable.contains("review_case_id BIGINT NOT NULL"));
         assertTrue(caseItemTable.contains("review_item_id BIGINT NOT NULL"));
         assertTrue(caseItemTable.contains("sort_order INTEGER NOT NULL DEFAULT 0"));
-        assertTrue(caseAuditTable.contains("review_case_id BIGINT NOT NULL"));
+        assertTrue(caseAuditTable.contains("review_case_id BIGINT"));
+        assertFalse(caseAuditTable.contains("review_case_id BIGINT NOT NULL"));
         assertTrue(caseAuditTable.contains("review_item_id BIGINT"));
         assertTrue(caseAuditTable.contains("action_type VARCHAR(64) NOT NULL"));
         assertTrue(caseAuditTable.contains("action_note TEXT"));
         assertTrue(caseAuditTable.contains("metadata TEXT"));
+        assertTrue(sql.contains("ON system_supervision_alert_review_case_audit(review_item_id, happened_at)"));
         assertTrue(semanticIndexTable.contains("review_item_id BIGINT NOT NULL"));
         assertTrue(semanticIndexTable.contains("camera_id VARCHAR(128)"));
         assertTrue(semanticIndexTable.contains("first_alert_time TIMESTAMP"));
@@ -277,6 +279,17 @@ class SupervisionSchemaSqlTest {
         assertTrue(runtimeOutboxTable.contains("alert_key VARCHAR(128) NOT NULL"));
         assertTrue(runtimeOutboxTable.contains("outbox_status VARCHAR(64) NOT NULL DEFAULT 'pending'"));
         assertTrue(runtimeOutboxTable.contains("retry_count INTEGER NOT NULL DEFAULT 0"));
+    }
+
+    @Test
+    void alertReviewItemMediaAuditMigrationAllowsPreCaseAuditRows() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql");
+
+        assertTrue(Files.exists(migration), "item media audit migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("ALTER COLUMN review_case_id DROP NOT NULL"));
+        assertTrue(migrationSql.contains("idx_supervision_alert_review_case_audit_item"));
+        assertTrue(migrationSql.contains("review_item_id, happened_at"));
     }
 
     @Test

@@ -785,10 +785,39 @@ public class SupervisionAlertReviewController {
         )));
     }
 
+    @PostMapping("/items/{reviewItemId}/media-access/audit")
+    @Operation(summary = "Audit alert review item media access")
+    public CommonResult<MediaAccessAuditRespVO> auditItemMediaAccess(
+            @PathVariable("reviewItemId") Long reviewItemId,
+            @RequestBody(required = false) MediaAccessAuditReqVO reqVO) {
+        MediaAccessAuditReqVO body = reqVO == null ? new MediaAccessAuditReqVO() : reqVO;
+        return success(MediaAccessAuditRespVO.from(supervisionAlertReviewService.auditMediaAccess(
+                new ReviewMediaAccessCommand(
+                        null,
+                        reviewItemId,
+                        currentOperatorUserId(body.getOperatorUserId()),
+                        body.getCameraId(),
+                        body.getMaterialUri(),
+                        body.getActionType(),
+                        body.getAllowedCameraIds(),
+                        body.getReason()
+                )
+        )));
+    }
+
     @GetMapping("/cases/{reviewCaseId}/evidence-audit")
     @Operation(summary = "List alert review evidence audit trail")
     public CommonResult<List<EvidenceAuditRespVO>> getEvidenceAuditTrail(@PathVariable("reviewCaseId") Long reviewCaseId) {
         return success(supervisionAlertReviewService.getEvidenceAuditTrail(reviewCaseId)
+                .stream()
+                .map(EvidenceAuditRespVO::from)
+                .toList());
+    }
+
+    @GetMapping("/items/{reviewItemId}/evidence-audit")
+    @Operation(summary = "List alert review item evidence audit trail")
+    public CommonResult<List<EvidenceAuditRespVO>> getReviewItemEvidenceAuditTrail(@PathVariable("reviewItemId") Long reviewItemId) {
+        return success(supervisionAlertReviewService.getReviewItemEvidenceAuditTrail(reviewItemId)
                 .stream()
                 .map(EvidenceAuditRespVO::from)
                 .toList());

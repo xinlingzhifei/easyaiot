@@ -159,6 +159,7 @@ const requiredApiFunctions = [
   'verifyAlertReviewManifest',
   'verifyAlertReviewEvidencePackage',
   'auditAlertReviewMediaAccess',
+  'auditAlertReviewItemMediaAccess',
   'evaluateAlertReviewRuleGeometry',
   'runAlertReviewIntegrationSmoke',
   'assignAlertReviewCaseOwner',

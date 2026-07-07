@@ -327,6 +327,11 @@ export async function getAlertReviewEvidenceAudit(reviewCaseId: number) {
   return evidenceAudit
 }
 
+export async function getAlertReviewItemEvidenceAudit(reviewItemId: number) {
+  record('getAlertReviewItemEvidenceAudit', reviewItemId)
+  return evidenceAudit
+}
+
 export async function auditAlertReviewMediaAccess(reviewCaseId: number, payload?: unknown) {
   record('auditAlertReviewMediaAccess', { reviewCaseId, payload })
   return {
@@ -340,6 +345,21 @@ export async function auditAlertReviewMediaAccess(reviewCaseId: number, payload?
     deniedReasons: [],
     happenedAt: '2026-07-02T08:04:00',
     metadata: { source: 'e2e-media-audit' },
+  }
+}
+
+export async function auditAlertReviewItemMediaAccess(reviewItemId: number, payload?: unknown) {
+  record('auditAlertReviewItemMediaAccess', { reviewItemId, payload })
+  return {
+    reviewItemId,
+    operatorUserId: (payload as any)?.operatorUserId,
+    cameraId: (payload as any)?.cameraId,
+    materialUri: (payload as any)?.materialUri,
+    actionType: (payload as any)?.actionType || 'playback',
+    decision: 'granted',
+    deniedReasons: [],
+    happenedAt: '2026-07-02T08:03:00',
+    metadata: { source: 'e2e-item-media-audit' },
   }
 }
 

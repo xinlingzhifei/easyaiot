@@ -345,7 +345,7 @@ ON system_supervision_alert_review_case_item(review_case_id, sort_order);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_audit (
   id BIGSERIAL PRIMARY KEY,
-  review_case_id BIGINT NOT NULL,
+  review_case_id BIGINT,
   review_item_id BIGINT,
   action_type VARCHAR(64) NOT NULL,
   action_note TEXT,
@@ -362,6 +362,9 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_audit (
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_case_audit_case
 ON system_supervision_alert_review_case_audit(review_case_id, happened_at);
+
+CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_case_audit_item
+ON system_supervision_alert_review_case_audit(review_item_id, happened_at);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_semantic_index (
   id BIGSERIAL PRIMARY KEY,

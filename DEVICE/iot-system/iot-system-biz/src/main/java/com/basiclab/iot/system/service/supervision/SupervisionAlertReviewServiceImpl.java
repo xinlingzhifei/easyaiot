@@ -2271,6 +2271,24 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     @Override
+    public List<ReviewEvidenceAuditEntry> getReviewItemEvidenceAuditTrail(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        reviewItemStore.findById(reviewItemId)
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
+        List<ReviewEvidenceAuditEntry> auditTrail = reviewItemStore.listMediaAccessAuditsByReviewItem(reviewItemId)
+                .stream()
+                .filter(timelineItem -> "case_audit".equals(timelineItem.materialType()))
+                .filter(timelineItem -> isMediaAccessAuditAction(timelineItem.materialUri()))
+                .map(timelineItem -> mediaAccessAuditEntry(timelineItem.reviewCaseId(), timelineItem))
+                .sorted(Comparator
+                        .comparing(ReviewEvidenceAuditEntry::happenedAt,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewEvidenceAuditEntry::actionType, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        return withAuditHashChain(auditTrail);
+    }
+
+    @Override
     public ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo, Long operatorUserId, String reason) {
         return recordEvidenceDownload(jobNo, operatorUserId, reason, null);
     }
@@ -2304,15 +2322,19 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     @Override
     public ReviewMediaAccessAuditEntry auditMediaAccess(ReviewMediaAccessCommand command) {
         Objects.requireNonNull(command, "command");
-        requirePositive(command.reviewCaseId(), "reviewCaseId");
         requirePositive(command.reviewItemId(), "reviewItemId");
         ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
-        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(command.reviewCaseId());
-        boolean itemInCase = timeline.stream().anyMatch(row -> Objects.equals(command.reviewItemId(), row.reviewItemId()));
-        boolean mediaInCase = !hasText(command.materialUri()) || timeline.stream()
-                .filter(row -> Objects.equals(command.reviewItemId(), row.reviewItemId()))
-                .anyMatch(row -> Objects.equals(command.materialUri(), row.materialUri()));
+        List<ReviewCaseTimelineItem> timeline = command.reviewCaseId() == null
+                ? List.of()
+                : getReviewCaseTimeline(command.reviewCaseId());
+        boolean itemInCase = command.reviewCaseId() == null
+                || timeline.stream().anyMatch(row -> Objects.equals(command.reviewItemId(), row.reviewItemId()));
+        boolean mediaInCase = command.reviewCaseId() == null
+                || !hasText(command.materialUri())
+                || timeline.stream()
+                        .filter(row -> Objects.equals(command.reviewItemId(), row.reviewItemId()))
+                        .anyMatch(row -> Objects.equals(command.materialUri(), row.materialUri()));
         String actionType = firstText(command.actionType(), "playback");
         List<String> effectiveAllowedCameraIds = resolveEffectiveAllowedCameraIds(
                 command.reviewCaseId(),
@@ -2351,13 +2373,14 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 + (command.operatorUserId() == null ? "" : "; operatorUserId=" + command.operatorUserId())
                 + (deniedReasons.isEmpty() ? "" : "; deniedReasons=" + String.join(",", deniedReasons))
                 + (hasText(command.reason()) ? "; reason=" + command.reason() : "");
-        reviewItemStore.recordCaseAudit(
+        reviewItemStore.recordMediaAccessAudit(
                 command.reviewCaseId(),
                 command.reviewItemId(),
                 "media_access_" + decision,
                 auditNote,
                 command.operatorUserId(),
-                happenedAt
+                happenedAt,
+                metadata
         );
         return new ReviewMediaAccessAuditEntry(
                 command.reviewCaseId(),

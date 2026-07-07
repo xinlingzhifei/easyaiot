@@ -161,6 +161,8 @@ public interface SupervisionAlertReviewService {
 
     List<ReviewEvidenceAuditEntry> getEvidenceAuditTrail(Long reviewCaseId);
 
+    List<ReviewEvidenceAuditEntry> getReviewItemEvidenceAuditTrail(Long reviewItemId);
+
     ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo, Long operatorUserId, String reason);
 
     ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
@@ -1411,6 +1413,20 @@ public interface SupervisionAlertReviewService {
                              Long operatorUserId,
                              LocalDateTime happenedAt,
                              Map<String, Object> metadata);
+
+        default void recordMediaAccessAudit(Long reviewCaseId,
+                                            Long reviewItemId,
+                                            String actionType,
+                                            String actionNote,
+                                            Long operatorUserId,
+                                            LocalDateTime happenedAt,
+                                            Map<String, Object> metadata) {
+            recordCaseAudit(reviewCaseId, reviewItemId, actionType, actionNote, operatorUserId, happenedAt, metadata);
+        }
+
+        default List<ReviewCaseTimelineItem> listMediaAccessAuditsByReviewItem(Long reviewItemId) {
+            return List.of();
+        }
 
     }
 

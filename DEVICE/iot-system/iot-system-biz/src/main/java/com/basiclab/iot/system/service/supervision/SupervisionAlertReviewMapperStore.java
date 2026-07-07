@@ -680,6 +680,42 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
+    public void recordMediaAccessAudit(Long reviewCaseId,
+                                       Long reviewItemId,
+                                       String actionType,
+                                       String actionNote,
+                                       Long operatorUserId,
+                                       LocalDateTime happenedAt,
+                                       Map<String, Object> metadata) {
+        if (reviewCaseId != null) {
+            recordCaseAudit(reviewCaseId, reviewItemId, actionType, actionNote, operatorUserId, happenedAt, metadata);
+            return;
+        }
+        requireItem(reviewItemId);
+        insertCaseAudit(null, reviewItemId, actionType, actionNote, operatorUserId, happenedAt, metadata);
+    }
+
+    @Override
+    public List<ReviewCaseTimelineItem> listMediaAccessAuditsByReviewItem(Long reviewItemId) {
+        requireItem(reviewItemId);
+        return reviewCaseAuditMapper.selectByReviewItemId(reviewItemId)
+                .stream()
+                .filter(auditDO -> "media_access_granted".equals(auditDO.getActionType())
+                        || "media_access_denied".equals(auditDO.getActionType()))
+                .map(auditDO -> new ReviewCaseTimelineItem(
+                        auditDO.getReviewCaseId(),
+                        auditDO.getReviewItemId(),
+                        null,
+                        null,
+                        "case_audit",
+                        auditDO.getActionType(),
+                        auditDO.getHappenedAt(),
+                        auditDO.getActionNote()
+                ))
+                .toList();
+    }
+
+    @Override
     public ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
                                                        String document,
                                                        String embeddingKey,

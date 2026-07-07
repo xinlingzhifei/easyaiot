@@ -117,6 +117,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1689,6 +1690,57 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("download", denied.metadata().get("mediaAction"));
         assertEquals(List.of("camera_not_allowed"), denied.metadata().get("deniedReasons"));
         assertEquals("outside assigned scope", denied.actionNote());
+    }
+
+    @Test
+    void preCaseMediaAccessAuditRecordsAllowDenyAndCanBeListedByReviewItem() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 7, 9, 30);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-pre-case-media",
+                baseTime,
+                "pre-case.jpg",
+                "pre-case.mp4"
+        ));
+
+        ReviewMediaAccessAuditEntry granted = service.auditMediaAccess(new ReviewMediaAccessCommand(
+                null,
+                item.id(),
+                9201L,
+                "camera-01",
+                "pre-case.mp4",
+                "playback",
+                List.of("camera-01"),
+                "operator preview before case"
+        ));
+        ReviewMediaAccessAuditEntry denied = service.auditMediaAccess(new ReviewMediaAccessCommand(
+                null,
+                item.id(),
+                9202L,
+                "camera-01",
+                "pre-case.mp4",
+                "playback",
+                List.of("camera-02"),
+                "outside camera scope before case"
+        ));
+
+        assertNull(granted.reviewCaseId());
+        assertEquals("granted", granted.decision());
+        assertEquals("denied", denied.decision());
+        assertEquals(List.of("camera_not_allowed"), denied.deniedReasons());
+
+        List<ReviewEvidenceAuditEntry> auditTrail = service.getReviewItemEvidenceAuditTrail(item.id());
+        assertEquals(
+                List.of("media_access_granted", "media_access_denied"),
+                auditTrail.stream().map(ReviewEvidenceAuditEntry::actionType).toList()
+        );
+        assertTrue(auditTrail.stream().allMatch(entry -> entry.metadata().get("reviewCaseId") == null));
+        assertTrue(auditTrail.stream().allMatch(entry -> entry.metadata().get("reviewItemIds").equals(List.of(item.id()))));
+        assertTrue(auditTrail.stream().allMatch(entry -> entry.evidenceUris().equals(List.of("pre-case.mp4"))));
     }
 
     @Test
@@ -5461,6 +5513,7 @@ class SupervisionAlertReviewServiceTest {
         private final Map<Long, ReviewCaseView> cases = new LinkedHashMap<>();
         private final Map<Long, List<Long>> caseItemIds = new LinkedHashMap<>();
         private final Map<Long, List<ReviewCaseTimelineItem>> caseAudits = new LinkedHashMap<>();
+        private final Map<Long, List<ReviewCaseTimelineItem>> itemMediaAudits = new LinkedHashMap<>();
         private final Map<String, ReviewEvidenceExportJob> exportJobs = new LinkedHashMap<>();
         private final Map<Long, ReviewSemanticIndexEntry> semanticIndex = new LinkedHashMap<>();
         private final Map<String, ReviewUserStatusView> userStatuses = new LinkedHashMap<>();
@@ -6449,6 +6502,38 @@ class SupervisionAlertReviewServiceTest {
                             happenedAt == null ? LocalDateTime.now() : happenedAt,
                             actionNote
                     ));
+        }
+
+        @Override
+        public void recordMediaAccessAudit(Long reviewCaseId,
+                                           Long reviewItemId,
+                                           String actionType,
+                                           String actionNote,
+                                           Long operatorUserId,
+                                           LocalDateTime happenedAt,
+                                           Map<String, Object> metadata) {
+            if (reviewCaseId != null) {
+                recordCaseAudit(reviewCaseId, reviewItemId, actionType, actionNote, operatorUserId, happenedAt, metadata);
+                return;
+            }
+            findById(reviewItemId).orElseThrow();
+            itemMediaAudits.computeIfAbsent(reviewItemId, key -> new ArrayList<>())
+                    .add(new ReviewCaseTimelineItem(
+                            null,
+                            reviewItemId,
+                            null,
+                            null,
+                            "case_audit",
+                            actionType,
+                            happenedAt == null ? LocalDateTime.now() : happenedAt,
+                            actionNote
+                    ));
+        }
+
+        @Override
+        public List<ReviewCaseTimelineItem> listMediaAccessAuditsByReviewItem(Long reviewItemId) {
+            findById(reviewItemId).orElseThrow();
+            return List.copyOf(itemMediaAudits.getOrDefault(reviewItemId, List.of()));
         }
 
         private void addCaseAudit(Long reviewCaseId,

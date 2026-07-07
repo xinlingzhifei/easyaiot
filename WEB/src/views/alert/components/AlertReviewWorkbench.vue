@@ -31,6 +31,7 @@ import {
   type AlertReviewSummary,
   addAlertReviewItemToCase,
   assignAlertReviewCaseOwner,
+  auditAlertReviewItemMediaAccess,
   auditAlertReviewMediaAccess,
   convertAlertReviewToEvent,
   closeAlertReviewCase,
@@ -1110,16 +1111,20 @@ async function guardWorkbenchMediaAccess(target: {
   const reviewCaseId = target.reviewCaseId || activeCase.value?.id
   const reviewItemId = target.reviewItemId || selectedItem.value?.id
   const cameraId = target.cameraId || selectedItem.value?.cameraId || selectedItem.value?.deviceId
-  if (!reviewCaseId || !reviewItemId || !cameraId || !target.materialUri)
+  if (!reviewItemId || !cameraId || !target.materialUri)
     return true
   try {
-    await auditAlertReviewMediaAccess(reviewCaseId, {
+    const payload = {
       reviewItemId,
       cameraId,
       materialUri: target.materialUri,
       actionType: 'playback',
       reason: 'workbench playback',
-    })
+    }
+    if (reviewCaseId)
+      await auditAlertReviewMediaAccess(reviewCaseId, payload)
+    else
+      await auditAlertReviewItemMediaAccess(reviewItemId, payload)
     return true
   }
   catch (error: any) {

@@ -8,6 +8,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -92,6 +93,9 @@ CREATE TABLE system_supervision_alert_review_item (
 
 CREATE TABLE system_supervision_alert_review_case_audit (
   id BIGSERIAL PRIMARY KEY,
+  review_case_id BIGINT NOT NULL,
+  review_item_id BIGINT,
+  happened_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
@@ -167,6 +171,25 @@ BEGIN
       AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected review media permission migration to restore existing playback seed without duplicates';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'system_supervision_alert_review_case_audit'
+      AND column_name = 'review_case_id'
+      AND is_nullable = 'YES'
+  ) THEN
+    RAISE EXCEPTION 'expected review case audit to allow pre-case media audit rows';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_case_audit'
+      AND indexname = 'idx_supervision_alert_review_case_audit_item'
+  ) THEN
+    RAISE EXCEPTION 'expected review item media audit lookup index to exist';
   END IF;
 
   IF (
@@ -374,7 +397,7 @@ function printHelp() {
 
 Runs FR-01/FR-20 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, and V20260706, and verifies ingest identity, ReviewSegment constraints, ReviewData backfill, media permission seeds, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, and V20260707, and verifies ingest identity, ReviewSegment constraints, ReviewData backfill, media permission seeds, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

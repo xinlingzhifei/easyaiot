@@ -64,8 +64,9 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 15);
+assert.equal(trackedReleaseEntries.length, 16);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -96,6 +97,11 @@ assert.deepEqual(
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
       'DEVICE schema and migration',
     ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
+      'DEVICE schema and migration',
+    ],
   ],
 );
 
@@ -116,6 +122,12 @@ const untrackedMediaPermissionMigration = evaluateStatus(`
 `);
 assert.equal(untrackedMediaPermissionMigration.ok, false);
 assert.equal(untrackedMediaPermissionMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const untrackedItemMediaAuditMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql
+`);
+assert.equal(untrackedItemMediaAuditMigration.ok, false);
+assert.equal(untrackedItemMediaAuditMigration.blockers[0].group, 'DEVICE schema and migration');
 
 const untrackedWorkbenchRunner = evaluateStatus(`
 ?? WEB/scripts/alert-review-workbench-e2e-check.test.mjs

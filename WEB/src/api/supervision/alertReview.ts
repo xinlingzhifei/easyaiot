@@ -469,7 +469,7 @@ export interface AlertReviewEvidenceVerification {
 }
 
 export interface AlertReviewEvidenceAuditEntry {
-  reviewCaseId: number
+  reviewCaseId?: number
   reviewItemId?: number
   actionType: string
   jobNo?: string
@@ -493,7 +493,7 @@ export interface AlertReviewMediaAccessAuditRequest {
 }
 
 export interface AlertReviewMediaAccessAuditEntry {
-  reviewCaseId: number
+  reviewCaseId?: number
   reviewItemId?: number
   operatorUserId?: number
   cameraId?: string
@@ -764,6 +764,10 @@ export function getAlertReviewEvidenceAudit(reviewCaseId: number) {
   return defHttp.get<AlertReviewEvidenceAuditEntry[]>({ url: `${Api.Cases}/${reviewCaseId}/evidence-audit` })
 }
 
+export function getAlertReviewItemEvidenceAudit(reviewItemId: number) {
+  return defHttp.get<AlertReviewEvidenceAuditEntry[]>({ url: `${Api.Items}/${reviewItemId}/evidence-audit` })
+}
+
 export function verifyAlertReviewManifest(jobNo: string) {
   return defHttp.get<AlertReviewManifestVerification>({
     url: `/system/supervision/alert-review/evidence-export-jobs/${jobNo}/manifest/verify`,
@@ -780,6 +784,13 @@ export function verifyAlertReviewEvidencePackage(jobNo: string, operatorUserId?:
 export function auditAlertReviewMediaAccess(reviewCaseId: number, data?: AlertReviewMediaAccessAuditRequest) {
   return defHttp.post<AlertReviewMediaAccessAuditEntry>({
     url: `${Api.Cases}/${reviewCaseId}/media-access/audit`,
+    data: data ?? {},
+  })
+}
+
+export function auditAlertReviewItemMediaAccess(reviewItemId: number, data?: AlertReviewMediaAccessAuditRequest) {
+  return defHttp.post<AlertReviewMediaAccessAuditEntry>({
+    url: `${Api.Items}/${reviewItemId}/media-access/audit`,
     data: data ?? {},
   })
 }
