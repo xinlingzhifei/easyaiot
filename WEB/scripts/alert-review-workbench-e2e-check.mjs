@@ -25,7 +25,7 @@ const parsed = parse(workbenchSource, { filename: workbenchPath })
 const failures = []
 
 function parseMode(args) {
-  const supportedModes = ['all', 'contract', 'dev-api-mock']
+  const supportedModes = ['all', 'contract', 'dev-api-mock', 'dev-api-real-drawer']
   let selectedMode = 'all'
   for (const arg of args) {
     if (arg === '--help' || arg === '-h') {
@@ -295,9 +295,27 @@ async function runBrowserE2E(failures) {
           replacement: toVitePath(resolve(harnessRoot, 'permissionStub.ts')),
         },
         {
-          find: '@/views/camera/components/DeviceRegionDrawer/index.vue',
-          replacement: toVitePath(resolve(harnessRoot, 'DeviceRegionDrawerStub.ts')),
+          find: /^@ant-design\/icons-vue$/,
+          replacement: toVitePath(resolve(harnessRoot, 'antDesignIconsStub.ts')),
         },
+        {
+          find: /^@ant-design\/icons-vue\/es\/icons\/.+$/,
+          replacement: toVitePath(resolve(harnessRoot, 'antDesignIconDefaultStub.ts')),
+        },
+        {
+          find: '@/api/device/device_detection_region',
+          replacement: toVitePath(resolve(harnessRoot, 'mockDeviceDetectionRegionApi.ts')),
+        },
+        {
+          find: '@/api/device/model',
+          replacement: toVitePath(resolve(harnessRoot, 'mockDeviceModelApi.ts')),
+        },
+        ...(mode === 'dev-api-real-drawer'
+          ? []
+          : [{
+              find: '@/views/camera/components/DeviceRegionDrawer/index.vue',
+              replacement: toVitePath(resolve(harnessRoot, 'DeviceRegionDrawerStub.ts')),
+            }]),
         {
           find: /^@\//,
           replacement: `${toVitePath(resolve(root, 'src'))}/`,
@@ -315,6 +333,9 @@ async function runBrowserE2E(failures) {
       },
     },
     optimizeDeps: {
+      disabled: 'dev',
+      noDiscovery: true,
+      include: [],
       entries: ['scripts/fixtures/alert-review-workbench-e2e/index.html'],
     },
     define: {
@@ -326,7 +347,7 @@ async function runBrowserE2E(failures) {
   try {
     await server.listen()
     userDataDir = await mkdtemp(resolve(os.tmpdir(), 'alert-review-e2e-'))
-    const url = `http://127.0.0.1:${port}/scripts/fixtures/alert-review-workbench-e2e/index.html`
+    const url = `http://127.0.0.1:${port}/scripts/fixtures/alert-review-workbench-e2e/index.html?mode=${encodeURIComponent(mode)}`
     const result = await runBrowserPage(browserPath, userDataDir, url)
     if (result.status !== 'passed') {
       failures.push(`browser E2E did not pass: ${formatBrowserResult(result)}`)

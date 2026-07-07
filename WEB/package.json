@@ -35,6 +35,7 @@
     "test:alert-review-workbench": "node scripts/alert-review-workbench-e2e-check.mjs",
     "test:alert-review-workbench:contract": "node scripts/alert-review-workbench-e2e-check.mjs --mode=contract",
     "test:alert-review-workbench:dev-api-mock": "node scripts/alert-review-workbench-e2e-check.mjs --mode=dev-api-mock",
+    "test:alert-review-workbench:dev-api-real-drawer": "node scripts/alert-review-workbench-e2e-check.mjs --mode=dev-api-real-drawer",
     "test:alert-review-workbench:runner": "node scripts/alert-review-workbench-e2e-check.test.mjs",
     "test:alert-review-playback": "node scripts/alert-review-playback-contract.test.mjs",
     "preview": "pnpm build && vite preview",

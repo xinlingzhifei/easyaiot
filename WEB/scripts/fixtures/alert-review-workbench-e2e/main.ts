@@ -11,6 +11,24 @@ declare global {
 const viewVideoEvents: unknown[] = []
 const viewImageEvents: unknown[] = []
 const convertedEvents: unknown[] = []
+const e2eMode = new URLSearchParams(window.location.search).get('mode') || 'all'
+
+if (e2eMode === 'dev-api-real-drawer') {
+  const NativeImage = window.Image
+  const loadedImageSrc = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"%3E%3Crect width="320" height="180" fill="%23f6f7f9"/%3E%3C/svg%3E'
+  window.Image = class AlertReviewE2EImage extends NativeImage {
+    private originalSrc = ''
+
+    set src(value: string) {
+      this.originalSrc = value
+      super.src = loadedImageSrc
+    }
+
+    get src() {
+      return this.originalSrc || super.src
+    }
+  } as typeof Image
+}
 
 function resultElement() {
   const element = document.querySelector<HTMLPreElement>('#alert-review-e2e-result')
@@ -66,6 +84,11 @@ function clickButtonByText(label: string) {
 function hasButtonByText(label: string) {
   return Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
     .some(candidate => candidate.textContent?.trim() === label)
+}
+
+function buttonByText(label: string) {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    .find(candidate => candidate.textContent?.trim() === label)
 }
 
 function setInputValue(selector: string, value: string) {
@@ -211,8 +234,21 @@ async function runE2E() {
   })
 
   click('[data-testid="alert-review-open-rule-drawer"]')
-  await waitFor(() => !!document.querySelector('[data-testid="alert-review-region-drawer-stub"]'), 'region drawer')
-  click('[data-testid="alert-review-region-drawer-save"]')
+  if (e2eMode === 'dev-api-real-drawer') {
+    await waitFor(() => text().includes('检测区域 (1)'), 'real DeviceRegionDrawer region list')
+    clickButtonByText('抓拍图片')
+    await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'captureDeviceSnapshot'), 'real DeviceRegionDrawer capture snapshot')
+    await waitFor(() => {
+      const saveButton = buttonByText('保存区域')
+      return !!saveButton && !saveButton.disabled
+    }, 'real DeviceRegionDrawer save button')
+    buttonByText('保存区域')?.click()
+    await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'updateDeviceRegion'), 'real DeviceRegionDrawer writes device region')
+  }
+  else {
+    await waitFor(() => !!document.querySelector('[data-testid="alert-review-region-drawer-stub"]'), 'region drawer')
+    click('[data-testid="alert-review-region-drawer-save"]')
+  }
   await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'saveAlertReviewRule'), 'region save writes rule')
   const saveRuleCall = apiCall('saveAlertReviewRule')
   const savedRule = saveRuleCall?.payload as Record<string, unknown> | undefined
