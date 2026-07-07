@@ -18,6 +18,9 @@ const parsed = parseArgs([
   '--operator-user-id=9001',
   '--device-alert-time=2026-07-05T10:00:00',
   '--device-profile=device-video-web',
+  '--device-playback-allowed-camera-ids=camera-01',
+  '--device-playback-denied-camera-ids=camera-02',
+  '--device-playback-material-uri=playback-url.mp4',
   '--video-alert-record-query-url=http://video.local/video/record/availability',
   '--video-record-coverage-query-url=http://video.local/video/record/availability',
   '--video-record-base-url=http://video.local/video/record',
@@ -38,6 +41,9 @@ assert.equal(parsed.deviceBaseUrl, 'http://device.local/api');
 assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.deviceAlertTime, '2026-07-05T10:00:00');
+assert.deepEqual(parsed.devicePlaybackAllowedCameraIds, ['camera-01']);
+assert.deepEqual(parsed.devicePlaybackDeniedCameraIds, ['camera-02']);
+assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
@@ -47,6 +53,8 @@ const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_AUTH_TOKEN: 'env-token',
   YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID: '9200',
   YFEIEYE_DEVICE_SMOKE_ALERT_TIME: '2026-07-05T11:00:00',
+  YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS: 'env-camera-allow',
+  YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS: 'env-camera-deny',
   YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL: 'https://video.env/video/record/availability',
   YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL: 'https://video.env/video/record/availability',
   YFEIEYE_VIDEO_RECORD_BASE_URL: 'https://video.env/video/record',
@@ -60,6 +68,8 @@ const fromEnv = parseArgs([], {
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS: '10',
 });
 assert.equal(fromEnv.deviceBaseUrl, 'https://device.env/admin-api');
+assert.deepEqual(fromEnv.devicePlaybackAllowedCameraIds, ['env-camera-allow']);
+assert.deepEqual(fromEnv.devicePlaybackDeniedCameraIds, ['env-camera-deny']);
 assert.equal(fromEnv.videoDeviceId, 'env-device');
 assert.equal(fromEnv.playerExpectedOffsetSeconds, 10);
 
@@ -93,12 +103,15 @@ assert.deepEqual(steps[0].args.slice(0, 5), [
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
 ]);
+assert.ok(steps[0].args.includes('--playback-allowed-camera-ids=camera-01'));
+assert.ok(steps[0].args.includes('--playback-denied-camera-ids=camera-02'));
+assert.ok(steps[0].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[1].args.includes('--record-export-url=http://video.local/video/record/export'));
 assert.ok(steps[1].args.includes('--camera-id=camera-01'));
 assert.ok(steps[2].args.includes('--expected-offset-seconds=30'));
 assert.equal(
   formatStepCommand(steps[0]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=http://device.local/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web',
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=http://device.local/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
 );
 
 const calls = [];

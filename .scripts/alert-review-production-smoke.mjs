@@ -9,6 +9,12 @@ export function parseArgs(args, env = process.env) {
     operatorUserId: numberOrNaN(env.YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID),
     deviceAlertTime: env.YFEIEYE_DEVICE_SMOKE_ALERT_TIME || '',
     deviceProfile: env.YFEIEYE_DEVICE_SMOKE_PROFILE || 'release',
+    devicePlaybackReviewItemId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_ITEM_ID),
+    devicePlaybackReviewCaseId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_CASE_ID),
+    devicePlaybackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI || '',
+    devicePlaybackAllowedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS),
+    devicePlaybackDeniedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS),
+    devicePlaybackReason: env.YFEIEYE_DEVICE_PLAYBACK_REASON || '',
     videoAlertRecordQueryUrl: env.YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL || '',
     videoRecordCoverageQueryUrl: env.YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL || '',
     videoRecordBaseUrl: env.YFEIEYE_VIDEO_RECORD_BASE_URL || '',
@@ -39,6 +45,18 @@ export function parseArgs(args, env = process.env) {
       parsed.deviceAlertTime = arg.slice('--device-alert-time='.length);
     } else if (arg.startsWith('--device-profile=')) {
       parsed.deviceProfile = arg.slice('--device-profile='.length);
+    } else if (arg.startsWith('--device-playback-review-item-id=')) {
+      parsed.devicePlaybackReviewItemId = numberOrNaN(arg.slice('--device-playback-review-item-id='.length));
+    } else if (arg.startsWith('--device-playback-review-case-id=')) {
+      parsed.devicePlaybackReviewCaseId = numberOrNaN(arg.slice('--device-playback-review-case-id='.length));
+    } else if (arg.startsWith('--device-playback-material-uri=')) {
+      parsed.devicePlaybackMaterialUri = arg.slice('--device-playback-material-uri='.length);
+    } else if (arg.startsWith('--device-playback-allowed-camera-ids=')) {
+      parsed.devicePlaybackAllowedCameraIds = parseCsvList(arg.slice('--device-playback-allowed-camera-ids='.length));
+    } else if (arg.startsWith('--device-playback-denied-camera-ids=')) {
+      parsed.devicePlaybackDeniedCameraIds = parseCsvList(arg.slice('--device-playback-denied-camera-ids='.length));
+    } else if (arg.startsWith('--device-playback-reason=')) {
+      parsed.devicePlaybackReason = arg.slice('--device-playback-reason='.length);
     } else if (arg.startsWith('--video-alert-record-query-url=')) {
       parsed.videoAlertRecordQueryUrl = arg.slice('--video-alert-record-query-url='.length);
     } else if (arg.startsWith('--video-record-coverage-query-url=')) {
@@ -109,6 +127,12 @@ export function buildSmokeSteps(options, runtime = {}) {
         `--operator-user-id=${options.operatorUserId}`,
         `--alert-time=${options.deviceAlertTime}`,
         `--profile=${options.deviceProfile}`,
+        positiveNumberArg('--playback-review-item-id', options.devicePlaybackReviewItemId),
+        positiveNumberArg('--playback-review-case-id', options.devicePlaybackReviewCaseId),
+        hasText(options.devicePlaybackMaterialUri) ? `--playback-material-uri=${options.devicePlaybackMaterialUri}` : '',
+        cameraListArg('--playback-allowed-camera-ids', options.devicePlaybackAllowedCameraIds),
+        cameraListArg('--playback-denied-camera-ids', options.devicePlaybackDeniedCameraIds),
+        hasText(options.devicePlaybackReason) ? `--playback-reason=${options.devicePlaybackReason}` : '',
       ]),
     },
     {
@@ -196,6 +220,14 @@ function requirePositiveNumber(errors, value, message) {
   }
 }
 
+function positiveNumberArg(name, value) {
+  return Number.isFinite(value) && value > 0 ? `${name}=${value}` : '';
+}
+
+function cameraListArg(name, values) {
+  return Array.isArray(values) && values.length > 0 ? `${name}=${values.join(',')}` : '';
+}
+
 function compact(values) {
   return values.filter((value) => value !== undefined && value !== null && String(value) !== '');
 }
@@ -211,10 +243,21 @@ function numberOrNaN(value) {
   return Number(value);
 }
 
+function parseCsvList(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return [];
+  }
+  return String(value)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-production-smoke.mjs \\
   --device-base-url=http://DEVICE/admin-api --token=JWT_TOKEN \\
   --operator-user-id=9200 --device-alert-time="2026-07-05T10:00:00" \\
+  [--device-playback-allowed-camera-ids=camera-01 --device-playback-denied-camera-ids=camera-02] \\
   --video-alert-record-query-url=http://VIDEO/video/record/availability \\
   --video-record-coverage-query-url=http://VIDEO/video/record/availability \\
   --video-record-base-url=http://VIDEO/video/record \\
@@ -228,7 +271,8 @@ function printHelp() {
 Runs the release FR-32 production smoke in order:
 LiveDevice -> LiveVideo -> LivePlayer. Each step uses real deployed services,
 real recording metadata, export verification, download audit, and player seek
-assertions from the dedicated smoke scripts.`);
+assertions from the dedicated smoke scripts. Optional device playback camera
+ids enable the audited playback-url allow/deny probe inside LiveDevice.`);
 }
 
 async function runCli() {

@@ -21,6 +21,12 @@ export function parseArgs(args, env = process.env) {
     profile: env.YFEIEYE_DEVICE_SMOKE_PROFILE || 'release',
     includeVideoExport: parseBoolean(env.YFEIEYE_DEVICE_SMOKE_INCLUDE_VIDEO_EXPORT, true),
     timeoutMs: Number(env.YFEIEYE_DEVICE_SMOKE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
+    playbackReviewItemId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_ITEM_ID),
+    playbackReviewCaseId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_CASE_ID),
+    playbackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI || '',
+    playbackAllowedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS),
+    playbackDeniedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS),
+    playbackReason: env.YFEIEYE_DEVICE_PLAYBACK_REASON || 'release-smoke-playback',
     help: false,
   };
 
@@ -41,6 +47,18 @@ export function parseArgs(args, env = process.env) {
       parsed.includeVideoExport = parseBoolean(arg.slice('--include-video-export='.length), true);
     } else if (arg.startsWith('--timeout-ms=')) {
       parsed.timeoutMs = Number(arg.slice('--timeout-ms='.length));
+    } else if (arg.startsWith('--playback-review-item-id=')) {
+      parsed.playbackReviewItemId = numberOrNaN(arg.slice('--playback-review-item-id='.length));
+    } else if (arg.startsWith('--playback-review-case-id=')) {
+      parsed.playbackReviewCaseId = numberOrNaN(arg.slice('--playback-review-case-id='.length));
+    } else if (arg.startsWith('--playback-material-uri=')) {
+      parsed.playbackMaterialUri = arg.slice('--playback-material-uri='.length);
+    } else if (arg.startsWith('--playback-allowed-camera-ids=')) {
+      parsed.playbackAllowedCameraIds = parseCsvList(arg.slice('--playback-allowed-camera-ids='.length));
+    } else if (arg.startsWith('--playback-denied-camera-ids=')) {
+      parsed.playbackDeniedCameraIds = parseCsvList(arg.slice('--playback-denied-camera-ids='.length));
+    } else if (arg.startsWith('--playback-reason=')) {
+      parsed.playbackReason = arg.slice('--playback-reason='.length);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -83,7 +101,10 @@ export function buildSmokeBody(options) {
 }
 
 export async function runSmoke(options, dependencies = {}) {
-  const errors = requiredOptionErrors(options);
+  const errors = [
+    ...requiredOptionErrors(options),
+    ...playbackOptionErrors(options),
+  ];
   if (errors.length) {
     throw new Error(errors.join('\n'));
   }
@@ -98,11 +119,39 @@ export async function runSmoke(options, dependencies = {}) {
     body: buildSmokeBody(options),
   });
   const result = validateSmokeResult(responseData(payload));
+  const playback = playbackProbeEnabled(options)
+    ? await runPlaybackUrlSmoke(options, result, fetchImpl)
+    : null;
+  const checkpoints = playback
+    ? [...result.checkpoints, ...playback.checkpoints]
+    : result.checkpoints;
   return {
     ok: true,
     result,
-    checkpoints: result.checkpoints,
+    checkpoints,
+    ...(playback ? { playback } : {}),
   };
+}
+
+export function buildPlaybackUrl(options, result, cameraIds, reasonSuffix) {
+  const reviewItemId = firstPositiveNumber(options.playbackReviewItemId, result.reviewItemId);
+  if (!Number.isFinite(reviewItemId) || reviewItemId <= 0) {
+    throw new Error('playback URL smoke missing reviewItemId');
+  }
+  const url = new URL(`${stripTrailingSlash(options.deviceBaseUrl)}/system/supervision/alert-review/items/${reviewItemId}/playback-url`);
+  const reviewCaseId = firstPositiveNumber(options.playbackReviewCaseId, result.reviewCaseId);
+  if (Number.isFinite(reviewCaseId) && reviewCaseId > 0) {
+    url.searchParams.set('reviewCaseId', String(reviewCaseId));
+  }
+  if (hasText(options.playbackMaterialUri)) {
+    url.searchParams.set('materialUri', options.playbackMaterialUri);
+  }
+  for (const cameraId of cameraIds) {
+    url.searchParams.append('allowedCameraIds', cameraId);
+  }
+  const reason = hasText(options.playbackReason) ? options.playbackReason : 'release-smoke-playback';
+  url.searchParams.set('reason', `${reason} ${reasonSuffix}`);
+  return url.toString();
 }
 
 export function validateSmokeResult(result) {
@@ -144,15 +193,19 @@ async function fetchJson(fetchImpl, url, options) {
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
   try {
-    const response = await fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${options.token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(options.body),
+    const headers = {
+      authorization: `Bearer ${options.token}`,
+    };
+    const init = {
+      method: options.method || 'POST',
+      headers,
       signal: controller?.signal,
-    });
+    };
+    if (options.body !== undefined) {
+      headers['content-type'] = 'application/json';
+      init.body = JSON.stringify(options.body);
+    }
+    const response = await fetchImpl(url, init);
     const text = typeof response.text === 'function' ? await response.text() : '';
     let payload;
     try {
@@ -161,7 +214,8 @@ async function fetchJson(fetchImpl, url, options) {
       payload = text;
     }
     if (!response.ok) {
-      throw new Error(`DEVICE integration smoke failed with HTTP ${response.status} ${response.statusText || ''}: ${summarizePayload(payload)}`);
+      const label = options.label || 'DEVICE integration smoke';
+      throw new Error(`${label} failed with HTTP ${response.status} ${response.statusText || ''}: ${summarizePayload(payload)}`);
     }
     assertCommonResult(payload);
     return payload;
@@ -183,6 +237,89 @@ function assertCommonResult(payload) {
   throw new Error(`DEVICE integration smoke returned code ${payload.code}: ${message}`);
 }
 
+function playbackProbeEnabled(options) {
+  return Number.isFinite(options.playbackReviewItemId)
+    || Number.isFinite(options.playbackReviewCaseId)
+    || hasText(options.playbackMaterialUri)
+    || hasValues(options.playbackAllowedCameraIds)
+    || hasValues(options.playbackDeniedCameraIds);
+}
+
+function playbackOptionErrors(options) {
+  if (!playbackProbeEnabled(options)) {
+    return [];
+  }
+  const errors = [];
+  if (!hasValues(options.playbackAllowedCameraIds)) {
+    errors.push('missing --playback-allowed-camera-ids or YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS');
+  }
+  if (!hasValues(options.playbackDeniedCameraIds)) {
+    errors.push('missing --playback-denied-camera-ids or YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS');
+  }
+  return errors;
+}
+
+async function runPlaybackUrlSmoke(options, result, fetchImpl) {
+  const grantedPayload = await fetchJson(fetchImpl, buildPlaybackUrl(
+    options,
+    result,
+    options.playbackAllowedCameraIds,
+    'allow',
+  ), {
+    method: 'GET',
+    timeoutMs: options.timeoutMs,
+    token: options.token,
+    label: 'DEVICE playback URL allow smoke',
+  });
+  const granted = validatePlaybackAccess(responseData(grantedPayload), 'granted');
+
+  const deniedPayload = await fetchJson(fetchImpl, buildPlaybackUrl(
+    options,
+    result,
+    options.playbackDeniedCameraIds,
+    'deny',
+  ), {
+    method: 'GET',
+    timeoutMs: options.timeoutMs,
+    token: options.token,
+    label: 'DEVICE playback URL deny smoke',
+  });
+  const denied = validatePlaybackAccess(responseData(deniedPayload), 'denied');
+  return {
+    ok: true,
+    granted,
+    denied,
+    checkpoints: ['playback_url_granted', 'playback_url_denied'],
+  };
+}
+
+function validatePlaybackAccess(access, expectedDecision) {
+  if (!access || typeof access !== 'object') {
+    throw new Error('playback URL smoke response did not include an access object');
+  }
+  const decision = String(access.decision || '').toLowerCase();
+  if (decision !== expectedDecision) {
+    throw new Error(`playback URL smoke expected ${expectedDecision} but got ${String(access.decision || '')}`);
+  }
+  if (expectedDecision === 'granted' && !hasText(access.playbackUrl)) {
+    throw new Error('playback URL smoke granted response missing playbackUrl');
+  }
+  const deniedReasons = Array.isArray(access.deniedReasons) ? access.deniedReasons.map(String) : [];
+  if (expectedDecision === 'denied') {
+    if (hasText(access.playbackUrl)) {
+      throw new Error('playback URL smoke denied response included playbackUrl');
+    }
+    if (!deniedReasons.includes('camera_not_allowed')) {
+      throw new Error('playback URL smoke denied response missing camera_not_allowed');
+    }
+  }
+  return {
+    ...access,
+    decision,
+    deniedReasons,
+  };
+}
+
 function responseData(payload) {
   if (payload && typeof payload === 'object' && payload.data && typeof payload.data === 'object') {
     return payload.data;
@@ -198,6 +335,10 @@ function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+function hasValues(values) {
+  return Array.isArray(values) && values.length > 0;
+}
+
 function stripTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
@@ -207,6 +348,26 @@ function numberOrNaN(value) {
     return Number.NaN;
   }
   return Number(value);
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+  }
+  return Number.NaN;
+}
+
+function parseCsvList(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return [];
+  }
+  return String(value)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function parseBoolean(value, fallback) {
@@ -226,12 +387,14 @@ function printHelp() {
   --device-base-url=http://DEVICE/admin-api \\
   --token=JWT_TOKEN \\
   --operator-user-id=9200 \\
-  --alert-time="2026-07-05T10:00:00" [--profile=release]
+  --alert-time="2026-07-05T10:00:00" [--profile=release] \\
+  [--playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02]
 
 Runs the deployed FR-32 DEVICE smoke endpoint and requires the full review loop:
 ingest -> record coverage sync -> review case -> export -> manifest verify ->
 download audit. It expects the release DEVICE service to be connected to real
-VIDEO record/export configuration before this can pass.`);
+VIDEO record/export configuration before this can pass. When playback camera
+ids are provided, it also checks audited playback-url allow/deny decisions.`);
 }
 
 async function runCli() {
@@ -250,6 +413,11 @@ async function runCli() {
     exportJobNo: smoke.result.exportJobNo,
     manifestValid: smoke.result.manifestValid,
     videoExportRequested: smoke.result.videoExportRequested,
+    playback: smoke.playback ? {
+      grantedDecision: smoke.playback.granted.decision,
+      deniedDecision: smoke.playback.denied.decision,
+      deniedReasons: smoke.playback.denied.deniedReasons,
+    } : undefined,
     checkpoints: smoke.checkpoints,
   }, null, 2));
 }
