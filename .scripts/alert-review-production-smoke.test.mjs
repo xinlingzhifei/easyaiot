@@ -251,7 +251,17 @@ const smokeWithEvidence = await runProductionSmoke({
   }
 }
 `
-        : '',
+        : `alert review player live smoke passed
+{
+  "clickedRow": true,
+  "clickedAction": true,
+  "seekTime": "2026-07-05T10:00:30",
+  "recordPath": "mock://record/device-01/20260705-100000.mp4",
+  "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=media-secret&signature=abc#playback",
+  "playbackOffsetSeconds": 30,
+  "nativeCurrentTime": 30.25
+}
+`,
   }),
 });
 assert.equal(smokeWithEvidence.ok, true);
@@ -292,8 +302,19 @@ assert.deepEqual(evidenceReport.steps[1].summary.checkpoints, [
   'record_storage_drift_patrol_ok',
   'record_export_manifest_verified',
 ]);
+assert.deepEqual(evidenceReport.steps[2].summary.player, {
+  clickedRow: true,
+  clickedAction: true,
+  seekTime: '2026-07-05T10:00:30',
+  recordPath: 'mock://record/device-01/20260705-100000.mp4',
+  currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+  playbackOffsetSeconds: 30,
+  nativeCurrentTime: 30.25,
+});
 assert.equal(evidenceReport.steps[1].stdout, undefined);
+assert.equal(evidenceReport.steps[2].stdout, undefined);
 assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('media-secret'), false);
 
 const failedEvidenceWrites = [];
 await assert.rejects(

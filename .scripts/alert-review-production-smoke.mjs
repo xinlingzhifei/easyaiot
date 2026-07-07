@@ -308,6 +308,10 @@ function childSmokeSummary(result) {
   if (payload.player && typeof payload.player === 'object') {
     summary.player = payload.player;
   }
+  const playerSummary = buildPlayerSmokeSummary(payload);
+  if (playerSummary) {
+    summary.player = playerSummary;
+  }
   if (hasText(payload.status)) {
     summary.status = payload.status;
   }
@@ -320,6 +324,42 @@ function childSmokeSummary(result) {
   copyIfPresent(summary, payload, 'manifestValid');
   copyIfPresent(summary, payload, 'videoExportRequested');
   return Object.keys(summary).length ? summary : null;
+}
+
+function buildPlayerSmokeSummary(payload) {
+  const player = {};
+  copyBooleanIfPresent(player, payload, 'clickedRow');
+  copyBooleanIfPresent(player, payload, 'clickedAction');
+  copyTextIfPresent(player, payload, 'seekTime');
+  copyTextIfPresent(player, payload, 'recordPath');
+  copySanitizedUrlIfPresent(player, payload, 'currentUrl');
+  copyNumberIfPresent(player, payload, 'playbackOffsetSeconds');
+  copyNumberIfPresent(player, payload, 'nativeCurrentTime');
+  return Object.keys(player).length ? player : null;
+}
+
+function copyBooleanIfPresent(target, source, key) {
+  if (typeof source[key] === 'boolean') {
+    target[key] = source[key];
+  }
+}
+
+function copyTextIfPresent(target, source, key) {
+  if (hasText(source[key])) {
+    target[key] = source[key];
+  }
+}
+
+function copySanitizedUrlIfPresent(target, source, key) {
+  if (hasText(source[key])) {
+    target[key] = String(source[key]).replace(/[?#].*$/, '');
+  }
+}
+
+function copyNumberIfPresent(target, source, key) {
+  if (Number.isFinite(source[key])) {
+    target[key] = source[key];
+  }
 }
 
 function copyIfPresent(target, source, key) {
