@@ -168,6 +168,15 @@ const patrolMojibakeScan = scanTextQuality([
 assert.equal(patrolMojibakeScan.ok, false);
 assert.equal(patrolMojibakeScan.blockers[0].reason, 'encoding_mojibake');
 
+const visibleCopyMojibakeScan = scanTextQuality([
+  {
+    path: 'VIDEO/app/blueprints/record.py',
+    content: 'logger.error("\u935b\u5a45警录像导出失败")',
+  },
+]);
+assert.equal(visibleCopyMojibakeScan.ok, false);
+assert.equal(visibleCopyMojibakeScan.blockers[0].reason, 'encoding_mojibake');
+
 const cleanTextScan = scanTextQuality([
   {
     path: 'VIDEO/app/blueprints/record.py',

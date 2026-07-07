@@ -40,7 +40,7 @@ assert.equal(replacement.blockers[0].reason, 'encoding_replacement_character');
 const mojibake = scanVisibleCopyFiles([
   {
     path: 'VIDEO/app/blueprints/record.py',
-    content: 'logger.error("鍛婅警录像导出失败")',
+    content: 'logger.error("\u935b\u5a45警录像导出失败")',
   },
 ]);
 assert.equal(mojibake.ok, false);

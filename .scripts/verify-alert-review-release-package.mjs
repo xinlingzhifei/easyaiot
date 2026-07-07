@@ -3,6 +3,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { VISIBLE_COPY_MOJIBAKE_PATTERNS } from './alert-review-visible-copy-scan.mjs';
+
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
@@ -44,12 +46,10 @@ export const FR_RELEASE_PATH_RULES = [
 ];
 
 const MOJIBAKE_PATTERNS = [
-  '\uFFFD',
-  '\u93bd\u52eb\u511a',
-  '\u5bb8\u2103',
-  '\u9352\u6d98\u7f13',
-  '\u93c8\u5d85\u59df',
-  '\u9363\u3125\u5534\u95ae\u3129\u654a\u7487',
+  ...VISIBLE_COPY_MOJIBAKE_PATTERNS,
+  { pattern: '\u9352\u6d98\u7f13', reason: 'encoding_mojibake' },
+  { pattern: '\u93c8\u5d85\u59df', reason: 'encoding_mojibake' },
+  { pattern: '\u9363\u3125\u5534\u95ae\u3129\u654a\u7487', reason: 'encoding_mojibake' },
 ];
 
 const TRACKED_RELEASE_PATHS = [
@@ -205,7 +205,7 @@ export function scanTextQuality(files) {
       continue;
     }
     const content = String(file.content ?? '');
-    for (const pattern of MOJIBAKE_PATTERNS) {
+    for (const { pattern, reason } of MOJIBAKE_PATTERNS) {
       const index = content.indexOf(pattern);
       if (index === -1) {
         continue;
@@ -213,7 +213,7 @@ export function scanTextQuality(files) {
       blockers.push({
         path,
         group,
-        reason: pattern === '\uFFFD' ? 'encoding_replacement_character' : 'encoding_mojibake',
+        reason,
         pattern,
         line: _lineNumberAt(content, index),
       });

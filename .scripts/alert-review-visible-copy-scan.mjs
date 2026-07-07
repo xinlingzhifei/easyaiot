@@ -14,26 +14,26 @@ export const VISIBLE_COPY_TARGETS = [
   'VIDEO/app/services/record_video_service.py',
 ];
 
-const MOJIBAKE_PATTERNS = [
+export const VISIBLE_COPY_MOJIBAKE_PATTERNS = [
   { pattern: '\u93bd\u52eb\u511a', reason: 'encoding_mojibake' },
   { pattern: '\u5bb8\u2103', reason: 'encoding_mojibake' },
   { pattern: '\uFFFD', reason: 'encoding_replacement_character' },
-  { pattern: '鍛婅', reason: 'encoding_mojibake' },
-  { pattern: '绾跨', reason: 'encoding_mojibake' },
-  { pattern: '褰曞', reason: 'encoding_mojibake' },
-  { pattern: '鏃犻', reason: 'encoding_mojibake' },
-  { pattern: '寰呭', reason: 'encoding_mojibake' },
-  { pattern: '杞', reason: 'encoding_mojibake' },
-  { pattern: '瑙嗛', reason: 'encoding_mojibake' },
-  { pattern: '鎾', reason: 'encoding_mojibake' },
-  { pattern: '瀵板', reason: 'encoding_mojibake' },
-  { pattern: '瑜版', reason: 'encoding_mojibake' },
-  { pattern: '鈧', reason: 'encoding_mojibake' },
-  { pattern: '閻', reason: 'encoding_mojibake' },
-  { pattern: '鐠', reason: 'encoding_mojibake' },
-  { pattern: '鏉╂', reason: 'encoding_mojibake' },
-  { pattern: '闁插', reason: 'encoding_mojibake' },
-  { pattern: '閺堝', reason: 'encoding_mojibake' },
+  { pattern: '\u935b\u5a45', reason: 'encoding_mojibake' },
+  { pattern: '\u7efe\u8de8', reason: 'encoding_mojibake' },
+  { pattern: '\u8930\u66de', reason: 'encoding_mojibake' },
+  { pattern: '\u93c3\u72bb', reason: 'encoding_mojibake' },
+  { pattern: '\u5bf0\u546d', reason: 'encoding_mojibake' },
+  { pattern: '\u675e\ue102', reason: 'encoding_mojibake' },
+  { pattern: '\u7459\u55db', reason: 'encoding_mojibake' },
+  { pattern: '\u93be\ue15f', reason: 'encoding_mojibake' },
+  { pattern: '\u7035\u677f', reason: 'encoding_mojibake' },
+  { pattern: '\u745c\u7248', reason: 'encoding_mojibake' },
+  { pattern: '\u9227', reason: 'encoding_mojibake' },
+  { pattern: '\u95bb', reason: 'encoding_mojibake' },
+  { pattern: '\u9420', reason: 'encoding_mojibake' },
+  { pattern: '\u93c9\u2542', reason: 'encoding_mojibake' },
+  { pattern: '\u95c1\u63d2', reason: 'encoding_mojibake' },
+  { pattern: '\u95ba\u581d', reason: 'encoding_mojibake' },
 ];
 
 function normalizePath(path) {
@@ -49,7 +49,7 @@ export function scanVisibleCopyFiles(files) {
   for (const file of files) {
     const path = normalizePath(file.path);
     const content = String(file.content ?? '');
-    for (const { pattern, reason } of MOJIBAKE_PATTERNS) {
+    for (const { pattern, reason } of VISIBLE_COPY_MOJIBAKE_PATTERNS) {
       const index = content.indexOf(pattern);
       if (index === -1) {
         continue;
