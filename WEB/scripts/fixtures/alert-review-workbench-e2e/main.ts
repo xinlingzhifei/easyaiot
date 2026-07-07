@@ -182,6 +182,10 @@ async function runE2E() {
 
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-workbench"]'), 'workbench root')
   await waitFor(() => text().includes('RV-20260702-001'), 'initial review clue row')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-ops-semantic"]'), 'semantic ops cell')
+  await waitFor(() => text().includes('critical'), 'semantic backlog alarm')
+  await waitFor(() => text().includes('50%'), 'semantic rebuild progress')
+  await waitFor(() => text().includes('stale 1 / failed 1'), 'semantic stale failed summary')
 
   clickReviewRow()
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-unified-timeline"]'), 'unified timeline')
@@ -362,6 +366,7 @@ async function runE2E() {
   assertApiCalled('getAlertReviewEvidenceAudit')
   assertApiCalled('auditAlertReviewMediaAccess')
   assertApiCalled('auditAlertReviewItemMediaAccess')
+  assertApiCalled('evaluateAlertReviewSemanticIndex')
 
   const errorMessages = getAlertReviewE2EMessages().filter(message => message.type === 'error')
   if (errorMessages.length)

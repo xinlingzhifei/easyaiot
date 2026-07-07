@@ -126,6 +126,7 @@ const requiredTestIds = [
   'alert-review-ops-panel',
   'alert-review-ops-health',
   'alert-review-ops-reconcile',
+  'alert-review-ops-semantic',
   'alert-review-ops-smoke',
   'alert-review-ops-manifest-verify',
   'alert-review-ops-rule-geometry',

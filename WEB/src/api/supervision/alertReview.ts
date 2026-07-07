@@ -339,6 +339,8 @@ export interface AlertReviewSemanticIndexEvaluation {
   failedCount: number
   coverageRate: number
   staleReviewItemIds: number[]
+  rebuildProgressRate?: number
+  backlogAlarmLevel?: string
   recommendedActions: string[]
   evaluatedAt: string
   operatorUserId?: number

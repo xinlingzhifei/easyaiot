@@ -287,6 +287,22 @@ export async function semanticSearchAlertReview(payload?: unknown) {
   return [{ item: reviewItem, score: 0.99, matchedTerms: ['person'], snippet: 'person in gate-zone' }]
 }
 
+export async function evaluateAlertReviewSemanticIndex(payload?: unknown) {
+  record('evaluateAlertReviewSemanticIndex', payload)
+  return {
+    totalCount: 2,
+    pendingCount: 0,
+    indexedCount: 1,
+    failedCount: 1,
+    coverageRate: 0.5,
+    staleReviewItemIds: [102],
+    recommendedActions: ['retry_failed_semantic_index', 'inspect_semantic_index_backlog_alarm'],
+    rebuildProgressRate: 0.5,
+    backlogAlarmLevel: 'critical',
+    evaluatedAt: '2026-07-02T08:07:05',
+  }
+}
+
 export async function getAlertReviewTimeline(reviewItemId: number) {
   record('getAlertReviewTimeline', reviewItemId)
   return timeline

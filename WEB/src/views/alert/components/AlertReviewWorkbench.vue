@@ -28,6 +28,7 @@ import {
   type AlertReviewRuntimePatrolResult,
   type AlertReviewSegment,
   type AlertReviewSemanticHit,
+  type AlertReviewSemanticIndexEvaluation,
   type AlertReviewSummary,
   addAlertReviewItemToCase,
   assignAlertReviewCaseOwner,
@@ -38,6 +39,7 @@ import {
   createAlertReviewCase,
   createAlertReviewEvidenceExportJob,
   evaluateAlertReviewRuleGeometry,
+  evaluateAlertReviewSemanticIndex,
   getAlertReviewCaseTimeline,
   getAlertReviewDetailStream,
   getAlertReviewEvidenceAudit,
@@ -143,6 +145,7 @@ const aiSummary = ref<AlertReviewAiSummary | null>(null)
 const evidenceExport = ref<AlertReviewEvidenceExportPackage | null>(null)
 const evidenceExportJob = ref<AlertReviewEvidenceExportJob | null>(null)
 const opsHealth = ref<AlertReviewRuntimeHealth | null>(null)
+const semanticIndexEvaluation = ref<AlertReviewSemanticIndexEvaluation | null>(null)
 const opsReconciliation = ref<AlertReviewReconciliationResult | null>(null)
 const opsPatrol = ref<AlertReviewRuntimePatrolResult | null>(null)
 const opsSmoke = ref<AlertReviewIntegrationSmokeResult | null>(null)
@@ -266,6 +269,7 @@ const unifiedTimeline = computed<UnifiedTimelineEntry[]>(() => {
 
 onMounted(() => {
   loadItems()
+  loadOpsHealth()
 })
 
 async function loadItems() {
@@ -311,7 +315,13 @@ function currentReviewQuery() {
 async function loadOpsHealth() {
   opsLoading.value = true
   try {
-    opsHealth.value = await getAlertReviewRuntimeHealth(currentReviewQuery())
+    const query = currentReviewQuery()
+    const [health, semanticEvaluation] = await Promise.all([
+      getAlertReviewRuntimeHealth(query),
+      evaluateAlertReviewSemanticIndex(query),
+    ])
+    opsHealth.value = health
+    semanticIndexEvaluation.value = semanticEvaluation
   }
   catch (error: any) {
     createMessage.error(error?.message || 'runtime health failed')
@@ -330,6 +340,7 @@ async function runOpsReconcile() {
     })
     opsReconciliation.value = result
     opsHealth.value = result.healthReport
+    semanticIndexEvaluation.value = await evaluateAlertReviewSemanticIndex(currentReviewQuery())
   }
   catch (error: any) {
     createMessage.error(error?.message || 'runtime reconcile failed')
@@ -349,6 +360,7 @@ async function runOpsPatrol() {
       scheduled: true,
     })
     opsHealth.value = opsPatrol.value.healthReport
+    semanticIndexEvaluation.value = await evaluateAlertReviewSemanticIndex(currentReviewQuery())
   }
   catch (error: any) {
     createMessage.error(error?.message || 'runtime patrol failed')
@@ -1198,6 +1210,23 @@ function recordGapReasonSummary(reasons?: Record<string, number>) {
   return entries.map(([reason, count]) => `${recordReasonText(reason)} ${count}`).join(' / ')
 }
 
+function percentText(value?: number) {
+  if (value === undefined || value === null || Number.isNaN(Number(value)))
+    return '-'
+  return `${Math.round(Number(value) * 100)}%`
+}
+
+function semanticProgressText(evaluation?: AlertReviewSemanticIndexEvaluation | null) {
+  const progress = evaluation?.rebuildProgressRate ?? evaluation?.coverageRate
+  return percentText(progress)
+}
+
+function semanticBacklogSummary(evaluation?: AlertReviewSemanticIndexEvaluation | null) {
+  if (!evaluation)
+    return 'stale - / failed -'
+  return `stale ${evaluation.staleReviewItemIds?.length || 0} / failed ${evaluation.failedCount || 0}`
+}
+
 function ruleSuggestionSafetyRows(item: AlertReviewItem) {
   const suggestion = item.ruleSuggestion || {}
   const rows: string[] = []
@@ -1490,6 +1519,14 @@ defineExpose({
         </Button>
         <Button size="small" :loading="opsLoading" @click="runOpsPatrol">
           patrol
+        </Button>
+      </div>
+      <div class="ops-cell" data-testid="alert-review-ops-semantic">
+        <span>semantic</span>
+        <strong>{{ semanticIndexEvaluation?.backlogAlarmLevel || 'unknown' }}</strong>
+        <small>{{ semanticProgressText(semanticIndexEvaluation) }} / {{ semanticBacklogSummary(semanticIndexEvaluation) }}</small>
+        <Button size="small" :loading="opsLoading" @click="loadOpsHealth">
+          index
         </Button>
       </div>
       <div class="ops-cell" data-testid="alert-review-ops-smoke">
@@ -2166,7 +2203,7 @@ defineExpose({
 
 .ops-panel {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
