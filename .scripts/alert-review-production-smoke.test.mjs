@@ -214,7 +214,27 @@ const smokeWithEvidence = await runProductionSmoke({
   writeFile: (file, content) => {
     evidenceWrites.push({ file, content });
   },
-  runCommand: async () => ({ status: 0 }),
+  runCommand: async (step) => ({
+    status: 0,
+    stdout: step.name === 'LiveVideo'
+      ? `alert review VIDEO live smoke passed
+{
+  "checkpoints": ["alert_record_query_ok", "record_storage_drift_patrol_ok", "record_export_manifest_verified"],
+  "storageDriftSummary": {
+    "healthy": true,
+    "recordCount": 3,
+    "issueCount": 0,
+    "issueReasons": {}
+  },
+  "exportResult": {
+    "exportId": "review-export-1",
+    "downloadUrl": "/downloads/review-export-1.mp4",
+    "manifestUrl": "/manifests/review-export-1.json"
+  }
+}
+`
+      : '',
+  }),
 });
 assert.equal(smokeWithEvidence.ok, true);
 assert.equal(evidenceWrites.length, 1);
@@ -228,6 +248,18 @@ assert.equal(evidenceReport.durationMs, 2000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
 assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed']);
 assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
+assert.deepEqual(evidenceReport.steps[1].summary.storageDriftSummary, {
+  healthy: true,
+  recordCount: 3,
+  issueCount: 0,
+  issueReasons: {},
+});
+assert.deepEqual(evidenceReport.steps[1].summary.checkpoints, [
+  'alert_record_query_ok',
+  'record_storage_drift_patrol_ok',
+  'record_export_manifest_verified',
+]);
+assert.equal(evidenceReport.steps[1].stdout, undefined);
 assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
 
 const failedEvidenceWrites = [];

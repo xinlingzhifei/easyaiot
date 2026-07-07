@@ -223,7 +223,7 @@ export async function runProductionSmoke(options, dependencies = {}) {
     const stepFinishedAt = currentInstant(dependencies);
     if (status !== 0) {
       const message = `${step.name} failed with exit code ${status}`;
-      evidenceReport.steps.push(buildEvidenceStep(step, 'failed', stepStartedAt, stepFinishedAt, status, message));
+      evidenceReport.steps.push(buildEvidenceStep(step, 'failed', stepStartedAt, stepFinishedAt, status, message, result));
       finishEvidenceReport(evidenceReport, false, reportStartedAt, currentInstant(dependencies));
       writeEvidenceReport(options, evidenceReport, dependencies);
       throw new Error(message);
@@ -232,7 +232,7 @@ export async function runProductionSmoke(options, dependencies = {}) {
       name: step.name,
       status: 'passed',
     });
-    evidenceReport.steps.push(buildEvidenceStep(step, 'passed', stepStartedAt, stepFinishedAt, status));
+    evidenceReport.steps.push(buildEvidenceStep(step, 'passed', stepStartedAt, stepFinishedAt, status, null, result));
   }
   finishEvidenceReport(evidenceReport, true, reportStartedAt, currentInstant(dependencies));
   writeEvidenceReport(options, evidenceReport, dependencies);
@@ -248,18 +248,26 @@ export function formatStepCommand(step) {
 
 function defaultRunCommand(step) {
   console.log(`running ${step.name}: ${formatStepCommand(step)}`);
-  return spawnSync(step.command, step.args, {
+  const result = spawnSync(step.command, step.args, {
     cwd: process.cwd(),
-    stdio: 'inherit',
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  return result;
 }
 
 function maskSensitiveArg(arg) {
   return String(arg).startsWith('--token=') ? '--token=***' : arg;
 }
 
-function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error) {
+function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error, result) {
   const entry = {
     name: step.name,
     status,
@@ -272,7 +280,55 @@ function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error)
   if (hasText(error)) {
     entry.error = error;
   }
+  const summary = childSmokeSummary(result);
+  if (summary) {
+    entry.summary = summary;
+  }
   return entry;
+}
+
+function childSmokeSummary(result) {
+  const payload = parseLastJsonObject(result?.stdout);
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const summary = {};
+  if (Array.isArray(payload.checkpoints)) {
+    summary.checkpoints = payload.checkpoints;
+  }
+  if (payload.storageDriftSummary && typeof payload.storageDriftSummary === 'object') {
+    summary.storageDriftSummary = payload.storageDriftSummary;
+  }
+  if (payload.exportResult && typeof payload.exportResult === 'object') {
+    summary.exportResult = payload.exportResult;
+  }
+  if (payload.playback && typeof payload.playback === 'object') {
+    summary.playback = payload.playback;
+  }
+  if (payload.player && typeof payload.player === 'object') {
+    summary.player = payload.player;
+  }
+  if (hasText(payload.status)) {
+    summary.status = payload.status;
+  }
+  return Object.keys(summary).length ? summary : null;
+}
+
+function parseLastJsonObject(value) {
+  if (!hasText(value)) {
+    return null;
+  }
+  const text = String(value);
+  for (let index = text.lastIndexOf('{'); index >= 0; index = text.lastIndexOf('{', index - 1)) {
+    const candidate = text.slice(index).trim();
+    try {
+      const parsed = JSON.parse(candidate);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      // Keep scanning earlier braces; child smoke logs may contain text before JSON.
+    }
+  }
+  return null;
 }
 
 function finishEvidenceReport(report, ok, startedAt, finishedAt) {
