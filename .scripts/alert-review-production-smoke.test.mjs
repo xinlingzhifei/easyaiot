@@ -35,6 +35,12 @@ const parsed = parseArgs([
   '--player-expected-seek-time=2026-07-05T10:00:30',
   '--player-expected-record-path-contains=device-01',
   '--player-expected-offset-seconds=30',
+  '--player-coverage-expected-seek-time=2026-07-05T10:00:00',
+  '--player-coverage-expected-record-path-contains=device-01',
+  '--player-coverage-expected-offset-seconds=0',
+  '--player-case-timeline-expected-seek-time=2026-07-05T10:00:00',
+  '--player-case-timeline-expected-record-path-contains=device-01',
+  '--player-case-timeline-expected-offset-seconds=0',
   '--player-wait-text=线索复核工作台',
 ], {});
 
@@ -49,6 +55,8 @@ assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.videoRecordDriftRetentionHours, 24);
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
+assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
+assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
 assert.equal(parsed.allowLocalEndpoints, false);
 
 const evidenceOutputParsed = parseArgs(['--evidence-output-file=artifacts/review-smoke.json'], {});
@@ -73,6 +81,12 @@ const localEndpointsAllowed = parseArgs([
   '--player-expected-seek-time=2026-07-05T10:00:30',
   '--player-expected-record-path-contains=device-01',
   '--player-expected-offset-seconds=30',
+  '--player-coverage-expected-seek-time=2026-07-05T10:00:00',
+  '--player-coverage-expected-record-path-contains=device-01',
+  '--player-coverage-expected-offset-seconds=0',
+  '--player-case-timeline-expected-seek-time=2026-07-05T10:00:00',
+  '--player-case-timeline-expected-record-path-contains=device-01',
+  '--player-case-timeline-expected-offset-seconds=0',
   '--allow-local-endpoints',
 ], {});
 assert.equal(localEndpointsAllowed.allowLocalEndpoints, true);
@@ -97,6 +111,12 @@ const fromEnv = parseArgs([], {
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:10',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS: 'env-device',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS: '10',
+  YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:00',
+  YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_RECORD_PATH_CONTAINS: 'env-device',
+  YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_OFFSET_SECONDS: '0',
+  YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:00',
+  YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS: 'env-device',
+  YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS: '0',
   YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS: 'true',
   YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE: 'artifacts/env-smoke.json',
 });
@@ -106,6 +126,8 @@ assert.deepEqual(fromEnv.devicePlaybackDeniedCameraIds, ['env-camera-deny']);
 assert.equal(fromEnv.videoDeviceId, 'env-device');
 assert.equal(fromEnv.videoRecordDriftRetentionHours, 72);
 assert.equal(fromEnv.playerExpectedOffsetSeconds, 10);
+assert.equal(fromEnv.playerCoverageExpectedOffsetSeconds, 0);
+assert.equal(fromEnv.playerCaseTimelineExpectedOffsetSeconds, 0);
 assert.equal(fromEnv.evidenceOutputFile, 'artifacts/env-smoke.json');
 
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
@@ -127,6 +149,12 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME',
   'missing --player-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS',
   'missing --player-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS',
+  'missing --player-coverage-expected-seek-time or YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_SEEK_TIME',
+  'missing --player-coverage-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_RECORD_PATH_CONTAINS',
+  'missing --player-coverage-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_OFFSET_SECONDS',
+  'missing --player-case-timeline-expected-seek-time or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME',
+  'missing --player-case-timeline-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS',
+  'missing --player-case-timeline-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
@@ -148,6 +176,12 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--player-expected-seek-time=2026-07-05T10:00:30',
   '--player-expected-record-path-contains=device-01',
   '--player-expected-offset-seconds=30',
+  '--player-coverage-expected-seek-time=2026-07-05T10:00:00',
+  '--player-coverage-expected-record-path-contains=device-01',
+  '--player-coverage-expected-offset-seconds=0',
+  '--player-case-timeline-expected-seek-time=2026-07-05T10:00:00',
+  '--player-case-timeline-expected-record-path-contains=device-01',
+  '--player-case-timeline-expected-offset-seconds=0',
 ], {})), [
   'production smoke endpoint --device-base-url must not use a local/mock URL without --allow-local-endpoints',
   'production smoke endpoint --video-alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
@@ -161,7 +195,13 @@ const steps = buildSmokeSteps(parsed, {
   nodePath: 'node',
   scriptDir: '.scripts',
 });
-assert.deepEqual(steps.map((step) => step.name), ['LiveDevice', 'LiveVideo', 'LivePlayer']);
+assert.deepEqual(steps.map((step) => step.name), [
+  'LiveDevice',
+  'LiveVideo',
+  'LivePlayer:detail',
+  'LivePlayer:coverage',
+  'LivePlayer:case-timeline',
+]);
 assert.deepEqual(steps[0].args.slice(0, 5), [
   '.scripts/alert-review-device-integration-smoke.mjs',
   '--device-base-url=http://device.local/api',
@@ -175,7 +215,12 @@ assert.ok(steps[0].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[1].args.includes('--record-export-url=http://video.local/video/record/export'));
 assert.ok(steps[1].args.includes('--camera-id=camera-01'));
 assert.ok(steps[1].args.includes('--record-drift-retention-hours=24'));
+assert.ok(steps[2].args.includes('--action-testid=alert-review-detail-seek'));
 assert.ok(steps[2].args.includes('--expected-offset-seconds=30'));
+assert.ok(steps[3].args.includes('--action-testid=alert-review-coverage-seek'));
+assert.ok(steps[3].args.includes('--expected-offset-seconds=0'));
+assert.ok(steps[4].args.includes('--action-testid=alert-review-case-timeline-seek'));
+assert.ok(steps[4].args.includes('--expected-offset-seconds=0'));
 assert.equal(
   formatStepCommand(steps[0]),
   'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=http://device.local/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
@@ -191,8 +236,8 @@ const smoke = await runProductionSmoke(parsed, {
   },
 });
 assert.equal(smoke.ok, true);
-assert.deepEqual(calls, ['LiveDevice', 'LiveVideo', 'LivePlayer']);
-assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed']);
+assert.deepEqual(calls, ['LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
+assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed']);
 
 const evidenceWrites = [];
 const smokeWithEvidence = await runProductionSmoke({
@@ -209,7 +254,11 @@ const smokeWithEvidence = await runProductionSmoke({
     '2026-07-07T00:00:00.900Z',
     '2026-07-07T00:00:01.000Z',
     '2026-07-07T00:00:01.700Z',
-    '2026-07-07T00:00:02.000Z',
+    '2026-07-07T00:00:01.800Z',
+    '2026-07-07T00:00:02.100Z',
+    '2026-07-07T00:00:02.200Z',
+    '2026-07-07T00:00:02.500Z',
+    '2026-07-07T00:00:03.000Z',
   ]),
   writeFile: (file, content) => {
     evidenceWrites.push({ file, content });
@@ -251,7 +300,31 @@ const smokeWithEvidence = await runProductionSmoke({
   }
 }
 `
-        : `alert review player live smoke passed
+        : step.name === 'LivePlayer:coverage'
+          ? `alert review player live smoke passed
+{
+  "clickedRow": true,
+  "clickedAction": true,
+  "seekTime": "2026-07-05T10:00:00",
+  "recordPath": "mock://record/device-01/20260705-100000.mp4",
+  "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=coverage-secret",
+  "playbackOffsetSeconds": 0,
+  "nativeCurrentTime": 0.15
+}
+`
+          : step.name === 'LivePlayer:case-timeline'
+            ? `alert review player live smoke passed
+{
+  "clickedRow": true,
+  "clickedAction": true,
+  "seekTime": "2026-07-05T10:00:00",
+  "recordPath": "mock://record/device-01/20260705-100000.mp4",
+  "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=case-secret",
+  "playbackOffsetSeconds": 0,
+  "nativeCurrentTime": 0
+}
+`
+            : `alert review player live smoke passed
 {
   "clickedRow": true,
   "clickedAction": true,
@@ -271,10 +344,10 @@ const evidenceReport = JSON.parse(evidenceWrites[0].content);
 assert.equal(evidenceReport.ok, true);
 assert.equal(evidenceReport.status, 'passed');
 assert.equal(evidenceReport.startedAt, '2026-07-07T00:00:00.000Z');
-assert.equal(evidenceReport.finishedAt, '2026-07-07T00:00:02.000Z');
-assert.equal(evidenceReport.durationMs, 2000);
+assert.equal(evidenceReport.finishedAt, '2026-07-07T00:00:03.000Z');
+assert.equal(evidenceReport.durationMs, 3000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
-assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed']);
+assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed']);
 assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
 assert.deepEqual(evidenceReport.steps[0].summary, {
   checkpoints: ['ingest_created', 'record_coverage_synced', 'evidence_download_audited'],
@@ -311,10 +384,32 @@ assert.deepEqual(evidenceReport.steps[2].summary.player, {
   playbackOffsetSeconds: 30,
   nativeCurrentTime: 30.25,
 });
+assert.deepEqual(evidenceReport.steps[3].summary.player, {
+  clickedRow: true,
+  clickedAction: true,
+  seekTime: '2026-07-05T10:00:00',
+  recordPath: 'mock://record/device-01/20260705-100000.mp4',
+  currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+  playbackOffsetSeconds: 0,
+  nativeCurrentTime: 0.15,
+});
+assert.deepEqual(evidenceReport.steps[4].summary.player, {
+  clickedRow: true,
+  clickedAction: true,
+  seekTime: '2026-07-05T10:00:00',
+  recordPath: 'mock://record/device-01/20260705-100000.mp4',
+  currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+  playbackOffsetSeconds: 0,
+  nativeCurrentTime: 0,
+});
 assert.equal(evidenceReport.steps[1].stdout, undefined);
 assert.equal(evidenceReport.steps[2].stdout, undefined);
+assert.equal(evidenceReport.steps[3].stdout, undefined);
+assert.equal(evidenceReport.steps[4].stdout, undefined);
 assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('media-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('coverage-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('case-secret'), false);
 
 const failedEvidenceWrites = [];
 await assert.rejects(

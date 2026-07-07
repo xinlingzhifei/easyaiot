@@ -30,6 +30,14 @@ export function parseArgs(args, env = process.env) {
     playerExpectedSeekTime: env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME || '',
     playerExpectedRecordPathContains: env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS || '',
     playerExpectedOffsetSeconds: numberOrNaN(env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS),
+    playerCoverageActionTestId: env.YFEIEYE_REVIEW_PLAYER_COVERAGE_ACTION_TESTID || 'alert-review-coverage-seek',
+    playerCoverageExpectedSeekTime: env.YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_SEEK_TIME || '',
+    playerCoverageExpectedRecordPathContains: env.YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_RECORD_PATH_CONTAINS || '',
+    playerCoverageExpectedOffsetSeconds: numberOrNaN(env.YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_OFFSET_SECONDS),
+    playerCaseTimelineActionTestId: env.YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_ACTION_TESTID || 'alert-review-case-timeline-seek',
+    playerCaseTimelineExpectedSeekTime: env.YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME || '',
+    playerCaseTimelineExpectedRecordPathContains: env.YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS || '',
+    playerCaseTimelineExpectedOffsetSeconds: numberOrNaN(env.YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS),
     playerWaitText: env.YFEIEYE_REVIEW_PLAYER_SMOKE_WAIT_TEXT || '',
     allowLocalEndpoints: parseBoolean(env.YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
     evidenceOutputFile: env.YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE || '',
@@ -93,6 +101,22 @@ export function parseArgs(args, env = process.env) {
       parsed.playerExpectedRecordPathContains = arg.slice('--player-expected-record-path-contains='.length);
     } else if (arg.startsWith('--player-expected-offset-seconds=')) {
       parsed.playerExpectedOffsetSeconds = numberOrNaN(arg.slice('--player-expected-offset-seconds='.length));
+    } else if (arg.startsWith('--player-coverage-action-testid=')) {
+      parsed.playerCoverageActionTestId = arg.slice('--player-coverage-action-testid='.length);
+    } else if (arg.startsWith('--player-coverage-expected-seek-time=')) {
+      parsed.playerCoverageExpectedSeekTime = arg.slice('--player-coverage-expected-seek-time='.length);
+    } else if (arg.startsWith('--player-coverage-expected-record-path-contains=')) {
+      parsed.playerCoverageExpectedRecordPathContains = arg.slice('--player-coverage-expected-record-path-contains='.length);
+    } else if (arg.startsWith('--player-coverage-expected-offset-seconds=')) {
+      parsed.playerCoverageExpectedOffsetSeconds = numberOrNaN(arg.slice('--player-coverage-expected-offset-seconds='.length));
+    } else if (arg.startsWith('--player-case-timeline-action-testid=')) {
+      parsed.playerCaseTimelineActionTestId = arg.slice('--player-case-timeline-action-testid='.length);
+    } else if (arg.startsWith('--player-case-timeline-expected-seek-time=')) {
+      parsed.playerCaseTimelineExpectedSeekTime = arg.slice('--player-case-timeline-expected-seek-time='.length);
+    } else if (arg.startsWith('--player-case-timeline-expected-record-path-contains=')) {
+      parsed.playerCaseTimelineExpectedRecordPathContains = arg.slice('--player-case-timeline-expected-record-path-contains='.length);
+    } else if (arg.startsWith('--player-case-timeline-expected-offset-seconds=')) {
+      parsed.playerCaseTimelineExpectedOffsetSeconds = numberOrNaN(arg.slice('--player-case-timeline-expected-offset-seconds='.length));
     } else if (arg.startsWith('--player-wait-text=')) {
       parsed.playerWaitText = arg.slice('--player-wait-text='.length);
     } else {
@@ -122,7 +146,13 @@ export function requiredOptionErrors(options) {
   requireText(errors, options.playerReviewRowText, 'missing --player-review-row-text or YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT');
   requireText(errors, options.playerExpectedSeekTime, 'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME');
   requireText(errors, options.playerExpectedRecordPathContains, 'missing --player-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS');
-  requirePositiveNumber(errors, options.playerExpectedOffsetSeconds, 'missing --player-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS');
+  requireNonNegativeNumber(errors, options.playerExpectedOffsetSeconds, 'missing --player-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS');
+  requireText(errors, options.playerCoverageExpectedSeekTime, 'missing --player-coverage-expected-seek-time or YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_SEEK_TIME');
+  requireText(errors, options.playerCoverageExpectedRecordPathContains, 'missing --player-coverage-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_RECORD_PATH_CONTAINS');
+  requireNonNegativeNumber(errors, options.playerCoverageExpectedOffsetSeconds, 'missing --player-coverage-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_OFFSET_SECONDS');
+  requireText(errors, options.playerCaseTimelineExpectedSeekTime, 'missing --player-case-timeline-expected-seek-time or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME');
+  requireText(errors, options.playerCaseTimelineExpectedRecordPathContains, 'missing --player-case-timeline-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS');
+  requireNonNegativeNumber(errors, options.playerCaseTimelineExpectedOffsetSeconds, 'missing --player-case-timeline-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS');
   if (!options.allowLocalEndpoints) {
     requireReleaseEndpoint(errors, '--device-base-url', options.deviceBaseUrl);
     requireReleaseEndpoint(errors, '--video-alert-record-query-url', options.videoAlertRecordQueryUrl);
@@ -171,21 +201,33 @@ export function buildSmokeSteps(options, runtime = {}) {
         `--record-drift-retention-hours=${options.videoRecordDriftRetentionHours}`,
       ]),
     },
-    {
-      name: 'LivePlayer',
-      command: nodePath,
-      args: compact([
-        `${scriptDir}/alert-review-player-live-smoke.mjs`,
-        `--workbench-url=${options.playerWorkbenchUrl}`,
-        `--review-row-text=${options.playerReviewRowText}`,
-        `--action-testid=${options.playerActionTestId}`,
-        `--expected-seek-time=${options.playerExpectedSeekTime}`,
-        `--expected-record-path-contains=${options.playerExpectedRecordPathContains}`,
-        `--expected-offset-seconds=${options.playerExpectedOffsetSeconds}`,
-        hasText(options.playerWaitText) ? `--wait-text=${options.playerWaitText}` : '',
-      ]),
-    },
+    ...buildPlayerSmokeSteps(options, nodePath, scriptDir),
   ];
+}
+
+function buildPlayerSmokeSteps(options, nodePath, scriptDir) {
+  return [
+    playerSmokeStep('LivePlayer:detail', options.playerActionTestId, options.playerExpectedSeekTime, options.playerExpectedRecordPathContains, options.playerExpectedOffsetSeconds, options, nodePath, scriptDir),
+    playerSmokeStep('LivePlayer:coverage', options.playerCoverageActionTestId, options.playerCoverageExpectedSeekTime, options.playerCoverageExpectedRecordPathContains, options.playerCoverageExpectedOffsetSeconds, options, nodePath, scriptDir),
+    playerSmokeStep('LivePlayer:case-timeline', options.playerCaseTimelineActionTestId, options.playerCaseTimelineExpectedSeekTime, options.playerCaseTimelineExpectedRecordPathContains, options.playerCaseTimelineExpectedOffsetSeconds, options, nodePath, scriptDir),
+  ];
+}
+
+function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPathContains, expectedOffsetSeconds, options, nodePath, scriptDir) {
+  return {
+    name,
+    command: nodePath,
+    args: compact([
+      `${scriptDir}/alert-review-player-live-smoke.mjs`,
+      `--workbench-url=${options.playerWorkbenchUrl}`,
+      `--review-row-text=${options.playerReviewRowText}`,
+      `--action-testid=${actionTestId}`,
+      `--expected-seek-time=${expectedSeekTime}`,
+      `--expected-record-path-contains=${expectedRecordPathContains}`,
+      `--expected-offset-seconds=${expectedOffsetSeconds}`,
+      hasText(options.playerWaitText) ? `--wait-text=${options.playerWaitText}` : '',
+    ]),
+  };
 }
 
 export async function runProductionSmoke(options, dependencies = {}) {
@@ -430,6 +472,12 @@ function requirePositiveNumber(errors, value, message) {
   }
 }
 
+function requireNonNegativeNumber(errors, value, message) {
+  if (!Number.isFinite(value) || value < 0) {
+    errors.push(message);
+  }
+}
+
 function requireList(errors, values, message) {
   if (!Array.isArray(values) || values.length === 0) {
     errors.push(message);
@@ -519,12 +567,20 @@ function printHelp() {
   --player-workbench-url=http://WEB/... --player-review-row-text=RV-... \\
   --player-expected-seek-time="2026-07-05T10:00:30" \\
   --player-expected-record-path-contains=DEVICE_ID \\
-  --player-expected-offset-seconds=30 [--evidence-output-file=artifacts/production-smoke.json] [--allow-local-endpoints]
+  --player-expected-offset-seconds=30 \\
+  --player-coverage-expected-seek-time="2026-07-05T10:00:00" \\
+  --player-coverage-expected-record-path-contains=DEVICE_ID \\
+  --player-coverage-expected-offset-seconds=0 \\
+  --player-case-timeline-expected-seek-time="2026-07-05T10:00:00" \\
+  --player-case-timeline-expected-record-path-contains=DEVICE_ID \\
+  --player-case-timeline-expected-offset-seconds=0 \\
+  [--evidence-output-file=artifacts/production-smoke.json] [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
-LiveDevice -> LiveVideo -> LivePlayer. Each step uses real deployed services,
-real recording metadata, export verification, download audit, playback-url
-allow/deny authorization, recording DB/disk drift patrol, and player seek assertions from the dedicated smoke
+LiveDevice -> LiveVideo -> LivePlayer:detail -> LivePlayer:coverage ->
+LivePlayer:case-timeline. Each step uses real deployed services, real recording
+metadata, export verification, download audit, playback-url allow/deny authorization,
+recording DB/disk drift patrol, and player seek assertions from the dedicated smoke
 scripts. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
 is supplied for co-located real-service smoke. Evidence output is written as a
 sanitized JSON report with masked token-bearing step commands.`);
