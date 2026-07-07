@@ -76,6 +76,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEvaluation;
@@ -1743,6 +1745,59 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(auditTrail.stream().allMatch(entry -> entry.metadata().get("reviewCaseId") == null));
         assertTrue(auditTrail.stream().allMatch(entry -> entry.metadata().get("reviewItemIds").equals(List.of(item.id()))));
         assertTrue(auditTrail.stream().allMatch(entry -> entry.evidenceUris().equals(List.of("pre-case.mp4"))));
+    }
+
+    @Test
+    void playbackUrlPreparationEnforcesCameraScopeAndAuditsAllowDeny() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 7, 10, 20);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-playback-url",
+                baseTime,
+                "playback-url.jpg",
+                "playback-url.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "playback url case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewPlaybackAccess allowed = service.prepareReviewPlayback(new ReviewPlaybackCommand(
+                reviewCase.id(),
+                item.id(),
+                9301L,
+                "playback-url.mp4",
+                List.of("camera-01"),
+                "operator opened server playback url"
+        ));
+        ReviewPlaybackAccess denied = service.prepareReviewPlayback(new ReviewPlaybackCommand(
+                reviewCase.id(),
+                item.id(),
+                9302L,
+                "playback-url.mp4",
+                List.of("camera-02"),
+                "outside playback scope"
+        ));
+
+        assertEquals("granted", allowed.decision());
+        assertEquals("playback-url.mp4", allowed.playbackUrl());
+        assertEquals(List.of(), allowed.deniedReasons());
+        assertEquals("denied", denied.decision());
+        assertNull(denied.playbackUrl());
+        assertEquals(List.of("camera_not_allowed"), denied.deniedReasons());
+        assertTrue(service.getEvidenceAuditTrail(reviewCase.id()).stream()
+                .anyMatch(entry -> "media_access_granted".equals(entry.actionType())
+                        && Objects.equals(9301L, entry.operatorUserId())
+                        && entry.metadata().get("materialUri").equals("playback-url.mp4")));
+        assertTrue(service.getEvidenceAuditTrail(reviewCase.id()).stream()
+                .anyMatch(entry -> "media_access_denied".equals(entry.actionType())
+                        && Objects.equals(9302L, entry.operatorUserId())
+                        && entry.metadata().get("deniedReasons").equals(List.of("camera_not_allowed"))));
     }
 
     @Test

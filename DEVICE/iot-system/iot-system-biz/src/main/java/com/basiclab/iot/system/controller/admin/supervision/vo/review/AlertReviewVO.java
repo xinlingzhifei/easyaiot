@@ -17,6 +17,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemAggregate;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthReport;
@@ -1217,6 +1218,36 @@ public final class AlertReviewVO {
             respVO.setDeniedReasons(entry.deniedReasons());
             respVO.setHappenedAt(entry.happenedAt());
             respVO.setMetadata(entry.metadata());
+            return respVO;
+        }
+
+    }
+
+    @Schema(description = "Alert review playback URL preparation response")
+    @Data
+    public static class PlaybackAccessRespVO {
+
+        private Long reviewCaseId;
+        private Long reviewItemId;
+        private Long operatorUserId;
+        private String cameraId;
+        private String materialUri;
+        private String playbackUrl;
+        private String decision;
+        private List<String> deniedReasons;
+        private MediaAccessAuditRespVO audit;
+
+        public static PlaybackAccessRespVO from(ReviewPlaybackAccess access) {
+            PlaybackAccessRespVO respVO = new PlaybackAccessRespVO();
+            respVO.setReviewCaseId(access.reviewCaseId());
+            respVO.setReviewItemId(access.reviewItemId());
+            respVO.setOperatorUserId(access.operatorUserId());
+            respVO.setCameraId(access.cameraId());
+            respVO.setMaterialUri(access.materialUri());
+            respVO.setPlaybackUrl(access.playbackUrl());
+            respVO.setDecision(access.decision());
+            respVO.setDeniedReasons(access.deniedReasons());
+            respVO.setAudit(access.audit() == null ? null : MediaAccessAuditRespVO.from(access.audit()));
             return respVO;
         }
 

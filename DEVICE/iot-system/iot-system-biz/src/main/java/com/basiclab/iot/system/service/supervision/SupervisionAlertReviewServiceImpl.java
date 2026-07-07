@@ -2416,6 +2416,41 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
     }
 
+    @Override
+    public ReviewPlaybackAccess prepareReviewPlayback(ReviewPlaybackCommand command) {
+        Objects.requireNonNull(command, "command");
+        requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        String materialUri = firstText(command.materialUri(), reviewItemStore.listTimeline(command.reviewItemId()).stream()
+                .filter(evidence -> MATERIAL_RECORD.equals(evidence.materialType()))
+                .map(ReviewEvidenceItem::materialUri)
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .findFirst()
+                .orElse(null));
+        ReviewMediaAccessAuditEntry audit = auditMediaAccess(new ReviewMediaAccessCommand(
+                command.reviewCaseId(),
+                command.reviewItemId(),
+                command.operatorUserId(),
+                item.cameraId(),
+                materialUri,
+                "playback",
+                command.allowedCameraIds(),
+                command.reason()
+        ));
+        return new ReviewPlaybackAccess(
+                command.reviewCaseId(),
+                command.reviewItemId(),
+                command.operatorUserId(),
+                item.cameraId(),
+                materialUri,
+                "granted".equals(audit.decision()) ? materialUri : null,
+                audit.decision(),
+                audit.deniedReasons(),
+                audit
+        );
+    }
+
     private ReviewEvidenceExportPackage buildReviewEvidenceExportPackage(ReviewEvidenceExportCommand command) {
         Objects.requireNonNull(command, "command");
         requirePositive(command.reviewCaseId(), "reviewCaseId");

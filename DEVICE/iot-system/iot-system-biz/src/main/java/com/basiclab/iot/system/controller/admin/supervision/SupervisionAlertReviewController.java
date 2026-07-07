@@ -32,6 +32,7 @@ import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertRevie
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.MediaAccessAuditReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.MediaAccessAuditRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.OperationReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.PlaybackAccessRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RecordStorageSyncReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RecordStorageSyncRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.ReconciliationRespVO;
@@ -70,6 +71,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewLifecycleCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationCommand;
@@ -410,6 +412,27 @@ public class SupervisionAlertReviewController {
                 .stream()
                 .map(CoverageRespVO::from)
                 .toList());
+    }
+
+    @GetMapping("/items/{reviewItemId}/playback-url")
+    @Operation(summary = "Prepare alert review playback URL")
+    public CommonResult<PlaybackAccessRespVO> preparePlaybackUrl(
+            @PathVariable("reviewItemId") Long reviewItemId,
+            @RequestParam(value = "reviewCaseId", required = false) Long reviewCaseId,
+            @RequestParam(value = "operatorUserId", required = false) Long operatorUserId,
+            @RequestParam(value = "materialUri", required = false) String materialUri,
+            @RequestParam(value = "allowedCameraIds", required = false) List<String> allowedCameraIds,
+            @RequestParam(value = "reason", required = false) String reason) {
+        return success(PlaybackAccessRespVO.from(supervisionAlertReviewService.prepareReviewPlayback(
+                new ReviewPlaybackCommand(
+                        reviewCaseId,
+                        reviewItemId,
+                        currentOperatorUserId(operatorUserId),
+                        materialUri,
+                        allowedCameraIds,
+                        reason
+                )
+        )));
     }
 
     @PostMapping("/items/{reviewItemId}/record-storage/sync")

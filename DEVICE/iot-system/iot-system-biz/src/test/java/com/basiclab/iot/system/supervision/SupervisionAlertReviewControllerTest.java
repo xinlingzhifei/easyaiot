@@ -15,6 +15,9 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackCommand;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -140,6 +143,37 @@ class SupervisionAlertReviewControllerTest {
     }
 
     @Test
+    void playbackUrlEndpointUsesLoginUserAndPreparesAuditedPlayback() throws Exception {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SupervisionAlertReviewController(reviewService.proxy()))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser().setId(778L),
+                null,
+                List.of()
+        ));
+        try {
+            mockMvc.perform(get("/system/supervision/alert-review/items/100/playback-url")
+                            .param("reviewCaseId", "10")
+                            .param("operatorUserId", "9999")
+                            .param("materialUri", "clip.mp4")
+                            .param("allowedCameraIds", "camera-01")
+                            .param("reason", "open playback"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.operatorUserId").value(778))
+                    .andExpect(jsonPath("$.data.playbackUrl").value("clip.mp4"))
+                    .andExpect(jsonPath("$.data.decision").value("granted"));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertEquals(new ReviewPlaybackCommand(10L, 100L, 778L, "clip.mp4", List.of("camera-01"), "open playback"),
+                reviewService.command("prepareReviewPlayback"));
+    }
+
+    @Test
     void ruleSuggestionGovernanceEndpointsDeclareApprovalPermissions() throws Exception {
         assertPreAuthorize(
                 "updateRuleSuggestionStatus",
@@ -222,6 +256,7 @@ class SupervisionAlertReviewControllerTest {
                         caseView(10L, "open", List.of(101L, 102L), 2001L, "source"),
                         caseView(12L, "open", List.of(103L), 2002L, "separate lead")
                 );
+                case "prepareReviewPlayback" -> playbackAccess((ReviewPlaybackCommand) command);
                 case "verifyEvidencePackage" -> verificationReport((ReviewEvidenceVerificationCommand) command);
                 default -> throw new AssertionError("unexpected service method: " + method.getName());
             };
@@ -231,6 +266,32 @@ class SupervisionAlertReviewControllerTest {
             return commands.get(methodName);
         }
 
+    }
+
+    private static ReviewPlaybackAccess playbackAccess(ReviewPlaybackCommand command) {
+        ReviewMediaAccessAuditEntry audit = new ReviewMediaAccessAuditEntry(
+                command.reviewCaseId(),
+                command.reviewItemId(),
+                command.operatorUserId(),
+                "camera-01",
+                command.materialUri(),
+                "playback",
+                "granted",
+                List.of(),
+                LocalDateTime.of(2026, 7, 6, 10, 1),
+                Map.of("decision", "granted")
+        );
+        return new ReviewPlaybackAccess(
+                command.reviewCaseId(),
+                command.reviewItemId(),
+                command.operatorUserId(),
+                "camera-01",
+                command.materialUri(),
+                command.materialUri(),
+                "granted",
+                List.of(),
+                audit
+        );
     }
 
     private static ReviewEvidenceVerificationReport verificationReport(ReviewEvidenceVerificationCommand command) {

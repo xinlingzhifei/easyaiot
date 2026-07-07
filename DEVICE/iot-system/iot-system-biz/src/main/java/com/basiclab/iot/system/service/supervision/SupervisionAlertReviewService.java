@@ -172,6 +172,8 @@ public interface SupervisionAlertReviewService {
 
     ReviewMediaAccessAuditEntry auditMediaAccess(ReviewMediaAccessCommand command);
 
+    ReviewPlaybackAccess prepareReviewPlayback(ReviewPlaybackCommand command);
+
     ReviewToEventResult convertToEvent(ReviewToEventCommand command);
 
     ReviewRuleReplayResult replayRule(ReviewRuleReplayCommand command);
@@ -966,6 +968,25 @@ public interface SupervisionAlertReviewService {
                                        List<String> deniedReasons,
                                        LocalDateTime happenedAt,
                                        Map<String, Object> metadata) {
+    }
+
+    record ReviewPlaybackCommand(Long reviewCaseId,
+                                 Long reviewItemId,
+                                 Long operatorUserId,
+                                 String materialUri,
+                                 List<String> allowedCameraIds,
+                                 String reason) {
+    }
+
+    record ReviewPlaybackAccess(Long reviewCaseId,
+                                Long reviewItemId,
+                                Long operatorUserId,
+                                String cameraId,
+                                String materialUri,
+                                String playbackUrl,
+                                String decision,
+                                List<String> deniedReasons,
+                                ReviewMediaAccessAuditEntry audit) {
     }
 
     record ReviewCameraPermissionRequest(Long reviewCaseId,
