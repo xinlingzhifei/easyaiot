@@ -226,12 +226,44 @@ export function scanTextQuality(files) {
   };
 }
 
+export function scanWebTypecheckGate(files) {
+  const packageFile = files.find((file) => normalizePath(file.path || '') === 'WEB/package.json');
+  if (!packageFile) {
+    return { ok: true, blockers: [] };
+  }
+  const path = 'WEB/package.json';
+  const group = releaseGroupFor(path);
+  const blockers = [];
+  let parsed;
+  try {
+    parsed = JSON.parse(String(packageFile.content ?? ''));
+  } catch {
+    blockers.push({ path, group, reason: 'web_typecheck_gate_invalid_package_json' });
+    return { ok: false, blockers };
+  }
+  const typecheck = parsed?.scripts?.['type:check'];
+  const typecheckCommand = String(typecheck || '');
+  if (!hasText(typecheck)) {
+    blockers.push({ path, group, reason: 'web_typecheck_gate_missing' });
+  } else if (!typecheckCommand.includes('vue-tsc') || !typecheckCommand.includes('--noEmit')) {
+    blockers.push({ path, group, reason: 'web_typecheck_gate_weakened' });
+  }
+  return {
+    ok: blockers.length === 0,
+    blockers,
+  };
+}
+
 function _lineNumberAt(content, index) {
   return content.slice(0, index).split(/\r?\n/).length;
 }
 
 function _looksBinaryPath(path) {
   return /\.(png|jpe?g|gif|webp|ico|mp4|mov|avi|zip|gz|tar|7z|pdf)$/i.test(path);
+}
+
+function hasText(value) {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 function readStatusText(args) {
@@ -304,8 +336,11 @@ function runCli() {
   const entriesForTextScan = args.includes('--require-clean')
     ? mergeEntries(result.entries, readTrackedReleaseEntries())
     : result.entries;
-  const textResult = scanTextQuality(readReleaseTextFiles(entriesForTextScan));
+  const releaseTextFiles = readReleaseTextFiles(entriesForTextScan);
+  const textResult = scanTextQuality(releaseTextFiles);
+  const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
   result.blockers.push(...textResult.blockers);
+  result.blockers.push(...webTypecheckResult.blockers);
   result.ok = result.blockers.length === 0;
 
   if (!result.ok) {

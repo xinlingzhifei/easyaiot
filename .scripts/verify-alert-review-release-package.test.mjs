@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   evaluateStatus,
   releaseEntriesForTrackedPaths,
+  scanWebTypecheckGate,
   scanTextQuality,
 } from './verify-alert-review-release-package.mjs';
 
@@ -174,6 +175,36 @@ const cleanTextScan = scanTextQuality([
   },
 ]);
 assert.equal(cleanTextScan.ok, true);
+
+const typecheckGateScan = scanWebTypecheckGate([
+  {
+    path: 'WEB/package.json',
+    content: JSON.stringify({
+      scripts: {
+        'type:check': 'cross-env NODE_OPTIONS=--max-old-space-size=8192 vue-tsc --noEmit --skipLibCheck',
+      },
+    }),
+  },
+]);
+assert.equal(typecheckGateScan.ok, true);
+
+const missingTypecheckGateScan = scanWebTypecheckGate([
+  {
+    path: 'WEB/package.json',
+    content: JSON.stringify({ scripts: { build: 'vite build' } }),
+  },
+]);
+assert.equal(missingTypecheckGateScan.ok, false);
+assert.equal(missingTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_missing');
+
+const weakenedTypecheckGateScan = scanWebTypecheckGate([
+  {
+    path: 'WEB/package.json',
+    content: JSON.stringify({ scripts: { 'type:check': 'tsc --noEmit' } }),
+  },
+]);
+assert.equal(weakenedTypecheckGateScan.ok, false);
+assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_weakened');
 
 const requireClean = evaluateStatus(`
 A  WEB/src/views/alert/components/AlertReviewWorkbench.vue
