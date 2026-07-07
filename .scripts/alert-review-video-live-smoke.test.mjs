@@ -23,6 +23,7 @@ const parsed = parseArgs([
   '--alert-time=2026-07-05 10:00:00',
   '--time-range=120',
   '--source-alert-id=alert-001',
+  '--record-drift-retention-hours=24',
 ]);
 assert.equal(parsed.alertRecordQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.recordCoverageQueryUrl, 'http://video.local/video/record/availability');
@@ -33,6 +34,7 @@ assert.equal(parsed.cameraId, 'camera-01');
 assert.equal(parsed.alertTime, '2026-07-05 10:00:00');
 assert.equal(parsed.timeRangeSeconds, 120);
 assert.equal(parsed.sourceAlertId, 'alert-001');
+assert.equal(parsed.recordDriftRetentionHours, 24);
 
 const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL: 'http://env/video/record/availability',
@@ -41,10 +43,12 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_RECORD_EXPORT_URL: 'http://env/video/record/export',
   YFEIEYE_VIDEO_SMOKE_DEVICE_ID: 'env-device',
   YFEIEYE_VIDEO_SMOKE_ALERT_TIME: '2026-07-05 11:00:00',
+  YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS: '72',
 });
 assert.equal(fromEnv.deviceId, 'env-device');
 assert.equal(fromEnv.cameraId, 'env-device');
 assert.equal(fromEnv.timeRangeSeconds, 300);
+assert.equal(fromEnv.recordDriftRetentionHours, 72);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --alert-record-query-url or YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL',
@@ -53,6 +57,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --record-export-url or YFEIEYE_VIDEO_RECORD_EXPORT_URL',
   'missing --device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID',
   'missing --alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
+  'missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
 ]);
 
 const availabilityUrl = buildAvailabilityUrl('http://video.local/video/record/availability', parsed);
@@ -102,6 +107,24 @@ const fakeFetch = async (url, init = {}) => {
   calls.push({ url: String(url), init });
   if (String(url).includes('/space/device/device-01')) {
     return jsonResponse({ code: 0, data: { id: 7, device_id: 'device-01' } });
+  }
+  if (String(url).includes('/space/7/videos/drift')) {
+    const requestUrl = new URL(String(url));
+    assert.equal(requestUrl.searchParams.get('device_id'), 'device-01');
+    assert.equal(requestUrl.searchParams.get('retention_hours'), '24');
+    return jsonResponse({
+      code: 0,
+      data: {
+        space_id: 7,
+        device_id: 'device-01',
+        summary: {
+          record_count: 3,
+          issue_count: 0,
+          issue_reasons: {},
+          healthy: true,
+        },
+      },
+    });
   }
   if (String(url).endsWith('/manifests/review-export-1.json')) {
     return jsonResponse({
@@ -165,6 +188,7 @@ assert.deepEqual(smoke.checkpoints, [
   'alert_record_query_ok',
   'record_coverage_query_ok',
   'record_base_space_resolved',
+  'record_storage_drift_patrol_ok',
   'record_export_posted',
   'record_export_download_ready',
   'record_export_download_probed',
@@ -173,7 +197,32 @@ assert.deepEqual(smoke.checkpoints, [
 assert.equal(smoke.exportResult.exportId, 'review-export-1');
 assert.equal(smoke.exportResult.downloadUrl, '/downloads/review-export-1.mp4');
 assert.equal(smoke.exportResult.manifestUrl, '/manifests/review-export-1.json');
-assert.equal(calls.length, 7);
+assert.equal(smoke.storageDrift.summary.record_count, 3);
+assert.equal(calls.length, 8);
+
+const failedDriftFetch = async (url, init = {}) => {
+  if (String(url).includes('/space/7/videos/drift')) {
+    return jsonResponse({
+      code: 0,
+      data: {
+        summary: {
+          record_count: 3,
+          issue_count: 2,
+          issue_reasons: {
+            file_missing: 1,
+            disk_full: 1,
+          },
+          healthy: false,
+        },
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: failedDriftFetch }),
+  /record storage drift patrol reported 2 issue\(s\): file_missing=1, disk_full=1/,
+);
 
 const failedDownloadFetch = async (url, init = {}) => {
   if (String(url).endsWith('/downloads/review-export-1.mp4')) {

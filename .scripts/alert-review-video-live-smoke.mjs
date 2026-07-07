@@ -23,6 +23,7 @@ export function parseArgs(args, env = process.env) {
     timeoutMs: Number(env.YFEIEYE_VIDEO_SMOKE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
     exportPollAttempts: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_ATTEMPTS || DEFAULT_EXPORT_POLL_ATTEMPTS),
     exportPollIntervalMs: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_INTERVAL_MS || DEFAULT_EXPORT_POLL_INTERVAL_MS),
+    recordDriftRetentionHours: Number(env.YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS),
     help: false,
   };
 
@@ -59,6 +60,8 @@ export function parseArgs(args, env = process.env) {
       parsed.exportPollAttempts = Number(arg.slice('--export-poll-attempts='.length));
     } else if (arg.startsWith('--export-poll-interval-ms=')) {
       parsed.exportPollIntervalMs = Number(arg.slice('--export-poll-interval-ms='.length));
+    } else if (arg.startsWith('--record-drift-retention-hours=')) {
+      parsed.recordDriftRetentionHours = Number(arg.slice('--record-drift-retention-hours='.length));
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -81,6 +84,9 @@ export function parseArgs(args, env = process.env) {
   }
   if (!Number.isFinite(parsed.exportPollIntervalMs) || parsed.exportPollIntervalMs < 0) {
     parsed.exportPollIntervalMs = DEFAULT_EXPORT_POLL_INTERVAL_MS;
+  }
+  if (!Number.isFinite(parsed.recordDriftRetentionHours) || parsed.recordDriftRetentionHours <= 0) {
+    parsed.recordDriftRetentionHours = Number.NaN;
   }
 
   return parsed;
@@ -105,6 +111,9 @@ export function requiredOptionErrors(options) {
   }
   if (!hasText(options.alertTime)) {
     errors.push('missing --alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME');
+  }
+  if (!Number.isFinite(options.recordDriftRetentionHours) || options.recordDriftRetentionHours <= 0) {
+    errors.push('missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS');
   }
   return errors;
 }
@@ -216,6 +225,12 @@ export async function runSmoke(options, dependencies = {}) {
     throw new Error('record base URL did not resolve a record space for the smoke device');
   }
   checkpoints.push('record_base_space_resolved');
+  const recordStorageDrift = await fetchJson(fetchImpl, buildRecordDriftUrl(options.recordBaseUrl, spaceData, options), {
+    timeoutMs: options.timeoutMs,
+    label: 'record storage drift patrol',
+  });
+  const storageDrift = validateStorageDriftReport(recordStorageDrift);
+  checkpoints.push('record_storage_drift_patrol_ok');
 
   const exportResponse = await fetchJson(fetchImpl, options.recordExportUrl, {
     timeoutMs: options.timeoutMs,
@@ -241,6 +256,7 @@ export async function runSmoke(options, dependencies = {}) {
     alertRecord: { segment: alertSegment },
     coverage: { segment: coverageSegment },
     recordSpace: spaceData,
+    storageDrift,
     exportResult: readyExportResult,
   };
 }
@@ -408,6 +424,46 @@ function buildExportStatusUrl(recordExportUrl, exportId) {
   return `${stripTrailingSlash(recordExportUrl)}/${encodeURIComponent(exportId)}`;
 }
 
+function buildRecordDriftUrl(recordBaseUrl, spaceData, options) {
+  const spaceId = firstText(spaceData.id, spaceData.space_id, spaceData.spaceId);
+  const url = new URL(`${stripTrailingSlash(recordBaseUrl)}/space/${encodeURIComponent(spaceId)}/videos/drift`);
+  url.searchParams.set('device_id', options.deviceId);
+  url.searchParams.set('retention_hours', String(options.recordDriftRetentionHours));
+  return url.toString();
+}
+
+function validateStorageDriftReport(payload) {
+  const data = responseData(payload);
+  const summary = data.summary && typeof data.summary === 'object' ? data.summary : {};
+  const recordCount = numberValue(firstPresent(summary.record_count, summary.recordCount));
+  const issueCount = numberValue(firstPresent(summary.issue_count, summary.issueCount));
+  if (!Number.isFinite(recordCount) || recordCount <= 0) {
+    throw new Error('record storage drift patrol returned no checked recording metadata');
+  }
+  if (!Number.isFinite(issueCount)) {
+    throw new Error('record storage drift patrol response missing issue_count');
+  }
+  if (issueCount > 0 || summary.healthy === false) {
+    throw new Error(`record storage drift patrol reported ${issueCount} issue(s): ${formatIssueReasons(summary.issue_reasons || summary.issueReasons)}`);
+  }
+  return data;
+}
+
+function formatIssueReasons(issueReasons) {
+  if (!issueReasons || typeof issueReasons !== 'object') {
+    return 'unknown';
+  }
+  const entries = Object.entries(issueReasons)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([reason, count]) => `${reason}=${count}`);
+  return entries.length ? entries.join(', ') : 'unknown';
+}
+
+function numberValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : Number.NaN;
+}
+
 function delay(ms) {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }
@@ -458,11 +514,11 @@ function printHelp() {
   --record-base-url=http://VIDEO/video/record \\
   --record-export-url=http://VIDEO/video/record/export \\
   --device-id=DEVICE_ID --alert-time="YYYY-MM-DD HH:mm:ss" [--camera-id=CAMERA_ID] \\
-  [--export-poll-attempts=5] [--export-poll-interval-ms=1000]
+  --record-drift-retention-hours=24 [--export-poll-attempts=5] [--export-poll-interval-ms=1000]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
-record-base space lookup, export POST, export download readiness, a HEAD probe
-against the resolved download URL, and manifest v2 reproducibility fields
+record-base space lookup, recording DB/disk drift patrol, export POST, export
+download readiness, a HEAD probe against the resolved download URL, and manifest v2 reproducibility fields
 (ffmpeg command hash, source hashes, clip params, concat order, output hashes).
 The smoke must use a real device with real recording metadata; no mock server
 is started.`);

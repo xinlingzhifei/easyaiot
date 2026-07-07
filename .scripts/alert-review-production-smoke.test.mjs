@@ -28,6 +28,7 @@ const parsed = parseArgs([
   '--video-device-id=device-01',
   '--video-camera-id=camera-01',
   '--video-alert-time=2026-07-05 10:00:00',
+  '--video-record-drift-retention-hours=24',
   '--player-workbench-url=http://web.local/yfeieye/alert/review',
   '--player-review-row-text=RV-20260705-001',
   '--player-action-testid=alert-review-detail-seek',
@@ -46,6 +47,7 @@ assert.deepEqual(parsed.devicePlaybackDeniedCameraIds, ['camera-02']);
 assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
+assert.equal(parsed.videoRecordDriftRetentionHours, 24);
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.allowLocalEndpoints, false);
 
@@ -65,6 +67,7 @@ const localEndpointsAllowed = parseArgs([
   '--video-record-export-url=http://127.0.0.1:6000/video/record/export',
   '--video-device-id=device-01',
   '--video-alert-time=2026-07-05 10:00:00',
+  '--video-record-drift-retention-hours=24',
   '--player-workbench-url=http://127.0.0.1:5173/yfeieye/alert/review',
   '--player-review-row-text=RV-20260705-001',
   '--player-expected-seek-time=2026-07-05T10:00:30',
@@ -88,6 +91,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_RECORD_EXPORT_URL: 'https://video.env/video/record/export',
   YFEIEYE_VIDEO_SMOKE_DEVICE_ID: 'env-device',
   YFEIEYE_VIDEO_SMOKE_ALERT_TIME: '2026-07-05 11:00:00',
+  YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS: '72',
   YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://web.env/review',
   YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT: 'RV-ENV',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:10',
@@ -100,6 +104,7 @@ assert.equal(fromEnv.deviceBaseUrl, 'https://device.env/admin-api');
 assert.deepEqual(fromEnv.devicePlaybackAllowedCameraIds, ['env-camera-allow']);
 assert.deepEqual(fromEnv.devicePlaybackDeniedCameraIds, ['env-camera-deny']);
 assert.equal(fromEnv.videoDeviceId, 'env-device');
+assert.equal(fromEnv.videoRecordDriftRetentionHours, 72);
 assert.equal(fromEnv.playerExpectedOffsetSeconds, 10);
 assert.equal(fromEnv.evidenceOutputFile, 'artifacts/env-smoke.json');
 
@@ -116,6 +121,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --video-record-export-url or YFEIEYE_VIDEO_RECORD_EXPORT_URL',
   'missing --video-device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID',
   'missing --video-alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
+  'missing --video-record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
   'missing --player-workbench-url or YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
   'missing --player-review-row-text or YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT',
   'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME',
@@ -136,6 +142,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--video-record-export-url=http://localhost:6000/video/record/export',
   '--video-device-id=device-01',
   '--video-alert-time=2026-07-05 10:00:00',
+  '--video-record-drift-retention-hours=24',
   '--player-workbench-url=http://localhost:5173/mock-workbench',
   '--player-review-row-text=RV-20260705-001',
   '--player-expected-seek-time=2026-07-05T10:00:30',
@@ -167,6 +174,7 @@ assert.ok(steps[0].args.includes('--playback-denied-camera-ids=camera-02'));
 assert.ok(steps[0].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[1].args.includes('--record-export-url=http://video.local/video/record/export'));
 assert.ok(steps[1].args.includes('--camera-id=camera-01'));
+assert.ok(steps[1].args.includes('--record-drift-retention-hours=24'));
 assert.ok(steps[2].args.includes('--expected-offset-seconds=30'));
 assert.equal(
   formatStepCommand(steps[0]),
