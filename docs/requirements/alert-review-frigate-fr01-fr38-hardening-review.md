@@ -188,6 +188,10 @@ Manifest verifier and HMAC key rotation:
 ## Latest Local Verification
 
 2026-07-03 to 2026-07-07 local checks:
+- Frontend full type baseline passed from the packaged HEAD tree:
+  `pnpm --pm-on-fail=ignore --dir WEB type:check`
+  Result: the first `corepack pnpm --dir WEB type:check` attempt was blocked by local pnpm shim version `11.5.2` vs project `packageManager` `11.3.0`; rerunning with the documented pnpm `--pm-on-fail=ignore` escape executed `cross-env NODE_OPTIONS=--max-old-space-size=8192 vue-tsc --noEmit --skipLibCheck` and exited 0 after a long silent run.
+
 - FR-32 production smoke orchestrator passed after the RED failure showed no one-command release gate existed for `LiveDevice -> LiveVideo -> LivePlayer`:
   `node .scripts/alert-review-production-smoke.test.mjs`
   `node .scripts/verify-alert-review-release-package.test.mjs`
