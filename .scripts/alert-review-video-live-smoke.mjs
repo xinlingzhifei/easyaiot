@@ -24,12 +24,15 @@ export function parseArgs(args, env = process.env) {
     exportPollAttempts: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_ATTEMPTS || DEFAULT_EXPORT_POLL_ATTEMPTS),
     exportPollIntervalMs: Number(env.YFEIEYE_VIDEO_SMOKE_EXPORT_POLL_INTERVAL_MS || DEFAULT_EXPORT_POLL_INTERVAL_MS),
     recordDriftRetentionHours: Number(env.YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS),
+    allowLocalEndpoints: parseBoolean(env.YFEIEYE_VIDEO_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
     help: false,
   };
 
   for (const arg of args) {
     if (arg === '--help' || arg === '-h') {
       parsed.help = true;
+    } else if (arg === '--allow-local-endpoints') {
+      parsed.allowLocalEndpoints = true;
     } else if (arg.startsWith('--alert-record-query-url=')) {
       parsed.alertRecordQueryUrl = arg.slice('--alert-record-query-url='.length);
     } else if (arg.startsWith('--record-coverage-query-url=')) {
@@ -114,6 +117,12 @@ export function requiredOptionErrors(options) {
   }
   if (!Number.isFinite(options.recordDriftRetentionHours) || options.recordDriftRetentionHours <= 0) {
     errors.push('missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS');
+  }
+  if (!options.allowLocalEndpoints) {
+    requireReleaseEndpoint(errors, '--alert-record-query-url', options.alertRecordQueryUrl);
+    requireReleaseEndpoint(errors, '--record-coverage-query-url', options.recordCoverageQueryUrl);
+    requireReleaseEndpoint(errors, '--record-base-url', options.recordBaseUrl);
+    requireReleaseEndpoint(errors, '--record-export-url', options.recordExportUrl);
   }
   return errors;
 }
@@ -518,6 +527,44 @@ function stripTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
 
+function requireReleaseEndpoint(errors, optionName, value) {
+  if (!hasText(value) || !looksLocalOrMockEndpoint(value)) {
+    return;
+  }
+  errors.push(`VIDEO live smoke endpoint ${optionName} must not use a local/mock URL without --allow-local-endpoints`);
+}
+
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+  return !['0', 'false', 'no'].includes(String(value).trim().toLowerCase());
+}
+
+function looksLocalOrMockEndpoint(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return false;
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return true;
+  }
+  const hostname = String(url.hostname || '').toLowerCase();
+  return url.protocol === 'file:'
+    || url.protocol === 'mock:'
+    || hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || hostname === '0.0.0.0'
+    || hostname.endsWith('.local')
+    || hostname.includes('mock')
+    || raw.toLowerCase().includes('/mock');
+}
+
 function summarizePayload(payload) {
   const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
   return text.length > 500 ? `${text.slice(0, 500)}...` : text;
@@ -530,14 +577,16 @@ function printHelp() {
   --record-base-url=http://VIDEO/video/record \\
   --record-export-url=http://VIDEO/video/record/export \\
   --device-id=DEVICE_ID --alert-time="YYYY-MM-DD HH:mm:ss" [--camera-id=CAMERA_ID] \\
-  --record-drift-retention-hours=24 [--export-poll-attempts=5] [--export-poll-interval-ms=1000]
+  --record-drift-retention-hours=24 [--export-poll-attempts=5] [--export-poll-interval-ms=1000] \\
+  [--allow-local-endpoints]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
 record-base space lookup, recording DB/disk drift patrol, export POST, export
 download readiness, a HEAD probe against the resolved download URL, and manifest v2 reproducibility fields
 (ffmpeg command hash, source hashes, clip params, concat order, output hashes).
 The smoke must use a real device with real recording metadata; no mock server
-is started.`);
+is started. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
+is supplied for co-located real-service smoke.`);
 }
 
 async function runCli() {

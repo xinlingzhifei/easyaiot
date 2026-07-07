@@ -13,7 +13,7 @@ import {
 } from './verify-alert-review-release-package.mjs';
 
 const parsed = parseArgs([
-  '--device-base-url=http://device.local/api',
+  '--device-base-url=https://device.release.example/api',
   '--token=token-1',
   '--operator-user-id=9001',
   '--device-alert-time=2026-07-05T10:00:00',
@@ -23,15 +23,15 @@ const parsed = parseArgs([
   '--device-playback-review-item-id=1001',
   '--device-playback-review-case-id=2001',
   '--device-playback-material-uri=playback-url.mp4',
-  '--video-alert-record-query-url=http://video.local/video/record/availability',
-  '--video-record-coverage-query-url=http://video.local/video/record/availability',
-  '--video-record-base-url=http://video.local/video/record',
-  '--video-record-export-url=http://video.local/video/record/export',
+  '--video-alert-record-query-url=https://video.release.example/video/record/availability',
+  '--video-record-coverage-query-url=https://video.release.example/video/record/availability',
+  '--video-record-base-url=https://video.release.example/video/record',
+  '--video-record-export-url=https://video.release.example/video/record/export',
   '--video-device-id=device-01',
   '--video-camera-id=camera-01',
   '--video-alert-time=2026-07-05 10:00:00',
   '--video-record-drift-retention-hours=24',
-  '--player-workbench-url=http://web.local/yfeieye/alert/review?token=command-secret&signature=cmd#frag',
+  '--player-workbench-url=https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag',
   '--player-review-row-text=RV-20260705-001',
   '--player-action-testid=alert-review-detail-seek',
   '--player-expected-seek-time=2026-07-05T10:00:30',
@@ -46,7 +46,7 @@ const parsed = parseArgs([
   '--player-wait-text=线索复核工作台',
 ], {});
 
-assert.equal(parsed.deviceBaseUrl, 'http://device.local/api');
+assert.equal(parsed.deviceBaseUrl, 'https://device.release.example/api');
 assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.deviceAlertTime, '2026-07-05T10:00:00');
@@ -58,7 +58,7 @@ assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.videoRecordDriftRetentionHours, 24);
-assert.equal(parsed.playerWorkbenchUrl, 'http://web.local/yfeieye/alert/review?token=command-secret&signature=cmd#frag');
+assert.equal(parsed.playerWorkbenchUrl, 'https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag');
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
@@ -96,6 +96,9 @@ const localEndpointsAllowed = parseArgs([
 ], {});
 assert.equal(localEndpointsAllowed.allowLocalEndpoints, true);
 assert.deepEqual(requiredOptionErrors(localEndpointsAllowed), []);
+assert.ok(
+  buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[1].args.includes('--allow-local-endpoints'),
+);
 
 const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_BASE_URL: 'https://device.env/admin-api',
@@ -209,7 +212,7 @@ assert.deepEqual(steps.map((step) => step.name), [
 ]);
 assert.deepEqual(steps[0].args.slice(0, 5), [
   '.scripts/alert-review-device-integration-smoke.mjs',
-  '--device-base-url=http://device.local/api',
+  '--device-base-url=https://device.release.example/api',
   '--token=token-1',
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
@@ -219,7 +222,7 @@ assert.ok(steps[0].args.includes('--playback-denied-camera-ids=camera-02'));
 assert.ok(steps[0].args.includes('--playback-review-item-id=1001'));
 assert.ok(steps[0].args.includes('--playback-review-case-id=2001'));
 assert.ok(steps[0].args.includes('--playback-material-uri=playback-url.mp4'));
-assert.ok(steps[1].args.includes('--record-export-url=http://video.local/video/record/export'));
+assert.ok(steps[1].args.includes('--record-export-url=https://video.release.example/video/record/export'));
 assert.ok(steps[1].args.includes('--camera-id=camera-01'));
 assert.ok(steps[1].args.includes('--record-drift-retention-hours=24'));
 assert.ok(steps[2].args.includes('--action-testid=alert-review-detail-seek'));
@@ -230,7 +233,7 @@ assert.ok(steps[4].args.includes('--action-testid=alert-review-case-timeline-see
 assert.ok(steps[4].args.includes('--expected-offset-seconds=0'));
 assert.equal(
   formatStepCommand(steps[0]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=http://device.local/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
 );
 
 const calls = [];
@@ -359,7 +362,7 @@ assert.equal(evidenceReport.durationMs, 3000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
 assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed']);
 assert.equal(evidenceReport.steps[0].command.includes('--token=***'), true);
-assert.equal(evidenceReport.steps[2].command.includes('--workbench-url=http://web.local/yfeieye/alert/review '), true);
+assert.equal(evidenceReport.steps[2].command.includes('--workbench-url=https://web.release.example/yfeieye/alert/review '), true);
 assert.deepEqual(evidenceReport.steps[0].summary, {
   checkpoints: ['ingest_created', 'review_rule_saved', 'record_coverage_synced', 'evidence_download_audited'],
   playback: {

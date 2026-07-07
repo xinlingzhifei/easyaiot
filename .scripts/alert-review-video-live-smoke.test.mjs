@@ -25,6 +25,7 @@ const parsed = parseArgs([
   '--time-range=120',
   '--source-alert-id=alert-001',
   '--record-drift-retention-hours=24',
+  '--allow-local-endpoints',
 ]);
 assert.equal(parsed.alertRecordQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.recordCoverageQueryUrl, 'http://video.local/video/record/availability');
@@ -36,6 +37,7 @@ assert.equal(parsed.alertTime, '2026-07-05 10:00:00');
 assert.equal(parsed.timeRangeSeconds, 120);
 assert.equal(parsed.sourceAlertId, 'alert-001');
 assert.equal(parsed.recordDriftRetentionHours, 24);
+assert.equal(parsed.allowLocalEndpoints, true);
 
 const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL: 'http://env/video/record/availability',
@@ -50,6 +52,7 @@ assert.equal(fromEnv.deviceId, 'env-device');
 assert.equal(fromEnv.cameraId, 'env-device');
 assert.equal(fromEnv.timeRangeSeconds, 300);
 assert.equal(fromEnv.recordDriftRetentionHours, 72);
+assert.equal(fromEnv.allowLocalEndpoints, false);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --alert-record-query-url or YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL',
@@ -60,6 +63,32 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
   'missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
 ]);
+
+assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
+  '--record-coverage-query-url=http://video.mock/video/record/availability',
+  '--record-base-url=file:///tmp/video/record',
+  '--record-export-url=http://localhost:6000/video/record/export',
+  '--device-id=device-01',
+  '--alert-time=2026-07-05 10:00:00',
+  '--record-drift-retention-hours=24',
+], {})), [
+  'VIDEO live smoke endpoint --alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
+  'VIDEO live smoke endpoint --record-coverage-query-url must not use a local/mock URL without --allow-local-endpoints',
+  'VIDEO live smoke endpoint --record-base-url must not use a local/mock URL without --allow-local-endpoints',
+  'VIDEO live smoke endpoint --record-export-url must not use a local/mock URL without --allow-local-endpoints',
+]);
+
+assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
+  '--record-coverage-query-url=http://video.mock/video/record/availability',
+  '--record-base-url=file:///tmp/video/record',
+  '--record-export-url=http://localhost:6000/video/record/export',
+  '--device-id=device-01',
+  '--alert-time=2026-07-05 10:00:00',
+  '--record-drift-retention-hours=24',
+  '--allow-local-endpoints',
+], {})), []);
 
 const availabilityUrl = buildAvailabilityUrl('http://video.local/video/record/availability', parsed);
 assert.match(availabilityUrl, /^http:\/\/video\.local\/video\/record\/availability\?/);

@@ -199,6 +199,7 @@ export function buildSmokeSteps(options, runtime = {}) {
         hasText(options.videoCameraId) ? `--camera-id=${options.videoCameraId}` : '',
         `--alert-time=${options.videoAlertTime}`,
         `--record-drift-retention-hours=${options.videoRecordDriftRetentionHours}`,
+        options.allowLocalEndpoints ? '--allow-local-endpoints' : '',
       ]),
     },
     ...buildPlayerSmokeSteps(options, nodePath, scriptDir),
@@ -593,11 +594,13 @@ function looksLocalOrMockEndpoint(value) {
   }
   const hostname = String(url.hostname || '').toLowerCase();
   return url.protocol === 'file:'
+    || url.protocol === 'mock:'
     || hostname === 'localhost'
     || hostname === '127.0.0.1'
     || hostname === '::1'
     || hostname === '[::1]'
     || hostname === '0.0.0.0'
+    || hostname.endsWith('.local')
     || hostname.includes('mock')
     || raw.toLowerCase().includes('/mock');
 }
