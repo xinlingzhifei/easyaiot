@@ -507,6 +507,26 @@ export interface AlertReviewMediaAccessAuditEntry {
   metadata: Record<string, any>
 }
 
+export interface AlertReviewPlaybackUrlRequest {
+  reviewCaseId?: number
+  operatorUserId?: number
+  materialUri?: string
+  allowedCameraIds?: string[]
+  reason?: string
+}
+
+export interface AlertReviewPlaybackAccess {
+  reviewCaseId?: number
+  reviewItemId?: number
+  operatorUserId?: number
+  cameraId?: string
+  materialUri?: string
+  playbackUrl?: string
+  decision: string
+  deniedReasons: string[]
+  audit?: AlertReviewMediaAccessAuditEntry
+}
+
 export interface AlertReviewRuleReplayRequest {
   ruleCode: string
   sourceSystem?: string
@@ -794,6 +814,13 @@ export function auditAlertReviewItemMediaAccess(reviewItemId: number, data?: Ale
   return defHttp.post<AlertReviewMediaAccessAuditEntry>({
     url: `${Api.Items}/${reviewItemId}/media-access/audit`,
     data: data ?? {},
+  })
+}
+
+export function prepareAlertReviewPlaybackUrl(reviewItemId: number, params?: AlertReviewPlaybackUrlRequest) {
+  return defHttp.get<AlertReviewPlaybackAccess>({
+    url: `${Api.Items}/${reviewItemId}/playback-url`,
+    params: params ?? {},
   })
 }
 

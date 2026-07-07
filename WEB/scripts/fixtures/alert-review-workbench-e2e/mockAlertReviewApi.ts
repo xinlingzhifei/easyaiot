@@ -412,6 +412,32 @@ export async function auditAlertReviewItemMediaAccess(reviewItemId: number, payl
   }
 }
 
+export async function prepareAlertReviewPlaybackUrl(reviewItemId: number, params?: unknown) {
+  record('prepareAlertReviewPlaybackUrl', { reviewItemId, params })
+  return {
+    reviewCaseId: (params as any)?.reviewCaseId,
+    reviewItemId,
+    operatorUserId: (params as any)?.operatorUserId,
+    cameraId: 'cam-east-gate',
+    materialUri: (params as any)?.materialUri,
+    playbackUrl: (params as any)?.materialUri,
+    decision: 'granted',
+    deniedReasons: [],
+    audit: {
+      reviewCaseId: (params as any)?.reviewCaseId,
+      reviewItemId,
+      operatorUserId: (params as any)?.operatorUserId,
+      cameraId: 'cam-east-gate',
+      materialUri: (params as any)?.materialUri,
+      actionType: 'playback',
+      decision: 'granted',
+      deniedReasons: [],
+      happenedAt: '2026-07-02T08:04:30',
+      metadata: { source: 'e2e-playback-url' },
+    },
+  }
+}
+
 export async function summarizeAlertReviewCase(reviewCaseId: number, operatorUserId?: number) {
   record('summarizeAlertReviewCase', { reviewCaseId, operatorUserId })
   return {

@@ -54,6 +54,7 @@ import {
   markAlertReviewReviewed,
   markAlertReviewUserStatus,
   mergeAlertReviewCases,
+  prepareAlertReviewPlaybackUrl,
   previewAlertReviewRuleSuggestion,
   replayAlertReviewRule,
   reconcileAlertReviewRuntime,
@@ -1008,20 +1009,26 @@ async function openEvidence(evidence: AlertReviewEvidence) {
     createMessage.warn('证据地址为空')
     return
   }
-  if (!(await guardWorkbenchMediaAccess({
-    reviewItemId: evidence.reviewItemId,
-    materialUri: evidence.materialUri,
-  })))
-    return
   if (evidence.materialType === 'snapshot') {
+    if (!(await guardWorkbenchMediaAccess({
+      reviewItemId: evidence.reviewItemId,
+      materialUri: evidence.materialUri,
+    })))
+      return
     emit('viewImage', { image_url: evidence.materialUri })
     return
   }
+  const prepared = await prepareWorkbenchPlayback({
+    reviewItemId: evidence.reviewItemId,
+    materialUri: evidence.materialUri,
+  })
+  if (!prepared)
+    return
   emit('viewVideo', {
     id: evidence.sourceAlertId,
     device_id: selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: evidence.happenedAt,
-    record_path: evidence.materialUri,
+    record_path: prepared.recordPath,
   })
 }
 
@@ -1030,23 +1037,30 @@ async function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
     createMessage.warn('material uri is empty')
     return
   }
-  if (!(await guardWorkbenchMediaAccess({
-    reviewItemId: entry.reviewItemId,
-    cameraId: entry.cameraId,
-    materialUri: entry.materialUri,
-  })))
-    return
   if (entry.materialType === 'snapshot') {
+    if (!(await guardWorkbenchMediaAccess({
+      reviewItemId: entry.reviewItemId,
+      cameraId: entry.cameraId,
+      materialUri: entry.materialUri,
+    })))
+      return
     emit('viewImage', { image_url: entry.materialUri })
     return
   }
+  const prepared = await prepareWorkbenchPlayback({
+    reviewItemId: entry.reviewItemId,
+    cameraId: entry.cameraId,
+    materialUri: entry.materialUri,
+  })
+  if (!prepared)
+    return
   emit('viewVideo', {
     id: entry.sourceAlertId,
     device_id: entry.cameraId || selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.seekTime || entry.happenedAt,
     seek_time: entry.seekTime || entry.happenedAt,
     record_start_time: reviewSegment.value?.startTime,
-    record_path: entry.materialUri,
+    record_path: prepared.recordPath,
   })
 }
 
@@ -1071,16 +1085,17 @@ async function openUnifiedTimelineEntry(entry: UnifiedTimelineEntry) {
     createMessage.warn('record uri is empty')
     return
   }
-  if (!(await guardWorkbenchMediaAccess({
+  const prepared = await prepareWorkbenchPlayback({
     reviewItemId: selectedItem.value?.id,
     materialUri: entry.uri,
-  })))
+  })
+  if (!prepared)
     return
   emit('viewVideo', {
     device_id: selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.startTime,
     seek_time: entry.startTime,
-    record_path: entry.uri,
+    record_path: prepared.recordPath,
   })
 }
 
@@ -1089,19 +1104,27 @@ async function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
     createMessage.warn('material uri is empty')
     return
   }
-  if (!(await guardCaseTimelineMediaAccess(entry)))
-    return
   if (entry.materialType === 'snapshot') {
+    if (!(await guardCaseTimelineMediaAccess(entry)))
+      return
     emit('viewImage', { image_url: entry.materialUri })
     return
   }
+  const prepared = await prepareWorkbenchPlayback({
+    reviewCaseId: entry.reviewCaseId,
+    reviewItemId: entry.reviewItemId,
+    cameraId: entry.cameraId,
+    materialUri: entry.materialUri,
+  })
+  if (!prepared)
+    return
   emit('viewVideo', {
     id: entry.sourceAlertId,
     device_id: entry.cameraId || selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.happenedAt,
     seek_time: entry.happenedAt,
     record_start_time: reviewSegment.value?.startTime || activeCase.value?.startTime,
-    record_path: entry.materialUri,
+    record_path: prepared.recordPath,
   })
 }
 
@@ -1145,22 +1168,53 @@ async function guardWorkbenchMediaAccess(target: {
   }
 }
 
+async function prepareWorkbenchPlayback(target: {
+  reviewCaseId?: number
+  reviewItemId?: number
+  cameraId?: string
+  materialUri?: string
+}) {
+  const reviewCaseId = target.reviewCaseId || activeCase.value?.id
+  const reviewItemId = target.reviewItemId || selectedItem.value?.id
+  if (!reviewItemId || !target.materialUri)
+    return null
+  try {
+    const playback = await prepareAlertReviewPlaybackUrl(reviewItemId, {
+      reviewCaseId,
+      materialUri: target.materialUri,
+      reason: 'workbench playback',
+    })
+    if (playback.decision !== 'granted' || !playback.playbackUrl) {
+      createMessage.error(playback.deniedReasons?.join(', ') || 'Media access denied')
+      return null
+    }
+    const prepared = { recordPath: playback.playbackUrl }
+    target.materialUri = prepared.recordPath
+    return prepared
+  }
+  catch (error: any) {
+    createMessage.error(error?.message || 'Media access denied')
+    return null
+  }
+}
+
 async function openCoverageSegment(segment: AlertReviewCoverageSegment) {
   if (!segment.recordUri) {
     createMessage.warn('record uri is empty')
     return
   }
-  if (!(await guardWorkbenchMediaAccess({
+  const prepared = await prepareWorkbenchPlayback({
     reviewItemId: selectedItem.value?.id,
     materialUri: segment.recordUri,
-  })))
+  })
+  if (!prepared)
     return
   emit('viewVideo', {
     device_id: selectedItem.value?.cameraId || selectedItem.value?.deviceId,
     time: segment.startTime,
     seek_time: segment.startTime,
     record_start_time: segment.startTime,
-    record_path: segment.recordUri,
+    record_path: prepared.recordPath,
   })
 }
 

@@ -161,6 +161,7 @@ const requiredApiFunctions = [
   'runAlertReviewRuntimePatrol',
   'verifyAlertReviewManifest',
   'verifyAlertReviewEvidencePackage',
+  'prepareAlertReviewPlaybackUrl',
   'auditAlertReviewMediaAccess',
   'auditAlertReviewItemMediaAccess',
   'evaluateAlertReviewRuleGeometry',
@@ -188,6 +189,7 @@ const requiredApiRoutes = [
   '/runtime-patrol',
   '/manifest/verify',
   '/evidence-export-jobs/${jobNo}/verify',
+  '/playback-url',
   '/media-access/audit',
   '/rules/geometry-evaluate',
   '/integration-smoke',
@@ -221,6 +223,19 @@ const requiredRuleGovernancePermissionSnippets = [
 for (const snippet of requiredRuleGovernancePermissionSnippets) {
   if (!workbenchSource.includes(snippet)) {
     failures.push(`missing rule governance permission contract ${snippet}`)
+  }
+}
+
+const requiredPlaybackGuardSnippets = [
+  'prepareAlertReviewPlaybackUrl',
+  'prepareWorkbenchPlayback',
+  'prepared.recordPath',
+  'target.materialUri = prepared.recordPath',
+]
+
+for (const snippet of requiredPlaybackGuardSnippets) {
+  if (!workbenchSource.includes(snippet)) {
+    failures.push(`missing playback preparation guard contract ${snippet}`)
   }
 }
 
