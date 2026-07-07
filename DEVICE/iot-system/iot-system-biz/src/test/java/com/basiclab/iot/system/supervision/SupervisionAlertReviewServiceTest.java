@@ -56,6 +56,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraTopology;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraTopologyResolver;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationResult;
@@ -2734,6 +2736,53 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void reviewCaseCandidatesUseConfiguredCameraTopologyWhenReviewDataHasNoTopology() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        ReviewCameraTopologyResolver topologyResolver = cameraId -> switch (cameraId) {
+            case "camera-01" -> new ReviewCameraTopology("yard-east", List.of("camera-02"));
+            case "camera-02" -> new ReviewCameraTopology("yard-east", List.of("camera-01"));
+            case "camera-04" -> new ReviewCameraTopology("yard-east", List.of());
+            default -> ReviewCameraTopology.empty();
+        };
+        SupervisionAlertReviewService service = newServiceWithCameraTopology(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                topologyResolver
+        );
+        LocalDateTime firstTime = LocalDateTime.of(2026, 7, 7, 9, 0);
+        ReviewItemAggregate base = service.ingestClue(new AlertClueCommand(
+                "video", "alert-topology-config-001", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime, "device-01", "camera-01", "zone-a", "person", 15,
+                "topology-config-1.jpg", "topology-config-1.mp4", null, List.of("person"), List.of("zone-a"),
+                List.of("obj-base"), 0.88D, List.of(0.1D, 0.2D, 0.3D, 0.4D), null
+        ));
+        ReviewItemAggregate adjacentFromConfig = service.ingestClue(new AlertClueCommand(
+                "video", "alert-topology-config-002", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(30), "device-02", "camera-02", "zone-b", "vehicle", 15,
+                "topology-config-2.jpg", "topology-config-2.mp4", null, List.of("vehicle"), List.of("zone-b"),
+                List.of("obj-other-1"), 0.84D, List.of(0.2D, 0.3D, 0.4D, 0.5D), null
+        ));
+        ReviewItemAggregate sameAreaFromConfig = service.ingestClue(new AlertClueCommand(
+                "video", "alert-topology-config-003", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(40), "device-04", "camera-04", "zone-c", "helmet", 15,
+                "topology-config-3.jpg", "topology-config-3.mp4", null, List.of("helmet"), List.of("zone-c"),
+                List.of("obj-other-2"), 0.81D, List.of(0.3D, 0.4D, 0.5D, 0.6D), null
+        ));
+        service.ingestClue(new AlertClueCommand(
+                "video", "alert-topology-config-004", SupervisionRuleSeeds.RULE_RESTRICTED_AREA, "restricted_area",
+                firstTime.plusSeconds(50), "device-03", "camera-03", "zone-d", "smoke", 15,
+                "topology-config-4.jpg", "topology-config-4.mp4", null, List.of("smoke"), List.of("zone-d"),
+                List.of("obj-other-3"), 0.75D, List.of(0.5D, 0.6D, 0.7D, 0.8D), null
+        ));
+
+        List<ReviewItemAggregate> candidates = service.suggestReviewCaseCandidates(base.id());
+
+        assertEquals(List.of(adjacentFromConfig.id(), sameAreaFromConfig.id()),
+                candidates.stream().map(ReviewItemAggregate::id).toList());
+    }
+
+    @Test
     void workbenchQueryAndSummarySupportEvidenceEventCaseAndReviewerPerspective() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
@@ -5077,6 +5126,25 @@ class SupervisionAlertReviewServiceTest {
                                                             InMemoryRuleStore ruleStore,
                                                             SupervisionEventService eventService) {
         return newService(itemStore, ruleStore, eventService, noRecordEvidenceResolver(), noEventProjectionStore());
+    }
+
+    private static SupervisionAlertReviewService newServiceWithCameraTopology(InMemoryReviewItemStore itemStore,
+                                                                              InMemoryRuleStore ruleStore,
+                                                                              SupervisionEventService eventService,
+                                                                              ReviewCameraTopologyResolver cameraTopologyResolver) {
+        return new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                ruleStore,
+                eventService,
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                VideoEvidenceExportProvider.unavailable(),
+                ReviewCameraPermissionResolver.unrestricted(),
+                new ReviewAiSummaryRedactionPolicy(),
+                cameraTopologyResolver
+        );
     }
 
     private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,

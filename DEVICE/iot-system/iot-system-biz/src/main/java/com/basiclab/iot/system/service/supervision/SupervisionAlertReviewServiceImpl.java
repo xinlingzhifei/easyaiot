@@ -108,6 +108,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private final VideoEvidenceExportProvider videoEvidenceExportProvider;
     private final ReviewCameraPermissionResolver cameraPermissionResolver;
     private final ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy;
+    private final ReviewCameraTopologyResolver cameraTopologyResolver;
     private final ConcurrentMap<String, Object> reviewSegmentIngestLocks = new ConcurrentHashMap<>();
 
     private record RecordGapReasonDefinition(String code,
@@ -135,7 +136,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                              VideoEvidenceExportProvider videoEvidenceExportProvider) {
         this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver, eventProjectionStore,
                 recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
-                ReviewCameraPermissionResolver.unrestricted(), new ReviewAiSummaryRedactionPolicy());
+                ReviewCameraPermissionResolver.unrestricted(), new ReviewAiSummaryRedactionPolicy(),
+                ReviewCameraTopologyResolver.empty());
     }
 
     public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
@@ -149,7 +151,22 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                              ReviewCameraPermissionResolver cameraPermissionResolver) {
         this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver, eventProjectionStore,
                 recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
-                cameraPermissionResolver, new ReviewAiSummaryRedactionPolicy());
+                cameraPermissionResolver, new ReviewAiSummaryRedactionPolicy(), ReviewCameraTopologyResolver.empty());
+    }
+
+    public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
+                                             ReviewRuleStore reviewRuleStore,
+                                             SupervisionEventService supervisionEventService,
+                                             RecordEvidenceResolver recordEvidenceResolver,
+                                             EventProjectionStore eventProjectionStore,
+                                             RecordCoverageResolver recordCoverageResolver,
+                                             ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                             VideoEvidenceExportProvider videoEvidenceExportProvider,
+                                             ReviewCameraPermissionResolver cameraPermissionResolver,
+                                             ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy) {
+        this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver, eventProjectionStore,
+                recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
+                cameraPermissionResolver, aiSummaryRedactionPolicy, ReviewCameraTopologyResolver.empty());
     }
 
     @Autowired
@@ -162,7 +179,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                              ReviewIntelligenceProvider reviewIntelligenceProvider,
                                              VideoEvidenceExportProvider videoEvidenceExportProvider,
                                              ReviewCameraPermissionResolver cameraPermissionResolver,
-                                             ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy) {
+                                             ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy,
+                                             ReviewCameraTopologyResolver cameraTopologyResolver) {
         this.reviewItemStore = Objects.requireNonNull(reviewItemStore, "reviewItemStore");
         this.reviewRuleStore = Objects.requireNonNull(reviewRuleStore, "reviewRuleStore");
         this.supervisionEventService = Objects.requireNonNull(supervisionEventService, "supervisionEventService");
@@ -173,6 +191,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         this.videoEvidenceExportProvider = Objects.requireNonNull(videoEvidenceExportProvider, "videoEvidenceExportProvider");
         this.cameraPermissionResolver = Objects.requireNonNull(cameraPermissionResolver, "cameraPermissionResolver");
         this.aiSummaryRedactionPolicy = Objects.requireNonNull(aiSummaryRedactionPolicy, "aiSummaryRedactionPolicy");
+        this.cameraTopologyResolver = Objects.requireNonNull(cameraTopologyResolver, "cameraTopologyResolver");
     }
 
     @Override
@@ -6217,11 +6236,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return endTime == null || firstAlertTime == null || !firstAlertTime.isAfter(endTime);
     }
 
-    private static boolean correlates(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+    private boolean correlates(ReviewItemAggregate base, ReviewItemAggregate candidate) {
         return correlationScore(base, candidate) > 0;
     }
 
-    private static int correlationScore(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+    private int correlationScore(ReviewItemAggregate base, ReviewItemAggregate candidate) {
         int score = 0;
         String baseCorrelationId = toText(base.reviewData().get("correlationId"));
         String candidateCorrelationId = toText(candidate.reviewData().get("correlationId"));
@@ -6256,26 +6275,41 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return values;
     }
 
-    private static boolean hasSameRegulatoryArea(ReviewItemAggregate base, ReviewItemAggregate candidate) {
-        String baseArea = toText(reviewDataValue(base,
-                "regulatoryArea", "regulatory_area", "regulatoryAreaCode", "regulatory_area_code",
-                "supervisionArea", "supervision_area"));
-        String candidateArea = toText(reviewDataValue(candidate,
-                "regulatoryArea", "regulatory_area", "regulatoryAreaCode", "regulatory_area_code",
-                "supervisionArea", "supervision_area"));
+    private boolean hasSameRegulatoryArea(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+        String baseArea = regulatoryArea(base);
+        String candidateArea = regulatoryArea(candidate);
         return hasText(baseArea) && Objects.equals(baseArea, candidateArea);
     }
 
-    private static boolean hasAdjacentCamera(ReviewItemAggregate base, ReviewItemAggregate candidate) {
+    private String regulatoryArea(ReviewItemAggregate item) {
+        String reviewDataArea = toText(reviewDataValue(item,
+                "regulatoryArea", "regulatory_area", "regulatoryAreaCode", "regulatory_area_code",
+                "supervisionArea", "supervision_area"));
+        if (hasText(reviewDataArea)) {
+            return reviewDataArea;
+        }
+        return cameraTopology(item.cameraId()).regulatoryArea();
+    }
+
+    private boolean hasAdjacentCamera(ReviewItemAggregate base, ReviewItemAggregate candidate) {
         Set<String> baseAdjacentCameras = adjacentCameras(base);
         Set<String> candidateAdjacentCameras = adjacentCameras(candidate);
         return baseAdjacentCameras.contains(candidate.cameraId()) || candidateAdjacentCameras.contains(base.cameraId());
     }
 
-    private static Set<String> adjacentCameras(ReviewItemAggregate item) {
+    private Set<String> adjacentCameras(ReviewItemAggregate item) {
         Set<String> values = new LinkedHashSet<>();
         collectStringValues(values, reviewDataValue(item, "adjacentCameras", "adjacent_cameras"));
+        collectStringValues(values, cameraTopology(item.cameraId()).adjacentCameraIds());
         return values;
+    }
+
+    private ReviewCameraTopology cameraTopology(String cameraId) {
+        if (!hasText(cameraId)) {
+            return ReviewCameraTopology.empty();
+        }
+        ReviewCameraTopology topology = cameraTopologyResolver.resolveCameraTopology(cameraId);
+        return topology == null ? ReviewCameraTopology.empty() : topology;
     }
 
     private static Object reviewDataValue(ReviewItemAggregate item, String... keys) {

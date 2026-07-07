@@ -988,6 +988,38 @@ public interface SupervisionAlertReviewService {
         }
     }
 
+    record ReviewCameraTopology(String regulatoryArea,
+                                List<String> adjacentCameraIds) {
+        public ReviewCameraTopology {
+            regulatoryArea = normalizeText(regulatoryArea);
+            adjacentCameraIds = adjacentCameraIds == null ? List.of() : adjacentCameraIds.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(value -> !value.isEmpty())
+                    .distinct()
+                    .toList();
+        }
+
+        public static ReviewCameraTopology empty() {
+            return new ReviewCameraTopology(null, List.of());
+        }
+
+        private static String normalizeText(String value) {
+            if (value == null || value.trim().isEmpty()) {
+                return null;
+            }
+            return value.trim();
+        }
+    }
+
+    interface ReviewCameraTopologyResolver {
+        ReviewCameraTopology resolveCameraTopology(String cameraId);
+
+        static ReviewCameraTopologyResolver empty() {
+            return cameraId -> ReviewCameraTopology.empty();
+        }
+    }
+
     record ReviewEvidenceVideoExportRequest(Long reviewCaseId,
                                             Long reviewItemId,
                                             String deviceId,
