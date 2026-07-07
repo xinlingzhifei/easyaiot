@@ -227,6 +227,18 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
       `--expected-offset-seconds=${expectedOffsetSeconds}`,
       hasText(options.playerWaitText) ? `--wait-text=${options.playerWaitText}` : '',
     ]),
+    evidenceContext: {
+      player: compactObject({
+        entry: name.replace('LivePlayer:', ''),
+        actionTestId,
+        reviewRowText: options.playerReviewRowText,
+        reviewItemId: Number.isFinite(options.devicePlaybackReviewItemId) ? options.devicePlaybackReviewItemId : undefined,
+        reviewCaseId: Number.isFinite(options.devicePlaybackReviewCaseId) ? options.devicePlaybackReviewCaseId : undefined,
+        expectedSeekTime,
+        expectedRecordPathContains,
+        expectedOffsetSeconds,
+      }),
+    },
   };
 }
 
@@ -322,11 +334,30 @@ function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error,
   if (hasText(error)) {
     entry.error = error;
   }
-  const summary = childSmokeSummary(result);
+  const summary = mergeEvidenceSummary(step.evidenceContext, childSmokeSummary(result));
   if (summary) {
     entry.summary = summary;
   }
   return entry;
+}
+
+function mergeEvidenceSummary(context, childSummary) {
+  if (!context && !childSummary) {
+    return null;
+  }
+  const summary = { ...(context || {}) };
+  if (context?.player || childSummary?.player) {
+    summary.player = {
+      ...(context?.player || {}),
+      ...(childSummary?.player || {}),
+    };
+  }
+  for (const [key, value] of Object.entries(childSummary || {})) {
+    if (key !== 'player') {
+      summary[key] = value;
+    }
+  }
+  return Object.keys(summary).length ? summary : null;
 }
 
 function childSmokeSummary(result) {
@@ -501,6 +532,12 @@ function cameraListArg(name, values) {
 
 function compact(values) {
   return values.filter((value) => value !== undefined && value !== null && String(value) !== '');
+}
+
+function compactObject(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && String(entry) !== ''),
+  );
 }
 
 function hasText(value) {

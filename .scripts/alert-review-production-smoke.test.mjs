@@ -20,6 +20,8 @@ const parsed = parseArgs([
   '--device-profile=device-video-web',
   '--device-playback-allowed-camera-ids=camera-01',
   '--device-playback-denied-camera-ids=camera-02',
+  '--device-playback-review-item-id=1001',
+  '--device-playback-review-case-id=2001',
   '--device-playback-material-uri=playback-url.mp4',
   '--video-alert-record-query-url=http://video.local/video/record/availability',
   '--video-record-coverage-query-url=http://video.local/video/record/availability',
@@ -50,6 +52,8 @@ assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.deviceAlertTime, '2026-07-05T10:00:00');
 assert.deepEqual(parsed.devicePlaybackAllowedCameraIds, ['camera-01']);
 assert.deepEqual(parsed.devicePlaybackDeniedCameraIds, ['camera-02']);
+assert.equal(parsed.devicePlaybackReviewItemId, 1001);
+assert.equal(parsed.devicePlaybackReviewCaseId, 2001);
 assert.equal(parsed.devicePlaybackMaterialUri, 'playback-url.mp4');
 assert.equal(parsed.videoDeviceId, 'device-01');
 assert.equal(parsed.videoCameraId, 'camera-01');
@@ -211,6 +215,8 @@ assert.deepEqual(steps[0].args.slice(0, 5), [
 ]);
 assert.ok(steps[0].args.includes('--playback-allowed-camera-ids=camera-01'));
 assert.ok(steps[0].args.includes('--playback-denied-camera-ids=camera-02'));
+assert.ok(steps[0].args.includes('--playback-review-item-id=1001'));
+assert.ok(steps[0].args.includes('--playback-review-case-id=2001'));
 assert.ok(steps[0].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[1].args.includes('--record-export-url=http://video.local/video/record/export'));
 assert.ok(steps[1].args.includes('--camera-id=camera-01'));
@@ -223,7 +229,7 @@ assert.ok(steps[4].args.includes('--action-testid=alert-review-case-timeline-see
 assert.ok(steps[4].args.includes('--expected-offset-seconds=0'));
 assert.equal(
   formatStepCommand(steps[0]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=http://device.local/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=http://device.local/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
 );
 
 const calls = [];
@@ -376,6 +382,14 @@ assert.deepEqual(evidenceReport.steps[1].summary.checkpoints, [
   'record_export_manifest_verified',
 ]);
 assert.deepEqual(evidenceReport.steps[2].summary.player, {
+  entry: 'detail',
+  actionTestId: 'alert-review-detail-seek',
+  reviewRowText: 'RV-20260705-001',
+  reviewItemId: 1001,
+  reviewCaseId: 2001,
+  expectedSeekTime: '2026-07-05T10:00:30',
+  expectedRecordPathContains: 'device-01',
+  expectedOffsetSeconds: 30,
   clickedRow: true,
   clickedAction: true,
   seekTime: '2026-07-05T10:00:30',
@@ -385,6 +399,14 @@ assert.deepEqual(evidenceReport.steps[2].summary.player, {
   nativeCurrentTime: 30.25,
 });
 assert.deepEqual(evidenceReport.steps[3].summary.player, {
+  entry: 'coverage',
+  actionTestId: 'alert-review-coverage-seek',
+  reviewRowText: 'RV-20260705-001',
+  reviewItemId: 1001,
+  reviewCaseId: 2001,
+  expectedSeekTime: '2026-07-05T10:00:00',
+  expectedRecordPathContains: 'device-01',
+  expectedOffsetSeconds: 0,
   clickedRow: true,
   clickedAction: true,
   seekTime: '2026-07-05T10:00:00',
@@ -394,6 +416,14 @@ assert.deepEqual(evidenceReport.steps[3].summary.player, {
   nativeCurrentTime: 0.15,
 });
 assert.deepEqual(evidenceReport.steps[4].summary.player, {
+  entry: 'case-timeline',
+  actionTestId: 'alert-review-case-timeline-seek',
+  reviewRowText: 'RV-20260705-001',
+  reviewItemId: 1001,
+  reviewCaseId: 2001,
+  expectedSeekTime: '2026-07-05T10:00:00',
+  expectedRecordPathContains: 'device-01',
+  expectedOffsetSeconds: 0,
   clickedRow: true,
   clickedAction: true,
   seekTime: '2026-07-05T10:00:00',
