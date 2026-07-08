@@ -62,6 +62,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionResolver;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraTopology;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraTopologyResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgementCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationResult;
@@ -3366,6 +3368,76 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void operationsReportAcknowledgementPersistsForSameReportScopeAndIsIdempotent() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> Optional.empty(),
+                noEventProjectionStore()
+        );
+        LocalDateTime shiftStart = LocalDateTime.of(2026, 7, 1, 8, 0);
+        LocalDateTime shiftEnd = shiftStart.plusHours(1);
+        ReviewQuery query = new ReviewQuery(null, "camera-01", null, null, null, null, null, null, shiftStart, shiftEnd);
+        service.ingestClue(newClue("alert-report-ack", shiftStart.plusMinutes(10), "report-ack.jpg", null));
+
+        ReviewOperationsReport pending = service.generateReviewReport(new ReviewReportCommand(
+                "shift",
+                query,
+                shiftStart,
+                shiftEnd,
+                9001L
+        ));
+
+        String reportKey = String.valueOf(pending.acknowledgement().get("reportKey"));
+        assertEquals("pending", pending.acknowledgement().get("status"));
+        assertTrue(reportKey.startsWith("report-"));
+
+        ReviewReportAcknowledgement acknowledged = service.acknowledgeReviewReport(new ReviewReportAcknowledgementCommand(
+                "shift",
+                query,
+                shiftStart,
+                shiftEnd,
+                9002L,
+                "shift leader reviewed"
+        ));
+
+        assertEquals(reportKey, acknowledged.reportKey());
+        assertEquals("shift", acknowledged.reportType());
+        assertEquals("acknowledged", acknowledged.status());
+        assertEquals(9002L, acknowledged.acknowledgedBy());
+        assertEquals("shift leader reviewed", acknowledged.note());
+        assertFalse(acknowledged.duplicate());
+
+        ReviewOperationsReport reloaded = service.generateReviewReport(new ReviewReportCommand(
+                "shift",
+                query,
+                shiftStart,
+                shiftEnd,
+                9001L
+        ));
+
+        assertEquals("acknowledged", reloaded.acknowledgement().get("status"));
+        assertEquals(reportKey, reloaded.acknowledgement().get("reportKey"));
+        assertEquals(9002L, reloaded.acknowledgement().get("acknowledgedBy"));
+        assertEquals("shift leader reviewed", reloaded.acknowledgement().get("note"));
+        assertEquals(reloaded.acknowledgement(), reloaded.structuredData().get("acknowledgement"));
+
+        ReviewReportAcknowledgement duplicate = service.acknowledgeReviewReport(new ReviewReportAcknowledgementCommand(
+                "shift",
+                query,
+                shiftStart,
+                shiftEnd,
+                9003L,
+                "second click"
+        ));
+        assertTrue(duplicate.duplicate());
+        assertEquals(9002L, duplicate.acknowledgedBy());
+        assertEquals("shift leader reviewed", duplicate.note());
+    }
+
+    @Test
     void dailyReportAggregatesOperationalMetricsByUnitAreaCameraAndRule() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
@@ -5886,6 +5958,7 @@ class SupervisionAlertReviewServiceTest {
         private final Map<String, ReviewEvidenceExportJob> exportJobs = new LinkedHashMap<>();
         private final Map<Long, ReviewSemanticIndexEntry> semanticIndex = new LinkedHashMap<>();
         private final Map<String, ReviewUserStatusView> userStatuses = new LinkedHashMap<>();
+        private final Map<String, ReviewReportAcknowledgement> reportAcknowledgements = new LinkedHashMap<>();
         private final List<RuntimeOutboxEntry> runtimeOutbox = new ArrayList<>();
         private long nextId = 1000L;
         private long nextCaseId = 3000L;
@@ -6109,6 +6182,16 @@ class SupervisionAlertReviewServiceTest {
         @Override
         public List<ReviewEvidenceItem> listTimeline(Long reviewItemId) {
             return List.copyOf(evidenceByItemId.getOrDefault(reviewItemId, List.of()));
+        }
+
+        @Override
+        public Optional<ReviewReportAcknowledgement> findReportAcknowledgement(String reportKey) {
+            return Optional.ofNullable(reportAcknowledgements.get(reportKey));
+        }
+
+        @Override
+        public ReviewReportAcknowledgement saveReportAcknowledgement(ReviewReportAcknowledgement acknowledgement) {
+            return reportAcknowledgements.computeIfAbsent(acknowledgement.reportKey(), ignored -> acknowledgement);
         }
 
         @Override

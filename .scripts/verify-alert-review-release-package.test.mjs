@@ -76,8 +76,9 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 25);
+assert.equal(trackedReleaseEntries.length, 26);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -130,6 +131,11 @@ assert.deepEqual(
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
       'DEVICE schema and migration',
     ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
+      'DEVICE schema and migration',
+    ],
   ],
 );
 
@@ -168,6 +174,12 @@ const untrackedSchedulerJobsMigration = evaluateStatus(`
 `);
 assert.equal(untrackedSchedulerJobsMigration.ok, false);
 assert.equal(untrackedSchedulerJobsMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const untrackedReportAckMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql
+`);
+assert.equal(untrackedReportAckMigration.ok, false);
+assert.equal(untrackedReportAckMigration.blockers[0].group, 'DEVICE schema and migration');
 
 const untrackedWorkbenchRunner = evaluateStatus(`
 ?? WEB/scripts/alert-review-workbench-e2e-check.test.mjs

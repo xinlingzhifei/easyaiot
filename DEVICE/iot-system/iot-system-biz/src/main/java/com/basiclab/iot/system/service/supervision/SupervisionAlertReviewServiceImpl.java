@@ -1988,8 +1988,14 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         structuredData.put("ruleDimensions", buildReportDimensions(reviewItems, ReviewItemAggregate::ruleCode));
         structuredData.put("operatorUserId", command.operatorUserId());
         structuredData.put("generatedAt", generatedAt.toString());
-        Map<String, Object> deliveryPlan = buildReportDeliveryPlan(command, reportType, reviewItemIds, generatedAt);
-        Map<String, Object> acknowledgement = buildReportAcknowledgement(command, reportType);
+        String reportKey = buildReportKey(reportType, command.periodStart(), command.periodEnd(), reviewItemIds);
+        Map<String, Object> deliveryPlan = buildReportDeliveryPlan(command, reportType, reviewItemIds, generatedAt, reportKey);
+        Map<String, Object> acknowledgement = buildReportAcknowledgement(
+                command,
+                reportType,
+                reportKey,
+                reviewItemStore.findReportAcknowledgement(reportKey).orElse(null)
+        );
         structuredData.put("deliveryPlan", deliveryPlan);
         structuredData.put("acknowledgement", acknowledgement);
         return new ReviewOperationsReport(
@@ -2005,6 +2011,51 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 deliveryPlan,
                 acknowledgement
         );
+    }
+
+    @Override
+    public ReviewReportAcknowledgement acknowledgeReviewReport(ReviewReportAcknowledgementCommand command) {
+        Objects.requireNonNull(command, "command");
+        String reportType = firstText(command.reportType(), "shift");
+        ReviewQuery query = reportQuery(new ReviewReportCommand(
+                reportType,
+                command.query(),
+                command.periodStart(),
+                command.periodEnd(),
+                command.operatorUserId()
+        ));
+        List<Long> reviewItemIds = listWorkbench(query).stream().map(ReviewItemAggregate::id).toList();
+        String reportKey = buildReportKey(reportType, command.periodStart(), command.periodEnd(), reviewItemIds);
+        Optional<ReviewReportAcknowledgement> existing = reviewItemStore.findReportAcknowledgement(reportKey);
+        if (existing.isPresent()) {
+            ReviewReportAcknowledgement acknowledgement = existing.get();
+            return new ReviewReportAcknowledgement(
+                    acknowledgement.reportKey(),
+                    acknowledgement.reportType(),
+                    acknowledgement.status(),
+                    acknowledgement.acknowledgedBy(),
+                    acknowledgement.acknowledgedAt(),
+                    acknowledgement.note(),
+                    true,
+                    acknowledgement.metadata()
+            );
+        }
+        LocalDateTime acknowledgedAt = LocalDateTime.now();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("periodStart", command.periodStart() == null ? null : command.periodStart().toString());
+        metadata.put("periodEnd", command.periodEnd() == null ? null : command.periodEnd().toString());
+        metadata.put("reviewItemIds", reviewItemIds);
+        metadata.put("requestedBy", command.operatorUserId());
+        return reviewItemStore.saveReportAcknowledgement(new ReviewReportAcknowledgement(
+                reportKey,
+                reportType,
+                "acknowledged",
+                command.operatorUserId(),
+                acknowledgedAt,
+                command.note(),
+                false,
+                immutableNonNullMap(metadata)
+        ));
     }
 
     private Map<String, Object> buildReportDimensions(List<ReviewItemAggregate> reviewItems,
@@ -2056,10 +2107,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static Map<String, Object> buildReportDeliveryPlan(ReviewReportCommand command,
                                                                String reportType,
                                                                List<Long> reviewItemIds,
-                                                               LocalDateTime generatedAt) {
+                                                               LocalDateTime generatedAt,
+                                                               String reportKey) {
         Map<String, Object> deliveryPlan = new LinkedHashMap<>();
         deliveryPlan.put("deliveryStatus", "pending");
         deliveryPlan.put("channels", List.of("dashboard", "supervision_console"));
+        deliveryPlan.put("reportKey", reportKey);
         deliveryPlan.put("reportType", reportType);
         deliveryPlan.put("periodStart", command.periodStart() == null ? null : command.periodStart().toString());
         deliveryPlan.put("periodEnd", command.periodEnd() == null ? null : command.periodEnd().toString());
@@ -2070,13 +2123,33 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return immutableNonNullMap(deliveryPlan);
     }
 
-    private static Map<String, Object> buildReportAcknowledgement(ReviewReportCommand command, String reportType) {
+    private static Map<String, Object> buildReportAcknowledgement(ReviewReportCommand command,
+                                                                  String reportType,
+                                                                  String reportKey,
+                                                                  ReviewReportAcknowledgement persisted) {
         Map<String, Object> acknowledgement = new LinkedHashMap<>();
         acknowledgement.put("required", true);
-        acknowledgement.put("status", "pending");
+        acknowledgement.put("status", persisted == null ? "pending" : persisted.status());
+        acknowledgement.put("reportKey", reportKey);
         acknowledgement.put("reportType", reportType);
         acknowledgement.put("requestedBy", command.operatorUserId());
+        if (persisted != null) {
+            acknowledgement.put("acknowledgedBy", persisted.acknowledgedBy());
+            acknowledgement.put("acknowledgedAt", persisted.acknowledgedAt() == null ? null : persisted.acknowledgedAt().toString());
+            acknowledgement.put("note", persisted.note());
+            acknowledgement.put("metadata", persisted.metadata());
+        }
         return immutableNonNullMap(acknowledgement);
+    }
+
+    private static String buildReportKey(String reportType,
+                                         LocalDateTime periodStart,
+                                         LocalDateTime periodEnd,
+                                         List<Long> reviewItemIds) {
+        return "report-" + sha256Hex(reportType
+                + "|" + (periodStart == null ? "" : periodStart)
+                + "|" + (periodEnd == null ? "" : periodEnd)
+                + "|" + (reviewItemIds == null ? List.of() : reviewItemIds));
     }
 
     private static boolean isUnreviewedBacklog(ReviewItemAggregate item) {

@@ -49,6 +49,7 @@ class SupervisionSchemaSqlTest {
                 "system_supervision_alert_review_runtime_lock",
                 "system_supervision_alert_review_runtime_run",
                 "system_supervision_alert_review_runtime_outbox",
+                "system_supervision_alert_review_report_ack",
                 "system_supervision_close_check_result"
         ), extractCreatedTables(sql));
     }
@@ -112,6 +113,9 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_run_status"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_status"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_run"));
+        assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key"));
+        assertTrue(sql.contains("ON system_supervision_alert_review_report_ack(tenant_id, report_key)"));
+        assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_report_ack_scope"));
     }
 
     @Test
@@ -348,6 +352,20 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("detections"));
         assertTrue(migrationSql.contains("reviewSegment"));
         assertTrue(migrationSql.contains("migration_backfill"));
+    }
+
+    @Test
+    void alertReviewReportAckMigrationPersistsOperatorAcknowledgement() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql");
+
+        assertTrue(Files.exists(migration), "report acknowledgement migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("CREATE TABLE IF NOT EXISTS system_supervision_alert_review_report_ack"));
+        assertTrue(migrationSql.contains("report_key VARCHAR(128) NOT NULL"));
+        assertTrue(migrationSql.contains("acknowledgement_status VARCHAR(32) NOT NULL"));
+        assertTrue(migrationSql.contains("acknowledged_by BIGINT"));
+        assertTrue(migrationSql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key"));
+        assertTrue(migrationSql.contains("ON system_supervision_alert_review_report_ack(tenant_id, report_key)"));
     }
 
     @Test

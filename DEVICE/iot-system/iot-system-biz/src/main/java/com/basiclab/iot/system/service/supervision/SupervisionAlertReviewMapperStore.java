@@ -9,6 +9,7 @@ import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReview
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewIngestIdentityDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewReportAckDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewRuleDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewRuntimeLockDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewRuntimeOutboxDO;
@@ -24,6 +25,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewEvide
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewExportJobMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewIngestIdentityMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewItemMapper;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewReportAckMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuleMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeLockMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeOutboxMapper;
@@ -47,6 +49,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemStore;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleStore;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleView;
@@ -98,6 +101,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     private final SupervisionAlertReviewRuntimeRunMapper reviewRuntimeRunMapper;
     private final SupervisionAlertReviewRuntimeOutboxMapper reviewRuntimeOutboxMapper;
     private final SupervisionAlertReviewSegmentMapper reviewSegmentMapper;
+    private final SupervisionAlertReviewReportAckMapper reviewReportAckMapper;
     private final SupervisionEventMapper supervisionEventMapper;
 
     public SupervisionAlertReviewMapperStore(SupervisionAlertReviewItemMapper reviewItemMapper,
@@ -114,6 +118,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                              SupervisionAlertReviewRuntimeRunMapper reviewRuntimeRunMapper,
                                              SupervisionAlertReviewRuntimeOutboxMapper reviewRuntimeOutboxMapper,
                                              SupervisionAlertReviewSegmentMapper reviewSegmentMapper,
+                                             SupervisionAlertReviewReportAckMapper reviewReportAckMapper,
                                              SupervisionEventMapper supervisionEventMapper) {
         this.reviewItemMapper = Objects.requireNonNull(reviewItemMapper, "reviewItemMapper");
         this.reviewEvidenceMapper = Objects.requireNonNull(reviewEvidenceMapper, "reviewEvidenceMapper");
@@ -129,6 +134,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         this.reviewRuntimeRunMapper = Objects.requireNonNull(reviewRuntimeRunMapper, "reviewRuntimeRunMapper");
         this.reviewRuntimeOutboxMapper = Objects.requireNonNull(reviewRuntimeOutboxMapper, "reviewRuntimeOutboxMapper");
         this.reviewSegmentMapper = Objects.requireNonNull(reviewSegmentMapper, "reviewSegmentMapper");
+        this.reviewReportAckMapper = Objects.requireNonNull(reviewReportAckMapper, "reviewReportAckMapper");
         this.supervisionEventMapper = Objects.requireNonNull(supervisionEventMapper, "supervisionEventMapper");
     }
 
@@ -298,6 +304,46 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .stream()
                 .map(this::toEvidenceItem)
                 .toList();
+    }
+
+    @Override
+    public Optional<ReviewReportAcknowledgement> findReportAcknowledgement(String reportKey) {
+        if (!hasText(reportKey)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(reviewReportAckMapper.selectByTenantAndReportKey(
+                        reviewIdentityTenantId(TenantContextHolder.getTenantId()),
+                        reportKey
+                ))
+                .map(SupervisionAlertReviewMapperStore::toReportAcknowledgement);
+    }
+
+    @Override
+    public ReviewReportAcknowledgement saveReportAcknowledgement(ReviewReportAcknowledgement acknowledgement) {
+        Objects.requireNonNull(acknowledgement, "acknowledgement");
+        Long tenantId = reviewIdentityTenantId(TenantContextHolder.getTenantId());
+        SupervisionAlertReviewReportAckDO existing = reviewReportAckMapper.selectByTenantAndReportKey(
+                tenantId,
+                acknowledgement.reportKey()
+        );
+        if (existing != null) {
+            return toReportAcknowledgement(existing);
+        }
+        Map<String, Object> metadata = acknowledgement.metadata();
+        reviewReportAckMapper.insert(new SupervisionAlertReviewReportAckDO()
+                .setTenantId(tenantId)
+                .setReportKey(acknowledgement.reportKey())
+                .setReportType(acknowledgement.reportType())
+                .setPeriodStart(toLocalDateTime(metadata.get("periodStart"), null))
+                .setPeriodEnd(toLocalDateTime(metadata.get("periodEnd"), null))
+                .setReviewItemIds(joinCsv(toStringList(metadata.get("reviewItemIds"))))
+                .setAcknowledgementStatus(acknowledgement.status())
+                .setAcknowledgedBy(acknowledgement.acknowledgedBy())
+                .setAcknowledgedAt(acknowledgement.acknowledgedAt())
+                .setAcknowledgementNote(acknowledgement.note())
+                .setMetadata(writeJson(metadata))
+                .setVersion(0));
+        return findReportAcknowledgement(acknowledgement.reportKey()).orElse(acknowledgement);
     }
 
     @Override
@@ -1472,6 +1518,19 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 jobDO.getExportReason(),
                 splitLongCsv(jobDO.getBoundEventIds()),
                 jobDO.getGeneratedAt()
+        );
+    }
+
+    private static ReviewReportAcknowledgement toReportAcknowledgement(SupervisionAlertReviewReportAckDO ackDO) {
+        return new ReviewReportAcknowledgement(
+                ackDO.getReportKey(),
+                ackDO.getReportType(),
+                ackDO.getAcknowledgementStatus(),
+                ackDO.getAcknowledgedBy(),
+                ackDO.getAcknowledgedAt(),
+                ackDO.getAcknowledgementNote(),
+                false,
+                readJson(ackDO.getMetadata())
         );
     }
 

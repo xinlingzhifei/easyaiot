@@ -11,6 +11,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -599,7 +600,7 @@ function printHelp() {
 
 Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, and V20260708_2, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, operations report seeds, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, and V20260708_3, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

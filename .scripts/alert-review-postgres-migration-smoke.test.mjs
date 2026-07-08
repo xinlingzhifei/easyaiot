@@ -28,9 +28,10 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
 ]);
 
-const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.at(-1), 'utf8');
+const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('scheduler_jobs')), 'utf8');
 assert.doesNotMatch(schedulerJobMigrationSql, /existing\.id\s*=\s*seed\.id/);
 assert.match(schedulerJobMigrationSql, /WHERE existing\.handler_name = seed\.handler_name/);
 assert.match(schedulerJobMigrationSql, /existing\.handler_param IS NOT DISTINCT FROM seed\.handler_param/);
@@ -38,6 +39,12 @@ assert.match(schedulerJobMigrationSql, /supervisionAlertReviewEvidenceExportWork
 assert.match(schedulerJobMigrationSql, /supervisionAlertReviewOperationsReportJob/);
 assert.match(schedulerJobMigrationSql, /'shift'/);
 assert.match(schedulerJobMigrationSql, /'daily'/);
+
+const reportAckMigrationSql = readFileSync(MIGRATION_FILES.at(-1), 'utf8');
+assert.match(reportAckMigrationSql, /system_supervision_alert_review_report_ack/);
+assert.match(reportAckMigrationSql, /report_key VARCHAR\(128\) NOT NULL/);
+assert.match(reportAckMigrationSql, /acknowledgement_status VARCHAR\(32\) NOT NULL/);
+assert.match(reportAckMigrationSql, /uk_supervision_alert_review_report_ack_key/);
 
 const bootstrapSql = buildBootstrapSql();
 assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);

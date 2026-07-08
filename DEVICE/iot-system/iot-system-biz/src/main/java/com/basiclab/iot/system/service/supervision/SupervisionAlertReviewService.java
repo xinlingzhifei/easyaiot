@@ -146,6 +146,8 @@ public interface SupervisionAlertReviewService {
 
     ReviewOperationsReport generateReviewReport(ReviewReportCommand command);
 
+    ReviewReportAcknowledgement acknowledgeReviewReport(ReviewReportAcknowledgementCommand command);
+
     ReviewEvidenceExportPackage exportReviewEvidence(ReviewEvidenceExportCommand command);
 
     ReviewEvidenceExportJob createReviewEvidenceExportJob(ReviewEvidenceExportCommand command);
@@ -830,6 +832,27 @@ public interface SupervisionAlertReviewService {
                                Long operatorUserId) {
     }
 
+    record ReviewReportAcknowledgementCommand(String reportType,
+                                              ReviewQuery query,
+                                              LocalDateTime periodStart,
+                                              LocalDateTime periodEnd,
+                                              Long operatorUserId,
+                                              String note) {
+    }
+
+    record ReviewReportAcknowledgement(String reportKey,
+                                       String reportType,
+                                       String status,
+                                       Long acknowledgedBy,
+                                       LocalDateTime acknowledgedAt,
+                                       String note,
+                                       boolean duplicate,
+                                       Map<String, Object> metadata) {
+        public ReviewReportAcknowledgement {
+            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        }
+    }
+
     record ReviewOperationsReport(String reportType,
                                   List<Long> reviewItemIds,
                                   String title,
@@ -1315,6 +1338,10 @@ public interface SupervisionAlertReviewService {
         List<ReviewItemAggregate> listWorkbench(ReviewQuery query);
 
         List<ReviewEvidenceItem> listTimeline(Long reviewItemId);
+
+        Optional<ReviewReportAcknowledgement> findReportAcknowledgement(String reportKey);
+
+        ReviewReportAcknowledgement saveReportAcknowledgement(ReviewReportAcknowledgement acknowledgement);
 
         ReviewItemAggregate updateReviewStatus(Long reviewItemId,
                                                String reviewStatus,

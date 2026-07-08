@@ -10,6 +10,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewEvide
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewExportJobMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewIngestIdentityMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewItemMapper;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewReportAckMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuleMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeLockMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeOutboxMapper;
@@ -480,6 +481,7 @@ class SupervisionAlertReviewMapperStoreTest {
                 noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),
                 noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
                 reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewReportAckMapper.class),
                 noopMapper(SupervisionEventMapper.class)
         );
     }
