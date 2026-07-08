@@ -238,13 +238,24 @@ assert.deepEqual(
   }, 'yfeieye_alert_review_smoke'),
   {
     command: 'psql',
-    args: [
-      'postgresql://ci:secret@db.example:5432/yfeieye_alert_review_smoke?sslmode=require',
-      '-v',
-      'ON_ERROR_STOP=1',
-    ],
+    args: ['-v', 'ON_ERROR_STOP=1'],
+    env: {
+      PGDATABASE: 'yfeieye_alert_review_smoke',
+      PGHOST: 'db.example',
+      PGPASSWORD: 'secret',
+      PGPORT: '5432',
+      PGSSLMODE: 'require',
+      PGUSER: 'ci',
+    },
     label: 'psql/yfeieye_alert_review_smoke',
   },
+);
+assert.equal(
+  JSON.stringify(buildPsqlInvocation({
+    container: null,
+    databaseUrl: 'postgresql://ci:secret@db.example:5432/postgres?sslmode=require',
+  }, 'yfeieye_alert_review_smoke').args).includes('secret'),
+  false,
 );
 assert.equal(parseArgs(['--help']).help, true);
 assert.throws(() => parseArgs(['--bogus']), /Unknown argument/);

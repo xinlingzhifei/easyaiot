@@ -722,13 +722,38 @@ export function buildPsqlInvocation(options, database) {
     };
   }
   if (options.databaseUrl) {
+    const env = psqlEnvForDatabase(options.databaseUrl, database);
     return {
       command: 'psql',
-      args: [databaseUrlForDatabase(options.databaseUrl, database), '-v', 'ON_ERROR_STOP=1'],
+      args: ['-v', 'ON_ERROR_STOP=1'],
+      env,
       label: `psql/${database}`,
     };
   }
   throw new Error('Missing required --container=NAME or --database-url=URL');
+}
+
+function psqlEnvForDatabase(databaseUrl, database) {
+  const url = new URL(databaseUrl);
+  const env = {
+    PGDATABASE: database,
+  };
+  if (url.hostname) {
+    env.PGHOST = url.hostname;
+  }
+  if (url.password) {
+    env.PGPASSWORD = decodeURIComponent(url.password);
+  }
+  if (url.port) {
+    env.PGPORT = url.port;
+  }
+  if (url.searchParams.has('sslmode')) {
+    env.PGSSLMODE = url.searchParams.get('sslmode');
+  }
+  if (url.username) {
+    env.PGUSER = decodeURIComponent(url.username);
+  }
+  return env;
 }
 
 function runPsql(options, database, sql) {
@@ -736,6 +761,7 @@ function runPsql(options, database, sql) {
   const result = spawnSync(invocation.command, invocation.args, {
     input: sql,
     encoding: 'utf8',
+    env: invocation.env ? { ...process.env, ...invocation.env } : process.env,
     windowsHide: true,
     maxBuffer: 16 * 1024 * 1024,
   });
@@ -773,6 +799,7 @@ function runPsqlAsync(options, database, sql) {
   return new Promise((resolveResult) => {
     const invocation = buildPsqlInvocation(options, database);
     const child = spawn(invocation.command, invocation.args, {
+      env: invocation.env ? { ...process.env, ...invocation.env } : process.env,
       windowsHide: true,
     });
     let stdout = '';
