@@ -44,16 +44,61 @@ assert.ok(missing.some(error => error.includes('expected-seek-time')));
 assert.ok(missing.some(error => error.includes('expected-record-path-contains')));
 assert.ok(missing.some(error => error.includes('expected-offset-seconds')));
 
+const localWorkbench = parseArgs([
+  '--workbench-url=http://localhost:5173/yfeieye/alert?tab=review',
+  '--review-row-text=RV-local',
+  '--expected-seek-time=2026-07-02T08:00:02',
+  '--expected-record-path-contains=east-gate-080000.mp4',
+  '--expected-offset-seconds=2',
+], {});
+assert.ok(
+  requiredOptionErrors(localWorkbench).includes('player live smoke workbench URL must not use a local/mock URL without --allow-local-endpoints'),
+);
+
+const localWorkbenchAllowed = parseArgs([
+  '--workbench-url=http://localhost:5173/yfeieye/alert?tab=review',
+  '--review-row-text=RV-local',
+  '--expected-seek-time=2026-07-02T08:00:02',
+  '--expected-record-path-contains=east-gate-080000.mp4',
+  '--expected-offset-seconds=2',
+  '--allow-local-endpoints',
+], {});
+assert.equal(localWorkbenchAllowed.allowLocalEndpoints, true);
+assert.deepEqual(requiredOptionErrors(localWorkbenchAllowed), []);
+
 assertSmokeResult(
   {
     clickedRow: true,
     clickedAction: true,
     seekTime: '2026-07-02T08:00:02',
     currentUrl: 'https://example.test/video/east-gate-080000.mp4',
-    recordPath: 'mock://record/east-gate-080000.mp4',
+    recordPath: 'https://example.test/video/east-gate-080000.mp4',
     playbackOffsetSeconds: 2,
   },
   parsed,
+);
+
+assert.throws(
+  () => assertSmokeResult({
+    clickedRow: true,
+    clickedAction: true,
+    seekTime: '2026-07-02T08:00:02',
+    currentUrl: 'https://example.test/video/east-gate-080000.mp4',
+    recordPath: 'mock://record/east-gate-080000.mp4',
+    playbackOffsetSeconds: 2,
+  }, parsed),
+  /player live smoke result used local\/mock media evidence/,
+);
+
+assert.doesNotThrow(
+  () => assertSmokeResult({
+    clickedRow: true,
+    clickedAction: true,
+    seekTime: '2026-07-02T08:00:02',
+    currentUrl: 'http://localhost:5173/mock/east-gate-080000.mp4',
+    recordPath: 'mock://record/east-gate-080000.mp4',
+    playbackOffsetSeconds: 2,
+  }, localWorkbenchAllowed),
 );
 
 assert.throws(

@@ -22,6 +22,7 @@ export function parseArgs(args, env = process.env) {
     cookiePairs: parseCookiePairs(env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES || ''),
     chromePath: env.CHROME_PATH || '',
     assertNativeCurrentTime: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ASSERT_NATIVE_CURRENT_TIME === 'true',
+    allowLocalEndpoints: parseBoolean(env.YFEIEYE_REVIEW_PLAYER_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
     help: false,
   };
 
@@ -52,6 +53,8 @@ export function parseArgs(args, env = process.env) {
       parsed.chromePath = arg.slice('--chrome-path='.length);
     } else if (arg === '--assert-native-current-time') {
       parsed.assertNativeCurrentTime = true;
+    } else if (arg === '--allow-local-endpoints') {
+      parsed.allowLocalEndpoints = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -85,6 +88,9 @@ export function requiredOptionErrors(options) {
   if (!Number.isFinite(options.expectedOffsetSeconds)) {
     errors.push('missing --expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS');
   }
+  if (!options.allowLocalEndpoints && looksLocalOrMockEndpoint(options.workbenchUrl)) {
+    errors.push('player live smoke workbench URL must not use a local/mock URL without --allow-local-endpoints');
+  }
   return errors;
 }
 
@@ -101,6 +107,9 @@ export function assertSmokeResult(result, options) {
   const pathText = `${result.recordPath || ''} ${result.currentUrl || ''}`;
   if (!pathText.includes(options.expectedRecordPathContains)) {
     throw new Error(`expected record path/url to include ${options.expectedRecordPathContains}, got ${pathText.trim() || '-'}`);
+  }
+  if (!options.allowLocalEndpoints && hasLocalOrMockMediaEvidence(result.recordPath, result.currentUrl)) {
+    throw new Error('player live smoke result used local/mock media evidence');
   }
   if (Number(result.playbackOffsetSeconds) !== Number(options.expectedOffsetSeconds)) {
     throw new Error(`expected playback_offset_seconds ${options.expectedOffsetSeconds}, got ${String(result.playbackOffsetSeconds)}`);
@@ -399,8 +408,46 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+  return !['0', 'false', 'no'].includes(String(value).trim().toLowerCase());
+}
+
 function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+function hasLocalOrMockMediaEvidence(...values) {
+  return values.some((value) => hasText(value) && looksLocalOrMockEndpoint(value));
+}
+
+function looksLocalOrMockEndpoint(value) {
+  const raw = String(value || '').trim();
+  const lowered = raw.toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  if (lowered.includes('/mock') || lowered.includes('mock://')) {
+    return true;
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return lowered.includes('mock');
+  }
+  const hostname = String(url.hostname || '').toLowerCase();
+  return url.protocol === 'file:'
+    || url.protocol === 'mock:'
+    || hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || hostname === '0.0.0.0'
+    || hostname.endsWith('.local')
+    || hostname.includes('mock');
 }
 
 function wait(ms) {
@@ -429,10 +476,12 @@ function printHelp() {
   --action-testid=alert-review-detail-seek \\
   --expected-seek-time=2026-07-02T08:00:02 \\
   --expected-record-path-contains=east-gate-080000.mp4 \\
-  --expected-offset-seconds=2
+  --expected-offset-seconds=2 [--allow-local-endpoints]
 
 Runs a real FR-13/FR-36 browser smoke against a deployed workbench page.
-No mock API/server is started. Use --cookie and --local-storage for auth state.`);
+No mock API/server is started. Localhost/mock/file endpoints are rejected unless
+--allow-local-endpoints is supplied for co-located real-service smoke. Use
+--cookie and --local-storage for auth state.`);
 }
 
 async function runCli() {

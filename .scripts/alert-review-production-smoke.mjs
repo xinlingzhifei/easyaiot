@@ -238,6 +238,7 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
       `--expected-record-path-contains=${expectedRecordPathContains}`,
       `--expected-offset-seconds=${expectedOffsetSeconds}`,
       hasText(options.playerWaitText) ? `--wait-text=${options.playerWaitText}` : '',
+      options.allowLocalEndpoints ? '--allow-local-endpoints' : '',
     ]),
     evidenceContext: {
       player: compactObject({

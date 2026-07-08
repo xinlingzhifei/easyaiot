@@ -101,6 +101,15 @@ assert.deepEqual(requiredOptionErrors(localEndpointsAllowed), []);
 assert.ok(
   buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[2].args.includes('--allow-local-endpoints'),
 );
+assert.ok(
+  buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[3].args.includes('--allow-local-endpoints'),
+);
+assert.ok(
+  buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[4].args.includes('--allow-local-endpoints'),
+);
+assert.ok(
+  buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[5].args.includes('--allow-local-endpoints'),
+);
 
 const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_BASE_URL: 'https://device.env/admin-api',
