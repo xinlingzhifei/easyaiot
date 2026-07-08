@@ -133,6 +133,7 @@ const requiredTestIds = [
   'alert-review-ops-rule-geometry',
   'alert-review-unified-action',
   'alert-review-detail-seek',
+  'alert-review-list-playback',
   'alert-review-create-case',
   'alert-review-candidate-add',
   'alert-review-case-owner',

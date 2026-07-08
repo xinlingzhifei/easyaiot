@@ -73,6 +73,12 @@ function click(selector: string) {
   requiredElement<HTMLElement>(selector).click()
 }
 
+async function clickAndWaitForVideo(selector: string, label: string) {
+  const before = viewVideoEvents.length
+  click(selector)
+  await waitFor(() => viewVideoEvents.length > before, label)
+}
+
 function clickButtonByText(label: string) {
   const button = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
     .find(candidate => candidate.textContent?.trim() === label)
@@ -182,6 +188,13 @@ async function runE2E() {
   await waitFor(() => text().includes('50%'), 'semantic rebuild progress')
   await waitFor(() => text().includes('stale 1 / failed 1'), 'semantic stale failed summary')
 
+  await clickAndWaitForVideo('[data-testid="alert-review-list-playback"]', 'list playback video event')
+  assertLastVideoSeek('list playback', '2026-07-02T08:00:00', 'mock://record/east-gate-080000.mp4')
+  assertLastPlaybackPreparation('list playback', {
+    reviewItemId: 101,
+    materialUri: 'mock://record/east-gate-080000.mp4',
+  })
+
   clickReviewRow()
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-unified-timeline"]'), 'unified timeline')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-detail-stream"]'), 'detail stream')
@@ -199,8 +212,7 @@ async function runE2E() {
   await waitFor(() => text().includes('impact cam-east-gate / gate-zone / person'), 'rule suggestion impact scope')
   await waitFor(() => text().includes('hits 4 -> 0'), 'rule suggestion before-after hit comparison')
 
-  click('[data-testid="alert-review-detail-seek"]')
-  await waitFor(() => viewVideoEvents.length > 0, 'detail seek video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-detail-seek"]', 'detail seek video event')
   assertLastVideoSeek(
     'detail stream seek',
     '2026-07-02T08:00:02',
@@ -212,16 +224,14 @@ async function runE2E() {
     materialUri: 'mock://record/east-gate-080000.mp4',
   })
 
-  click('[data-testid="alert-review-unified-action"]')
-  await waitFor(() => viewVideoEvents.length > 1, 'unified timeline video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-unified-action"]', 'unified timeline video event')
   assertLastVideoSeek('unified timeline seek', '2026-07-02T07:59:45', 'mock://record/east-gate-075945.mp4')
   assertLastPlaybackPreparation('unified timeline seek before active case', {
     reviewItemId: 101,
     materialUri: 'mock://record/east-gate-075945.mp4',
   })
 
-  click('[data-testid="alert-review-coverage-seek"]')
-  await waitFor(() => viewVideoEvents.length > 2, 'coverage seek video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-coverage-seek"]', 'coverage seek video event')
   assertLastVideoSeek(
     'coverage seek',
     '2026-07-02T07:59:45',
@@ -280,8 +290,7 @@ async function runE2E() {
   click('[data-testid="alert-review-candidate-add"]')
   await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'addAlertReviewItemToCase'), 'candidate add action')
 
-  click('[data-testid="alert-review-detail-seek"]')
-  await waitFor(() => viewVideoEvents.length > 3, 'detail seek with active case video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-detail-seek"]', 'detail seek with active case video event')
   assertLastVideoSeek(
     'detail stream seek with active case',
     '2026-07-02T08:00:02',
@@ -294,8 +303,7 @@ async function runE2E() {
     materialUri: 'mock://record/east-gate-080000.mp4',
   })
 
-  click('[data-testid="alert-review-unified-action"]')
-  await waitFor(() => viewVideoEvents.length > 4, 'unified timeline with active case video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-unified-action"]', 'unified timeline with active case video event')
   assertLastVideoSeek('unified timeline seek with active case', '2026-07-02T07:59:45', 'mock://record/east-gate-075945.mp4')
   assertLastPlaybackPreparation('unified timeline seek with active case', {
     reviewCaseId: 501,
@@ -303,8 +311,7 @@ async function runE2E() {
     materialUri: 'mock://record/east-gate-075945.mp4',
   })
 
-  click('[data-testid="alert-review-coverage-seek"]')
-  await waitFor(() => viewVideoEvents.length > 5, 'coverage seek with active case video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-coverage-seek"]', 'coverage seek with active case video event')
   assertLastVideoSeek(
     'coverage seek with active case',
     '2026-07-02T07:59:45',
@@ -327,8 +334,7 @@ async function runE2E() {
   click('[data-testid="alert-review-case-merge"]')
   await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'mergeAlertReviewCases'), 'case merge action')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-timeline-seek"]'), 'case timeline seek button')
-  click('[data-testid="alert-review-case-timeline-seek"]')
-  await waitFor(() => viewVideoEvents.length > 6, 'case timeline seek video event')
+  await clickAndWaitForVideo('[data-testid="alert-review-case-timeline-seek"]', 'case timeline seek video event')
   assertLastVideoSeek(
     'case timeline seek',
     '2026-07-02T08:00:00',

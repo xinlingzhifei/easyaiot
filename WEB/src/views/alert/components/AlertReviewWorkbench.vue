@@ -1032,6 +1032,36 @@ async function openEvidence(evidence: AlertReviewEvidence) {
   })
 }
 
+async function openListPlayback(item: AlertReviewItem) {
+  await openItem(item)
+  const evidence = timeline.value.find(candidate => candidate.materialType !== 'snapshot' && candidate.materialUri)
+  if (evidence?.materialUri) {
+    const seekTime = evidence.happenedAt || item.firstAlertTime
+    const prepared = await prepareWorkbenchPlayback({
+      reviewItemId: item.id,
+      materialUri: evidence.materialUri,
+    })
+    if (!prepared)
+      return
+    emit('viewVideo', {
+      id: evidence.sourceAlertId,
+      device_id: item.deviceId || item.cameraId,
+      time: seekTime,
+      seek_time: seekTime,
+      record_path: prepared.recordPath,
+    })
+    return
+  }
+
+  const segment = coverage.value.find(candidate => candidate.recordUri)
+  if (segment) {
+    await openCoverageSegment(segment)
+    return
+  }
+
+  createMessage.warn('record uri is empty')
+}
+
 async function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
   if (!entry.materialUri) {
     createMessage.warn('material uri is empty')
@@ -1772,6 +1802,9 @@ defineExpose({
                   </Button>
                   <Button size="small" type="link" @click="openItem(item)">
                     证据
+                  </Button>
+                  <Button size="small" type="link" data-testid="alert-review-list-playback" @click="openListPlayback(item)">
+                    录像
                   </Button>
                   <Button size="small" type="link" @click="loadRecordCoverage(item)">
                     覆盖度
