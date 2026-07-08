@@ -19,4 +19,11 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
                 .last("LIMIT " + normalizedLimit));
     }
 
+    default boolean existsActive(String eventType, String alertKey) {
+        return selectCount(new LambdaQueryWrapperX<SupervisionAlertReviewRuntimeOutboxDO>()
+                .eq(SupervisionAlertReviewRuntimeOutboxDO::getEventType, eventType)
+                .eq(SupervisionAlertReviewRuntimeOutboxDO::getAlertKey, alertKey)
+                .in(SupervisionAlertReviewRuntimeOutboxDO::getOutboxStatus, List.of("pending", "published"))) > 0;
+    }
+
 }

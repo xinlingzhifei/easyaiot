@@ -3,6 +3,7 @@ package com.basiclab.iot.system.job.supervision;
 import com.basiclab.iot.common.core.handler.JobHandler;
 import com.basiclab.iot.common.core.job.TenantJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReportDelivery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
@@ -24,15 +25,10 @@ public class SupervisionAlertReviewOperationsReportJob implements JobHandler {
     @TenantJob
     public String execute(String param) {
         String reportType = parseReportType(param);
-        ReviewOperationsReport report = supervisionAlertReviewService.generateReviewReport(
-                new ReviewReportCommand(
-                        reportType,
-                        new ReviewQuery(null, null, null, null),
-                        null,
-                        null,
-                        null
-                )
+        ReviewOperationsReportDelivery delivery = supervisionAlertReviewService.scheduleReviewReportDelivery(
+                new ReviewReportCommand(reportType, new ReviewQuery(null, null, null, null), null, null, null)
         );
+        ReviewOperationsReport report = delivery.report();
         Object deliveryStatus = report.deliveryPlan() == null ? null : report.deliveryPlan().get("deliveryStatus");
         Object acknowledgement = report.acknowledgement() == null ? null : report.acknowledgement().get("status");
         return "reportType=" + report.reportType()
@@ -41,7 +37,8 @@ public class SupervisionAlertReviewOperationsReportJob implements JobHandler {
                 + ", evidenceGaps=" + report.evidenceGaps().size()
                 + ", recommendedActions=" + report.recommendedActions().size()
                 + ", deliveryStatus=" + deliveryStatus
-                + ", acknowledgement=" + acknowledgement;
+                + ", acknowledgement=" + acknowledgement
+                + ", deliveryOutbox=" + delivery.outboxEventCount();
     }
 
     private static String parseReportType(String param) {

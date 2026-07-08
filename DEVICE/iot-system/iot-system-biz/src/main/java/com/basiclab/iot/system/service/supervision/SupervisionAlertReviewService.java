@@ -146,6 +146,8 @@ public interface SupervisionAlertReviewService {
 
     ReviewOperationsReport generateReviewReport(ReviewReportCommand command);
 
+    ReviewOperationsReportDelivery scheduleReviewReportDelivery(ReviewReportCommand command);
+
     ReviewReportAcknowledgement acknowledgeReviewReport(ReviewReportAcknowledgementCommand command);
 
     ReviewEvidenceExportPackage exportReviewEvidence(ReviewEvidenceExportCommand command);
@@ -878,6 +880,14 @@ public interface SupervisionAlertReviewService {
         }
     }
 
+    record ReviewOperationsReportDelivery(ReviewOperationsReport report,
+                                          Integer outboxEventCount,
+                                          LocalDateTime queuedAt) {
+        public ReviewOperationsReportDelivery {
+            outboxEventCount = outboxEventCount == null ? 0 : outboxEventCount;
+        }
+    }
+
     record ReviewEvidenceExportCommand(Long reviewCaseId,
                                        List<Long> reviewItemIds,
                                        Long operatorUserId,
@@ -1472,6 +1482,12 @@ public interface SupervisionAlertReviewService {
                                                LocalDateTime executedAt,
                                                Map<String, Object> metadata) {
             return alerts == null ? 0 : alerts.size();
+        }
+
+        default int enqueueOperationsReportDelivery(ReviewOperationsReport report,
+                                                    boolean scheduled,
+                                                    LocalDateTime queuedAt) {
+            return 0;
         }
 
         default List<ReviewRuntimeOutboxMessage> listPendingRuntimeOutbox(Integer limit) {

@@ -2014,6 +2014,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     @Override
+    public ReviewOperationsReportDelivery scheduleReviewReportDelivery(ReviewReportCommand command) {
+        Objects.requireNonNull(command, "command");
+        ReviewOperationsReport report = generateReviewReport(command);
+        LocalDateTime queuedAt = LocalDateTime.now();
+        int outboxEventCount = reviewItemStore.enqueueOperationsReportDelivery(report, true, queuedAt);
+        return new ReviewOperationsReportDelivery(report, outboxEventCount, queuedAt);
+    }
+
+    @Override
     public ReviewReportAcknowledgement acknowledgeReviewReport(ReviewReportAcknowledgementCommand command) {
         Objects.requireNonNull(command, "command");
         String reportType = firstText(command.reportType(), "shift");

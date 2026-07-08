@@ -3527,8 +3527,9 @@ class SupervisionAlertReviewServiceTest {
 
     @Test
     void operationsReportJobGeneratesScheduledShiftAndDailyReports() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
-                new InMemoryReviewItemStore(),
+                itemStore,
                 new InMemoryRuleStore(),
                 unusedEventService(),
                 request -> Optional.empty(),
@@ -3539,13 +3540,34 @@ class SupervisionAlertReviewServiceTest {
 
         SupervisionAlertReviewOperationsReportJob job = new SupervisionAlertReviewOperationsReportJob(service);
         String shiftSummary = job.execute("");
-        String dailySummary = job.execute("daily");
 
         assertTrue(shiftSummary.contains("reportType=shift"));
         assertTrue(shiftSummary.contains("scheduled=true"));
         assertTrue(shiftSummary.contains("items=1"));
         assertTrue(shiftSummary.contains("deliveryStatus=pending"));
         assertTrue(shiftSummary.contains("acknowledgement=pending"));
+        assertTrue(shiftSummary.contains("deliveryOutbox=1"));
+        List<RuntimeOutboxEntry> reportDeliveries = itemStore.runtimeOutbox().stream()
+                .filter(entry -> "deliver_operations_report".equals(entry.action()))
+                .toList();
+        assertEquals(1, reportDeliveries.size());
+        RuntimeOutboxEntry reportDelivery = reportDeliveries.get(0);
+        assertEquals("pending", reportDelivery.status());
+        assertEquals("shift", reportDelivery.metadata().get("reportType"));
+        assertEquals("pending", reportDelivery.metadata().get("acknowledgementStatus"));
+        assertEquals(Boolean.TRUE, reportDelivery.metadata().get("scheduled"));
+        assertTrue(String.valueOf(reportDelivery.metadata().get("reportKey")).startsWith("report-"));
+        String outboxSummary = new SupervisionAlertReviewRuntimeOutboxJob(service).execute("10");
+        assertTrue(outboxSummary.contains("published=1"));
+        assertTrue(itemStore.runtimeOutbox().stream()
+                .allMatch(entry -> "published".equals(entry.status())));
+        String duplicateShiftSummary = job.execute("");
+        assertTrue(duplicateShiftSummary.contains("deliveryOutbox=0"));
+        assertEquals(1, itemStore.runtimeOutbox().stream()
+                .filter(entry -> "shift".equals(entry.metadata().get("reportType")))
+                .filter(entry -> "deliver_operations_report".equals(entry.action()))
+                .count());
+        String dailySummary = job.execute("daily");
         assertTrue(dailySummary.contains("reportType=daily"));
         assertTrue(dailySummary.contains("scheduled=true"));
     }
@@ -6818,6 +6840,56 @@ class SupervisionAlertReviewServiceTest {
         }
 
         @Override
+        public int enqueueOperationsReportDelivery(ReviewOperationsReport report,
+                                                   boolean scheduled,
+                                                   LocalDateTime queuedAt) {
+            if (report == null) {
+                return 0;
+            }
+            Map<String, Object> deliveryPlan = report.deliveryPlan() == null ? Map.of() : report.deliveryPlan();
+            Map<String, Object> acknowledgement = report.acknowledgement() == null ? Map.of() : report.acknowledgement();
+            Object rawReportKey = deliveryPlan.get("reportKey") == null
+                    ? acknowledgement.get("reportKey")
+                    : deliveryPlan.get("reportKey");
+            if (rawReportKey == null || String.valueOf(rawReportKey).isBlank()) {
+                return 0;
+            }
+            String reportKey = String.valueOf(rawReportKey);
+            boolean existingActive = runtimeOutbox.stream()
+                    .anyMatch(entry -> reportKey.equals(entry.alert())
+                            && "deliver_operations_report".equals(entry.action())
+                            && ("pending".equals(entry.status()) || "published".equals(entry.status())));
+            if (existingActive) {
+                return 0;
+            }
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("reportKey", reportKey);
+            metadata.put("reportType", report.reportType());
+            metadata.put("scheduled", scheduled);
+            metadata.put("channels", deliveryPlan.get("channels"));
+            metadata.put("deliveryStatus", deliveryPlan.get("deliveryStatus"));
+            metadata.put("acknowledgementStatus", acknowledgement.get("status"));
+            metadata.put("reviewItemIds", report.reviewItemIds());
+            metadata.put("generatedAt", report.generatedAt() == null ? null : report.generatedAt().toString());
+            metadata.entrySet().removeIf(entry -> entry.getValue() == null);
+            runtimeOutbox.add(new RuntimeOutboxEntry(
+                    reportKey,
+                    reportKey,
+                    "deliver_operations_report",
+                    report.recommendedActions() == null ? List.of() : List.copyOf(report.recommendedActions()),
+                    report.operatorUserId(),
+                    "pending",
+                    Map.copyOf(metadata),
+                    nextRuntimeOutboxId++,
+                    "report=" + reportKey,
+                    0,
+                    null,
+                    null
+            ));
+            return 1;
+        }
+
+        @Override
         public List<ReviewRuntimeOutboxMessage> listPendingRuntimeOutbox(Integer limit) {
             int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
             return runtimeOutbox.stream()
@@ -6826,7 +6898,9 @@ class SupervisionAlertReviewServiceTest {
                     .map(entry -> new ReviewRuntimeOutboxMessage(
                             entry.id(),
                             entry.runId(),
-                            "review_runtime_alert",
+                            "deliver_operations_report".equals(entry.action())
+                                    ? "review_operations_report"
+                                    : "review_runtime_alert",
                             entry.alert(),
                             entry.payload(),
                             entry.retryCount(),

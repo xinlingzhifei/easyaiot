@@ -48,6 +48,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemAggregate;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemStore;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleCommand;
@@ -1137,6 +1138,57 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             count++;
         }
         return count;
+    }
+
+    @Override
+    public int enqueueOperationsReportDelivery(ReviewOperationsReport report,
+                                               boolean scheduled,
+                                               LocalDateTime queuedAt) {
+        if (report == null) {
+            return 0;
+        }
+        Map<String, Object> deliveryPlan = report.deliveryPlan() == null ? Map.of() : report.deliveryPlan();
+        Map<String, Object> acknowledgement = report.acknowledgement() == null ? Map.of() : report.acknowledgement();
+        String reportKey = toText(deliveryPlan.get("reportKey"), toText(acknowledgement.get("reportKey"), null));
+        if (!hasText(reportKey)) {
+            return 0;
+        }
+        if (reviewRuntimeOutboxMapper.existsActive("review_operations_report", reportKey)) {
+            return 0;
+        }
+        LocalDateTime createdAt = queuedAt == null ? LocalDateTime.now() : queuedAt;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("reportKey", reportKey);
+        payload.put("reportType", report.reportType());
+        payload.put("action", "deliver_operations_report");
+        payload.put("scheduled", scheduled);
+        payload.put("channels", deliveryPlan.get("channels"));
+        payload.put("deliveryStatus", deliveryPlan.get("deliveryStatus"));
+        payload.put("acknowledgementStatus", acknowledgement.get("status"));
+        payload.put("reviewItemIds", report.reviewItemIds());
+        payload.put("evidenceGaps", report.evidenceGaps());
+        payload.put("recommendedActions", report.recommendedActions());
+        payload.put("generatedAt", report.generatedAt() == null ? null : report.generatedAt().toString());
+        payload.put("operatorUserId", report.operatorUserId());
+        payload.entrySet().removeIf(entry -> entry.getValue() == null);
+        reviewRuntimeOutboxMapper.insert(new SupervisionAlertReviewRuntimeOutboxDO()
+                .setRunId(runtimeOutboxReportRunId(reportKey))
+                .setEventType("review_operations_report")
+                .setAlertKey(reportKey)
+                .setPayload(writeJson(payload))
+                .setOutboxStatus("pending")
+                .setOperatorUserId(report.operatorUserId())
+                .setCreatedAt(createdAt)
+                .setRetryCount(0)
+                .setVersion(0));
+        return 1;
+    }
+
+    private static String runtimeOutboxReportRunId(String reportKey) {
+        if (!hasText(reportKey) || reportKey.length() <= 64) {
+            return reportKey;
+        }
+        return reportKey.substring(reportKey.length() - 64);
     }
 
     @Override
