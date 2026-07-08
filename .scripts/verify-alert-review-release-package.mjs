@@ -293,6 +293,7 @@ export function scanLiveVideoEvidenceGate(files) {
     'assertReleaseMediaEvidence',
     'assertReleaseSegmentMediaEvidence',
     'looksLocalOrMockMediaEvidence',
+    'looksAbsoluteLocalPathEvidence',
     'recordUriSource',
     'file_path',
     'record URI',

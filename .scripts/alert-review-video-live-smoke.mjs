@@ -714,7 +714,13 @@ function requireReleaseEndpoint(errors, optionName, value) {
 }
 
 function assertReleaseMediaEvidence(options, label, value) {
-  if (options.allowLocalEndpoints || !hasText(value) || !looksLocalOrMockMediaEvidence(value)) {
+  if (options.allowLocalEndpoints || !hasText(value)) {
+    return;
+  }
+  if (looksAbsoluteLocalPathEvidence(value)) {
+    throw new Error(`VIDEO live smoke returned local file path evidence: ${value}`);
+  }
+  if (!looksLocalOrMockMediaEvidence(value)) {
     return;
   }
   throw new Error(`VIDEO live smoke returned local/mock ${label}: ${value}`);
@@ -787,6 +793,17 @@ function looksLocalOrMockMediaEvidence(value) {
     || hostname === '0.0.0.0'
     || hostname.endsWith('.local')
     || hostname.includes('mock');
+}
+
+function looksAbsoluteLocalPathEvidence(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return false;
+  }
+  const lowered = raw.toLowerCase();
+  return /^[a-z]:[\\/]/i.test(raw)
+    || raw.startsWith('\\\\')
+    || /^\/(var|opt|mnt|media|srv|data|home|tmp)\//i.test(raw);
 }
 
 function summarizePayload(payload) {
