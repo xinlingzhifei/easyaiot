@@ -20,6 +20,7 @@ export const MIGRATION_FILES = [
 export function parseArgs(args, cwd = process.cwd()) {
   const parsed = {
     container: null,
+    databaseUrl: null,
     database: `yfeieye_alert_review_migration_smoke_${Date.now()}`,
     repoRoot: cwd,
     keepDatabase: false,
@@ -33,6 +34,8 @@ export function parseArgs(args, cwd = process.cwd()) {
       parsed.keepDatabase = true;
     } else if (arg.startsWith('--container=')) {
       parsed.container = arg.slice('--container='.length);
+    } else if (arg.startsWith('--database-url=')) {
+      parsed.databaseUrl = arg.slice('--database-url='.length);
     } else if (arg.startsWith('--database=')) {
       parsed.database = arg.slice('--database='.length);
     } else if (arg.startsWith('--repo-root=')) {
@@ -684,10 +687,11 @@ export function summarizeConcurrentReviewSegmentResults(results) {
 }
 
 function printHelp() {
-  console.log(`Usage: node .scripts/alert-review-postgres-migration-smoke.mjs --container=NAME [--database=NAME] [--repo-root=PATH] [--keep-database]
+  console.log(`Usage: node .scripts/alert-review-postgres-migration-smoke.mjs (--container=NAME | --database-url=URL) [--database=NAME] [--repo-root=PATH] [--keep-database]
 
-Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
+Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container or a direct PostgreSQL URL.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
+The direct URL must be a maintenance database URL accepted by local psql; the smoke creates --database on the same server.
 The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, V20260708_3, V20260708_4, V20260708_5, and V20260708_6, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, item media audit lookup, and concurrent races.`);
 }
 
@@ -697,21 +701,48 @@ function assertSafeDatabaseName(database) {
   }
 }
 
-function runDockerPsql(container, database, sql) {
-  const result = spawnSync(
-    'docker',
-    ['exec', '-i', container, 'psql', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1'],
-    {
-      input: sql,
-      encoding: 'utf8',
-      windowsHide: true,
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+export function databaseUrlForDatabase(databaseUrl, database) {
+  const url = new URL(databaseUrl);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
+
+function databaseNameFromUrl(databaseUrl) {
+  const url = new URL(databaseUrl);
+  const database = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+  return database || 'postgres';
+}
+
+export function buildPsqlInvocation(options, database) {
+  if (options.container) {
+    return {
+      command: 'docker',
+      args: ['exec', '-i', options.container, 'psql', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1'],
+      label: `${options.container}/${database}`,
+    };
+  }
+  if (options.databaseUrl) {
+    return {
+      command: 'psql',
+      args: [databaseUrlForDatabase(options.databaseUrl, database), '-v', 'ON_ERROR_STOP=1'],
+      label: `psql/${database}`,
+    };
+  }
+  throw new Error('Missing required --container=NAME or --database-url=URL');
+}
+
+function runPsql(options, database, sql) {
+  const invocation = buildPsqlInvocation(options, database);
+  const result = spawnSync(invocation.command, invocation.args, {
+    input: sql,
+    encoding: 'utf8',
+    windowsHide: true,
+    maxBuffer: 16 * 1024 * 1024,
+  });
   if (result.status !== 0) {
     throw new Error(
       [
-        `psql failed in ${container}/${database} with exit ${result.status}`,
+        `psql failed in ${invocation.label} with exit ${result.status}`,
         result.stdout,
         result.stderr,
       ]
@@ -738,15 +769,12 @@ function runDockerCommand(args) {
   return result.stdout;
 }
 
-function runDockerPsqlAsync(container, database, sql) {
+function runPsqlAsync(options, database, sql) {
   return new Promise((resolveResult) => {
-    const child = spawn(
-      'docker',
-      ['exec', '-i', container, 'psql', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1'],
-      {
-        windowsHide: true,
-      },
-    );
+    const invocation = buildPsqlInvocation(options, database);
+    const child = spawn(invocation.command, invocation.args, {
+      windowsHide: true,
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => {
@@ -774,62 +802,65 @@ function readMigrationSql(repoRoot, migrationFile) {
 }
 
 export async function runSmoke(options) {
-  if (!options.container) {
-    throw new Error('Missing required --container=NAME');
+  if (Boolean(options.container) === Boolean(options.databaseUrl)) {
+    throw new Error('Provide exactly one of --container=NAME or --database-url=URL');
   }
   assertSafeDatabaseName(options.database);
+  const adminDatabase = options.container ? 'postgres' : databaseNameFromUrl(options.databaseUrl);
 
-  runDockerCommand(['exec', options.container, 'pg_isready', '-U', 'postgres']);
-  runDockerPsql(
-    options.container,
-    'postgres',
+  if (options.container) {
+    runDockerCommand(['exec', options.container, 'pg_isready', '-U', 'postgres']);
+  }
+  runPsql(
+    options,
+    adminDatabase,
     `DROP DATABASE IF EXISTS ${options.database};\nCREATE DATABASE ${options.database};\n`,
   );
 
   try {
-    runDockerPsql(options.container, options.database, buildBootstrapSql());
+    runPsql(options, options.database, buildBootstrapSql());
     for (const migrationFile of MIGRATION_FILES) {
-      runDockerPsql(options.container, options.database, readMigrationSql(options.repoRoot, migrationFile));
+      runPsql(options, options.database, readMigrationSql(options.repoRoot, migrationFile));
     }
-    const assertionOutput = runDockerPsql(options.container, options.database, buildPostMigrationAssertionSql());
+    const assertionOutput = runPsql(options, options.database, buildPostMigrationAssertionSql());
     const concurrentOutput = await runConcurrentDuplicateIdentitySmoke(options);
-    runDockerPsql(options.container, options.database, buildConcurrentReviewStatusBootstrapSql());
+    runPsql(options, options.database, buildConcurrentReviewStatusBootstrapSql());
     const concurrentReviewStatusOutput = await runConcurrentReviewStatusSmoke(options);
-    runDockerPsql(options.container, options.database, buildConcurrentReviewSegmentBootstrapSql());
+    runPsql(options, options.database, buildConcurrentReviewSegmentBootstrapSql());
     const concurrentSegmentOutput = await runConcurrentReviewSegmentSmoke(options);
     return `${assertionOutput}${concurrentOutput}\n${concurrentReviewStatusOutput}\n${concurrentSegmentOutput}\n`;
   } finally {
     if (!options.keepDatabase) {
-      runDockerPsql(options.container, 'postgres', `DROP DATABASE IF EXISTS ${options.database};\n`);
+      runPsql(options, adminDatabase, `DROP DATABASE IF EXISTS ${options.database};\n`);
     }
   }
 }
 
 async function runConcurrentDuplicateIdentitySmoke(options) {
   const results = await Promise.all([
-    runDockerPsqlAsync(options.container, options.database, buildConcurrentDuplicateIdentityInsertSql()),
-    runDockerPsqlAsync(options.container, options.database, buildConcurrentDuplicateIdentityInsertSql()),
+    runPsqlAsync(options, options.database, buildConcurrentDuplicateIdentityInsertSql()),
+    runPsqlAsync(options, options.database, buildConcurrentDuplicateIdentityInsertSql()),
   ]);
   return summarizeConcurrentDuplicateResults(results);
 }
 
 async function runConcurrentReviewStatusSmoke(options) {
   const results = await Promise.all([
-    runDockerPsqlAsync(options.container, options.database, buildConcurrentReviewStatusUpdateSql()),
-    runDockerPsqlAsync(options.container, options.database, buildConcurrentReviewStatusUpdateSql()),
+    runPsqlAsync(options, options.database, buildConcurrentReviewStatusUpdateSql()),
+    runPsqlAsync(options, options.database, buildConcurrentReviewStatusUpdateSql()),
   ]);
   return summarizeConcurrentReviewStatusResults(results);
 }
 
 async function runConcurrentReviewSegmentSmoke(options) {
   const results = await Promise.all([
-    runDockerPsqlAsync(
-      options.container,
+    runPsqlAsync(
+      options,
       options.database,
       buildConcurrentReviewSegmentInsertSql({ reviewItemId: 7001, segmentNo: 'seg-race-1' }),
     ),
-    runDockerPsqlAsync(
-      options.container,
+    runPsqlAsync(
+      options,
       options.database,
       buildConcurrentReviewSegmentInsertSql({ reviewItemId: 7002, segmentNo: 'seg-race-2' }),
     ),

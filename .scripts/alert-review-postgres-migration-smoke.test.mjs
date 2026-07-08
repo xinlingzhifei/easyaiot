@@ -9,6 +9,8 @@ import {
   buildConcurrentReviewStatusUpdateSql,
   buildConcurrentReviewSegmentBootstrapSql,
   buildConcurrentReviewSegmentInsertSql,
+  buildPsqlInvocation,
+  databaseUrlForDatabase,
   buildPostMigrationAssertionSql,
   parseArgs,
   summarizeConcurrentDuplicateResults,
@@ -205,11 +207,45 @@ assert.throws(
 
 assert.deepEqual(parseArgs(['--container=pg-review', '--database=yfeieye_smoke']), {
   container: 'pg-review',
+  databaseUrl: null,
   database: 'yfeieye_smoke',
   repoRoot: process.cwd(),
   keepDatabase: false,
   help: false,
 });
+assert.deepEqual(parseArgs([
+  '--database-url=postgresql://ci:secret@db.example:5432/postgres?sslmode=require',
+  '--database=yfeieye_smoke',
+]), {
+  container: null,
+  databaseUrl: 'postgresql://ci:secret@db.example:5432/postgres?sslmode=require',
+  database: 'yfeieye_smoke',
+  repoRoot: process.cwd(),
+  keepDatabase: false,
+  help: false,
+});
+assert.equal(
+  databaseUrlForDatabase(
+    'postgresql://ci:secret@db.example:5432/postgres?sslmode=require',
+    'yfeieye_alert_review_smoke',
+  ),
+  'postgresql://ci:secret@db.example:5432/yfeieye_alert_review_smoke?sslmode=require',
+);
+assert.deepEqual(
+  buildPsqlInvocation({
+    container: null,
+    databaseUrl: 'postgresql://ci:secret@db.example:5432/postgres?sslmode=require',
+  }, 'yfeieye_alert_review_smoke'),
+  {
+    command: 'psql',
+    args: [
+      'postgresql://ci:secret@db.example:5432/yfeieye_alert_review_smoke?sslmode=require',
+      '-v',
+      'ON_ERROR_STOP=1',
+    ],
+    label: 'psql/yfeieye_alert_review_smoke',
+  },
+);
 assert.equal(parseArgs(['--help']).help, true);
 assert.throws(() => parseArgs(['--bogus']), /Unknown argument/);
 
