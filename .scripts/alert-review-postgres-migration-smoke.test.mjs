@@ -30,6 +30,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql',
 ]);
 
 const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('scheduler_jobs')), 'utf8');
@@ -56,11 +57,22 @@ assert.match(runtimeOutboxNotifyTemplateMigrationSql, /YFEIEYE_REVIEW_RUNTIME_AL
 assert.match(runtimeOutboxNotifyTemplateMigrationSql, /YFEIEYE_REVIEW_OPERATIONS_REPORT/);
 assert.match(runtimeOutboxNotifyTemplateMigrationSql, /existing\.code = seed\.code/);
 
+const runtimeOutboxDeliveryMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('runtime_outbox_delivery')),
+  'utf8',
+);
+assert.match(runtimeOutboxDeliveryMigrationSql, /system_supervision_alert_review_runtime_outbox_delivery/);
+assert.match(runtimeOutboxDeliveryMigrationSql, /recipient_user_id BIGINT NOT NULL/);
+assert.match(runtimeOutboxDeliveryMigrationSql, /notify_message_id BIGINT/);
+assert.match(runtimeOutboxDeliveryMigrationSql, /uk_supervision_alert_review_runtime_outbox_delivery_recipient/);
+assert.match(runtimeOutboxDeliveryMigrationSql, /FOREIGN KEY \(outbox_id\)/);
+
 const bootstrapSql = buildBootstrapSql();
 assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);
 assert.match(bootstrapSql, /CREATE TABLE system_menu/);
 assert.match(bootstrapSql, /CREATE TABLE infra_job/);
 assert.match(bootstrapSql, /CREATE TABLE system_notify_template/);
+assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_runtime_outbox/);
 assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
 assert.match(bootstrapSql, /source_alert_ids TEXT/);
 assert.match(bootstrapSql, /a-shared/);
@@ -87,6 +99,8 @@ assert.match(assertionSql, /supervisionAlertReviewOperationsReportJob/);
 assert.match(assertionSql, /YFEIEYE_REVIEW_RUNTIME_ALERT/);
 assert.match(assertionSql, /YFEIEYE_REVIEW_OPERATIONS_REPORT/);
 assert.match(assertionSql, /expected runtime outbox notify templates to be seeded/);
+assert.match(assertionSql, /system_supervision_alert_review_runtime_outbox_delivery/);
+assert.match(assertionSql, /expected runtime outbox delivery recipient idempotency index to exist/);
 assert.match(assertionSql, /expected review case audit to allow pre-case media audit rows/);
 assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 assert.match(assertionSql, /expected stale review status version update to affect no rows/);

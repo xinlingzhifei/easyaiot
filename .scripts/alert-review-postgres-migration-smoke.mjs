@@ -13,6 +13,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -101,6 +102,26 @@ CREATE TABLE system_notify_template (
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted SMALLINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE system_supervision_alert_review_runtime_outbox (
+  id BIGSERIAL PRIMARY KEY,
+  run_id VARCHAR(64) NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  alert_key VARCHAR(128) NOT NULL,
+  payload TEXT,
+  outbox_status VARCHAR(64) NOT NULL DEFAULT 'pending',
+  operator_user_id BIGINT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  published_at TIMESTAMP,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  version INTEGER NOT NULL DEFAULT 0,
+  creator VARCHAR(64),
+  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updater VARCHAR(64),
+  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 INSERT INTO system_menu(
@@ -274,6 +295,23 @@ BEGIN
       AND deleted = 0
   ) <> 2 THEN
     RAISE EXCEPTION 'expected runtime outbox notify templates to be seeded';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_name = 'system_supervision_alert_review_runtime_outbox_delivery'
+  ) THEN
+    RAISE EXCEPTION 'expected runtime outbox delivery table to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_runtime_outbox_delivery'
+      AND indexname = 'uk_supervision_alert_review_runtime_outbox_delivery_recipient'
+  ) THEN
+    RAISE EXCEPTION 'expected runtime outbox delivery recipient idempotency index to exist';
   END IF;
 
   IF NOT EXISTS (
@@ -631,7 +669,7 @@ function printHelp() {
 
 Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, V20260708_3, and V20260708_4, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, V20260708_3, V20260708_4, and V20260708_5, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

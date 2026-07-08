@@ -383,6 +383,26 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void alertReviewRuntimeOutboxDeliveryMigrationTracksRecipientIdempotency() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql");
+        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+
+        assertTrue(Files.exists(migration), "runtime outbox delivery migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox_delivery"));
+        assertTrue(migrationSql.contains("outbox_id BIGINT NOT NULL"));
+        assertTrue(migrationSql.contains("recipient_user_id BIGINT NOT NULL"));
+        assertTrue(migrationSql.contains("notify_message_id BIGINT"));
+        assertTrue(migrationSql.contains("attempt_count INTEGER NOT NULL DEFAULT 0"));
+        assertTrue(migrationSql.contains("uk_supervision_alert_review_runtime_outbox_delivery_recipient"));
+        assertTrue(migrationSql.contains("FOREIGN KEY (outbox_id)"));
+
+        String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
+        assertTrue(baselineSql.contains("system_supervision_alert_review_runtime_outbox_delivery"));
+        assertTrue(baselineSql.contains("idx_supervision_alert_review_runtime_outbox_delivery_status"));
+    }
+
+    @Test
     void alertReviewMediaPermissionMigrationSeedsMenuPermissions() throws IOException {
         Path migration = Path.of("src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql");
 

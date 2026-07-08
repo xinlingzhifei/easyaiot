@@ -27,11 +27,14 @@ public class NotifyReviewRuntimeOutboxPublisher implements ReviewRuntimeOutboxPu
 
     private final NotifySendService notifySendService;
     private final ReviewRuntimeOutboxNotifyProperties properties;
+    private final ReviewRuntimeOutboxNotifyDeliveryStore deliveryStore;
 
     public NotifyReviewRuntimeOutboxPublisher(NotifySendService notifySendService,
-                                              ReviewRuntimeOutboxNotifyProperties properties) {
+                                              ReviewRuntimeOutboxNotifyProperties properties,
+                                              ReviewRuntimeOutboxNotifyDeliveryStore deliveryStore) {
         this.notifySendService = Objects.requireNonNull(notifySendService, "notifySendService");
         this.properties = Objects.requireNonNull(properties, "properties");
+        this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
     }
 
     @Override
@@ -49,15 +52,31 @@ public class NotifyReviewRuntimeOutboxPublisher implements ReviewRuntimeOutboxPu
         }
         Map<String, Object> templateParams = templateParams(message);
         for (Long adminUserId : recipients) {
+            if (deliveryStore.isDelivered(message.id(),
+                    ReviewRuntimeOutboxNotifyDeliveryStore.CHANNEL_SYSTEM_NOTIFY_ADMIN,
+                    adminUserId,
+                    templateCode)) {
+                continue;
+            }
             try {
                 Long notifyMessageId = notifySendService.sendSingleNotifyToAdmin(
                         adminUserId, templateCode, templateParams);
                 if (notifyMessageId == null) {
+                    deliveryStore.markFailed(message.id(), message.eventType(), message.alertKey(),
+                            ReviewRuntimeOutboxNotifyDeliveryStore.CHANNEL_SYSTEM_NOTIFY_ADMIN,
+                            adminUserId, templateCode, "runtime_outbox_notify_message_not_created",
+                            java.time.LocalDateTime.now());
                     return ReviewRuntimeOutboxDeliveryResult.failed("runtime_outbox_notify_message_not_created");
                 }
+                deliveryStore.markDelivered(message.id(), message.eventType(), message.alertKey(),
+                        ReviewRuntimeOutboxNotifyDeliveryStore.CHANNEL_SYSTEM_NOTIFY_ADMIN,
+                        adminUserId, templateCode, notifyMessageId, java.time.LocalDateTime.now());
             } catch (RuntimeException ex) {
-                return ReviewRuntimeOutboxDeliveryResult.failed(
-                        "runtime_outbox_notify_send_failed:" + ex.getClass().getSimpleName());
+                String errorCode = "runtime_outbox_notify_send_failed:" + ex.getClass().getSimpleName();
+                deliveryStore.markFailed(message.id(), message.eventType(), message.alertKey(),
+                        ReviewRuntimeOutboxNotifyDeliveryStore.CHANNEL_SYSTEM_NOTIFY_ADMIN,
+                        adminUserId, templateCode, errorCode, java.time.LocalDateTime.now());
+                return ReviewRuntimeOutboxDeliveryResult.failed(errorCode);
             }
         }
         return ReviewRuntimeOutboxDeliveryResult.delivered();
