@@ -215,8 +215,11 @@ const requiredRuleGovernancePermissionSnippets = [
   'canUpdateRuleSuggestion',
   'canRevertRuleSuggestion',
   'canReplayRule',
-  "v-if=\"item.ruleSuggestionStatus === 'pending' && canUpdateRuleSuggestion\"",
-  "v-if=\"item.ruleSuggestionStatus === 'accepted' && canUpdateRuleSuggestion\"",
+  'ruleSuggestionSampleReady',
+  'canAcceptRuleSuggestion',
+  'canApplyRuleSuggestion',
+  'v-if="canAcceptRuleSuggestion(item)"',
+  'v-if="canApplyRuleSuggestion(item)"',
   "v-if=\"item.ruleSuggestionStatus && item.ruleSuggestionStatus !== 'reverted' && canRevertRuleSuggestion\"",
   'v-if="item.ruleSuggestionStatus && canReplayRule"',
 ]

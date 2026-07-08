@@ -211,6 +211,10 @@ async function runE2E() {
   await waitFor(() => text().includes('risk low_sample_requires_more_review'), 'rule suggestion risk note')
   await waitFor(() => text().includes('impact cam-east-gate / gate-zone / person'), 'rule suggestion impact scope')
   await waitFor(() => text().includes('hits 4 -> 0'), 'rule suggestion before-after hit comparison')
+  if (hasButtonByText('accept'))
+    throw new Error('low-sample rule suggestion should hide accept action')
+  if (hasButtonByText('applied'))
+    throw new Error('low-sample rule suggestion should hide apply action')
 
   await clickAndWaitForVideo('[data-testid="alert-review-detail-seek"]', 'detail seek video event')
   assertLastVideoSeek(

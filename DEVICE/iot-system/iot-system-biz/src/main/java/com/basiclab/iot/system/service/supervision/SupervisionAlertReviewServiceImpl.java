@@ -583,10 +583,14 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
         Map<String, Object> suggestion = updateRuleSuggestionLifecycle(item.ruleSuggestion(), status, command.note());
         if (RULE_SUGGESTION_ACCEPTED.equals(status)) {
+            suggestion = withCurrentRuleSuggestionSafety(item, suggestion);
+            requireRuleSuggestionSampleReady(suggestion);
             suggestion = withRuleGovernanceEvidence(item, suggestion, null);
         }
         if (RULE_SUGGESTION_APPLIED.equals(status)) {
             requireAcceptedRuleSuggestion(item);
+            suggestion = withCurrentRuleSuggestionSafety(item, suggestion);
+            requireRuleSuggestionSampleReady(suggestion);
             suggestion = withRuleGovernanceEvidence(item, suggestion, command.note());
             suggestion = applyRuleSuggestion(item, suggestion);
         }
@@ -6226,6 +6230,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         summary.put("impactScope", immutableNonNullMap(impactScope));
         summary.put("beforeAfterComparison", immutableNonNullMap(beforeAfter));
         return immutableNonNullMap(summary);
+    }
+
+    private Map<String, Object> withCurrentRuleSuggestionSafety(ReviewItemAggregate item,
+                                                                Map<String, Object> suggestion) {
+        Map<String, Object> refreshed = new LinkedHashMap<>(suggestion == null ? Map.of() : suggestion);
+        refreshed.putAll(buildRuleSuggestionSafetySummary(item));
+        return immutableNonNullMap(refreshed);
+    }
+
+    private static void requireRuleSuggestionSampleReady(Map<String, Object> suggestion) {
+        if (Boolean.TRUE.equals(suggestion.get("sampleRequirementMet"))) {
+            return;
+        }
+        Integer currentSampleCount = toInteger(suggestion.get("currentSampleCount"));
+        Integer minimumSampleCount = toInteger(suggestion.get("minimumSampleCount"));
+        throw new IllegalStateException("rule suggestion minimum sample requirement not met: "
+                + (currentSampleCount == null ? "-" : currentSampleCount)
+                + "/"
+                + (minimumSampleCount == null ? "-" : minimumSampleCount));
     }
 
     private static List<String> withScopeValue(List<String> values, String value) {

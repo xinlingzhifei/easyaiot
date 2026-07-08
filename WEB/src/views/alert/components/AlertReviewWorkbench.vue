@@ -572,6 +572,10 @@ async function updateRuleSuggestion(item: AlertReviewItem, status: string) {
     createMessage.error('rule suggestion approval permission required')
     return
   }
+  if ((status === 'accepted' || status === 'applied') && !ruleSuggestionSampleReady(item)) {
+    createMessage.error('rule suggestion minimum sample requirement not met')
+    return
+  }
   try {
     replaceItem(await updateAlertReviewRuleSuggestionStatus(item.id, {
       status,
@@ -1339,6 +1343,27 @@ function ruleSuggestionSafetyRows(item: AlertReviewItem) {
   return rows
 }
 
+function ruleSuggestionSampleReady(item: AlertReviewItem) {
+  const suggestion = item.ruleSuggestion || {}
+  if (suggestion.sampleRequirementMet === true)
+    return true
+  if (suggestion.sampleRequirementMet === false)
+    return false
+  const currentSampleCount = toOptionalNumber(suggestion.currentSampleCount)
+  const minimumSampleCount = toOptionalNumber(suggestion.minimumSampleCount)
+  if (minimumSampleCount === undefined)
+    return true
+  return (currentSampleCount ?? 0) >= minimumSampleCount
+}
+
+function canAcceptRuleSuggestion(item: AlertReviewItem) {
+  return item.ruleSuggestionStatus === 'pending' && canUpdateRuleSuggestion.value && ruleSuggestionSampleReady(item)
+}
+
+function canApplyRuleSuggestion(item: AlertReviewItem) {
+  return item.ruleSuggestionStatus === 'accepted' && canUpdateRuleSuggestion.value && ruleSuggestionSampleReady(item)
+}
+
 function compactValueList(value: unknown) {
   if (Array.isArray(value))
     return value.map(item => String(item)).filter(Boolean).join(',') || '-'
@@ -1816,7 +1841,7 @@ defineExpose({
                     误报
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus === 'pending' && canUpdateRuleSuggestion"
+                    v-if="canAcceptRuleSuggestion(item)"
                     size="small"
                     type="link"
                     @click="updateRuleSuggestion(item, 'accepted')"
@@ -1824,7 +1849,7 @@ defineExpose({
                     accept
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus === 'accepted' && canUpdateRuleSuggestion"
+                    v-if="canApplyRuleSuggestion(item)"
                     size="small"
                     type="link"
                     @click="updateRuleSuggestion(item, 'applied')"

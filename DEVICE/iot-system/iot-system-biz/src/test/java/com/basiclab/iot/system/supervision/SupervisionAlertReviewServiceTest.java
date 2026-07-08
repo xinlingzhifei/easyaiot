@@ -2511,6 +2511,38 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void lowSampleRuleSuggestionCannotBeAcceptedBeforeMoreReviewSamples() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                ruleStore,
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-low-sample-1",
+                LocalDateTime.of(2026, 7, 1, 8, 30),
+                "low-sample-1.jpg",
+                "low-sample-1.mp4"
+        ));
+
+        ReviewItemAggregate falsePositive = service.markFalsePositive(
+                new ReviewOperationCommand(item.id(), 9001L, "zone too wide")
+        );
+
+        IllegalStateException rejected = assertThrows(IllegalStateException.class, () ->
+                service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                        item.id(),
+                        9002L,
+                        "accepted",
+                        "sample is too small"
+                )));
+        assertTrue(rejected.getMessage().contains("minimum sample"));
+        assertEquals("pending", falsePositive.ruleSuggestionStatus());
+        assertEquals(false, falsePositive.ruleSuggestion().get("sampleRequirementMet"));
+        assertEquals(List.of(), ruleStore.listAll());
+    }
+
+    @Test
     void falsePositiveRuleSuggestionAppliesRuleConfigOnlyAfterApprovalAndCanRollback() {
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(
@@ -2524,10 +2556,24 @@ class SupervisionAlertReviewServiceTest {
                 "snap-rule.jpg",
                 "record-rule.mp4"
         ));
+        ReviewItemAggregate second = service.ingestClue(newClue(
+                "alert-rule-lifecycle-2",
+                LocalDateTime.of(2026, 6, 30, 13, 40),
+                "snap-rule-2.jpg",
+                "record-rule-2.mp4"
+        ));
+        ReviewItemAggregate third = service.ingestClue(newClue(
+                "alert-rule-lifecycle-3",
+                LocalDateTime.of(2026, 6, 30, 14, 0),
+                "snap-rule-3.jpg",
+                "record-rule-3.mp4"
+        ));
 
         ReviewItemAggregate falsePositive = service.markFalsePositive(
                 new ReviewOperationCommand(item.id(), 9003L, "zone_too_wide")
         );
+        service.markFalsePositive(new ReviewOperationCommand(second.id(), 9006L, "zone_too_wide"));
+        service.markFalsePositive(new ReviewOperationCommand(third.id(), 9007L, "zone_too_wide"));
         ReviewItemAggregate accepted = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                 item.id(),
                 9004L,
@@ -2583,8 +2629,10 @@ class SupervisionAlertReviewServiceTest {
         LocalDateTime baseTime = LocalDateTime.of(2026, 7, 1, 9, 0);
         ReviewItemAggregate first = service.ingestClue(newClue("alert-safe-apply-1", baseTime, "safe-1.jpg", "safe-1.mp4"));
         ReviewItemAggregate second = service.ingestClue(newClue("alert-safe-apply-2", baseTime.plusMinutes(20), "safe-2.jpg", "safe-2.mp4"));
+        ReviewItemAggregate third = service.ingestClue(newClue("alert-safe-apply-3", baseTime.plusMinutes(40), "safe-3.jpg", "safe-3.mp4"));
         service.markFalsePositive(new ReviewOperationCommand(first.id(), 9001L, "zone too wide"));
         service.markFalsePositive(new ReviewOperationCommand(second.id(), 9002L, "zone too wide"));
+        service.markFalsePositive(new ReviewOperationCommand(third.id(), 9004L, "zone too wide"));
 
         assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                 first.id(),
@@ -2603,8 +2651,8 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(accepted.ruleSuggestion().get("shadowEvaluation") != null);
         Map<?, ?> acceptedReplayReport = (Map<?, ?>) accepted.ruleSuggestion().get("replayReport");
         assertEquals("review_before_apply", acceptedReplayReport.get("decision"));
-        assertEquals(2, acceptedReplayReport.get("evaluatedCount"));
-        assertEquals(2, acceptedReplayReport.get("falsePositiveReduction"));
+        assertEquals(3, acceptedReplayReport.get("evaluatedCount"));
+        assertEquals(3, acceptedReplayReport.get("falsePositiveReduction"));
         Map<?, ?> replayRuleVersion = (Map<?, ?>) acceptedReplayReport.get("ruleVersion");
         Map<?, ?> sampleWindow = (Map<?, ?>) acceptedReplayReport.get("sampleWindow");
         Map<?, ?> hitComparison = (Map<?, ?>) acceptedReplayReport.get("hitComparison");
@@ -2612,12 +2660,12 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(SupervisionRuleSeeds.RULE_RESTRICTED_AREA, replayRuleVersion.get("ruleCode"));
         assertEquals("camera-01", replayRuleVersion.get("cameraId"));
         assertEquals(baseTime.toString(), sampleWindow.get("startTime"));
-        assertEquals(baseTime.plusMinutes(20).toString(), sampleWindow.get("endTime"));
-        assertEquals(2, sampleWindow.get("sampleCount"));
-        assertEquals(2, hitComparison.get("beforeCount"));
+        assertEquals(baseTime.plusMinutes(40).toString(), sampleWindow.get("endTime"));
+        assertEquals(3, sampleWindow.get("sampleCount"));
+        assertEquals(3, hitComparison.get("beforeCount"));
         assertEquals(0, hitComparison.get("afterCount"));
-        assertEquals(2, hitComparison.get("difference"));
-        assertEquals(2, falseNegativeEstimate.get("possibleMissedCount"));
+        assertEquals(3, hitComparison.get("difference"));
+        assertEquals(3, falseNegativeEstimate.get("possibleMissedCount"));
         assertEquals("review_required", falseNegativeEstimate.get("riskLevel"));
 
         ReviewItemAggregate applied = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
@@ -2628,8 +2676,8 @@ class SupervisionAlertReviewServiceTest {
         ));
 
         Map<?, ?> shadowEvaluation = (Map<?, ?>) applied.ruleSuggestion().get("shadowEvaluation");
-        assertEquals(2, shadowEvaluation.get("estimatedSuppressedCount"));
-        assertEquals(2, shadowEvaluation.get("evaluatedReviewItemCount"));
+        assertEquals(3, shadowEvaluation.get("estimatedSuppressedCount"));
+        assertEquals(3, shadowEvaluation.get("evaluatedReviewItemCount"));
         assertEquals(1.0D, shadowEvaluation.get("beforeFalsePositiveRate"));
         assertEquals(0.0D, shadowEvaluation.get("afterFalsePositiveRate"));
         assertEquals("supervisor approved", applied.ruleSuggestion().get("approvalNote"));
