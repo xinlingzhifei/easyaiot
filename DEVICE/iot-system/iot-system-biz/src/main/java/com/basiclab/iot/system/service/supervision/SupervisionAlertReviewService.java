@@ -1522,6 +1522,13 @@ public interface SupervisionAlertReviewService {
             return List.of();
         }
 
+        default List<ReviewRuntimeOutboxMessage> claimPendingRuntimeOutbox(Integer limit,
+                                                                           String claimToken,
+                                                                           Long operatorUserId,
+                                                                           LocalDateTime claimedAt) {
+            return listPendingRuntimeOutbox(limit);
+        }
+
         default void markRuntimeOutboxPublished(Long outboxId, LocalDateTime publishedAt) {
         }
 

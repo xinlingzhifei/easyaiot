@@ -112,6 +112,8 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_runtime_run"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_run_status"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_status"));
+        assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_claim"));
+        assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_claimed_at"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_run"));
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key"));
         assertTrue(sql.contains("ON system_supervision_alert_review_report_ack(tenant_id, report_key)"));
@@ -282,6 +284,9 @@ class SupervisionSchemaSqlTest {
         assertTrue(runtimeOutboxTable.contains("event_type VARCHAR(64) NOT NULL"));
         assertTrue(runtimeOutboxTable.contains("alert_key VARCHAR(128) NOT NULL"));
         assertTrue(runtimeOutboxTable.contains("outbox_status VARCHAR(64) NOT NULL DEFAULT 'pending'"));
+        assertTrue(runtimeOutboxTable.contains("claim_token VARCHAR(128)"));
+        assertTrue(runtimeOutboxTable.contains("claimed_by BIGINT"));
+        assertTrue(runtimeOutboxTable.contains("claimed_at TIMESTAMP"));
         assertTrue(runtimeOutboxTable.contains("retry_count INTEGER NOT NULL DEFAULT 0"));
     }
 
@@ -400,6 +405,24 @@ class SupervisionSchemaSqlTest {
         String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
         assertTrue(baselineSql.contains("system_supervision_alert_review_runtime_outbox_delivery"));
         assertTrue(baselineSql.contains("idx_supervision_alert_review_runtime_outbox_delivery_status"));
+    }
+
+    @Test
+    void alertReviewRuntimeOutboxClaimMigrationTracksProcessingOwnership() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql");
+        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+
+        assertTrue(Files.exists(migration), "runtime outbox claim migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("ADD COLUMN IF NOT EXISTS claim_token VARCHAR(128)"));
+        assertTrue(migrationSql.contains("ADD COLUMN IF NOT EXISTS claimed_by BIGINT"));
+        assertTrue(migrationSql.contains("ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP"));
+        assertTrue(migrationSql.contains("idx_supervision_alert_review_runtime_outbox_claim"));
+        assertTrue(migrationSql.contains("idx_supervision_alert_review_runtime_outbox_claimed_at"));
+
+        String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
+        assertTrue(baselineSql.contains("claim_token VARCHAR(128)"));
+        assertTrue(baselineSql.contains("idx_supervision_alert_review_runtime_outbox_claim"));
     }
 
     @Test

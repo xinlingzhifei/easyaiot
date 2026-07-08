@@ -18,6 +18,9 @@ public class SupervisionAlertReviewRuntimeOutboxDO extends BaseDO {
     private String alertKey;
     private String payload;
     private String outboxStatus;
+    private String claimToken;
+    private Long claimedBy;
+    private LocalDateTime claimedAt;
     private Long operatorUserId;
     private LocalDateTime createdAt;
     private LocalDateTime publishedAt;

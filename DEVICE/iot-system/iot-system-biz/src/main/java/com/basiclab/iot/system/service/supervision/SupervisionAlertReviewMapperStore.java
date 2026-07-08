@@ -1195,16 +1195,43 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     public List<ReviewRuntimeOutboxMessage> listPendingRuntimeOutbox(Integer limit) {
         return reviewRuntimeOutboxMapper.selectPending(limit)
                 .stream()
-                .map(outboxDO -> new ReviewRuntimeOutboxMessage(
-                        outboxDO.getId(),
-                        outboxDO.getRunId(),
-                        outboxDO.getEventType(),
-                        outboxDO.getAlertKey(),
-                        outboxDO.getPayload(),
-                        outboxDO.getRetryCount(),
-                        outboxDO.getCreatedAt()
-                ))
+                .map(SupervisionAlertReviewMapperStore::toRuntimeOutboxMessage)
                 .toList();
+    }
+
+    @Override
+    public List<ReviewRuntimeOutboxMessage> claimPendingRuntimeOutbox(Integer limit,
+                                                                      String claimToken,
+                                                                      Long operatorUserId,
+                                                                      LocalDateTime claimedAt) {
+        int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
+        String normalizedToken = hasText(claimToken) ? claimToken : UUID.randomUUID().toString();
+        LocalDateTime normalizedClaimedAt = claimedAt == null ? LocalDateTime.now() : claimedAt;
+        int claimedCount = reviewRuntimeOutboxMapper.claimPending(
+                normalizedLimit,
+                normalizedToken,
+                operatorUserId,
+                normalizedClaimedAt
+        );
+        if (claimedCount <= 0) {
+            return List.of();
+        }
+        return reviewRuntimeOutboxMapper.selectClaimed(normalizedToken, normalizedLimit)
+                .stream()
+                .map(SupervisionAlertReviewMapperStore::toRuntimeOutboxMessage)
+                .toList();
+    }
+
+    private static ReviewRuntimeOutboxMessage toRuntimeOutboxMessage(SupervisionAlertReviewRuntimeOutboxDO outboxDO) {
+        return new ReviewRuntimeOutboxMessage(
+                outboxDO.getId(),
+                outboxDO.getRunId(),
+                outboxDO.getEventType(),
+                outboxDO.getAlertKey(),
+                outboxDO.getPayload(),
+                outboxDO.getRetryCount(),
+                outboxDO.getCreatedAt()
+        );
     }
 
     @Override

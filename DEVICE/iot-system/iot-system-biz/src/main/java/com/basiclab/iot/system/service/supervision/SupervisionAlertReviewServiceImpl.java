@@ -1503,9 +1503,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         Objects.requireNonNull(command, "command");
         int limit = normalizeRuntimeOutboxLimit(command.limit());
         LocalDateTime publishedAt = LocalDateTime.now();
+        String claimToken = UUID.randomUUID().toString();
         List<String> publishedAlerts = new ArrayList<>();
         List<String> failedAlerts = new ArrayList<>();
-        List<ReviewRuntimeOutboxMessage> messages = reviewItemStore.listPendingRuntimeOutbox(limit);
+        List<ReviewRuntimeOutboxMessage> messages = reviewItemStore.claimPendingRuntimeOutbox(
+                limit,
+                claimToken,
+                command.operatorUserId(),
+                publishedAt
+        );
         for (ReviewRuntimeOutboxMessage message : messages) {
             if (message == null || message.id() == null) {
                 continue;

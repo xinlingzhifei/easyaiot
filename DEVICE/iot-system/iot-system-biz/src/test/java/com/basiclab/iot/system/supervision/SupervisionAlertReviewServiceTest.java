@@ -124,6 +124,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -1548,6 +1549,52 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("failed", outbox.status());
         assertEquals(1, outbox.retryCount());
         assertEquals("notification_sink_unavailable", outbox.lastError());
+    }
+
+    @Test
+    void runtimeOutboxPublishingClaimsPendingMessagesBeforeDelivery() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        AtomicInteger publishCalls = new AtomicInteger();
+        AtomicReference<ReviewRuntimeOutboxPublishResult> nestedResult = new AtomicReference<>();
+        AtomicReference<SupervisionAlertReviewServiceImpl> serviceRef = new AtomicReference<>();
+        SupervisionAlertReviewServiceImpl service = new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                VideoEvidenceExportProvider.unavailable()
+        );
+        serviceRef.set(service);
+        service.setRuntimeOutboxPublisher(message -> {
+            if (publishCalls.incrementAndGet() == 1) {
+                nestedResult.set(serviceRef.get().publishRuntimeOutbox(
+                        new ReviewRuntimeOutboxPublishCommand(10, 9015L)
+                ));
+            }
+            return ReviewRuntimeOutboxDeliveryResult.delivered();
+        });
+        itemStore.enqueueRuntimePatrolAlerts(
+                "run-runtime-publish-claim",
+                List.of("record_storage_drift:file_missing"),
+                List.of("inspect runtime outbox claim"),
+                9014L,
+                LocalDateTime.of(2026, 7, 2, 12, 30),
+                Map.of()
+        );
+
+        ReviewRuntimeOutboxPublishResult result = service.publishRuntimeOutbox(
+                new ReviewRuntimeOutboxPublishCommand(10, 9014L)
+        );
+
+        assertEquals(1, result.scannedCount());
+        assertEquals(1, result.publishedCount());
+        assertEquals(0, result.failedCount());
+        assertEquals(0, nestedResult.get().scannedCount());
+        assertEquals(1, publishCalls.get());
+        assertEquals("published", itemStore.runtimeOutbox().get(0).status());
     }
 
     @Test
@@ -6900,7 +6947,7 @@ class SupervisionAlertReviewServiceTest {
             boolean existingActive = runtimeOutbox.stream()
                     .anyMatch(entry -> reportKey.equals(entry.alert())
                             && "deliver_operations_report".equals(entry.action())
-                            && ("pending".equals(entry.status()) || "published".equals(entry.status())));
+                            && List.of("pending", "processing", "published").contains(entry.status()));
             if (existingActive) {
                 return 0;
             }
@@ -6937,18 +6984,54 @@ class SupervisionAlertReviewServiceTest {
             return runtimeOutbox.stream()
                     .filter(entry -> "pending".equals(entry.status()))
                     .limit(normalizedLimit)
-                    .map(entry -> new ReviewRuntimeOutboxMessage(
-                            entry.id(),
-                            entry.runId(),
-                            "deliver_operations_report".equals(entry.action())
-                                    ? "review_operations_report"
-                                    : "review_runtime_alert",
-                            entry.alert(),
-                            entry.payload(),
-                            entry.retryCount(),
-                            null
-                    ))
+                    .map(InMemoryReviewItemStore::toRuntimeOutboxMessage)
                     .toList();
+        }
+
+        @Override
+        public List<ReviewRuntimeOutboxMessage> claimPendingRuntimeOutbox(Integer limit,
+                                                                          String claimToken,
+                                                                          Long operatorUserId,
+                                                                          LocalDateTime claimedAt) {
+            int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
+            List<ReviewRuntimeOutboxMessage> claimed = new ArrayList<>();
+            for (int index = 0; index < runtimeOutbox.size() && claimed.size() < normalizedLimit; index++) {
+                RuntimeOutboxEntry entry = runtimeOutbox.get(index);
+                if (!"pending".equals(entry.status())) {
+                    continue;
+                }
+                RuntimeOutboxEntry claimedEntry = new RuntimeOutboxEntry(
+                        entry.runId(),
+                        entry.alert(),
+                        entry.action(),
+                        entry.recommendedActions(),
+                        entry.operatorUserId(),
+                        "processing",
+                        entry.metadata(),
+                        entry.id(),
+                        entry.payload(),
+                        entry.retryCount(),
+                        entry.publishedAt(),
+                        entry.lastError()
+                );
+                runtimeOutbox.set(index, claimedEntry);
+                claimed.add(toRuntimeOutboxMessage(claimedEntry));
+            }
+            return List.copyOf(claimed);
+        }
+
+        private static ReviewRuntimeOutboxMessage toRuntimeOutboxMessage(RuntimeOutboxEntry entry) {
+            return new ReviewRuntimeOutboxMessage(
+                    entry.id(),
+                    entry.runId(),
+                    "deliver_operations_report".equals(entry.action())
+                            ? "review_operations_report"
+                            : "review_runtime_alert",
+                    entry.alert(),
+                    entry.payload(),
+                    entry.retryCount(),
+                    null
+            );
         }
 
         @Override

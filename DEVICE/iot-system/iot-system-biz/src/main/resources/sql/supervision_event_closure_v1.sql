@@ -478,6 +478,9 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox (
   alert_key VARCHAR(128) NOT NULL,
   payload TEXT,
   outbox_status VARCHAR(64) NOT NULL DEFAULT 'pending',
+  claim_token VARCHAR(128),
+  claimed_by BIGINT,
+  claimed_at TIMESTAMP,
   operator_user_id BIGINT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   published_at TIMESTAMP,
@@ -493,6 +496,14 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_status
 ON system_supervision_alert_review_runtime_outbox(outbox_status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_claim
+ON system_supervision_alert_review_runtime_outbox(outbox_status, claim_token)
+WHERE deleted = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_claimed_at
+ON system_supervision_alert_review_runtime_outbox(outbox_status, claimed_at)
+WHERE deleted = FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_run
 ON system_supervision_alert_review_runtime_outbox(run_id);
