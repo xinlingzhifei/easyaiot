@@ -722,6 +722,49 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("complete", eventProjection.get("evidenceStatus"));
         assertEquals("closed", eventProjection.get("eventReviewStatus"));
     }
+
+    @Test
+    void eventReconcileKeepsConvertedItemWhenEventRollbackRequiresRework() throws Exception {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        Map<Long, EventProjection> projections = new LinkedHashMap<>();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7004L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                eventId -> Optional.ofNullable(projections.get(eventId))
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-event-rework-conflict",
+                LocalDateTime.of(2026, 7, 4, 9, 30),
+                "event-rework.jpg",
+                "event-rework.mp4"
+        ));
+
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9008L));
+        projections.put(7004L, new EventProjection(7004L, "rework_required", "recheck_required", "complete"));
+        String summary = new SupervisionAlertReviewEventReconcileJob(service).execute("");
+
+        ReviewItemAggregate reconciled = itemStore.findById(item.id()).orElseThrow();
+        assertTrue(summary.contains("conflict=1"));
+        assertEquals("converted", reconciled.reviewStatus());
+        assertEquals("rechecking", reconciled.eventReviewStatus());
+        Map<String, Object> eventProjection = toStringObjectMap(reconciled.reviewData().get("eventProjection"));
+        assertEquals("keep_converted_review_item", eventProjection.get("conflictPolicy"));
+        assertEquals("event_rework_after_conversion", eventProjection.get("conflictStatus"));
+        assertEquals("converted_is_terminal", eventProjection.get("reviewItemStatusPolicy"));
+        assertEquals("rechecking", eventProjection.get("eventReviewStatusAtConflict"));
+    }
+
     @Test
     void reviewItemKeepsFrigateLikeReviewDataFromDetectionContext() {
         SupervisionAlertReviewService service = newService(

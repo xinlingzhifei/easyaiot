@@ -1533,6 +1533,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         List<String> findings = new ArrayList<>();
         int reconciledCount = 0;
         int missingProjectionCount = 0;
+        int conflictCount = 0;
         for (ReviewItemAggregate item : items) {
             if (item.eventId() == null) {
                 continue;
@@ -1553,6 +1554,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             projectionData.put("eventReviewStatus", eventReviewStatus);
             projectionData.put("reconciledAt", reconciledAt.toString());
             projectionData.put("operatorUserId", command.operatorUserId());
+            Map<String, Object> conflictPolicy = eventProjectionConflictPolicy(item, eventProjection, eventReviewStatus);
+            projectionData.putAll(conflictPolicy);
             Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
             reviewData.put("eventProjection", immutableNonNullMap(projectionData));
             reviewItemStore.updateEventProjection(
@@ -1564,15 +1567,53 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             );
             reconciledCount++;
             findings.add("event_projection_reconciled:" + item.id() + ":" + item.eventId() + ":" + eventReviewStatus);
+            if (!conflictPolicy.isEmpty()) {
+                conflictCount++;
+                findings.add("event_projection_conflict:" + item.id() + ":" + item.eventId() + ":"
+                        + conflictPolicy.get("conflictStatus"));
+            }
         }
         return new ReviewEventReconciliationResult(
                 items.size(),
                 reconciledCount,
                 missingProjectionCount,
+                conflictCount,
                 List.copyOf(findings),
                 reconciledAt,
                 command.operatorUserId()
         );
+    }
+
+    private static Map<String, Object> eventProjectionConflictPolicy(ReviewItemAggregate item,
+                                                                     EventProjection projection,
+                                                                     String eventReviewStatus) {
+        if (item == null || projection == null || !STATUS_CONVERTED.equals(item.reviewStatus())) {
+            return Map.of();
+        }
+        String conflictStatus = eventProjectionConflictStatus(projection);
+        if (!hasText(conflictStatus)) {
+            return Map.of();
+        }
+        Map<String, Object> policy = new LinkedHashMap<>();
+        policy.put("conflictPolicy", "keep_converted_review_item");
+        policy.put("conflictStatus", conflictStatus);
+        policy.put("reviewItemStatusPolicy", "converted_is_terminal");
+        policy.put("eventReviewStatusAtConflict", eventReviewStatus);
+        return immutableNonNullMap(policy);
+    }
+
+    private static String eventProjectionConflictStatus(EventProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+        if (List.of("returned", "rejected").contains(projection.eventStatus())) {
+            return "event_returned_after_conversion";
+        }
+        if (List.of("rework_required", "pending_recheck", "exception_review").contains(projection.eventStatus())
+                || List.of("recheck_required", "rechecking").contains(projection.closeCheckStatus())) {
+            return "event_rework_after_conversion";
+        }
+        return null;
     }
 
     @Override

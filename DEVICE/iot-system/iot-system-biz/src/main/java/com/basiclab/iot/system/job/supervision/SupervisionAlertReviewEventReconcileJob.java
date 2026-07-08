@@ -25,7 +25,8 @@ public class SupervisionAlertReviewEventReconcileJob implements JobHandler {
         );
         return "scanned=" + result.scannedCount()
                 + ", reconciled=" + result.reconciledCount()
-                + ", missingProjection=" + result.missingProjectionCount();
+                + ", missingProjection=" + result.missingProjectionCount()
+                + ", conflict=" + result.conflictCount();
     }
 
 }

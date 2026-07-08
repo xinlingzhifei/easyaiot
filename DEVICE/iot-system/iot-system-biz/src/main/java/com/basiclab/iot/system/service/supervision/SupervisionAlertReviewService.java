@@ -655,6 +655,7 @@ public interface SupervisionAlertReviewService {
     record ReviewEventReconciliationResult(Integer scannedCount,
                                            Integer reconciledCount,
                                            Integer missingProjectionCount,
+                                           Integer conflictCount,
                                            List<String> findings,
                                            LocalDateTime reconciledAt,
                                            Long operatorUserId) {
