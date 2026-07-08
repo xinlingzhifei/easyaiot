@@ -147,6 +147,7 @@ assert.deepEqual(
     end_time: '2026-07-05T10:01:00',
     record_uri: '/video/record/space/7/video/live/device-01/clip.mp4',
     format: 'mp4',
+    async_worker: true,
   },
 );
 
@@ -192,8 +193,24 @@ const fakeFetch = async (url, init = {}) => {
           path: 'review-export-1.mp4',
           role: 'export_package',
           hash: 'sha256:output-file',
+          storage: {
+            storageType: 'object_storage',
+            artifactRole: 'export_package',
+            objectKey: 'review-export-1/content.bin',
+            expiresAt: '2026-07-20T00:00:00Z',
+            lifecycleStatus: 'retained',
+          },
         },
       ],
+      storageLifecycle: {
+        storageType: 'object_storage',
+        storeRoot: 's3://evidence-exports',
+        status: 'retained',
+        expiresAt: '2026-07-20T00:00:00Z',
+        artifactKeys: {
+          exportPackage: 'review-export-1/content.bin',
+        },
+      },
       signature: {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
@@ -218,7 +235,9 @@ const fakeFetch = async (url, init = {}) => {
     return jsonResponse({}, 200);
   }
   if (init.method === 'POST') {
-    assert.equal(JSON.parse(init.body).record_uri, '/video/record/space/7/video/live/device-01/clip.mp4');
+    const body = JSON.parse(init.body);
+    assert.equal(body.record_uri, '/video/record/space/7/video/live/device-01/clip.mp4');
+    assert.equal(body.async_worker, true);
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'pending' } });
   }
   return jsonResponse({
@@ -264,6 +283,12 @@ assert.deepEqual(cliSummary.manifestSignature, {
   algorithm: 'hmac-sha256',
   keyId: '2026-q2',
   signatureVersion: 'v2',
+});
+assert.deepEqual(cliSummary.manifestStorageLifecycle, {
+  storageType: 'object_storage',
+  status: 'retained',
+  expiresAt: '2026-07-20T00:00:00Z',
+  exportPackageObjectKey: 'review-export-1/content.bin',
 });
 
 const verifierCalls = [];
@@ -354,6 +379,42 @@ const missingManifestFetch = async (url, init = {}) => {
 await assert.rejects(
   () => runSmoke(parsed, { fetchImpl: missingManifestFetch }),
   /record export response did not include manifest_url/,
+);
+
+const missingStorageLifecycleFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      recordSegments: [
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: 'sha256:source-segment',
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: 'sha256:ffmpeg-command',
+        },
+      ],
+      files: [
+        {
+          path: 'review-export-1.mp4',
+          role: 'export_package',
+          hash: 'sha256:output-file',
+        },
+      ],
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:signed-manifest',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: missingStorageLifecycleFetch }),
+  /record export manifest missing storage lifecycle/,
 );
 
 const unsignedManifestFetch = async (url, init = {}) => {

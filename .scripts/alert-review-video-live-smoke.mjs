@@ -188,6 +188,7 @@ export function buildExportBody(options, segment) {
     end_time: segment.endTime,
     record_uri: segment.recordUri,
     format: options.format || 'mp4',
+    async_worker: true,
   };
   for (const key of Object.keys(body)) {
     if (body[key] === undefined || body[key] === null || body[key] === '') {
@@ -274,6 +275,7 @@ export async function runSmoke(options, dependencies = {}) {
     storageDrift,
     exportResult: readyExportResult,
     manifestSignature: manifestEvidence.signature,
+    manifestStorageLifecycle: manifestEvidence.storageLifecycle,
     ...(manifestEvidence.verification ? { manifestVerification: manifestEvidence.verification } : {}),
   };
 }
@@ -292,6 +294,7 @@ export function summarizeCliResult(result) {
     },
     exportResult: result?.exportResult || {},
     ...(result?.manifestSignature ? { manifestSignature: result.manifestSignature } : {}),
+    ...(result?.manifestStorageLifecycle ? { manifestStorageLifecycle: result.manifestStorageLifecycle } : {}),
     ...(result?.manifestVerification ? { manifestVerification: result.manifestVerification } : {}),
   };
 }
@@ -451,6 +454,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   )))) {
     throw new Error('record export manifest missing output file hashes');
   }
+  const storageLifecycle = validateManifestStorageLifecycle(manifest, outputs);
   const manifestVerification = await runManifestVerifierIfConfigured({
     manifest,
     manifestUrl,
@@ -459,7 +463,50 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   });
   return {
     signature: manifestSignature,
+    storageLifecycle,
     ...(manifestVerification ? { verification: manifestVerification } : {}),
+  };
+}
+
+function validateManifestStorageLifecycle(manifest, outputs) {
+  const lifecycle = firstPresent(manifest.storageLifecycle, manifest.storage_lifecycle);
+  if (!lifecycle || typeof lifecycle !== 'object') {
+    throw new Error('record export manifest missing storage lifecycle');
+  }
+  const storageType = firstText(lifecycle.storageType, lifecycle.storage_type, lifecycle.type);
+  if (!hasText(storageType)) {
+    throw new Error('record export manifest storage lifecycle missing storage type');
+  }
+  const status = firstText(lifecycle.status, lifecycle.lifecycleStatus, lifecycle.lifecycle_status);
+  if (!hasText(status)) {
+    throw new Error('record export manifest storage lifecycle missing status');
+  }
+  if (['expired', 'deleted', 'purged'].includes(status.toLowerCase())) {
+    throw new Error(`record export manifest storage lifecycle is not retained: ${status}`);
+  }
+  const expiresAt = firstText(lifecycle.expiresAt, lifecycle.expires_at, lifecycle.deleteAfter, lifecycle.delete_after);
+  if (!hasText(expiresAt)) {
+    throw new Error('record export manifest storage lifecycle missing expiresAt');
+  }
+  const exportOutput = outputs.find((output) => firstText(output.role, output.artifactRole, output.artifact_role) === 'export_package')
+    || outputs[0];
+  const storage = exportOutput && typeof exportOutput.storage === 'object' ? exportOutput.storage : null;
+  if (!storage) {
+    throw new Error('record export manifest missing export package storage reference');
+  }
+  const objectKey = firstText(storage.objectKey, storage.object_key, storage.key, storage.uri, storage.path);
+  if (!hasText(objectKey)) {
+    throw new Error('record export manifest export package storage reference missing object key');
+  }
+  const artifactStatus = firstText(storage.lifecycleStatus, storage.lifecycle_status, storage.status, status);
+  if (['expired', 'deleted', 'purged'].includes(artifactStatus.toLowerCase())) {
+    throw new Error(`record export manifest export package storage is not retained: ${artifactStatus}`);
+  }
+  return {
+    storageType,
+    status,
+    expiresAt,
+    exportPackageObjectKey: objectKey,
   };
 }
 

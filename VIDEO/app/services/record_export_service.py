@@ -18,6 +18,8 @@ _SIGNING_SECRET_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_SECRET'
 _SIGNING_KEY_ID_ENV = 'YFEIEYE_RECORD_EXPORT_KEY_ID'
 _SIGNING_KEYS_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_KEYS'
 _SIGNING_ACTIVE_KEY_ID_ENV = 'YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID'
+_STORE_TYPE_ENV = 'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE'
+_STORE_URI_ENV = 'YFEIEYE_RECORD_EXPORT_STORAGE_URI'
 
 
 def create_record_export(payload: dict, record_resolver=None, async_worker=False, worker_runner=None) -> dict:
@@ -226,6 +228,8 @@ def _build_record_export(payload: dict, record_resolver=None) -> dict:
         'approval_note': _text(payload.get('approval_note') or payload.get('approvalNote')),
         'expires_at': _text(payload.get('expires_at') or payload.get('expiresAt')),
         'retention_days': _text(payload.get('retention_days') or payload.get('retentionDays')),
+        'storage_type': _text(payload.get('storage_type') or payload.get('storageType')),
+        'storage_root': _text(payload.get('storage_root') or payload.get('storageRoot') or payload.get('storage_uri') or payload.get('storageUri')),
     }
     record_uris = payload.get('record_uris') or payload.get('recordUris')
     if isinstance(record_uris, (list, tuple)) and record_uris:
@@ -499,6 +503,7 @@ def _build_manifest(job: dict, audit: list) -> dict:
             'retentionDays': _text(job.get('retention_days')) or None,
             'expiresAt': expires_at,
         },
+        'storageLifecycle': _manifest_storage_lifecycle(export_id, job, expires_at),
         'finishedAt': job.get('finished_at'),
         'downloadRecords': download_records,
         'immutableAudit': {
@@ -632,15 +637,18 @@ def _manifest_expires_at(job: dict):
 
 def _manifest_files(export_id: str, job: dict) -> list:
     files = []
+    expires_at = _manifest_expires_at(job)
     content = _get_export_content(export_id)
     if content is not None:
+        path = _content_path(export_id)
         files.append({
             'name': 'content.bin',
             'role': 'export_package',
             'hash': _sha256_bytes(content),
             'sizeBytes': len(content),
             'format': _text(job.get('format')) or 'mp4',
-            'path': _content_path(export_id),
+            'path': path,
+            'storage': _artifact_storage_reference(job, export_id, 'content.bin', 'export_package', path, expires_at),
         })
     for name, path, role in (
             ('job.json', _job_path(export_id), 'export_job'),
@@ -653,8 +661,72 @@ def _manifest_files(export_id: str, job: dict) -> list:
             'hash': _sha256_file(path),
             'sizeBytes': os.path.getsize(path),
             'path': path,
+            'storage': _artifact_storage_reference(job, export_id, name, role, path, expires_at),
         })
     return files
+
+
+def _manifest_storage_lifecycle(export_id: str, job: dict, expires_at: str) -> dict:
+    return {
+        'storageType': _storage_type(job),
+        'storeRoot': _storage_root(job),
+        'status': _storage_lifecycle_status(expires_at),
+        'expiresAt': expires_at,
+        'retentionDays': _text(job.get('retention_days')) or None,
+        'cleanupPolicy': {
+            'scope': 'record_export_artifacts',
+            'deleteAfter': expires_at,
+        },
+        'artifactKeys': {
+            'exportPackage': _storage_object_key(export_id, 'content.bin'),
+            'job': _storage_object_key(export_id, 'job.json'),
+            'audit': _storage_object_key(export_id, 'audit.json'),
+            'manifest': _storage_object_key(export_id, 'manifest.json'),
+        },
+    }
+
+
+def _artifact_storage_reference(job: dict, export_id: str, name: str, role: str, path: str, expires_at: str) -> dict:
+    object_key = _storage_object_key(export_id, name)
+    reference = {
+        'storageType': _storage_type(job),
+        'artifactRole': role,
+        'objectKey': object_key,
+        'expiresAt': expires_at,
+        'lifecycleStatus': _storage_lifecycle_status(expires_at),
+    }
+    root = _storage_root(job)
+    if root:
+        reference['uri'] = _join_storage_uri(root, object_key)
+    if path:
+        reference['path'] = path
+    return reference
+
+
+def _storage_type(job: dict) -> str:
+    return _text(job.get('storage_type') or job.get('storageType') or os.environ.get(_STORE_TYPE_ENV)) or 'local_filesystem'
+
+
+def _storage_root(job: dict) -> str:
+    return _text(job.get('storage_root') or job.get('storageRoot') or os.environ.get(_STORE_URI_ENV)) or _store_root()
+
+
+def _storage_object_key(export_id: str, name: str) -> str:
+    return f'{export_id}/{name}'
+
+
+def _storage_lifecycle_status(expires_at: str) -> str:
+    expires = _parse_time(expires_at)
+    if expires and expires <= datetime.now():
+        return 'expired'
+    return 'retained'
+
+
+def _join_storage_uri(root: str, object_key: str) -> str:
+    root = _text(root).rstrip('/\\')
+    if not root:
+        return object_key
+    return root.replace('\\', '/') + '/' + object_key
 
 
 def _ensure_audit_hash_chain(entries: list) -> list:

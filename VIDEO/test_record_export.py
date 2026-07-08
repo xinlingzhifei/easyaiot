@@ -319,6 +319,54 @@ class TestRecordExportService(unittest.TestCase):
             os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
             importlib.reload(export_service)
 
+    def test_record_export_manifest_tracks_storage_lifecycle_for_persisted_artifacts(self):
+        with tempfile.TemporaryDirectory() as store_dir:
+            os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = store_dir
+            import app.services.record_export_service as export_service
+            export_service = importlib.reload(export_service)
+
+            def fake_worker(job):
+                return {
+                    'content': b'lifecycle-video-bytes',
+                    'message': 'persisted lifecycle evidence package',
+                }
+
+            started = export_service.create_record_export({
+                'review_case_id': 3001,
+                'review_item_id': 1002,
+                'device_id': 'device-01',
+                'camera_id': 'camera-01',
+                'source_alert_id': 'alert-export-lifecycle',
+                'start_time': '2026-07-08T10:10',
+                'end_time': '2026-07-08T10:12',
+                'record_uri': '/video/record/space/7/video/live/device-01/lifecycle.mp4',
+                'expires_at': '2026-07-20T00:00:00Z',
+                'retention_days': 12,
+            }, async_worker=True, worker_runner=fake_worker)
+            ready = export_service.poll_record_export(started['export_id'])
+            manifest = export_service.get_record_export_manifest(started['export_id'])
+
+            lifecycle = manifest['storageLifecycle']
+            self.assertEqual('local_filesystem', lifecycle['storageType'])
+            self.assertEqual(store_dir, lifecycle['storeRoot'])
+            self.assertEqual('2026-07-20T00:00:00Z', lifecycle['expiresAt'])
+            self.assertEqual('retained', lifecycle['status'])
+            self.assertEqual(
+                started['export_id'] + '/content.bin',
+                lifecycle['artifactKeys']['exportPackage'],
+            )
+            content_file = next(file for file in manifest['files'] if file['role'] == 'export_package')
+            self.assertEqual(ready['file_hash'], content_file['hash'])
+            self.assertTrue(os.path.exists(content_file['path']))
+            self.assertEqual('export_package', content_file['storage']['artifactRole'])
+            self.assertEqual('local_filesystem', content_file['storage']['storageType'])
+            self.assertEqual(started['export_id'] + '/content.bin', content_file['storage']['objectKey'])
+            self.assertEqual(lifecycle['expiresAt'], content_file['storage']['expiresAt'])
+            self.assertEqual('retained', content_file['storage']['lifecycleStatus'])
+
+            os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
+            importlib.reload(export_service)
+
     def test_manifest_verifier_cli_validates_canonical_hash_signature_and_tampering(self):
         with tempfile.TemporaryDirectory() as store_dir:
             os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = store_dir
