@@ -3,6 +3,7 @@ package com.basiclab.iot.system.supervision;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewEventReconcileJob;
+import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewEvidenceExportWorkerJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewOperationsReportJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimeOutboxJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimePatrolJob;
@@ -47,6 +48,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportPackage;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportWorkerCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportWorkerRun;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportRequest;
@@ -3558,6 +3561,55 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidenceExportWorkerRebuildsFailedJobsAndLeavesReplayableManifest() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-worker",
+                LocalDateTime.of(2026, 7, 8, 9, 20),
+                "export-worker.jpg",
+                "export-worker.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "export worker case",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9100L,
+                "manifest",
+                "worker retry"
+        ));
+        itemStore.replaceExportJobStatus(job.jobNo(), SupervisionAlertReviewService.EXPORT_JOB_FAILED);
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9101L)
+        );
+
+        ReviewEvidenceExportJob recovered = itemStore.findExportJobByNo(job.jobNo()).orElseThrow();
+        Map<?, ?> worker = (Map<?, ?>) recovered.exportPackage().manifest().get("worker");
+        assertEquals("completed", run.status());
+        assertEquals(1, run.processedCount());
+        assertEquals(0, run.failedCount());
+        assertTrue(run.processedJobNos().contains(job.jobNo()));
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_READY, recovered.status());
+        assertEquals("ready", worker.get("status"));
+        assertEquals(1, worker.get("attemptCount"));
+        assertEquals(9101L, worker.get("operatorUserId"));
+        assertTrue(service.verifyEvidenceExportManifest(job.jobNo()).valid());
+
+        itemStore.replaceExportJobStatus(job.jobNo(), SupervisionAlertReviewService.EXPORT_JOB_FAILED);
+        String summary = new SupervisionAlertReviewEvidenceExportWorkerJob(service).execute("10");
+        assertTrue(summary.contains("processed=1"));
+    }
+
+    @Test
     void evidenceAuditTrailListsHashesExporterDownloadsAndBoundEvents() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
@@ -6494,6 +6546,15 @@ class SupervisionAlertReviewServiceTest {
                             createdAt,
                             auditNote
                     ));
+            return job;
+        }
+
+        @Override
+        public ReviewEvidenceExportJob updateExportJob(ReviewEvidenceExportJob job) {
+            if (!exportJobs.containsKey(job.jobNo())) {
+                throw new IllegalArgumentException("export job not found: " + job.jobNo());
+            }
+            exportJobs.put(job.jobNo(), job);
             return job;
         }
 

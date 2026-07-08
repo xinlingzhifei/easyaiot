@@ -200,12 +200,13 @@ BEGIN
       'supervisionAlertReviewRuntimePatrolJob',
       'supervisionAlertReviewRuntimeOutboxJob',
       'supervisionAlertReviewEventReconcileJob',
+      'supervisionAlertReviewEvidenceExportWorkerJob',
       'supervisionAlertReviewSemanticIndexJob',
       'supervisionAlertReviewOperationsReportJob'
     )
       AND status = 2
       AND deleted = 0
-  ) <> 6 THEN
+  ) <> 7 THEN
     RAISE EXCEPTION 'expected paused alert review scheduler job seeds to be present';
   END IF;
 
@@ -218,6 +219,18 @@ BEGIN
       AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected event reconcile scheduler seed to be paused and deduplicated';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM infra_job
+    WHERE handler_name = 'supervisionAlertReviewEvidenceExportWorkerJob'
+      AND handler_param = '20'
+      AND cron_expression = '0 0/2 * * * ?'
+      AND status = 2
+      AND deleted = 0
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected evidence export worker scheduler seed to be paused and deduplicated';
   END IF;
 
   IF (

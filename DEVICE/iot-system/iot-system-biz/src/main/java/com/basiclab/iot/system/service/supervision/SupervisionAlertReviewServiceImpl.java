@@ -39,6 +39,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final int DEFAULT_MERGE_WINDOW_SECONDS = 300;
     private static final int DEFAULT_CASE_CANDIDATE_WINDOW_SECONDS = 600;
     private static final int DEFAULT_EXPORT_JOB_EXPIRES_DAYS = 7;
+    private static final int DEFAULT_EXPORT_WORKER_LIMIT = 20;
+    private static final int MAX_EXPORT_WORKER_LIMIT = 100;
     private static final int DEFAULT_RUNTIME_OUTBOX_LIMIT = 50;
     private static final int MAX_RUNTIME_OUTBOX_LIMIT = 200;
     private static final int DEFAULT_SEMANTIC_WORKER_LIMIT = 50;
@@ -2111,6 +2113,226 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 createdAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS),
                 createdAt
         );
+    }
+
+    @Override
+    public ReviewEvidenceExportWorkerRun processEvidenceExportQueue(ReviewEvidenceExportWorkerCommand command) {
+        Objects.requireNonNull(command, "command");
+        int limit = boundedPositive(command.maxJobs(), DEFAULT_EXPORT_WORKER_LIMIT, MAX_EXPORT_WORKER_LIMIT);
+        LocalDateTime processedAt = LocalDateTime.now();
+        List<ReviewEvidenceExportJob> backlog = reviewItemStore.listAllExportJobs().stream()
+                .filter(job -> shouldProcessExportJob(job, processedAt))
+                .limit(limit)
+                .toList();
+        List<String> processedJobNos = new ArrayList<>();
+        List<String> failedJobNos = new ArrayList<>();
+        List<String> deferredJobNos = new ArrayList<>();
+        for (ReviewEvidenceExportJob job : backlog) {
+            int attemptCount = exportWorkerAttemptCount(job) + 1;
+            try {
+                ReviewEvidenceExportJob running = updateExportJobWorkerState(
+                        job,
+                        EXPORT_JOB_RUNNING,
+                        attemptCount,
+                        "running",
+                        command.operatorUserId(),
+                        processedAt,
+                        null,
+                        null
+                );
+                ReviewEvidenceExportPackage exportPackage = buildReviewEvidenceExportPackage(exportCommandFromJob(running));
+                ReviewEvidenceExportPackage readyPackage = withExportWorkerManifest(
+                        exportPackage,
+                        attemptCount,
+                        "ready",
+                        command.operatorUserId(),
+                        processedAt,
+                        null,
+                        null
+                );
+                reviewItemStore.updateExportJob(new ReviewEvidenceExportJob(
+                        running.jobNo(),
+                        EXPORT_JOB_READY,
+                        readyPackage,
+                        exportFileHash(readyPackage),
+                        processedAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS),
+                        running.operatorUserId(),
+                        running.reason(),
+                        boundEventIds(readyPackage.reviewItemIds()),
+                        running.createdAt()
+                ));
+                processedJobNos.add(running.jobNo());
+            } catch (RuntimeException ex) {
+                ReviewEvidenceExportJob failed = updateExportJobWorkerState(
+                        job,
+                        EXPORT_JOB_FAILED,
+                        attemptCount,
+                        "failed",
+                        command.operatorUserId(),
+                        processedAt,
+                        exportWorkerNextRetryAt(processedAt, attemptCount),
+                        ex.getMessage()
+                );
+                failedJobNos.add(failed.jobNo());
+            }
+        }
+        List<ReviewEvidenceExportJob> jobsAfterRun = reviewItemStore.listAllExportJobs();
+        int remainingBacklog = (int) jobsAfterRun.stream()
+                .filter(job -> shouldProcessExportJob(job, processedAt))
+                .count();
+        int deferredCount = (int) jobsAfterRun.stream()
+                .filter(job -> isExportWorkerDeferred(job, processedAt))
+                .count();
+        jobsAfterRun.stream()
+                .filter(job -> isExportWorkerDeferred(job, processedAt))
+                .map(ReviewEvidenceExportJob::jobNo)
+                .forEach(deferredJobNos::add);
+        return new ReviewEvidenceExportWorkerRun(
+                exportWorkerStatus(processedJobNos.size(), failedJobNos.size(), remainingBacklog),
+                backlog.size(),
+                processedJobNos.size(),
+                failedJobNos.size(),
+                deferredCount,
+                remainingBacklog,
+                List.copyOf(processedJobNos),
+                List.copyOf(failedJobNos),
+                List.copyOf(deferredJobNos),
+                processedAt,
+                command.operatorUserId()
+        );
+    }
+
+    private ReviewEvidenceExportCommand exportCommandFromJob(ReviewEvidenceExportJob job) {
+        Map<String, Object> approval = toStringObjectMap(job.exportPackage().manifest().get("approval"));
+        return new ReviewEvidenceExportCommand(
+                job.exportPackage().reviewCaseId(),
+                job.exportPackage().reviewItemIds(),
+                job.operatorUserId(),
+                job.exportPackage().format(),
+                job.reason(),
+                toLong(approval.get("approvedBy")),
+                toText(approval.get("approvalNote"))
+        );
+    }
+
+    private ReviewEvidenceExportJob updateExportJobWorkerState(ReviewEvidenceExportJob job,
+                                                               String status,
+                                                               int attemptCount,
+                                                               String workerStatus,
+                                                               Long operatorUserId,
+                                                               LocalDateTime processedAt,
+                                                               LocalDateTime nextRetryAt,
+                                                               String lastError) {
+        ReviewEvidenceExportPackage exportPackage = withExportWorkerManifest(
+                job.exportPackage(),
+                attemptCount,
+                workerStatus,
+                operatorUserId,
+                processedAt,
+                nextRetryAt,
+                lastError
+        );
+        return reviewItemStore.updateExportJob(new ReviewEvidenceExportJob(
+                job.jobNo(),
+                status,
+                exportPackage,
+                exportFileHash(exportPackage),
+                job.expiresAt(),
+                job.operatorUserId(),
+                job.reason(),
+                job.boundEventIds(),
+                job.createdAt()
+        ));
+    }
+
+    private static ReviewEvidenceExportPackage withExportWorkerManifest(ReviewEvidenceExportPackage exportPackage,
+                                                                        int attemptCount,
+                                                                        String workerStatus,
+                                                                        Long operatorUserId,
+                                                                        LocalDateTime processedAt,
+                                                                        LocalDateTime nextRetryAt,
+                                                                        String lastError) {
+        Map<String, Object> manifest = new LinkedHashMap<>(exportPackage.manifest());
+        Map<String, Object> worker = new LinkedHashMap<>();
+        worker.put("status", workerStatus);
+        worker.put("attemptCount", attemptCount);
+        worker.put("operatorUserId", operatorUserId);
+        worker.put("processedAt", processedAt == null ? null : processedAt.toString());
+        worker.put("nextRetryAt", nextRetryAt == null ? null : nextRetryAt.toString());
+        worker.put("lastError", lastError);
+        manifest.put("worker", immutableNonNullMap(worker));
+        manifest.remove("manifestHash");
+        manifest.remove("signature");
+        String manifestHash = expectedManifestHash(manifest);
+        manifest.put("manifestHash", manifestHash);
+        manifest.put("signature", manifestSignature(manifest, manifestHash, processedAt));
+        return new ReviewEvidenceExportPackage(
+                exportPackage.packageNo(),
+                exportPackage.format(),
+                exportPackage.reviewCaseId(),
+                exportPackage.reviewItemIds(),
+                exportPackage.evidenceUris(),
+                exportPackage.timeline(),
+                immutableNonNullMap(manifest),
+                exportPackage.generatedAt()
+        );
+    }
+
+    private static boolean shouldProcessExportJob(ReviewEvidenceExportJob job, LocalDateTime now) {
+        if (job == null || EXPORT_JOB_READY.equals(job.status())) {
+            return false;
+        }
+        if (!EXPORT_JOB_PENDING.equals(job.status())
+                && !EXPORT_JOB_RUNNING.equals(job.status())
+                && !EXPORT_JOB_FAILED.equals(job.status())) {
+            return false;
+        }
+        return !isExportWorkerDeferred(job, now);
+    }
+
+    private static boolean isExportWorkerDeferred(ReviewEvidenceExportJob job, LocalDateTime now) {
+        if (job == null || !EXPORT_JOB_FAILED.equals(job.status())) {
+            return false;
+        }
+        LocalDateTime nextRetryAt = exportWorkerNextRetryAt(job);
+        return nextRetryAt != null && now != null && nextRetryAt.isAfter(now);
+    }
+
+    private static LocalDateTime exportWorkerNextRetryAt(ReviewEvidenceExportJob job) {
+        if (job == null || job.exportPackage() == null || job.exportPackage().manifest() == null) {
+            return null;
+        }
+        return toLocalDateTime(toStringObjectMap(job.exportPackage().manifest().get("worker")).get("nextRetryAt"));
+    }
+
+    private static int exportWorkerAttemptCount(ReviewEvidenceExportJob job) {
+        if (job == null || job.exportPackage() == null || job.exportPackage().manifest() == null) {
+            return 0;
+        }
+        Long attemptCount = toLong(toStringObjectMap(job.exportPackage().manifest().get("worker")).get("attemptCount"));
+        if (attemptCount == null || attemptCount < 0) {
+            return 0;
+        }
+        return Math.toIntExact(Math.min(attemptCount, Integer.MAX_VALUE));
+    }
+
+    private static LocalDateTime exportWorkerNextRetryAt(LocalDateTime processedAt, int attemptCount) {
+        int backoffStep = Math.min(Math.max(attemptCount - 1, 0), 3);
+        int minutes = Math.min(60, Math.max(5, 5 * (1 << backoffStep)));
+        return processedAt.plusMinutes(minutes);
+    }
+
+    private static String exportWorkerStatus(int processedCount, int failedCount, int remainingBacklogCount) {
+        if (failedCount > 0) {
+            return "failed";
+        }
+        if (remainingBacklogCount > 0) {
+            return "partial";
+        }
+        if (processedCount > 0) {
+            return "completed";
+        }
+        return "idle";
     }
 
     @Override

@@ -812,6 +812,31 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
+    public ReviewEvidenceExportJob updateExportJob(ReviewEvidenceExportJob job) {
+        Objects.requireNonNull(job, "job");
+        Objects.requireNonNull(job.exportPackage(), "exportPackage");
+        SupervisionAlertReviewExportJobDO jobDO = reviewExportJobMapper.selectByJobNo(job.jobNo());
+        if (jobDO == null) {
+            throw new IllegalArgumentException("export job not found: " + job.jobNo());
+        }
+        jobDO.setStatus(job.status())
+                .setPackageNo(job.exportPackage().packageNo())
+                .setReviewCaseId(job.exportPackage().reviewCaseId())
+                .setReviewItemIds(joinLongCsv(job.exportPackage().reviewItemIds()))
+                .setEvidenceUris(joinCsv(job.exportPackage().evidenceUris()))
+                .setManifest(writeJson(job.exportPackage().manifest()))
+                .setFileHash(job.fileHash())
+                .setExpiresAt(job.expiresAt())
+                .setOperatorUserId(job.operatorUserId())
+                .setExportReason(job.reason())
+                .setBoundEventIds(joinLongCsv(job.boundEventIds()))
+                .setGeneratedAt(job.exportPackage().generatedAt())
+                .setVersion((jobDO.getVersion() == null ? 0 : jobDO.getVersion()) + 1);
+        reviewExportJobMapper.updateById(jobDO);
+        return toExportJob(jobDO);
+    }
+
+    @Override
     public List<ReviewEvidenceExportJob> listExportJobs(Long reviewCaseId) {
         requireCase(reviewCaseId);
         return reviewExportJobMapper.selectByReviewCaseId(reviewCaseId)

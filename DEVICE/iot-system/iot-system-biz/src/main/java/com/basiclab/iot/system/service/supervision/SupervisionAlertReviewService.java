@@ -149,6 +149,8 @@ public interface SupervisionAlertReviewService {
 
     ReviewEvidenceExportJob createReviewEvidenceExportJob(ReviewEvidenceExportCommand command);
 
+    ReviewEvidenceExportWorkerRun processEvidenceExportQueue(ReviewEvidenceExportWorkerCommand command);
+
     ReviewManifestVerification verifyEvidenceExportManifest(String jobNo);
 
     ReviewManifestVerification verifyEvidenceExportManifest(String jobNo,
@@ -907,6 +909,23 @@ public interface SupervisionAlertReviewService {
                                    LocalDateTime createdAt) {
     }
 
+    record ReviewEvidenceExportWorkerCommand(Integer maxJobs,
+                                             Long operatorUserId) {
+    }
+
+    record ReviewEvidenceExportWorkerRun(String status,
+                                         Integer scannedCount,
+                                         Integer processedCount,
+                                         Integer failedCount,
+                                         Integer deferredCount,
+                                         Integer remainingBacklogCount,
+                                         List<String> processedJobNos,
+                                         List<String> failedJobNos,
+                                         List<String> deferredJobNos,
+                                         LocalDateTime processedAt,
+                                         Long operatorUserId) {
+    }
+
     record ReviewManifestVerification(String jobNo,
                                        boolean valid,
                                        String expectedManifestHash,
@@ -1373,6 +1392,8 @@ public interface SupervisionAlertReviewService {
                                                 String fileHash,
                                                 LocalDateTime expiresAt,
                                                 LocalDateTime createdAt);
+
+        ReviewEvidenceExportJob updateExportJob(ReviewEvidenceExportJob job);
 
         List<ReviewEvidenceExportJob> listExportJobs(Long reviewCaseId);
 
