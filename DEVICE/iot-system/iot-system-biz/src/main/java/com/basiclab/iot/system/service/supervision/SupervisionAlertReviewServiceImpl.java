@@ -112,6 +112,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private final ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy;
     private final ReviewCameraTopologyResolver cameraTopologyResolver;
     private final ConcurrentMap<String, Object> reviewSegmentIngestLocks = new ConcurrentHashMap<>();
+    private ReviewRuntimeOutboxPublisher runtimeOutboxPublisher = ReviewRuntimeOutboxPublisher.noop();
 
     private record RecordGapReasonDefinition(String code,
                                              String category,
@@ -194,6 +195,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         this.cameraPermissionResolver = Objects.requireNonNull(cameraPermissionResolver, "cameraPermissionResolver");
         this.aiSummaryRedactionPolicy = Objects.requireNonNull(aiSummaryRedactionPolicy, "aiSummaryRedactionPolicy");
         this.cameraTopologyResolver = Objects.requireNonNull(cameraTopologyResolver, "cameraTopologyResolver");
+    }
+
+    @Autowired(required = false)
+    public void setRuntimeOutboxPublisher(ReviewRuntimeOutboxPublisher runtimeOutboxPublisher) {
+        this.runtimeOutboxPublisher = runtimeOutboxPublisher == null
+                ? ReviewRuntimeOutboxPublisher.noop()
+                : runtimeOutboxPublisher;
     }
 
     @Override
@@ -1511,6 +1519,27 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 failedAlerts.add(String.valueOf(message.alertKey()));
                 continue;
             }
+            ReviewRuntimeOutboxDeliveryResult deliveryResult;
+            try {
+                deliveryResult = runtimeOutboxPublisher.publish(message);
+            } catch (RuntimeException ex) {
+                reviewItemStore.markRuntimeOutboxFailed(
+                        message.id(),
+                        "runtime_outbox_publish_exception:" + ex.getClass().getSimpleName(),
+                        publishedAt
+                );
+                failedAlerts.add(message.alertKey());
+                continue;
+            }
+            if (deliveryResult == null || !Boolean.TRUE.equals(deliveryResult.success())) {
+                reviewItemStore.markRuntimeOutboxFailed(
+                        message.id(),
+                        runtimeOutboxDeliveryFailureReason(deliveryResult),
+                        publishedAt
+                );
+                failedAlerts.add(message.alertKey());
+                continue;
+            }
             reviewItemStore.markRuntimeOutboxPublished(message.id(), publishedAt);
             publishedAlerts.add(message.alertKey());
         }
@@ -1523,6 +1552,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 publishedAt,
                 command.operatorUserId()
         );
+    }
+
+    private static String runtimeOutboxDeliveryFailureReason(ReviewRuntimeOutboxDeliveryResult deliveryResult) {
+        if (deliveryResult == null) {
+            return "runtime_outbox_publish_failed";
+        }
+        return firstText(deliveryResult.errorCode(), "runtime_outbox_publish_failed");
     }
 
     @Override

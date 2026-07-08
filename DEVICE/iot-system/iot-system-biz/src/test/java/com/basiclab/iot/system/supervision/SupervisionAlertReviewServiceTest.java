@@ -70,7 +70,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeLockAcquisition;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxDeliveryResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxMessage;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxPublishCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxPublishResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSegmentView;
@@ -1506,6 +1509,45 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(outboxSummary.contains("published="));
         assertTrue(itemStore.runtimeOutbox().stream()
                 .allMatch(entry -> "published".equals(entry.status())));
+    }
+
+    @Test
+    void runtimeOutboxPublisherFailureMarksMessageFailedForRetry() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewServiceImpl service = new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                VideoEvidenceExportProvider.unavailable()
+        );
+        service.setRuntimeOutboxPublisher(
+                message -> new ReviewRuntimeOutboxDeliveryResult(false, "notification_sink_unavailable")
+        );
+        itemStore.enqueueRuntimePatrolAlerts(
+                "run-runtime-publish-fail",
+                List.of("record_storage_drift:file_missing"),
+                List.of("inspect runtime outbox sink"),
+                9013L,
+                LocalDateTime.of(2026, 7, 2, 12, 0),
+                Map.of()
+        );
+
+        ReviewRuntimeOutboxPublishResult result = service.publishRuntimeOutbox(
+                new ReviewRuntimeOutboxPublishCommand(10, 9013L)
+        );
+
+        assertEquals(1, result.scannedCount());
+        assertEquals(0, result.publishedCount());
+        assertEquals(1, result.failedCount());
+        assertEquals(List.of("record_storage_drift:file_missing"), result.failedAlerts());
+        RuntimeOutboxEntry outbox = itemStore.runtimeOutbox().get(0);
+        assertEquals("failed", outbox.status());
+        assertEquals(1, outbox.retryCount());
+        assertEquals("notification_sink_unavailable", outbox.lastError());
     }
 
     @Test

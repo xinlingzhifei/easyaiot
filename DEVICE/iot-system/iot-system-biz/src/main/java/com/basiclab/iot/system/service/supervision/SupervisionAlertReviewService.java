@@ -646,6 +646,34 @@ public interface SupervisionAlertReviewService {
                                       LocalDateTime createdAt) {
     }
 
+    record ReviewRuntimeOutboxDeliveryResult(Boolean success,
+                                             String errorCode) {
+        public ReviewRuntimeOutboxDeliveryResult {
+            boolean delivered = Boolean.TRUE.equals(success);
+            success = delivered;
+            errorCode = delivered
+                    ? null
+                    : (errorCode == null || errorCode.isBlank() ? "runtime_outbox_publish_failed" : errorCode);
+        }
+
+        public static ReviewRuntimeOutboxDeliveryResult delivered() {
+            return new ReviewRuntimeOutboxDeliveryResult(true, null);
+        }
+
+        public static ReviewRuntimeOutboxDeliveryResult failed(String errorCode) {
+            return new ReviewRuntimeOutboxDeliveryResult(false, errorCode);
+        }
+    }
+
+    interface ReviewRuntimeOutboxPublisher {
+
+        ReviewRuntimeOutboxDeliveryResult publish(ReviewRuntimeOutboxMessage message);
+
+        static ReviewRuntimeOutboxPublisher noop() {
+            return message -> ReviewRuntimeOutboxDeliveryResult.delivered();
+        }
+    }
+
     record ReviewRuntimeOutboxPublishResult(Integer scannedCount,
                                             Integer publishedCount,
                                             Integer failedCount,
