@@ -161,7 +161,17 @@ export function selectPlayableSegment(payload) {
       continue;
     }
     const status = firstText(row.status, row.coverage_status, row.coverageStatus);
-    const recordUri = firstText(row.record_uri, row.recordUri, row.play_url, row.playUrl, row.video_url, row.videoUrl, row.url, row.file_path);
+    const recordEvidence = firstTextEntry([
+      ['record_uri', row.record_uri],
+      ['recordUri', row.recordUri],
+      ['play_url', row.play_url],
+      ['playUrl', row.playUrl],
+      ['video_url', row.video_url],
+      ['videoUrl', row.videoUrl],
+      ['url', row.url],
+      ['file_path', row.file_path],
+    ]);
+    const recordUri = recordEvidence.value;
     const exportable = firstPresent(row.exportable, row.can_export, row.canExport);
     if (!hasText(recordUri) || String(status || '').toLowerCase() === 'missing' || exportable === false) {
       continue;
@@ -170,6 +180,7 @@ export function selectPlayableSegment(payload) {
       raw: row,
       status,
       recordUri,
+      recordUriSource: recordEvidence.key,
       startTime: firstText(row.start_time, row.startTime, row.begin_time, row.beginTime, row.event_time, row.eventTime),
       endTime: firstText(row.end_time, row.endTime, row.stop_time, row.stopTime),
     };
@@ -217,7 +228,7 @@ export async function runSmoke(options, dependencies = {}) {
   if (!alertSegment) {
     throw new Error('alert record query returned no playable record segment');
   }
-  assertReleaseMediaEvidence(options, 'record URI', alertSegment.recordUri);
+  assertReleaseSegmentMediaEvidence(options, alertSegment);
   checkpoints.push('alert_record_query_ok');
 
   const coverage = await fetchJson(fetchImpl, buildAvailabilityUrl(options.recordCoverageQueryUrl, options, {
@@ -231,7 +242,7 @@ export async function runSmoke(options, dependencies = {}) {
   if (!coverageSegment) {
     throw new Error('record coverage query returned no playable/exportable record segment');
   }
-  assertReleaseMediaEvidence(options, 'record URI', coverageSegment.recordUri);
+  assertReleaseSegmentMediaEvidence(options, coverageSegment);
   checkpoints.push('record_coverage_query_ok');
 
   const recordSpace = await fetchJson(fetchImpl, `${stripTrailingSlash(options.recordBaseUrl)}/space/device/${encodeURIComponent(options.deviceId)}`, {
@@ -678,6 +689,15 @@ function firstText(...values) {
   return value === undefined || value === null ? '' : String(value);
 }
 
+function firstTextEntry(entries) {
+  for (const [key, value] of entries) {
+    if (value !== undefined && value !== null) {
+      return { key, value: String(value) };
+    }
+  }
+  return { key: '', value: '' };
+}
+
 function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
@@ -698,6 +718,14 @@ function assertReleaseMediaEvidence(options, label, value) {
     return;
   }
   throw new Error(`VIDEO live smoke returned local/mock ${label}: ${value}`);
+}
+
+function assertReleaseSegmentMediaEvidence(options, segment) {
+  assertReleaseMediaEvidence(options, 'record URI', segment?.recordUri);
+  if (options.allowLocalEndpoints || segment?.recordUriSource !== 'file_path') {
+    return;
+  }
+  throw new Error(`VIDEO live smoke returned local file path evidence: ${segment.recordUri}`);
 }
 
 function parseBoolean(value, fallback) {

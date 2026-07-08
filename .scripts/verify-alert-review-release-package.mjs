@@ -291,7 +291,10 @@ export function scanLiveVideoEvidenceGate(files) {
   }
   if (liveVideo && !containsAll(liveVideo.content, [
     'assertReleaseMediaEvidence',
+    'assertReleaseSegmentMediaEvidence',
     'looksLocalOrMockMediaEvidence',
+    'recordUriSource',
+    'file_path',
     'record URI',
     'download URL',
     'manifest URL',
