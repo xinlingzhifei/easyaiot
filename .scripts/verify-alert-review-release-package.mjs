@@ -289,6 +289,19 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'live_video_manifest_verifier_summary_missing',
     });
   }
+  if (liveVideo && !containsAll(liveVideo.content, [
+    'assertReleaseMediaEvidence',
+    'looksLocalOrMockMediaEvidence',
+    'record URI',
+    'download URL',
+    'manifest URL',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_media_evidence_gate_missing',
+    });
+  }
   const productionSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-production-smoke.mjs');
   if (productionSmoke && !containsAll(productionSmoke.content, [
     'payload.manifestSignature',

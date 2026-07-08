@@ -325,7 +325,7 @@ assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_w
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
-    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId;',
+    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value);',
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
@@ -348,6 +348,7 @@ assert.equal(missingLiveVideoEvidenceGateScan.ok, false);
 assert.deepEqual(missingLiveVideoEvidenceGateScan.blockers.map((blocker) => blocker.reason), [
   'live_video_manifest_signature_summary_missing',
   'live_video_manifest_verifier_summary_missing',
+  'live_video_media_evidence_gate_missing',
   'production_smoke_manifest_signature_summary_missing',
   'production_smoke_manifest_verifier_summary_missing',
 ]);
