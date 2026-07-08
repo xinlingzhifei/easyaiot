@@ -10,6 +10,8 @@ const requiredTargets = [
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
   'WEB/src/api/device/patrol.ts',
+  'WEB/src/utils/alertRecord.ts',
+  'WEB/src/utils/alertRecordPlayback.ts',
   'VIDEO/app/blueprints/record.py',
   'VIDEO/app/services/record_export_service.py',
   'VIDEO/app/services/record_video_service.py',

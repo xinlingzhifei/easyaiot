@@ -37,7 +37,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/patrol)\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/withInstall\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
+      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/patrol)\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/(alertRecord|alertRecordPlayback|withInstall)\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
   },
   {
     group: 'FR documentation package',
@@ -101,6 +101,8 @@ const TRACKED_RELEASE_PATHS = [
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
+  'WEB/src/utils/alertRecord.ts',
+  'WEB/src/utils/alertRecordPlayback.ts',
   'WEB/src/utils/withInstall.ts',
   'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
   'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',

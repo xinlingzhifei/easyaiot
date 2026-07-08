@@ -56,6 +56,8 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
+  'WEB/src/utils/alertRecord.ts',
+  'WEB/src/utils/alertRecordPlayback.ts',
   'WEB/src/utils/withInstall.ts',
   'WEB/src/api/device/patrol.ts',
   '.scripts/verify-alert-review-release-package.mjs',
@@ -75,7 +77,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
 ]);
-assert.equal(trackedReleaseEntries.length, 23);
+assert.equal(trackedReleaseEntries.length, 25);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -84,6 +86,8 @@ assert.deepEqual(
     ['  ', 'WEB/scripts/alert-review-playback-contract.test.mjs', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/components/VideoPlayer/DialogPlayer.vue', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/components/Player/module/jessibuca.vue', 'WEB alert review workbench package'],
+    ['  ', 'WEB/src/utils/alertRecord.ts', 'WEB alert review workbench package'],
+    ['  ', 'WEB/src/utils/alertRecordPlayback.ts', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/utils/withInstall.ts', 'WEB alert review workbench package'],
     ['  ', 'WEB/src/api/device/patrol.ts', 'WEB alert review workbench package'],
     ['  ', '.scripts/verify-alert-review-release-package.mjs', 'FR release gate tooling'],
