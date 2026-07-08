@@ -167,6 +167,8 @@ const requiredApiFunctions = [
   'auditAlertReviewItemMediaAccess',
   'evaluateAlertReviewRuleGeometry',
   'runAlertReviewIntegrationSmoke',
+  'generateAlertReviewOperationsReport',
+  'acknowledgeAlertReviewOperationsReport',
   'assignAlertReviewCaseOwner',
   'closeAlertReviewCase',
   'mergeAlertReviewCases',
@@ -194,6 +196,8 @@ const requiredApiRoutes = [
   '/media-access/audit',
   '/rules/geometry-evaluate',
   '/integration-smoke',
+  '/operations-report',
+  '/operations-report/acknowledgement',
   '/owner',
   '/close',
   '/merge',
@@ -259,6 +263,27 @@ for (const snippet of requiredReasonSnippets) {
 
 if (!mockApiSource.includes('evidence_download_audited')) {
   failures.push('missing integration smoke download audit checkpoint')
+}
+
+const requiredOperationsReportSnippets = [
+  'AlertReviewOperationsReport',
+  'AlertReviewReportAcknowledgement',
+  'opsReport',
+  'opsReportAcknowledgement',
+  'runOpsReportAcknowledgement',
+  'data-testid="alert-review-ops-report-ack"',
+  'data-testid="alert-review-ops-report-ack-action"',
+  'acknowledgeAlertReviewOperationsReport',
+  'generateAlertReviewOperationsReport',
+]
+
+for (const snippet of requiredOperationsReportSnippets) {
+  const source = snippet.includes('AlertReview') || snippet.includes('OperationsReport')
+    ? `${apiSource}\n${workbenchSource}\n${mockApiSource}`
+    : workbenchSource
+  if (!source.includes(snippet)) {
+    failures.push(`missing operations report acknowledgement contract ${snippet}`)
+  }
 }
 
 async function runBrowserE2E(failures) {

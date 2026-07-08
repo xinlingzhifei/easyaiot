@@ -18,6 +18,11 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgementCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -174,6 +179,90 @@ class SupervisionAlertReviewControllerTest {
     }
 
     @Test
+    void operationsReportEndpointsExposeAcknowledgementContractAndUseLoginUser() throws Exception {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SupervisionAlertReviewController(reviewService.proxy()))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser().setId(779L),
+                null,
+                List.of()
+        ));
+        try {
+            mockMvc.perform(post("/system/supervision/alert-review/operations-report")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "reportType": "daily",
+                                      "reviewStatus": "pending_review",
+                                      "cameraId": "camera-01",
+                                      "periodStart": "2026-07-08T00:00:00",
+                                      "periodEnd": "2026-07-08T23:59:59",
+                                      "operatorUserId": 9999
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.reportType").value("daily"))
+                    .andExpect(jsonPath("$.data.deliveryPlan.reportKey").value("report-controller"))
+                    .andExpect(jsonPath("$.data.acknowledgement.status").value("pending"));
+
+            mockMvc.perform(post("/system/supervision/alert-review/operations-report/acknowledgement")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "reportType": "daily",
+                                      "reviewStatus": "pending_review",
+                                      "cameraId": "camera-01",
+                                      "periodStart": "2026-07-08T00:00:00",
+                                      "periodEnd": "2026-07-08T23:59:59",
+                                      "operatorUserId": 9999,
+                                      "note": "shift leader acknowledged"
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.reportKey").value("report-controller"))
+                    .andExpect(jsonPath("$.data.status").value("acknowledged"))
+                    .andExpect(jsonPath("$.data.acknowledgedBy").value(779))
+                    .andExpect(jsonPath("$.data.duplicate").value(false));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        ReviewQuery expectedQuery = new ReviewQuery(
+                "pending_review",
+                "camera-01",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        assertEquals(new ReviewReportCommand(
+                        "daily",
+                        expectedQuery,
+                        LocalDateTime.of(2026, 7, 8, 0, 0),
+                        LocalDateTime.of(2026, 7, 8, 23, 59, 59),
+                        779L
+                ),
+                reviewService.command("generateReviewReport"));
+        assertEquals(new ReviewReportAcknowledgementCommand(
+                        "daily",
+                        expectedQuery,
+                        LocalDateTime.of(2026, 7, 8, 0, 0),
+                        LocalDateTime.of(2026, 7, 8, 23, 59, 59),
+                        779L,
+                        "shift leader acknowledged"
+                ),
+                reviewService.command("acknowledgeReviewReport"));
+    }
+
+    @Test
     void ruleSuggestionGovernanceEndpointsDeclareApprovalPermissions() throws Exception {
         assertPreAuthorize(
                 "updateRuleSuggestionStatus",
@@ -258,6 +347,8 @@ class SupervisionAlertReviewControllerTest {
                 );
                 case "prepareReviewPlayback" -> playbackAccess((ReviewPlaybackCommand) command);
                 case "verifyEvidencePackage" -> verificationReport((ReviewEvidenceVerificationCommand) command);
+                case "generateReviewReport" -> operationsReport((ReviewReportCommand) command);
+                case "acknowledgeReviewReport" -> reportAcknowledgement((ReviewReportAcknowledgementCommand) command);
                 default -> throw new AssertionError("unexpected service method: " + method.getName());
             };
         }
@@ -314,6 +405,46 @@ class SupervisionAlertReviewControllerTest {
                 List.of(),
                 LocalDateTime.of(2026, 7, 6, 10, 0),
                 command.operatorUserId()
+        );
+    }
+
+    private static ReviewOperationsReport operationsReport(ReviewReportCommand command) {
+        Map<String, Object> deliveryPlan = Map.of(
+                "reportKey", "report-controller",
+                "reportType", command.reportType(),
+                "deliveryStatus", "pending"
+        );
+        Map<String, Object> acknowledgement = Map.of(
+                "reportKey", "report-controller",
+                "reportType", command.reportType(),
+                "status", "pending",
+                "required", true
+        );
+        return new ReviewOperationsReport(
+                command.reportType(),
+                List.of(100L),
+                "daily review report",
+                "1 pending clue",
+                List.of("missing_record"),
+                List.of("acknowledge"),
+                LocalDateTime.of(2026, 7, 8, 12, 0),
+                command.operatorUserId(),
+                Map.of("acknowledgement", acknowledgement, "deliveryPlan", deliveryPlan),
+                deliveryPlan,
+                acknowledgement
+        );
+    }
+
+    private static ReviewReportAcknowledgement reportAcknowledgement(ReviewReportAcknowledgementCommand command) {
+        return new ReviewReportAcknowledgement(
+                "report-controller",
+                command.reportType(),
+                "acknowledged",
+                command.operatorUserId(),
+                LocalDateTime.of(2026, 7, 8, 12, 5),
+                command.note(),
+                false,
+                Map.of("periodStart", String.valueOf(command.periodStart()))
         );
     }
 

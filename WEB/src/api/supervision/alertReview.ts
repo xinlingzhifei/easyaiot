@@ -403,6 +403,42 @@ export interface AlertReviewRuntimePatrolResult {
   metadata: Record<string, any>
 }
 
+export interface AlertReviewOperationsReportRequest extends AlertReviewQuery {
+  reportType?: 'shift' | 'daily' | string
+  periodStart?: string
+  periodEnd?: string
+  operatorUserId?: number
+}
+
+export interface AlertReviewReportAcknowledgementRequest extends AlertReviewOperationsReportRequest {
+  note?: string
+}
+
+export interface AlertReviewReportAcknowledgement {
+  reportKey: string
+  reportType: string
+  status: string
+  acknowledgedBy?: number
+  acknowledgedAt?: string
+  note?: string
+  duplicate: boolean
+  metadata: Record<string, any>
+}
+
+export interface AlertReviewOperationsReport {
+  reportType: string
+  reviewItemIds: number[]
+  title: string
+  summary: string
+  evidenceGaps: string[]
+  recommendedActions: string[]
+  generatedAt: string
+  operatorUserId?: number
+  structuredData: Record<string, any>
+  deliveryPlan: Record<string, any>
+  acknowledgement: Record<string, any>
+}
+
 export interface AlertReviewAiSummary {
   reviewCaseId: number
   reviewItemIds: number[]
@@ -725,6 +761,20 @@ export function reconcileAlertReviewRuntime(params?: AlertReviewQuery & { operat
 export function runAlertReviewRuntimePatrol(data?: AlertReviewRuntimePatrolRequest) {
   return defHttp.post<AlertReviewRuntimePatrolResult>({
     url: '/system/supervision/alert-review/runtime-patrol',
+    data: data ?? {},
+  })
+}
+
+export function generateAlertReviewOperationsReport(data?: AlertReviewOperationsReportRequest) {
+  return defHttp.post<AlertReviewOperationsReport>({
+    url: '/system/supervision/alert-review/operations-report',
+    data: data ?? {},
+  })
+}
+
+export function acknowledgeAlertReviewOperationsReport(data?: AlertReviewReportAcknowledgementRequest) {
+  return defHttp.post<AlertReviewReportAcknowledgement>({
+    url: '/system/supervision/alert-review/operations-report/acknowledgement',
     data: data ?? {},
   })
 }

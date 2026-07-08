@@ -187,6 +187,11 @@ async function runE2E() {
   await waitFor(() => text().includes('critical'), 'semantic backlog alarm')
   await waitFor(() => text().includes('50%'), 'semantic rebuild progress')
   await waitFor(() => text().includes('stale 1 / failed 1'), 'semantic stale failed summary')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-ops-report-ack"]'), 'operations report acknowledgement cell')
+  await waitFor(() => text().includes('pending acknowledgement'), 'operations report pending acknowledgement')
+  document.querySelector<HTMLButtonElement>('[data-testid="alert-review-ops-report-ack-action"]')?.click()
+  await waitFor(() => text().includes('acknowledged by 9001'), 'operations report acknowledged state')
+  await waitFor(() => (window.__alertReviewE2EApiCalls || []).some(call => call.name === 'acknowledgeAlertReviewOperationsReport'), 'operations report acknowledgement call')
 
   await clickAndWaitForVideo('[data-testid="alert-review-list-playback"]', 'list playback video event')
   assertLastVideoSeek('list playback', '2026-07-02T08:00:00', 'mock://record/east-gate-080000.mp4')

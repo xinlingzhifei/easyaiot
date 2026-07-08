@@ -18,6 +18,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthReport;
@@ -42,7 +44,6 @@ import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Map;
 
 public final class AlertReviewVO {
@@ -680,6 +681,111 @@ public final class AlertReviewVO {
             respVO.setAlerts(report.alerts());
             respVO.setMeasuredAt(report.measuredAt());
             respVO.setOperatorUserId(report.operatorUserId());
+            return respVO;
+        }
+
+    }
+
+    @Schema(description = "Alert review operations report request")
+    @Data
+    public static class OperationsReportReqVO {
+
+        private String reportType;
+        private String reviewStatus;
+        private String cameraId;
+        private String zoneCode;
+        private String objectLabel;
+        private String recordEvidenceStatus;
+        private Boolean converted;
+        private Boolean inReviewCase;
+        private Long reviewerUserId;
+        private LocalDateTime beginTime;
+        private LocalDateTime endTime;
+        private LocalDateTime periodStart;
+        private LocalDateTime periodEnd;
+        private Long operatorUserId;
+
+    }
+
+    @Schema(description = "Alert review operations report acknowledgement request")
+    @Data
+    public static class ReportAcknowledgementReqVO {
+
+        private String reportType;
+        private String reviewStatus;
+        private String cameraId;
+        private String zoneCode;
+        private String objectLabel;
+        private String recordEvidenceStatus;
+        private Boolean converted;
+        private Boolean inReviewCase;
+        private Long reviewerUserId;
+        private LocalDateTime beginTime;
+        private LocalDateTime endTime;
+        private LocalDateTime periodStart;
+        private LocalDateTime periodEnd;
+        private Long operatorUserId;
+        private String note;
+
+    }
+
+    @Schema(description = "Alert review operations report response")
+    @Data
+    public static class OperationsReportRespVO {
+
+        private String reportType;
+        private List<Long> reviewItemIds;
+        private String title;
+        private String summary;
+        private List<String> evidenceGaps;
+        private List<String> recommendedActions;
+        private LocalDateTime generatedAt;
+        private Long operatorUserId;
+        private Map<String, Object> structuredData;
+        private Map<String, Object> deliveryPlan;
+        private Map<String, Object> acknowledgement;
+
+        public static OperationsReportRespVO from(ReviewOperationsReport report) {
+            OperationsReportRespVO respVO = new OperationsReportRespVO();
+            respVO.setReportType(report.reportType());
+            respVO.setReviewItemIds(report.reviewItemIds());
+            respVO.setTitle(report.title());
+            respVO.setSummary(report.summary());
+            respVO.setEvidenceGaps(report.evidenceGaps());
+            respVO.setRecommendedActions(report.recommendedActions());
+            respVO.setGeneratedAt(report.generatedAt());
+            respVO.setOperatorUserId(report.operatorUserId());
+            respVO.setStructuredData(report.structuredData());
+            respVO.setDeliveryPlan(report.deliveryPlan());
+            respVO.setAcknowledgement(report.acknowledgement());
+            return respVO;
+        }
+
+    }
+
+    @Schema(description = "Alert review operations report acknowledgement response")
+    @Data
+    public static class ReportAcknowledgementRespVO {
+
+        private String reportKey;
+        private String reportType;
+        private String status;
+        private Long acknowledgedBy;
+        private LocalDateTime acknowledgedAt;
+        private String note;
+        private boolean duplicate;
+        private Map<String, Object> metadata;
+
+        public static ReportAcknowledgementRespVO from(ReviewReportAcknowledgement acknowledgement) {
+            ReportAcknowledgementRespVO respVO = new ReportAcknowledgementRespVO();
+            respVO.setReportKey(acknowledgement.reportKey());
+            respVO.setReportType(acknowledgement.reportType());
+            respVO.setStatus(acknowledgement.status());
+            respVO.setAcknowledgedBy(acknowledgement.acknowledgedBy());
+            respVO.setAcknowledgedAt(acknowledgement.acknowledgedAt());
+            respVO.setNote(acknowledgement.note());
+            respVO.setDuplicate(acknowledgement.duplicate());
+            respVO.setMetadata(acknowledgement.metadata());
             return respVO;
         }
 

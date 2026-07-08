@@ -10,6 +10,8 @@ export type AlertReviewEvidenceExportPackage = any
 export type AlertReviewEvidenceVerification = any
 export type AlertReviewIntegrationSmokeResult = any
 export type AlertReviewItem = any
+export type AlertReviewOperationsReport = any
+export type AlertReviewReportAcknowledgement = any
 export type AlertReviewReconciliationResult = any
 export type AlertReviewRuntimeHealth = any
 export type AlertReviewRuleGeometryEvaluation = any
@@ -119,6 +121,39 @@ const summary = {
   missingRecord: 0,
   converted: 0,
   inReviewCase: 0,
+}
+
+let reportAcknowledgement = {
+  reportKey: 'report-e2e-shift',
+  reportType: 'shift',
+  status: 'pending',
+  acknowledgedBy: undefined as number | undefined,
+  acknowledgedAt: undefined as string | undefined,
+  note: undefined as string | undefined,
+  duplicate: false,
+  metadata: { reviewItemIds: [101] },
+}
+
+function operationsReport() {
+  return {
+    reportType: 'shift',
+    reviewItemIds: [101],
+    title: 'shift operations report',
+    summary: '1 pending clue, 0 missing records',
+    evidenceGaps: [],
+    recommendedActions: ['acknowledge_report'],
+    generatedAt: '2026-07-02T08:07:20',
+    operatorUserId: 9001,
+    structuredData: {
+      acknowledgement: reportAcknowledgement,
+    },
+    deliveryPlan: {
+      reportKey: reportAcknowledgement.reportKey,
+      reportType: reportAcknowledgement.reportType,
+      deliveryStatus: 'pending',
+    },
+    acknowledgement: reportAcknowledgement,
+  }
 }
 
 let currentReviewItem = { ...reviewItem }
@@ -300,6 +335,23 @@ export async function getAlertReviewRuntimeHealth(payload?: unknown) {
     alerts: [],
     measuredAt: '2026-07-02T08:07:00',
   }
+}
+
+export async function generateAlertReviewOperationsReport(payload?: unknown) {
+  record('generateAlertReviewOperationsReport', payload)
+  return operationsReport()
+}
+
+export async function acknowledgeAlertReviewOperationsReport(payload?: any) {
+  record('acknowledgeAlertReviewOperationsReport', payload)
+  reportAcknowledgement = {
+    ...reportAcknowledgement,
+    status: 'acknowledged',
+    acknowledgedBy: payload?.operatorUserId || 9001,
+    acknowledgedAt: '2026-07-02T08:07:30',
+    note: payload?.note,
+  }
+  return reportAcknowledgement
 }
 
 export async function reconcileAlertReviewRuntime(payload?: unknown) {

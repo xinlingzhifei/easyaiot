@@ -32,10 +32,14 @@ import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertRevie
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.MediaAccessAuditReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.MediaAccessAuditRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.OperationReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.OperationsReportReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.OperationsReportRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.PlaybackAccessRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RecordStorageSyncReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RecordStorageSyncRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.ReconciliationRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.ReportAcknowledgementReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.ReportAcknowledgementRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuntimeHealthRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleGeometryReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleGeometryRespVO;
@@ -75,6 +79,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRecordStorageSyncCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReconciliationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgementCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeHealthCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimePatrolCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleCommand;
@@ -260,6 +266,60 @@ public class SupervisionAlertReviewController {
                         body.getRepair(),
                         body.getMaxAttempts(),
                         body.getScheduled()
+                )
+        )));
+    }
+
+    @PostMapping("/operations-report")
+    @Operation(summary = "Generate alert review operations report")
+    public CommonResult<OperationsReportRespVO> generateOperationsReport(@RequestBody(required = false) OperationsReportReqVO reqVO) {
+        OperationsReportReqVO body = reqVO == null ? new OperationsReportReqVO() : reqVO;
+        return success(OperationsReportRespVO.from(supervisionAlertReviewService.generateReviewReport(
+                new ReviewReportCommand(
+                        body.getReportType(),
+                        new ReviewQuery(
+                                body.getReviewStatus(),
+                                body.getCameraId(),
+                                body.getZoneCode(),
+                                body.getObjectLabel(),
+                                body.getRecordEvidenceStatus(),
+                                body.getConverted(),
+                                body.getInReviewCase(),
+                                body.getReviewerUserId(),
+                                body.getBeginTime(),
+                                body.getEndTime()
+                        ),
+                        body.getPeriodStart(),
+                        body.getPeriodEnd(),
+                        currentOperatorUserId(body.getOperatorUserId())
+                )
+        )));
+    }
+
+    @PostMapping("/operations-report/acknowledgement")
+    @Operation(summary = "Acknowledge alert review operations report")
+    public CommonResult<ReportAcknowledgementRespVO> acknowledgeOperationsReport(
+            @RequestBody(required = false) ReportAcknowledgementReqVO reqVO) {
+        ReportAcknowledgementReqVO body = reqVO == null ? new ReportAcknowledgementReqVO() : reqVO;
+        return success(ReportAcknowledgementRespVO.from(supervisionAlertReviewService.acknowledgeReviewReport(
+                new ReviewReportAcknowledgementCommand(
+                        body.getReportType(),
+                        new ReviewQuery(
+                                body.getReviewStatus(),
+                                body.getCameraId(),
+                                body.getZoneCode(),
+                                body.getObjectLabel(),
+                                body.getRecordEvidenceStatus(),
+                                body.getConverted(),
+                                body.getInReviewCase(),
+                                body.getReviewerUserId(),
+                                body.getBeginTime(),
+                                body.getEndTime()
+                        ),
+                        body.getPeriodStart(),
+                        body.getPeriodEnd(),
+                        currentOperatorUserId(body.getOperatorUserId()),
+                        body.getNote()
                 )
         )));
     }

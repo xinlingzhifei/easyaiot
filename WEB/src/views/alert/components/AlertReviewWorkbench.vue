@@ -20,6 +20,8 @@ import {
   type AlertReviewEvidenceVerification,
   type AlertReviewIntegrationSmokeResult,
   type AlertReviewItem,
+  type AlertReviewOperationsReport,
+  type AlertReviewReportAcknowledgement,
   type AlertReviewReconciliationResult,
   type AlertReviewRuleGeometryEvaluation,
   type AlertReviewRuleReplayResult,
@@ -31,6 +33,7 @@ import {
   type AlertReviewSemanticIndexEvaluation,
   type AlertReviewSummary,
   addAlertReviewItemToCase,
+  acknowledgeAlertReviewOperationsReport,
   assignAlertReviewCaseOwner,
   auditAlertReviewItemMediaAccess,
   auditAlertReviewMediaAccess,
@@ -40,6 +43,7 @@ import {
   createAlertReviewEvidenceExportJob,
   evaluateAlertReviewRuleGeometry,
   evaluateAlertReviewSemanticIndex,
+  generateAlertReviewOperationsReport,
   getAlertReviewCaseTimeline,
   getAlertReviewDetailStream,
   getAlertReviewEvidenceAudit,
@@ -152,6 +156,15 @@ const opsPatrol = ref<AlertReviewRuntimePatrolResult | null>(null)
 const opsSmoke = ref<AlertReviewIntegrationSmokeResult | null>(null)
 const opsVerification = ref<AlertReviewEvidenceVerification | null>(null)
 const opsGeometry = ref<AlertReviewRuleGeometryEvaluation | null>(null)
+const opsReport = ref<AlertReviewOperationsReport | null>(null)
+const opsReportAck = ref<AlertReviewReportAcknowledgement | null>(null)
+const opsReportAcknowledgement = computed(() => opsReportAck.value || opsReport.value?.acknowledgement || null)
+const opsReportAcknowledgementText = computed(() => {
+  const acknowledgement = opsReportAcknowledgement.value as Record<string, any> | null
+  if (acknowledgement?.status === 'acknowledged')
+    return `acknowledged by ${acknowledgement.acknowledgedBy || '-'}`
+  return `${acknowledgement?.status || 'pending'} acknowledgement`
+})
 const summary = ref<AlertReviewSummary>({
   total: 0,
   pendingReview: 0,
@@ -313,19 +326,57 @@ function currentReviewQuery() {
   }
 }
 
+function currentOperationsReportRequest() {
+  return {
+    ...currentReviewQuery(),
+    reportType: 'shift',
+    operatorUserId: filters.reviewerUserId,
+  }
+}
+
 async function loadOpsHealth() {
   opsLoading.value = true
   try {
     const query = currentReviewQuery()
-    const [health, semanticEvaluation] = await Promise.all([
+    const [health, semanticEvaluation, report] = await Promise.all([
       getAlertReviewRuntimeHealth(query),
       evaluateAlertReviewSemanticIndex(query),
+      generateAlertReviewOperationsReport(currentOperationsReportRequest()),
     ])
     opsHealth.value = health
     semanticIndexEvaluation.value = semanticEvaluation
+    opsReport.value = report
+    opsReportAck.value = null
   }
   catch (error: any) {
     createMessage.error(error?.message || 'runtime health failed')
+  }
+  finally {
+    opsLoading.value = false
+  }
+}
+
+async function runOpsReportAcknowledgement() {
+  opsLoading.value = true
+  try {
+    const acknowledgement = await acknowledgeAlertReviewOperationsReport({
+      ...currentOperationsReportRequest(),
+      note: 'workbench_acknowledged',
+    })
+    opsReportAck.value = acknowledgement
+    if (opsReport.value) {
+      opsReport.value = {
+        ...opsReport.value,
+        acknowledgement: {
+          ...opsReport.value.acknowledgement,
+          ...acknowledgement,
+        },
+      }
+    }
+    createMessage.success('operations report acknowledged')
+  }
+  catch (error: any) {
+    createMessage.error(error?.message || 'operations report acknowledgement failed')
   }
   finally {
     opsLoading.value = false
@@ -1706,6 +1757,20 @@ defineExpose({
         <small>{{ semanticProgressText(semanticIndexEvaluation) }} / {{ semanticBacklogSummary(semanticIndexEvaluation) }}</small>
         <Button size="small" :loading="opsLoading" @click="loadOpsHealth">
           index
+        </Button>
+      </div>
+      <div class="ops-cell" data-testid="alert-review-ops-report-ack">
+        <span>report</span>
+        <strong>{{ opsReportAcknowledgementText }}</strong>
+        <small>{{ opsReport?.deliveryPlan?.reportKey || opsReport?.title || 'shift report' }}</small>
+        <Button
+          size="small"
+          data-testid="alert-review-ops-report-ack-action"
+          :disabled="opsReportAcknowledgement?.status === 'acknowledged'"
+          :loading="opsLoading"
+          @click="runOpsReportAcknowledgement"
+        >
+          ack
         </Button>
       </div>
       <div class="ops-cell" data-testid="alert-review-ops-smoke">
