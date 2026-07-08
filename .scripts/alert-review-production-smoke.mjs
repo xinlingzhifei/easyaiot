@@ -169,8 +169,14 @@ export function requiredOptionErrors(options) {
 
 export function buildSmokeSteps(options, runtime = {}) {
   const nodePath = runtime.nodePath || process.execPath;
+  const pnpmPath = runtime.pnpmPath || defaultPnpmPath();
   const scriptDir = runtime.scriptDir || '.scripts';
   return [
+    {
+      name: 'W2:typecheck',
+      command: pnpmPath,
+      args: ['--dir', 'WEB', 'run', 'type:check'],
+    },
     {
       name: 'LiveDevice',
       command: nodePath,
@@ -589,6 +595,10 @@ function parseBoolean(value, fallback) {
     return fallback;
   }
   return !['0', 'false', 'no'].includes(String(value).trim().toLowerCase());
+}
+
+function defaultPnpmPath() {
+  return process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 }
 
 function looksLocalOrMockEndpoint(value) {
