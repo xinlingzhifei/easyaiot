@@ -3,6 +3,7 @@ package com.basiclab.iot.system.supervision;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewEventReconcileJob;
+import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewOperationsReportJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimeOutboxJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewRuntimePatrolJob;
 import com.basiclab.iot.system.job.supervision.SupervisionAlertReviewSemanticIndexJob;
@@ -3399,6 +3400,31 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(1, ((Map<?, ?>) cameraDimensions.get("camera-02")).get("falsePositiveCount"));
         assertEquals(1, ((Map<?, ?>) areaDimensions.get("zone-a")).get("missingRecordCount"));
         assertEquals(1, ((Map<?, ?>) ruleDimensions.get(SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING)).get("falsePositiveCount"));
+    }
+
+    @Test
+    void operationsReportJobGeneratesScheduledShiftAndDailyReports() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> Optional.empty(),
+                noEventProjectionStore()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 1, 9, 30);
+        service.ingestClue(newClue("alert-report-job", alertTime, "report-job.jpg", null));
+
+        SupervisionAlertReviewOperationsReportJob job = new SupervisionAlertReviewOperationsReportJob(service);
+        String shiftSummary = job.execute("");
+        String dailySummary = job.execute("daily");
+
+        assertTrue(shiftSummary.contains("reportType=shift"));
+        assertTrue(shiftSummary.contains("scheduled=true"));
+        assertTrue(shiftSummary.contains("items=1"));
+        assertTrue(shiftSummary.contains("deliveryStatus=pending"));
+        assertTrue(shiftSummary.contains("acknowledgement=pending"));
+        assertTrue(dailySummary.contains("reportType=daily"));
+        assertTrue(dailySummary.contains("scheduled=true"));
     }
 
     @Test

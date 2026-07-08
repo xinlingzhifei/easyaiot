@@ -200,11 +200,12 @@ BEGIN
       'supervisionAlertReviewRuntimePatrolJob',
       'supervisionAlertReviewRuntimeOutboxJob',
       'supervisionAlertReviewEventReconcileJob',
-      'supervisionAlertReviewSemanticIndexJob'
+      'supervisionAlertReviewSemanticIndexJob',
+      'supervisionAlertReviewOperationsReportJob'
     )
       AND status = 2
       AND deleted = 0
-  ) <> 4 THEN
+  ) <> 6 THEN
     RAISE EXCEPTION 'expected paused alert review scheduler job seeds to be present';
   END IF;
 
@@ -217,6 +218,17 @@ BEGIN
       AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected event reconcile scheduler seed to be paused and deduplicated';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM infra_job
+    WHERE handler_name = 'supervisionAlertReviewOperationsReportJob'
+      AND handler_param IN ('shift', 'daily')
+      AND status = 2
+      AND deleted = 0
+  ) <> 2 THEN
+    RAISE EXCEPTION 'expected operations report scheduler seeds to cover shift and daily reports';
   END IF;
 
   IF NOT EXISTS (
@@ -572,9 +584,9 @@ export function summarizeConcurrentReviewSegmentResults(results) {
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-postgres-migration-smoke.mjs --container=NAME [--database=NAME] [--repo-root=PATH] [--keep-database]
 
-Runs FR-01/FR-20/FR-24/FR-30/FR-33 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
+Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, and V20260708_2, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, and V20260708_2, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, operations report seeds, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

@@ -33,6 +33,10 @@ assert.deepEqual(MIGRATION_FILES, [
 const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.at(-1), 'utf8');
 assert.doesNotMatch(schedulerJobMigrationSql, /existing\.id\s*=\s*seed\.id/);
 assert.match(schedulerJobMigrationSql, /WHERE existing\.handler_name = seed\.handler_name/);
+assert.match(schedulerJobMigrationSql, /existing\.handler_param IS NOT DISTINCT FROM seed\.handler_param/);
+assert.match(schedulerJobMigrationSql, /supervisionAlertReviewOperationsReportJob/);
+assert.match(schedulerJobMigrationSql, /'shift'/);
+assert.match(schedulerJobMigrationSql, /'daily'/);
 
 const bootstrapSql = buildBootstrapSql();
 assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);
@@ -59,6 +63,7 @@ assert.match(assertionSql, /system:supervision-alert-review:media:playback/);
 assert.match(assertionSql, /expected review media permission seeds to be present/);
 assert.match(assertionSql, /expected paused alert review scheduler job seeds to be present/);
 assert.match(assertionSql, /supervisionAlertReviewEventReconcileJob/);
+assert.match(assertionSql, /supervisionAlertReviewOperationsReportJob/);
 assert.match(assertionSql, /expected review case audit to allow pre-case media audit rows/);
 assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 assert.match(assertionSql, /expected stale review status version update to affect no rows/);
