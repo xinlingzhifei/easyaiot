@@ -250,12 +250,21 @@ const smoke = await runProductionSmoke(parsed, {
   scriptDir: '.scripts',
   runCommand: async (step) => {
     calls.push(step.name);
-    return { status: 0 };
+    return { status: 0, stdout: summaryStdoutForStep(step.name) };
   },
 });
 assert.equal(smoke.ok, true);
 assert.deepEqual(calls, ['W2:typecheck', 'LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
 assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    runCommand: async () => ({ status: 0 }),
+  }),
+  /production smoke step LiveDevice did not emit required evidence summary/,
+);
 
 const evidenceWrites = [];
 const smokeWithEvidence = await runProductionSmoke({
@@ -300,13 +309,32 @@ const smokeWithEvidence = await runProductionSmoke({
     "deniedDecision": "denied",
     "deniedReasons": ["camera_not_allowed"]
   },
-  "checkpoints": ["ingest_created", "review_rule_saved", "record_coverage_synced", "evidence_download_audited"]
+  "checkpoints": [
+    "ingest_review_item",
+    "review_rule_saved",
+    "record_coverage_synced",
+    "review_case_created",
+    "evidence_export_ready",
+    "manifest_verified",
+    "evidence_download_audited",
+    "playback_url_granted",
+    "playback_url_denied"
+  ]
 }
 `
       : step.name === 'LiveVideo'
         ? `alert review VIDEO live smoke passed
 {
-  "checkpoints": ["alert_record_query_ok", "record_storage_drift_patrol_ok", "record_export_manifest_verified"],
+  "checkpoints": [
+    "alert_record_query_ok",
+    "record_coverage_query_ok",
+    "record_base_space_resolved",
+    "record_storage_drift_patrol_ok",
+    "record_export_posted",
+    "record_export_download_ready",
+    "record_export_download_probed",
+    "record_export_manifest_verified"
+  ],
   "storageDriftSummary": {
     "healthy": true,
     "recordCount": 3,
@@ -389,7 +417,17 @@ assert.match(evidenceReport.steps[0].command, /^pnpm(\.cmd)? --dir WEB run type:
 assert.equal(evidenceReport.steps[1].command.includes('--token=***'), true);
 assert.equal(evidenceReport.steps[3].command.includes('--workbench-url=https://web.release.example/yfeieye/alert/review '), true);
 assert.deepEqual(evidenceReport.steps[1].summary, {
-  checkpoints: ['ingest_created', 'review_rule_saved', 'record_coverage_synced', 'evidence_download_audited'],
+  checkpoints: [
+    'ingest_review_item',
+    'review_rule_saved',
+    'record_coverage_synced',
+    'review_case_created',
+    'evidence_export_ready',
+    'manifest_verified',
+    'evidence_download_audited',
+    'playback_url_granted',
+    'playback_url_denied',
+  ],
   playback: {
     grantedDecision: 'granted',
     deniedDecision: 'denied',
@@ -411,7 +449,12 @@ assert.deepEqual(evidenceReport.steps[2].summary.storageDriftSummary, {
 });
 assert.deepEqual(evidenceReport.steps[2].summary.checkpoints, [
   'alert_record_query_ok',
+  'record_coverage_query_ok',
+  'record_base_space_resolved',
   'record_storage_drift_patrol_ok',
+  'record_export_posted',
+  'record_export_download_ready',
+  'record_export_download_probed',
   'record_export_manifest_verified',
 ]);
 assert.deepEqual(evidenceReport.steps[2].summary.manifestSignature, {
@@ -495,7 +538,7 @@ await assert.rejects(
   () => runProductionSmoke(parsed, {
     nodePath: 'node',
     scriptDir: '.scripts',
-    runCommand: async (step) => ({ status: step.name === 'LiveVideo' ? 1 : 0 }),
+    runCommand: async (step) => ({ status: step.name === 'LiveVideo' ? 1 : 0, stdout: summaryStdoutForStep(step.name) }),
   }),
   /LiveVideo failed with exit code 1/,
 );
@@ -520,7 +563,7 @@ await assert.rejects(
     writeFile: (file, content) => {
       failedEvidenceWrites.push({ file, content });
     },
-    runCommand: async (step) => ({ status: step.name === 'LiveVideo' ? 2 : 0 }),
+    runCommand: async (step) => ({ status: step.name === 'LiveVideo' ? 2 : 0, stdout: summaryStdoutForStep(step.name) }),
   }),
   /LiveVideo failed with exit code 2/,
 );
@@ -551,6 +594,80 @@ const trackedProductionSmokeEntries = releaseEntriesForTrackedPaths([
 assert.equal(trackedProductionSmokeEntries.length, 2);
 
 console.log('alert review production smoke tests OK');
+
+function summaryStdoutForStep(name) {
+  if (name === 'LiveDevice') {
+    return JSON.stringify({
+      status: 'passed',
+      profile: 'device-video-web',
+      reviewItemId: 1001,
+      reviewCaseId: 2001,
+      exportJobNo: 'EXP-20260707-001',
+      manifestValid: true,
+      videoExportRequested: true,
+      checkpoints: [
+        'ingest_review_item',
+        'review_rule_saved',
+        'record_coverage_synced',
+        'review_case_created',
+        'evidence_export_ready',
+        'manifest_verified',
+        'evidence_download_audited',
+        'playback_url_granted',
+        'playback_url_denied',
+      ],
+    });
+  }
+  if (name === 'LiveVideo') {
+    return JSON.stringify({
+      checkpoints: [
+        'alert_record_query_ok',
+        'record_coverage_query_ok',
+        'record_base_space_resolved',
+        'record_storage_drift_patrol_ok',
+        'record_export_posted',
+        'record_export_download_ready',
+        'record_export_download_probed',
+        'record_export_manifest_verified',
+      ],
+      storageDriftSummary: {
+        healthy: true,
+        recordCount: 3,
+        issueCount: 0,
+        issueReasons: {},
+      },
+      exportResult: {
+        exportId: 'review-export-1',
+        downloadUrl: '/downloads/review-export-1.mp4',
+        manifestUrl: '/manifests/review-export-1.json',
+      },
+      manifestSignature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+      },
+    });
+  }
+  if (name === 'LivePlayer:coverage' || name === 'LivePlayer:case-timeline') {
+    return JSON.stringify({
+      clickedRow: true,
+      clickedAction: true,
+      seekTime: '2026-07-05T10:00:00',
+      recordPath: 'mock://record/device-01/20260705-100000.mp4',
+      playbackOffsetSeconds: 0,
+    });
+  }
+  if (name === 'LivePlayer:detail') {
+    return JSON.stringify({
+      clickedRow: true,
+      clickedAction: true,
+      seekTime: '2026-07-05T10:00:30',
+      recordPath: 'mock://record/device-01/20260705-100000.mp4',
+      playbackOffsetSeconds: 30,
+    });
+  }
+  return '';
+}
 
 function sequencedNow(values) {
   let index = 0;

@@ -293,11 +293,21 @@ export async function runProductionSmoke(options, dependencies = {}) {
       writeEvidenceReport(options, evidenceReport, dependencies);
       throw new Error(message);
     }
+    const evidenceStep = buildEvidenceStep(step, 'passed', stepStartedAt, stepFinishedAt, status, null, result);
+    const evidenceError = passedStepEvidenceError(step, evidenceStep.summary);
+    if (evidenceError) {
+      evidenceStep.status = 'failed';
+      evidenceStep.error = evidenceError;
+      evidenceReport.steps.push(evidenceStep);
+      finishEvidenceReport(evidenceReport, false, reportStartedAt, currentInstant(dependencies));
+      writeEvidenceReport(options, evidenceReport, dependencies);
+      throw new Error(evidenceError);
+    }
     results.push({
       name: step.name,
       status: 'passed',
     });
-    evidenceReport.steps.push(buildEvidenceStep(step, 'passed', stepStartedAt, stepFinishedAt, status, null, result));
+    evidenceReport.steps.push(evidenceStep);
   }
   finishEvidenceReport(evidenceReport, true, reportStartedAt, currentInstant(dependencies));
   writeEvidenceReport(options, evidenceReport, dependencies);
@@ -309,6 +319,120 @@ export async function runProductionSmoke(options, dependencies = {}) {
 
 export function formatStepCommand(step) {
   return `${step.command} ${step.args.map(maskSensitiveArg).join(' ')}`;
+}
+
+function passedStepEvidenceError(step, summary) {
+  if (step.name === 'W2:typecheck') {
+    return null;
+  }
+  if (!summary || typeof summary !== 'object') {
+    return `production smoke step ${step.name} did not emit required evidence summary`;
+  }
+  if (step.name === 'LiveDevice') {
+    return liveDeviceEvidenceError(step.name, summary);
+  }
+  if (step.name === 'LiveVideo') {
+    return liveVideoEvidenceError(step.name, summary);
+  }
+  if (step.name.startsWith('LivePlayer:')) {
+    return livePlayerEvidenceError(step.name, summary.player);
+  }
+  return null;
+}
+
+function liveDeviceEvidenceError(stepName, summary) {
+  const missing = missingCheckpoints(summary.checkpoints, [
+    'ingest_review_item',
+    'review_rule_saved',
+    'record_coverage_synced',
+    'review_case_created',
+    'evidence_export_ready',
+    'manifest_verified',
+    'evidence_download_audited',
+    'playback_url_granted',
+    'playback_url_denied',
+  ]);
+  if (missing.length) {
+    return `production smoke step ${stepName} missing evidence checkpoint: ${missing[0]}`;
+  }
+  if (summary.manifestValid !== true) {
+    return `production smoke step ${stepName} did not verify manifestValid=true`;
+  }
+  if (summary.videoExportRequested !== true) {
+    return `production smoke step ${stepName} did not verify videoExportRequested=true`;
+  }
+  if (!hasText(String(summary.reviewItemId ?? ''))) {
+    return `production smoke step ${stepName} missing reviewItemId evidence`;
+  }
+  if (!hasText(String(summary.reviewCaseId ?? ''))) {
+    return `production smoke step ${stepName} missing reviewCaseId evidence`;
+  }
+  if (!hasText(summary.exportJobNo)) {
+    return `production smoke step ${stepName} missing exportJobNo evidence`;
+  }
+  return null;
+}
+
+function liveVideoEvidenceError(stepName, summary) {
+  const missing = missingCheckpoints(summary.checkpoints, [
+    'alert_record_query_ok',
+    'record_coverage_query_ok',
+    'record_base_space_resolved',
+    'record_storage_drift_patrol_ok',
+    'record_export_posted',
+    'record_export_download_ready',
+    'record_export_download_probed',
+    'record_export_manifest_verified',
+  ]);
+  if (missing.length) {
+    return `production smoke step ${stepName} missing evidence checkpoint: ${missing[0]}`;
+  }
+  if (summary.storageDriftSummary?.healthy !== true) {
+    return `production smoke step ${stepName} did not prove healthy storage drift patrol`;
+  }
+  if (!hasText(summary.exportResult?.downloadUrl)) {
+    return `production smoke step ${stepName} missing export downloadUrl evidence`;
+  }
+  if (!hasText(summary.exportResult?.manifestUrl)) {
+    return `production smoke step ${stepName} missing export manifestUrl evidence`;
+  }
+  if (summary.manifestSignature?.algorithm !== 'hmac-sha256'
+      || !hasText(summary.manifestSignature?.keyId)
+      || !hasText(summary.manifestSignature?.signatureVersion)) {
+    return `production smoke step ${stepName} missing HMAC manifest signature evidence`;
+  }
+  if (summary.manifestVerification && summary.manifestVerification.valid !== true) {
+    return `production smoke step ${stepName} manifest verifier evidence is not valid`;
+  }
+  return null;
+}
+
+function livePlayerEvidenceError(stepName, player) {
+  if (!player || typeof player !== 'object') {
+    return `production smoke step ${stepName} did not emit required player evidence summary`;
+  }
+  if (player.clickedRow !== true) {
+    return `production smoke step ${stepName} did not prove review row click`;
+  }
+  if (player.clickedAction !== true) {
+    return `production smoke step ${stepName} did not prove seek action click`;
+  }
+  if (!hasText(player.expectedSeekTime) || player.seekTime !== player.expectedSeekTime) {
+    return `production smoke step ${stepName} did not prove expected seek_time`;
+  }
+  const pathText = `${player.recordPath || ''} ${player.currentUrl || ''}`;
+  if (!hasText(player.expectedRecordPathContains) || !pathText.includes(player.expectedRecordPathContains)) {
+    return `production smoke step ${stepName} did not prove expected record path`;
+  }
+  if (Number(player.playbackOffsetSeconds) !== Number(player.expectedOffsetSeconds)) {
+    return `production smoke step ${stepName} did not prove playback_offset_seconds`;
+  }
+  return null;
+}
+
+function missingCheckpoints(actual, required) {
+  const values = Array.isArray(actual) ? actual.map(String) : [];
+  return required.filter((checkpoint) => !values.includes(checkpoint));
 }
 
 function defaultRunCommand(step) {
