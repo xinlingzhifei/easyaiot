@@ -10,6 +10,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -59,6 +60,23 @@ CREATE TABLE system_menu (
   visible BOOLEAN NOT NULL DEFAULT TRUE,
   keep_alive BOOLEAN NOT NULL DEFAULT TRUE,
   always_show BOOLEAN NOT NULL DEFAULT TRUE,
+  creator VARCHAR(64),
+  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updater VARCHAR(64),
+  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted SMALLINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE infra_job (
+  id BIGINT PRIMARY KEY,
+  name VARCHAR(32) NOT NULL,
+  status SMALLINT NOT NULL,
+  handler_name VARCHAR(64) NOT NULL,
+  handler_param VARCHAR(255),
+  cron_expression VARCHAR(32) NOT NULL,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  retry_interval INTEGER NOT NULL DEFAULT 0,
+  monitor_timeout INTEGER NOT NULL DEFAULT 0,
   creator VARCHAR(64),
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
@@ -173,6 +191,32 @@ BEGIN
       AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected review media permission migration to restore existing playback seed without duplicates';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM infra_job
+    WHERE handler_name IN (
+      'supervisionAlertReviewRuntimePatrolJob',
+      'supervisionAlertReviewRuntimeOutboxJob',
+      'supervisionAlertReviewEventReconcileJob',
+      'supervisionAlertReviewSemanticIndexJob'
+    )
+      AND status = 2
+      AND deleted = 0
+  ) <> 4 THEN
+    RAISE EXCEPTION 'expected paused alert review scheduler job seeds to be present';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM infra_job
+    WHERE handler_name = 'supervisionAlertReviewEventReconcileJob'
+      AND cron_expression = '0 0/5 * * * ?'
+      AND status = 2
+      AND deleted = 0
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected event reconcile scheduler seed to be paused and deduplicated';
   END IF;
 
   IF NOT EXISTS (
@@ -528,9 +572,9 @@ export function summarizeConcurrentReviewSegmentResults(results) {
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-postgres-migration-smoke.mjs --container=NAME [--database=NAME] [--repo-root=PATH] [--keep-database]
 
-Runs FR-01/FR-20 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
+Runs FR-01/FR-20/FR-24/FR-30/FR-33 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, and V20260708, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, and V20260708_2, and verifies ingest identity, ReviewSegment constraints, status transitions, ReviewData backfill, media permission seeds, scheduler job seeds, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {
