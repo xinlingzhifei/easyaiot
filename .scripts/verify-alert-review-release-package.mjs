@@ -18,12 +18,12 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack)\.sql|sql\/supervision_event_closure_v1\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates)\.sql|sql\/supervision_event_closure_v1\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|SupervisionAlertReview|SupervisionSchemaSqlTest)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|NotifyReviewRuntimeOutboxPublisherTest|SupervisionAlertReview|SupervisionSchemaSqlTest)/,
   },
   {
     group: 'DEVICE video integration config',
@@ -84,6 +84,7 @@ const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/supervision_event_closure_v1.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/app/blueprints/record.py',

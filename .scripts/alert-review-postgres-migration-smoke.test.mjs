@@ -29,6 +29,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708__alert_review_segment_status_transition.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql',
 ]);
 
 const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('scheduler_jobs')), 'utf8');
@@ -40,16 +41,26 @@ assert.match(schedulerJobMigrationSql, /supervisionAlertReviewOperationsReportJo
 assert.match(schedulerJobMigrationSql, /'shift'/);
 assert.match(schedulerJobMigrationSql, /'daily'/);
 
-const reportAckMigrationSql = readFileSync(MIGRATION_FILES.at(-1), 'utf8');
+const reportAckMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('report_ack')), 'utf8');
 assert.match(reportAckMigrationSql, /system_supervision_alert_review_report_ack/);
 assert.match(reportAckMigrationSql, /report_key VARCHAR\(128\) NOT NULL/);
 assert.match(reportAckMigrationSql, /acknowledgement_status VARCHAR\(32\) NOT NULL/);
 assert.match(reportAckMigrationSql, /uk_supervision_alert_review_report_ack_key/);
 
+const runtimeOutboxNotifyTemplateMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('runtime_outbox_notify_templates')),
+  'utf8',
+);
+assert.match(runtimeOutboxNotifyTemplateMigrationSql, /system_notify_template/);
+assert.match(runtimeOutboxNotifyTemplateMigrationSql, /YFEIEYE_REVIEW_RUNTIME_ALERT/);
+assert.match(runtimeOutboxNotifyTemplateMigrationSql, /YFEIEYE_REVIEW_OPERATIONS_REPORT/);
+assert.match(runtimeOutboxNotifyTemplateMigrationSql, /existing\.code = seed\.code/);
+
 const bootstrapSql = buildBootstrapSql();
 assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);
 assert.match(bootstrapSql, /CREATE TABLE system_menu/);
 assert.match(bootstrapSql, /CREATE TABLE infra_job/);
+assert.match(bootstrapSql, /CREATE TABLE system_notify_template/);
 assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
 assert.match(bootstrapSql, /source_alert_ids TEXT/);
 assert.match(bootstrapSql, /a-shared/);
@@ -73,6 +84,9 @@ assert.match(assertionSql, /expected paused alert review scheduler job seeds to 
 assert.match(assertionSql, /supervisionAlertReviewEventReconcileJob/);
 assert.match(assertionSql, /supervisionAlertReviewEvidenceExportWorkerJob/);
 assert.match(assertionSql, /supervisionAlertReviewOperationsReportJob/);
+assert.match(assertionSql, /YFEIEYE_REVIEW_RUNTIME_ALERT/);
+assert.match(assertionSql, /YFEIEYE_REVIEW_OPERATIONS_REPORT/);
+assert.match(assertionSql, /expected runtime outbox notify templates to be seeded/);
 assert.match(assertionSql, /expected review case audit to allow pre-case media audit rows/);
 assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 assert.match(assertionSql, /expected stale review status version update to affect no rows/);

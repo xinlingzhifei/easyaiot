@@ -143,6 +143,13 @@ yfeieye:
   review-intelligence:
     semantic-search-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SEMANTIC_SEARCH_URL:}
     summary-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SUMMARY_URL:}
+  review:
+    runtime-outbox:
+      notify:
+        enabled: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:false}
+        admin-user-ids: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:[]}
+        runtime-alert-template-code: ${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:YFEIEYE_REVIEW_RUNTIME_ALERT}
+        operations-report-template-code: ${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:YFEIEYE_REVIEW_OPERATIONS_REPORT}
 
 iot:
   info:

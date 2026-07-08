@@ -369,6 +369,20 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void alertReviewRuntimeOutboxNotifyMigrationSeedsTemplates() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql");
+
+        assertTrue(Files.exists(migration), "runtime outbox notify template migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("system_notify_template"));
+        assertTrue(migrationSql.contains("YFEIEYE_REVIEW_RUNTIME_ALERT"));
+        assertTrue(migrationSql.contains("YFEIEYE_REVIEW_OPERATIONS_REPORT"));
+        assertTrue(migrationSql.contains("\"alertKey\",\"action\",\"runId\",\"createdAt\""));
+        assertTrue(migrationSql.contains("\"reportType\",\"reportKey\",\"generatedAt\",\"evidenceGaps\""));
+        assertTrue(migrationSql.contains("existing.code = seed.code"));
+    }
+
+    @Test
     void alertReviewMediaPermissionMigrationSeedsMenuPermissions() throws IOException {
         Path migration = Path.of("src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql");
 
