@@ -27,6 +27,19 @@ const parsed = parseArgs([
   '--record-drift-retention-hours=24',
   '--allow-local-endpoints',
 ]);
+
+const releaseParsed = parseArgs([
+  '--alert-record-query-url=https://video.release.example/video/record/availability',
+  '--record-coverage-query-url=https://video.release.example/video/record/availability',
+  '--record-base-url=https://video.release.example/video/record',
+  '--record-export-url=https://video.release.example/video/record/export',
+  '--device-id=device-01',
+  '--camera-id=camera-01',
+  '--alert-time=2026-07-05 10:00:00',
+  '--time-range=120',
+  '--source-alert-id=alert-001',
+  '--record-drift-retention-hours=24',
+]);
 assert.equal(parsed.alertRecordQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.recordCoverageQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.recordBaseUrl, 'http://video.local/video/record');
@@ -290,6 +303,77 @@ assert.deepEqual(cliSummary.manifestStorageLifecycle, {
   expiresAt: '2026-07-20T00:00:00Z',
   exportPackageObjectKey: 'review-export-1/content.bin',
 });
+
+const mockRecordUriFetch = async (url, init = {}) => {
+  if (init.method === 'POST') {
+    const body = JSON.parse(init.body);
+    assert.equal(body.record_uri, 'mock://record/device-01/clip.mp4');
+    return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'pending' } });
+  }
+  if (String(url).includes('/space/device/device-01')
+    || String(url).includes('/space/7/videos/drift')
+    || String(url).endsWith('/video/record/export/review-export-1')
+    || String(url).endsWith('/downloads/review-export-1.mp4')
+    || String(url).endsWith('/manifests/review-export-1.json')) {
+    return fakeFetch(url, init);
+  }
+  return jsonResponse({
+    code: 0,
+    data: {
+      segments: [
+        {
+          status: 'available',
+          start_time: '2026-07-05T10:00:00',
+          end_time: '2026-07-05T10:01:00',
+          record_uri: 'mock://record/device-01/clip.mp4',
+          exportable: true,
+        },
+      ],
+    },
+  });
+};
+await assert.rejects(
+  () => runSmoke(releaseParsed, { fetchImpl: mockRecordUriFetch }),
+  /VIDEO live smoke returned local\/mock record URI/,
+);
+
+const mockDownloadUrlFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/video/record/export/review-export-1')) {
+    return jsonResponse({
+      code: 0,
+      data: {
+        export_id: 'review-export-1',
+        status: 'ready',
+        download_url: 'mock://download/review-export-1.mp4',
+        manifest_url: '/manifests/review-export-1.json',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(releaseParsed, { fetchImpl: mockDownloadUrlFetch }),
+  /VIDEO live smoke returned local\/mock download URL/,
+);
+
+const localManifestUrlFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/video/record/export/review-export-1')) {
+    return jsonResponse({
+      code: 0,
+      data: {
+        export_id: 'review-export-1',
+        status: 'ready',
+        download_url: '/downloads/review-export-1.mp4',
+        manifest_url: 'http://localhost/manifests/review-export-1.json',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(releaseParsed, { fetchImpl: localManifestUrlFetch }),
+  /VIDEO live smoke returned local\/mock manifest URL/,
+);
 
 const verifierCalls = [];
 const smokeWithVerifier = await runSmoke(parsedWithVerifier, {

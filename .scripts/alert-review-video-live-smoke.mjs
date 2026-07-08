@@ -217,6 +217,7 @@ export async function runSmoke(options, dependencies = {}) {
   if (!alertSegment) {
     throw new Error('alert record query returned no playable record segment');
   }
+  assertReleaseMediaEvidence(options, 'record URI', alertSegment.recordUri);
   checkpoints.push('alert_record_query_ok');
 
   const coverage = await fetchJson(fetchImpl, buildAvailabilityUrl(options.recordCoverageQueryUrl, options, {
@@ -230,6 +231,7 @@ export async function runSmoke(options, dependencies = {}) {
   if (!coverageSegment) {
     throw new Error('record coverage query returned no playable/exportable record segment');
   }
+  assertReleaseMediaEvidence(options, 'record URI', coverageSegment.recordUri);
   checkpoints.push('record_coverage_query_ok');
 
   const recordSpace = await fetchJson(fetchImpl, `${stripTrailingSlash(options.recordBaseUrl)}/space/device/${encodeURIComponent(options.deviceId)}`, {
@@ -260,6 +262,7 @@ export async function runSmoke(options, dependencies = {}) {
   }
   checkpoints.push('record_export_posted');
   const readyExportResult = await waitForExportDownload(fetchImpl, options, exportResult);
+  assertReleaseMediaEvidence(options, 'download URL', readyExportResult.downloadUrl);
   checkpoints.push('record_export_download_ready');
   await probeDownloadUrl(fetchImpl, options, readyExportResult.downloadUrl);
   checkpoints.push('record_export_download_probed');
@@ -390,6 +393,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   if (!hasText(exportResult.manifestUrl)) {
     throw new Error('record export response did not include manifest_url for reproducible evidence verification');
   }
+  assertReleaseMediaEvidence(options, 'manifest URL', exportResult.manifestUrl);
   const manifestUrl = resolveDownloadUrl(exportResult.manifestUrl, options.recordExportUrl);
   const manifest = responseData(await fetchJson(fetchImpl, manifestUrl, {
     timeoutMs: options.timeoutMs,
@@ -689,6 +693,13 @@ function requireReleaseEndpoint(errors, optionName, value) {
   errors.push(`VIDEO live smoke endpoint ${optionName} must not use a local/mock URL without --allow-local-endpoints`);
 }
 
+function assertReleaseMediaEvidence(options, label, value) {
+  if (options.allowLocalEndpoints || !hasText(value) || !looksLocalOrMockMediaEvidence(value)) {
+    return;
+  }
+  throw new Error(`VIDEO live smoke returned local/mock ${label}: ${value}`);
+}
+
 function parseBoolean(value, fallback) {
   if (value === undefined || value === null || String(value).trim() === '') {
     return fallback;
@@ -718,6 +729,36 @@ function looksLocalOrMockEndpoint(value) {
     || hostname.endsWith('.local')
     || hostname.includes('mock')
     || raw.toLowerCase().includes('/mock');
+}
+
+function looksLocalOrMockMediaEvidence(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return false;
+  }
+  const lowered = raw.toLowerCase();
+  if (lowered.startsWith('mock:')
+    || lowered.startsWith('file:')
+    || lowered.includes('/mock')
+    || lowered.includes('\\mock')) {
+    return true;
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  const hostname = String(url.hostname || '').toLowerCase();
+  return url.protocol === 'file:'
+    || url.protocol === 'mock:'
+    || hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || hostname === '0.0.0.0'
+    || hostname.endsWith('.local')
+    || hostname.includes('mock');
 }
 
 function summarizePayload(payload) {
