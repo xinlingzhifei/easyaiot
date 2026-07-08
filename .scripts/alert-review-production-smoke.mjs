@@ -228,6 +228,7 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
   return {
     name,
     command: nodePath,
+    allowLocalEndpoints: options.allowLocalEndpoints === true,
     args: compact([
       `${scriptDir}/alert-review-player-live-smoke.mjs`,
       `--workbench-url=${options.playerWorkbenchUrl}`,
@@ -335,7 +336,7 @@ function passedStepEvidenceError(step, summary) {
     return liveVideoEvidenceError(step.name, summary);
   }
   if (step.name.startsWith('LivePlayer:')) {
-    return livePlayerEvidenceError(step.name, summary.player);
+    return livePlayerEvidenceError(step.name, summary.player, step.allowLocalEndpoints === true);
   }
   return null;
 }
@@ -407,7 +408,7 @@ function liveVideoEvidenceError(stepName, summary) {
   return null;
 }
 
-function livePlayerEvidenceError(stepName, player) {
+function livePlayerEvidenceError(stepName, player, allowLocalEndpoints) {
   if (!player || typeof player !== 'object') {
     return `production smoke step ${stepName} did not emit required player evidence summary`;
   }
@@ -424,10 +425,44 @@ function livePlayerEvidenceError(stepName, player) {
   if (!hasText(player.expectedRecordPathContains) || !pathText.includes(player.expectedRecordPathContains)) {
     return `production smoke step ${stepName} did not prove expected record path`;
   }
+  if (!allowLocalEndpoints && hasLocalOrMockMediaEvidence(player.recordPath, player.currentUrl)) {
+    return `production smoke step ${stepName} used local/mock player media evidence`;
+  }
   if (Number(player.playbackOffsetSeconds) !== Number(player.expectedOffsetSeconds)) {
     return `production smoke step ${stepName} did not prove playback_offset_seconds`;
   }
   return null;
+}
+
+function hasLocalOrMockMediaEvidence(...values) {
+  return values.some((value) => hasText(value) && looksLocalOrMockMediaEvidence(value));
+}
+
+function looksLocalOrMockMediaEvidence(value) {
+  const raw = String(value || '').trim();
+  const lowered = raw.toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  if (lowered.includes('/mock') || lowered.includes('mock://')) {
+    return true;
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return lowered.includes('mock');
+  }
+  const hostname = String(url.hostname || '').toLowerCase();
+  return url.protocol === 'file:'
+    || url.protocol === 'mock:'
+    || hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || hostname === '0.0.0.0'
+    || hostname.endsWith('.local')
+    || hostname.includes('mock');
 }
 
 function missingCheckpoints(actual, required) {

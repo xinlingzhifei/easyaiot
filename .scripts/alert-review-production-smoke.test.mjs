@@ -266,6 +266,20 @@ await assert.rejects(
   /production smoke step LiveDevice did not emit required evidence summary/,
 );
 
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    runCommand: async (step) => ({
+      status: 0,
+      stdout: summaryStdoutForStep(step.name, {
+        playerRecordPath: 'mock://record/device-01/20260705-100000.mp4',
+      }),
+    }),
+  }),
+  /production smoke step LivePlayer:detail used local\/mock player media evidence/,
+);
+
 const evidenceWrites = [];
 const smokeWithEvidence = await runProductionSmoke({
   ...parsed,
@@ -367,7 +381,7 @@ const smokeWithEvidence = await runProductionSmoke({
   "clickedRow": true,
   "clickedAction": true,
   "seekTime": "2026-07-05T10:00:00",
-  "recordPath": "mock://record/device-01/20260705-100000.mp4",
+  "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4",
   "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=coverage-secret",
   "playbackOffsetSeconds": 0,
   "nativeCurrentTime": 0.15
@@ -379,7 +393,7 @@ const smokeWithEvidence = await runProductionSmoke({
   "clickedRow": true,
   "clickedAction": true,
   "seekTime": "2026-07-05T10:00:00",
-  "recordPath": "mock://record/device-01/20260705-100000.mp4",
+  "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4",
   "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=case-secret",
   "playbackOffsetSeconds": 0,
   "nativeCurrentTime": 0
@@ -391,7 +405,7 @@ const smokeWithEvidence = await runProductionSmoke({
     "clickedRow": true,
     "clickedAction": true,
     "seekTime": "2026-07-05T10:00:30",
-    "recordPath": "mock://record/device-01/20260705-100000.mp4",
+    "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4",
     "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=wrapped-media-secret&signature=abc#playback",
     "playbackOffsetSeconds": 30,
     "nativeCurrentTime": 30.25,
@@ -482,7 +496,7 @@ assert.deepEqual(evidenceReport.steps[3].summary.player, {
   clickedRow: true,
   clickedAction: true,
   seekTime: '2026-07-05T10:00:30',
-  recordPath: 'mock://record/device-01/20260705-100000.mp4',
+  recordPath: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   playbackOffsetSeconds: 30,
   nativeCurrentTime: 30.25,
@@ -499,7 +513,7 @@ assert.deepEqual(evidenceReport.steps[4].summary.player, {
   clickedRow: true,
   clickedAction: true,
   seekTime: '2026-07-05T10:00:00',
-  recordPath: 'mock://record/device-01/20260705-100000.mp4',
+  recordPath: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   playbackOffsetSeconds: 0,
   nativeCurrentTime: 0.15,
@@ -516,7 +530,7 @@ assert.deepEqual(evidenceReport.steps[5].summary.player, {
   clickedRow: true,
   clickedAction: true,
   seekTime: '2026-07-05T10:00:00',
-  recordPath: 'mock://record/device-01/20260705-100000.mp4',
+  recordPath: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   playbackOffsetSeconds: 0,
   nativeCurrentTime: 0,
@@ -595,7 +609,8 @@ assert.equal(trackedProductionSmokeEntries.length, 2);
 
 console.log('alert review production smoke tests OK');
 
-function summaryStdoutForStep(name) {
+function summaryStdoutForStep(name, options = {}) {
+  const playerRecordPath = options.playerRecordPath || 'https://media.example.test/records/device-01/20260705-100000.mp4';
   if (name === 'LiveDevice') {
     return JSON.stringify({
       status: 'passed',
@@ -653,7 +668,7 @@ function summaryStdoutForStep(name) {
       clickedRow: true,
       clickedAction: true,
       seekTime: '2026-07-05T10:00:00',
-      recordPath: 'mock://record/device-01/20260705-100000.mp4',
+      recordPath: playerRecordPath,
       playbackOffsetSeconds: 0,
     });
   }
@@ -662,7 +677,7 @@ function summaryStdoutForStep(name) {
       clickedRow: true,
       clickedAction: true,
       seekTime: '2026-07-05T10:00:30',
-      recordPath: 'mock://record/device-01/20260705-100000.mp4',
+      recordPath: playerRecordPath,
       playbackOffsetSeconds: 30,
     });
   }
