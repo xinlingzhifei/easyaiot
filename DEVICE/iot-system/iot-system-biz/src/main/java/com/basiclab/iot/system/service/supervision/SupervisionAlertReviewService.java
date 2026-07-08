@@ -1526,6 +1526,14 @@ public interface SupervisionAlertReviewService {
                                                                            String claimToken,
                                                                            Long operatorUserId,
                                                                            LocalDateTime claimedAt) {
+            return claimPendingRuntimeOutbox(limit, claimToken, operatorUserId, claimedAt, null);
+        }
+
+        default List<ReviewRuntimeOutboxMessage> claimPendingRuntimeOutbox(Integer limit,
+                                                                           String claimToken,
+                                                                           Long operatorUserId,
+                                                                           LocalDateTime claimedAt,
+                                                                           LocalDateTime reclaimBefore) {
             return listPendingRuntimeOutbox(limit);
         }
 

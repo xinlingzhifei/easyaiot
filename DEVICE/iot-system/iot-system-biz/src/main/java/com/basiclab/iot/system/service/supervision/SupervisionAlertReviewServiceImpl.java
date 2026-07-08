@@ -43,6 +43,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final int MAX_EXPORT_WORKER_LIMIT = 100;
     private static final int DEFAULT_RUNTIME_OUTBOX_LIMIT = 50;
     private static final int MAX_RUNTIME_OUTBOX_LIMIT = 200;
+    private static final int RUNTIME_OUTBOX_CLAIM_TIMEOUT_MINUTES = 10;
     private static final int DEFAULT_SEMANTIC_WORKER_LIMIT = 50;
     private static final int MAX_SEMANTIC_WORKER_LIMIT = 200;
     private static final int MIN_RULE_SUGGESTION_SAMPLE_COUNT = 3;
@@ -1510,7 +1511,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 limit,
                 claimToken,
                 command.operatorUserId(),
-                publishedAt
+                publishedAt,
+                publishedAt.minusMinutes(RUNTIME_OUTBOX_CLAIM_TIMEOUT_MINUTES)
         );
         for (ReviewRuntimeOutboxMessage message : messages) {
             if (message == null || message.id() == null) {

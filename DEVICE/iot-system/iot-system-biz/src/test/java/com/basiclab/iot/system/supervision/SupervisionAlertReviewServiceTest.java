@@ -1598,6 +1598,57 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void runtimeOutboxPublishingReclaimsOnlyStaleProcessingMessages() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        AtomicInteger publishCalls = new AtomicInteger();
+        SupervisionAlertReviewServiceImpl service = new SupervisionAlertReviewServiceImpl(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                VideoEvidenceExportProvider.unavailable()
+        );
+        service.setRuntimeOutboxPublisher(message -> {
+            publishCalls.incrementAndGet();
+            return ReviewRuntimeOutboxDeliveryResult.delivered();
+        });
+        itemStore.enqueueRuntimePatrolAlerts(
+                "run-runtime-publish-stale-claim",
+                List.of("record_storage_drift:file_missing", "record_storage_drift:probe_failed"),
+                List.of("inspect runtime outbox claim"),
+                9016L,
+                LocalDateTime.of(2026, 7, 2, 12, 45),
+                Map.of()
+        );
+        itemStore.claimPendingRuntimeOutbox(
+                1,
+                "stale-claim",
+                9016L,
+                LocalDateTime.now().minusMinutes(15)
+        );
+        itemStore.claimPendingRuntimeOutbox(
+                1,
+                "fresh-claim",
+                9017L,
+                LocalDateTime.now()
+        );
+
+        ReviewRuntimeOutboxPublishResult result = service.publishRuntimeOutbox(
+                new ReviewRuntimeOutboxPublishCommand(10, 9018L)
+        );
+
+        assertEquals(1, result.scannedCount());
+        assertEquals(1, result.publishedCount());
+        assertEquals(0, result.failedCount());
+        assertEquals(1, publishCalls.get());
+        assertEquals("published", itemStore.runtimeOutbox().get(0).status());
+        assertEquals("processing", itemStore.runtimeOutbox().get(1).status());
+    }
+
+    @Test
     void runtimePatrolRecoversExpiredClusterLockAndReportsPreviousOwner() {
         RecoverableRuntimeLockStore itemStore = new RecoverableRuntimeLockStore();
         SupervisionAlertReviewService service = newService(
@@ -5930,6 +5981,9 @@ class SupervisionAlertReviewServiceTest {
                                       List<String> recommendedActions,
                                       Long operatorUserId,
                                       String status,
+                                      String claimToken,
+                                      Long claimedBy,
+                                      LocalDateTime claimedAt,
                                       Map<String, Object> metadata,
                                       Long id,
                                       String payload,
@@ -6916,6 +6970,9 @@ class SupervisionAlertReviewServiceTest {
                         recommendedActions == null ? List.of() : List.copyOf(recommendedActions),
                         operatorUserId,
                         "pending",
+                        null,
+                        null,
+                        null,
                         metadata == null ? Map.of() : Map.copyOf(metadata),
                         nextRuntimeOutboxId++,
                         "alert=" + alert,
@@ -6968,6 +7025,9 @@ class SupervisionAlertReviewServiceTest {
                     report.recommendedActions() == null ? List.of() : List.copyOf(report.recommendedActions()),
                     report.operatorUserId(),
                     "pending",
+                    null,
+                    null,
+                    null,
                     Map.copyOf(metadata),
                     nextRuntimeOutboxId++,
                     "report=" + reportKey,
@@ -6993,11 +7053,20 @@ class SupervisionAlertReviewServiceTest {
                                                                           String claimToken,
                                                                           Long operatorUserId,
                                                                           LocalDateTime claimedAt) {
+            return claimPendingRuntimeOutbox(limit, claimToken, operatorUserId, claimedAt, null);
+        }
+
+        @Override
+        public List<ReviewRuntimeOutboxMessage> claimPendingRuntimeOutbox(Integer limit,
+                                                                          String claimToken,
+                                                                          Long operatorUserId,
+                                                                          LocalDateTime claimedAt,
+                                                                          LocalDateTime reclaimBefore) {
             int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
             List<ReviewRuntimeOutboxMessage> claimed = new ArrayList<>();
             for (int index = 0; index < runtimeOutbox.size() && claimed.size() < normalizedLimit; index++) {
                 RuntimeOutboxEntry entry = runtimeOutbox.get(index);
-                if (!"pending".equals(entry.status())) {
+                if (!runtimeOutboxClaimable(entry, reclaimBefore)) {
                     continue;
                 }
                 RuntimeOutboxEntry claimedEntry = new RuntimeOutboxEntry(
@@ -7007,6 +7076,9 @@ class SupervisionAlertReviewServiceTest {
                         entry.recommendedActions(),
                         entry.operatorUserId(),
                         "processing",
+                        claimToken,
+                        operatorUserId,
+                        claimedAt,
                         entry.metadata(),
                         entry.id(),
                         entry.payload(),
@@ -7018,6 +7090,17 @@ class SupervisionAlertReviewServiceTest {
                 claimed.add(toRuntimeOutboxMessage(claimedEntry));
             }
             return List.copyOf(claimed);
+        }
+
+        private static boolean runtimeOutboxClaimable(RuntimeOutboxEntry entry, LocalDateTime reclaimBefore) {
+            if ("pending".equals(entry.status())) {
+                return true;
+            }
+            if (!"processing".equals(entry.status())) {
+                return false;
+            }
+            return reclaimBefore != null
+                    && (entry.claimedAt() == null || entry.claimedAt().isBefore(reclaimBefore));
         }
 
         private static ReviewRuntimeOutboxMessage toRuntimeOutboxMessage(RuntimeOutboxEntry entry) {
@@ -7043,6 +7126,9 @@ class SupervisionAlertReviewServiceTest {
                     entry.recommendedActions(),
                     entry.operatorUserId(),
                     "published",
+                    entry.claimToken(),
+                    entry.claimedBy(),
+                    entry.claimedAt(),
                     entry.metadata(),
                     entry.id(),
                     entry.payload(),
@@ -7061,6 +7147,9 @@ class SupervisionAlertReviewServiceTest {
                     entry.recommendedActions(),
                     entry.operatorUserId(),
                     "failed",
+                    entry.claimToken(),
+                    entry.claimedBy(),
+                    entry.claimedAt(),
                     entry.metadata(),
                     entry.id(),
                     entry.payload(),

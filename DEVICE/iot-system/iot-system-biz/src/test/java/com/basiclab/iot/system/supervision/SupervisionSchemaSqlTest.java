@@ -2,6 +2,7 @@ package com.basiclab.iot.system.supervision;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -423,6 +424,23 @@ class SupervisionSchemaSqlTest {
         String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
         assertTrue(baselineSql.contains("claim_token VARCHAR(128)"));
         assertTrue(baselineSql.contains("idx_supervision_alert_review_runtime_outbox_claim"));
+    }
+
+    @Test
+    void runtimeOutboxClaimSqlReclaimsStaleProcessingRowsWithSkipLocked() throws Exception {
+        Method claimPending = Class
+                .forName("com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeOutboxMapper")
+                .getDeclaredMethod("claimPending", Integer.class, String.class, Long.class,
+                        LocalDateTime.class, LocalDateTime.class);
+        Update update = claimPending.getAnnotation(Update.class);
+        assertNotNull(update);
+        String sql = String.join("\n", update.value());
+
+        assertTrue(sql.contains("outbox_status = 'pending'"));
+        assertTrue(sql.contains("outbox_status = 'processing'"));
+        assertTrue(sql.contains("#{reclaimBefore,jdbcType=TIMESTAMP} IS NOT NULL"));
+        assertTrue(sql.contains("claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP}"));
+        assertTrue(sql.contains("FOR UPDATE SKIP LOCKED"));
     }
 
     @Test

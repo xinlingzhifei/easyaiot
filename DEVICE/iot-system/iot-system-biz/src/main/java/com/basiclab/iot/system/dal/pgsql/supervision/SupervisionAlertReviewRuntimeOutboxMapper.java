@@ -32,7 +32,17 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
             WHERE id IN (
                 SELECT id
                 FROM system_supervision_alert_review_runtime_outbox
-                WHERE outbox_status = 'pending'
+                WHERE (
+                    outbox_status = 'pending'
+                    OR (
+                        outbox_status = 'processing'
+                        AND #{reclaimBefore,jdbcType=TIMESTAMP} IS NOT NULL
+                        AND (
+                            claimed_at IS NULL
+                            OR claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP}
+                        )
+                    )
+                )
                   AND deleted = FALSE
                 ORDER BY created_at ASC, id ASC
                 LIMIT #{limit,jdbcType=INTEGER}
@@ -42,7 +52,8 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
     int claimPending(@Param("limit") Integer limit,
                      @Param("claimToken") String claimToken,
                      @Param("claimedBy") Long claimedBy,
-                     @Param("claimedAt") LocalDateTime claimedAt);
+                     @Param("claimedAt") LocalDateTime claimedAt,
+                     @Param("reclaimBefore") LocalDateTime reclaimBefore);
 
     default List<SupervisionAlertReviewRuntimeOutboxDO> selectClaimed(String claimToken, Integer limit) {
         int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);

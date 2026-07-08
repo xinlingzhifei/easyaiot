@@ -1203,7 +1203,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     public List<ReviewRuntimeOutboxMessage> claimPendingRuntimeOutbox(Integer limit,
                                                                       String claimToken,
                                                                       Long operatorUserId,
-                                                                      LocalDateTime claimedAt) {
+                                                                      LocalDateTime claimedAt,
+                                                                      LocalDateTime reclaimBefore) {
         int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
         String normalizedToken = hasText(claimToken) ? claimToken : UUID.randomUUID().toString();
         LocalDateTime normalizedClaimedAt = claimedAt == null ? LocalDateTime.now() : claimedAt;
@@ -1211,7 +1212,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 normalizedLimit,
                 normalizedToken,
                 operatorUserId,
-                normalizedClaimedAt
+                normalizedClaimedAt,
+                reclaimBefore
         );
         if (claimedCount <= 0) {
             return List.of();
