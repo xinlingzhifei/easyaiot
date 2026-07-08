@@ -42,6 +42,7 @@ public interface SupervisionAlertReviewService {
     String EXPORT_JOB_RUNNING = "running";
     String EXPORT_JOB_READY = "ready";
     String EXPORT_JOB_FAILED = "failed";
+    String EXPORT_JOB_EXPIRED = "expired";
     String SEMANTIC_INDEX_PENDING = "pending";
     String SEMANTIC_INDEX_INDEXED = "indexed";
     String SEMANTIC_INDEX_FAILED = "failed";

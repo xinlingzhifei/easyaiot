@@ -2130,6 +2130,20 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         for (ReviewEvidenceExportJob job : backlog) {
             int attemptCount = exportWorkerAttemptCount(job) + 1;
             try {
+                if (isExportJobExpired(job, processedAt)) {
+                    ReviewEvidenceExportJob expired = updateExportJobWorkerState(
+                            job,
+                            EXPORT_JOB_EXPIRED,
+                            attemptCount,
+                            "expired",
+                            command.operatorUserId(),
+                            processedAt,
+                            null,
+                            "export package expired"
+                    );
+                    processedJobNos.add(expired.jobNo());
+                    continue;
+                }
                 ReviewEvidenceExportJob running = updateExportJobWorkerState(
                         job,
                         EXPORT_JOB_RUNNING,
@@ -2279,8 +2293,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static boolean shouldProcessExportJob(ReviewEvidenceExportJob job, LocalDateTime now) {
-        if (job == null || EXPORT_JOB_READY.equals(job.status())) {
+        if (job == null) {
             return false;
+        }
+        if (EXPORT_JOB_READY.equals(job.status())) {
+            return isExportJobExpired(job, now);
         }
         if (!EXPORT_JOB_PENDING.equals(job.status())
                 && !EXPORT_JOB_RUNNING.equals(job.status())
@@ -2288,6 +2305,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             return false;
         }
         return !isExportWorkerDeferred(job, now);
+    }
+
+    private static boolean isExportJobExpired(ReviewEvidenceExportJob job, LocalDateTime now) {
+        return job != null
+                && job.expiresAt() != null
+                && now != null
+                && !job.expiresAt().isAfter(now);
     }
 
     private static boolean isExportWorkerDeferred(ReviewEvidenceExportJob job, LocalDateTime now) {
@@ -2600,6 +2624,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         requireText(jobNo, "jobNo");
         ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(jobNo)
                 .orElseThrow(() -> new IllegalArgumentException("export job not found: " + jobNo));
+        assertExportJobDownloadable(job, LocalDateTime.now());
         enforceMediaAccessScope(
                 job.exportPackage().reviewCaseId(),
                 job.exportPackage().timeline(),
@@ -2616,6 +2641,16 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 LocalDateTime.now()
         );
         return enrichDownloadAuditEntry(auditEntry, job);
+    }
+
+    private static void assertExportJobDownloadable(ReviewEvidenceExportJob job, LocalDateTime now) {
+        if (!EXPORT_JOB_READY.equals(job.status())) {
+            throw new IllegalStateException("export job is not ready for download: " + job.jobNo()
+                    + " status=" + job.status());
+        }
+        if (isExportJobExpired(job, now)) {
+            throw new IllegalStateException("export job expired: " + job.jobNo());
+        }
     }
 
     @Override

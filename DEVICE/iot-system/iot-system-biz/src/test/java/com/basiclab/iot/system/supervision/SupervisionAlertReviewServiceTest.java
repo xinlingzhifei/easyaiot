@@ -3610,6 +3610,70 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidenceExportDownloadExpiresAndWorkerCleansExpiredJobs() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-expired",
+                LocalDateTime.of(2026, 7, 8, 10, 20),
+                "export-expired.jpg",
+                "export-expired.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "export expired case",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9102L,
+                "manifest",
+                "expiry guard"
+        ));
+        itemStore.replaceExportJobStatus(job.jobNo(), SupervisionAlertReviewService.EXPORT_JOB_FAILED);
+
+        IllegalStateException failed = assertThrows(IllegalStateException.class,
+                () -> service.recordEvidenceDownload(job.jobNo(), 9103L, "download failed job"));
+        assertTrue(failed.getMessage().contains("not ready"));
+
+        ReviewEvidenceExportJob expired = new ReviewEvidenceExportJob(
+                job.jobNo(),
+                SupervisionAlertReviewService.EXPORT_JOB_READY,
+                job.exportPackage(),
+                job.fileHash(),
+                LocalDateTime.of(2026, 7, 1, 0, 0),
+                job.operatorUserId(),
+                job.reason(),
+                job.boundEventIds(),
+                job.createdAt()
+        );
+        itemStore.updateExportJob(expired);
+
+        IllegalStateException expiredDownload = assertThrows(IllegalStateException.class,
+                () -> service.recordEvidenceDownload(job.jobNo(), 9104L, "download expired job"));
+        assertTrue(expiredDownload.getMessage().contains("expired"));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9105L)
+        );
+
+        ReviewEvidenceExportJob cleaned = itemStore.findExportJobByNo(job.jobNo()).orElseThrow();
+        Map<?, ?> worker = (Map<?, ?>) cleaned.exportPackage().manifest().get("worker");
+        assertEquals("completed", run.status());
+        assertEquals(1, run.processedCount());
+        assertTrue(run.processedJobNos().contains(job.jobNo()));
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_EXPIRED, cleaned.status());
+        assertEquals("expired", worker.get("status"));
+        assertEquals(9105L, worker.get("operatorUserId"));
+        assertTrue(service.verifyEvidenceExportManifest(job.jobNo()).valid());
+    }
+
+    @Test
     void evidenceAuditTrailListsHashesExporterDownloadsAndBoundEvents() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
