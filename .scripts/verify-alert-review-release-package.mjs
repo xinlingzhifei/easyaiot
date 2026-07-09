@@ -507,6 +507,20 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_storage_drift_reason_evidence_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'buildStorageDriftSummary(payload.storageDriftSummary)',
+    "copyBooleanIfPresent(storageDriftSummary, source, 'healthy')",
+    "copyNumberIfPresent(storageDriftSummary, source, 'recordCount')",
+    "copyNumberIfPresent(storageDriftSummary, source, 'issueCount')",
+    'issueReasons',
+    'standardReasonKeys',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_storage_drift_summary_whitelist_missing',
+    });
+  }
   if (productionSmoke && !containsAll(productionSmoke.content, [
     'payload.manifestVerification',
     'summary.manifestVerification',

@@ -481,7 +481,16 @@ const smokeWithEvidence = await runProductionSmoke({
     "recordCount": 3,
     "issueCount": 0,
     "issueReasons": {},
-    "standardReasonKeys": ["file_missing", "retention_expired", "disk_full", "cache_flush_failed"]
+    "standardReasonKeys": ["file_missing", "retention_expired", "disk_full", "cache_flush_failed"],
+    "repairUrl": "https://storage.example.test/drift/repair?token=storage-drift-repair-secret#repair",
+    "debugToken": "storage-drift-debug-secret",
+    "issues": [
+      {
+        "reason": "file_missing",
+        "filePath": "C:\\\\recordings\\\\private-camera\\\\missing.mp4",
+        "storageUrl": "https://storage.example.test/records/private-camera/missing.mp4?token=storage-drift-issue-secret"
+      }
+    ]
   },
   "exportResult": {
     "exportId": "review-export-1",
@@ -628,6 +637,10 @@ assert.deepEqual(evidenceReport.steps[2].summary.storageDriftSummary, {
   issueReasons: {},
   standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
 });
+assert.equal(JSON.stringify(evidenceReport).includes('storage-drift-repair-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('storage-drift-debug-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('storage-drift-issue-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('private-camera'), false);
 assert.deepEqual(evidenceReport.steps[2].summary.checkpoints, [
   'alert_record_query_ok',
   'record_coverage_query_ok',

@@ -723,7 +723,7 @@ function childSmokeSummary(result) {
     summary.checkpoints = payload.checkpoints;
   }
   if (payload.storageDriftSummary && typeof payload.storageDriftSummary === 'object') {
-    summary.storageDriftSummary = payload.storageDriftSummary;
+    summary.storageDriftSummary = buildStorageDriftSummary(payload.storageDriftSummary);
   }
   if (payload.exportResult && typeof payload.exportResult === 'object') {
     summary.exportResult = buildExportResultSummary(payload.exportResult);
@@ -788,6 +788,26 @@ function buildExportResultSummary(source) {
   copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl');
   copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl');
   return exportResult;
+}
+
+function buildStorageDriftSummary(source) {
+  const storageDriftSummary = {};
+  copyBooleanIfPresent(storageDriftSummary, source, 'healthy');
+  copyNumberIfPresent(storageDriftSummary, source, 'recordCount');
+  copyNumberIfPresent(storageDriftSummary, source, 'issueCount');
+  if (source.issueReasons && typeof source.issueReasons === 'object' && !Array.isArray(source.issueReasons)) {
+    const issueReasons = {};
+    for (const [reason, count] of Object.entries(source.issueReasons)) {
+      if (Number.isFinite(count)) {
+        issueReasons[String(reason)] = count;
+      }
+    }
+    storageDriftSummary.issueReasons = issueReasons;
+  }
+  if (Array.isArray(source.standardReasonKeys)) {
+    storageDriftSummary.standardReasonKeys = source.standardReasonKeys.map(String);
+  }
+  return storageDriftSummary;
 }
 
 function buildManifestVerificationSummary(source) {
