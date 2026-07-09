@@ -1396,6 +1396,9 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 segmentDO.getCameraId(),
                 segmentDO.getStartTime(),
                 segmentDO.getEndTime())) {
+            if (Boolean.TRUE.equals(overlap.getDeleted())) {
+                continue;
+            }
             if (!Objects.equals(overlap.getReviewItemId(), segmentDO.getReviewItemId())) {
                 throw new IllegalStateException("overlapping review segment for camera "
                         + segmentDO.getCameraId() + ": " + overlap.getReviewItemId());

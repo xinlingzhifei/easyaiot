@@ -164,6 +164,72 @@ class SupervisionAlertReviewMapperStoreTest {
     }
 
     @Test
+    void createIgnoresDeletedOverlappingReviewSegmentBeforeSegmentInsert() {
+        LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 20);
+        LocalDateTime endTime = startTime.plusSeconds(30);
+        AtomicInteger segmentInserts = new AtomicInteger();
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {
+            if ("insert".equals(method.getName())) {
+                SupervisionAlertReviewItemDO itemDO = (SupervisionAlertReviewItemDO) args[0];
+                itemDO.setId(105L);
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewSegmentMapper reviewSegmentMapper = mapper(SupervisionAlertReviewSegmentMapper.class, (proxy, method, args) -> {
+            if ("selectOverlapping".equals(method.getName())) {
+                SupervisionAlertReviewSegmentDO deletedOverlap = new SupervisionAlertReviewSegmentDO()
+                        .setTenantId(0L)
+                        .setReviewItemId(205L)
+                        .setCameraId("camera-01")
+                        .setStartTime(startTime.minusSeconds(10))
+                        .setEndTime(startTime.plusSeconds(10));
+                deletedOverlap.setDeleted(true);
+                return List.of(deletedOverlap);
+            }
+            if ("insert".equals(method.getName())) {
+                segmentInserts.incrementAndGet();
+                return 1;
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        store.create(new ReviewItemDraft(
+                "video",
+                "alert-deleted-overlap-store",
+                "restricted_area",
+                "restricted_area",
+                startTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                "hash-deleted-overlap-store",
+                Map.of("reviewSegment", Map.of(
+                        "segmentId", "seg-deleted-overlap-store",
+                        "cameraId", "camera-01",
+                        "status", "alert",
+                        "severity", "alert",
+                        "startTime", startTime.toString(),
+                        "endTime", endTime.toString(),
+                        "objectIds", List.of("obj-deleted-overlap-store"),
+                        "zones", List.of("zone-a"),
+                        "sourceAlertIds", List.of("alert-deleted-overlap-store")
+                )),
+                "not_required",
+                startTime,
+                null
+        ), List.of());
+
+        assertEquals(1, segmentInserts.get());
+    }
+
+    @Test
     void createRejectsReviewSegmentWithoutCameraBeforeSegmentInsert() {
         LocalDateTime startTime = LocalDateTime.of(2026, 7, 4, 10, 25);
         AtomicInteger segmentInserts = new AtomicInteger();
