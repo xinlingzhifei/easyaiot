@@ -437,7 +437,10 @@ const smokeWithEvidence = await runProductionSmoke({
   "videoExportRequested": true,
   "ruleEvidence": {
     "ruleCode": "restricted_area",
-    "cameraId": "camera-smoke",
+    "cameraId": {
+      "value": "camera-smoke",
+      "debugToken": "rule-evidence-debug-secret"
+    },
     "zoneCode": "zone-smoke",
     "objectLabel": "person",
     "inertiaFrames": 3,
@@ -611,7 +614,6 @@ assert.deepEqual(evidenceReport.steps[1].summary, {
   },
   ruleEvidence: {
     ruleCode: 'restricted_area',
-    cameraId: 'camera-smoke',
     zoneCode: 'zone-smoke',
     objectLabel: 'person',
     inertiaFrames: 3,
@@ -633,6 +635,7 @@ assert.deepEqual(evidenceReport.steps[1].summary, {
   manifestValid: true,
   videoExportRequested: true,
 });
+assert.equal(JSON.stringify(evidenceReport).includes('rule-evidence-debug-secret'), false);
 assert.deepEqual(evidenceReport.steps[2].summary.storageDriftSummary, {
   healthy: true,
   recordCount: 3,

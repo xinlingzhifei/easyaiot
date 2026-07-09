@@ -777,9 +777,12 @@ function buildRuleEvidenceSummary(payload) {
     return null;
   }
   const ruleEvidence = {};
-  for (const key of ['ruleCode', 'cameraId', 'zoneCode', 'objectLabel', 'inertiaFrames', 'loiteringSeconds']) {
-    copyIfPresent(ruleEvidence, source, key);
-  }
+  copyTextIfPresent(ruleEvidence, source, 'ruleCode');
+  copyTextIfPresent(ruleEvidence, source, 'cameraId');
+  copyTextIfPresent(ruleEvidence, source, 'zoneCode');
+  copyTextIfPresent(ruleEvidence, source, 'objectLabel');
+  copyNumberIfPresent(ruleEvidence, source, 'inertiaFrames');
+  copyNumberIfPresent(ruleEvidence, source, 'loiteringSeconds');
   return Object.keys(ruleEvidence).length ? ruleEvidence : null;
 }
 
