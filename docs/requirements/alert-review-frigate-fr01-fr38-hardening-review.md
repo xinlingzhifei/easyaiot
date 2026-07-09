@@ -301,9 +301,10 @@ Manifest verifier and HMAC key rotation:
   `pnpm test:alert-review-workbench:dev-api-real-drawer`
   Result: RED first failed with unsupported `--mode=dev-api-real-drawer`; GREEN reruns passed after the E2E harness stopped aliasing `DeviceRegionDrawer`, mocked only its device-region/model APIs, verified the real drawer called `updateDeviceRegion`, and asserted `saveAlertReviewRule` carried `inertiaFrames=3` and `loiteringSeconds=20`.
 
-- Frontend full type baseline passed from the packaged HEAD tree:
+- Frontend full type baseline rechecked from the latest packaged HEAD tree:
   `pnpm --pm-on-fail=ignore --dir WEB type:check`
-  Result: the first `corepack pnpm --dir WEB type:check` attempt was blocked by local pnpm shim version `11.5.2` vs project `packageManager` `11.3.0`; rerunning with the documented pnpm `--pm-on-fail=ignore` escape executed `cross-env NODE_OPTIONS=--max-old-space-size=8192 vue-tsc --noEmit --skipLibCheck` and exited 0 after a long silent run.
+  `pnpm --dir WEB --pm-on-fail=ignore run type:check`
+  Result: the earlier `corepack pnpm --dir WEB type:check` attempt was blocked by local pnpm shim version `11.5.2` vs project `packageManager` `11.3.0`; rerunning with the documented pnpm `--pm-on-fail=ignore` escape executed `cross-env NODE_OPTIONS=--max-old-space-size=8192 vue-tsc --noEmit --skipLibCheck` and exited 0 after a long silent run. The latest 2026-07-09 HEAD rerun used `pnpm --dir WEB --pm-on-fail=ignore run type:check`, waited for the silent `vue-tsc` process to finish, and exited 0.
 
 - FR-32 production smoke orchestrator passed after the RED failure showed no one-command release gate existed for `LiveDevice -> LiveVideo -> LivePlayer`, and now runs `LivePlayer:detail`, `LivePlayer:coverage`, and `LivePlayer:case-timeline` as separate release steps:
   `node .scripts/alert-review-production-smoke.test.mjs`
