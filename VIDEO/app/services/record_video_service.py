@@ -999,10 +999,15 @@ def _normalize_gap_reason(reason) -> dict:
         source = None
         probe = None
     normalized = raw_reason or 'unknown'
+    alias_map = {
+        'file_expired': 'retention_expired',
+    }
+    normalized = alias_map.get(normalized, normalized)
     category_map = {
         'retention_expired': 'retention',
         'stream_interrupted': 'stream',
         'recording_disabled': 'configuration',
+        'video_url_not_configured': 'configuration',
         'record_space_not_found': 'configuration',
         'record_not_found': 'configuration',
         'file_missing': 'filesystem',
@@ -1021,6 +1026,7 @@ def _normalize_gap_reason(reason) -> dict:
         'permission_denied': False,
         'retention_expired': False,
         'recording_disabled': False,
+        'video_url_not_configured': False,
         'record_space_not_found': False,
         'record_not_found': False,
         'file_missing': False,

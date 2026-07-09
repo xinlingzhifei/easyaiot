@@ -79,6 +79,7 @@ class TestRecordAvailabilityService(unittest.TestCase):
             'retention_expired': 'retention',
             'stream_interrupted': 'stream',
             'recording_disabled': 'configuration',
+            'video_url_not_configured': 'configuration',
             'record_space_not_found': 'configuration',
             'file_missing': 'filesystem',
             'probe_failed': 'probe',
@@ -106,6 +107,26 @@ class TestRecordAvailabilityService(unittest.TestCase):
                 self.assertEqual(category, missing['gap_reason_category'])
                 self.assertIn('retryable', missing)
                 self.assertEqual(60, result['summary']['gap_reasons'][reason_code])
+
+    def test_missing_segments_normalize_legacy_gap_reason_aliases(self):
+        service = self._import_record_video_service_with_stubs()
+
+        result = service.build_recording_availability(
+            records=[],
+            alerts=[],
+            space_id=7,
+            device_id='device-01',
+            camera_id='camera-01',
+            begin_time=datetime(2026, 6, 30, 10, 0, 0),
+            end_time=datetime(2026, 6, 30, 10, 1, 0),
+            missing_reason='file_expired',
+        )
+
+        missing = result['missing'][0]
+        self.assertEqual('retention_expired', missing['gap_reason'])
+        self.assertEqual('retention', missing['gap_reason_category'])
+        self.assertFalse(missing['retryable'])
+        self.assertEqual({'retention_expired': 60}, result['summary']['gap_reasons'])
 
     def test_availability_uses_review_overlap_retention_capture_and_probe_facts(self):
         service = self._import_record_video_service_with_stubs()
