@@ -505,6 +505,34 @@ BEGIN
   END;
 END $$;
 
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO system_supervision_alert_review_segment(
+      review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+    )
+    VALUES (1, 'seg-duplicate-review-item-active', 1001, 'camera-review-item-unique-01', 'alert', 'active', '2026-07-05 12:30', '2026-07-05 12:31', false);
+    RAISE EXCEPTION 'expected duplicate active ReviewSegment review_item_id to be rejected';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  INSERT INTO system_supervision_alert_review_segment(
+    review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+  )
+  VALUES (1, 'seg-duplicate-review-item-deleted', 1001, 'camera-review-item-unique-02', 'alert', 'active', '2026-07-05 12:32', '2026-07-05 12:33', true);
+
+  IF (
+    SELECT count(*)
+    FROM system_supervision_alert_review_segment
+    WHERE review_item_id = 1
+      AND segment_no = 'seg-duplicate-review-item-deleted'
+      AND deleted = TRUE
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected deleted duplicate ReviewSegment review_item_id to be allowed';
+  END IF;
+END $$;
+
 INSERT INTO system_supervision_alert_review_item(
   id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted

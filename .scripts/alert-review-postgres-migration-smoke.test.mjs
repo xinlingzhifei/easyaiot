@@ -99,6 +99,8 @@ assert.match(assertionSql, /expected tenant-scoped ingest identity backfill/);
 assert.match(assertionSql, /unique_violation/);
 assert.match(assertionSql, /exclusion_violation/);
 assert.match(assertionSql, /expected open active ReviewSegment to block later same-camera segment/);
+assert.match(assertionSql, /expected duplicate active ReviewSegment review_item_id to be rejected/);
+assert.match(assertionSql, /expected deleted duplicate ReviewSegment review_item_id to be allowed/);
 assert.match(assertionSql, /expected ReviewData backfill to normalize legacy rows/);
 assert.match(assertionSql, /reviewDataVersion/);
 assert.match(assertionSql, /reviewSegment/);
