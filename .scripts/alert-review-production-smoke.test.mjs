@@ -424,6 +424,14 @@ const smokeWithEvidence = await runProductionSmoke({
   "exportJobNo": "EXP-20260707-001",
   "manifestValid": true,
   "videoExportRequested": true,
+  "ruleEvidence": {
+    "ruleCode": "restricted_area",
+    "cameraId": "camera-smoke",
+    "zoneCode": "zone-smoke",
+    "objectLabel": "person",
+    "inertiaFrames": 3,
+    "loiteringSeconds": 20
+  },
   "playback": {
     "grantedDecision": "granted",
     "deniedDecision": "denied",
@@ -559,6 +567,14 @@ assert.deepEqual(evidenceReport.steps[1].summary, {
     grantedDecision: 'granted',
     deniedDecision: 'denied',
     deniedReasons: ['camera_not_allowed'],
+  },
+  ruleEvidence: {
+    ruleCode: 'restricted_area',
+    cameraId: 'camera-smoke',
+    zoneCode: 'zone-smoke',
+    objectLabel: 'person',
+    inertiaFrames: 3,
+    loiteringSeconds: 20,
   },
   status: 'passed',
   profile: 'device-video-web',
@@ -752,6 +768,46 @@ await assert.rejects(
     }),
   }),
   /production smoke step LiveDevice missing playback URL allow\/deny decision evidence/,
+);
+
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: () => {},
+    runCommand: async (step) => ({
+      status: 0,
+      stdout: step.name === 'LiveDevice'
+        ? JSON.stringify({
+            status: 'passed',
+            profile: 'device-video-web',
+            reviewItemId: 1001,
+            reviewCaseId: 2001,
+            eventIds: [7500],
+            exportJobNo: 'EXP-20260707-001',
+            manifestValid: true,
+            videoExportRequested: true,
+            playback: {
+              grantedDecision: 'granted',
+              deniedDecision: 'denied',
+              deniedReasons: ['camera_not_allowed'],
+            },
+            checkpoints: [
+              'ingest_review_item',
+              'review_rule_saved',
+              'record_coverage_synced',
+              'review_case_created',
+              'evidence_export_ready',
+              'manifest_verified',
+              'evidence_download_audited',
+              'playback_url_granted',
+              'playback_url_denied',
+            ],
+          })
+        : summaryStdoutForStep(step.name),
+    }),
+  }),
+  /production smoke step LiveDevice missing rule inertia\/loitering evidence/,
 );
 
 await assert.rejects(
@@ -1043,6 +1099,14 @@ function summaryStdoutForStep(name, options = {}) {
       exportJobNo: 'EXP-20260707-001',
       manifestValid: true,
       videoExportRequested: true,
+      ruleEvidence: {
+        ruleCode: 'restricted_area',
+        cameraId: 'camera-smoke',
+        zoneCode: 'zone-smoke',
+        objectLabel: 'person',
+        inertiaFrames: 3,
+        loiteringSeconds: 20,
+      },
       playback: {
         grantedDecision: 'granted',
         deniedDecision: 'denied',

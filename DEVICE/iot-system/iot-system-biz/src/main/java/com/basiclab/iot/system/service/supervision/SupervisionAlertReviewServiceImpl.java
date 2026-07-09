@@ -2634,7 +2634,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if ("device-video-web".equals(profile)) {
             checkpoints.add("sample_alert_ingested");
         }
-        saveRule(new ReviewRuleCommand(
+        ReviewRuleView smokeRule = saveRule(new ReviewRuleCommand(
                 null,
                 SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
                 "integration smoke zone rule",
@@ -2691,7 +2691,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 List.copyOf(checkpoints),
                 LocalDateTime.now(),
                 command.operatorUserId(),
-                profile
+                profile,
+                smokeRule
         );
     }
 

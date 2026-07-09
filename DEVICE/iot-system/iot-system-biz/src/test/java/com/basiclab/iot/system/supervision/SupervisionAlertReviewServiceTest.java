@@ -4706,6 +4706,12 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(smoke.checkpoints().contains("review_rule_saved"));
         assertEquals(1, ruleStore.listAll().size());
         ReviewRuleView smokeRule = ruleStore.listAll().get(0);
+        assertTrue(smoke.smokeRule() != null);
+        assertEquals("camera-smoke", smoke.smokeRule().cameraId());
+        assertEquals("zone-smoke", smoke.smokeRule().zoneCode());
+        assertEquals("person", smoke.smokeRule().objectLabel());
+        assertEquals(3, smoke.smokeRule().inertiaFrames());
+        assertEquals(20, smoke.smokeRule().loiteringSeconds());
         assertEquals("camera-smoke", smokeRule.cameraId());
         assertEquals("zone-smoke", smokeRule.zoneCode());
         assertEquals("person", smokeRule.objectLabel());

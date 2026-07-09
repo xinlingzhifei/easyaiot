@@ -432,6 +432,23 @@ function liveDeviceEvidenceError(stepName, summary) {
   if (playbackEvidenceError) {
     return playbackEvidenceError;
   }
+  const ruleEvidenceError = liveDeviceRuleEvidenceError(stepName, summary.ruleEvidence);
+  if (ruleEvidenceError) {
+    return ruleEvidenceError;
+  }
+  return null;
+}
+
+function liveDeviceRuleEvidenceError(stepName, ruleEvidence) {
+  if (!ruleEvidence || typeof ruleEvidence !== 'object') {
+    return `production smoke step ${stepName} missing rule inertia/loitering evidence`;
+  }
+  if (Number(ruleEvidence.inertiaFrames) !== 3) {
+    return `production smoke step ${stepName} missing rule inertiaFrames=3 evidence`;
+  }
+  if (Number(ruleEvidence.loiteringSeconds) !== 20) {
+    return `production smoke step ${stepName} missing rule loiteringSeconds=20 evidence`;
+  }
   return null;
 }
 
@@ -682,6 +699,10 @@ function childSmokeSummary(result) {
   if (payload.playback && typeof payload.playback === 'object') {
     summary.playback = payload.playback;
   }
+  const ruleEvidence = buildRuleEvidenceSummary(payload);
+  if (ruleEvidence) {
+    summary.ruleEvidence = ruleEvidence;
+  }
   if (payload.player && typeof payload.player === 'object') {
     summary.player = buildPlayerSmokeSummary(payload.player);
   }
@@ -709,6 +730,18 @@ function childSmokeSummary(result) {
   return Object.keys(summary).length ? summary : null;
 }
 
+function buildRuleEvidenceSummary(payload) {
+  const source = firstObject(payload.ruleEvidence, payload.smokeRule, payload.reviewRule);
+  if (!source) {
+    return null;
+  }
+  const ruleEvidence = {};
+  for (const key of ['ruleCode', 'cameraId', 'zoneCode', 'objectLabel', 'inertiaFrames', 'loiteringSeconds']) {
+    copyIfPresent(ruleEvidence, source, key);
+  }
+  return Object.keys(ruleEvidence).length ? ruleEvidence : null;
+}
+
 function buildAuditChainSummary(payload, summary) {
   const source = payload.auditChain && typeof payload.auditChain === 'object' ? payload.auditChain : {};
   const action = firstText(source.action, hasCheckpoint(payload.checkpoints, 'evidence_download_audited') ? 'export_downloaded' : '');
@@ -733,6 +766,10 @@ function buildAuditChainSummary(payload, summary) {
 function normalizeAuditIdList(value) {
   const values = Array.isArray(value) ? value : value == null ? [] : [value];
   return values.filter((entry) => entry !== undefined && entry !== null && String(entry).trim() !== '');
+}
+
+function firstObject(...values) {
+  return values.find((value) => value && typeof value === 'object') || null;
 }
 
 function hasCheckpoint(checkpoints, expected) {

@@ -1160,7 +1160,8 @@ public interface SupervisionAlertReviewService {
                                         List<String> checkpoints,
                                         LocalDateTime executedAt,
                                         Long operatorUserId,
-                                        String profile) {
+                                        String profile,
+                                        ReviewRuleView smokeRule) {
         public ReviewIntegrationSmokeResult(String status,
                                             Long reviewItemId,
                                             Long reviewCaseId,
@@ -1171,7 +1172,21 @@ public interface SupervisionAlertReviewService {
                                             LocalDateTime executedAt,
                                             Long operatorUserId) {
             this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested,
-                    checkpoints, executedAt, operatorUserId, "service-synthetic");
+                    checkpoints, executedAt, operatorUserId, "service-synthetic", null);
+        }
+
+        public ReviewIntegrationSmokeResult(String status,
+                                            Long reviewItemId,
+                                            Long reviewCaseId,
+                                            String exportJobNo,
+                                            boolean manifestValid,
+                                            boolean videoExportRequested,
+                                            List<String> checkpoints,
+                                            LocalDateTime executedAt,
+                                            Long operatorUserId,
+                                            String profile) {
+            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested,
+                    checkpoints, executedAt, operatorUserId, profile, null);
         }
     }
 

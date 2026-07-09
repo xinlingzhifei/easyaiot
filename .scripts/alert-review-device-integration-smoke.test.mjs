@@ -86,6 +86,14 @@ const validPayload = {
   exportJobNo: 'REJ-1',
   manifestValid: true,
   videoExportRequested: true,
+  ruleEvidence: {
+    ruleCode: 'restricted_area',
+    cameraId: 'camera-smoke',
+    zoneCode: 'zone-smoke',
+    objectLabel: 'person',
+    inertiaFrames: 3,
+    loiteringSeconds: 20,
+  },
   checkpoints: [
     'device_api_reachable',
     'video_record_query_checked',
@@ -96,6 +104,20 @@ const validPayload = {
 const validated = validateSmokeResult(validPayload);
 assert.equal(validated.ok, true);
 assert.deepEqual(validated.checkpoints, validPayload.checkpoints);
+assert.deepEqual(validated.ruleEvidence, validPayload.ruleEvidence);
+
+assert.throws(
+  () => validateSmokeResult({ ...validPayload, ruleEvidence: undefined }),
+  /integration smoke response missing rule evidence/,
+);
+
+assert.throws(
+  () => validateSmokeResult({
+    ...validPayload,
+    ruleEvidence: { ...validPayload.ruleEvidence, loiteringSeconds: 0 },
+  }),
+  /integration smoke rule evidence missing loiteringSeconds=20/,
+);
 
 const calls = [];
 const smoke = await runSmoke(parsed, {

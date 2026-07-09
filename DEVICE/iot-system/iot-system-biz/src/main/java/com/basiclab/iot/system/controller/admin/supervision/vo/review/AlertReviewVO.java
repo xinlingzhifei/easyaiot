@@ -1221,6 +1221,7 @@ public final class AlertReviewVO {
         private LocalDateTime executedAt;
         private Long operatorUserId;
         private String profile;
+        private RuleRespVO ruleEvidence;
 
         public static IntegrationSmokeRespVO from(ReviewIntegrationSmokeResult result) {
             IntegrationSmokeRespVO respVO = new IntegrationSmokeRespVO();
@@ -1234,6 +1235,9 @@ public final class AlertReviewVO {
             respVO.setExecutedAt(result.executedAt());
             respVO.setOperatorUserId(result.operatorUserId());
             respVO.setProfile(result.profile());
+            if (result.smokeRule() != null) {
+                respVO.setRuleEvidence(RuleRespVO.from(result.smokeRule()));
+            }
             return respVO;
         }
 

@@ -183,11 +183,35 @@ export function validateSmokeResult(result) {
       throw new Error(`missing smoke checkpoint: ${checkpoint}`);
     }
   }
+  const ruleEvidence = smokeRuleEvidence(result);
+  validateRuleEvidence(ruleEvidence);
   return {
     ...result,
     ok: true,
     checkpoints,
+    ruleEvidence,
   };
+}
+
+function smokeRuleEvidence(result) {
+  for (const key of ['ruleEvidence', 'smokeRule', 'reviewRule']) {
+    if (result[key] && typeof result[key] === 'object') {
+      return result[key];
+    }
+  }
+  return null;
+}
+
+function validateRuleEvidence(ruleEvidence) {
+  if (!ruleEvidence || typeof ruleEvidence !== 'object') {
+    throw new Error('integration smoke response missing rule evidence');
+  }
+  if (Number(ruleEvidence.inertiaFrames) !== 3) {
+    throw new Error('integration smoke rule evidence missing inertiaFrames=3');
+  }
+  if (Number(ruleEvidence.loiteringSeconds) !== 20) {
+    throw new Error('integration smoke rule evidence missing loiteringSeconds=20');
+  }
 }
 
 async function fetchJson(fetchImpl, url, options) {
@@ -414,6 +438,7 @@ async function runCli() {
     exportJobNo: smoke.result.exportJobNo,
     manifestValid: smoke.result.manifestValid,
     videoExportRequested: smoke.result.videoExportRequested,
+    ruleEvidence: smoke.result.ruleEvidence,
     playback: smoke.playback ? {
       grantedDecision: smoke.playback.granted.decision,
       deniedDecision: smoke.playback.denied.decision,

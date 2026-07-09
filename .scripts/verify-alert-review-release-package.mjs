@@ -567,7 +567,9 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_audit_chain_summary_missing',
     });
   }
-  if (productionSmokeHasLiveDeviceEvidenceGate && !productionSmokeMissingAuditChainGate && !containsAll(productionSmoke.content, [
+  const productionSmokeMissingPlaybackAccessGate = productionSmokeHasLiveDeviceEvidenceGate
+      && !productionSmokeMissingAuditChainGate
+      && !containsAll(productionSmoke.content, [
     'liveDevicePlaybackEvidenceError',
     'summary.playback',
     'grantedDecision',
@@ -575,11 +577,30 @@ export function scanLiveVideoEvidenceGate(files) {
     'camera_not_allowed',
     'missing playback URL allow/deny decision evidence',
     'missing playback URL deny reason evidence',
-  ])) {
+  ]);
+  if (productionSmokeMissingPlaybackAccessGate) {
     blockers.push({
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
       reason: 'production_smoke_playback_access_evidence_missing',
+    });
+  }
+  if (productionSmokeHasLiveDeviceEvidenceGate
+      && !productionSmokeMissingAuditChainGate
+      && !productionSmokeMissingPlaybackAccessGate
+      && !containsAll(productionSmoke.content, [
+        'liveDeviceRuleEvidenceError',
+        'summary.ruleEvidence',
+        'inertiaFrames',
+        'loiteringSeconds',
+        'missing rule inertia/loitering evidence',
+        'missing rule inertiaFrames=3 evidence',
+        'missing rule loiteringSeconds=20 evidence',
+      ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_rule_semantics_evidence_missing',
     });
   }
   return {
