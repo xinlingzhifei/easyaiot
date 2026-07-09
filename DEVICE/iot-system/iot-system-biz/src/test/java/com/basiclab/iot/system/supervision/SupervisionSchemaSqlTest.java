@@ -50,6 +50,7 @@ class SupervisionSchemaSqlTest {
                 "system_supervision_alert_review_runtime_lock",
                 "system_supervision_alert_review_runtime_run",
                 "system_supervision_alert_review_runtime_outbox",
+                "system_supervision_alert_review_runtime_outbox_delivery",
                 "system_supervision_alert_review_report_ack",
                 "system_supervision_close_check_result"
         ), extractCreatedTables(sql));
@@ -298,7 +299,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewItemMediaAuditMigrationAllowsPreCaseAuditRows() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260707__alert_review_item_media_audit.sql");
 
         assertTrue(Files.exists(migration), "item media audit migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -309,7 +310,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewHardeningMigrationIsSplitForProductionRelease() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql");
 
         assertTrue(Files.exists(migration), "production migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -336,7 +337,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewSegmentTenantScopeMigrationKeepsStatusAndSeverityConstraints() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql");
 
         assertTrue(Files.exists(migration), "tenant-scoped segment migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -350,7 +351,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewReviewDataBackfillMigrationNormalizesLegacyRows() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql");
 
         assertTrue(Files.exists(migration), "reviewData backfill migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -368,7 +369,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewReportAckMigrationPersistsOperatorAcknowledgement() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_3__alert_review_report_ack.sql");
 
         assertTrue(Files.exists(migration), "report acknowledgement migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -382,7 +383,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewRuntimeOutboxNotifyMigrationSeedsTemplates() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql");
 
         assertTrue(Files.exists(migration), "runtime outbox notify template migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -396,8 +397,8 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewRuntimeOutboxDeliveryMigrationTracksRecipientIdempotency() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql");
-        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql");
+        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
 
         assertTrue(Files.exists(migration), "runtime outbox delivery migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -416,8 +417,8 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewRuntimeOutboxClaimMigrationTracksProcessingOwnership() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql");
-        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql");
+        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
 
         assertTrue(Files.exists(migration), "runtime outbox claim migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -434,8 +435,8 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewSegmentEndTimeGuardMigrationRequiresEndedSegmentsToHaveEndTime() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql");
-        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql");
+        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
 
         assertTrue(Files.exists(migration), "segment end-time guard migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -449,8 +450,8 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewSegmentAlertSeverityGuardMigrationRequiresAlertSegmentsToKeepAlertSeverity() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql");
-        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql");
+        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
 
         assertTrue(Files.exists(migration), "segment alert severity guard migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -464,8 +465,8 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewMergeIndexMigrationUsesSameCameraWindowSemantics() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql");
-        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql");
+        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
         String sameCameraIndex = "ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time)";
         String oldZoneRuleIndex = "ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code";
 
@@ -499,7 +500,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void alertReviewMediaPermissionMigrationSeedsMenuPermissions() throws IOException {
-        Path migration = Path.of("src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql");
+        Path migration = modulePath("src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql");
 
         assertTrue(Files.exists(migration), "review media permission migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -515,7 +516,7 @@ class SupervisionSchemaSqlTest {
 
     @Test
     void reviewDataJsonSchemaArtifactDefinesVersionedFrigateReviewFields() throws IOException {
-        Path schema = Path.of("src/main/resources/schemas/alert-review-review-data-v1.schema.json");
+        Path schema = modulePath("src/main/resources/schemas/alert-review-review-data-v1.schema.json");
 
         assertTrue(Files.exists(schema), "reviewData JSON schema artifact should exist");
         JsonNode root = OBJECT_MAPPER.readTree(Files.readString(schema, StandardCharsets.UTF_8));
@@ -546,6 +547,16 @@ class SupervisionSchemaSqlTest {
         assertNotNull(inputStream, SCHEMA_RESOURCE + " should exist on the classpath");
         try (inputStream) {
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static Path modulePath(String relativePath) {
+        try {
+            Path testClasses = Path.of(SupervisionSchemaSqlTest.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI());
+            return testClasses.getParent().getParent().resolve(relativePath).normalize();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to resolve iot-system-biz module path", exception);
         }
     }
 

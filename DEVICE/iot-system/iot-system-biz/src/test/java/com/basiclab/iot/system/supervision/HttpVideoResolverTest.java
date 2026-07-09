@@ -38,9 +38,9 @@ class HttpVideoResolverTest {
 
     @Test
     void dockerComposeWiresReviewVideoUrlsToRealVideoRecordEndpointsByDefault() throws Exception {
-        String applicationYaml = Files.readString(Path.of("src/main/resources/application.yaml"), StandardCharsets.UTF_8);
-        String dockerCompose = Files.readString(Path.of("../../docker-compose.yml"), StandardCharsets.UTF_8);
-        String coverageResolver = Files.readString(Path.of("src/main/java/com/basiclab/iot/system/service/supervision/HttpVideoRecordCoverageResolver.java"), StandardCharsets.UTF_8);
+        String applicationYaml = Files.readString(modulePath("src/main/resources/application.yaml"), StandardCharsets.UTF_8);
+        String dockerCompose = Files.readString(modulePath("../../docker-compose.yml"), StandardCharsets.UTF_8);
+        String coverageResolver = Files.readString(modulePath("src/main/java/com/basiclab/iot/system/service/supervision/HttpVideoRecordCoverageResolver.java"), StandardCharsets.UTF_8);
 
         assertTrue(applicationYaml.contains("alert-record-query-url: ${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:}"));
         assertTrue(applicationYaml.contains("record-coverage-query-url: ${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:}"));
@@ -52,6 +52,16 @@ class HttpVideoResolverTest {
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://host.docker.internal:6000/video/record/availability}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_BASE_URL=${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://host.docker.internal:6000/video/record}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_EXPORT_URL=${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://host.docker.internal:6000/video/record/export}"));
+    }
+
+    private static Path modulePath(String relativePath) {
+        try {
+            Path testClasses = Path.of(HttpVideoResolverTest.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI());
+            return testClasses.getParent().getParent().resolve(relativePath).normalize();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to resolve iot-system-biz module path", exception);
+        }
     }
 
     @Test

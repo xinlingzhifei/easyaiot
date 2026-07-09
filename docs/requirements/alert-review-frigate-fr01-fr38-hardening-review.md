@@ -1003,6 +1003,33 @@ Manifest verifier and HMAC key rotation:
   Result: RED first showed `postgresql://ci:secret@...` in the spawned args; GREEN rerun passed after direct URL execution moved host/user/password/database/sslmode into `PG*` environment variables while preserving the sanitized `psql/<database>` evidence label.
 - Full frontend `pnpm run type:check` passed locally after narrowing heavy frontend barrel imports and clearing the remaining non-workbench Vue SFC type errors.
 
+## 2026-07-10 Closure Pass
+
+- ReviewSegment/ReviewData/permission/runtime Java regression passed from `DEVICE/`:
+  `mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewControllerTest,SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test`
+  Result: 147 tests, 0 failures, 0 errors.
+- VIDEO regression passed from `VIDEO/`:
+  `python -m pytest test_record_export.py test_record_availability.py test_alert_record_query.py -q`
+  Result: 31 tests passed; local ffmpeg is available at `C:\Users\86135\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe`.
+- Workbench contract, dev API mock, and real `DeviceRegionDrawer` fixture passed from `WEB/`:
+  `pnpm run test:alert-review-workbench:contract`
+  `pnpm run test:alert-review-workbench:dev-api-mock`
+  `pnpm run test:alert-review-workbench:dev-api-real-drawer`
+  Result: all three modes passed. Visible-copy scan from repository root checked 10 files and passed.
+- Frontend full type baseline passed from `WEB/`:
+  `pnpm --pm-on-fail=ignore run type:check`
+  Result: `vue-tsc --noEmit --skipLibCheck` exited 0.
+- Playback contract and smoke self-tests passed:
+  `node WEB/scripts/alert-review-playback-contract.test.mjs`
+  `node .scripts/alert-review-player-live-smoke.test.mjs`
+  `node .scripts/alert-review-device-integration-smoke.test.mjs`
+  Result: all self-tests passed. The real player smoke remains blocked until a deployed workbench URL, row text, recording path, and three expected seek timestamps are supplied.
+- Offline migration/package self-tests passed:
+  `node .scripts/alert-review-postgres-migration-smoke.test.mjs`
+  `node .scripts/verify-alert-review-release-package.test.mjs`
+  Result: both self-tests passed. Real PG1 was attempted with no database URL/container and failed closed with `Provide exactly one of --container=NAME or --database-url=URL`.
+- Real VIDEO and production smoke were invoked without parameters and failed closed with explicit missing URL/device/time/player/evidence arguments. No mock result is being counted as production evidence.
+
 ## Current Open Risks
 
 - Frontend full `vue-tsc` / `pnpm run type:check` exits 0 locally after replacing heavyweight barrel imports with narrow imports and clearing the remaining non-workbench Vue SFC type errors in device logs/events/services, notice configuration, product, rulechain, and train-task modules; the latest local rerun used `pnpm --dir WEB --pm-on-fail=ignore run type:check` because Corepack invoked pnpm 11.5.2 while the project declares 11.3.0.
