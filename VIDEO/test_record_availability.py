@@ -306,6 +306,37 @@ class TestRecordAvailabilityService(unittest.TestCase):
                                 and issue['detail']['error'] == 'copy timeout'
                                 for issue in report['issues']))
 
+    def test_recording_storage_drift_prefers_minio_object_probe_over_unmounted_local_path(self):
+        service = self._import_record_video_service_with_stubs()
+        probes = []
+        service.minio_storage_enabled = lambda: True
+        service.get_minio_client = lambda: types.SimpleNamespace(
+            stat_object=lambda bucket_name, object_name: probes.append((bucket_name, object_name)),
+        )
+        record = types.SimpleNamespace(
+            id=44,
+            space_id=7,
+            device_id='device-01',
+            bucket_name='record-space',
+            object_name='live/device-01/minio-only.flv',
+            url='/data/not-mounted-on-video/minio-only.flv',
+            event_time=datetime(2026, 7, 2, 12, 0, 0),
+            duration=60,
+        )
+
+        report = service.inspect_recording_storage_drift(
+            records=[record],
+            space_id=7,
+            device_id='device-01',
+            now=datetime(2026, 7, 2, 13, 0, 0),
+            retention_hours=24,
+            disk_probe={'total_bytes': 1000, 'free_bytes': 900},
+        )
+
+        self.assertEqual([('record-space', 'live/device-01/minio-only.flv')], probes)
+        self.assertEqual(0, report['summary']['issue_count'])
+        self.assertTrue(report['summary']['healthy'])
+
     @staticmethod
     def _import_record_video_service_with_stubs():
         sys.modules.pop('app.services.record_video_service', None)

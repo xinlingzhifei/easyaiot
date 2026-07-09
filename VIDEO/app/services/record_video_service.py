@@ -430,20 +430,19 @@ def _record_drift_info(record, fallback_space_id=None) -> dict:
 
 
 def _record_storage_exists(record_info: dict) -> bool:
-    local_path = record_info.get('local_path')
-    if local_path:
-        return os.path.isfile(local_path)
-
     if minio_storage_enabled():
         bucket_name = record_info.get('bucket_name')
         object_name = record_info.get('object_name')
-        if not bucket_name or not object_name:
-            return False
-        try:
-            get_minio_client().stat_object(bucket_name, object_name)
-            return True
-        except Exception:
-            return False
+        if bucket_name and object_name:
+            try:
+                get_minio_client().stat_object(bucket_name, object_name)
+                return True
+            except Exception:
+                return False
+
+    local_path = record_info.get('local_path')
+    if local_path:
+        return os.path.isfile(local_path)
 
     return False
 
