@@ -637,16 +637,32 @@ export function scanReleaseTraceabilityGate(files) {
   const prodSmokeBlock = releaseGateBlock(content, prodSmokeIndex);
   const blockers = [];
   const checks = [
+    ['--device-base-url=', 'fr38_prod_smoke_device_base_command_missing'],
+    ['--token=', 'fr38_prod_smoke_token_command_missing'],
+    ['--operator-user-id=', 'fr38_prod_smoke_operator_command_missing'],
+    ['--device-alert-time=', 'fr38_prod_smoke_device_alert_time_command_missing'],
+    ['--device-playback-allowed-camera-ids=', 'fr38_prod_smoke_playback_allow_command_missing'],
+    ['--device-playback-denied-camera-ids=', 'fr38_prod_smoke_playback_deny_command_missing'],
     ['--video-alert-record-query-url=', 'fr38_prod_smoke_alert_record_command_missing'],
     ['--video-record-coverage-query-url=', 'fr38_prod_smoke_coverage_command_missing'],
     ['--video-record-base-url=', 'fr38_prod_smoke_record_base_command_missing'],
     ['--video-record-export-url=', 'fr38_prod_smoke_export_command_missing'],
+    ['--video-device-id=', 'fr38_prod_smoke_video_device_command_missing'],
+    ['--video-alert-time=', 'fr38_prod_smoke_video_alert_time_command_missing'],
     ['--video-record-drift-retention-hours=', 'fr38_prod_smoke_drift_retention_command_missing'],
     ['--video-manifest-verifier-script=', 'fr38_prod_smoke_manifest_verifier_command_missing'],
     ['--step-timeout-ms=', 'fr38_prod_smoke_step_timeout_command_missing'],
+    ['--player-workbench-url=', 'fr38_prod_smoke_player_workbench_command_missing'],
+    ['--player-review-row-text=', 'fr38_prod_smoke_player_review_row_command_missing'],
     ['--player-expected-seek-time=', 'fr38_prod_smoke_detail_player_command_missing'],
+    ['--player-expected-record-path-contains=', 'fr38_prod_smoke_detail_player_record_command_missing'],
+    ['--player-expected-offset-seconds=', 'fr38_prod_smoke_detail_player_offset_command_missing'],
     ['--player-coverage-expected-seek-time=', 'fr38_prod_smoke_coverage_player_command_missing'],
+    ['--player-coverage-expected-record-path-contains=', 'fr38_prod_smoke_coverage_player_record_command_missing'],
+    ['--player-coverage-expected-offset-seconds=', 'fr38_prod_smoke_coverage_player_offset_command_missing'],
     ['--player-case-timeline-expected-seek-time=', 'fr38_prod_smoke_case_timeline_player_command_missing'],
+    ['--player-case-timeline-expected-record-path-contains=', 'fr38_prod_smoke_case_timeline_player_record_command_missing'],
+    ['--player-case-timeline-expected-offset-seconds=', 'fr38_prod_smoke_case_timeline_player_offset_command_missing'],
     ['--evidence-output-file=', 'fr38_prod_smoke_evidence_file_command_missing'],
   ];
   for (const [fragment, reason] of checks) {

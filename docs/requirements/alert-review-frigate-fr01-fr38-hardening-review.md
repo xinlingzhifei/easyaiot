@@ -472,6 +472,10 @@ Manifest verifier and HMAC key rotation:
   `node .scripts/verify-alert-review-release-package.test.mjs`
   Result: RED first failed because the Required Release Gates `ProdSmoke` command could omit `--step-timeout-ms` while the release package scanner still returned `ok=true`. GREEN rerun passed after the traceability scanner requires the timeout argument in the production-smoke command block and the release gate command documents `--step-timeout-ms=900000`.
 
+- FR-32/FR-38 full production-smoke command traceability gate passed:
+  `node .scripts/verify-alert-review-release-package.test.mjs`
+  Result: RED first failed because the Required Release Gates `ProdSmoke` command could omit real DEVICE connection/auth parameters or player offset evidence while `Pkg` still returned `ok=true`. GREEN rerun passed after `Pkg` requires DEVICE base URL/token/operator/playback allow-deny inputs, VIDEO device/time inputs, deployed player workbench/row inputs, and each detail/coverage/case-timeline record-path plus offset assertion in the documented release command.
+
 - FR-32 production smoke evidence now aggregates child-smoke summaries:
   `node .scripts/alert-review-production-smoke.test.mjs`
   Result: RED first failed because `LiveVideo` stdout JSON was not parsed into the evidence report; GREEN rerun passed after `ProdSmoke` captures child stdout, echoes it to the console, and stores only sanitized summary fields such as checkpoints, `storageDriftSummary`, export result, playback, player, and status.
