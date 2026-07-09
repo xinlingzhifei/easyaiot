@@ -477,6 +477,56 @@ export function scanLiveVideoEvidenceGate(files) {
   };
 }
 
+export function scanReleaseTraceabilityGate(files) {
+  const docPath = 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md';
+  const doc = files.find((file) => normalizePath(file.path || '') === docPath);
+  if (!doc) {
+    return { ok: true, blockers: [] };
+  }
+  const content = String(doc.content ?? '');
+  const prodSmokeIndex = content.indexOf('Production smoke with real VIDEO URLs');
+  if (prodSmokeIndex === -1) {
+    return { ok: true, blockers: [] };
+  }
+  const prodSmokeBlock = releaseGateBlock(content, prodSmokeIndex);
+  const blockers = [];
+  const checks = [
+    ['--video-alert-record-query-url=', 'fr38_prod_smoke_alert_record_command_missing'],
+    ['--video-record-coverage-query-url=', 'fr38_prod_smoke_coverage_command_missing'],
+    ['--video-record-base-url=', 'fr38_prod_smoke_record_base_command_missing'],
+    ['--video-record-export-url=', 'fr38_prod_smoke_export_command_missing'],
+    ['--video-record-drift-retention-hours=', 'fr38_prod_smoke_drift_retention_command_missing'],
+    ['--video-manifest-verifier-script=', 'fr38_prod_smoke_manifest_verifier_command_missing'],
+    ['--player-expected-seek-time=', 'fr38_prod_smoke_detail_player_command_missing'],
+    ['--player-coverage-expected-seek-time=', 'fr38_prod_smoke_coverage_player_command_missing'],
+    ['--player-case-timeline-expected-seek-time=', 'fr38_prod_smoke_case_timeline_player_command_missing'],
+    ['--evidence-output-file=', 'fr38_prod_smoke_evidence_file_command_missing'],
+  ];
+  for (const [fragment, reason] of checks) {
+    if (!prodSmokeBlock.includes(fragment)) {
+      blockers.push({
+        path: docPath,
+        group: releaseGroupFor(docPath),
+        reason,
+        line: _lineNumberAt(content, prodSmokeIndex),
+      });
+    }
+  }
+  return {
+    ok: blockers.length === 0,
+    blockers,
+  };
+}
+
+function releaseGateBlock(content, startIndex) {
+  const rest = content.slice(startIndex);
+  const nextHeading = rest.slice(1).search(/\n#{2,3} /);
+  if (nextHeading === -1) {
+    return rest;
+  }
+  return rest.slice(0, nextHeading + 1);
+}
+
 function _lineNumberAt(content, index) {
   return content.slice(0, index).split(/\r?\n/).length;
 }
@@ -569,10 +619,12 @@ function runCli() {
   const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
   const mediaPermissionResult = scanMediaPermissionGate(releaseTextFiles);
   const liveVideoEvidenceResult = scanLiveVideoEvidenceGate(releaseTextFiles);
+  const traceabilityResult = scanReleaseTraceabilityGate(releaseTextFiles);
   result.blockers.push(...textResult.blockers);
   result.blockers.push(...webTypecheckResult.blockers);
   result.blockers.push(...mediaPermissionResult.blockers);
   result.blockers.push(...liveVideoEvidenceResult.blockers);
+  result.blockers.push(...traceabilityResult.blockers);
   result.ok = result.blockers.length === 0;
 
   if (!result.ok) {

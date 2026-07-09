@@ -10,6 +10,7 @@ import {
   releaseEntriesForTrackedPaths,
   scanLiveVideoEvidenceGate,
   scanMediaPermissionGate,
+  scanReleaseTraceabilityGate,
   scanWebTypecheckGate,
   scanTextQuality,
 } from './verify-alert-review-release-package.mjs';
@@ -740,6 +741,29 @@ assert.equal(missingLiveVideoRootConcatOrderCoverageGateScan.ok, false);
 assert.deepEqual(missingLiveVideoRootConcatOrderCoverageGateScan.blockers.map((blocker) => blocker.reason), [
   'live_video_media_evidence_gate_missing',
 ]);
+
+const missingProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([
+  {
+    path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+    content: [
+      '- `ProdSmoke`: `node .scripts/alert-review-production-smoke.mjs --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs`',
+      '- Production smoke with real VIDEO URLs:',
+      '  `node .scripts/alert-review-production-smoke.mjs --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-record-drift-retention-hours=24 --player-expected-seek-time=... --player-coverage-expected-seek-time=... --player-case-timeline-expected-seek-time=... --evidence-output-file=artifacts/production-smoke.json`',
+    ].join('\n'),
+  },
+]);
+assert.equal(missingProdSmokeTraceabilityGateScan.ok, false);
+assert.deepEqual(missingProdSmokeTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
+  'fr38_prod_smoke_manifest_verifier_command_missing',
+]);
+
+const completeProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([
+  {
+    path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+    content: '- Production smoke with real VIDEO URLs:\n  `node .scripts/alert-review-production-smoke.mjs --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --player-expected-seek-time=... --player-coverage-expected-seek-time=... --player-case-timeline-expected-seek-time=... --evidence-output-file=artifacts/production-smoke.json`',
+  },
+]);
+assert.equal(completeProdSmokeTraceabilityGateScan.ok, true);
 
 const requireClean = evaluateStatus(`
 A  WEB/src/views/alert/components/AlertReviewWorkbench.vue
