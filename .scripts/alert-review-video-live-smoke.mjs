@@ -196,14 +196,14 @@ export function selectPlayableSegment(payload) {
       recordUriSource: recordEvidence.key,
       startTime: firstText(row.start_time, row.startTime, row.begin_time, row.beginTime, row.event_time, row.eventTime),
       endTime: firstText(row.end_time, row.endTime, row.stop_time, row.stopTime),
-      retainMode: firstText(row.retain_mode, row.retainMode, row.retain),
-      coverageSource: firstText(
+      retainMode: normalizeCoverageClassification(firstText(row.retain_mode, row.retainMode, row.retain)),
+      coverageSource: normalizeCoverageClassification(firstText(
         row.coverage_source,
         row.coverageSource,
         row.source,
         row.record_source,
         row.recordSource,
-      ),
+      )),
     };
   }
   return null;
@@ -390,6 +390,17 @@ function validateCoverageClassification(segment) {
       || !STANDARD_COVERAGE_CLASSIFICATIONS.includes(coverageSource)) {
     throw new Error(`record coverage query returned non-standard retain mode or source classification: retainMode=${segment.retainMode}, coverageSource=${segment.coverageSource}`);
   }
+}
+
+function normalizeCoverageClassification(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized === 'all' || normalized === 'record' || normalized === 'recording') {
+    return 'continuous';
+  }
+  return normalized;
 }
 
 function coverageSegmentSummary(segment) {

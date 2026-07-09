@@ -360,6 +360,37 @@ assert.deepEqual(cliSummary.manifestStorageLifecycle, {
   exportPackageObjectKey: 'review-export-1/content.bin',
 });
 
+const aliasCoverageClassificationFetch = async (url, init = {}) => {
+  const requestUrl = String(url);
+  if (requestUrl.includes('/video/record/availability') && requestUrl.includes('begin_time=')) {
+    return jsonResponse({
+      code: 0,
+      data: {
+        segments: [
+          {
+            status: 'available',
+            start_time: '2026-07-05T10:00:00',
+            end_time: '2026-07-05T10:01:00',
+            record_uri: '/video/record/space/7/video/live/device-01/clip.mp4',
+            exportable: true,
+            retain_mode: 'Recording',
+            coverage_source: 'all',
+          },
+        ],
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+const aliasSmoke = await runSmoke(parsed, { fetchImpl: aliasCoverageClassificationFetch });
+assert.equal(aliasSmoke.coverage.segment.retainMode, 'continuous');
+assert.equal(aliasSmoke.coverage.segment.coverageSource, 'continuous');
+assert.deepEqual(summarizeCliResult(aliasSmoke).coverageSummary, {
+  status: 'available',
+  retainMode: 'continuous',
+  coverageSource: 'continuous',
+});
+
 const nonExportableCoverageFetch = async (url, init = {}) => {
   const requestUrl = String(url);
   if (requestUrl.includes('/video/record/availability') && requestUrl.includes('begin_time=')) {
