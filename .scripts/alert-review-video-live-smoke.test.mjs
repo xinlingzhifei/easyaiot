@@ -21,6 +21,12 @@ const SOURCE_SEGMENT_HASH = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const OUTPUT_FILE_HASH = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const FFMPEG_COMMAND_HASH = 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 const MANIFEST_SIGNATURE_VALUE = 'hmac-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
+const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
+  'file_missing',
+  'retention_expired',
+  'disk_full',
+  'cache_flush_failed',
+];
 
 const parsed = parseArgs([
   '--alert-record-query-url=http://video.local/video/record/availability',
@@ -206,6 +212,7 @@ const fakeFetch = async (url, init = {}) => {
           record_count: 3,
           issue_count: 0,
           issue_reasons: {},
+          standard_reason_keys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
           healthy: true,
         },
       },
@@ -317,6 +324,7 @@ assert.deepEqual(cliSummary.storageDriftSummary, {
   recordCount: 3,
   issueCount: 0,
   issueReasons: {},
+  standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
 });
 assert.deepEqual(cliSummary.manifestSignature, {
   algorithm: 'hmac-sha256',
@@ -329,6 +337,29 @@ assert.deepEqual(cliSummary.manifestStorageLifecycle, {
   expiresAt: '2026-07-20T00:00:00Z',
   exportPackageObjectKey: 'review-export-1/content.bin',
 });
+
+const missingDriftReasonCatalogFetch = async (url, init = {}) => {
+  if (String(url).includes('/space/7/videos/drift')) {
+    return jsonResponse({
+      code: 0,
+      data: {
+        space_id: 7,
+        device_id: 'device-01',
+        summary: {
+          record_count: 3,
+          issue_count: 0,
+          issue_reasons: {},
+          healthy: true,
+        },
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: missingDriftReasonCatalogFetch }),
+  /record storage drift patrol missing standard reason evidence: file_missing/,
+);
 
 const mockRecordUriFetch = async (url, init = {}) => {
   if (init.method === 'POST') {

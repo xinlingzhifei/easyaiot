@@ -8,6 +8,12 @@ const DEFAULT_TIME_RANGE_SECONDS = 300;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_EXPORT_POLL_ATTEMPTS = 5;
 const DEFAULT_EXPORT_POLL_INTERVAL_MS = 1_000;
+const REQUIRED_STORAGE_DRIFT_REASON_KEYS = [
+  'file_missing',
+  'retention_expired',
+  'disk_full',
+  'cache_flush_failed',
+];
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -305,6 +311,7 @@ export function summarizeCliResult(result) {
       recordCount: numberValue(firstPresent(summary.record_count, summary.recordCount)),
       issueCount: numberValue(firstPresent(summary.issue_count, summary.issueCount)),
       issueReasons: summary.issue_reasons || summary.issueReasons || {},
+      standardReasonKeys: storageDriftReasonKeys(result?.storageDrift, summary),
     },
     exportResult: result?.exportResult || {},
     ...(result?.manifestSignature ? { manifestSignature: result.manifestSignature } : {}),
@@ -790,7 +797,55 @@ function validateStorageDriftReport(payload) {
   if (issueCount > 0 || summary.healthy === false) {
     throw new Error(`record storage drift patrol reported ${issueCount} issue(s): ${formatIssueReasons(summary.issue_reasons || summary.issueReasons)}`);
   }
-  return data;
+  const reasonKeys = storageDriftReasonKeys(data, summary);
+  const missingReason = REQUIRED_STORAGE_DRIFT_REASON_KEYS.find((reason) => !reasonKeys.includes(reason));
+  if (missingReason) {
+    throw new Error(`record storage drift patrol missing standard reason evidence: ${missingReason}`);
+  }
+  return {
+    ...data,
+    summary: {
+      ...summary,
+      standardReasonKeys: reasonKeys,
+    },
+  };
+}
+
+function storageDriftReasonKeys(data, summary) {
+  const keys = firstList(
+    summary,
+    'standard_reason_keys',
+    'standardReasonKeys',
+    'reason_keys',
+    'reasonKeys',
+  );
+  if (keys.length > 0) {
+    return uniqueTextValues(keys);
+  }
+  const dataKeys = firstList(
+    data,
+    'standard_reason_keys',
+    'standardReasonKeys',
+    'reason_keys',
+    'reasonKeys',
+  );
+  if (dataKeys.length > 0) {
+    return uniqueTextValues(dataKeys);
+  }
+  const catalog = firstPresent(
+    summary?.reason_catalog,
+    summary?.reasonCatalog,
+    data?.reason_catalog,
+    data?.reasonCatalog,
+  );
+  if (catalog && typeof catalog === 'object' && !Array.isArray(catalog)) {
+    return uniqueTextValues(Object.keys(catalog));
+  }
+  return [];
+}
+
+function uniqueTextValues(values) {
+  return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
 }
 
 function formatIssueReasons(issueReasons) {

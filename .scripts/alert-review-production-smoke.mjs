@@ -3,6 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const REQUIRED_STORAGE_DRIFT_REASON_KEYS = [
+  'file_missing',
+  'retention_expired',
+  'disk_full',
+  'cache_flush_failed',
+];
+
 export function parseArgs(args, env = process.env) {
   const parsed = {
     deviceBaseUrl: env.YFEIEYE_DEVICE_BASE_URL || '',
@@ -440,6 +447,10 @@ function liveVideoEvidenceError(stepName, summary) {
   if (summary.storageDriftSummary?.healthy !== true) {
     return `production smoke step ${stepName} did not prove healthy storage drift patrol`;
   }
+  const missingStorageReason = missingStorageDriftReason(summary.storageDriftSummary?.standardReasonKeys);
+  if (missingStorageReason) {
+    return `production smoke step ${stepName} missing standard storage drift reason evidence: ${missingStorageReason}`;
+  }
   if (!hasText(summary.exportResult?.downloadUrl)) {
     return `production smoke step ${stepName} missing export downloadUrl evidence`;
   }
@@ -467,6 +478,13 @@ function liveVideoEvidenceError(stepName, summary) {
     return `production smoke step ${stepName} missing HMAC manifest verifier signature evidence`;
   }
   return null;
+}
+
+function missingStorageDriftReason(reasonKeys) {
+  const keys = Array.isArray(reasonKeys)
+    ? reasonKeys.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  return REQUIRED_STORAGE_DRIFT_REASON_KEYS.find((reason) => !keys.includes(reason));
 }
 
 function livePlayerEvidenceError(stepName, player, allowLocalEndpoints) {

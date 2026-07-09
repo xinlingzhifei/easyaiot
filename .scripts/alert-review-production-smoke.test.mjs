@@ -13,6 +13,13 @@ import {
   releaseEntriesForTrackedPaths,
 } from './verify-alert-review-release-package.mjs';
 
+const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
+  'file_missing',
+  'retention_expired',
+  'disk_full',
+  'cache_flush_failed',
+];
+
 const parsed = parseArgs([
   '--device-base-url=https://device.release.example/api',
   '--token=token-1',
@@ -428,7 +435,8 @@ const smokeWithEvidence = await runProductionSmoke({
     "healthy": true,
     "recordCount": 3,
     "issueCount": 0,
-    "issueReasons": {}
+    "issueReasons": {},
+    "standardReasonKeys": ["file_missing", "retention_expired", "disk_full", "cache_flush_failed"]
   },
   "exportResult": {
     "exportId": "review-export-1",
@@ -549,6 +557,7 @@ assert.deepEqual(evidenceReport.steps[2].summary.storageDriftSummary, {
   recordCount: 3,
   issueCount: 0,
   issueReasons: {},
+  standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
 });
 assert.deepEqual(evidenceReport.steps[2].summary.checkpoints, [
   'alert_record_query_ok',
@@ -730,6 +739,66 @@ await assert.rejects(
             expiresAt: '2026-07-20T00:00:00Z',
             exportPackageObjectKey: 'review-export-1/content.bin',
           },
+          manifestVerification: {
+            valid: true,
+            signatureValid: true,
+            signatureKeyAvailable: true,
+            keyId: '2026-q2',
+            signatureVersion: 'v2',
+            violations: [],
+          },
+        }),
+      };
+    },
+  }),
+  /production smoke step LiveVideo missing standard storage drift reason evidence: file_missing/,
+);
+
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: () => {},
+    runCommand: async (step) => {
+      if (step.name !== 'LiveVideo') {
+        return { status: 0, stdout: summaryStdoutForStep(step.name) };
+      }
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          checkpoints: [
+            'alert_record_query_ok',
+            'record_coverage_query_ok',
+            'record_base_space_resolved',
+            'record_storage_drift_patrol_ok',
+            'record_export_posted',
+            'record_export_download_ready',
+            'record_export_download_probed',
+            'record_export_manifest_verified',
+          ],
+          storageDriftSummary: {
+            healthy: true,
+            recordCount: 3,
+            issueCount: 0,
+            issueReasons: {},
+            standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
+          },
+          exportResult: {
+            exportId: 'review-export-1',
+            downloadUrl: '/downloads/review-export-1.mp4',
+            manifestUrl: '/manifests/review-export-1.json',
+          },
+          manifestSignature: {
+            algorithm: 'hmac-sha256',
+            keyId: '2026-q2',
+            signatureVersion: 'v2',
+          },
+          manifestStorageLifecycle: {
+            storageType: 'object_storage',
+            status: 'persisted',
+            expiresAt: '2026-07-20T00:00:00Z',
+            exportPackageObjectKey: 'review-export-1/content.bin',
+          },
         }),
       };
     },
@@ -764,6 +833,7 @@ await assert.rejects(
             recordCount: 3,
             issueCount: 0,
             issueReasons: {},
+            standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
           },
           exportResult: {
             exportId: 'review-export-1',
@@ -823,6 +893,7 @@ await assert.rejects(
             recordCount: 3,
             issueCount: 0,
             issueReasons: {},
+            standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
           },
           exportResult: {
             exportId: 'review-export-1',
@@ -943,6 +1014,7 @@ function summaryStdoutForStep(name, options = {}) {
         recordCount: 3,
         issueCount: 0,
         issueReasons: {},
+        standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
       },
       exportResult: {
         exportId: 'review-export-1',

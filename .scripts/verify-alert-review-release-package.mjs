@@ -365,6 +365,22 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'live_video_manifest_verifier_required_missing',
     });
   }
+  if (liveVideo && liveVideo.content.includes('validateStorageDriftReport') && !containsAll(liveVideo.content, [
+    'REQUIRED_STORAGE_DRIFT_REASON_KEYS',
+    'storageDriftReasonKeys',
+    'standardReasonKeys',
+    'missing standard reason evidence',
+    'file_missing',
+    'retention_expired',
+    'disk_full',
+    'cache_flush_failed',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_storage_drift_reason_evidence_missing',
+    });
+  }
   if (liveVideo && !containsAll(liveVideo.content, [
     'assertReleaseMediaEvidence',
     'assertReleaseSegmentMediaEvidence',
@@ -435,6 +451,21 @@ export function scanLiveVideoEvidenceGate(files) {
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
       reason: 'production_smoke_manifest_storage_lifecycle_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'REQUIRED_STORAGE_DRIFT_REASON_KEYS',
+    'summary.storageDriftSummary?.standardReasonKeys',
+    'missing standard storage drift reason evidence',
+    'file_missing',
+    'retention_expired',
+    'disk_full',
+    'cache_flush_failed',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_storage_drift_reason_evidence_missing',
     });
   }
   if (productionSmoke && !containsAll(productionSmoke.content, [
