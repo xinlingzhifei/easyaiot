@@ -549,12 +549,11 @@ function validateClipWindows(sourceSegments) {
 }
 
 function validateManifestConcatOrder(recordSegments, concatOrder) {
-  if (concatOrder.length) {
-    return;
-  }
+  const orderEntries = concatOrder.length
+    ? concatOrder.map(normalizeConcatOrderEntry)
+    : recordSegments.map((segment) => firstPresent(segment.index, segment.order, segment.sequence));
   const seen = new Set();
-  for (const segment of recordSegments) {
-    const rawOrder = firstPresent(segment.index, segment.order, segment.sequence);
+  for (const rawOrder of orderEntries) {
     const order = Number(rawOrder);
     if (!Number.isInteger(order) || order < 0) {
       throw new Error(`record export manifest invalid concat order index: ${rawOrder}`);
@@ -564,6 +563,13 @@ function validateManifestConcatOrder(recordSegments, concatOrder) {
     }
     seen.add(order);
   }
+}
+
+function normalizeConcatOrderEntry(entry) {
+  if (entry && typeof entry === 'object') {
+    return firstPresent(entry.index, entry.order, entry.sequence);
+  }
+  return entry;
 }
 
 function validateManifestStorageLifecycle(manifest, outputs) {
