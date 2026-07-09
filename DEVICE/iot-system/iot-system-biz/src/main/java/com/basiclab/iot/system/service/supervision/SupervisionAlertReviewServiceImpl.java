@@ -3667,10 +3667,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static String normalizeRecordGapReason(String value) {
-        if (!hasText(value)) {
+        String normalized = normalizeRecordGapReasonToken(value);
+        if (!hasText(normalized)) {
             return null;
         }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
         return recordGapReasonDefinition(normalized)
                 .map(RecordGapReasonDefinition::code)
                 .orElse(RECORD_GAP_RECORD_NOT_FOUND);
@@ -3680,11 +3680,22 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (!hasText(value)) {
             return Optional.empty();
         }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        String normalized = normalizeRecordGapReasonToken(value);
         return RECORD_GAP_REASON_CATALOG.stream()
                 .filter(definition -> definition.code().equals(normalized)
                         || definition.aliases().contains(normalized))
                 .findFirst();
+    }
+
+    private static String normalizeRecordGapReasonToken(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+        return hasText(normalized) ? normalized : null;
     }
 
     private static Map<String, Map<String, Object>> recordGapReasonCatalog() {

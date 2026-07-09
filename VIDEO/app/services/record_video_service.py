@@ -998,7 +998,7 @@ def _normalize_gap_reason(reason) -> dict:
         retryable = None
         source = None
         probe = None
-    normalized = raw_reason or 'unknown'
+    normalized = _normalize_gap_reason_token(raw_reason)
     alias_map = {
         'file_expired': 'retention_expired',
     }
@@ -1042,6 +1042,16 @@ def _normalize_gap_reason(reason) -> dict:
         'source': source,
         'probe': probe,
     }
+
+
+def _normalize_gap_reason_token(value) -> str:
+    text = str(value or '').strip().lower()
+    if not text:
+        return 'unknown'
+    normalized = ''.join(ch if ch.isalnum() else '_' for ch in text)
+    while '__' in normalized:
+        normalized = normalized.replace('__', '_')
+    return normalized.strip('_') or 'unknown'
 
 
 def _availability_probe(record) -> dict:

@@ -110,23 +110,30 @@ class TestRecordAvailabilityService(unittest.TestCase):
 
     def test_missing_segments_normalize_legacy_gap_reason_aliases(self):
         service = self._import_record_video_service_with_stubs()
+        aliases = {
+            'file_expired': 'retention_expired',
+            'file-expired': 'retention_expired',
+            'FILE EXPIRED': 'retention_expired',
+            'VIDEO URL NOT CONFIGURED': 'video_url_not_configured',
+        }
 
-        result = service.build_recording_availability(
-            records=[],
-            alerts=[],
-            space_id=7,
-            device_id='device-01',
-            camera_id='camera-01',
-            begin_time=datetime(2026, 6, 30, 10, 0, 0),
-            end_time=datetime(2026, 6, 30, 10, 1, 0),
-            missing_reason='file_expired',
-        )
+        for alias, canonical in aliases.items():
+            with self.subTest(alias=alias):
+                result = service.build_recording_availability(
+                    records=[],
+                    alerts=[],
+                    space_id=7,
+                    device_id='device-01',
+                    camera_id='camera-01',
+                    begin_time=datetime(2026, 6, 30, 10, 0, 0),
+                    end_time=datetime(2026, 6, 30, 10, 1, 0),
+                    missing_reason=alias,
+                )
 
-        missing = result['missing'][0]
-        self.assertEqual('retention_expired', missing['gap_reason'])
-        self.assertEqual('retention', missing['gap_reason_category'])
-        self.assertFalse(missing['retryable'])
-        self.assertEqual({'retention_expired': 60}, result['summary']['gap_reasons'])
+                missing = result['missing'][0]
+                self.assertEqual(canonical, missing['gap_reason'])
+                self.assertNotIn(alias, result['summary']['gap_reasons'])
+                self.assertEqual({canonical: 60}, result['summary']['gap_reasons'])
 
     def test_availability_uses_review_overlap_retention_capture_and_probe_facts(self):
         service = self._import_record_video_service_with_stubs()

@@ -321,6 +321,9 @@ export function scanLiveVideoEvidenceGate(files) {
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
   const recordVideoService = files.find((file) => normalizePath(file.path || '') === 'VIDEO/app/services/record_video_service.py');
   if (recordVideoService && recordVideoService.content.includes('_normalize_gap_reason') && !containsAll(recordVideoService.content, [
+    '_normalize_gap_reason_token',
+    'isalnum',
+    "normalized.strip('_')",
     "'file_expired': 'retention_expired'",
     "'retention_expired': 'retention'",
     "'video_url_not_configured': 'configuration'",

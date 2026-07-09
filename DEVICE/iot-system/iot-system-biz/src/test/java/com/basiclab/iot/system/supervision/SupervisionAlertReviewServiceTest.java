@@ -1438,6 +1438,10 @@ class SupervisionAlertReviewServiceTest {
                 item.id(),
                 9005L,
                 List.of(
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(8), alertTime.minusMinutes(7),
+                                0, null, 0, Map.of("gapReason", "file-expired")),
+                        new RecordCoverageSegment("missing", alertTime.minusMinutes(7), alertTime.minusMinutes(6),
+                                0, null, 0, Map.of("gapReason", "VIDEO URL NOT CONFIGURED")),
                         new RecordCoverageSegment("missing", alertTime.minusMinutes(6), alertTime.minusMinutes(5),
                                 0, null, 0, Map.of("gapReason", "file_expired")),
                         new RecordCoverageSegment("missing", alertTime.minusMinutes(5), alertTime.minusMinutes(4),
@@ -1456,6 +1460,9 @@ class SupervisionAlertReviewServiceTest {
 
         assertEquals(1, health.recordGapReasons().get("retention_expired"));
         assertFalse(health.recordGapReasons().containsKey("file_expired"));
+        assertFalse(health.recordGapReasons().containsKey("file-expired"));
+        assertFalse(health.recordGapReasons().containsKey("record_not_found"));
+        assertEquals(1, health.recordGapReasons().get("video_url_not_configured"));
         assertEquals(1, health.recordGapReasons().get("permission_denied"));
         assertEquals(1, health.recordGapReasons().get("record_space_not_found"));
         assertEquals(1, health.recordGapReasons().get("probe_failed"));
