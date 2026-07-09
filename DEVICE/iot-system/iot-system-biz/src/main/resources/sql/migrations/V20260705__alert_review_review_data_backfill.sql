@@ -15,19 +15,19 @@ DECLARE
 BEGIN
   FOR item IN
     SELECT
-      id,
-      review_data,
-      source_system,
-      source_alert_type,
-      source_alert_ids,
-      object_label,
-      first_alert_time,
-      last_alert_time,
-      camera_id,
-      zone_code,
-      rule_code
-    FROM system_supervision_alert_review_item
-    WHERE deleted = FALSE
+      item_row.id,
+      item_row.review_data,
+      item_row.source_system,
+      item_row.source_alert_type,
+      item_row.source_alert_ids,
+      item_row.object_label,
+      item_row.first_alert_time,
+      item_row.last_alert_time,
+      item_row.camera_id,
+      item_row.zone_code,
+      item_row.rule_code
+    FROM system_supervision_alert_review_item item_row
+    WHERE item_row.deleted = FALSE
   LOOP
     BEGIN
       current_data := CASE

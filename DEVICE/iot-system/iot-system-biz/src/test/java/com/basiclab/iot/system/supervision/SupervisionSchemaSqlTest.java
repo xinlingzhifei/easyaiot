@@ -365,6 +365,8 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("detections"));
         assertTrue(migrationSql.contains("reviewSegment"));
         assertTrue(migrationSql.contains("migration_backfill"));
+        assertTrue(migrationSql.contains("FROM system_supervision_alert_review_item item_row"));
+        assertTrue(migrationSql.contains("item_row.source_alert_ids"));
     }
 
     @Test
