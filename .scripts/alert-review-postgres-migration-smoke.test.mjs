@@ -36,6 +36,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
 ]);
 
 const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('scheduler_jobs')), 'utf8');
@@ -96,6 +97,14 @@ const segmentAlertSeverityGuardMigrationSql = readFileSync(
 assert.match(segmentAlertSeverityGuardMigrationSql, /ck_supervision_alert_review_segment_alert_severity/);
 assert.match(segmentAlertSeverityGuardMigrationSql, /segment_status <> 'alert' OR severity = 'alert'/);
 assert.match(segmentAlertSeverityGuardMigrationSql, /SET severity = 'alert'/);
+
+const mergeIndexSameCameraMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('merge_index_same_camera')),
+  'utf8',
+);
+assert.match(mergeIndexSameCameraMigrationSql, /DROP INDEX IF EXISTS idx_supervision_alert_review_merge/);
+assert.match(mergeIndexSameCameraMigrationSql, /tenant_id, source_system, camera_id, review_status, last_alert_time/);
+assert.doesNotMatch(mergeIndexSameCameraMigrationSql, /zone_code, rule_code/);
 
 const bootstrapSql = buildBootstrapSql();
 assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);

@@ -17,6 +17,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -336,6 +337,26 @@ BEGIN
       AND indexname = 'idx_supervision_alert_review_runtime_outbox_claim'
   ) THEN
     RAISE EXCEPTION 'expected runtime outbox claim index to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_item'
+      AND indexname = 'idx_supervision_alert_review_merge'
+      AND indexdef LIKE '%tenant_id, source_system, camera_id, review_status, last_alert_time%'
+  ) THEN
+    RAISE EXCEPTION 'expected alert review merge index to use same-camera window columns';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_item'
+      AND indexname = 'idx_supervision_alert_review_merge'
+      AND (indexdef LIKE '%zone_code%' OR indexdef LIKE '%rule_code%')
+  ) THEN
+    RAISE EXCEPTION 'expected alert review merge index to ignore zone/rule for same-camera segment merging';
   END IF;
 
   IF NOT EXISTS (
@@ -801,7 +822,7 @@ function printHelp() {
 Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container or a direct PostgreSQL URL.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
 The direct URL must be a maintenance database URL accepted by local psql; the smoke creates --database on the same server.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, V20260708_3, V20260708_4, V20260708_5, V20260708_6, V20260708_7, and V20260708_8, and verifies ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, V20260708_3, V20260708_4, V20260708_5, V20260708_6, V20260708_7, V20260708_8, and V20260708_9, and verifies ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

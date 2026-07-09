@@ -31,7 +31,7 @@ ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, las
 
 DROP INDEX IF EXISTS idx_supervision_alert_review_merge;
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_merge
-ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code, review_status, last_alert_time);
+ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_item
 ON system_supervision_alert_review_segment(review_item_id)

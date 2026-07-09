@@ -199,7 +199,8 @@ class SupervisionSchemaSqlTest {
         assertTrue(reviewItemTable.contains("record_evidence_checked_at TIMESTAMP"));
         assertTrue(reviewItemTable.contains("record_evidence_message VARCHAR(256)"));
         assertTrue(sql.contains("ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, last_alert_time)"));
-        assertTrue(sql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code, review_status, last_alert_time)"));
+        assertTrue(sql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time)"));
+        assertFalse(sql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code"));
         assertTrue(ingestIdentityTable.contains("tenant_id BIGINT NOT NULL DEFAULT 0"));
         assertTrue(ingestIdentityTable.contains("review_item_id BIGINT NOT NULL"));
         assertTrue(ingestIdentityTable.contains("source_system VARCHAR(64) NOT NULL"));
@@ -315,7 +316,8 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("uk_supervision_alert_review_segment_item"));
         assertTrue(migrationSql.contains("ADD COLUMN IF NOT EXISTS tenant_id BIGINT"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, last_alert_time)"));
-        assertTrue(migrationSql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code, review_status, last_alert_time)"));
+        assertTrue(migrationSql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time)"));
+        assertFalse(migrationSql.contains("ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code"));
         assertTrue(migrationSql.contains("CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity"));
         assertTrue(migrationSql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)"));
@@ -458,6 +460,24 @@ class SupervisionSchemaSqlTest {
 
         String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
         assertTrue(baselineSql.contains("ck_supervision_alert_review_segment_alert_severity"));
+    }
+
+    @Test
+    void alertReviewMergeIndexMigrationUsesSameCameraWindowSemantics() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql");
+        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+        String sameCameraIndex = "ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time)";
+        String oldZoneRuleIndex = "ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code";
+
+        assertTrue(Files.exists(migration), "same-camera merge index migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("DROP INDEX IF EXISTS idx_supervision_alert_review_merge"));
+        assertTrue(migrationSql.contains(sameCameraIndex));
+        assertFalse(migrationSql.contains(oldZoneRuleIndex));
+
+        String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
+        assertTrue(baselineSql.contains(sameCameraIndex));
+        assertFalse(baselineSql.contains(oldZoneRuleIndex));
     }
 
     @Test

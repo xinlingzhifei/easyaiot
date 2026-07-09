@@ -156,7 +156,7 @@ CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_workbench
 ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, last_alert_time);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_merge
-ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code, review_status, last_alert_time);
+ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_event
 ON system_supervision_alert_review_item(event_id);
