@@ -831,7 +831,7 @@ function buildPlayerSmokeSummary(payload) {
   copyBooleanIfPresent(player, payload, 'clickedRow');
   copyBooleanIfPresent(player, payload, 'clickedAction');
   copyTextIfPresent(player, payload, 'seekTime');
-  copyTextIfPresent(player, payload, 'recordPath');
+  copySanitizedUrlIfPresent(player, payload, 'recordPath');
   copySanitizedUrlIfPresent(player, payload, 'currentUrl');
   copyNumberIfPresent(player, payload, 'playbackOffsetSeconds');
   copyNumberIfPresent(player, payload, 'nativeCurrentTime');

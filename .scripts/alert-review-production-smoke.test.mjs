@@ -537,7 +537,7 @@ const smokeWithEvidence = await runProductionSmoke({
     "clickedRow": true,
     "clickedAction": true,
     "seekTime": "2026-07-05T10:00:30",
-    "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4",
+    "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4?token=record-path-secret&signature=record-path-sig#media",
     "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=wrapped-media-secret&signature=abc#playback",
     "playbackOffsetSeconds": 30,
     "nativeCurrentTime": 30.25,
@@ -707,6 +707,7 @@ assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('command-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('media-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('wrapped-media-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('record-path-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('wrapped-debug-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('coverage-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('case-secret'), false);

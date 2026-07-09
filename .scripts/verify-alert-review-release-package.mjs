@@ -586,6 +586,16 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_player_native_time_evidence_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('livePlayerEvidenceError') && !containsAll(productionSmoke.content, [
+    "copySanitizedUrlIfPresent(player, payload, 'recordPath')",
+    'stripUrlSecrets',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_player_record_path_sanitizer_missing',
+    });
+  }
   const productionSmokeHasLiveDeviceEvidenceGate = productionSmoke?.content.includes('liveDeviceEvidenceError') === true;
   const productionSmokeMissingAuditChainGate = productionSmokeHasLiveDeviceEvidenceGate && !containsAll(productionSmoke.content, [
     'auditChain',
