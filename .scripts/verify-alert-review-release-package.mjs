@@ -535,6 +535,13 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_step_timeout_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('requiredOptionErrors') && !productionSmoke.content.includes('--timeout-ms=${options.stepTimeoutMs}')) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_child_timeout_missing',
+    });
+  }
   if (productionSmoke && productionSmoke.content.includes('W2:typecheck') && !containsAll(productionSmoke.content, [
     '--pm-on-fail=ignore',
     'pnpm_version_guard',

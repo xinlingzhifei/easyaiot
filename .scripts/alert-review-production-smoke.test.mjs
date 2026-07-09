@@ -265,22 +265,27 @@ assert.ok(steps[1].args.includes('--playback-denied-camera-ids=camera-02'));
 assert.ok(steps[1].args.includes('--playback-review-item-id=1001'));
 assert.ok(steps[1].args.includes('--playback-review-case-id=2001'));
 assert.ok(steps[1].args.includes('--playback-material-uri=playback-url.mp4'));
+assert.ok(steps[1].args.includes('--timeout-ms=900000'));
 assert.ok(steps[2].args.includes('--record-export-url=https://video.release.example/video/record/export'));
 assert.ok(steps[2].args.includes('--camera-id=camera-01'));
 assert.ok(steps[2].args.includes('--record-drift-retention-hours=24'));
 assert.ok(steps[2].args.includes('--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs'));
+assert.ok(steps[2].args.includes('--timeout-ms=900000'));
 assert.ok(steps[3].args.includes('--action-testid=alert-review-detail-seek'));
 assert.ok(steps[3].args.includes('--expected-offset-seconds=30'));
+assert.ok(steps[3].args.includes('--timeout-ms=900000'));
 assert.ok(steps[3].args.includes('--assert-native-current-time'));
 assert.ok(steps[4].args.includes('--action-testid=alert-review-coverage-seek'));
 assert.ok(steps[4].args.includes('--expected-offset-seconds=0'));
+assert.ok(steps[4].args.includes('--timeout-ms=900000'));
 assert.ok(steps[4].args.includes('--assert-native-current-time'));
 assert.ok(steps[5].args.includes('--action-testid=alert-review-case-timeline-seek'));
 assert.ok(steps[5].args.includes('--expected-offset-seconds=0'));
+assert.ok(steps[5].args.includes('--timeout-ms=900000'));
 assert.ok(steps[5].args.includes('--assert-native-current-time'));
 assert.equal(
   formatStepCommand(steps[1]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
 );
 
 const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smoke.mjs', '--help'], {

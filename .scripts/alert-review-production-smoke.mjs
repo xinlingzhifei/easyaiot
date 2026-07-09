@@ -213,6 +213,7 @@ export function buildSmokeSteps(options, runtime = {}) {
         cameraListArg('--playback-allowed-camera-ids', options.devicePlaybackAllowedCameraIds),
         cameraListArg('--playback-denied-camera-ids', options.devicePlaybackDeniedCameraIds),
         hasText(options.devicePlaybackReason) ? `--playback-reason=${options.devicePlaybackReason}` : '',
+        `--timeout-ms=${options.stepTimeoutMs}`,
       ]),
     },
     {
@@ -230,6 +231,7 @@ export function buildSmokeSteps(options, runtime = {}) {
         `--alert-time=${options.videoAlertTime}`,
         `--record-drift-retention-hours=${options.videoRecordDriftRetentionHours}`,
         hasText(options.videoManifestVerifierScript) ? `--manifest-verifier-script=${options.videoManifestVerifierScript}` : '',
+        `--timeout-ms=${options.stepTimeoutMs}`,
         options.allowLocalEndpoints ? '--allow-local-endpoints' : '',
       ]),
     },
@@ -259,6 +261,7 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
       `--expected-seek-time=${expectedSeekTime}`,
       `--expected-record-path-contains=${expectedRecordPathContains}`,
       `--expected-offset-seconds=${expectedOffsetSeconds}`,
+      `--timeout-ms=${options.stepTimeoutMs}`,
       '--assert-native-current-time',
       hasText(options.playerWaitText) ? `--wait-text=${options.playerWaitText}` : '',
       options.allowLocalEndpoints ? '--allow-local-endpoints' : '',
@@ -1055,7 +1058,9 @@ the dedicated smoke scripts. If Corepack/pnpm stops before vue-tsc because the l
 pnpm version differs, W2 retries once with --pm-on-fail=ignore and records typecheckRetry evidence.
 Each step has a timeout, defaulting to 900000ms, configurable through
 --step-timeout-ms or YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout exits are
-reported as exit code 124 and written to the evidence report.
+reported as exit code 124 and written to the evidence report. The same value is
+passed to LiveDevice, LiveVideo, and LivePlayer child smokes as --timeout-ms so
+their internal HTTP/browser waits align with the parent step boundary.
 Release smoke requires a video manifest verifier script so the fetched
 manifest is verified against reachable manifest-referenced evidence files, and
 requires an evidence output path so every release run leaves a sanitized JSON
