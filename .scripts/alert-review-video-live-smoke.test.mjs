@@ -14,6 +14,10 @@ import {
   releaseEntriesForTrackedPaths,
 } from './verify-alert-review-release-package.mjs';
 
+const SOURCE_SEGMENT_HASH = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const OUTPUT_FILE_HASH = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const FFMPEG_COMMAND_HASH = 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+
 const parsed = parseArgs([
   '--alert-record-query-url=http://video.local/video/record/availability',
   '--record-coverage-query-url=http://video.local/video/record/availability',
@@ -195,17 +199,17 @@ const fakeFetch = async (url, init = {}) => {
         {
           index: 0,
           recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
-          sourceHash: 'sha256:source-segment',
+          sourceHash: SOURCE_SEGMENT_HASH,
           clipStartTime: '2026-07-05T10:00:00',
           clipEndTime: '2026-07-05T10:01:00',
-          ffmpegCommandHash: 'sha256:ffmpeg-command',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
         },
       ],
       files: [
         {
           path: 'review-export-1.mp4',
           role: 'export_package',
-          hash: 'sha256:output-file',
+          hash: OUTPUT_FILE_HASH,
           storage: {
             storageType: 'object_storage',
             artifactRole: 'export_package',
@@ -637,6 +641,110 @@ await assert.rejects(
   /record export download probe returned non-video content-type: application\/json/,
 );
 
+const invalidManifestHashFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      recordSegments: [
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: 'sha256:source-segment',
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+        },
+      ],
+      files: [
+        {
+          path: 'review-export-1.mp4',
+          role: 'export_package',
+          hash: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          storage: {
+            storageType: 'object_storage',
+            artifactRole: 'export_package',
+            objectKey: 'review-export-1/content.bin',
+            expiresAt: '2026-07-20T00:00:00Z',
+            lifecycleStatus: 'retained',
+          },
+        },
+      ],
+      storageLifecycle: {
+        storageType: 'object_storage',
+        storeRoot: 's3://evidence-exports',
+        status: 'retained',
+        expiresAt: '2026-07-20T00:00:00Z',
+        artifactKeys: {
+          exportPackage: 'review-export-1/content.bin',
+        },
+      },
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:signed-manifest',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: invalidManifestHashFetch }),
+  /record export manifest invalid source segment hash: sha256:source-segment/,
+);
+
+const invalidOutputHashFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      recordSegments: [
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: SOURCE_SEGMENT_HASH,
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+        },
+      ],
+      files: [
+        {
+          path: 'review-export-1.mp4',
+          role: 'export_package',
+          hash: 'output-file',
+          storage: {
+            storageType: 'object_storage',
+            artifactRole: 'export_package',
+            objectKey: 'review-export-1/content.bin',
+            expiresAt: '2026-07-20T00:00:00Z',
+            lifecycleStatus: 'retained',
+          },
+        },
+      ],
+      storageLifecycle: {
+        storageType: 'object_storage',
+        storeRoot: 's3://evidence-exports',
+        status: 'retained',
+        expiresAt: '2026-07-20T00:00:00Z',
+        artifactKeys: {
+          exportPackage: 'review-export-1/content.bin',
+        },
+      },
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:signed-manifest',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: invalidOutputHashFetch }),
+  /record export manifest invalid output file hash: output-file/,
+);
+
 const missingManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/video/record/export/review-export-1')) {
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
@@ -656,17 +764,17 @@ const missingStorageLifecycleFetch = async (url, init = {}) => {
         {
           index: 0,
           recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
-          sourceHash: 'sha256:source-segment',
+          sourceHash: SOURCE_SEGMENT_HASH,
           clipStartTime: '2026-07-05T10:00:00',
           clipEndTime: '2026-07-05T10:01:00',
-          ffmpegCommandHash: 'sha256:ffmpeg-command',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
         },
       ],
       files: [
         {
           path: 'review-export-1.mp4',
           role: 'export_package',
-          hash: 'sha256:output-file',
+          hash: OUTPUT_FILE_HASH,
         },
       ],
       signature: {
@@ -692,17 +800,17 @@ const unsignedManifestFetch = async (url, init = {}) => {
         {
           index: 0,
           recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
-          sourceHash: 'sha256:source-segment',
+          sourceHash: SOURCE_SEGMENT_HASH,
           clipStartTime: '2026-07-05T10:00:00',
           clipEndTime: '2026-07-05T10:01:00',
-          ffmpegCommandHash: 'sha256:ffmpeg-command',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
         },
       ],
       files: [
         {
           path: 'review-export-1.mp4',
           role: 'export_package',
-          hash: 'sha256:output-file',
+          hash: OUTPUT_FILE_HASH,
         },
       ],
     });
@@ -718,17 +826,17 @@ const incompleteManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
-      ffmpegCommandHash: 'sha256:ffmpeg-command',
+      ffmpegCommandHash: FFMPEG_COMMAND_HASH,
       sourceSegments: [
         {
           recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
-          sourceHash: 'sha256:source-segment',
+          sourceHash: SOURCE_SEGMENT_HASH,
         },
       ],
       outputs: [
         {
           path: 'review-export-1.mp4',
-          sha256: 'output-sha256',
+          sha256: OUTPUT_FILE_HASH,
         },
       ],
       signature: {

@@ -474,24 +474,34 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   if (!concatOrder.length && !hasSegmentConcatOrder) {
     throw new Error('record export manifest missing concat order');
   }
-  if (!sourceSegments.length || sourceSegments.some((segment) => !hasText(firstText(
+  const sourceSegmentHashes = sourceSegments.map((segment) => firstText(
     segment.sourceHash,
     segment.source_hash,
     segment.sha256,
     segment.hash,
     segment.checksum,
-  )))) {
+  ));
+  if (!sourceSegments.length || sourceSegmentHashes.some((hash) => !hasText(hash))) {
     throw new Error('record export manifest missing source segment hashes');
   }
+  const invalidSourceHash = sourceSegmentHashes.find((hash) => !isSha256Digest(hash));
+  if (invalidSourceHash) {
+    throw new Error(`record export manifest invalid source segment hash: ${invalidSourceHash}`);
+  }
   const outputs = firstList(manifest, 'outputs', 'files', 'artifacts');
-  if (!outputs.length || outputs.some((output) => !hasText(firstText(
+  const outputHashes = outputs.map((output) => firstText(
     output.fileHash,
     output.file_hash,
     output.sha256,
     output.hash,
     output.checksum,
-  )))) {
+  ));
+  if (!outputs.length || outputHashes.some((hash) => !hasText(hash))) {
     throw new Error('record export manifest missing output file hashes');
+  }
+  const invalidOutputHash = outputHashes.find((hash) => !isSha256Digest(hash));
+  if (invalidOutputHash) {
+    throw new Error(`record export manifest invalid output file hash: ${invalidOutputHash}`);
   }
   const storageLifecycle = validateManifestStorageLifecycle(manifest, outputs);
   const manifestVerification = await runManifestVerifierIfConfigured({
@@ -505,6 +515,12 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
     storageLifecycle,
     ...(manifestVerification ? { verification: manifestVerification } : {}),
   };
+}
+
+function isSha256Digest(value) {
+  const hash = String(value || '').trim();
+  return /^[a-f0-9]{64}$/i.test(hash)
+    || /^sha256:[a-f0-9]{64}$/i.test(hash);
 }
 
 function validateManifestStorageLifecycle(manifest, outputs) {
