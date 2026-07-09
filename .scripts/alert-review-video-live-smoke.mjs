@@ -549,9 +549,14 @@ function validateClipWindows(sourceSegments) {
 }
 
 function validateManifestConcatOrder(recordSegments, concatOrder) {
+  const segmentOrderEntries = recordSegments.map((segment) => firstPresent(
+    segment.index,
+    segment.order,
+    segment.sequence,
+  ));
   const orderEntries = concatOrder.length
     ? concatOrder.map(normalizeConcatOrderEntry)
-    : recordSegments.map((segment) => firstPresent(segment.index, segment.order, segment.sequence));
+    : segmentOrderEntries;
   const seen = new Set();
   for (const rawOrder of orderEntries) {
     const order = Number(rawOrder);
@@ -563,6 +568,9 @@ function validateManifestConcatOrder(recordSegments, concatOrder) {
     }
     seen.add(order);
   }
+  if (concatOrder.length) {
+    validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length);
+  }
 }
 
 function normalizeConcatOrderEntry(entry) {
@@ -570,6 +578,40 @@ function normalizeConcatOrderEntry(entry) {
     return firstPresent(entry.index, entry.order, entry.sequence);
   }
   return entry;
+}
+
+function validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegmentCount) {
+  if (!recordSegmentCount) {
+    return;
+  }
+  const segmentOrders = segmentOrderEntries.map((rawOrder) => Number(rawOrder));
+  const canCompareSegmentIndexes = segmentOrderEntries.every((rawOrder, index) => (
+    rawOrder !== undefined
+    && rawOrder !== null
+    && Number.isInteger(segmentOrders[index])
+    && segmentOrders[index] >= 0
+  ));
+  if (!canCompareSegmentIndexes) {
+    if (orderEntries.length !== recordSegmentCount) {
+      throw new Error(`record export manifest concat order count ${orderEntries.length} does not match segment count ${recordSegmentCount}`);
+    }
+    return;
+  }
+  const segmentIndexSet = new Set(segmentOrders);
+  const orderIndexSet = new Set(orderEntries.map((rawOrder) => Number(rawOrder)));
+  for (const order of orderIndexSet) {
+    if (!segmentIndexSet.has(order)) {
+      throw new Error(`record export manifest concat order references missing segment index: ${order}`);
+    }
+  }
+  for (const segmentIndex of segmentIndexSet) {
+    if (!orderIndexSet.has(segmentIndex)) {
+      throw new Error(`record export manifest concat order omits segment index: ${segmentIndex}`);
+    }
+  }
+  if (orderEntries.length !== recordSegmentCount) {
+    throw new Error(`record export manifest concat order count ${orderEntries.length} does not match segment count ${recordSegmentCount}`);
+  }
 }
 
 function validateManifestStorageLifecycle(manifest, outputs) {

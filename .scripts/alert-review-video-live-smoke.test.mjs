@@ -909,65 +909,91 @@ await assert.rejects(
   /record export manifest duplicate concat order index: 0/,
 );
 
+function rootConcatOrderManifest(concatOrder) {
+  return {
+    manifestVersion: 2,
+    concatOrder,
+    recordSegments: [
+      {
+        index: 0,
+        recordUri: '/video/record/space/7/video/live/device-01/clip-a.mp4',
+        sourceHash: SOURCE_SEGMENT_HASH,
+        clipStartTime: '2026-07-05T10:00:00',
+        clipEndTime: '2026-07-05T10:00:30',
+        ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+      },
+      {
+        index: 1,
+        recordUri: '/video/record/space/7/video/live/device-01/clip-b.mp4',
+        sourceHash: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+        clipStartTime: '2026-07-05T10:00:30',
+        clipEndTime: '2026-07-05T10:01:00',
+        ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+      },
+    ],
+    files: [
+      {
+        path: 'review-export-1.mp4',
+        role: 'export_package',
+        hash: OUTPUT_FILE_HASH,
+        storage: {
+          storageType: 'object_storage',
+          artifactRole: 'export_package',
+          objectKey: 'review-export-1/content.bin',
+          expiresAt: '2026-07-20T00:00:00Z',
+          lifecycleStatus: 'retained',
+        },
+      },
+    ],
+    storageLifecycle: {
+      storageType: 'object_storage',
+      storeRoot: 's3://evidence-exports',
+      status: 'retained',
+      expiresAt: '2026-07-20T00:00:00Z',
+      artifactKeys: {
+        exportPackage: 'review-export-1/content.bin',
+      },
+    },
+    signature: {
+      algorithm: 'hmac-sha256',
+      keyId: '2026-q2',
+      signatureVersion: 'v2',
+      value: 'hmac-sha256:signed-manifest',
+    },
+  };
+}
+
 const duplicateRootConcatOrderFetch = async (url, init = {}) => {
   if (String(url).endsWith('/manifests/review-export-1.json')) {
-    return jsonResponse({
-      manifestVersion: 2,
-      concatOrder: [0, 0],
-      recordSegments: [
-        {
-          index: 0,
-          recordUri: '/video/record/space/7/video/live/device-01/clip-a.mp4',
-          sourceHash: SOURCE_SEGMENT_HASH,
-          clipStartTime: '2026-07-05T10:00:00',
-          clipEndTime: '2026-07-05T10:00:30',
-          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
-        },
-        {
-          index: 1,
-          recordUri: '/video/record/space/7/video/live/device-01/clip-b.mp4',
-          sourceHash: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-          clipStartTime: '2026-07-05T10:00:30',
-          clipEndTime: '2026-07-05T10:01:00',
-          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
-        },
-      ],
-      files: [
-        {
-          path: 'review-export-1.mp4',
-          role: 'export_package',
-          hash: OUTPUT_FILE_HASH,
-          storage: {
-            storageType: 'object_storage',
-            artifactRole: 'export_package',
-            objectKey: 'review-export-1/content.bin',
-            expiresAt: '2026-07-20T00:00:00Z',
-            lifecycleStatus: 'retained',
-          },
-        },
-      ],
-      storageLifecycle: {
-        storageType: 'object_storage',
-        storeRoot: 's3://evidence-exports',
-        status: 'retained',
-        expiresAt: '2026-07-20T00:00:00Z',
-        artifactKeys: {
-          exportPackage: 'review-export-1/content.bin',
-        },
-      },
-      signature: {
-        algorithm: 'hmac-sha256',
-        keyId: '2026-q2',
-        signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
-      },
-    });
+    return jsonResponse(rootConcatOrderManifest([0, 0]));
   }
   return fakeFetch(url, init);
 };
 await assert.rejects(
   () => runSmoke(parsed, { fetchImpl: duplicateRootConcatOrderFetch }),
   /record export manifest duplicate concat order index: 0/,
+);
+
+const missingRootConcatOrderReferenceFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse(rootConcatOrderManifest([0, 2]));
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: missingRootConcatOrderReferenceFetch }),
+  /record export manifest concat order references missing segment index: 2/,
+);
+
+const omittedRootConcatOrderSegmentFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse(rootConcatOrderManifest([0]));
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: omittedRootConcatOrderSegmentFetch }),
+  /record export manifest concat order omits segment index: 1/,
 );
 
 const missingManifestFetch = async (url, init = {}) => {
