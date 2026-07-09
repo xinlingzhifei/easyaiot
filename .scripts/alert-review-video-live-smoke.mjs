@@ -195,6 +195,14 @@ export function selectPlayableSegment(payload) {
       recordUriSource: recordEvidence.key,
       startTime: firstText(row.start_time, row.startTime, row.begin_time, row.beginTime, row.event_time, row.eventTime),
       endTime: firstText(row.end_time, row.endTime, row.stop_time, row.stopTime),
+      retainMode: firstText(row.retain_mode, row.retainMode, row.retain),
+      coverageSource: firstText(
+        row.coverage_source,
+        row.coverageSource,
+        row.source,
+        row.record_source,
+        row.recordSource,
+      ),
     };
   }
   return null;
@@ -298,6 +306,7 @@ export async function runSmoke(options, dependencies = {}) {
     throw new Error(`record coverage query returned no playable/exportable record segment${summary ? `: ${summary}` : ''}`);
   }
   assertReleaseSegmentMediaEvidence(options, coverageSegment);
+  validateCoverageClassification(coverageSegment);
   checkpoints.push('record_coverage_query_ok');
 
   const recordSpace = await fetchJson(fetchImpl, `${stripTrailingSlash(options.recordBaseUrl)}/space/device/${encodeURIComponent(options.deviceId)}`, {
@@ -355,6 +364,7 @@ export function summarizeCliResult(result) {
     : {};
   return {
     checkpoints: Array.isArray(result?.checkpoints) ? result.checkpoints : [],
+    ...(result?.coverage?.segment ? { coverageSummary: coverageSegmentSummary(result.coverage.segment) } : {}),
     storageDriftSummary: {
       healthy: summary.healthy === true,
       recordCount: numberValue(firstPresent(summary.record_count, summary.recordCount)),
@@ -367,6 +377,27 @@ export function summarizeCliResult(result) {
     ...(result?.manifestStorageLifecycle ? { manifestStorageLifecycle: result.manifestStorageLifecycle } : {}),
     ...(result?.manifestVerification ? { manifestVerification: result.manifestVerification } : {}),
   };
+}
+
+function validateCoverageClassification(segment) {
+  if (!hasText(segment?.retainMode) || !hasText(segment?.coverageSource)) {
+    throw new Error('record coverage query missing retain mode or source classification evidence');
+  }
+}
+
+function coverageSegmentSummary(segment) {
+  const summary = {};
+  copyTextIfPresent(summary, segment, 'status');
+  copyTextIfPresent(summary, segment, 'retainMode');
+  copyTextIfPresent(summary, segment, 'coverageSource');
+  return summary;
+}
+
+function copyTextIfPresent(target, source, key) {
+  const value = firstText(source?.[key]);
+  if (hasText(value)) {
+    target[key] = value;
+  }
 }
 
 async function fetchJson(fetchImpl, url, options) {

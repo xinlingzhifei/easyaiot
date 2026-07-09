@@ -349,6 +349,19 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'live_video_non_exportable_reason_summary_missing',
     });
   }
+  if (liveVideo && liveVideo.content.includes('selectPlayableSegment') && !containsAll(liveVideo.content, [
+    'validateCoverageClassification',
+    'coverageSummary',
+    'retainMode',
+    'coverageSource',
+    'record coverage query missing retain mode or source classification evidence',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_coverage_classification_evidence_missing',
+    });
+  }
   if (liveVideo && !containsAll(liveVideo.content, [
     'validateManifestSignature',
     'isHmacSha256SignatureValue',
@@ -524,6 +537,20 @@ export function scanLiveVideoEvidenceGate(files) {
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
       reason: 'production_smoke_manifest_storage_lifecycle_whitelist_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'payload.coverageSummary',
+    'summary.coverageSummary',
+    'buildCoverageSummary(payload.coverageSummary)',
+    "copyTextIfPresent(coverage, source, 'retainMode')",
+    "copyTextIfPresent(coverage, source, 'coverageSource')",
+    'missing coverage retain/source evidence',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_coverage_classification_summary_missing',
     });
   }
   if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [

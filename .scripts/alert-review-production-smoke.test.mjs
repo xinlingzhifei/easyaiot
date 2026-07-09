@@ -502,6 +502,12 @@ const smokeWithEvidence = await runProductionSmoke({
     "record_export_download_probed",
     "record_export_manifest_verified"
   ],
+  "coverageSummary": {
+    "status": "available",
+    "retainMode": "motion",
+    "coverageSource": "detection",
+    "debugToken": "coverage-classification-secret"
+  },
   "storageDriftSummary": {
     "healthy": true,
     "recordCount": 3,
@@ -684,6 +690,12 @@ assert.deepEqual(evidenceReport.steps[2].summary.checkpoints, [
   'record_export_download_probed',
   'record_export_manifest_verified',
 ]);
+assert.deepEqual(evidenceReport.steps[2].summary.coverageSummary, {
+  status: 'available',
+  retainMode: 'motion',
+  coverageSource: 'detection',
+});
+assert.equal(JSON.stringify(evidenceReport).includes('coverage-classification-secret'), false);
 assert.deepEqual(evidenceReport.steps[2].summary.exportResult, {
   exportId: 'review-export-1',
   downloadUrl: 'https://media.example.test/downloads/review-export-1.mp4',
@@ -927,6 +939,11 @@ await assert.rejects(
             'record_export_download_probed',
             'record_export_manifest_verified',
           ],
+          coverageSummary: {
+            status: 'available',
+            retainMode: 'motion',
+            coverageSource: 'detection',
+          },
           storageDriftSummary: {
             healthy: true,
             recordCount: 3,
@@ -986,6 +1003,74 @@ await assert.rejects(
             'record_export_download_probed',
             'record_export_manifest_verified',
           ],
+          coverageSummary: {
+            status: 'available',
+          },
+          storageDriftSummary: {
+            healthy: true,
+            recordCount: 3,
+            issueCount: 0,
+            issueReasons: {},
+            standardReasonKeys: STANDARD_STORAGE_DRIFT_REASON_KEYS,
+          },
+          exportResult: {
+            exportId: 'review-export-1',
+            downloadUrl: '/downloads/review-export-1.mp4',
+            manifestUrl: '/manifests/review-export-1.json',
+          },
+          manifestSignature: {
+            algorithm: 'hmac-sha256',
+            keyId: '2026-q2',
+            signatureVersion: 'v2',
+          },
+          manifestStorageLifecycle: {
+            storageType: 'object_storage',
+            status: 'persisted',
+            expiresAt: '2026-07-20T00:00:00Z',
+            exportPackageObjectKey: 'review-export-1/content.bin',
+          },
+          manifestVerification: {
+            valid: true,
+            signatureValid: true,
+            signatureKeyAvailable: true,
+            keyId: '2026-q2',
+            signatureVersion: 'v2',
+            violations: [],
+          },
+        }),
+      };
+    },
+  }),
+  /production smoke step LiveVideo missing coverage retain\/source evidence/,
+);
+
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: () => {},
+    runCommand: async (step) => {
+      if (step.name !== 'LiveVideo') {
+        return { status: 0, stdout: summaryStdoutForStep(step.name) };
+      }
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          checkpoints: [
+            'alert_record_query_ok',
+            'record_coverage_query_ok',
+            'record_base_space_resolved',
+            'record_storage_drift_patrol_ok',
+            'record_export_posted',
+            'record_export_download_ready',
+            'record_export_download_probed',
+            'record_export_manifest_verified',
+          ],
+          coverageSummary: {
+            status: 'available',
+            retainMode: 'motion',
+            coverageSource: 'detection',
+          },
           storageDriftSummary: {
             healthy: true,
             recordCount: 3,
@@ -1038,6 +1123,11 @@ await assert.rejects(
             'record_export_download_probed',
             'record_export_manifest_verified',
           ],
+          coverageSummary: {
+            status: 'available',
+            retainMode: 'motion',
+            coverageSource: 'detection',
+          },
           storageDriftSummary: {
             healthy: true,
             recordCount: 3,
@@ -1098,6 +1188,11 @@ await assert.rejects(
             'record_export_download_probed',
             'record_export_manifest_verified',
           ],
+          coverageSummary: {
+            status: 'available',
+            retainMode: 'motion',
+            coverageSource: 'detection',
+          },
           storageDriftSummary: {
             healthy: true,
             recordCount: 3,
@@ -1232,6 +1327,11 @@ function summaryStdoutForStep(name, options = {}) {
         'record_export_download_probed',
         'record_export_manifest_verified',
       ],
+      coverageSummary: {
+        status: 'available',
+        retainMode: 'motion',
+        coverageSource: 'detection',
+      },
       storageDriftSummary: {
         healthy: true,
         recordCount: 3,

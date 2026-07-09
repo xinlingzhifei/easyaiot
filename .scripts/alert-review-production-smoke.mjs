@@ -507,6 +507,9 @@ function liveVideoEvidenceError(stepName, summary) {
   if (summary.storageDriftSummary?.healthy !== true) {
     return `production smoke step ${stepName} did not prove healthy storage drift patrol`;
   }
+  if (!hasText(summary.coverageSummary?.retainMode) || !hasText(summary.coverageSummary?.coverageSource)) {
+    return `production smoke step ${stepName} missing coverage retain/source evidence`;
+  }
   const missingStorageReason = missingStorageDriftReason(summary.storageDriftSummary?.standardReasonKeys);
   if (missingStorageReason) {
     return `production smoke step ${stepName} missing standard storage drift reason evidence: ${missingStorageReason}`;
@@ -725,6 +728,9 @@ function childSmokeSummary(result) {
   if (payload.storageDriftSummary && typeof payload.storageDriftSummary === 'object') {
     summary.storageDriftSummary = buildStorageDriftSummary(payload.storageDriftSummary);
   }
+  if (payload.coverageSummary && typeof payload.coverageSummary === 'object') {
+    summary.coverageSummary = buildCoverageSummary(payload.coverageSummary);
+  }
   if (payload.exportResult && typeof payload.exportResult === 'object') {
     summary.exportResult = buildExportResultSummary(payload.exportResult);
   }
@@ -792,6 +798,14 @@ function buildExportResultSummary(source) {
   copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl');
   copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl');
   return exportResult;
+}
+
+function buildCoverageSummary(source) {
+  const coverage = {};
+  copyTextIfPresent(coverage, source, 'status');
+  copyTextIfPresent(coverage, source, 'retainMode');
+  copyTextIfPresent(coverage, source, 'coverageSource');
+  return coverage;
 }
 
 function buildStorageDriftSummary(source) {
