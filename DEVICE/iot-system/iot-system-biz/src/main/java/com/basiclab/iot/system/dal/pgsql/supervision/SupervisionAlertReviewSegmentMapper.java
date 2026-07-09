@@ -14,7 +14,8 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
 
     default SupervisionAlertReviewSegmentDO selectByReviewItemId(Long reviewItemId) {
         return selectOne(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
-                .eq(SupervisionAlertReviewSegmentDO::getReviewItemId, reviewItemId));
+                .eq(SupervisionAlertReviewSegmentDO::getReviewItemId, reviewItemId)
+                .eq(SupervisionAlertReviewSegmentDO::getDeleted, false));
     }
 
     default List<SupervisionAlertReviewSegmentDO> selectOverlapping(Long tenantId,
@@ -23,6 +24,7 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
                                                                     LocalDateTime endTime) {
         return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
                 .eq(SupervisionAlertReviewSegmentDO::getCameraId, cameraId)
+                .eq(SupervisionAlertReviewSegmentDO::getDeleted, false)
                 .orderByDesc(SupervisionAlertReviewSegmentDO::getStartTime))
                 .stream()
                 .filter(segment -> Objects.equals(tenantId, segment.getTenantId()))
