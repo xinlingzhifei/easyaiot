@@ -354,11 +354,30 @@ const completeMediaPermissionSeedContent = [
   'system:supervision-alert-review:media:download',
   'system:supervision-alert-review:media:manifest',
 ].join('; ');
+const completeMediaPermissionConfigContent = [
+  'camera-permission:',
+  'action-permissions:',
+  'playback:',
+  'system:supervision-alert-review:media:playback',
+  'snapshot:',
+  'system:supervision-alert-review:media:snapshot',
+  'coverage:',
+  'export:',
+  'system:supervision-alert-review:media:export',
+  'download:',
+  'system:supervision-alert-review:media:download',
+  'manifest_verify:',
+  'system:supervision-alert-review:media:manifest',
+].join('\n');
 
 const mediaPermissionGateScan = scanMediaPermissionGate([
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
     content: completeMediaPermissionSeedContent,
+  },
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
+    content: completeMediaPermissionConfigContent,
   },
 ]);
 assert.equal(mediaPermissionGateScan.ok, true);
@@ -368,10 +387,31 @@ const missingSnapshotMediaPermissionGateScan = scanMediaPermissionGate([
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
     content: completeMediaPermissionSeedContent.replace('system:supervision-alert-review:media:snapshot; ', ''),
   },
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
+    content: completeMediaPermissionConfigContent,
+  },
 ]);
 assert.equal(missingSnapshotMediaPermissionGateScan.ok, false);
 assert.deepEqual(missingSnapshotMediaPermissionGateScan.blockers.map((blocker) => blocker.reason), [
   'media_permission_snapshot_seed_missing',
+]);
+
+const missingSnapshotMediaPermissionConfigGateScan = scanMediaPermissionGate([
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
+    content: completeMediaPermissionSeedContent,
+  },
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
+    content: completeMediaPermissionConfigContent
+      .replace('snapshot:\n', '')
+      .replace('system:supervision-alert-review:media:snapshot\n', ''),
+  },
+]);
+assert.equal(missingSnapshotMediaPermissionConfigGateScan.ok, false);
+assert.deepEqual(missingSnapshotMediaPermissionConfigGateScan.blockers.map((blocker) => blocker.reason), [
+  'media_permission_snapshot_action_config_missing',
 ]);
 
 const completeLiveVideoSmokeContent = 'requiredOptionErrors; validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); result.status !== 0; verifier failed with exit; missing --manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;';

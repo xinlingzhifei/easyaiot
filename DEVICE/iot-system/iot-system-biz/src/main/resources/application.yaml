@@ -144,6 +144,21 @@ yfeieye:
     semantic-search-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SEMANTIC_SEARCH_URL:}
     summary-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SUMMARY_URL:}
   review:
+    camera-permission:
+      fail-closed: ${YFEIEYE_REVIEW_CAMERA_PERMISSION_FAIL_CLOSED:true}
+      action-permissions:
+        playback:
+          - system:supervision-alert-review:media:playback
+        snapshot:
+          - system:supervision-alert-review:media:snapshot
+        coverage:
+          - system:supervision-alert-review:media:playback
+        export:
+          - system:supervision-alert-review:media:export
+        download:
+          - system:supervision-alert-review:media:download
+        manifest_verify:
+          - system:supervision-alert-review:media:manifest
     runtime-outbox:
       notify:
         enabled: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:false}

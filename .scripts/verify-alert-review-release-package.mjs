@@ -265,27 +265,48 @@ export function scanWebTypecheckGate(files) {
 }
 
 export function scanMediaPermissionGate(files) {
-  const path = 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql';
-  const migration = files.find((file) => normalizePath(file.path || '') === path);
-  if (!migration) {
-    return { ok: true, blockers: [] };
-  }
-  const permissionReasons = [
-    ['system:supervision-alert-review:media:playback', 'media_permission_playback_seed_missing'],
-    ['system:supervision-alert-review:media:snapshot', 'media_permission_snapshot_seed_missing'],
-    ['system:supervision-alert-review:media:export', 'media_permission_export_seed_missing'],
-    ['system:supervision-alert-review:media:download', 'media_permission_download_seed_missing'],
-    ['system:supervision-alert-review:media:manifest', 'media_permission_manifest_seed_missing'],
-  ];
+  const migrationPath = 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql';
+  const migration = files.find((file) => normalizePath(file.path || '') === migrationPath);
+  const appConfigPath = 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml';
+  const appConfig = files.find((file) => normalizePath(file.path || '') === appConfigPath);
   const blockers = [];
-  const content = String(migration.content ?? '');
-  for (const [permission, reason] of permissionReasons) {
-    if (!content.includes(permission)) {
-      blockers.push({
-        path,
-        group: releaseGroupFor(path),
-        reason,
-      });
+  if (migration) {
+    const permissionReasons = [
+      ['system:supervision-alert-review:media:playback', 'media_permission_playback_seed_missing'],
+      ['system:supervision-alert-review:media:snapshot', 'media_permission_snapshot_seed_missing'],
+      ['system:supervision-alert-review:media:export', 'media_permission_export_seed_missing'],
+      ['system:supervision-alert-review:media:download', 'media_permission_download_seed_missing'],
+      ['system:supervision-alert-review:media:manifest', 'media_permission_manifest_seed_missing'],
+    ];
+    const migrationContent = String(migration.content ?? '');
+    for (const [permission, reason] of permissionReasons) {
+      if (!migrationContent.includes(permission)) {
+        blockers.push({
+          path: migrationPath,
+          group: releaseGroupFor(migrationPath),
+          reason,
+        });
+      }
+    }
+  }
+  if (appConfig) {
+    const configContent = String(appConfig.content ?? '');
+    const actionPermissionReasons = [
+      [['action-permissions:', 'playback:', 'system:supervision-alert-review:media:playback'], 'media_permission_playback_action_config_missing'],
+      [['action-permissions:', 'snapshot:', 'system:supervision-alert-review:media:snapshot'], 'media_permission_snapshot_action_config_missing'],
+      [['action-permissions:', 'coverage:', 'system:supervision-alert-review:media:playback'], 'media_permission_coverage_action_config_missing'],
+      [['action-permissions:', 'export:', 'system:supervision-alert-review:media:export'], 'media_permission_export_action_config_missing'],
+      [['action-permissions:', 'download:', 'system:supervision-alert-review:media:download'], 'media_permission_download_action_config_missing'],
+      [['action-permissions:', 'manifest_verify:', 'system:supervision-alert-review:media:manifest'], 'media_permission_manifest_action_config_missing'],
+    ];
+    for (const [fragments, reason] of actionPermissionReasons) {
+      if (!containsAll(configContent, fragments)) {
+        blockers.push({
+          path: appConfigPath,
+          group: releaseGroupFor(appConfigPath),
+          reason,
+        });
+      }
     }
   }
   return {
