@@ -445,6 +445,17 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_manifest_verifier_evidence_required_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'summary.manifestVerification.signatureValid',
+    'summary.manifestVerification.signatureKeyAvailable',
+    'missing HMAC manifest verifier signature evidence',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_verifier_signature_evidence_missing',
+    });
+  }
   if (productionSmoke && !containsAll(productionSmoke.content, [
     'videoManifestVerifierScript',
     'missing --video-manifest-verifier-script',

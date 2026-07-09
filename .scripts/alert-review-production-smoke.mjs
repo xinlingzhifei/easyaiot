@@ -454,6 +454,12 @@ function liveVideoEvidenceError(stepName, summary) {
   if (summary.manifestVerification?.valid !== true) {
     return `production smoke step ${stepName} missing valid manifest verifier evidence`;
   }
+  if (summary.manifestVerification.signatureValid !== true
+      || summary.manifestVerification.signatureKeyAvailable !== true
+      || summary.manifestVerification.keyId !== summary.manifestSignature.keyId
+      || summary.manifestVerification.signatureVersion !== summary.manifestSignature.signatureVersion) {
+    return `production smoke step ${stepName} missing HMAC manifest verifier signature evidence`;
+  }
   return null;
 }
 
