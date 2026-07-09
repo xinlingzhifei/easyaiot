@@ -779,7 +779,7 @@ function looksLocalOrMockMediaEvidence(value) {
   }
   let url;
   try {
-    url = new URL(raw);
+    url = new URL(raw.startsWith('//') ? `https:${raw}` : raw);
   } catch {
     return false;
   }

@@ -325,7 +325,7 @@ assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_w
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
-    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); recordUriSource; file_path;',
+    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); raw.startsWith; https:${raw}; recordUriSource; file_path;',
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
@@ -380,6 +380,21 @@ const missingLiveVideoAbsolutePathGateScan = scanLiveVideoEvidenceGate([
 ]);
 assert.equal(missingLiveVideoAbsolutePathGateScan.ok, false);
 assert.deepEqual(missingLiveVideoAbsolutePathGateScan.blockers.map((blocker) => blocker.reason), [
+  'live_video_media_evidence_gate_missing',
+]);
+
+const missingLiveVideoProtocolRelativeGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); recordUriSource; file_path;',
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+  },
+]);
+assert.equal(missingLiveVideoProtocolRelativeGateScan.ok, false);
+assert.deepEqual(missingLiveVideoProtocolRelativeGateScan.blockers.map((blocker) => blocker.reason), [
   'live_video_media_evidence_gate_missing',
 ]);
 

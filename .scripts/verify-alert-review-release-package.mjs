@@ -294,6 +294,8 @@ export function scanLiveVideoEvidenceGate(files) {
     'assertReleaseSegmentMediaEvidence',
     'looksLocalOrMockMediaEvidence',
     'looksAbsoluteLocalPathEvidence',
+    'raw.startsWith',
+    'https:${raw}',
     'recordUriSource',
     'file_path',
     'record URI',
