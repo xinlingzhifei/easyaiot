@@ -9,6 +9,7 @@ export const VISIBLE_COPY_TARGETS = [
   'WEB/src/api/device/patrol.ts',
   'WEB/src/utils/alertRecord.ts',
   'WEB/src/utils/alertRecordPlayback.ts',
+  'WEB/scripts/fixtures/alert-review-workbench-e2e/main.ts',
   'VIDEO/app/blueprints/record.py',
   'VIDEO/app/services/record_export_service.py',
   'VIDEO/app/services/record_video_service.py',
