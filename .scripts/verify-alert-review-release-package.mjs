@@ -319,6 +319,22 @@ export function scanMediaPermissionGate(files) {
 export function scanLiveVideoEvidenceGate(files) {
   const blockers = [];
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
+  const recordVideoService = files.find((file) => normalizePath(file.path || '') === 'VIDEO/app/services/record_video_service.py');
+  if (recordVideoService && recordVideoService.content.includes('_normalize_gap_reason') && !containsAll(recordVideoService.content, [
+    "'retention_expired': 'retention'",
+    "'record_space_not_found': 'configuration'",
+    "'file_missing': 'filesystem'",
+    "'probe_failed': 'probe'",
+    "'permission_denied': 'permission'",
+    "'disk_full': 'storage'",
+    "'cache_flush_failed': 'cache'",
+  ])) {
+    blockers.push({
+      path: 'VIDEO/app/services/record_video_service.py',
+      group: releaseGroupFor('VIDEO/app/services/record_video_service.py'),
+      reason: 'video_record_gap_reason_catalog_missing',
+    });
+  }
   if (liveVideo && /\brecordCoverageQueryUrl\s*=\s*parsed\.alertRecordQueryUrl\b/.test(liveVideo.content)) {
     blockers.push({
       path: '.scripts/alert-review-video-live-smoke.mjs',

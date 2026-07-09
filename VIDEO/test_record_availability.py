@@ -79,8 +79,13 @@ class TestRecordAvailabilityService(unittest.TestCase):
             'retention_expired': 'retention',
             'stream_interrupted': 'stream',
             'recording_disabled': 'configuration',
+            'record_space_not_found': 'configuration',
+            'file_missing': 'filesystem',
+            'probe_failed': 'probe',
             'permission_denied': 'permission',
             'service_unavailable': 'service',
+            'disk_full': 'storage',
+            'cache_flush_failed': 'cache',
         }
 
         for reason_code, category in expected_categories.items():
