@@ -616,6 +616,12 @@ class TestRecordExportService(unittest.TestCase):
             self.assertGreater(os.path.getsize(manifest['files'][0]['path']), 0)
             self.assertEqual(original_source_hash, manifest['recordSegments'][0]['sourceHash'])
             self.assertTrue(manifest['recordSegments'][0]['ffmpegCommandHash'].startswith('sha256:'))
+            persisted_source_path = manifest['recordSegments'][0]['recordUri']
+            self.assertTrue(os.path.isfile(persisted_source_path))
+            self.assertTrue(any(file['role'] == 'source_record_segment'
+                                and file['path'] == persisted_source_path
+                                and file['hash'] == original_source_hash
+                                for file in manifest['files']))
 
             with open(source_path, 'wb') as source_file:
                 source_file.write(b'tampered-after-export')
@@ -632,6 +638,8 @@ class TestRecordExportService(unittest.TestCase):
                 original_source_hash,
                 manifest_after_download['recordSegments'][0]['sourceHash'],
             )
+            from app.services.record_export_manifest_verifier import verify_manifest
+            self.assertTrue(verify_manifest(manifest_after_download)['valid'])
             self.assertTrue(any(record['operatorUserId'] == '9011'
                                 for record in manifest_after_download['downloadRecords']))
 
@@ -699,6 +707,11 @@ class TestRecordExportService(unittest.TestCase):
                 self.assertEqual('ffmpeg clipped and stitched evidence', ready['message'])
                 self.assertEqual(source_hash, manifest['recordSegments'][0]['sourceHash'])
                 self.assertTrue(manifest['recordSegments'][0]['ffmpegCommandHash'].startswith('sha256:'))
+                self.assertTrue(os.path.isfile(manifest['recordSegments'][0]['recordUri']))
+                self.assertEqual(
+                    '/video/record/space/7/video/live/device-01/source.mp4',
+                    manifest['recordSegments'][0]['originalRecordUri'],
+                )
             finally:
                 if original_module is None:
                     sys.modules.pop(module_name, None)

@@ -133,6 +133,7 @@ def retry_record_export(export_id: str) -> dict:
     job['finished_at'] = None
     _EXPORT_CONTENT.pop(export_id, None)
     _delete_content(export_id)
+    _delete_source_artifacts(export_id)
     _persist_job(job)
     _append_export_audit(export_id, 'retry_queued', None, None, {'retry_count': job.get('retry_count')})
     return _public_job(job)
@@ -288,7 +289,8 @@ def _run_ffmpeg_export(job: dict):
         if completed.returncode != 0 or not os.path.exists(output_path):
             return None
         command_hash = _sha256_text(_canonical_json(command))
-        record_segments = _materialized_manifest_segments(job, sources, command_hash)
+        persisted_sources = _persist_materialized_sources(job['export_id'], sources)
+        record_segments = _materialized_manifest_segments(job, persisted_sources, command_hash)
         with open(output_path, 'rb') as output_file:
             content = output_file.read()
     return {
@@ -397,6 +399,8 @@ def _materialized_manifest_segments(job: dict, sources: list, command_hash: str)
     return [{
         'index': source.get('index', index),
         'recordUri': source.get('record_uri'),
+        'originalRecordUri': source.get('original_record_uri'),
+        'artifactName': source.get('artifact_name'),
         'sourceHash': source.get('source_hash'),
         'segmentStartTime': source.get('segment_start_time') or _text(job.get('segment_start_time')),
         'segmentEndTime': source.get('segment_end_time') or _text(job.get('segment_end_time')),
@@ -406,6 +410,32 @@ def _materialized_manifest_segments(job: dict, sources: list, command_hash: str)
         'objectName': source.get('object_name') or _text(job.get('object_name')),
         'spaceId': _text(source.get('space_id') or job.get('space_id')),
     } for index, source in enumerate(sources)]
+
+
+def _persist_materialized_sources(export_id: str, sources: list) -> list:
+    _delete_source_artifacts(export_id)
+    export_dir = _export_dir(export_id)
+    os.makedirs(export_dir, exist_ok=True)
+    persisted = []
+    for index, source in enumerate(sources):
+        source_path = _text(source.get('path'))
+        if not source_path or not os.path.isfile(source_path):
+            continue
+        extension = os.path.splitext(source_path)[1]
+        if not re.fullmatch(r'\.[A-Za-z0-9]{1,10}', extension or ''):
+            extension = '.bin'
+        artifact_name = f'source-{index:03d}{extension.lower()}'
+        artifact_path = os.path.join(export_dir, artifact_name)
+        shutil.copyfile(source_path, artifact_path)
+        persisted.append({
+            **source,
+            'original_record_uri': source.get('record_uri'),
+            'record_uri': artifact_path,
+            'path': artifact_path,
+            'artifact_name': artifact_name,
+            'source_hash': _sha256_file(artifact_path),
+        })
+    return persisted
 
 
 def _local_file_path(uri: str) -> str:
@@ -538,6 +568,15 @@ def _delete_content(export_id: str):
     path = _content_path(export_id)
     if os.path.exists(path):
         os.remove(path)
+
+
+def _delete_source_artifacts(export_id: str):
+    export_dir = _export_dir(export_id)
+    if not os.path.isdir(export_dir):
+        return
+    for name in os.listdir(export_dir):
+        if re.fullmatch(r'source-\d{3}\.[A-Za-z0-9]{1,10}', name):
+            os.remove(os.path.join(export_dir, name))
 
 
 def _get_export_audit(export_id: str) -> list:
@@ -766,6 +805,19 @@ def _manifest_files(export_id: str, job: dict) -> list:
             'path': path,
             'storage': _artifact_storage_reference(job, export_id, name, role, path, expires_at),
         })
+    for index, segment in enumerate(_manifest_record_segments(job)):
+        path = _local_file_path(segment.get('recordUri'))
+        if not path or not os.path.isfile(path):
+            continue
+        name = _text(segment.get('artifactName')) or f'source-{index:03d}{os.path.splitext(path)[1] or ".bin"}'
+        files.append({
+            'name': name,
+            'role': 'source_record_segment',
+            'hash': _text(segment.get('sourceHash')) or _sha256_file(path),
+            'sizeBytes': os.path.getsize(path),
+            'path': path,
+            'storage': _artifact_storage_reference(job, export_id, name, 'source_record_segment', path, expires_at),
+        })
     return files
 
 
@@ -882,6 +934,8 @@ def _manifest_record_segments(job: dict) -> list:
             segments.append({
                 'index': index,
                 'recordUri': uri,
+                'originalRecordUri': _text(raw_segment.get('originalRecordUri') or raw_segment.get('original_record_uri')) or None,
+                'artifactName': _text(raw_segment.get('artifactName') or raw_segment.get('artifact_name')) or None,
                 'sourceHash': _text(raw_segment.get('sourceHash') or raw_segment.get('source_hash')) or _source_file_hash(uri),
                 'segmentStartTime': _text(raw_segment.get('segmentStartTime') or raw_segment.get('segment_start_time') or job.get('segment_start_time')),
                 'segmentEndTime': _text(raw_segment.get('segmentEndTime') or raw_segment.get('segment_end_time') or job.get('segment_end_time')),
