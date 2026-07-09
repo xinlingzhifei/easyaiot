@@ -505,7 +505,9 @@ const smokeWithEvidence = await runProductionSmoke({
     "signatureKeyAvailable": true,
     "keyId": "2026-q2",
     "signatureVersion": "v2",
-    "violations": []
+    "violations": [],
+    "manifestUrl": "https://media.example.test/manifests/review-export-1.json?token=manifest-verifier-secret&signature=verifier-sig#manifest",
+    "debugToken": "manifest-verifier-debug-secret"
   }
 }
 `
@@ -722,6 +724,8 @@ assert.equal(JSON.stringify(evidenceReport).includes('export-download-secret'), 
 assert.equal(JSON.stringify(evidenceReport).includes('export-manifest-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('playback-url-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('playback-debug-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('manifest-verifier-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('manifest-verifier-debug-secret'), false);
 
 const failedEvidenceWrites = [];
 await assert.rejects(

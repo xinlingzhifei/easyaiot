@@ -493,6 +493,21 @@ export function scanLiveVideoEvidenceGate(files) {
     });
   }
   if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'buildManifestVerificationSummary(payload.manifestVerification)',
+    "copyBooleanIfPresent(manifestVerification, source, 'valid')",
+    "copyBooleanIfPresent(manifestVerification, source, 'signatureValid')",
+    "copyBooleanIfPresent(manifestVerification, source, 'signatureKeyAvailable')",
+    "copyTextIfPresent(manifestVerification, source, 'keyId')",
+    "copyTextIfPresent(manifestVerification, source, 'signatureVersion')",
+    'violations',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_verification_whitelist_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
     'buildExportResultSummary(payload.exportResult)',
     "copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl')",
     "copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl')",

@@ -735,7 +735,7 @@ function childSmokeSummary(result) {
     summary.manifestStorageLifecycle = payload.manifestStorageLifecycle;
   }
   if (payload.manifestVerification && typeof payload.manifestVerification === 'object') {
-    summary.manifestVerification = payload.manifestVerification;
+    summary.manifestVerification = buildManifestVerificationSummary(payload.manifestVerification);
   }
   if (payload.playback && typeof payload.playback === 'object') {
     summary.playback = buildPlaybackAccessSummary(payload.playback);
@@ -788,6 +788,19 @@ function buildExportResultSummary(source) {
   copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl');
   copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl');
   return exportResult;
+}
+
+function buildManifestVerificationSummary(source) {
+  const manifestVerification = {};
+  copyBooleanIfPresent(manifestVerification, source, 'valid');
+  copyBooleanIfPresent(manifestVerification, source, 'signatureValid');
+  copyBooleanIfPresent(manifestVerification, source, 'signatureKeyAvailable');
+  copyTextIfPresent(manifestVerification, source, 'keyId');
+  copyTextIfPresent(manifestVerification, source, 'signatureVersion');
+  if (Array.isArray(source.violations)) {
+    manifestVerification.violations = source.violations.map(String);
+  }
+  return manifestVerification;
 }
 
 function buildPlaybackAccessSummary(source) {
