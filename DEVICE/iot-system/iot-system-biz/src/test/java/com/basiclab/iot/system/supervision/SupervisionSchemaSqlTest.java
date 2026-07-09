@@ -487,6 +487,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("system_menu_seq"));
         assertTrue(migrationSql.contains("type = 3"));
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:playback"));
+        assertTrue(migrationSql.contains("system:supervision-alert-review:media:snapshot"));
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:export"));
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:download"));
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:manifest"));

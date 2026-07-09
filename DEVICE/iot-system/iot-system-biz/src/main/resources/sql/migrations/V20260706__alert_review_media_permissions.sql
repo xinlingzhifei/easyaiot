@@ -12,9 +12,10 @@ SELECT setval(
 WITH seed(name, permission, sort) AS (
   VALUES
     ('复核录像播放', 'system:supervision-alert-review:media:playback', 10),
-    ('复核证据导出', 'system:supervision-alert-review:media:export', 20),
-    ('复核导出下载', 'system:supervision-alert-review:media:download', 30),
-    ('复核清单校验', 'system:supervision-alert-review:media:manifest', 40)
+    ('复核抓拍查看', 'system:supervision-alert-review:media:snapshot', 20),
+    ('复核证据导出', 'system:supervision-alert-review:media:export', 30),
+    ('复核导出下载', 'system:supervision-alert-review:media:download', 40),
+    ('复核清单校验', 'system:supervision-alert-review:media:manifest', 50)
 ),
 updated AS (
   UPDATE system_menu menu

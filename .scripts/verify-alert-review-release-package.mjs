@@ -264,6 +264,36 @@ export function scanWebTypecheckGate(files) {
   };
 }
 
+export function scanMediaPermissionGate(files) {
+  const path = 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql';
+  const migration = files.find((file) => normalizePath(file.path || '') === path);
+  if (!migration) {
+    return { ok: true, blockers: [] };
+  }
+  const permissionReasons = [
+    ['system:supervision-alert-review:media:playback', 'media_permission_playback_seed_missing'],
+    ['system:supervision-alert-review:media:snapshot', 'media_permission_snapshot_seed_missing'],
+    ['system:supervision-alert-review:media:export', 'media_permission_export_seed_missing'],
+    ['system:supervision-alert-review:media:download', 'media_permission_download_seed_missing'],
+    ['system:supervision-alert-review:media:manifest', 'media_permission_manifest_seed_missing'],
+  ];
+  const blockers = [];
+  const content = String(migration.content ?? '');
+  for (const [permission, reason] of permissionReasons) {
+    if (!content.includes(permission)) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason,
+      });
+    }
+  }
+  return {
+    ok: blockers.length === 0,
+    blockers,
+  };
+}
+
 export function scanLiveVideoEvidenceGate(files) {
   const blockers = [];
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
@@ -502,9 +532,11 @@ function runCli() {
   const releaseTextFiles = readReleaseTextFiles(entriesForTextScan);
   const textResult = scanTextQuality(releaseTextFiles);
   const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
+  const mediaPermissionResult = scanMediaPermissionGate(releaseTextFiles);
   const liveVideoEvidenceResult = scanLiveVideoEvidenceGate(releaseTextFiles);
   result.blockers.push(...textResult.blockers);
   result.blockers.push(...webTypecheckResult.blockers);
+  result.blockers.push(...mediaPermissionResult.blockers);
   result.blockers.push(...liveVideoEvidenceResult.blockers);
   result.ok = result.blockers.length === 0;
 
