@@ -309,6 +309,15 @@ const visibleCopyMojibakeScan = scanTextQuality([
 assert.equal(visibleCopyMojibakeScan.ok, false);
 assert.equal(visibleCopyMojibakeScan.blockers[0].reason, 'encoding_mojibake');
 
+const missingRecordFallbackMojibakeScan = scanTextQuality([
+  {
+    path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+    content: 'renders as `\u7f02\u54c4\u7d8d\u50cf / \u5bf0\u546e\u589c\u52a8` with `VIDEO URL \u93c8\ue048\u53a4`',
+  },
+]);
+assert.equal(missingRecordFallbackMojibakeScan.ok, false);
+assert.equal(missingRecordFallbackMojibakeScan.blockers[0].reason, 'encoding_mojibake');
+
 const cleanTextScan = scanTextQuality([
   {
     path: 'VIDEO/app/blueprints/record.py',

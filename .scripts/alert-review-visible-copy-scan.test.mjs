@@ -59,4 +59,14 @@ assert.equal(patrolMojibake.ok, false);
 assert.equal(patrolMojibake.blockers[0].reason, 'encoding_mojibake');
 assert.equal(patrolMojibake.blockers[0].line, 1);
 
+const missingRecordFallbackMojibake = scanVisibleCopyFiles([
+  {
+    path: 'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
+    content: 'record fallback: \u7f02\u54c4\u7d8d\u50cf / VIDEO URL \u93c8\ue048\u53a4',
+  },
+]);
+assert.equal(missingRecordFallbackMojibake.ok, false);
+assert.equal(missingRecordFallbackMojibake.blockers[0].reason, 'encoding_mojibake');
+assert.equal(missingRecordFallbackMojibake.blockers[0].line, 1);
+
 console.log('alert review visible copy scan tests OK');

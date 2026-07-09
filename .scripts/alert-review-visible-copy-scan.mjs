@@ -34,6 +34,10 @@ export const VISIBLE_COPY_MOJIBAKE_PATTERNS = [
   { pattern: '\u93c9\u2542', reason: 'encoding_mojibake' },
   { pattern: '\u95c1\u63d2', reason: 'encoding_mojibake' },
   { pattern: '\u95ba\u581d', reason: 'encoding_mojibake' },
+  { pattern: '\u7f02\u54c4\u7d8d', reason: 'encoding_mojibake' },
+  { pattern: '\u5bf0\u546e\u589c', reason: 'encoding_mojibake' },
+  { pattern: '\u93c8\ue048\u53a4', reason: 'encoding_mojibake' },
+  { pattern: '\u7f03\u7521', reason: 'encoding_mojibake' },
 ];
 
 function normalizePath(path) {
