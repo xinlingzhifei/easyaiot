@@ -497,7 +497,9 @@ const smokeWithEvidence = await runProductionSmoke({
     "storageType": "object_storage",
     "status": "persisted",
     "expiresAt": "2026-07-20T00:00:00Z",
-    "exportPackageObjectKey": "review-export-1/content.bin"
+    "exportPackageObjectKey": "review-export-1/content.bin",
+    "storageUrl": "https://storage.example.test/review-export-1/content.bin?token=storage-lifecycle-secret&signature=storage-sig#object",
+    "debugToken": "storage-lifecycle-debug-secret"
   },
   "manifestVerification": {
     "valid": true,
@@ -726,6 +728,8 @@ assert.equal(JSON.stringify(evidenceReport).includes('playback-url-secret'), fal
 assert.equal(JSON.stringify(evidenceReport).includes('playback-debug-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('manifest-verifier-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('manifest-verifier-debug-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('storage-lifecycle-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('storage-lifecycle-debug-secret'), false);
 
 const failedEvidenceWrites = [];
 await assert.rejects(

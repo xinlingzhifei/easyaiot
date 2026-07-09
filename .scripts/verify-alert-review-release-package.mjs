@@ -468,6 +468,19 @@ export function scanLiveVideoEvidenceGate(files) {
     });
   }
   if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'buildManifestStorageLifecycleSummary(payload.manifestStorageLifecycle)',
+    "copyTextIfPresent(manifestStorageLifecycle, source, 'storageType')",
+    "copyTextIfPresent(manifestStorageLifecycle, source, 'status')",
+    "copyTextIfPresent(manifestStorageLifecycle, source, 'expiresAt')",
+    "copyTextIfPresent(manifestStorageLifecycle, source, 'exportPackageObjectKey')",
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_storage_lifecycle_whitelist_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
     'REQUIRED_STORAGE_DRIFT_REASON_KEYS',
     'summary.storageDriftSummary?.standardReasonKeys',
     'missing standard storage drift reason evidence',
