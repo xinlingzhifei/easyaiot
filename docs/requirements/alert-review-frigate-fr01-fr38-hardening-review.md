@@ -358,6 +358,11 @@ Manifest verifier and HMAC key rotation:
   `pnpm --dir WEB --pm-on-fail=ignore run type:check`
   Result: the earlier `corepack pnpm --dir WEB type:check` attempt was blocked by local pnpm shim version `11.5.2` vs project `packageManager` `11.3.0`; rerunning with the documented pnpm `--pm-on-fail=ignore` escape executed `cross-env NODE_OPTIONS=--max-old-space-size=8192 vue-tsc --noEmit --skipLibCheck` and exited 0 after a long silent run. The latest 2026-07-09 HEAD rerun used `pnpm --dir WEB --pm-on-fail=ignore run type:check`, waited for the silent `vue-tsc` process to finish, and exited 0.
 
+- FR-21/FR-32 LiveVideo runtime coverage URL alias guard passed:
+  `node .scripts/alert-review-video-live-smoke.test.mjs`
+  `node .scripts/verify-alert-review-release-package.test.mjs`
+  Result: RED first failed because `requiredOptionErrors` accepted identical release `alertRecordQueryUrl` / `recordCoverageQueryUrl`, and `Pkg` did not require the runtime alias guard. GREEN reruns passed after release mode rejects the identical URL pair while `--allow-local-endpoints` still permits local co-located smoke.
+
 - FR-32 production smoke orchestrator passed after the RED failure showed no one-command release gate existed for `LiveDevice -> LiveVideo -> LivePlayer`, and now runs `LivePlayer:detail`, `LivePlayer:coverage`, and `LivePlayer:case-timeline` as separate release steps:
   `node .scripts/alert-review-production-smoke.test.mjs`
   `node .scripts/verify-alert-review-release-package.test.mjs`

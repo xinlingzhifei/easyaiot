@@ -130,6 +130,12 @@ export function requiredOptionErrors(options) {
   if (!options.allowLocalEndpoints && !hasText(options.manifestVerifierScript)) {
     errors.push('missing --manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT');
   }
+  if (!options.allowLocalEndpoints
+      && hasText(options.alertRecordQueryUrl)
+      && hasText(options.recordCoverageQueryUrl)
+      && sameReleaseEndpoint(options.alertRecordQueryUrl, options.recordCoverageQueryUrl)) {
+    errors.push('record coverage URL must not equal alert record query URL; configure dedicated --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL');
+  }
   if (!options.allowLocalEndpoints) {
     requireReleaseEndpoint(errors, '--alert-record-query-url', options.alertRecordQueryUrl);
     requireReleaseEndpoint(errors, '--record-coverage-query-url', options.recordCoverageQueryUrl);
@@ -912,6 +918,22 @@ function hasText(value) {
 
 function stripTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
+}
+
+function sameReleaseEndpoint(left, right) {
+  return normalizeEndpointForComparison(left) === normalizeEndpointForComparison(right);
+}
+
+function normalizeEndpointForComparison(value) {
+  const raw = stripTrailingSlash(value).trim();
+  try {
+    const url = new URL(raw);
+    url.hash = '';
+    url.pathname = stripTrailingSlash(url.pathname);
+    return url.toString();
+  } catch {
+    return raw;
+  }
 }
 
 function requireReleaseEndpoint(errors, optionName, value) {

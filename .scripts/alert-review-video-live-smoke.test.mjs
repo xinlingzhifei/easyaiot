@@ -44,7 +44,7 @@ const parsed = parseArgs([
 
 const releaseParsed = parseArgs([
   '--alert-record-query-url=https://video.release.example/video/record/availability',
-  '--record-coverage-query-url=https://video.release.example/video/record/availability',
+  '--record-coverage-query-url=https://video.release.example/video/record/coverage',
   '--record-base-url=https://video.release.example/video/record',
   '--record-export-url=https://video.release.example/video/record/export',
   '--device-id=device-01',
@@ -121,6 +121,19 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
 ], {})), [
   'missing --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
   'missing --manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
+]);
+
+assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--alert-record-query-url=https://video.release.example/video/record/availability',
+  '--record-coverage-query-url=https://video.release.example/video/record/availability',
+  '--record-base-url=https://video.release.example/video/record',
+  '--record-export-url=https://video.release.example/video/record/export',
+  '--device-id=device-01',
+  '--alert-time=2026-07-05 10:00:00',
+  '--record-drift-retention-hours=24',
+  '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
+], {})), [
+  'record coverage URL must not equal alert record query URL; configure dedicated --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([

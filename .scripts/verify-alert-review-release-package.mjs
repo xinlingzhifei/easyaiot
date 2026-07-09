@@ -325,6 +325,16 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'live_video_coverage_url_alias_present',
     });
   }
+  if (liveVideo && liveVideo.content.includes('requiredOptionErrors') && !containsAll(liveVideo.content, [
+    'sameReleaseEndpoint',
+    'record coverage URL must not equal alert record query URL',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_coverage_url_runtime_alias_guard_missing',
+    });
+  }
   if (liveVideo && !containsAll(liveVideo.content, [
     'validateManifestSignature',
     'isHmacSha256SignatureValue',
