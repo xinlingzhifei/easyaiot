@@ -1068,6 +1068,7 @@ async function openEvidence(evidence: AlertReviewEvidence) {
     if (!(await guardWorkbenchMediaAccess({
       reviewItemId: evidence.reviewItemId,
       materialUri: evidence.materialUri,
+      actionType: 'snapshot',
     })))
       return
     emit('viewImage', { image_url: evidence.materialUri })
@@ -1127,6 +1128,7 @@ async function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
       reviewItemId: entry.reviewItemId,
       cameraId: entry.cameraId,
       materialUri: entry.materialUri,
+      actionType: 'snapshot',
     })))
       return
     emit('viewImage', { image_url: entry.materialUri })
@@ -1219,6 +1221,7 @@ async function guardCaseTimelineMediaAccess(entry: AlertReviewCaseTimelineItem) 
     reviewItemId: entry.reviewItemId,
     cameraId: entry.cameraId,
     materialUri: entry.materialUri,
+    actionType: 'snapshot',
   })
 }
 
@@ -1227,6 +1230,7 @@ async function guardWorkbenchMediaAccess(target: {
   reviewItemId?: number
   cameraId?: string
   materialUri?: string
+  actionType?: 'snapshot' | 'playback'
 }) {
   const reviewCaseId = target.reviewCaseId || activeCase.value?.id
   const reviewItemId = target.reviewItemId || selectedItem.value?.id
@@ -1238,7 +1242,7 @@ async function guardWorkbenchMediaAccess(target: {
       reviewItemId,
       cameraId,
       materialUri: target.materialUri,
-      actionType: 'playback',
+      actionType: target.actionType || 'playback',
       reason: 'workbench playback',
     }
     if (reviewCaseId)

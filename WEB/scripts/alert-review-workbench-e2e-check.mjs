@@ -247,6 +247,18 @@ for (const snippet of requiredPlaybackGuardSnippets) {
   }
 }
 
+const requiredSnapshotGuardSnippets = [
+  "actionType?: 'snapshot' | 'playback'",
+  "actionType: target.actionType || 'playback'",
+  "actionType: 'snapshot'",
+]
+
+for (const snippet of requiredSnapshotGuardSnippets) {
+  if (!workbenchSource.includes(snippet)) {
+    failures.push(`missing snapshot media access guard contract ${snippet}`)
+  }
+}
+
 const requiredReasonSnippets = [
   'recordGapReasons?: Record<string, number>',
   'recordGapReasonSummary',
