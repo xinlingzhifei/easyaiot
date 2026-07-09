@@ -857,11 +857,13 @@ function buildPlaybackAccessSummary(source) {
 function buildAuditChainSummary(payload, summary) {
   const source = payload.auditChain && typeof payload.auditChain === 'object' ? payload.auditChain : {};
   const action = firstText(source.action, hasCheckpoint(payload.checkpoints, 'evidence_download_audited') ? 'export_downloaded' : '');
-  const reviewCaseId = source.reviewCaseId ?? payload.reviewCaseId ?? summary.reviewCaseId;
-  const reviewItemIds = normalizeAuditIdList(
-    source.reviewItemIds ?? payload.reviewItemIds ?? (payload.reviewItemId == null ? [] : [payload.reviewItemId]),
+  const reviewCaseId = firstAuditScalar(source.reviewCaseId, payload.reviewCaseId, summary.reviewCaseId);
+  const reviewItemIds = firstAuditIdList(
+    source.reviewItemIds,
+    payload.reviewItemIds,
+    payload.reviewItemId == null ? [] : [payload.reviewItemId],
   );
-  const eventIds = normalizeAuditIdList(source.eventIds ?? payload.eventIds ?? []);
+  const eventIds = firstAuditIdList(source.eventIds, payload.eventIds);
   const exportJobNo = firstText(source.exportJobNo, payload.exportJobNo, summary.exportJobNo);
   if (!hasText(action) && reviewCaseId == null && reviewItemIds.length === 0 && eventIds.length === 0 && !hasText(exportJobNo)) {
     return null;
@@ -875,9 +877,39 @@ function buildAuditChainSummary(payload, summary) {
   };
 }
 
+function firstAuditScalar(...values) {
+  for (const value of values) {
+    const normalized = normalizeAuditScalar(value);
+    if (normalized !== undefined) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function firstAuditIdList(...values) {
+  for (const value of values) {
+    const normalized = normalizeAuditIdList(value);
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+  return [];
+}
+
 function normalizeAuditIdList(value) {
   const values = Array.isArray(value) ? value : value == null ? [] : [value];
-  return values.filter((entry) => entry !== undefined && entry !== null && String(entry).trim() !== '');
+  return values.map(normalizeAuditScalar).filter((entry) => entry !== undefined);
+}
+
+function normalizeAuditScalar(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (hasText(value)) {
+    return value;
+  }
+  return undefined;
 }
 
 function firstObject(...values) {

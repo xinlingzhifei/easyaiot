@@ -433,6 +433,29 @@ const smokeWithEvidence = await runProductionSmoke({
   "reviewCaseId": 2001,
   "eventIds": [7500],
   "exportJobNo": "EXP-20260707-001",
+  "auditChain": {
+    "action": "export_downloaded",
+    "reviewCaseId": {
+      "value": 2001,
+      "debugToken": "audit-chain-review-case-secret"
+    },
+    "reviewItemIds": [
+      {
+        "value": 1001,
+        "debugToken": "audit-chain-review-item-secret"
+      }
+    ],
+    "eventIds": [
+      {
+        "value": 7500,
+        "debugToken": "audit-chain-event-secret"
+      }
+    ],
+    "exportJobNo": {
+      "value": "EXP-20260707-001",
+      "debugToken": "audit-chain-export-job-secret"
+    }
+  },
   "manifestValid": true,
   "videoExportRequested": true,
   "ruleEvidence": {
@@ -636,6 +659,10 @@ assert.deepEqual(evidenceReport.steps[1].summary, {
   videoExportRequested: true,
 });
 assert.equal(JSON.stringify(evidenceReport).includes('rule-evidence-debug-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-review-case-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-review-item-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-event-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-export-job-secret'), false);
 assert.deepEqual(evidenceReport.steps[2].summary.storageDriftSummary, {
   healthy: true,
   recordCount: 3,
