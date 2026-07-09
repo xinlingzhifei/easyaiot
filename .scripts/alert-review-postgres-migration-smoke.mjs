@@ -505,6 +505,33 @@ BEGIN
   END;
 END $$;
 
+INSERT INTO system_supervision_alert_review_item(
+  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
+)
+VALUES (9, 1001, 'video', 'motion', 'a-adjacent-boundary', 'person', '2026-07-05 10:05',
+  'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:05', NULL, false);
+
+INSERT INTO system_supervision_alert_review_segment(
+  review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
+)
+VALUES (9, 'seg-adjacent-boundary-tenant-1001', 1001, 'camera-01', 'detection', 'detection', '2026-07-05 10:05', '2026-07-05 10:06', false);
+
+DO $$
+BEGIN
+  IF (
+    SELECT count(*)
+    FROM system_supervision_alert_review_segment
+    WHERE segment_no = 'seg-adjacent-boundary-tenant-1001'
+      AND camera_id = 'camera-01'
+      AND start_time = '2026-07-05 10:05'
+      AND end_time = '2026-07-05 10:06'
+      AND deleted = FALSE
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected adjacent same-camera ReviewSegment boundary to be allowed';
+  END IF;
+END $$;
+
 DO $$
 BEGIN
   BEGIN
