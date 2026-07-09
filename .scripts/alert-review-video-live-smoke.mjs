@@ -714,7 +714,13 @@ function requireReleaseEndpoint(errors, optionName, value) {
 }
 
 function assertReleaseMediaEvidence(options, label, value) {
-  if (options.allowLocalEndpoints || !hasText(value)) {
+  if (!hasText(value)) {
+    return;
+  }
+  if (looksInlineOrOpaqueMediaEvidence(value)) {
+    throw new Error(`VIDEO live smoke returned inline/opaque media evidence: ${value}`);
+  }
+  if (options.allowLocalEndpoints) {
     return;
   }
   if (looksAbsoluteLocalPathEvidence(value)) {
@@ -795,6 +801,13 @@ function looksLocalOrMockMediaEvidence(value) {
     || hostname === '0.0.0.0'
     || hostname.endsWith('.local')
     || hostname.includes('mock');
+}
+
+function looksInlineOrOpaqueMediaEvidence(value) {
+  const lowered = String(value || '').trim().toLowerCase();
+  return lowered.startsWith('data:')
+    || lowered.startsWith('blob:')
+    || lowered.startsWith('about:');
 }
 
 function looksAbsoluteLocalPathEvidence(value) {

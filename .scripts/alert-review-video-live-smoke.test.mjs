@@ -370,6 +370,39 @@ await assert.rejects(
   /VIDEO live smoke returned local\/mock record URI/,
 );
 
+const inlineRecordUriFetch = async (url, init = {}) => {
+  if (init.method === 'POST') {
+    const body = JSON.parse(init.body);
+    assert.equal(body.record_uri, 'data:video/mp4;base64,AAAA');
+    return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'pending' } });
+  }
+  if (String(url).includes('/space/device/device-01')
+    || String(url).includes('/space/7/videos/drift')
+    || String(url).endsWith('/video/record/export/review-export-1')
+    || String(url).endsWith('/downloads/review-export-1.mp4')
+    || String(url).endsWith('/manifests/review-export-1.json')) {
+    return fakeFetch(url, init);
+  }
+  return jsonResponse({
+    code: 0,
+    data: {
+      segments: [
+        {
+          status: 'available',
+          start_time: '2026-07-05T10:00:00',
+          end_time: '2026-07-05T10:01:00',
+          record_uri: 'data:video/mp4;base64,AAAA',
+          exportable: true,
+        },
+      ],
+    },
+  });
+};
+await assert.rejects(
+  () => runSmoke(releaseParsed, { fetchImpl: inlineRecordUriFetch }),
+  /VIDEO live smoke returned inline\/opaque media evidence/,
+);
+
 const protocolRelativeLocalRecordUriFetch = async (url, init = {}) => {
   if (init.method === 'POST') {
     const body = JSON.parse(init.body);
