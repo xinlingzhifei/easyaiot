@@ -451,6 +451,12 @@ function liveVideoEvidenceError(stepName, summary) {
       || !hasText(summary.manifestSignature?.signatureVersion)) {
     return `production smoke step ${stepName} missing HMAC manifest signature evidence`;
   }
+  if (summary.manifestStorageLifecycle?.status !== 'persisted'
+      || !hasText(summary.manifestStorageLifecycle?.storageType)
+      || !hasText(summary.manifestStorageLifecycle?.expiresAt)
+      || !hasText(summary.manifestStorageLifecycle?.exportPackageObjectKey)) {
+    return `production smoke step ${stepName} missing persisted manifest storage lifecycle evidence`;
+  }
   if (summary.manifestVerification?.valid !== true) {
     return `production smoke step ${stepName} missing valid manifest verifier evidence`;
   }
@@ -622,6 +628,9 @@ function childSmokeSummary(result) {
   }
   if (payload.manifestSignature && typeof payload.manifestSignature === 'object') {
     summary.manifestSignature = payload.manifestSignature;
+  }
+  if (payload.manifestStorageLifecycle && typeof payload.manifestStorageLifecycle === 'object') {
+    summary.manifestStorageLifecycle = payload.manifestStorageLifecycle;
   }
   if (payload.manifestVerification && typeof payload.manifestVerification === 'object') {
     summary.manifestVerification = payload.manifestVerification;
