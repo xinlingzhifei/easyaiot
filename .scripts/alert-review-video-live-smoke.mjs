@@ -441,18 +441,26 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   const manifestSignature = validateManifestSignature(manifest);
   const recordSegments = firstList(manifest, 'recordSegments', 'record_segments');
   const sourceSegments = firstList(manifest, 'sourceSegments', 'source_segments', 'sources', 'inputs', 'recordSegments', 'record_segments');
-  if (!hasText(firstText(
-    manifest.ffmpegCommandHash,
-    manifest.ffmpeg_command_hash,
-    manifest.commandHash,
-    manifest.command_hash,
-  )) && !sourceSegments.some((segment) => hasText(firstText(
-    segment.ffmpegCommandHash,
-    segment.ffmpeg_command_hash,
-    segment.commandHash,
-    segment.command_hash,
-  )))) {
+  const ffmpegCommandHashes = [
+    firstText(
+      manifest.ffmpegCommandHash,
+      manifest.ffmpeg_command_hash,
+      manifest.commandHash,
+      manifest.command_hash,
+    ),
+    ...sourceSegments.map((segment) => firstText(
+      segment.ffmpegCommandHash,
+      segment.ffmpeg_command_hash,
+      segment.commandHash,
+      segment.command_hash,
+    )),
+  ].filter(hasText);
+  if (!ffmpegCommandHashes.length) {
     throw new Error('record export manifest missing ffmpeg command hash');
+  }
+  const invalidFfmpegCommandHash = ffmpegCommandHashes.find((hash) => !isSha256Digest(hash));
+  if (invalidFfmpegCommandHash) {
+    throw new Error(`record export manifest invalid ffmpeg command hash: ${invalidFfmpegCommandHash}`);
   }
   const clipParams = firstPresent(manifest.clipParams, manifest.clip_params, manifest.clip, manifest.trim);
   const hasSegmentClipParams = sourceSegments.some((segment) => hasText(firstText(

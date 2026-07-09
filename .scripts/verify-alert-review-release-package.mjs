@@ -308,6 +308,8 @@ export function scanLiveVideoEvidenceGate(files) {
     '[a-f0-9]{64}',
     'invalid source segment hash',
     'invalid output file hash',
+    'ffmpegCommandHashes',
+    'invalid ffmpeg command hash',
     'raw.startsWith',
     'https:${raw}',
     'mock/',

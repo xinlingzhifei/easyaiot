@@ -325,7 +325,7 @@ assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_w
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
-    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;',
+    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;',
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
@@ -455,6 +455,21 @@ const missingLiveVideoManifestHashGateScan = scanLiveVideoEvidenceGate([
 ]);
 assert.equal(missingLiveVideoManifestHashGateScan.ok, false);
 assert.deepEqual(missingLiveVideoManifestHashGateScan.blockers.map((blocker) => blocker.reason), [
+  'live_video_media_evidence_gate_missing',
+]);
+
+const missingLiveVideoFfmpegCommandHashGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: 'validateManifestSignature(manifest); runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;',
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+  },
+]);
+assert.equal(missingLiveVideoFfmpegCommandHashGateScan.ok, false);
+assert.deepEqual(missingLiveVideoFfmpegCommandHashGateScan.blockers.map((blocker) => blocker.reason), [
   'live_video_media_evidence_gate_missing',
 ]);
 
