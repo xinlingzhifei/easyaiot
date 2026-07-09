@@ -87,6 +87,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_status"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_time"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_ended_time"));
+        assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_alert_severity"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_status"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_severity"));
         assertTrue(sql.contains("CONSTRAINT ex_supervision_alert_review_segment_camera_time"));
@@ -212,6 +213,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(reviewSegmentTable.contains("segment_status VARCHAR(64) NOT NULL DEFAULT 'active'"));
         assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_status"));
         assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_ended_time"));
+        assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_alert_severity"));
         assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_severity"));
         assertTrue(reviewSegmentTable.contains("start_time TIMESTAMP NOT NULL"));
         assertTrue(reviewSegmentTable.contains("end_time TIMESTAMP"));
@@ -441,6 +443,21 @@ class SupervisionSchemaSqlTest {
 
         String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
         assertTrue(baselineSql.contains("ck_supervision_alert_review_segment_ended_time"));
+    }
+
+    @Test
+    void alertReviewSegmentAlertSeverityGuardMigrationRequiresAlertSegmentsToKeepAlertSeverity() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql");
+        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+
+        assertTrue(Files.exists(migration), "segment alert severity guard migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("SET severity = 'alert'"));
+        assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_alert_severity"));
+        assertTrue(migrationSql.contains("segment_status <> 'alert' OR severity = 'alert'"));
+
+        String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
+        assertTrue(baselineSql.contains("ck_supervision_alert_review_segment_alert_severity"));
     }
 
     @Test

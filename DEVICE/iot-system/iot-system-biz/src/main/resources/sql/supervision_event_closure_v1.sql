@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
   CONSTRAINT ck_supervision_alert_review_segment_ended_time CHECK (segment_status <> 'ended' OR end_time IS NOT NULL),
   CONSTRAINT ck_supervision_alert_review_segment_status CHECK (segment_status IN ('active', 'detection', 'alert', 'ended')),
   CONSTRAINT ck_supervision_alert_review_segment_severity CHECK (severity IN ('detection', 'alert')),
+  CONSTRAINT ck_supervision_alert_review_segment_alert_severity CHECK (segment_status <> 'alert' OR severity = 'alert'),
   CONSTRAINT ex_supervision_alert_review_segment_camera_time EXCLUDE USING gist (
     tenant_id WITH =,
     camera_id WITH =,
