@@ -425,7 +425,7 @@ assert.deepEqual(missingSnapshotMediaPermissionConfigGateScan.blockers.map((bloc
 ]);
 
 const completeLiveVideoSmokeContent = 'requiredOptionErrors; validateStorageDriftReport; REQUIRED_STORAGE_DRIFT_REASON_KEYS; storageDriftReasonKeys; standardReasonKeys; missing standard reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); result.status !== 0; verifier failed with exit; missing --manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;';
-const completeProductionSmokeContent = 'requiredOptionErrors; liveVideoEvidenceError; W2:typecheck; --pm-on-fail=ignore; pnpm_version_guard; typecheckRetry; REQUIRED_STORAGE_DRIFT_REASON_KEYS; summary.storageDriftSummary?.standardReasonKeys; missing standard storage drift reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestStorageLifecycle; summary.manifestStorageLifecycle = payload.manifestStorageLifecycle; summary.manifestStorageLifecycle?.status; missing persisted manifest storage lifecycle evidence; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; summary.manifestVerification?.valid; summary.manifestVerification.signatureValid; summary.manifestVerification.signatureKeyAvailable; missing valid manifest verifier evidence; missing HMAC manifest verifier signature evidence; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE;';
+const completeProductionSmokeContent = 'requiredOptionErrors; liveVideoEvidenceError; playerSmokeStep; --assert-native-current-time; W2:typecheck; --pm-on-fail=ignore; pnpm_version_guard; typecheckRetry; REQUIRED_STORAGE_DRIFT_REASON_KEYS; summary.storageDriftSummary?.standardReasonKeys; missing standard storage drift reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestStorageLifecycle; summary.manifestStorageLifecycle = payload.manifestStorageLifecycle; summary.manifestStorageLifecycle?.status; missing persisted manifest storage lifecycle evidence; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; summary.manifestVerification?.valid; summary.manifestVerification.signatureValid; summary.manifestVerification.signatureKeyAvailable; missing valid manifest verifier evidence; missing HMAC manifest verifier signature evidence; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE;';
 
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
@@ -482,6 +482,22 @@ const missingProductionSmokeStorageDriftReasonGateScan = scanLiveVideoEvidenceGa
 assert.equal(missingProductionSmokeStorageDriftReasonGateScan.ok, false);
 assert.deepEqual(missingProductionSmokeStorageDriftReasonGateScan.blockers.map((blocker) => blocker.reason), [
   'production_smoke_storage_drift_reason_evidence_missing',
+]);
+
+const missingProductionSmokePlayerNativeTimeGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoSmokeContent,
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeContent
+      .replace('--assert-native-current-time; ', ''),
+  },
+]);
+assert.equal(missingProductionSmokePlayerNativeTimeGateScan.ok, false);
+assert.deepEqual(missingProductionSmokePlayerNativeTimeGateScan.blockers.map((blocker) => blocker.reason), [
+  'production_smoke_player_native_time_assert_missing',
 ]);
 
 const missingProductionSmokeTypecheckRetryGateScan = scanLiveVideoEvidenceGate([

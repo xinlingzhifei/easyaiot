@@ -248,6 +248,7 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
       `--expected-seek-time=${expectedSeekTime}`,
       `--expected-record-path-contains=${expectedRecordPathContains}`,
       `--expected-offset-seconds=${expectedOffsetSeconds}`,
+      '--assert-native-current-time',
       hasText(options.playerWaitText) ? `--wait-text=${options.playerWaitText}` : '',
       options.allowLocalEndpoints ? '--allow-local-endpoints' : '',
     ]),

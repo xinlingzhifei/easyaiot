@@ -27,6 +27,17 @@ assert.equal(parsed.expectedOffsetSeconds, 2);
 assert.deepEqual(parsed.localStoragePairs, [{ key: 'token', value: 'abc' }]);
 assert.deepEqual(parsed.cookiePairs, [{ name: 'session', value: 'xyz' }]);
 
+const nativeParsed = parseArgs([
+  '--workbench-url=https://example.test/yfeieye/alert?tab=review',
+  '--review-row-text=RV-20260702-001',
+  '--action-testid=alert-review-detail-seek',
+  '--expected-seek-time=2026-07-02T08:00:02',
+  '--expected-record-path-contains=east-gate-080000.mp4',
+  '--expected-offset-seconds=0',
+  '--assert-native-current-time',
+], {});
+assert.equal(nativeParsed.assertNativeCurrentTime, true);
+
 const envParsed = parseArgs([], {
   YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://env.example/review',
   YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT: 'RV-env',
@@ -99,6 +110,31 @@ assert.doesNotThrow(
     recordPath: 'mock://record/east-gate-080000.mp4',
     playbackOffsetSeconds: 2,
   }, localWorkbenchAllowed),
+);
+
+assert.throws(
+  () => assertSmokeResult({
+    clickedRow: true,
+    clickedAction: true,
+    seekTime: '2026-07-02T08:00:02',
+    currentUrl: 'https://example.test/video/east-gate-080000.mp4',
+    recordPath: 'https://example.test/video/east-gate-080000.mp4',
+    playbackOffsetSeconds: 0,
+    nativeCurrentTime: null,
+  }, nativeParsed),
+  /expected native video currentTime evidence/,
+);
+
+assert.doesNotThrow(
+  () => assertSmokeResult({
+    clickedRow: true,
+    clickedAction: true,
+    seekTime: '2026-07-02T08:00:02',
+    currentUrl: 'https://example.test/video/east-gate-080000.mp4',
+    recordPath: 'https://example.test/video/east-gate-080000.mp4',
+    playbackOffsetSeconds: 0,
+    nativeCurrentTime: 0.4,
+  }, nativeParsed),
 );
 
 assert.throws(

@@ -532,6 +532,15 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_typecheck_pnpm_guard_retry_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('playerSmokeStep') && !containsAll(productionSmoke.content, [
+    '--assert-native-current-time',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_player_native_time_assert_missing',
+    });
+  }
   if (productionSmoke && productionSmoke.content.includes('liveDeviceEvidenceError') && !containsAll(productionSmoke.content, [
     'auditChain',
     'eventIds',

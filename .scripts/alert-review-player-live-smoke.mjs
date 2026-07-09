@@ -114,8 +114,17 @@ export function assertSmokeResult(result, options) {
   if (Number(result.playbackOffsetSeconds) !== Number(options.expectedOffsetSeconds)) {
     throw new Error(`expected playback_offset_seconds ${options.expectedOffsetSeconds}, got ${String(result.playbackOffsetSeconds)}`);
   }
-  if (options.assertNativeCurrentTime && Math.abs(Number(result.nativeCurrentTime) - Number(options.expectedOffsetSeconds)) > 1.5) {
-    throw new Error(`expected native video currentTime near ${options.expectedOffsetSeconds}, got ${String(result.nativeCurrentTime)}`);
+  if (options.assertNativeCurrentTime) {
+    if (result.nativeCurrentTime === undefined || result.nativeCurrentTime === null || String(result.nativeCurrentTime).trim() === '') {
+      throw new Error(`expected native video currentTime evidence near ${options.expectedOffsetSeconds}, got ${String(result.nativeCurrentTime)}`);
+    }
+    const nativeCurrentTime = Number(result.nativeCurrentTime);
+    if (!Number.isFinite(nativeCurrentTime)) {
+      throw new Error(`expected native video currentTime evidence near ${options.expectedOffsetSeconds}, got ${String(result.nativeCurrentTime)}`);
+    }
+    if (Math.abs(nativeCurrentTime - Number(options.expectedOffsetSeconds)) > 1.5) {
+      throw new Error(`expected native video currentTime near ${options.expectedOffsetSeconds}, got ${String(result.nativeCurrentTime)}`);
+    }
   }
 }
 
