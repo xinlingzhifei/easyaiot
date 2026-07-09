@@ -21,6 +21,8 @@ _SIGNING_KEYS_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_KEYS'
 _SIGNING_ACTIVE_KEY_ID_ENV = 'YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID'
 _STORE_TYPE_ENV = 'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE'
 _STORE_URI_ENV = 'YFEIEYE_RECORD_EXPORT_STORAGE_URI'
+_RETENTION_DAYS_ENV = 'YFEIEYE_RECORD_EXPORT_RETENTION_DAYS'
+_DEFAULT_RETENTION_DAYS = '30'
 
 
 def create_record_export(payload: dict, record_resolver=None, async_worker=False, worker_runner=None) -> dict:
@@ -230,7 +232,11 @@ def _build_record_export(payload: dict, record_resolver=None) -> dict:
         'approved_at': _text(payload.get('approved_at') or payload.get('approvedAt')),
         'approval_note': _text(payload.get('approval_note') or payload.get('approvalNote')),
         'expires_at': _text(payload.get('expires_at') or payload.get('expiresAt')),
-        'retention_days': _text(payload.get('retention_days') or payload.get('retentionDays')),
+        'retention_days': (
+            _text(payload.get('retention_days') or payload.get('retentionDays'))
+            or _text(os.environ.get(_RETENTION_DAYS_ENV))
+            or _DEFAULT_RETENTION_DAYS
+        ),
         'storage_type': _text(payload.get('storage_type') or payload.get('storageType')),
         'storage_root': _text(payload.get('storage_root') or payload.get('storageRoot') or payload.get('storage_uri') or payload.get('storageUri')),
     }

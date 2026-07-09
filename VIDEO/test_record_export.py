@@ -367,6 +367,32 @@ class TestRecordExportService(unittest.TestCase):
             os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
             importlib.reload(export_service)
 
+    def test_record_export_defaults_to_configured_retention_policy(self):
+        with tempfile.TemporaryDirectory() as store_dir:
+            os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = store_dir
+            os.environ['YFEIEYE_RECORD_EXPORT_RETENTION_DAYS'] = '30'
+            import app.services.record_export_service as export_service
+            export_service = importlib.reload(export_service)
+            try:
+                started = export_service.create_record_export({
+                    'review_case_id': 3002,
+                    'review_item_id': 1003,
+                    'device_id': 'device-01',
+                    'record_uri': '/video/record/space/7/video/live/device-01/default-retention.mp4',
+                }, async_worker=True, worker_runner=lambda job: {'content': b'default-retention-video'})
+                export_service.poll_record_export(started['export_id'])
+                manifest = export_service.get_record_export_manifest(started['export_id'])
+
+                created_at = export_service._parse_time(manifest['generatedAt'])
+                expires_at = export_service._parse_time(manifest['storageLifecycle']['expiresAt'])
+                self.assertEqual('30', manifest['storageLifecycle']['retentionDays'])
+                self.assertEqual(30, (expires_at - created_at).days)
+                self.assertEqual(expires_at.isoformat(), manifest['storageLifecycle']['cleanupPolicy']['deleteAfter'])
+            finally:
+                os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
+                os.environ.pop('YFEIEYE_RECORD_EXPORT_RETENTION_DAYS', None)
+                importlib.reload(export_service)
+
     def test_manifest_verifier_cli_validates_canonical_hash_signature_and_tampering(self):
         with tempfile.TemporaryDirectory() as store_dir:
             os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = store_dir
