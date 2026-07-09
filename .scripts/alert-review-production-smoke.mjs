@@ -282,6 +282,7 @@ export async function runProductionSmoke(options, dependencies = {}) {
     let result;
     try {
       result = await runCommand(step);
+      result = await retryTypecheckAfterPnpmVersionGuard(step, result, runCommand);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const stepFinishedAt = currentInstant(dependencies);
@@ -321,6 +322,34 @@ export async function runProductionSmoke(options, dependencies = {}) {
     ok: true,
     steps: results,
   };
+}
+
+async function retryTypecheckAfterPnpmVersionGuard(step, result, runCommand) {
+  const status = Number(result?.status ?? 1);
+  if (step.name !== 'W2:typecheck' || status === 0 || !isPnpmVersionGuardFailure(result)) {
+    return result;
+  }
+  const retryStep = {
+    ...step,
+    args: ['--dir', 'WEB', '--pm-on-fail=ignore', 'run', 'type:check'],
+  };
+  const retryResult = await runCommand(retryStep);
+  return {
+    ...retryResult,
+    typecheckRetry: {
+      reason: 'pnpm_version_guard',
+      originalExitCode: status,
+      originalCommand: formatStepCommand(step),
+      retryCommand: formatStepCommand(retryStep),
+    },
+  };
+}
+
+function isPnpmVersionGuardFailure(result) {
+  const output = [result?.stdout, result?.stderr].filter(hasText).join('\n');
+  return output.includes('This project is configured to use')
+    && output.includes('Corepack invoked pnpm')
+    && output.includes('pmOnFail');
 }
 
 export function formatStepCommand(step) {
@@ -563,11 +592,19 @@ function mergeEvidenceSummary(context, childSummary) {
 }
 
 function childSmokeSummary(result) {
+  const summary = {};
+  if (result?.typecheckRetry && typeof result.typecheckRetry === 'object') {
+    summary.typecheckRetry = compactObject({
+      reason: result.typecheckRetry.reason,
+      originalExitCode: result.typecheckRetry.originalExitCode,
+      originalCommand: result.typecheckRetry.originalCommand,
+      retryCommand: result.typecheckRetry.retryCommand,
+    });
+  }
   const payload = parseLastJsonObject(result?.stdout);
   if (!payload || typeof payload !== 'object') {
-    return null;
+    return Object.keys(summary).length ? summary : null;
   }
-  const summary = {};
   if (Array.isArray(payload.checkpoints)) {
     summary.checkpoints = payload.checkpoints;
   }
@@ -879,7 +916,9 @@ LivePlayer:coverage -> LivePlayer:case-timeline. The first step runs the full fr
 before each smoke step uses real deployed services, real recording metadata,
 export verification, download audit, playback-url allow/deny
 authorization, recording DB/disk drift patrol, and player seek assertions from
-the dedicated smoke scripts. Release smoke requires a video manifest verifier script so the fetched
+the dedicated smoke scripts. If Corepack/pnpm stops before vue-tsc because the local
+pnpm version differs, W2 retries once with --pm-on-fail=ignore and records typecheckRetry evidence.
+Release smoke requires a video manifest verifier script so the fetched
 manifest is verified against reachable manifest-referenced evidence files, and
 requires an evidence output path so every release run leaves a sanitized JSON
 report with masked token-bearing step commands. Localhost/mock/file endpoints are

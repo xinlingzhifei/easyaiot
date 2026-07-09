@@ -274,6 +274,7 @@ const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smok
 assert.equal(help.status, 0);
 assert.match(help.stdout, /W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail/);
 assert.match(help.stdout, /full frontend typecheck/);
+assert.match(help.stdout, /--pm-on-fail=ignore/);
 
 const calls = [];
 const smoke = await runProductionSmoke(parsed, {
@@ -288,6 +289,45 @@ const smoke = await runProductionSmoke(parsed, {
 assert.equal(smoke.ok, true);
 assert.deepEqual(calls, ['W2:typecheck', 'LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
 assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+
+const pnpmGuardRetryCalls = [];
+const pnpmGuardRetryWrites = [];
+const pnpmGuardRetrySmoke = await runProductionSmoke({
+  ...parsed,
+  evidenceOutputFile: 'artifacts/pnpm-guard-retry.json',
+}, {
+  nodePath: 'node',
+  scriptDir: '.scripts',
+  writeFile: (file, content) => {
+    pnpmGuardRetryWrites.push({ file, content });
+  },
+  runCommand: async (step) => {
+    pnpmGuardRetryCalls.push({ name: step.name, args: step.args });
+    if (step.name === 'W2:typecheck' && !step.args.includes('--pm-on-fail=ignore')) {
+      return {
+        status: 1,
+        stderr: [
+          '[ERROR] This project is configured to use 11.3.0 of pnpm. Your current pnpm is v11.5.2',
+          'Corepack invoked pnpm with this version, and pnpm does not switch versions when running under corepack.',
+          'If you want to bypass this version check, you can set the "pmOnFail" configuration to "warn" or "ignore"',
+        ].join('\n'),
+      };
+    }
+    return { status: 0, stdout: summaryStdoutForStep(step.name) };
+  },
+});
+assert.equal(pnpmGuardRetrySmoke.ok, true);
+assert.deepEqual(pnpmGuardRetryCalls.slice(0, 2), [
+  { name: 'W2:typecheck', args: ['--dir', 'WEB', 'run', 'type:check'] },
+  { name: 'W2:typecheck', args: ['--dir', 'WEB', '--pm-on-fail=ignore', 'run', 'type:check'] },
+]);
+assert.deepEqual(pnpmGuardRetryCalls.slice(2).map((call) => call.name), ['LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
+assert.equal(pnpmGuardRetryWrites.length, 1);
+const pnpmGuardRetryReport = JSON.parse(pnpmGuardRetryWrites[0].content);
+assert.equal(pnpmGuardRetryReport.steps[0].name, 'W2:typecheck');
+assert.equal(pnpmGuardRetryReport.steps[0].summary.typecheckRetry.reason, 'pnpm_version_guard');
+assert.match(pnpmGuardRetryReport.steps[0].summary.typecheckRetry.originalCommand, /^pnpm(\.cmd)? --dir WEB run type:check$/);
+assert.match(pnpmGuardRetryReport.steps[0].summary.typecheckRetry.retryCommand, /^pnpm(\.cmd)? --dir WEB --pm-on-fail=ignore run type:check$/);
 
 await assert.rejects(
   () => runProductionSmoke(parsed, {
