@@ -473,6 +473,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   if ((!clipParams || typeof clipParams !== 'object') && !hasSegmentClipParams) {
     throw new Error('record export manifest missing clip params');
   }
+  validateClipWindows(sourceSegments);
   const concatOrder = firstList(manifest, 'concatOrder', 'concat_order', 'stitchOrder', 'stitch_order');
   const hasSegmentConcatOrder = recordSegments.length > 0 && recordSegments.every((segment) => hasText(firstText(
     segment.recordUri,
@@ -529,6 +530,21 @@ function isSha256Digest(value) {
   const hash = String(value || '').trim();
   return /^[a-f0-9]{64}$/i.test(hash)
     || /^sha256:[a-f0-9]{64}$/i.test(hash);
+}
+
+function validateClipWindows(sourceSegments) {
+  for (const segment of sourceSegments) {
+    const start = firstText(segment.clipStartTime, segment.clip_start_time);
+    const end = firstText(segment.clipEndTime, segment.clip_end_time);
+    if (!hasText(start) || !hasText(end)) {
+      continue;
+    }
+    const startMs = Date.parse(start);
+    const endMs = Date.parse(end);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      throw new Error(`record export manifest invalid clip window: ${start} -> ${end}`);
+    }
+  }
 }
 
 function validateManifestStorageLifecycle(manifest, outputs) {
