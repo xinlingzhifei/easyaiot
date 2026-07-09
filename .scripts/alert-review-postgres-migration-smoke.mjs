@@ -618,14 +618,14 @@ VALUES
   (7, 1001, 'video', 'motion', 'a-transition-1', 'person', '2026-07-05 11:10',
    'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:10', NULL, false),
   (8, 1001, 'video', 'motion', 'a-transition-2', 'person', '2026-07-05 11:20',
-   'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:20', NULL, false);
+   'pending_review', 'camera-transition-ended-01', 'zone-a', 'rule-a', '2026-07-05 11:20', NULL, false);
 
 INSERT INTO system_supervision_alert_review_segment(
   review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
 )
 VALUES
   (7, 'seg-transition-active', 1001, 'camera-transition-01', 'detection', 'active', '2026-07-05 11:10', NULL, false),
-  (8, 'seg-transition-ended', 1001, 'camera-transition-01', 'alert', 'ended', '2026-07-05 11:20', '2026-07-05 11:21', false);
+  (8, 'seg-transition-ended', 1001, 'camera-transition-ended-01', 'alert', 'ended', '2026-07-05 11:20', '2026-07-05 11:21', false);
 
 INSERT INTO system_supervision_alert_review_item(
   id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
