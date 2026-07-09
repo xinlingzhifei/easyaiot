@@ -75,6 +75,10 @@ assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
 assert.equal(parsed.evidenceOutputFile, 'artifacts/review-production-smoke.json');
 assert.equal(parsed.allowLocalEndpoints, false);
+assert.equal(parsed.stepTimeoutMs, 900000);
+
+const timeoutParsed = parseArgs(['--step-timeout-ms=12345'], {});
+assert.equal(timeoutParsed.stepTimeoutMs, 12345);
 
 assert.deepEqual(requiredOptionErrors({
   ...parsed,
@@ -248,6 +252,7 @@ assert.deepEqual(steps.map((step) => step.name), [
   'LivePlayer:case-timeline',
 ]);
 assert.deepEqual(steps[0].args, ['--dir', 'WEB', 'run', 'type:check']);
+assert.deepEqual(steps.map((step) => step.timeoutMs), [900000, 900000, 900000, 900000, 900000, 900000]);
 assert.deepEqual(steps[1].args.slice(0, 5), [
   '.scripts/alert-review-device-integration-smoke.mjs',
   '--device-base-url=https://device.release.example/api',
@@ -389,6 +394,7 @@ const evidenceWrites = [];
 const smokeWithEvidence = await runProductionSmoke({
   ...parsed,
   evidenceOutputFile: 'artifacts/review-smoke.json',
+  stepTimeoutMs: 12345,
 }, {
   nodePath: 'node',
   scriptDir: '.scripts',
@@ -547,11 +553,20 @@ assert.equal(evidenceReport.finishedAt, '2026-07-07T00:00:03.000Z');
 assert.equal(evidenceReport.durationMs, 3000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
 assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+assert.deepEqual(evidenceReport.steps.map((step) => step.summary?.timeout?.timeoutMs), [
+  12345,
+  12345,
+  12345,
+  12345,
+  12345,
+  12345,
+]);
 assert.equal(evidenceReport.steps[0].name, 'W2:typecheck');
 assert.match(evidenceReport.steps[0].command, /^pnpm(\.cmd)? --dir WEB run type:check$/);
 assert.equal(evidenceReport.steps[1].command.includes('--token=***'), true);
 assert.equal(evidenceReport.steps[3].command.includes('--workbench-url=https://web.release.example/yfeieye/alert/review '), true);
 assert.deepEqual(evidenceReport.steps[1].summary, {
+  timeout: { timeoutMs: 12345 },
   checkpoints: [
     'ingest_review_item',
     'review_rule_saved',

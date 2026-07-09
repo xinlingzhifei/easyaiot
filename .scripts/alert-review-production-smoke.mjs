@@ -9,6 +9,7 @@ const REQUIRED_STORAGE_DRIFT_REASON_KEYS = [
   'disk_full',
   'cache_flush_failed',
 ];
+const DEFAULT_STEP_TIMEOUT_MS = 900000;
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -49,6 +50,7 @@ export function parseArgs(args, env = process.env) {
     playerWaitText: env.YFEIEYE_REVIEW_PLAYER_SMOKE_WAIT_TEXT || '',
     allowLocalEndpoints: parseBoolean(env.YFEIEYE_PRODUCTION_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
     evidenceOutputFile: env.YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE || '',
+    stepTimeoutMs: numberOrNaN(env.YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS),
     help: false,
   };
 
@@ -59,6 +61,8 @@ export function parseArgs(args, env = process.env) {
       parsed.allowLocalEndpoints = true;
     } else if (arg.startsWith('--evidence-output-file=')) {
       parsed.evidenceOutputFile = arg.slice('--evidence-output-file='.length);
+    } else if (arg.startsWith('--step-timeout-ms=')) {
+      parsed.stepTimeoutMs = numberOrNaN(arg.slice('--step-timeout-ms='.length));
     } else if (arg.startsWith('--device-base-url=')) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
@@ -134,6 +138,9 @@ export function parseArgs(args, env = process.env) {
     }
   }
 
+  if (!Number.isFinite(parsed.stepTimeoutMs) || parsed.stepTimeoutMs <= 0) {
+    parsed.stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS;
+  }
   return parsed;
 }
 
@@ -187,10 +194,12 @@ export function buildSmokeSteps(options, runtime = {}) {
       name: 'W2:typecheck',
       command: pnpmPath,
       args: ['--dir', 'WEB', 'run', 'type:check'],
+      timeoutMs: options.stepTimeoutMs,
     },
     {
       name: 'LiveDevice',
       command: nodePath,
+      timeoutMs: options.stepTimeoutMs,
       args: compact([
         `${scriptDir}/alert-review-device-integration-smoke.mjs`,
         `--device-base-url=${options.deviceBaseUrl}`,
@@ -209,6 +218,7 @@ export function buildSmokeSteps(options, runtime = {}) {
     {
       name: 'LiveVideo',
       command: nodePath,
+      timeoutMs: options.stepTimeoutMs,
       args: compact([
         `${scriptDir}/alert-review-video-live-smoke.mjs`,
         `--alert-record-query-url=${options.videoAlertRecordQueryUrl}`,
@@ -240,6 +250,7 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
     name,
     command: nodePath,
     allowLocalEndpoints: options.allowLocalEndpoints === true,
+    timeoutMs: options.stepTimeoutMs,
     args: compact([
       `${scriptDir}/alert-review-player-live-smoke.mjs`,
       `--workbench-url=${options.playerWorkbenchUrl}`,
@@ -372,9 +383,15 @@ function passedStepEvidenceError(step, summary) {
     return `production smoke step ${step.name} did not emit required evidence summary`;
   }
   if (step.name === 'LiveDevice') {
+    if (!Array.isArray(summary.checkpoints)) {
+      return `production smoke step ${step.name} did not emit required evidence summary`;
+    }
     return liveDeviceEvidenceError(step.name, summary);
   }
   if (step.name === 'LiveVideo') {
+    if (!Array.isArray(summary.checkpoints)) {
+      return `production smoke step ${step.name} did not emit required evidence summary`;
+    }
     return liveVideoEvidenceError(step.name, summary);
   }
   if (step.name.startsWith('LivePlayer:')) {
@@ -599,14 +616,25 @@ function defaultRunCommand(step) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
+    timeout: step.timeoutMs,
   });
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
+  const timedOut = result.error?.code === 'ETIMEDOUT';
+  const normalized = timedOut
+    ? {
+        ...result,
+        status: 124,
+        timedOut: true,
+        timeoutMs: step.timeoutMs,
+        stderr: `${result.stderr || ''}${result.stderr ? '\n' : ''}production smoke step ${step.name} timed out after ${step.timeoutMs}ms`,
+      }
+    : result;
+  if (normalized.stdout) {
+    process.stdout.write(normalized.stdout);
   }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
+  if (normalized.stderr) {
+    process.stderr.write(normalized.stderr);
   }
-  return result;
+  return normalized;
 }
 
 function maskSensitiveArg(arg) {
@@ -638,7 +666,11 @@ function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error,
   if (hasText(error)) {
     entry.error = error;
   }
-  const summary = mergeEvidenceSummary(step.evidenceContext, childSmokeSummary(result));
+  const evidenceContext = { ...(step.evidenceContext || {}) };
+  if (Number.isFinite(step.timeoutMs)) {
+    evidenceContext.timeout = { timeoutMs: step.timeoutMs };
+  }
+  const summary = mergeEvidenceSummary(evidenceContext, childSmokeSummary(result));
   if (summary) {
     entry.summary = summary;
   }
@@ -666,6 +698,12 @@ function mergeEvidenceSummary(context, childSummary) {
 
 function childSmokeSummary(result) {
   const summary = {};
+  if (Number.isFinite(result?.timeoutMs)) {
+    summary.timeout = { timeoutMs: result.timeoutMs };
+  }
+  if (result?.timedOut === true) {
+    summary.timeout = { ...(summary.timeout || {}), timedOut: true };
+  }
   if (result?.typecheckRetry && typeof result.typecheckRetry === 'object') {
     summary.typecheckRetry = compactObject({
       reason: result.typecheckRetry.reason,
@@ -1004,7 +1042,8 @@ function printHelp() {
   --player-case-timeline-expected-seek-time="2026-07-05T10:00:00" \\
   --player-case-timeline-expected-record-path-contains=DEVICE_ID \\
   --player-case-timeline-expected-offset-seconds=0 \\
-  --evidence-output-file=artifacts/production-smoke.json [--allow-local-endpoints]
+  --evidence-output-file=artifacts/production-smoke.json \\
+  [--step-timeout-ms=900000] [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
 W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail ->
@@ -1014,6 +1053,9 @@ export verification, download audit, playback-url allow/deny
 authorization, recording DB/disk drift patrol, and player seek assertions from
 the dedicated smoke scripts. If Corepack/pnpm stops before vue-tsc because the local
 pnpm version differs, W2 retries once with --pm-on-fail=ignore and records typecheckRetry evidence.
+Each step has a timeout, defaulting to 900000ms, configurable through
+--step-timeout-ms or YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout exits are
+reported as exit code 124 and written to the evidence report.
 Release smoke requires a video manifest verifier script so the fetched
 manifest is verified against reachable manifest-referenced evidence files, and
 requires an evidence output path so every release run leaves a sanitized JSON

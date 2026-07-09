@@ -521,6 +521,20 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_evidence_output_required_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('requiredOptionErrors') && !containsAll(productionSmoke.content, [
+    'stepTimeoutMs',
+    '--step-timeout-ms',
+    'YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS',
+    'timeout: step.timeoutMs',
+    'summary.timeout',
+    'timed out after',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_step_timeout_missing',
+    });
+  }
   if (productionSmoke && productionSmoke.content.includes('W2:typecheck') && !containsAll(productionSmoke.content, [
     '--pm-on-fail=ignore',
     'pnpm_version_guard',
