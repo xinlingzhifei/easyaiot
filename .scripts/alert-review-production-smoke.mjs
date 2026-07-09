@@ -874,11 +874,12 @@ function printHelp() {
   --evidence-output-file=artifacts/production-smoke.json [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
-LiveDevice -> LiveVideo -> LivePlayer:detail -> LivePlayer:coverage ->
-LivePlayer:case-timeline. Each step uses real deployed services, real recording
-metadata, export verification, download audit, playback-url allow/deny authorization,
-recording DB/disk drift patrol, and player seek assertions from the dedicated smoke
-scripts. Release smoke requires a video manifest verifier script so the fetched
+W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail ->
+LivePlayer:coverage -> LivePlayer:case-timeline. The first step runs the full frontend typecheck
+before each smoke step uses real deployed services, real recording metadata,
+export verification, download audit, playback-url allow/deny
+authorization, recording DB/disk drift patrol, and player seek assertions from
+the dedicated smoke scripts. Release smoke requires a video manifest verifier script so the fetched
 manifest is verified against reachable manifest-referenced evidence files, and
 requires an evidence output path so every release run leaves a sanitized JSON
 report with masked token-bearing step commands. Localhost/mock/file endpoints are

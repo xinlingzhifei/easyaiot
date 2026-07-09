@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 
 import {
   buildSmokeSteps,
@@ -266,6 +267,13 @@ assert.equal(
   formatStepCommand(steps[1]),
   'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02',
 );
+
+const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smoke.mjs', '--help'], {
+  encoding: 'utf8',
+});
+assert.equal(help.status, 0);
+assert.match(help.stdout, /W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail/);
+assert.match(help.stdout, /full frontend typecheck/);
 
 const calls = [];
 const smoke = await runProductionSmoke(parsed, {
