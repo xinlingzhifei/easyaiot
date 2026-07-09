@@ -373,8 +373,23 @@ function liveDeviceEvidenceError(stepName, summary) {
   if (!hasText(String(summary.reviewCaseId ?? ''))) {
     return `production smoke step ${stepName} missing reviewCaseId evidence`;
   }
-  if (!hasText(summary.exportJobNo)) {
-    return `production smoke step ${stepName} missing exportJobNo evidence`;
+  if (!summary.auditChain || typeof summary.auditChain !== 'object') {
+    return `production smoke step ${stepName} missing auditChain evidence`;
+  }
+  if (summary.auditChain.action !== 'export_downloaded') {
+    return `production smoke step ${stepName} missing auditChain export_downloaded evidence`;
+  }
+  if (!hasText(String(summary.auditChain.reviewCaseId ?? ''))) {
+    return `production smoke step ${stepName} missing auditChain reviewCaseId evidence`;
+  }
+  if (!Array.isArray(summary.auditChain.reviewItemIds) || summary.auditChain.reviewItemIds.length === 0) {
+    return `production smoke step ${stepName} missing auditChain reviewItemIds evidence`;
+  }
+  if (!Array.isArray(summary.auditChain.eventIds)) {
+    return `production smoke step ${stepName} missing auditChain eventIds evidence`;
+  }
+  if (!hasText(summary.auditChain.exportJobNo)) {
+    return `production smoke step ${stepName} missing auditChain exportJobNo evidence`;
   }
   return null;
 }
@@ -586,10 +601,55 @@ function childSmokeSummary(result) {
   }
   copyIfPresent(summary, payload, 'reviewItemId');
   copyIfPresent(summary, payload, 'reviewCaseId');
+  copyIfPresent(summary, payload, 'reviewItemIds');
+  copyIfPresent(summary, payload, 'eventIds');
   copyIfPresent(summary, payload, 'exportJobNo');
+  const auditChain = buildAuditChainSummary(payload, summary);
+  if (auditChain) {
+    summary.auditChain = auditChain;
+  }
   copyIfPresent(summary, payload, 'manifestValid');
   copyIfPresent(summary, payload, 'videoExportRequested');
   return Object.keys(summary).length ? summary : null;
+}
+
+function buildAuditChainSummary(payload, summary) {
+  const source = payload.auditChain && typeof payload.auditChain === 'object' ? payload.auditChain : {};
+  const action = firstText(source.action, hasCheckpoint(payload.checkpoints, 'evidence_download_audited') ? 'export_downloaded' : '');
+  const reviewCaseId = source.reviewCaseId ?? payload.reviewCaseId ?? summary.reviewCaseId;
+  const reviewItemIds = normalizeAuditIdList(
+    source.reviewItemIds ?? payload.reviewItemIds ?? (payload.reviewItemId == null ? [] : [payload.reviewItemId]),
+  );
+  const eventIds = normalizeAuditIdList(source.eventIds ?? payload.eventIds ?? []);
+  const exportJobNo = firstText(source.exportJobNo, payload.exportJobNo, summary.exportJobNo);
+  if (!hasText(action) && reviewCaseId == null && reviewItemIds.length === 0 && eventIds.length === 0 && !hasText(exportJobNo)) {
+    return null;
+  }
+  return {
+    action,
+    reviewCaseId,
+    reviewItemIds,
+    eventIds,
+    exportJobNo,
+  };
+}
+
+function normalizeAuditIdList(value) {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  return values.filter((entry) => entry !== undefined && entry !== null && String(entry).trim() !== '');
+}
+
+function hasCheckpoint(checkpoints, expected) {
+  return Array.isArray(checkpoints) && checkpoints.map(String).includes(expected);
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (hasText(value)) {
+      return value;
+    }
+  }
+  return '';
 }
 
 function buildPlayerSmokeSummary(payload) {

@@ -341,6 +341,7 @@ const smokeWithEvidence = await runProductionSmoke({
   "profile": "device-video-web",
   "reviewItemId": 1001,
   "reviewCaseId": 2001,
+  "eventIds": [7500],
   "exportJobNo": "EXP-20260707-001",
   "manifestValid": true,
   "videoExportRequested": true,
@@ -477,7 +478,15 @@ assert.deepEqual(evidenceReport.steps[1].summary, {
   profile: 'device-video-web',
   reviewItemId: 1001,
   reviewCaseId: 2001,
+  eventIds: [7500],
   exportJobNo: 'EXP-20260707-001',
+  auditChain: {
+    action: 'export_downloaded',
+    reviewCaseId: 2001,
+    reviewItemIds: [1001],
+    eventIds: [7500],
+    exportJobNo: 'EXP-20260707-001',
+  },
   manifestValid: true,
   videoExportRequested: true,
 });
@@ -585,6 +594,39 @@ await assert.rejects(
 );
 
 await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: () => {},
+    runCommand: async (step) => ({
+      status: 0,
+      stdout: step.name === 'LiveDevice'
+        ? JSON.stringify({
+            status: 'passed',
+            profile: 'device-video-web',
+            reviewItemId: 1001,
+            reviewCaseId: 2001,
+            manifestValid: true,
+            videoExportRequested: true,
+            checkpoints: [
+              'ingest_review_item',
+              'review_rule_saved',
+              'record_coverage_synced',
+              'review_case_created',
+              'evidence_export_ready',
+              'manifest_verified',
+              'evidence_download_audited',
+              'playback_url_granted',
+              'playback_url_denied',
+            ],
+          })
+        : summaryStdoutForStep(step.name),
+    }),
+  }),
+  /production smoke step LiveDevice missing auditChain exportJobNo evidence/,
+);
+
+await assert.rejects(
   () => runProductionSmoke({
     ...parsed,
     evidenceOutputFile: 'artifacts/review-smoke-failed.json',
@@ -644,6 +686,7 @@ function summaryStdoutForStep(name, options = {}) {
       profile: 'device-video-web',
       reviewItemId: 1001,
       reviewCaseId: 2001,
+      eventIds: [7500],
       exportJobNo: 'EXP-20260707-001',
       manifestValid: true,
       videoExportRequested: true,
