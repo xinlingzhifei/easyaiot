@@ -191,6 +191,12 @@ export function buildSmokeSteps(options, runtime = {}) {
   const scriptDir = runtime.scriptDir || '.scripts';
   return [
     {
+      name: 'W4:visible-copy',
+      command: nodePath,
+      args: [`${scriptDir}/alert-review-visible-copy-scan.mjs`],
+      timeoutMs: options.stepTimeoutMs,
+    },
+    {
       name: 'W2:typecheck',
       command: pnpmPath,
       args: ['--dir', 'WEB', 'run', 'type:check'],
@@ -379,7 +385,7 @@ export function formatStepCommand(step) {
 }
 
 function passedStepEvidenceError(step, summary) {
-  if (step.name === 'W2:typecheck') {
+  if (step.name === 'W4:visible-copy' || step.name === 'W2:typecheck') {
     return null;
   }
   if (!summary || typeof summary !== 'object') {
@@ -1166,12 +1172,13 @@ function printHelp() {
   [--step-timeout-ms=900000] [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
-W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail ->
-LivePlayer:coverage -> LivePlayer:case-timeline. The first step runs the full frontend typecheck
-before each smoke step uses real deployed services, real recording metadata,
-export verification, download audit, playback-url allow/deny
-authorization, recording DB/disk drift patrol, and player seek assertions from
-the dedicated smoke scripts. If Corepack/pnpm stops before vue-tsc because the local
+W4:visible-copy -> W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail ->
+LivePlayer:coverage -> LivePlayer:case-timeline. The first step scans review/player/VIDEO
+visible-copy files for replacement characters and known mojibake fragments, then W2 runs the
+full frontend typecheck before each smoke step uses real deployed services, real recording
+metadata, export verification, download audit, playback-url allow/deny authorization,
+recording DB/disk drift patrol, and player seek assertions from the dedicated smoke scripts.
+If Corepack/pnpm stops before vue-tsc because the local
 pnpm version differs, W2 retries once with --pm-on-fail=ignore and records typecheckRetry evidence.
 Each step has a timeout, defaulting to 900000ms, configurable through
 --step-timeout-ms or YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout exits are

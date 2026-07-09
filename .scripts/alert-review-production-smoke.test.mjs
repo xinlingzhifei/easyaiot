@@ -121,9 +121,6 @@ const localEndpointsAllowed = parseArgs([
 assert.equal(localEndpointsAllowed.allowLocalEndpoints, true);
 assert.deepEqual(requiredOptionErrors(localEndpointsAllowed), []);
 assert.ok(
-  buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[2].args.includes('--allow-local-endpoints'),
-);
-assert.ok(
   buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[3].args.includes('--allow-local-endpoints'),
 );
 assert.ok(
@@ -131,6 +128,9 @@ assert.ok(
 );
 assert.ok(
   buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[5].args.includes('--allow-local-endpoints'),
+);
+assert.ok(
+  buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[6].args.includes('--allow-local-endpoints'),
 );
 
 const fromEnv = parseArgs([], {
@@ -244,6 +244,7 @@ const steps = buildSmokeSteps(parsed, {
   scriptDir: '.scripts',
 });
 assert.deepEqual(steps.map((step) => step.name), [
+  'W4:visible-copy',
   'W2:typecheck',
   'LiveDevice',
   'LiveVideo',
@@ -251,40 +252,41 @@ assert.deepEqual(steps.map((step) => step.name), [
   'LivePlayer:coverage',
   'LivePlayer:case-timeline',
 ]);
-assert.deepEqual(steps[0].args, ['--dir', 'WEB', 'run', 'type:check']);
-assert.deepEqual(steps.map((step) => step.timeoutMs), [900000, 900000, 900000, 900000, 900000, 900000]);
-assert.deepEqual(steps[1].args.slice(0, 5), [
+assert.deepEqual(steps[0].args, ['.scripts/alert-review-visible-copy-scan.mjs']);
+assert.deepEqual(steps[1].args, ['--dir', 'WEB', 'run', 'type:check']);
+assert.deepEqual(steps.map((step) => step.timeoutMs), [900000, 900000, 900000, 900000, 900000, 900000, 900000]);
+assert.deepEqual(steps[2].args.slice(0, 5), [
   '.scripts/alert-review-device-integration-smoke.mjs',
   '--device-base-url=https://device.release.example/api',
   '--token=token-1',
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
 ]);
-assert.ok(steps[1].args.includes('--playback-allowed-camera-ids=camera-01'));
-assert.ok(steps[1].args.includes('--playback-denied-camera-ids=camera-02'));
-assert.ok(steps[1].args.includes('--playback-review-item-id=1001'));
-assert.ok(steps[1].args.includes('--playback-review-case-id=2001'));
-assert.ok(steps[1].args.includes('--playback-material-uri=playback-url.mp4'));
-assert.ok(steps[1].args.includes('--timeout-ms=900000'));
-assert.ok(steps[2].args.includes('--record-export-url=https://video.release.example/video/record/export'));
-assert.ok(steps[2].args.includes('--camera-id=camera-01'));
-assert.ok(steps[2].args.includes('--record-drift-retention-hours=24'));
-assert.ok(steps[2].args.includes('--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs'));
+assert.ok(steps[2].args.includes('--playback-allowed-camera-ids=camera-01'));
+assert.ok(steps[2].args.includes('--playback-denied-camera-ids=camera-02'));
+assert.ok(steps[2].args.includes('--playback-review-item-id=1001'));
+assert.ok(steps[2].args.includes('--playback-review-case-id=2001'));
+assert.ok(steps[2].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[2].args.includes('--timeout-ms=900000'));
-assert.ok(steps[3].args.includes('--action-testid=alert-review-detail-seek'));
-assert.ok(steps[3].args.includes('--expected-offset-seconds=30'));
+assert.ok(steps[3].args.includes('--record-export-url=https://video.release.example/video/record/export'));
+assert.ok(steps[3].args.includes('--camera-id=camera-01'));
+assert.ok(steps[3].args.includes('--record-drift-retention-hours=24'));
+assert.ok(steps[3].args.includes('--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs'));
 assert.ok(steps[3].args.includes('--timeout-ms=900000'));
-assert.ok(steps[3].args.includes('--assert-native-current-time'));
-assert.ok(steps[4].args.includes('--action-testid=alert-review-coverage-seek'));
-assert.ok(steps[4].args.includes('--expected-offset-seconds=0'));
+assert.ok(steps[4].args.includes('--action-testid=alert-review-detail-seek'));
+assert.ok(steps[4].args.includes('--expected-offset-seconds=30'));
 assert.ok(steps[4].args.includes('--timeout-ms=900000'));
 assert.ok(steps[4].args.includes('--assert-native-current-time'));
-assert.ok(steps[5].args.includes('--action-testid=alert-review-case-timeline-seek'));
+assert.ok(steps[5].args.includes('--action-testid=alert-review-coverage-seek'));
 assert.ok(steps[5].args.includes('--expected-offset-seconds=0'));
 assert.ok(steps[5].args.includes('--timeout-ms=900000'));
 assert.ok(steps[5].args.includes('--assert-native-current-time'));
+assert.ok(steps[6].args.includes('--action-testid=alert-review-case-timeline-seek'));
+assert.ok(steps[6].args.includes('--expected-offset-seconds=0'));
+assert.ok(steps[6].args.includes('--timeout-ms=900000'));
+assert.ok(steps[6].args.includes('--assert-native-current-time'));
 assert.equal(
-  formatStepCommand(steps[1]),
+  formatStepCommand(steps[2]),
   'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
 );
 
@@ -292,7 +294,8 @@ const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smok
   encoding: 'utf8',
 });
 assert.equal(help.status, 0);
-assert.match(help.stdout, /W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail/);
+assert.match(help.stdout, /W4:visible-copy -> W2:typecheck -> LiveDevice -> LiveVideo -> LivePlayer:detail/);
+assert.match(help.stdout, /visible-copy files for replacement characters/);
 assert.match(help.stdout, /full frontend typecheck/);
 assert.match(help.stdout, /--pm-on-fail=ignore/);
 
@@ -307,8 +310,8 @@ const smoke = await runProductionSmoke(parsed, {
   },
 });
 assert.equal(smoke.ok, true);
-assert.deepEqual(calls, ['W2:typecheck', 'LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
-assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+assert.deepEqual(calls, ['W4:visible-copy', 'W2:typecheck', 'LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
+assert.deepEqual(smoke.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
 
 const pnpmGuardRetryCalls = [];
 const pnpmGuardRetryWrites = [];
@@ -338,16 +341,20 @@ const pnpmGuardRetrySmoke = await runProductionSmoke({
 });
 assert.equal(pnpmGuardRetrySmoke.ok, true);
 assert.deepEqual(pnpmGuardRetryCalls.slice(0, 2), [
+  { name: 'W4:visible-copy', args: ['.scripts/alert-review-visible-copy-scan.mjs'] },
+  { name: 'W2:typecheck', args: ['--dir', 'WEB', 'run', 'type:check'] },
+]);
+assert.deepEqual(pnpmGuardRetryCalls.slice(1, 3), [
   { name: 'W2:typecheck', args: ['--dir', 'WEB', 'run', 'type:check'] },
   { name: 'W2:typecheck', args: ['--dir', 'WEB', '--pm-on-fail=ignore', 'run', 'type:check'] },
 ]);
-assert.deepEqual(pnpmGuardRetryCalls.slice(2).map((call) => call.name), ['LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
+assert.deepEqual(pnpmGuardRetryCalls.slice(3).map((call) => call.name), ['LiveDevice', 'LiveVideo', 'LivePlayer:detail', 'LivePlayer:coverage', 'LivePlayer:case-timeline']);
 assert.equal(pnpmGuardRetryWrites.length, 1);
 const pnpmGuardRetryReport = JSON.parse(pnpmGuardRetryWrites[0].content);
-assert.equal(pnpmGuardRetryReport.steps[0].name, 'W2:typecheck');
-assert.equal(pnpmGuardRetryReport.steps[0].summary.typecheckRetry.reason, 'pnpm_version_guard');
-assert.match(pnpmGuardRetryReport.steps[0].summary.typecheckRetry.originalCommand, /^pnpm(\.cmd)? --dir WEB run type:check$/);
-assert.match(pnpmGuardRetryReport.steps[0].summary.typecheckRetry.retryCommand, /^pnpm(\.cmd)? --dir WEB --pm-on-fail=ignore run type:check$/);
+assert.equal(pnpmGuardRetryReport.steps[1].name, 'W2:typecheck');
+assert.equal(pnpmGuardRetryReport.steps[1].summary.typecheckRetry.reason, 'pnpm_version_guard');
+assert.match(pnpmGuardRetryReport.steps[1].summary.typecheckRetry.originalCommand, /^pnpm(\.cmd)? --dir WEB run type:check$/);
+assert.match(pnpmGuardRetryReport.steps[1].summary.typecheckRetry.retryCommand, /^pnpm(\.cmd)? --dir WEB --pm-on-fail=ignore run type:check$/);
 
 await assert.rejects(
   () => runProductionSmoke(parsed, {
@@ -405,6 +412,8 @@ const smokeWithEvidence = await runProductionSmoke({
   scriptDir: '.scripts',
   now: sequencedNow([
     '2026-07-07T00:00:00.000Z',
+    '2026-07-07T00:00:00.025Z',
+    '2026-07-07T00:00:00.040Z',
     '2026-07-07T00:00:00.050Z',
     '2026-07-07T00:00:00.100Z',
     '2026-07-07T00:00:00.200Z',
@@ -610,7 +619,7 @@ assert.equal(evidenceReport.startedAt, '2026-07-07T00:00:00.000Z');
 assert.equal(evidenceReport.finishedAt, '2026-07-07T00:00:03.000Z');
 assert.equal(evidenceReport.durationMs, 3000);
 assert.equal(evidenceReport.allowLocalEndpoints, false);
-assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+assert.deepEqual(evidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'passed', 'passed', 'passed', 'passed']);
 assert.deepEqual(evidenceReport.steps.map((step) => step.summary?.timeout?.timeoutMs), [
   12345,
   12345,
@@ -618,12 +627,15 @@ assert.deepEqual(evidenceReport.steps.map((step) => step.summary?.timeout?.timeo
   12345,
   12345,
   12345,
+  12345,
 ]);
-assert.equal(evidenceReport.steps[0].name, 'W2:typecheck');
-assert.match(evidenceReport.steps[0].command, /^pnpm(\.cmd)? --dir WEB run type:check$/);
-assert.equal(evidenceReport.steps[1].command.includes('--token=***'), true);
-assert.equal(evidenceReport.steps[3].command.includes('--workbench-url=https://web.release.example/yfeieye/alert/review '), true);
-assert.deepEqual(evidenceReport.steps[1].summary, {
+assert.equal(evidenceReport.steps[0].name, 'W4:visible-copy');
+assert.match(evidenceReport.steps[0].command, /^node \.scripts\/alert-review-visible-copy-scan\.mjs$/);
+assert.equal(evidenceReport.steps[1].name, 'W2:typecheck');
+assert.match(evidenceReport.steps[1].command, /^pnpm(\.cmd)? --dir WEB run type:check$/);
+assert.equal(evidenceReport.steps[2].command.includes('--token=***'), true);
+assert.equal(evidenceReport.steps[4].command.includes('--workbench-url=https://web.release.example/yfeieye/alert/review '), true);
+assert.deepEqual(evidenceReport.steps[2].summary, {
   timeout: { timeoutMs: 12345 },
   checkpoints: [
     'ingest_review_item',
@@ -669,7 +681,7 @@ assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-review-case-se
 assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-review-item-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-event-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('audit-chain-export-job-secret'), false);
-assert.deepEqual(evidenceReport.steps[2].summary.storageDriftSummary, {
+assert.deepEqual(evidenceReport.steps[3].summary.storageDriftSummary, {
   healthy: true,
   recordCount: 3,
   issueCount: 0,
@@ -680,7 +692,7 @@ assert.equal(JSON.stringify(evidenceReport).includes('storage-drift-repair-secre
 assert.equal(JSON.stringify(evidenceReport).includes('storage-drift-debug-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('storage-drift-issue-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('private-camera'), false);
-assert.deepEqual(evidenceReport.steps[2].summary.checkpoints, [
+assert.deepEqual(evidenceReport.steps[3].summary.checkpoints, [
   'alert_record_query_ok',
   'record_coverage_query_ok',
   'record_base_space_resolved',
@@ -690,13 +702,13 @@ assert.deepEqual(evidenceReport.steps[2].summary.checkpoints, [
   'record_export_download_probed',
   'record_export_manifest_verified',
 ]);
-assert.deepEqual(evidenceReport.steps[2].summary.coverageSummary, {
+assert.deepEqual(evidenceReport.steps[3].summary.coverageSummary, {
   status: 'available',
   retainMode: 'motion',
   coverageSource: 'detection',
 });
 assert.equal(JSON.stringify(evidenceReport).includes('coverage-classification-secret'), false);
-assert.deepEqual(evidenceReport.steps[2].summary.exportResult, {
+assert.deepEqual(evidenceReport.steps[3].summary.exportResult, {
   exportId: 'review-export-1',
   downloadUrl: 'https://media.example.test/downloads/review-export-1.mp4',
   manifestUrl: 'https://media.example.test/manifests/review-export-1.json',
@@ -704,7 +716,7 @@ assert.deepEqual(evidenceReport.steps[2].summary.exportResult, {
 assert.equal(JSON.stringify(evidenceReport).includes('export-temp-storage-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('export-result-debug-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('private-case'), false);
-assert.deepEqual(evidenceReport.steps[2].summary.manifestSignature, {
+assert.deepEqual(evidenceReport.steps[3].summary.manifestSignature, {
   algorithm: 'hmac-sha256',
   keyId: '2026-q2',
   signatureVersion: 'v2',
@@ -712,13 +724,13 @@ assert.deepEqual(evidenceReport.steps[2].summary.manifestSignature, {
 assert.equal(JSON.stringify(evidenceReport).includes('manifest-signature-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('manifest-signature-url-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('manifest-signature-debug-secret'), false);
-assert.deepEqual(evidenceReport.steps[2].summary.manifestStorageLifecycle, {
+assert.deepEqual(evidenceReport.steps[3].summary.manifestStorageLifecycle, {
   storageType: 'object_storage',
   status: 'persisted',
   expiresAt: '2026-07-20T00:00:00Z',
   exportPackageObjectKey: 'review-export-1/content.bin',
 });
-assert.deepEqual(evidenceReport.steps[2].summary.manifestVerification, {
+assert.deepEqual(evidenceReport.steps[3].summary.manifestVerification, {
   valid: true,
   signatureValid: true,
   signatureKeyAvailable: true,
@@ -726,7 +738,7 @@ assert.deepEqual(evidenceReport.steps[2].summary.manifestVerification, {
   signatureVersion: 'v2',
   violations: [],
 });
-assert.deepEqual(evidenceReport.steps[3].summary.player, {
+assert.deepEqual(evidenceReport.steps[4].summary.player, {
   entry: 'detail',
   actionTestId: 'alert-review-detail-seek',
   reviewRowText: 'RV-20260705-001',
@@ -743,7 +755,7 @@ assert.deepEqual(evidenceReport.steps[3].summary.player, {
   playbackOffsetSeconds: 30,
   nativeCurrentTime: 30.25,
 });
-assert.deepEqual(evidenceReport.steps[4].summary.player, {
+assert.deepEqual(evidenceReport.steps[5].summary.player, {
   entry: 'coverage',
   actionTestId: 'alert-review-coverage-seek',
   reviewRowText: 'RV-20260705-001',
@@ -760,7 +772,7 @@ assert.deepEqual(evidenceReport.steps[4].summary.player, {
   playbackOffsetSeconds: 0,
   nativeCurrentTime: 0.15,
 });
-assert.deepEqual(evidenceReport.steps[5].summary.player, {
+assert.deepEqual(evidenceReport.steps[6].summary.player, {
   entry: 'case-timeline',
   actionTestId: 'alert-review-case-timeline-seek',
   reviewRowText: 'RV-20260705-001',
@@ -777,10 +789,10 @@ assert.deepEqual(evidenceReport.steps[5].summary.player, {
   playbackOffsetSeconds: 0,
   nativeCurrentTime: 0,
 });
-assert.equal(evidenceReport.steps[2].stdout, undefined);
 assert.equal(evidenceReport.steps[3].stdout, undefined);
 assert.equal(evidenceReport.steps[4].stdout, undefined);
 assert.equal(evidenceReport.steps[5].stdout, undefined);
+assert.equal(evidenceReport.steps[6].stdout, undefined);
 assert.equal(JSON.stringify(evidenceReport).includes('token-1'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('command-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('media-secret'), false);
@@ -1234,6 +1246,8 @@ await assert.rejects(
     scriptDir: '.scripts',
     now: sequencedNow([
       '2026-07-07T00:00:00.000Z',
+      '2026-07-07T00:00:00.025Z',
+      '2026-07-07T00:00:00.040Z',
       '2026-07-07T00:00:00.050Z',
       '2026-07-07T00:00:00.100Z',
       '2026-07-07T00:00:00.200Z',
@@ -1255,10 +1269,10 @@ const failedEvidenceReport = JSON.parse(failedEvidenceWrites[0].content);
 assert.equal(failedEvidenceReport.ok, false);
 assert.equal(failedEvidenceReport.status, 'failed');
 assert.equal(failedEvidenceReport.finishedAt, '2026-07-07T00:00:00.900Z');
-assert.deepEqual(failedEvidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'failed']);
-assert.equal(failedEvidenceReport.steps[2].name, 'LiveVideo');
-assert.equal(failedEvidenceReport.steps[2].exitCode, 2);
-assert.equal(failedEvidenceReport.steps[2].error, 'LiveVideo failed with exit code 2');
+assert.deepEqual(failedEvidenceReport.steps.map((step) => step.status), ['passed', 'passed', 'passed', 'failed']);
+assert.equal(failedEvidenceReport.steps[3].name, 'LiveVideo');
+assert.equal(failedEvidenceReport.steps[3].exitCode, 2);
+assert.equal(failedEvidenceReport.steps[3].error, 'LiveVideo failed with exit code 2');
 assert.equal(JSON.stringify(failedEvidenceReport).includes('token-1'), false);
 
 const untrackedProductionSmoke = evaluateStatus(`
