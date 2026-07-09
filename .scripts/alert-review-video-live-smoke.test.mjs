@@ -411,6 +411,33 @@ await assert.rejects(
   /record coverage query missing retain mode or source classification/,
 );
 
+const invalidCoverageClassificationFetch = async (url, init = {}) => {
+  const requestUrl = String(url);
+  if (requestUrl.includes('/video/record/availability') && requestUrl.includes('begin_time=')) {
+    return jsonResponse({
+      code: 0,
+      data: {
+        segments: [
+          {
+            status: 'available',
+            start_time: '2026-07-05T10:00:00',
+            end_time: '2026-07-05T10:01:00',
+            record_uri: '/video/record/space/7/video/live/device-01/clip.mp4',
+            exportable: true,
+            retain_mode: 'temporary',
+            coverage_source: 'custom_ai',
+          },
+        ],
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: invalidCoverageClassificationFetch }),
+  /record coverage query returned non-standard retain mode or source classification.*temporary.*custom_ai/s,
+);
+
 const missingDriftReasonCatalogFetch = async (url, init = {}) => {
   if (String(url).includes('/space/7/videos/drift')) {
     return jsonResponse({

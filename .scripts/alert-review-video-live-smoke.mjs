@@ -14,6 +14,7 @@ const REQUIRED_STORAGE_DRIFT_REASON_KEYS = [
   'disk_full',
   'cache_flush_failed',
 ];
+const STANDARD_COVERAGE_CLASSIFICATIONS = ['continuous', 'motion', 'alert', 'detection'];
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -382,6 +383,12 @@ export function summarizeCliResult(result) {
 function validateCoverageClassification(segment) {
   if (!hasText(segment?.retainMode) || !hasText(segment?.coverageSource)) {
     throw new Error('record coverage query missing retain mode or source classification evidence');
+  }
+  const retainMode = String(segment.retainMode).trim().toLowerCase();
+  const coverageSource = String(segment.coverageSource).trim().toLowerCase();
+  if (!STANDARD_COVERAGE_CLASSIFICATIONS.includes(retainMode)
+      || !STANDARD_COVERAGE_CLASSIFICATIONS.includes(coverageSource)) {
+    throw new Error(`record coverage query returned non-standard retain mode or source classification: retainMode=${segment.retainMode}, coverageSource=${segment.coverageSource}`);
   }
 }
 
