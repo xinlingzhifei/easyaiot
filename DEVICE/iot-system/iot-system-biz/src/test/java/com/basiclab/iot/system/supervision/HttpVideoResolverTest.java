@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -39,11 +40,14 @@ class HttpVideoResolverTest {
     void dockerComposeWiresReviewVideoUrlsToRealVideoRecordEndpointsByDefault() throws Exception {
         String applicationYaml = Files.readString(Path.of("src/main/resources/application.yaml"), StandardCharsets.UTF_8);
         String dockerCompose = Files.readString(Path.of("../../docker-compose.yml"), StandardCharsets.UTF_8);
+        String coverageResolver = Files.readString(Path.of("src/main/java/com/basiclab/iot/system/service/supervision/HttpVideoRecordCoverageResolver.java"), StandardCharsets.UTF_8);
 
         assertTrue(applicationYaml.contains("alert-record-query-url: ${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:}"));
         assertTrue(applicationYaml.contains("record-coverage-query-url: ${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:}"));
         assertTrue(applicationYaml.contains("record-base-url: ${YFEIEYE_VIDEO_RECORD_BASE_URL:}"));
         assertTrue(applicationYaml.contains("record-export-url: ${YFEIEYE_VIDEO_RECORD_EXPORT_URL:}"));
+        assertTrue(coverageResolver.contains("@Value(\"${yfeieye.video.record-coverage-query-url:}\")"));
+        assertFalse(coverageResolver.contains("record-coverage-query-url:${yfeieye.video.alert-record-query-url"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL=${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:-http://host.docker.internal:6000/video/record/availability}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://host.docker.internal:6000/video/record/availability}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_BASE_URL=${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://host.docker.internal:6000/video/record}"));

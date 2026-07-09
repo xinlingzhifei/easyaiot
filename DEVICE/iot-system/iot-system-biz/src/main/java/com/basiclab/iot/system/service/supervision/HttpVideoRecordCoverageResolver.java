@@ -34,7 +34,7 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
 
     @Autowired
     public HttpVideoRecordCoverageResolver(RestTemplate restTemplate,
-                                           @Value("${yfeieye.video.record-coverage-query-url:${yfeieye.video.alert-record-query-url:}}") String recordCoverageQueryUrl,
+                                           @Value("${yfeieye.video.record-coverage-query-url:}") String recordCoverageQueryUrl,
                                            @Value("${yfeieye.video.record-base-url:}") String recordBaseUrl,
                                            @Value("${yfeieye.video.public-play-host:${MEDIA_HTTP_PLAY_HOST:}}") String publicPlayHost) {
         this.restTemplate = restTemplate;
