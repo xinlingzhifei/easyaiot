@@ -47,6 +47,7 @@ const releaseParsed = parseArgs([
   '--time-range=120',
   '--source-alert-id=alert-001',
   '--record-drift-retention-hours=24',
+  '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
 ]);
 assert.equal(parsed.alertRecordQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.recordCoverageQueryUrl, 'http://video.local/video/record/availability');
@@ -101,6 +102,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID',
   'missing --alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
   'missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
+  'missing --manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
@@ -112,6 +114,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--record-drift-retention-hours=24',
 ], {})), [
   'missing --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
+  'missing --manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
@@ -122,6 +125,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--device-id=device-01',
   '--alert-time=2026-07-05 10:00:00',
   '--record-drift-retention-hours=24',
+  '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
 ], {})), [
   'VIDEO live smoke endpoint --alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
   'VIDEO live smoke endpoint --record-coverage-query-url must not use a local/mock URL without --allow-local-endpoints',

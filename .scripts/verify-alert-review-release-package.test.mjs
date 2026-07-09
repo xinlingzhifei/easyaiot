@@ -346,7 +346,7 @@ const weakenedTypecheckGateScan = scanWebTypecheckGate([
 assert.equal(weakenedTypecheckGateScan.ok, false);
 assert.equal(weakenedTypecheckGateScan.blockers[0].reason, 'web_typecheck_gate_weakened');
 
-const completeLiveVideoSmokeContent = 'validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); result.status !== 0; verifier failed with exit; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;';
+const completeLiveVideoSmokeContent = 'requiredOptionErrors; validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); result.status !== 0; verifier failed with exit; missing --manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;';
 const completeProductionSmokeContent = 'requiredOptionErrors; payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE;';
 
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
@@ -376,6 +376,23 @@ assert.deepEqual(liveVideoCoverageUrlAliasGateScan.blockers.map((blocker) => blo
   'live_video_coverage_url_alias_present',
 ]);
 
+const missingLiveVideoManifestVerifierRequiredGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoSmokeContent
+      .replace('missing --manifest-verifier-script; ', '')
+      .replace('YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; ', ''),
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeContent,
+  },
+]);
+assert.equal(missingLiveVideoManifestVerifierRequiredGateScan.ok, false);
+assert.deepEqual(missingLiveVideoManifestVerifierRequiredGateScan.blockers.map((blocker) => blocker.reason), [
+  'live_video_manifest_verifier_required_missing',
+]);
+
 const missingProductionSmokeEvidenceFileRequiredGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
@@ -394,7 +411,7 @@ assert.deepEqual(missingProductionSmokeEvidenceFileRequiredGateScan.blockers.map
 const missingProductionSmokeManifestVerifierRequiredGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
-    content: 'validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); result.status !== 0; verifier failed with exit; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;',
+    content: completeLiveVideoSmokeContent,
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',

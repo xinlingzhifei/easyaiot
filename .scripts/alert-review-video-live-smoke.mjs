@@ -121,6 +121,9 @@ export function requiredOptionErrors(options) {
   if (!Number.isFinite(options.recordDriftRetentionHours) || options.recordDriftRetentionHours <= 0) {
     errors.push('missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS');
   }
+  if (!options.allowLocalEndpoints && !hasText(options.manifestVerifierScript)) {
+    errors.push('missing --manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT');
+  }
   if (!options.allowLocalEndpoints) {
     requireReleaseEndpoint(errors, '--alert-record-query-url', options.alertRecordQueryUrl);
     requireReleaseEndpoint(errors, '--record-coverage-query-url', options.recordCoverageQueryUrl);
@@ -980,17 +983,17 @@ function printHelp() {
   --record-export-url=http://VIDEO/video/record/export \\
   --device-id=DEVICE_ID --alert-time="YYYY-MM-DD HH:mm:ss" [--camera-id=CAMERA_ID] \\
   --record-drift-retention-hours=24 [--export-poll-attempts=5] [--export-poll-interval-ms=1000] \\
-  [--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs] \\
+  --manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs \\
   [--allow-local-endpoints]
 
 Runs a real FR-21/FR-32 VIDEO smoke: alert record lookup, coverage lookup,
 record-base space lookup, recording DB/disk drift patrol, export POST, export
 download readiness, a HEAD probe against the resolved download URL, and manifest v2 reproducibility fields
 (ffmpeg command hash, source hashes, clip params, concat order, output hashes).
-When --manifest-verifier-script is supplied, the fetched manifest is also checked by the
-record export verifier; run that mode only where the manifest's referenced files are accessible.
-The smoke must use a real device with real recording metadata; no mock server
-is started. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
+Release smoke requires --manifest-verifier-script so the fetched manifest is also
+checked by the record export verifier where manifest-referenced files are accessible.
+The smoke must use a real device with real recording metadata; no mock server is
+started. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
 is supplied for co-located real-service smoke.`);
 }
 
