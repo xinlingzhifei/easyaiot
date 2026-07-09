@@ -362,6 +362,10 @@ Manifest verifier and HMAC key rotation:
   `node .scripts/alert-review-video-live-smoke.test.mjs`
   `node .scripts/verify-alert-review-release-package.test.mjs`
   Result: RED first failed because `requiredOptionErrors` accepted identical release `alertRecordQueryUrl` / `recordCoverageQueryUrl`, and `Pkg` did not require the runtime alias guard. GREEN reruns passed after release mode rejects the identical URL pair while `--allow-local-endpoints` still permits local co-located smoke.
+- FR-14/FR-27/FR-32 LiveVideo manifest storage-reference guard passed:
+  `node .scripts/alert-review-video-live-smoke.test.mjs`
+  `node .scripts/verify-alert-review-release-package.test.mjs`
+  Result: RED first reached the offline verifier with `file:///tmp/...` export-package storage evidence instead of rejecting the manifest storage reference, and `Pkg` did not require the guard. GREEN reruns passed after release mode validates manifest `export_package` storage references with the same local/mock/inline media evidence rules used for record, download, and manifest URLs.
 
 - FR-32 production smoke orchestrator passed after the RED failure showed no one-command release gate existed for `LiveDevice -> LiveVideo -> LivePlayer`, and now runs `LivePlayer:detail`, `LivePlayer:coverage`, and `LivePlayer:case-timeline` as separate release steps:
   `node .scripts/alert-review-production-smoke.test.mjs`

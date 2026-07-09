@@ -1137,6 +1137,54 @@ await assert.rejects(
   /record export manifest missing storage lifecycle/,
 );
 
+const localStorageReferenceFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      recordSegments: [
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip.mp4',
+          sourceHash: SOURCE_SEGMENT_HASH,
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+        },
+      ],
+      files: [
+        {
+          path: 'review-export-1.mp4',
+          role: 'export_package',
+          hash: OUTPUT_FILE_HASH,
+          storage: {
+            storageType: 'local_disk',
+            artifactRole: 'export_package',
+            objectKey: 'file:///tmp/review-export-1.mp4',
+            expiresAt: '2026-07-20T00:00:00Z',
+            lifecycleStatus: 'retained',
+          },
+        },
+      ],
+      storageLifecycle: {
+        storageType: 'local_disk',
+        status: 'retained',
+        expiresAt: '2026-07-20T00:00:00Z',
+      },
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: MANIFEST_SIGNATURE_VALUE,
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(releaseParsed, { fetchImpl: localStorageReferenceFetch }),
+  /VIDEO live smoke returned local\/mock export package storage reference/,
+);
+
 const unsignedManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/manifests/review-export-1.json')) {
     return jsonResponse({

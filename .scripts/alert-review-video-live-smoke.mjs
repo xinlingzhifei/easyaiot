@@ -526,7 +526,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   if (invalidOutputHash) {
     throw new Error(`record export manifest invalid output file hash: ${invalidOutputHash}`);
   }
-  const storageLifecycle = validateManifestStorageLifecycle(manifest, outputs);
+  const storageLifecycle = validateManifestStorageLifecycle(manifest, outputs, options);
   const manifestVerification = await runManifestVerifierIfConfigured({
     manifest,
     manifestUrl,
@@ -627,7 +627,7 @@ function validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, reco
   }
 }
 
-function validateManifestStorageLifecycle(manifest, outputs) {
+function validateManifestStorageLifecycle(manifest, outputs, options) {
   const lifecycle = firstPresent(manifest.storageLifecycle, manifest.storage_lifecycle);
   if (!lifecycle || typeof lifecycle !== 'object') {
     throw new Error('record export manifest missing storage lifecycle');
@@ -657,6 +657,7 @@ function validateManifestStorageLifecycle(manifest, outputs) {
   if (!hasText(objectKey)) {
     throw new Error('record export manifest export package storage reference missing object key');
   }
+  assertReleaseMediaEvidence(options, 'export package storage reference', objectKey);
   const artifactStatus = firstText(storage.lifecycleStatus, storage.lifecycle_status, storage.status, status);
   if (['expired', 'deleted', 'purged'].includes(artifactStatus.toLowerCase())) {
     throw new Error(`record export manifest export package storage is not retained: ${artifactStatus}`);
