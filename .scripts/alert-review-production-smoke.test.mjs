@@ -495,7 +495,10 @@ const smokeWithEvidence = await runProductionSmoke({
   "exportResult": {
     "exportId": "review-export-1",
     "downloadUrl": "https://media.example.test/downloads/review-export-1.mp4?token=export-download-secret&signature=export-download-sig#download",
-    "manifestUrl": "https://media.example.test/manifests/review-export-1.json?token=export-manifest-secret&signature=export-manifest-sig#manifest"
+    "manifestUrl": "https://media.example.test/manifests/review-export-1.json?token=export-manifest-secret&signature=export-manifest-sig#manifest",
+    "localOutputPath": "C:\\\\exports\\\\private-case\\\\review-export-1.mp4",
+    "temporaryStorageUrl": "https://storage.example.test/tmp/review-export-1.mp4?token=export-temp-storage-secret#tmp",
+    "debugToken": "export-result-debug-secret"
   },
   "manifestSignature": {
     "algorithm": "hmac-sha256",
@@ -656,6 +659,9 @@ assert.deepEqual(evidenceReport.steps[2].summary.exportResult, {
   downloadUrl: 'https://media.example.test/downloads/review-export-1.mp4',
   manifestUrl: 'https://media.example.test/manifests/review-export-1.json',
 });
+assert.equal(JSON.stringify(evidenceReport).includes('export-temp-storage-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('export-result-debug-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('private-case'), false);
 assert.deepEqual(evidenceReport.steps[2].summary.manifestSignature, {
   algorithm: 'hmac-sha256',
   keyId: '2026-q2',

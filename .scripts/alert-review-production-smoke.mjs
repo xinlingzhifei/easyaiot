@@ -784,7 +784,8 @@ function buildRuleEvidenceSummary(payload) {
 }
 
 function buildExportResultSummary(source) {
-  const exportResult = { ...source };
+  const exportResult = {};
+  copyTextIfPresent(exportResult, source, 'exportId');
   copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl');
   copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl');
   return exportResult;
