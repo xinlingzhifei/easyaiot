@@ -491,7 +491,10 @@ const smokeWithEvidence = await runProductionSmoke({
   "manifestSignature": {
     "algorithm": "hmac-sha256",
     "keyId": "2026-q2",
-    "signatureVersion": "v2"
+    "signatureVersion": "v2",
+    "signatureValue": "hmac-sha256:manifest-signature-secret",
+    "signerUrl": "https://signer.example.test/key/2026-q2?token=manifest-signature-url-secret#sign",
+    "debugToken": "manifest-signature-debug-secret"
   },
   "manifestStorageLifecycle": {
     "storageType": "object_storage",
@@ -645,6 +648,9 @@ assert.deepEqual(evidenceReport.steps[2].summary.manifestSignature, {
   keyId: '2026-q2',
   signatureVersion: 'v2',
 });
+assert.equal(JSON.stringify(evidenceReport).includes('manifest-signature-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('manifest-signature-url-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('manifest-signature-debug-secret'), false);
 assert.deepEqual(evidenceReport.steps[2].summary.manifestStorageLifecycle, {
   storageType: 'object_storage',
   status: 'persisted',

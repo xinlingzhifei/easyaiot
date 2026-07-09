@@ -456,6 +456,18 @@ export function scanLiveVideoEvidenceGate(files) {
     });
   }
   if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'buildManifestSignatureSummary(payload.manifestSignature)',
+    "copyTextIfPresent(manifestSignature, source, 'algorithm')",
+    "copyTextIfPresent(manifestSignature, source, 'keyId')",
+    "copyTextIfPresent(manifestSignature, source, 'signatureVersion')",
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_signature_whitelist_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
     'payload.manifestStorageLifecycle',
     'summary.manifestStorageLifecycle',
     'summary.manifestStorageLifecycle?.status',

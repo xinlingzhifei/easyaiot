@@ -729,7 +729,7 @@ function childSmokeSummary(result) {
     summary.exportResult = buildExportResultSummary(payload.exportResult);
   }
   if (payload.manifestSignature && typeof payload.manifestSignature === 'object') {
-    summary.manifestSignature = payload.manifestSignature;
+    summary.manifestSignature = buildManifestSignatureSummary(payload.manifestSignature);
   }
   if (payload.manifestStorageLifecycle && typeof payload.manifestStorageLifecycle === 'object') {
     summary.manifestStorageLifecycle = buildManifestStorageLifecycleSummary(payload.manifestStorageLifecycle);
@@ -801,6 +801,14 @@ function buildManifestVerificationSummary(source) {
     manifestVerification.violations = source.violations.map(String);
   }
   return manifestVerification;
+}
+
+function buildManifestSignatureSummary(source) {
+  const manifestSignature = {};
+  copyTextIfPresent(manifestSignature, source, 'algorithm');
+  copyTextIfPresent(manifestSignature, source, 'keyId');
+  copyTextIfPresent(manifestSignature, source, 'signatureVersion');
+  return manifestSignature;
 }
 
 function buildManifestStorageLifecycleSummary(source) {
