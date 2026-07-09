@@ -891,7 +891,15 @@ function isHmacSha256SignatureValue(value) {
     || /^[A-Za-z0-9_-]{43}=?$/.test(digest);
 }
 
-function resolveDownloadUrl(downloadUrl, baseUrl) {
+export function resolveDownloadUrl(downloadUrl, baseUrl) {
+  const internalExportPrefix = '/video/record/export/';
+  if (String(downloadUrl || '').startsWith(internalExportPrefix)) {
+    const resolved = new URL(baseUrl);
+    resolved.search = '';
+    resolved.hash = '';
+    resolved.pathname = `${resolved.pathname.replace(/\/+$/, '')}/${String(downloadUrl).slice(internalExportPrefix.length)}`;
+    return resolved.toString();
+  }
   return new URL(downloadUrl, baseUrl).toString();
 }
 

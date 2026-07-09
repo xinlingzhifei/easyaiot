@@ -8,6 +8,7 @@ import {
   buildExportBody,
   parseArgs,
   requiredOptionErrors,
+  resolveDownloadUrl,
   runSmoke,
   selectPlayableSegment,
   summarizeCliResult,
@@ -66,6 +67,13 @@ assert.equal(parsed.timeRangeSeconds, 120);
 assert.equal(parsed.sourceAlertId, 'alert-001');
 assert.equal(parsed.recordDriftRetentionHours, 24);
 assert.equal(parsed.allowLocalEndpoints, true);
+assert.equal(
+  resolveDownloadUrl(
+    '/video/record/export/review-export-1/download',
+    'https://video.release.example/yfeieye/dev-api/video/record/export',
+  ),
+  'https://video.release.example/yfeieye/dev-api/video/record/export/review-export-1/download',
+);
 
 const parsedWithVerifier = parseArgs([
   '--alert-record-query-url=http://video.local/video/record/availability',
