@@ -726,7 +726,7 @@ function childSmokeSummary(result) {
     summary.storageDriftSummary = payload.storageDriftSummary;
   }
   if (payload.exportResult && typeof payload.exportResult === 'object') {
-    summary.exportResult = payload.exportResult;
+    summary.exportResult = buildExportResultSummary(payload.exportResult);
   }
   if (payload.manifestSignature && typeof payload.manifestSignature === 'object') {
     summary.manifestSignature = payload.manifestSignature;
@@ -781,6 +781,13 @@ function buildRuleEvidenceSummary(payload) {
     copyIfPresent(ruleEvidence, source, key);
   }
   return Object.keys(ruleEvidence).length ? ruleEvidence : null;
+}
+
+function buildExportResultSummary(source) {
+  const exportResult = { ...source };
+  copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl');
+  copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl');
+  return exportResult;
 }
 
 function buildAuditChainSummary(payload, summary) {
