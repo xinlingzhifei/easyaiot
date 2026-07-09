@@ -687,6 +687,10 @@ function runManifestVerifierScript(scriptPath, manifest) {
       throw new Error(`record export manifest verifier failed to start: ${result.error.message}`);
     }
     const output = String(result.stdout || '').trim();
+    if (result.status !== 0) {
+      const detail = String(result.stderr || output || `exit ${result.status ?? 1}`).trim();
+      throw new Error(`record export manifest verifier failed with exit ${result.status}: ${detail}`);
+    }
     try {
       return output ? JSON.parse(output) : {};
     } catch {

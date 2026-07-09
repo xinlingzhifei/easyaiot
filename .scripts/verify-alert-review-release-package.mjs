@@ -284,6 +284,9 @@ export function scanLiveVideoEvidenceGate(files) {
     'runManifestVerifierIfConfigured',
     'manifestVerification',
     'manifestVerifierScript',
+    'runManifestVerifierScript',
+    'result.status !== 0',
+    'verifier failed with exit',
   ])) {
     blockers.push({
       path: '.scripts/alert-review-video-live-smoke.mjs',

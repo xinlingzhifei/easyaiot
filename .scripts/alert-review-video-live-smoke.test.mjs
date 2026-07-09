@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   buildAvailabilityUrl,
@@ -590,6 +593,21 @@ await assert.rejects(
   }),
   /record export manifest verifier failed: missing_hmac_key/,
 );
+
+const verifierTempDir = mkdtempSync(join(tmpdir(), 'yfeieye-live-video-verifier-'));
+const falseSuccessVerifierPath = join(verifierTempDir, 'false-success-verifier.mjs');
+writeFileSync(falseSuccessVerifierPath, 'console.log(JSON.stringify({ valid: true })); process.exit(7);\n', 'utf8');
+try {
+  await assert.rejects(
+    () => runSmoke({
+      ...parsedWithVerifier,
+      manifestVerifierScript: falseSuccessVerifierPath,
+    }, { fetchImpl: fakeFetch }),
+    /record export manifest verifier failed with exit 7/,
+  );
+} finally {
+  rmSync(verifierTempDir, { recursive: true, force: true });
+}
 
 const failedDriftFetch = async (url, init = {}) => {
   if (String(url).includes('/space/7/videos/drift')) {
