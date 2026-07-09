@@ -267,6 +267,13 @@ export function scanWebTypecheckGate(files) {
 export function scanLiveVideoEvidenceGate(files) {
   const blockers = [];
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
+  if (liveVideo && /\brecordCoverageQueryUrl\s*=\s*parsed\.alertRecordQueryUrl\b/.test(liveVideo.content)) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_coverage_url_alias_present',
+    });
+  }
   if (liveVideo && !containsAll(liveVideo.content, [
     'validateManifestSignature',
     'isHmacSha256SignatureValue',
