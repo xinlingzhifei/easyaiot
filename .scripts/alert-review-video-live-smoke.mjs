@@ -200,6 +200,48 @@ export function selectPlayableSegment(payload) {
   return null;
 }
 
+function describeNonPlayableSegments(payload) {
+  const data = responseData(payload);
+  const rows = firstList(data, 'segments', 'records', 'items', 'recordings', 'timeline_merged', 'timelineMerged', 'timeline');
+  const candidates = rows.length ? rows : [data];
+  const reasons = [];
+  for (const row of candidates) {
+    if (!row || typeof row !== 'object') {
+      continue;
+    }
+    const recordEvidence = firstTextEntry([
+      ['record_uri', row.record_uri],
+      ['recordUri', row.recordUri],
+      ['play_url', row.play_url],
+      ['playUrl', row.playUrl],
+      ['video_url', row.video_url],
+      ['videoUrl', row.videoUrl],
+      ['url', row.url],
+      ['file_path', row.file_path],
+    ]);
+    const status = firstText(row.status, row.coverage_status, row.coverageStatus);
+    const nonExportableReason = firstText(
+      row.non_exportable_reason,
+      row.nonExportableReason,
+      row.unexportable_reason,
+      row.unexportableReason,
+      row.gap_reason,
+      row.gapReason,
+      row.reason,
+    );
+    if (hasText(nonExportableReason)) {
+      reasons.push(nonExportableReason);
+    } else if (firstPresent(row.exportable, row.can_export, row.canExport) === false) {
+      reasons.push('exportable=false');
+    } else if (hasText(status) && String(status).toLowerCase() === 'missing') {
+      reasons.push('status=missing');
+    } else if (!hasText(recordEvidence.value)) {
+      reasons.push('record_uri_missing');
+    }
+  }
+  return [...new Set(reasons)].slice(0, 4).join(', ');
+}
+
 export function buildExportBody(options, segment) {
   const body = {
     review_case_id: options.reviewCaseId,
@@ -252,7 +294,8 @@ export async function runSmoke(options, dependencies = {}) {
   });
   const coverageSegment = selectPlayableSegment(coverage);
   if (!coverageSegment) {
-    throw new Error('record coverage query returned no playable/exportable record segment');
+    const summary = describeNonPlayableSegments(coverage);
+    throw new Error(`record coverage query returned no playable/exportable record segment${summary ? `: ${summary}` : ''}`);
   }
   assertReleaseSegmentMediaEvidence(options, coverageSegment);
   checkpoints.push('record_coverage_query_ok');

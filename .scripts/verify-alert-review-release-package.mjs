@@ -336,6 +336,19 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'live_video_coverage_url_runtime_alias_guard_missing',
     });
   }
+  if (liveVideo && liveVideo.content.includes('selectPlayableSegment') && !containsAll(liveVideo.content, [
+    'describeNonPlayableSegments',
+    'non_exportable_reason',
+    'nonExportableReason',
+    'exportable=false',
+    'record coverage query returned no playable/exportable record segment',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_non_exportable_reason_summary_missing',
+    });
+  }
   if (liveVideo && !containsAll(liveVideo.content, [
     'validateManifestSignature',
     'isHmacSha256SignatureValue',
