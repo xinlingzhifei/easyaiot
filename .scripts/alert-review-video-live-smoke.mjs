@@ -772,6 +772,8 @@ function looksLocalOrMockMediaEvidence(value) {
   }
   const lowered = raw.toLowerCase();
   if (lowered.startsWith('mock:')
+    || lowered.startsWith('mock/')
+    || lowered.startsWith('mock\\')
     || lowered.startsWith('file:')
     || lowered.includes('/mock')
     || lowered.includes('\\mock')) {
