@@ -738,7 +738,7 @@ function childSmokeSummary(result) {
     summary.manifestVerification = payload.manifestVerification;
   }
   if (payload.playback && typeof payload.playback === 'object') {
-    summary.playback = payload.playback;
+    summary.playback = buildPlaybackAccessSummary(payload.playback);
   }
   const ruleEvidence = buildRuleEvidenceSummary(payload);
   if (ruleEvidence) {
@@ -788,6 +788,16 @@ function buildExportResultSummary(source) {
   copySanitizedUrlIfPresent(exportResult, source, 'downloadUrl');
   copySanitizedUrlIfPresent(exportResult, source, 'manifestUrl');
   return exportResult;
+}
+
+function buildPlaybackAccessSummary(source) {
+  const playback = {};
+  copyTextIfPresent(playback, source, 'grantedDecision');
+  copyTextIfPresent(playback, source, 'deniedDecision');
+  if (Array.isArray(source.deniedReasons)) {
+    playback.deniedReasons = source.deniedReasons.map(String);
+  }
+  return playback;
 }
 
 function buildAuditChainSummary(payload, summary) {

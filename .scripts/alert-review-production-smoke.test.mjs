@@ -446,7 +446,9 @@ const smokeWithEvidence = await runProductionSmoke({
   "playback": {
     "grantedDecision": "granted",
     "deniedDecision": "denied",
-    "deniedReasons": ["camera_not_allowed"]
+    "deniedReasons": ["camera_not_allowed"],
+    "grantedPlaybackUrl": "https://media.example.test/playback/camera-01.mp4?token=playback-url-secret&signature=playback-sig#stream",
+    "debugToken": "playback-debug-secret"
   },
   "checkpoints": [
     "ingest_review_item",
@@ -718,6 +720,8 @@ assert.equal(JSON.stringify(evidenceReport).includes('coverage-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('case-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('export-download-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('export-manifest-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('playback-url-secret'), false);
+assert.equal(JSON.stringify(evidenceReport).includes('playback-debug-secret'), false);
 
 const failedEvidenceWrites = [];
 await assert.rejects(

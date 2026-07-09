@@ -642,7 +642,7 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_playback_access_evidence_missing',
     });
   }
-  if (productionSmokeHasLiveDeviceEvidenceGate
+  const productionSmokeMissingRuleSemanticsGate = productionSmokeHasLiveDeviceEvidenceGate
       && !productionSmokeMissingAuditChainGate
       && !productionSmokeMissingPlaybackAccessGate
       && !containsAll(productionSmoke.content, [
@@ -653,7 +653,24 @@ export function scanLiveVideoEvidenceGate(files) {
         'missing rule inertia/loitering evidence',
         'missing rule inertiaFrames=3 evidence',
         'missing rule loiteringSeconds=20 evidence',
+      ]);
+  if (productionSmokeHasLiveDeviceEvidenceGate
+      && !productionSmokeMissingAuditChainGate
+      && !productionSmokeMissingPlaybackAccessGate
+      && !productionSmokeMissingRuleSemanticsGate
+      && !containsAll(productionSmoke.content, [
+        'buildPlaybackAccessSummary(payload.playback)',
+        "copyTextIfPresent(playback, source, 'grantedDecision')",
+        "copyTextIfPresent(playback, source, 'deniedDecision')",
+        'deniedReasons',
       ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_playback_summary_whitelist_missing',
+    });
+  }
+  if (productionSmokeMissingRuleSemanticsGate) {
     blockers.push({
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
