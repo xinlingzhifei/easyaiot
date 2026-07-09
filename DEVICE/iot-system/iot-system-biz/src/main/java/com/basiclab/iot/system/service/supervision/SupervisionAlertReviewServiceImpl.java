@@ -1436,6 +1436,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             metadata.put("attemptFindings", attemptFindings);
             metadata.put("initialRepairableCount", before.repairableCount());
             metadata.put("finalRepairableCount", after.repairableCount());
+            metadata.put("recordGapReasons", after.recordGapReasons());
+            metadata.put("recordGapReasonDetails", recordGapReasonDetails(after.recordGapReasons()));
             metadata.put("alertActions", runtimePatrolAlertActions(alerts));
             metadata.put("nextRetryAt", after.repairableCount() > 0
                     ? executedAt.plusMinutes(Math.max(1, attemptCount)).toString()
@@ -3697,6 +3699,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             catalog.put(definition.code(), Map.copyOf(values));
         }
         return Map.copyOf(catalog);
+    }
+
+    private static Map<String, Map<String, Object>> recordGapReasonDetails(Map<String, Integer> reasonCounts) {
+        if (reasonCounts == null || reasonCounts.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Map<String, Object>> details = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : reasonCounts.entrySet()) {
+            recordGapReasonDefinition(entry.getKey()).ifPresent(definition -> {
+                Map<String, Object> values = new LinkedHashMap<>();
+                values.put("code", definition.code());
+                values.put("category", definition.category());
+                values.put("labelZh", definition.labelZh());
+                values.put("retryable", definition.retryable());
+                values.put("count", entry.getValue());
+                details.put(definition.code(), Map.copyOf(values));
+            });
+        }
+        return Map.copyOf(details);
     }
 
     private static Set<String> recordStorageGapReasons(ReviewItemAggregate item) {

@@ -4989,6 +4989,13 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(1, health.recordGapReasons().get("video_url_not_configured"));
         assertTrue(health.alerts().contains("record_evidence_gap:video_url_not_configured"));
         assertTrue(patrol.recommendedActions().contains("configure_video_record_query_url"));
+        assertEquals(Map.of("video_url_not_configured", 1), patrol.metadata().get("recordGapReasons"));
+        Map<?, ?> reasonDetails = (Map<?, ?>) patrol.metadata().get("recordGapReasonDetails");
+        Map<?, ?> configReason = (Map<?, ?>) reasonDetails.get("video_url_not_configured");
+        assertEquals("video_url_not_configured", configReason.get("code"));
+        assertEquals("configuration", configReason.get("category"));
+        assertEquals("未配置", configReason.get("labelZh"));
+        assertEquals(false, configReason.get("retryable"));
     }
 
     @Test
