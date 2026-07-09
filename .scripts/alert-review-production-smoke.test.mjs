@@ -44,6 +44,7 @@ const parsed = parseArgs([
   '--player-case-timeline-expected-seek-time=2026-07-05T10:00:00',
   '--player-case-timeline-expected-record-path-contains=device-01',
   '--player-case-timeline-expected-offset-seconds=0',
+  '--evidence-output-file=artifacts/review-production-smoke.json',
   '--player-wait-text=线索复核工作台',
 ], {});
 
@@ -64,6 +65,7 @@ assert.equal(parsed.playerWorkbenchUrl, 'https://web.release.example/yfeieye/ale
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
+assert.equal(parsed.evidenceOutputFile, 'artifacts/review-production-smoke.json');
 assert.equal(parsed.allowLocalEndpoints, false);
 
 assert.deepEqual(requiredOptionErrors({
@@ -101,6 +103,7 @@ const localEndpointsAllowed = parseArgs([
   '--player-case-timeline-expected-seek-time=2026-07-05T10:00:00',
   '--player-case-timeline-expected-record-path-contains=device-01',
   '--player-case-timeline-expected-offset-seconds=0',
+  '--evidence-output-file=artifacts/local-review-production-smoke.json',
   '--allow-local-endpoints',
 ], {});
 assert.equal(localEndpointsAllowed.allowLocalEndpoints, true);
@@ -184,6 +187,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --player-case-timeline-expected-seek-time or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME',
   'missing --player-case-timeline-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS',
   'missing --player-case-timeline-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS',
+  'missing --evidence-output-file or YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
@@ -212,6 +216,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--player-case-timeline-expected-seek-time=2026-07-05T10:00:00',
   '--player-case-timeline-expected-record-path-contains=device-01',
   '--player-case-timeline-expected-offset-seconds=0',
+  '--evidence-output-file=artifacts/local-endpoint-rejection.json',
 ], {})), [
   'production smoke endpoint --device-base-url must not use a local/mock URL without --allow-local-endpoints',
   'production smoke endpoint --video-alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
@@ -266,6 +271,7 @@ const calls = [];
 const smoke = await runProductionSmoke(parsed, {
   nodePath: 'node',
   scriptDir: '.scripts',
+  writeFile: () => {},
   runCommand: async (step) => {
     calls.push(step.name);
     return { status: 0, stdout: summaryStdoutForStep(step.name) };
@@ -279,6 +285,7 @@ await assert.rejects(
   () => runProductionSmoke(parsed, {
     nodePath: 'node',
     scriptDir: '.scripts',
+    writeFile: () => {},
     runCommand: async () => ({ status: 0 }),
   }),
   /production smoke step LiveDevice did not emit required evidence summary/,
@@ -288,6 +295,7 @@ await assert.rejects(
   () => runProductionSmoke(parsed, {
     nodePath: 'node',
     scriptDir: '.scripts',
+    writeFile: () => {},
     runCommand: async (step) => ({
       status: 0,
       stdout: summaryStdoutForStep(step.name, {
@@ -570,6 +578,7 @@ await assert.rejects(
   () => runProductionSmoke(parsed, {
     nodePath: 'node',
     scriptDir: '.scripts',
+    writeFile: () => {},
     runCommand: async (step) => ({ status: step.name === 'LiveVideo' ? 1 : 0, stdout: summaryStdoutForStep(step.name) }),
   }),
   /LiveVideo failed with exit code 1/,

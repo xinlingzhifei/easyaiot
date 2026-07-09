@@ -159,6 +159,7 @@ export function requiredOptionErrors(options) {
   requireText(errors, options.playerCaseTimelineExpectedSeekTime, 'missing --player-case-timeline-expected-seek-time or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME');
   requireText(errors, options.playerCaseTimelineExpectedRecordPathContains, 'missing --player-case-timeline-expected-record-path-contains or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS');
   requireNonNegativeNumber(errors, options.playerCaseTimelineExpectedOffsetSeconds, 'missing --player-case-timeline-expected-offset-seconds or YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS');
+  requireText(errors, options.evidenceOutputFile, 'missing --evidence-output-file or YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE');
   if (!options.allowLocalEndpoints) {
     requireReleaseEndpoint(errors, '--device-base-url', options.deviceBaseUrl);
     requireReleaseEndpoint(errors, '--video-alert-record-query-url', options.videoAlertRecordQueryUrl);
@@ -810,7 +811,7 @@ function printHelp() {
   --player-case-timeline-expected-seek-time="2026-07-05T10:00:00" \\
   --player-case-timeline-expected-record-path-contains=DEVICE_ID \\
   --player-case-timeline-expected-offset-seconds=0 \\
-  [--evidence-output-file=artifacts/production-smoke.json] [--allow-local-endpoints]
+  --evidence-output-file=artifacts/production-smoke.json [--allow-local-endpoints]
 
 Runs the release FR-32 production smoke in order:
 LiveDevice -> LiveVideo -> LivePlayer:detail -> LivePlayer:coverage ->
@@ -818,10 +819,11 @@ LivePlayer:case-timeline. Each step uses real deployed services, real recording
 metadata, export verification, download audit, playback-url allow/deny authorization,
 recording DB/disk drift patrol, and player seek assertions from the dedicated smoke
 scripts. Release smoke requires a video manifest verifier script so the fetched
-manifest is verified against reachable manifest-referenced evidence files. Localhost/mock/file
-endpoints are rejected unless --allow-local-endpoints is supplied for co-located
-real-service smoke. Evidence output is written as a sanitized JSON report with
-masked token-bearing step commands.`);
+manifest is verified against reachable manifest-referenced evidence files, and
+requires an evidence output path so every release run leaves a sanitized JSON
+report with masked token-bearing step commands. Localhost/mock/file endpoints are
+rejected unless --allow-local-endpoints is supplied for co-located real-service
+smoke.`);
 }
 
 async function runCli() {
