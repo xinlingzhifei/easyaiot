@@ -76,9 +76,6 @@ export function parseArgs(args, env = process.env) {
     }
   }
 
-  if (!parsed.recordCoverageQueryUrl && parsed.alertRecordQueryUrl) {
-    parsed.recordCoverageQueryUrl = parsed.alertRecordQueryUrl;
-  }
   if (!parsed.cameraId && parsed.deviceId) {
     parsed.cameraId = parsed.deviceId;
   }

@@ -104,6 +104,17 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--alert-record-query-url=https://video.release.example/video/record/availability',
+  '--record-base-url=https://video.release.example/video/record',
+  '--record-export-url=https://video.release.example/video/record/export',
+  '--device-id=device-01',
+  '--alert-time=2026-07-05 10:00:00',
+  '--record-drift-retention-hours=24',
+], {})), [
+  'missing --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
+]);
+
+assert.deepEqual(requiredOptionErrors(parseArgs([
   '--alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
   '--record-coverage-query-url=http://video.mock/video/record/availability',
   '--record-base-url=file:///tmp/video/record',
