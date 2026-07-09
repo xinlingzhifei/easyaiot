@@ -435,6 +435,16 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_manifest_verifier_summary_missing',
     });
   }
+  if (productionSmoke && productionSmoke.content.includes('liveVideoEvidenceError') && !containsAll(productionSmoke.content, [
+    'summary.manifestVerification?.valid',
+    'missing valid manifest verifier evidence',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_verifier_evidence_required_missing',
+    });
+  }
   if (productionSmoke && !containsAll(productionSmoke.content, [
     'videoManifestVerifierScript',
     'missing --video-manifest-verifier-script',

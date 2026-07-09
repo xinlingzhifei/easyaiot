@@ -451,8 +451,8 @@ function liveVideoEvidenceError(stepName, summary) {
       || !hasText(summary.manifestSignature?.signatureVersion)) {
     return `production smoke step ${stepName} missing HMAC manifest signature evidence`;
   }
-  if (summary.manifestVerification && summary.manifestVerification.valid !== true) {
-    return `production smoke step ${stepName} manifest verifier evidence is not valid`;
+  if (summary.manifestVerification?.valid !== true) {
+    return `production smoke step ${stepName} missing valid manifest verifier evidence`;
   }
   return null;
 }
