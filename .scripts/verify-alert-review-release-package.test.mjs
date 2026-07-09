@@ -329,10 +329,25 @@ const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(liveVideoEvidenceGateScan.ok, true);
+
+const missingProductionSmokeManifestVerifierRequiredGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: 'validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;',
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+  },
+]);
+assert.equal(missingProductionSmokeManifestVerifierRequiredGateScan.ok, false);
+assert.deepEqual(missingProductionSmokeManifestVerifierRequiredGateScan.blockers.map((blocker) => blocker.reason), [
+  'production_smoke_manifest_verifier_required_missing',
+]);
 
 const missingLiveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
@@ -351,6 +366,7 @@ assert.deepEqual(missingLiveVideoEvidenceGateScan.blockers.map((blocker) => bloc
   'live_video_media_evidence_gate_missing',
   'production_smoke_manifest_signature_summary_missing',
   'production_smoke_manifest_verifier_summary_missing',
+  'production_smoke_manifest_verifier_required_missing',
 ]);
 
 const missingLiveVideoSignatureValueGateScan = scanLiveVideoEvidenceGate([
@@ -360,7 +376,7 @@ const missingLiveVideoSignatureValueGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoSignatureValueGateScan.ok, false);
@@ -375,7 +391,7 @@ const missingLiveVideoFilePathGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoFilePathGateScan.ok, false);
@@ -390,7 +406,7 @@ const missingLiveVideoAbsolutePathGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoAbsolutePathGateScan.ok, false);
@@ -405,7 +421,7 @@ const missingLiveVideoProtocolRelativeGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoProtocolRelativeGateScan.ok, false);
@@ -420,7 +436,7 @@ const missingLiveVideoRelativeMockPathGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoRelativeMockPathGateScan.ok, false);
@@ -435,7 +451,7 @@ const missingLiveVideoInlineMediaGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoInlineMediaGateScan.ok, false);
@@ -450,7 +466,7 @@ const missingLiveVideoDownloadProbeHeaderGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoDownloadProbeHeaderGateScan.ok, false);
@@ -465,7 +481,7 @@ const missingLiveVideoManifestHashGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoManifestHashGateScan.ok, false);
@@ -480,7 +496,7 @@ const missingLiveVideoFfmpegCommandHashGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoFfmpegCommandHashGateScan.ok, false);
@@ -495,7 +511,7 @@ const missingLiveVideoClipWindowGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoClipWindowGateScan.ok, false);
@@ -510,7 +526,7 @@ const missingLiveVideoConcatOrderGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoConcatOrderGateScan.ok, false);
@@ -525,7 +541,7 @@ const missingLiveVideoRootConcatOrderGateScan = scanLiveVideoEvidenceGate([
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoRootConcatOrderGateScan.ok, false);
@@ -540,7 +556,7 @@ const missingLiveVideoRootConcatOrderCoverageGateScan = scanLiveVideoEvidenceGat
   },
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification;',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT;',
   },
 ]);
 assert.equal(missingLiveVideoRootConcatOrderCoverageGateScan.ok, false);

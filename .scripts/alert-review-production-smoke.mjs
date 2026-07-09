@@ -145,6 +145,9 @@ export function requiredOptionErrors(options) {
   requireText(errors, options.videoDeviceId, 'missing --video-device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID');
   requireText(errors, options.videoAlertTime, 'missing --video-alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME');
   requirePositiveNumber(errors, options.videoRecordDriftRetentionHours, 'missing --video-record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS');
+  if (!options.allowLocalEndpoints) {
+    requireText(errors, options.videoManifestVerifierScript, 'missing --video-manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT');
+  }
   requireText(errors, options.playerWorkbenchUrl, 'missing --player-workbench-url or YFEIEYE_REVIEW_PLAYER_SMOKE_URL');
   requireText(errors, options.playerReviewRowText, 'missing --player-review-row-text or YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT');
   requireText(errors, options.playerExpectedSeekTime, 'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME');
@@ -795,7 +798,8 @@ function printHelp() {
   --video-record-base-url=http://VIDEO/video/record \\
   --video-record-export-url=http://VIDEO/video/record/export \\
   --video-device-id=DEVICE_ID --video-alert-time="2026-07-05 10:00:00" \\
-  --video-record-drift-retention-hours=24 [--video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs] \\
+  --video-record-drift-retention-hours=24 \\
+  --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs \\
   --player-workbench-url=http://WEB/... --player-review-row-text=RV-... \\
   --player-expected-seek-time="2026-07-05T10:00:30" \\
   --player-expected-record-path-contains=DEVICE_ID \\
@@ -813,10 +817,11 @@ LiveDevice -> LiveVideo -> LivePlayer:detail -> LivePlayer:coverage ->
 LivePlayer:case-timeline. Each step uses real deployed services, real recording
 metadata, export verification, download audit, playback-url allow/deny authorization,
 recording DB/disk drift patrol, and player seek assertions from the dedicated smoke
-scripts. The optional video manifest verifier script should be enabled only where
-manifest-referenced evidence files are reachable. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
-is supplied for co-located real-service smoke. Evidence output is written as a
-sanitized JSON report with masked token-bearing step commands.`);
+scripts. Release smoke requires a video manifest verifier script so the fetched
+manifest is verified against reachable manifest-referenced evidence files. Localhost/mock/file
+endpoints are rejected unless --allow-local-endpoints is supplied for co-located
+real-service smoke. Evidence output is written as a sanitized JSON report with
+masked token-bearing step commands.`);
 }
 
 async function runCli() {

@@ -361,6 +361,17 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'production_smoke_manifest_verifier_summary_missing',
     });
   }
+  if (productionSmoke && !containsAll(productionSmoke.content, [
+    'videoManifestVerifierScript',
+    'missing --video-manifest-verifier-script',
+    'YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_manifest_verifier_required_missing',
+    });
+  }
   return {
     ok: blockers.length === 0,
     blockers,

@@ -66,6 +66,13 @@ assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
 assert.equal(parsed.allowLocalEndpoints, false);
 
+assert.deepEqual(requiredOptionErrors({
+  ...parsed,
+  videoManifestVerifierScript: '',
+}), [
+  'missing --video-manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
+]);
+
 const evidenceOutputParsed = parseArgs(['--evidence-output-file=artifacts/review-smoke.json'], {});
 assert.equal(evidenceOutputParsed.evidenceOutputFile, 'artifacts/review-smoke.json');
 
@@ -165,6 +172,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --video-device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID',
   'missing --video-alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
   'missing --video-record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
+  'missing --video-manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
   'missing --player-workbench-url or YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
   'missing --player-review-row-text or YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT',
   'missing --player-expected-seek-time or YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME',
@@ -192,6 +200,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--video-device-id=device-01',
   '--video-alert-time=2026-07-05 10:00:00',
   '--video-record-drift-retention-hours=24',
+  '--video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
   '--player-workbench-url=http://localhost:5173/mock-workbench',
   '--player-review-row-text=RV-20260705-001',
   '--player-expected-seek-time=2026-07-05T10:00:30',
