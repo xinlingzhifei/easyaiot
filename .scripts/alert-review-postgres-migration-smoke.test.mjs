@@ -122,6 +122,7 @@ assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 assert.match(assertionSql, /expected stale review status version update to affect no rows/);
 assert.match(assertionSql, /expected repeated same-status reviewer update to be idempotent/);
 assert.match(assertionSql, /expected ended ReviewSegment reopen to be rejected/);
+assert.match(assertionSql, /expected alert ReviewSegment downgrade to detection to be rejected/);
 assert.match(assertionSql, /tr_supervision_alert_review_segment_status_transition/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();

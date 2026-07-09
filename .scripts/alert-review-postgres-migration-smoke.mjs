@@ -586,6 +586,18 @@ DO $$
 BEGIN
   BEGIN
     UPDATE system_supervision_alert_review_segment
+    SET segment_status = 'detection'
+    WHERE segment_no = 'seg-transition-active';
+    RAISE EXCEPTION 'expected alert ReviewSegment downgrade to detection to be rejected';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+END $$;
+
+DO $$
+BEGIN
+  BEGIN
+    UPDATE system_supervision_alert_review_segment
     SET segment_status = 'active'
     WHERE segment_no = 'seg-transition-ended';
     RAISE EXCEPTION 'expected ended ReviewSegment reopen to be rejected';
