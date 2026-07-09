@@ -364,6 +364,27 @@ await assert.rejects(
   /production smoke step LivePlayer:detail used local\/mock player media evidence/,
 );
 
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: () => {},
+    runCommand: async (step) => ({
+      status: 0,
+      stdout: step.name === 'LivePlayer:detail'
+        ? JSON.stringify({
+            clickedRow: true,
+            clickedAction: true,
+            seekTime: '2026-07-05T10:00:30',
+            recordPath: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+            playbackOffsetSeconds: 30,
+          })
+        : summaryStdoutForStep(step.name),
+    }),
+  }),
+  /production smoke step LivePlayer:detail missing native currentTime evidence/,
+);
+
 const evidenceWrites = [];
 const smokeWithEvidence = await runProductionSmoke({
   ...parsed,
@@ -1093,6 +1114,7 @@ function summaryStdoutForStep(name, options = {}) {
       seekTime: '2026-07-05T10:00:00',
       recordPath: playerRecordPath,
       playbackOffsetSeconds: 0,
+      nativeCurrentTime: 0.15,
     });
   }
   if (name === 'LivePlayer:detail') {
@@ -1102,6 +1124,7 @@ function summaryStdoutForStep(name, options = {}) {
       seekTime: '2026-07-05T10:00:30',
       recordPath: playerRecordPath,
       playbackOffsetSeconds: 30,
+      nativeCurrentTime: 30.25,
     });
   }
   return '';

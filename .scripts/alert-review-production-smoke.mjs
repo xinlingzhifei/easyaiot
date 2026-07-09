@@ -533,6 +533,9 @@ function livePlayerEvidenceError(stepName, player, allowLocalEndpoints) {
   if (Number(player.playbackOffsetSeconds) !== Number(player.expectedOffsetSeconds)) {
     return `production smoke step ${stepName} did not prove playback_offset_seconds`;
   }
+  if (!Number.isFinite(player.nativeCurrentTime)) {
+    return `production smoke step ${stepName} missing native currentTime evidence`;
+  }
   return null;
 }
 
