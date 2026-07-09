@@ -643,6 +643,7 @@ export function scanReleaseTraceabilityGate(files) {
     ['--video-record-export-url=', 'fr38_prod_smoke_export_command_missing'],
     ['--video-record-drift-retention-hours=', 'fr38_prod_smoke_drift_retention_command_missing'],
     ['--video-manifest-verifier-script=', 'fr38_prod_smoke_manifest_verifier_command_missing'],
+    ['--step-timeout-ms=', 'fr38_prod_smoke_step_timeout_command_missing'],
     ['--player-expected-seek-time=', 'fr38_prod_smoke_detail_player_command_missing'],
     ['--player-coverage-expected-seek-time=', 'fr38_prod_smoke_coverage_player_command_missing'],
     ['--player-case-timeline-expected-seek-time=', 'fr38_prod_smoke_case_timeline_player_command_missing'],

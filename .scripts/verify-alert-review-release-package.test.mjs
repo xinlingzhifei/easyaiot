@@ -948,7 +948,7 @@ const missingProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([
     content: [
       '- `ProdSmoke`: `node .scripts/alert-review-production-smoke.mjs --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs`',
       '- Production smoke with real VIDEO URLs:',
-      '  `node .scripts/alert-review-production-smoke.mjs --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-record-drift-retention-hours=24 --player-expected-seek-time=... --player-coverage-expected-seek-time=... --player-case-timeline-expected-seek-time=... --evidence-output-file=artifacts/production-smoke.json`',
+      '  `node .scripts/alert-review-production-smoke.mjs --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-record-drift-retention-hours=24 --step-timeout-ms=900000 --player-expected-seek-time=... --player-coverage-expected-seek-time=... --player-case-timeline-expected-seek-time=... --evidence-output-file=artifacts/production-smoke.json`',
     ].join('\n'),
   },
 ]);
@@ -957,10 +957,21 @@ assert.deepEqual(missingProdSmokeTraceabilityGateScan.blockers.map((blocker) => 
   'fr38_prod_smoke_manifest_verifier_command_missing',
 ]);
 
-const completeProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([
+const missingProdSmokeStepTimeoutTraceabilityGateScan = scanReleaseTraceabilityGate([
   {
     path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
     content: '- Production smoke with real VIDEO URLs:\n  `node .scripts/alert-review-production-smoke.mjs --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --player-expected-seek-time=... --player-coverage-expected-seek-time=... --player-case-timeline-expected-seek-time=... --evidence-output-file=artifacts/production-smoke.json`',
+  },
+]);
+assert.equal(missingProdSmokeStepTimeoutTraceabilityGateScan.ok, false);
+assert.deepEqual(missingProdSmokeStepTimeoutTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
+  'fr38_prod_smoke_step_timeout_command_missing',
+]);
+
+const completeProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([
+  {
+    path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+    content: '- Production smoke with real VIDEO URLs:\n  `node .scripts/alert-review-production-smoke.mjs --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --step-timeout-ms=900000 --player-expected-seek-time=... --player-coverage-expected-seek-time=... --player-case-timeline-expected-seek-time=... --evidence-output-file=artifacts/production-smoke.json`',
   },
 ]);
 assert.equal(completeProdSmokeTraceabilityGateScan.ok, true);
