@@ -5,7 +5,7 @@ WITH seed_jobs(name, handler_name, handler_param, cron_expression, retry_count, 
     ('Alert Review Runtime Patrol', 'supervisionAlertReviewRuntimePatrolJob', '', '0 0/5 * * * ?', 3, 60000, 300000),
     ('Alert Review Runtime Outbox', 'supervisionAlertReviewRuntimeOutboxJob', '100', '0 0/1 * * * ?', 3, 60000, 180000),
     ('Alert Review Event Reconcile', 'supervisionAlertReviewEventReconcileJob', '', '0 0/5 * * * ?', 3, 60000, 180000),
-    ('Alert Review Evidence Export Worker', 'supervisionAlertReviewEvidenceExportWorkerJob', '20', '0 0/2 * * * ?', 3, 60000, 300000),
+    ('Alert Review Evidence Export', 'supervisionAlertReviewEvidenceExportWorkerJob', '20', '0 0/2 * * * ?', 3, 60000, 300000),
     ('Alert Review Semantic Index', 'supervisionAlertReviewSemanticIndexJob', '50', '0 0/10 * * * ?', 3, 60000, 300000),
     ('Alert Review Shift Report', 'supervisionAlertReviewOperationsReportJob', 'shift', '0 0 0/8 * * ?', 3, 60000, 300000),
     ('Alert Review Daily Report', 'supervisionAlertReviewOperationsReportJob', 'daily', '0 10 0 * * ?', 3, 60000, 300000)

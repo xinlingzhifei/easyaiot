@@ -47,6 +47,9 @@ assert.match(schedulerJobMigrationSql, /supervisionAlertReviewEvidenceExportWork
 assert.match(schedulerJobMigrationSql, /supervisionAlertReviewOperationsReportJob/);
 assert.match(schedulerJobMigrationSql, /'shift'/);
 assert.match(schedulerJobMigrationSql, /'daily'/);
+const schedulerJobNames = [...schedulerJobMigrationSql.matchAll(/\('([^']+)', 'supervisionAlertReview/g)]
+  .map((match) => match[1]);
+assert.ok(schedulerJobNames.every((name) => name.length <= 32), 'infra_job.name seeds must fit VARCHAR(32)');
 
 const reportAckMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('report_ack')), 'utf8');
 assert.match(reportAckMigrationSql, /system_supervision_alert_review_report_ack/);
