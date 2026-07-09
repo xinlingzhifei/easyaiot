@@ -21,6 +21,7 @@ class TestRecordAvailabilityService(unittest.TestCase):
             url='',
             event_time=datetime(2026, 6, 30, 10, 0, 0),
             duration=60,
+            source='dvr',
         )
         alert = types.SimpleNamespace(
             id=21,
@@ -61,9 +62,23 @@ class TestRecordAvailabilityService(unittest.TestCase):
         self.assertEqual('motion', result['segments'][0]['status'])
         self.assertEqual('/video/record/space/7/video/live/device-01/clip.mp4', result['segments'][0]['play_url'])
         self.assertEqual('/video/record/export', result['segments'][0]['export_url'])
+        self.assertEqual('continuous', result['segments'][0]['retain_mode'])
+        self.assertEqual('alert', result['segments'][0]['coverage_source'])
+        self.assertTrue(result['segments'][0]['exportable'])
+        self.assertIsNone(result['segments'][0]['non_exportable_reason'])
+        self.assertEqual(7, result['segments'][0]['export_payload']['space_id'])
+        self.assertEqual(
+            'live/device-01/clip.mp4',
+            result['segments'][0]['export_payload']['object_name'],
+        )
         self.assertEqual(1, result['segments'][0]['motion'])
         self.assertEqual(1, result['segments'][0]['object_count'])
         self.assertEqual('missing', result['segments'][1]['status'])
+        self.assertFalse(result['segments'][1]['exportable'])
+        self.assertEqual(
+            result['segments'][1]['gap_reason'],
+            result['segments'][1]['non_exportable_reason'],
+        )
         self.assertEqual('2026-06-30T10:01:00', result['segments'][1]['start_time'])
         self.assertEqual('2026-06-30T10:02:00', result['segments'][1]['end_time'])
         self.assertEqual(1, len(result['available']))
@@ -258,15 +273,28 @@ class TestRecordAvailabilityService(unittest.TestCase):
             self.assertEqual(3, report['summary']['record_count'])
             self.assertEqual(4, report['summary']['issue_count'])
             self.assertEqual(1, report['summary']['issue_reasons']['file_missing'])
-            self.assertEqual(1, report['summary']['issue_reasons']['file_expired'])
+            self.assertEqual(1, report['summary']['issue_reasons']['retention_expired'])
             self.assertEqual(1, report['summary']['issue_reasons']['disk_full'])
             self.assertEqual(1, report['summary']['issue_reasons']['cache_flush_failed'])
+            self.assertEqual(
+                [
+                    'video_url_not_configured',
+                    'record_space_not_found',
+                    'file_missing',
+                    'probe_failed',
+                    'permission_denied',
+                    'retention_expired',
+                    'disk_full',
+                    'cache_flush_failed',
+                ],
+                report['summary']['standard_reason_keys'],
+            )
             self.assertTrue(any(issue['record_id'] == 42
                                 and issue['reason'] == 'file_missing'
                                 and issue['suggested_action'] == 'delete_db_metadata_after_review'
                                 for issue in report['issues']))
             self.assertTrue(any(issue['record_id'] == 43
-                                and issue['reason'] == 'file_expired'
+                                and issue['reason'] == 'retention_expired'
                                 and issue['category'] == 'retention'
                                 for issue in report['issues']))
             self.assertTrue(any(issue['reason'] == 'disk_full'

@@ -27,6 +27,17 @@ from app.services.space_file_metadata_service import (
 
 logger = logging.getLogger(__name__)
 
+STANDARD_RECORD_GAP_REASON_KEYS = [
+    'video_url_not_configured',
+    'record_space_not_found',
+    'file_missing',
+    'probe_failed',
+    'permission_denied',
+    'retention_expired',
+    'disk_full',
+    'cache_flush_failed',
+]
+
 
 def list_record_videos(
     space_id: int,
@@ -339,7 +350,7 @@ def inspect_recording_storage_drift(
         event_time = _normalize_availability_time(getattr(record, 'event_time', None))
         if retention_cutoff and event_time and event_time < retention_cutoff:
             issues.append(_recording_storage_issue(
-                'file_expired',
+                'retention_expired',
                 'retention',
                 record_info,
                 severity='warning',
@@ -388,6 +399,7 @@ def inspect_recording_storage_drift(
             'record_count': len(checked_records),
             'issue_count': len(issues),
             'issue_reasons': issue_reasons,
+            'standard_reason_keys': list(STANDARD_RECORD_GAP_REASON_KEYS),
             'healthy': len(issues) == 0,
         },
     }
@@ -816,6 +828,27 @@ def build_recording_availability(
         object_count = len(matched_alerts)
         motion = 1 if object_count > 0 else 0
         status = 'motion' if motion else 'available'
+        retain_mode = _coverage_classification(
+            _record_text(record, 'retention_mode', 'retentionMode', 'retain_mode', 'retainMode')
+            or _record_text(record, 'source'),
+            default_value='continuous',
+        )
+        coverage_source = 'alert' if matched_alerts else _coverage_classification(
+            _record_text(record, 'coverage_source', 'coverageSource', 'record_source', 'recordSource')
+            or _record_text(record, 'source'),
+            default_value=retain_mode,
+        )
+        object_name = getattr(record, 'object_name', None)
+        record_segment = {
+            'index': 0,
+            'record_uri': play_url,
+            'space_id': space_id,
+            'object_name': object_name,
+            'segment_start_time': segment_start.isoformat(),
+            'segment_end_time': segment_end.isoformat(),
+            'clip_start_time': clipped_start.isoformat(),
+            'clip_end_time': clipped_end.isoformat(),
+        }
         available_segments.append({
             'id': getattr(record, 'id', None),
             'status': status,
@@ -829,6 +862,10 @@ def build_recording_availability(
             'play_url': play_url,
             'record_uri': play_url,
             'retention_mode': _record_text(record, 'retention_mode', 'retentionMode') or 'unknown',
+            'retain_mode': retain_mode,
+            'coverage_source': coverage_source,
+            'exportable': True,
+            'non_exportable_reason': None,
             'pre_capture_seconds': pre_capture_seconds,
             'post_capture_seconds': post_capture_seconds,
             'review_overlap': clipped_start < end_time and clipped_end > begin_time,
@@ -840,10 +877,15 @@ def build_recording_availability(
                 'start_time': clipped_start.isoformat(),
                 'end_time': clipped_end.isoformat(),
                 'record_uri': play_url,
+                'space_id': space_id,
+                'object_name': object_name,
+                'segment_start_time': segment_start.isoformat(),
+                'segment_end_time': segment_end.isoformat(),
+                'record_segments': [record_segment],
                 'format': 'mp4',
             },
             'alerts': matched_alerts,
-            'object_name': getattr(record, 'object_name', None),
+            'object_name': object_name,
             'space_id': space_id,
         })
 
@@ -941,6 +983,22 @@ def _parse_positive_int(value, default_value: int) -> int:
         return default_value
 
 
+def _coverage_classification(value, default_value='continuous') -> str:
+    normalized = _normalize_gap_reason_token(value)
+    aliases = {
+        'all': 'continuous',
+        'record': 'continuous',
+        'recording': 'continuous',
+        'dvr': 'continuous',
+        'alerts': 'alert',
+        'detections': 'detection',
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized in {'continuous', 'motion', 'alert', 'detection'}:
+        return normalized
+    return default_value
+
+
 def _availability_record_url(record, space_id) -> str:
     object_name = (getattr(record, 'object_name', None) or '').strip()
     resolved_space_id = space_id or getattr(record, 'space_id', None)
@@ -971,6 +1029,8 @@ def _availability_missing_segment(start_time: datetime, end_time: datetime, reas
     gap = _normalize_gap_reason(reason)
     result = {
         'status': 'missing',
+        'exportable': False,
+        'non_exportable_reason': gap['reason'],
         'start_time': start_time.isoformat(),
         'end_time': end_time.isoformat(),
         'duration': int((end_time - start_time).total_seconds()),

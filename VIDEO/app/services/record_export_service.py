@@ -3,11 +3,12 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 
 
 _EXPORT_JOBS = {}
@@ -94,6 +95,8 @@ def poll_record_export(export_id: str) -> dict:
         job['file_hash'] = _text(result.get('file_hash')) or 'sha256:' + hashlib.sha256(content).hexdigest()
         job['message'] = _text(result.get('message')) or 'record evidence export ready'
         job['finished_at'] = datetime.now(timezone.utc).isoformat()
+        if isinstance(result.get('record_segments'), list):
+            job['record_segments'] = result['record_segments']
         job['record_segments'] = _manifest_record_segments(job)
         _persist_job(job)
         _append_export_audit(export_id, 'ready', None, None, {
@@ -257,13 +260,15 @@ def _default_export_worker(job: dict) -> dict:
 
 def _run_ffmpeg_export(job: dict):
     ffmpeg = shutil.which('ffmpeg')
-    source_paths = [_local_file_path(uri) for uri in _record_uris(job)]
-    source_paths = [path for path in source_paths if path and os.path.exists(path)]
-    if not ffmpeg or not source_paths:
+    if not ffmpeg:
         return None
 
     file_format = _text(job.get('format')) or 'mp4'
     with tempfile.TemporaryDirectory(prefix='yfeieye-record-export-') as workdir:
+        sources = _materialize_record_sources(job, workdir)
+        source_paths = [source['path'] for source in sources]
+        if not source_paths:
+            return None
         output_path = os.path.join(workdir, f'{job["export_id"]}.{file_format}')
         if len(source_paths) == 1:
             command = _single_clip_command(ffmpeg, source_paths[0], output_path, job)
@@ -276,12 +281,15 @@ def _run_ffmpeg_export(job: dict):
         completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
         if completed.returncode != 0 or not os.path.exists(output_path):
             return None
+        command_hash = _sha256_text(_canonical_json(command))
+        record_segments = _materialized_manifest_segments(job, sources, command_hash)
         with open(output_path, 'rb') as output_file:
             content = output_file.read()
     return {
         'content': content,
         'download_url': f'/video/record/export/{job["export_id"]}/download',
         'message': 'ffmpeg clipped and stitched evidence',
+        'record_segments': record_segments,
     }
 
 
@@ -303,6 +311,95 @@ def _record_uris(job: dict) -> list:
         return [_text(value) for value in values if _text(value)]
     record_uri = _text(job.get('record_uri') or job.get('recordUri'))
     return [record_uri] if record_uri else []
+
+
+def _materialize_record_sources(job: dict, workdir: str) -> list:
+    sources = []
+    for index, spec in enumerate(_record_source_specs(job)):
+        uri = _text(spec.get('record_uri'))
+        local_path = _local_file_path(uri)
+        if local_path and os.path.exists(local_path):
+            sources.append({
+                **spec,
+                'path': local_path,
+                'source_hash': _sha256_file(local_path),
+            })
+            continue
+
+        space_id, object_name = _record_object_identity(spec, uri)
+        if not space_id or not object_name:
+            continue
+        from app.services.record_video_service import get_record_video
+        content, _content_type, filename = get_record_video(int(space_id), object_name)
+        extension = os.path.splitext(_text(filename) or object_name)[1] or '.bin'
+        materialized_path = os.path.join(workdir, f'source-{index:03d}{extension}')
+        with open(materialized_path, 'wb') as source_file:
+            source_file.write(_content_bytes(content) or b'')
+        sources.append({
+            **spec,
+            'space_id': int(space_id),
+            'object_name': object_name,
+            'path': materialized_path,
+            'source_hash': _sha256_file(materialized_path),
+        })
+    return sources
+
+
+def _record_source_specs(job: dict) -> list:
+    explicit = job.get('record_segments') or job.get('recordSegments')
+    if isinstance(explicit, (list, tuple)) and explicit:
+        specs = []
+        for index, raw in enumerate(explicit):
+            if not isinstance(raw, dict):
+                continue
+            specs.append({
+                'index': raw.get('index', index),
+                'record_uri': _text(raw.get('record_uri') or raw.get('recordUri') or raw.get('uri')),
+                'space_id': raw.get('space_id') or raw.get('spaceId') or job.get('space_id'),
+                'object_name': _text(raw.get('object_name') or raw.get('objectName') or job.get('object_name')),
+                'segment_start_time': _text(raw.get('segment_start_time') or raw.get('segmentStartTime') or job.get('segment_start_time')),
+                'segment_end_time': _text(raw.get('segment_end_time') or raw.get('segmentEndTime') or job.get('segment_end_time')),
+                'clip_start_time': _text(raw.get('clip_start_time') or raw.get('clipStartTime') or job.get('start_time')),
+                'clip_end_time': _text(raw.get('clip_end_time') or raw.get('clipEndTime') or job.get('end_time')),
+            })
+        return [spec for spec in specs if spec.get('record_uri')]
+    return [{
+        'index': index,
+        'record_uri': uri,
+        'space_id': job.get('space_id'),
+        'object_name': _text(job.get('object_name')),
+        'segment_start_time': _text(job.get('segment_start_time')),
+        'segment_end_time': _text(job.get('segment_end_time')),
+        'clip_start_time': _text(job.get('start_time')),
+        'clip_end_time': _text(job.get('end_time')),
+    } for index, uri in enumerate(_record_uris(job))]
+
+
+def _record_object_identity(spec: dict, uri: str):
+    space_id = spec.get('space_id')
+    object_name = _text(spec.get('object_name'))
+    if space_id and object_name:
+        return space_id, object_name
+    path = unquote(urlparse(uri).path)
+    matched = re.search(r'/video/record/space/(\d+)/video/(.+)$', path)
+    if not matched:
+        return space_id, object_name
+    return space_id or int(matched.group(1)), object_name or matched.group(2)
+
+
+def _materialized_manifest_segments(job: dict, sources: list, command_hash: str) -> list:
+    return [{
+        'index': source.get('index', index),
+        'recordUri': source.get('record_uri'),
+        'sourceHash': source.get('source_hash'),
+        'segmentStartTime': source.get('segment_start_time') or _text(job.get('segment_start_time')),
+        'segmentEndTime': source.get('segment_end_time') or _text(job.get('segment_end_time')),
+        'clipStartTime': source.get('clip_start_time') or _text(job.get('start_time')),
+        'clipEndTime': source.get('clip_end_time') or _text(job.get('end_time')),
+        'ffmpegCommandHash': command_hash,
+        'objectName': source.get('object_name') or _text(job.get('object_name')),
+        'spaceId': _text(source.get('space_id') or job.get('space_id')),
+    } for index, source in enumerate(sources)]
 
 
 def _local_file_path(uri: str) -> str:

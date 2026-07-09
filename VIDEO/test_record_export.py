@@ -612,6 +612,75 @@ class TestRecordExportService(unittest.TestCase):
             os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
             importlib.reload(export_service)
 
+    def test_real_ffmpeg_export_materializes_minio_source_by_space_and_object(self):
+        ffmpeg = shutil.which('ffmpeg')
+        if not ffmpeg:
+            self.skipTest('ffmpeg is required for real record export smoke')
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            source_path = os.path.join(work_dir, 'source.mp4')
+            subprocess.run([
+                ffmpeg,
+                '-y',
+                '-f',
+                'lavfi',
+                '-i',
+                'testsrc=size=32x32:rate=1',
+                '-t',
+                '2',
+                '-pix_fmt',
+                'yuv420p',
+                source_path,
+            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            with open(source_path, 'rb') as source_file:
+                source_content = source_file.read()
+            source_hash = 'sha256:' + hashlib.sha256(source_content).hexdigest()
+
+            os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = os.path.join(work_dir, 'exports')
+            import app.services.record_export_service as export_service
+            export_service = importlib.reload(export_service)
+            loaded = []
+
+            def load_record(space_id, object_name):
+                loaded.append((space_id, object_name))
+                return source_content, 'video/mp4', 'source.mp4'
+
+            module_name = 'app.services.record_video_service'
+            original_module = sys.modules.get(module_name)
+            video_service = types.ModuleType(module_name)
+            video_service.get_record_video = load_record
+            sys.modules[module_name] = video_service
+            try:
+                started = export_service.create_record_export({
+                    'review_case_id': 3003,
+                    'review_item_id': 1003,
+                    'device_id': 'device-01',
+                    'space_id': 7,
+                    'object_name': 'live/device-01/source.mp4',
+                    'record_uri': '/video/record/space/7/video/live/device-01/source.mp4',
+                    'segment_start_time': '2026-07-10T05:00:00',
+                    'segment_end_time': '2026-07-10T05:00:02',
+                    'start_time': '2026-07-10T05:00:00',
+                    'end_time': '2026-07-10T05:00:01',
+                    'format': 'mp4',
+                }, async_worker=True)
+
+                ready = export_service.poll_record_export(started['export_id'])
+                manifest = export_service.get_record_export_manifest(started['export_id'])
+
+                self.assertEqual([(7, 'live/device-01/source.mp4')], loaded)
+                self.assertEqual('ready', ready['status'])
+                self.assertEqual('ffmpeg clipped and stitched evidence', ready['message'])
+                self.assertEqual(source_hash, manifest['recordSegments'][0]['sourceHash'])
+                self.assertTrue(manifest['recordSegments'][0]['ffmpegCommandHash'].startswith('sha256:'))
+            finally:
+                if original_module is None:
+                    sys.modules.pop(module_name, None)
+                else:
+                    sys.modules[module_name] = original_module
+                os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
+                importlib.reload(export_service)
+
 
 class TestRecordExportBlueprint(unittest.TestCase):
     def test_record_export_route_posts_to_service(self):

@@ -252,6 +252,7 @@ function describeNonPlayableSegments(payload) {
 }
 
 export function buildExportBody(options, segment) {
+  const raw = segment?.raw && typeof segment.raw === 'object' ? segment.raw : {};
   const body = {
     review_case_id: options.reviewCaseId,
     review_item_id: options.reviewItemId,
@@ -261,9 +262,29 @@ export function buildExportBody(options, segment) {
     start_time: segment.startTime,
     end_time: segment.endTime,
     record_uri: segment.recordUri,
+    space_id: firstPresent(raw.space_id, raw.spaceId),
+    object_name: firstText(raw.object_name, raw.objectName),
+    segment_start_time: firstText(raw.segment_start_time, raw.segmentStartTime, segment.startTime),
+    segment_end_time: firstText(raw.segment_end_time, raw.segmentEndTime, segment.endTime),
     format: options.format || 'mp4',
     async_worker: true,
   };
+  const recordSegment = {
+    index: 0,
+    record_uri: segment.recordUri,
+    space_id: body.space_id,
+    object_name: body.object_name,
+    segment_start_time: body.segment_start_time,
+    segment_end_time: body.segment_end_time,
+    clip_start_time: segment.startTime,
+    clip_end_time: segment.endTime,
+  };
+  for (const key of Object.keys(recordSegment)) {
+    if (recordSegment[key] === undefined || recordSegment[key] === null || recordSegment[key] === '') {
+      delete recordSegment[key];
+    }
+  }
+  body.record_segments = [recordSegment];
   for (const key of Object.keys(body)) {
     if (body[key] === undefined || body[key] === null || body[key] === '') {
       delete body[key];
