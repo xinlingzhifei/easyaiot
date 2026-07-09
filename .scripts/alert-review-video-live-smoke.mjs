@@ -672,7 +672,7 @@ async function runManifestVerifierIfConfigured({ manifest, manifestUrl, options,
   }
   const report = injectedVerifier
     ? await injectedVerifier({ manifest, manifestUrl, options })
-    : runManifestVerifierScript(options.manifestVerifierScript, manifest);
+    : runManifestVerifierScript(options.manifestVerifierScript, manifest, options.timeoutMs);
   const normalized = normalizeManifestVerificationReport(report);
   if (normalized.valid !== true) {
     const detail = normalized.violations.length ? normalized.violations.join(', ') : 'invalid_manifest';
@@ -681,7 +681,7 @@ async function runManifestVerifierIfConfigured({ manifest, manifestUrl, options,
   return normalized;
 }
 
-function runManifestVerifierScript(scriptPath, manifest) {
+function runManifestVerifierScript(scriptPath, manifest, timeoutMs) {
   const tempDir = mkdtempSync(join(tmpdir(), 'yfeieye-manifest-'));
   const manifestPath = join(tempDir, 'manifest.json');
   try {
@@ -689,7 +689,11 @@ function runManifestVerifierScript(scriptPath, manifest) {
     const result = spawnSync(process.execPath, [resolve(scriptPath), '--manifest', manifestPath], {
       encoding: 'utf8',
       env: process.env,
+      timeout: timeoutMs,
     });
+    if (result.error?.code === 'ETIMEDOUT') {
+      throw new Error(`record export manifest verifier timed out after ${timeoutMs}ms`);
+    }
     if (result.error) {
       throw new Error(`record export manifest verifier failed to start: ${result.error.message}`);
     }

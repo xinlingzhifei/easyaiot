@@ -655,6 +655,22 @@ try {
   rmSync(verifierTempDir, { recursive: true, force: true });
 }
 
+const slowVerifierTempDir = mkdtempSync(join(tmpdir(), 'yfeieye-live-video-slow-verifier-'));
+const slowVerifierPath = join(slowVerifierTempDir, 'slow-verifier.mjs');
+writeFileSync(slowVerifierPath, 'setTimeout(() => console.log(JSON.stringify({ valid: true })), 1000);\n', 'utf8');
+try {
+  await assert.rejects(
+    () => runSmoke({
+      ...parsedWithVerifier,
+      timeoutMs: 50,
+      manifestVerifierScript: slowVerifierPath,
+    }, { fetchImpl: fakeFetch }),
+    /record export manifest verifier timed out after 50ms/,
+  );
+} finally {
+  rmSync(slowVerifierTempDir, { recursive: true, force: true });
+}
+
 const failedDriftFetch = async (url, init = {}) => {
   if (String(url).includes('/space/7/videos/drift')) {
     return jsonResponse({
