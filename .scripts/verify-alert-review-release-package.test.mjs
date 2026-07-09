@@ -701,6 +701,17 @@ assert.deepEqual(missingProductionSmokeAuditChainGateScan.blockers.map((blocker)
   'production_smoke_audit_chain_summary_missing',
 ]);
 
+const missingProductionSmokePlaybackAccessGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: 'payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; requiredOptionErrors; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; liveDeviceEvidenceError; childSmokeSummary; evidence_download_audited; auditChain; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence;',
+  },
+]);
+assert.equal(missingProductionSmokePlaybackAccessGateScan.ok, false);
+assert.deepEqual(missingProductionSmokePlaybackAccessGateScan.blockers.map((blocker) => blocker.reason), [
+  'production_smoke_playback_access_evidence_missing',
+]);
+
 const missingLiveVideoFilePathGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',

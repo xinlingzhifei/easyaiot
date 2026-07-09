@@ -428,6 +428,28 @@ function liveDeviceEvidenceError(stepName, summary) {
   if (!hasText(summary.auditChain.exportJobNo)) {
     return `production smoke step ${stepName} missing auditChain exportJobNo evidence`;
   }
+  const playbackEvidenceError = liveDevicePlaybackEvidenceError(stepName, summary.playback);
+  if (playbackEvidenceError) {
+    return playbackEvidenceError;
+  }
+  return null;
+}
+
+function liveDevicePlaybackEvidenceError(stepName, playback) {
+  if (!playback || typeof playback !== 'object') {
+    return `production smoke step ${stepName} missing playback URL allow/deny decision evidence`;
+  }
+  const grantedDecision = String(playback.grantedDecision || '').toLowerCase();
+  const deniedDecision = String(playback.deniedDecision || '').toLowerCase();
+  if (grantedDecision !== 'granted' || deniedDecision !== 'denied') {
+    return `production smoke step ${stepName} missing playback URL allow/deny decision evidence`;
+  }
+  const deniedReasons = Array.isArray(playback.deniedReasons)
+    ? playback.deniedReasons.map(String)
+    : [];
+  if (!deniedReasons.includes('camera_not_allowed')) {
+    return `production smoke step ${stepName} missing playback URL deny reason evidence`;
+  }
   return null;
 }
 
