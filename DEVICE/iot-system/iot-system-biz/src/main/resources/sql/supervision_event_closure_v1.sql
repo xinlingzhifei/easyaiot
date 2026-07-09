@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT ck_supervision_alert_review_segment_time CHECK (end_time IS NULL OR end_time >= start_time),
+  CONSTRAINT ck_supervision_alert_review_segment_ended_time CHECK (segment_status <> 'ended' OR end_time IS NOT NULL),
   CONSTRAINT ck_supervision_alert_review_segment_status CHECK (segment_status IN ('active', 'detection', 'alert', 'ended')),
   CONSTRAINT ck_supervision_alert_review_segment_severity CHECK (severity IN ('detection', 'alert')),
   CONSTRAINT ex_supervision_alert_review_segment_camera_time EXCLUDE USING gist (

@@ -86,6 +86,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_status"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_time"));
+        assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_ended_time"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_status"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_severity"));
         assertTrue(sql.contains("CONSTRAINT ex_supervision_alert_review_segment_camera_time"));
@@ -210,6 +211,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(reviewSegmentTable.contains("severity VARCHAR(64) NOT NULL"));
         assertTrue(reviewSegmentTable.contains("segment_status VARCHAR(64) NOT NULL DEFAULT 'active'"));
         assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_status"));
+        assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_ended_time"));
         assertTrue(reviewSegmentTable.contains("CONSTRAINT ck_supervision_alert_review_segment_severity"));
         assertTrue(reviewSegmentTable.contains("start_time TIMESTAMP NOT NULL"));
         assertTrue(reviewSegmentTable.contains("end_time TIMESTAMP"));
@@ -424,6 +426,21 @@ class SupervisionSchemaSqlTest {
         String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
         assertTrue(baselineSql.contains("claim_token VARCHAR(128)"));
         assertTrue(baselineSql.contains("idx_supervision_alert_review_runtime_outbox_claim"));
+    }
+
+    @Test
+    void alertReviewSegmentEndTimeGuardMigrationRequiresEndedSegmentsToHaveEndTime() throws IOException {
+        Path migration = Path.of("src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql");
+        Path baseline = Path.of("src/main/resources/sql/supervision_event_closure_v1.sql");
+
+        assertTrue(Files.exists(migration), "segment end-time guard migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("SET end_time = start_time"));
+        assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_ended_time"));
+        assertTrue(migrationSql.contains("segment_status <> 'ended' OR end_time IS NOT NULL"));
+
+        String baselineSql = Files.readString(baseline, StandardCharsets.UTF_8);
+        assertTrue(baselineSql.contains("ck_supervision_alert_review_segment_ended_time"));
     }
 
     @Test

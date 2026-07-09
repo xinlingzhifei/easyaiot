@@ -34,6 +34,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_4__alert_review_runtime_outbox_notify_templates.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql',
 ]);
 
 const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('scheduler_jobs')), 'utf8');
@@ -78,6 +79,14 @@ assert.match(runtimeOutboxClaimMigrationSql, /claim_token VARCHAR\(128\)/);
 assert.match(runtimeOutboxClaimMigrationSql, /claimed_by BIGINT/);
 assert.match(runtimeOutboxClaimMigrationSql, /claimed_at TIMESTAMP/);
 assert.match(runtimeOutboxClaimMigrationSql, /idx_supervision_alert_review_runtime_outbox_claim/);
+
+const segmentEndTimeGuardMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('segment_end_time_guard')),
+  'utf8',
+);
+assert.match(segmentEndTimeGuardMigrationSql, /ck_supervision_alert_review_segment_ended_time/);
+assert.match(segmentEndTimeGuardMigrationSql, /segment_status <> 'ended' OR end_time IS NOT NULL/);
+assert.match(segmentEndTimeGuardMigrationSql, /SET end_time = start_time/);
 
 const bootstrapSql = buildBootstrapSql();
 assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);
@@ -124,6 +133,7 @@ assert.match(assertionSql, /expected stale review status version update to affec
 assert.match(assertionSql, /expected repeated same-status reviewer update to be idempotent/);
 assert.match(assertionSql, /expected ended ReviewSegment reopen to be rejected/);
 assert.match(assertionSql, /expected alert ReviewSegment downgrade to detection to be rejected/);
+assert.match(assertionSql, /expected ended ReviewSegment without end_time to be rejected/);
 assert.match(assertionSql, /tr_supervision_alert_review_segment_status_transition/);
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
