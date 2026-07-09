@@ -393,11 +393,35 @@ async function probeDownloadUrl(fetchImpl, options, downloadUrl) {
     if (!response.ok) {
       throw new Error(`record export download probe failed with HTTP ${response.status} ${response.statusText || ''}`.trim());
     }
+    validateDownloadProbeHeaders(response);
   } finally {
     if (timer) {
       clearTimeout(timer);
     }
   }
+}
+
+function validateDownloadProbeHeaders(response) {
+  const contentType = readHeader(response, 'content-type').toLowerCase();
+  if (!contentType) {
+    throw new Error('record export download probe did not return content-type');
+  }
+  if (!isVideoDownloadContentType(contentType)) {
+    throw new Error(`record export download probe returned non-video content-type: ${contentType}`);
+  }
+  const contentLength = readHeader(response, 'content-length');
+  if (contentLength && Number(contentLength) <= 0) {
+    throw new Error(`record export download probe returned empty content-length: ${contentLength}`);
+  }
+}
+
+function readHeader(response, name) {
+  return String(response?.headers?.get?.(name) || '').trim();
+}
+
+function isVideoDownloadContentType(contentType) {
+  return contentType.startsWith('video/')
+    || contentType.includes('application/octet-stream');
 }
 
 async function verifyExportManifest(fetchImpl, options, exportResult, dependencies = {}) {

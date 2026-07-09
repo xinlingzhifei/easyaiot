@@ -245,7 +245,10 @@ const fakeFetch = async (url, init = {}) => {
   }
   if (String(url).endsWith('/downloads/review-export-1.mp4')) {
     assert.equal(init.method, 'HEAD');
-    return jsonResponse({}, 200);
+    return jsonResponse({}, 200, {
+      'content-length': '1048576',
+      'content-type': 'video/mp4',
+    });
   }
   if (init.method === 'POST') {
     const body = JSON.parse(init.body);
@@ -619,6 +622,21 @@ await assert.rejects(
   /record export download probe failed with HTTP 404/,
 );
 
+const nonVideoDownloadFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/downloads/review-export-1.mp4')) {
+    assert.equal(init.method, 'HEAD');
+    return jsonResponse({ message: 'not a video export' }, 200, {
+      'content-length': '64',
+      'content-type': 'application/json',
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: nonVideoDownloadFetch }),
+  /record export download probe returned non-video content-type: application\/json/,
+);
+
 const missingManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/video/record/export/review-export-1')) {
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
@@ -747,11 +765,17 @@ const trackedSmokeEntries = releaseEntriesForTrackedPaths([
 ]);
 assert.equal(trackedSmokeEntries.length, 2);
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body, status = 200, headers = {}) {
+  const headerMap = new Map(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)]));
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? 'OK' : 'ERROR',
+    headers: {
+      get(name) {
+        return headerMap.get(String(name).toLowerCase()) || null;
+      },
+    },
     async json() {
       return body;
     },
