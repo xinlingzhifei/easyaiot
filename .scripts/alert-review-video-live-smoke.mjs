@@ -735,11 +735,25 @@ function validateManifestSignature(manifest) {
   if (!hasText(value) || !value.startsWith('hmac-sha256:')) {
     throw new Error('record export manifest signature missing hmac-sha256 value');
   }
+  if (!isHmacSha256SignatureValue(value)) {
+    throw new Error('record export manifest signature value is not canonical hmac-sha256');
+  }
   return {
     algorithm: 'hmac-sha256',
     keyId: firstText(signature.keyId, signature.key_id),
     signatureVersion: firstText(signature.signatureVersion, signature.signature_version, signature.algorithmVersion, signature.algorithm_version),
   };
+}
+
+function isHmacSha256SignatureValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw.startsWith('hmac-sha256:')) {
+    return false;
+  }
+  const digest = raw.slice('hmac-sha256:'.length);
+  return /^[a-f0-9]{64}$/i.test(digest)
+    || /^[A-Za-z0-9+/]{43}=$/.test(digest)
+    || /^[A-Za-z0-9_-]{43}=?$/.test(digest);
 }
 
 function resolveDownloadUrl(downloadUrl, baseUrl) {

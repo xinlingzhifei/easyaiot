@@ -17,6 +17,7 @@ import {
 const SOURCE_SEGMENT_HASH = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const OUTPUT_FILE_HASH = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const FFMPEG_COMMAND_HASH = 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+const MANIFEST_SIGNATURE_VALUE = 'hmac-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
 
 const parsed = parseArgs([
   '--alert-record-query-url=http://video.local/video/record/availability',
@@ -232,7 +233,7 @@ const fakeFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -682,7 +683,7 @@ const invalidManifestHashFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -734,7 +735,7 @@ const invalidOutputHashFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -786,7 +787,7 @@ const invalidFfmpegCommandHashFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -838,7 +839,7 @@ const invalidClipWindowFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -898,7 +899,7 @@ const duplicateConcatOrderFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -958,7 +959,7 @@ function rootConcatOrderManifest(concatOrder) {
       algorithm: 'hmac-sha256',
       keyId: '2026-q2',
       signatureVersion: 'v2',
-      value: 'hmac-sha256:signed-manifest',
+      value: MANIFEST_SIGNATURE_VALUE,
     },
   };
 }
@@ -1032,7 +1033,7 @@ const missingStorageLifecycleFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }
@@ -1073,6 +1074,25 @@ await assert.rejects(
   /record export manifest missing HMAC signature metadata/,
 );
 
+const malformedSignatureValueFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      ...rootConcatOrderManifest([0, 1]),
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:not-a-real-signature',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: malformedSignatureValueFetch }),
+  /record export manifest signature value is not canonical hmac-sha256/,
+);
+
 const incompleteManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/manifests/review-export-1.json')) {
     return jsonResponse({
@@ -1094,7 +1114,7 @@ const incompleteManifestFetch = async (url, init = {}) => {
         algorithm: 'hmac-sha256',
         keyId: '2026-q2',
         signatureVersion: 'v2',
-        value: 'hmac-sha256:signed-manifest',
+        value: MANIFEST_SIGNATURE_VALUE,
       },
     });
   }

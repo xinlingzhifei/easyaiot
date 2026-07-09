@@ -267,6 +267,8 @@ export function scanLiveVideoEvidenceGate(files) {
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
   if (liveVideo && !containsAll(liveVideo.content, [
     'validateManifestSignature',
+    'isHmacSha256SignatureValue',
+    'signature value is not canonical hmac-sha256',
     'manifestSignature',
     'hmac-sha256',
     'signatureVersion',
