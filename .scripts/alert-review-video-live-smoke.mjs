@@ -483,6 +483,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   if (!concatOrder.length && !hasSegmentConcatOrder) {
     throw new Error('record export manifest missing concat order');
   }
+  validateManifestConcatOrder(recordSegments, concatOrder);
   const sourceSegmentHashes = sourceSegments.map((segment) => firstText(
     segment.sourceHash,
     segment.source_hash,
@@ -544,6 +545,24 @@ function validateClipWindows(sourceSegments) {
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
       throw new Error(`record export manifest invalid clip window: ${start} -> ${end}`);
     }
+  }
+}
+
+function validateManifestConcatOrder(recordSegments, concatOrder) {
+  if (concatOrder.length) {
+    return;
+  }
+  const seen = new Set();
+  for (const segment of recordSegments) {
+    const rawOrder = firstPresent(segment.index, segment.order, segment.sequence);
+    const order = Number(rawOrder);
+    if (!Number.isInteger(order) || order < 0) {
+      throw new Error(`record export manifest invalid concat order index: ${rawOrder}`);
+    }
+    if (seen.has(order)) {
+      throw new Error(`record export manifest duplicate concat order index: ${order}`);
+    }
+    seen.add(order);
   }
 }
 

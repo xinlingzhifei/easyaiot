@@ -849,6 +849,66 @@ await assert.rejects(
   /record export manifest invalid clip window: 2026-07-05T10:01:00 -> 2026-07-05T10:00:00/,
 );
 
+const duplicateConcatOrderFetch = async (url, init = {}) => {
+  if (String(url).endsWith('/manifests/review-export-1.json')) {
+    return jsonResponse({
+      manifestVersion: 2,
+      recordSegments: [
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip-a.mp4',
+          sourceHash: SOURCE_SEGMENT_HASH,
+          clipStartTime: '2026-07-05T10:00:00',
+          clipEndTime: '2026-07-05T10:00:30',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+        },
+        {
+          index: 0,
+          recordUri: '/video/record/space/7/video/live/device-01/clip-b.mp4',
+          sourceHash: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+          clipStartTime: '2026-07-05T10:00:30',
+          clipEndTime: '2026-07-05T10:01:00',
+          ffmpegCommandHash: FFMPEG_COMMAND_HASH,
+        },
+      ],
+      files: [
+        {
+          path: 'review-export-1.mp4',
+          role: 'export_package',
+          hash: OUTPUT_FILE_HASH,
+          storage: {
+            storageType: 'object_storage',
+            artifactRole: 'export_package',
+            objectKey: 'review-export-1/content.bin',
+            expiresAt: '2026-07-20T00:00:00Z',
+            lifecycleStatus: 'retained',
+          },
+        },
+      ],
+      storageLifecycle: {
+        storageType: 'object_storage',
+        storeRoot: 's3://evidence-exports',
+        status: 'retained',
+        expiresAt: '2026-07-20T00:00:00Z',
+        artifactKeys: {
+          exportPackage: 'review-export-1/content.bin',
+        },
+      },
+      signature: {
+        algorithm: 'hmac-sha256',
+        keyId: '2026-q2',
+        signatureVersion: 'v2',
+        value: 'hmac-sha256:signed-manifest',
+      },
+    });
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsed, { fetchImpl: duplicateConcatOrderFetch }),
+  /record export manifest duplicate concat order index: 0/,
+);
+
 const missingManifestFetch = async (url, init = {}) => {
   if (String(url).endsWith('/video/record/export/review-export-1')) {
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
