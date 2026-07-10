@@ -7,6 +7,8 @@ import {
 
 const requiredTargets = [
   'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
+  'WEB/src/views/alert/index.vue',
+  'WEB/src/views/camera/components/DeviceRegionDrawer/index.vue',
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
   'WEB/src/api/device/patrol.ts',
@@ -14,6 +16,7 @@ const requiredTargets = [
   'WEB/src/utils/alertRecordPlayback.ts',
   'WEB/scripts/fixtures/alert-review-workbench-e2e/main.ts',
   'VIDEO/app/blueprints/record.py',
+  'VIDEO/app/blueprints/alert.py',
   'VIDEO/app/services/record_export_service.py',
   'VIDEO/app/services/record_video_service.py',
 ];
