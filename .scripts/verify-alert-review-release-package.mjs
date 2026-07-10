@@ -8,12 +8,12 @@ import { VISIBLE_COPY_MOJIBAKE_PATTERNS } from './alert-review-visible-copy-scan
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
-    match: /^\.scripts\/(verify-alert-review-release-package|record-export-manifest-verifier|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-device-integration-smoke|alert-review-production-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke)(\.test)?\.mjs$/,
+    match: /^\.scripts\/(verify-alert-review-release-package|record-export-manifest-verifier|apply-alert-review-migrations|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-device-integration-smoke|alert-review-production-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke)(\.test)?\.mjs$/,
   },
   {
     group: 'DEVICE review backend',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/java\/com\/basiclab\/iot\/system\/(controller\/admin\/supervision|dal\/dataobject\/supervision|dal\/pgsql\/supervision|job\/supervision|service\/supervision)\//,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/java\/com\/basiclab\/iot\/system\/(controller\/admin\/supervision\/|controller\/admin\/auth\/(AuthController\.java|vo\/MediaPermissionCheck.*\.java)$|dal\/dataobject\/supervision\/|dal\/pgsql\/supervision\/|job\/supervision\/|service\/supervision\/)/,
   },
   {
     group: 'DEVICE schema and migration',
@@ -23,7 +23,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE review regression tests',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|NotifyReviewRuntimeOutboxPublisherTest|SupervisionAlertReview|SupervisionSchemaSqlTest)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(AlertReviewDataSchemaValidatorTest|ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|MediaPermissionCheckControllerTest|NotifyReviewRuntimeOutboxPublisherTest|SupervisionAlertReview|SupervisionSchemaSqlTest|VideoMediaServiceRequestSignerTest)/,
   },
   {
     group: 'DEVICE video integration config',
@@ -32,12 +32,12 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'VIDEO record evidence package',
     match:
-      /^VIDEO\/(app\/blueprints\/record\.py|app\/services\/record_(export|export_manifest_verifier|video).*|test_record_(availability|export)\.py|docker-compose\.yaml)$/,
+      /^VIDEO\/(app\/blueprints\/(camera|record)\.py|app\/services\/(media_authorization_service|record_(export|export_manifest_verifier|video).*)\.py|test_(media_authorization|record_(availability|export))\.py|docker-compose\.yaml|env\.example)$/,
   },
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/patrol)\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/(alertRecord|alertRecordPlayback|withInstall)\.ts|src\/views\/alert\/components\/AlertReviewWorkbench\.vue)/,
+      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/(patrol|device_detection_region))\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/(alertRecord|alertRecordPlayback|withInstall)\.ts|src\/views\/(alert\/(index\.vue|components\/AlertReviewWorkbench\.vue)|camera\/components\/DeviceRegionDrawer\/index\.vue))/,
   },
   {
     group: 'FR documentation package',
@@ -56,6 +56,8 @@ const TRACKED_RELEASE_PATHS = [
   '.scripts/verify-alert-review-release-package.mjs',
   '.scripts/verify-alert-review-release-package.test.mjs',
   '.scripts/record-export-manifest-verifier.mjs',
+  '.scripts/apply-alert-review-migrations.mjs',
+  '.scripts/apply-alert-review-migrations.test.mjs',
   '.scripts/alert-review-postgres-migration-smoke.mjs',
   '.scripts/alert-review-postgres-migration-smoke.test.mjs',
   '.scripts/alert-review-video-live-smoke.mjs',
@@ -70,6 +72,9 @@ const TRACKED_RELEASE_PATHS = [
   '.scripts/alert-review-player-live-smoke.test.mjs',
   'DEVICE/docker-compose.yml',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/supervision',
+  'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java',
+  'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/vo/MediaPermissionCheckReqVO.java',
+  'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/vo/MediaPermissionCheckRespVO.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/pgsql/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/job/supervision',
@@ -94,18 +99,23 @@ const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/app/blueprints/record.py',
+  'VIDEO/app/blueprints/camera.py',
+  'VIDEO/app/services/media_authorization_service.py',
   'VIDEO/app/services/record_export_manifest_verifier.py',
   'VIDEO/app/services/record_export_service.py',
   'VIDEO/app/services/record_video_service.py',
   'VIDEO/docker-compose.yaml',
   'VIDEO/test_record_availability.py',
   'VIDEO/test_record_export.py',
+  'VIDEO/test_media_authorization.py',
+  'VIDEO/env.example',
   'WEB/package.json',
   'WEB/scripts/alert-review-workbench-e2e-check.mjs',
   'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
   'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/scripts/fixtures/alert-review-workbench-e2e',
   'WEB/src/api/device/patrol.ts',
+  'WEB/src/api/device/device_detection_region.ts',
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
@@ -113,6 +123,8 @@ const TRACKED_RELEASE_PATHS = [
   'WEB/src/utils/alertRecordPlayback.ts',
   'WEB/src/utils/withInstall.ts',
   'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
+  'WEB/src/views/alert/index.vue',
+  'WEB/src/views/camera/components/DeviceRegionDrawer/index.vue',
   'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
   'docs/superpowers/plans/2026-06-30-alert-review-phase-2.md',
   'docs/superpowers/plans/2026-07-01-alert-review-fr13-fr16.md',
@@ -279,6 +291,7 @@ export function scanMediaPermissionGate(files) {
       ['system:supervision-alert-review:media:export', 'media_permission_export_seed_missing'],
       ['system:supervision-alert-review:media:download', 'media_permission_download_seed_missing'],
       ['system:supervision-alert-review:media:manifest', 'media_permission_manifest_seed_missing'],
+      ['system:supervision-alert-review:media:manage', 'media_permission_manage_seed_missing'],
     ];
     const migrationContent = String(migration.content ?? '');
     for (const [permission, reason] of permissionReasons) {
@@ -315,6 +328,42 @@ export function scanMediaPermissionGate(files) {
     ok: blockers.length === 0,
     blockers,
   };
+}
+
+export function scanVideoIntegrationConfigGate(files) {
+  const path = 'DEVICE/docker-compose.yml';
+  const compose = files.find((file) => normalizePath(file.path || '') === path);
+  if (!compose) return { ok: true, blockers: [] };
+  const content = String(compose.content ?? '');
+  const blockers = [];
+  const defaults = new Map();
+  for (const name of [
+    'YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL',
+    'YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
+    'YFEIEYE_VIDEO_RECORD_BASE_URL',
+    'YFEIEYE_VIDEO_RECORD_EXPORT_URL',
+  ]) {
+    const match = content.match(new RegExp(`${name}=\\$\\{${name}:-([^}\\s]+)\\}`));
+    defaults.set(name, match?.[1] || '');
+    if (!match?.[1]) {
+      blockers.push({ path, group: releaseGroupFor(path), reason: `video_integration_${name.toLowerCase()}_missing` });
+    }
+  }
+  const alertUrl = defaults.get('YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL');
+  const coverageUrl = defaults.get('YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL');
+  if (alertUrl && !alertUrl.includes('/video/alert/record/query')) {
+    blockers.push({ path, group: releaseGroupFor(path), reason: 'video_integration_alert_query_default_invalid' });
+  }
+  if (coverageUrl && !coverageUrl.includes('/video/record/availability')) {
+    blockers.push({ path, group: releaseGroupFor(path), reason: 'video_integration_coverage_default_invalid' });
+  }
+  if (alertUrl && coverageUrl && alertUrl === coverageUrl) {
+    blockers.push({ path, group: releaseGroupFor(path), reason: 'video_integration_alert_coverage_defaults_aliased' });
+  }
+  if (!content.includes('YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-}')) {
+    blockers.push({ path, group: releaseGroupFor(path), reason: 'video_integration_hmac_secret_wiring_missing' });
+  }
+  return { ok: blockers.length === 0, blockers };
 }
 
 export function scanLiveVideoEvidenceGate(files) {
@@ -1064,11 +1113,13 @@ function runCli() {
   const textResult = scanTextQuality(releaseTextFiles);
   const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
   const mediaPermissionResult = scanMediaPermissionGate(releaseTextFiles);
+  const videoIntegrationConfigResult = scanVideoIntegrationConfigGate(releaseTextFiles);
   const liveVideoEvidenceResult = scanLiveVideoEvidenceGate(releaseTextFiles);
   const traceabilityResult = scanReleaseTraceabilityGate(releaseTextFiles);
   result.blockers.push(...textResult.blockers);
   result.blockers.push(...webTypecheckResult.blockers);
   result.blockers.push(...mediaPermissionResult.blockers);
+  result.blockers.push(...videoIntegrationConfigResult.blockers);
   result.blockers.push(...liveVideoEvidenceResult.blockers);
   result.blockers.push(...traceabilityResult.blockers);
   result.ok = result.blockers.length === 0;
