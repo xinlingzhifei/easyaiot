@@ -18,6 +18,12 @@ device_detection_region_bp = Blueprint('device_detection_region', __name__)
 logger = logging.getLogger(__name__)
 
 
+def _get_alias_value(data, snake_name, camel_name, default):
+    if snake_name in data:
+        return data[snake_name]
+    return data.get(camel_name, default)
+
+
 @device_detection_region_bp.route('/device/<string:device_id>/regions', methods=['GET'])
 def list_device_regions(device_id):
     """获取设备的检测区域列表"""
@@ -102,7 +108,13 @@ def create_region(device_id):
             opacity=data.get('opacity', 0.3),
             is_enabled=data.get('is_enabled', True),
             sort_order=data.get('sort_order', 0),
-            model_ids=model_ids
+            model_ids=model_ids,
+            inertia_frames=_get_alias_value(
+                data, 'inertia_frames', 'inertiaFrames', 1
+            ),
+            loitering_seconds=_get_alias_value(
+                data, 'loitering_seconds', 'loiteringSeconds', 5
+            ),
         )
         
         return jsonify({
@@ -289,4 +301,3 @@ def capture_device_snapshot(device_id):
     except Exception as e:
         logger.error(f'抓拍设备截图失败: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
-

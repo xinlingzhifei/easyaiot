@@ -1784,6 +1784,22 @@ class DeviceDetectionRegion(db.Model):
     
     # 模型绑定
     model_ids = db.Column(db.Text, nullable=True, comment='关联的算法模型ID列表（JSON格式，如[1,2,3]）')
+
+    # 规则语义
+    inertia_frames = db.Column(
+        db.Integer,
+        default=1,
+        server_default=db.text('1'),
+        nullable=False,
+        comment='目标离开区域后的惯性帧数(0-10000)',
+    )
+    loitering_seconds = db.Column(
+        db.Integer,
+        default=5,
+        server_default=db.text('5'),
+        nullable=False,
+        comment='徘徊判定秒数(0-86400)',
+    )
     
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
@@ -1821,6 +1837,10 @@ class DeviceDetectionRegion(db.Model):
             'is_enabled': self.is_enabled,
             'sort_order': self.sort_order,
             'model_ids': model_ids_list,
+            'inertia_frames': self.inertia_frames,
+            'inertiaFrames': self.inertia_frames,
+            'loitering_seconds': self.loitering_seconds,
+            'loiteringSeconds': self.loitering_seconds,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -2192,3 +2212,50 @@ def ensure_algorithm_task_alert_class_columns(engine):
             log.info('已为 algorithm_task 表添加 %s 列', col)
     except Exception as e:
         log.warning('ensure_algorithm_task_alert_class_columns: %s', e)
+
+
+def ensure_device_detection_region_rule_columns(engine):
+    """老库 device_detection_region 表补区域规则阈值列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'inertia_frames': 'INTEGER NOT NULL DEFAULT 1',
+        'loitering_seconds': 'INTEGER NOT NULL DEFAULT 5',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'device_detection_region' not in inspector.get_table_names():
+            return
+        column_names = {
+            column['name']
+            for column in inspector.get_columns('device_detection_region')
+        }
+        for column_name, ddl in columns.items():
+            if column_name in column_names:
+                continue
+            with engine.begin() as connection:
+                connection.execute(text(
+                    f'ALTER TABLE device_detection_region ADD COLUMN {column_name} {ddl}'
+                ))
+            log.info('已为 device_detection_region 表添加 %s 列', column_name)
+        with engine.begin() as connection:
+            connection.execute(text(
+                'UPDATE device_detection_region '
+                'SET inertia_frames = 1 WHERE inertia_frames IS NULL'
+            ))
+            connection.execute(text(
+                'UPDATE device_detection_region '
+                'SET loitering_seconds = 5 WHERE loitering_seconds IS NULL'
+            ))
+            if engine.dialect.name == 'postgresql':
+                connection.execute(text(
+                    'ALTER TABLE device_detection_region '
+                    'ALTER COLUMN inertia_frames SET DEFAULT 1, '
+                    'ALTER COLUMN inertia_frames SET NOT NULL, '
+                    'ALTER COLUMN loitering_seconds SET DEFAULT 5, '
+                    'ALTER COLUMN loitering_seconds SET NOT NULL'
+                ))
+    except Exception as exc:
+        log.warning('ensure_device_detection_region_rule_columns: %s', exc)
