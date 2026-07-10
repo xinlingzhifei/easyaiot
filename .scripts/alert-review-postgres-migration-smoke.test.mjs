@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   MIGRATION_FILES,
   buildBootstrapSql,
+  buildLegacyReviewFixtureSql,
   buildConcurrentDuplicateIdentityInsertSql,
   buildConcurrentReviewStatusBootstrapSql,
   buildConcurrentReviewStatusUpdateSql,
@@ -23,6 +24,7 @@ import {
 } from './verify-alert-review-release-package.mjs';
 
 assert.deepEqual(MIGRATION_FILES, [
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
@@ -114,14 +116,15 @@ assert.match(bootstrapSql, /CREATE SEQUENCE system_menu_seq/);
 assert.match(bootstrapSql, /CREATE TABLE system_menu/);
 assert.match(bootstrapSql, /CREATE TABLE infra_job/);
 assert.match(bootstrapSql, /CREATE TABLE system_notify_template/);
-assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_runtime_outbox/);
-assert.match(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
-assert.match(bootstrapSql, /source_alert_ids TEXT/);
-assert.match(bootstrapSql, /a-shared/);
-assert.match(bootstrapSql, /system_supervision_alert_review_segment/);
-assert.match(bootstrapSql, /review_case_id BIGINT NOT NULL/);
-assert.match(bootstrapSql, /review_data TEXT/);
-assert.match(bootstrapSql, /legacy-correlation/);
+assert.doesNotMatch(bootstrapSql, /CREATE TABLE system_supervision_alert_review_runtime_outbox/);
+assert.doesNotMatch(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
+assert.doesNotMatch(bootstrapSql, /CREATE TABLE system_supervision_alert_review_segment/);
+
+const legacyReviewFixtureSql = buildLegacyReviewFixtureSql();
+assert.match(legacyReviewFixtureSql, /source_alert_ids/);
+assert.match(legacyReviewFixtureSql, /a-shared/);
+assert.match(legacyReviewFixtureSql, /legacy-correlation/);
+assert.match(legacyReviewFixtureSql, /seg-tenant-1001/);
 
 const assertionSql = buildPostMigrationAssertionSql();
 assert.match(assertionSql, /system_supervision_alert_review_ingest_identity/);

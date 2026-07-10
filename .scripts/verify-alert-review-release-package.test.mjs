@@ -38,7 +38,7 @@ assert.equal(unstagedWorkbench.blockers[1].group, 'WEB alert review workbench pa
 
 const stagedWorkbench = evaluateStatus(`
 A  WEB/src/views/alert/components/AlertReviewWorkbench.vue
-M  DEVICE/iot-system/iot-system-biz/src/main/resources/sql/supervision_event_closure_v1.sql
+M  DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql
 `);
 assert.equal(stagedWorkbench.ok, true);
 assert.deepEqual(stagedWorkbench.blockers, []);
@@ -50,6 +50,12 @@ const untrackedGate = evaluateStatus(`
 assert.equal(untrackedGate.ok, false);
 assert.equal(untrackedGate.blockers[0].group, 'FR release gate tooling');
 assert.equal(untrackedGate.blockers[1].group, 'FR release gate tooling');
+
+const untrackedBaselineMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql
+`);
+assert.equal(untrackedBaselineMigration.ok, false);
+assert.equal(untrackedBaselineMigration.blockers[0].group, 'DEVICE schema and migration');
 
 const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'README.md',
@@ -72,6 +78,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
   '.scripts/alert-review-player-live-smoke.test.mjs',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
@@ -91,7 +98,7 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryMapperStore.java',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/NotifyReviewRuntimeOutboxPublisherTest.java',
 ]);
-assert.equal(trackedReleaseEntries.length, 37);
+assert.equal(trackedReleaseEntries.length, 38);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -114,6 +121,11 @@ assert.deepEqual(
     ['  ', '.scripts/alert-review-visible-copy-scan.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.test.mjs', 'FR release gate tooling'],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
+      'DEVICE schema and migration',
+    ],
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',

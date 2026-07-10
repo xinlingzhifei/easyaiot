@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const MIGRATION_FILES = [
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
@@ -111,26 +112,6 @@ CREATE TABLE system_notify_template (
   deleted SMALLINT NOT NULL DEFAULT 0
 );
 
-CREATE TABLE system_supervision_alert_review_runtime_outbox (
-  id BIGSERIAL PRIMARY KEY,
-  run_id VARCHAR(64) NOT NULL,
-  event_type VARCHAR(64) NOT NULL,
-  alert_key VARCHAR(128) NOT NULL,
-  payload TEXT,
-  outbox_status VARCHAR(64) NOT NULL DEFAULT 'pending',
-  operator_user_id BIGINT,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  published_at TIMESTAMP,
-  retry_count INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  version INTEGER NOT NULL DEFAULT 0,
-  creator VARCHAR(64),
-  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updater VARCHAR(64),
-  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
-);
-
 INSERT INTO system_menu(
   id, name, permission, type, sort, parent_id, path, icon, component, component_name,
   status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted
@@ -140,74 +121,31 @@ VALUES (
   0, TRUE, TRUE, TRUE, 'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP, 1
 );
 
-CREATE TABLE system_supervision_alert_review_item (
-  id BIGINT PRIMARY KEY,
-  tenant_id BIGINT,
-  source_system VARCHAR(64) NOT NULL,
-  source_alert_type VARCHAR(128),
-  source_alert_ids TEXT,
-  object_label VARCHAR(128),
-  first_alert_time TIMESTAMP,
-  review_status VARCHAR(64),
-  camera_id VARCHAR(128),
-  zone_code VARCHAR(128),
-  rule_code VARCHAR(128),
-  last_alert_time TIMESTAMP,
-  review_data TEXT,
-  version INTEGER NOT NULL DEFAULT 0,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
-);
+`;
+}
 
-CREATE TABLE system_supervision_alert_review_case_audit (
-  id BIGSERIAL PRIMARY KEY,
-  review_case_id BIGINT NOT NULL,
-  review_item_id BIGINT,
-  happened_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
-);
-
-CREATE TABLE system_supervision_alert_review_segment (
-  id BIGSERIAL PRIMARY KEY,
-  review_item_id BIGINT NOT NULL,
-  segment_no VARCHAR(128) NOT NULL,
-  camera_id VARCHAR(128) NOT NULL,
-  severity VARCHAR(64) NOT NULL,
-  segment_status VARCHAR(64) NOT NULL DEFAULT 'active',
-  start_time TIMESTAMP NOT NULL,
-  end_time TIMESTAMP,
-  object_ids TEXT,
-  zone_codes TEXT,
-  source_alert_ids TEXT,
-  segment_events TEXT,
-  segment_metadata TEXT,
-  version INTEGER NOT NULL DEFAULT 0,
-  creator VARCHAR(64),
-  create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updater VARCHAR(64),
-  update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
-);
-
+export function buildLegacyReviewFixtureSql() {
+  return `
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES
-  (1, 1001, 'video', 'motion', E'a-shared\\na-unique-1\\na-shared', 'person', '2026-07-05 10:00',
+  (1, 1001, 'fixture-review-1', 'video', 'motion', E'a-shared\\na-unique-1\\na-shared', 'person', '2026-07-05 10:00',
    'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00',
    '{"correlationId":"legacy-correlation","confidence":0.87,"bbox":[1,2,3,4]}', false),
-  (2, 2002, 'video', 'alert', E'a-shared\\na-unique-2', 'car', '2026-07-05 10:00',
+  (2, 2002, 'fixture-review-2', 'video', 'alert', E'a-shared\\na-unique-2', 'car', '2026-07-05 10:00',
    'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00', NULL, false),
-  (3, 1001, 'video', 'alert', 'a-shared', 'dog', '2026-07-05 10:10',
+  (3, 1001, 'fixture-review-3', 'video', 'alert', 'a-shared', 'dog', '2026-07-05 10:10',
    'pending_review', 'camera-02', 'zone-b', 'rule-b', '2026-07-05 10:10',
    '{"reviewDataVersion":1,"labels":["dog"],"zones":["zone-b"],"objectIds":[],"objects":[{"label":"dog"}],"detections":[{"sourceAlertId":"a-shared","alertTime":"2026-07-05 10:10:00","cameraId":"camera-02"}],"reviewSegment":{"segmentId":"legacy-seg","cameraId":"camera-02","severity":"alert","status":"active","startTime":"2026-07-05 10:10:00","endTime":"2026-07-05 10:10:00","sourceAlertIds":["a-shared"]}}', false);
 
 INSERT INTO system_supervision_alert_review_segment(
-  review_item_id, segment_no, camera_id, severity, segment_status, start_time, end_time, deleted
+  review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
 )
 VALUES
-  (1, 'seg-tenant-1001', 'camera-01', 'alert', 'active', '2026-07-05 10:00', '2026-07-05 10:05', false),
-  (2, 'seg-tenant-2002', 'camera-01', 'alert', 'active', '2026-07-05 10:01', '2026-07-05 10:04', false);
+  (1, 'seg-tenant-1001', 1001, 'camera-01', 'alert', 'active', '2026-07-05 10:00', '2026-07-05 10:05', false),
+  (2, 'seg-tenant-2002', 2002, 'camera-01', 'alert', 'active', '2026-07-05 10:01', '2026-07-05 10:04', false);
 `;
 }
 
@@ -976,8 +914,11 @@ export async function runSmoke(options) {
 
   try {
     runPsql(options, options.database, buildBootstrapSql());
-    for (const migrationFile of MIGRATION_FILES) {
+    for (const [index, migrationFile] of MIGRATION_FILES.entries()) {
       runPsql(options, options.database, readMigrationSql(options.repoRoot, migrationFile));
+      if (index === 0) {
+        runPsql(options, options.database, buildLegacyReviewFixtureSql());
+      }
     }
     const assertionOutput = runPsql(options, options.database, buildPostMigrationAssertionSql());
     const concurrentOutput = await runConcurrentDuplicateIdentitySmoke(options);

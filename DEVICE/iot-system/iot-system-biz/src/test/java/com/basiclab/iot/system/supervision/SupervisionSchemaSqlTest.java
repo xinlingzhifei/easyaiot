@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionSchemaSqlTest {
 
-    private static final String SCHEMA_RESOURCE = "sql/supervision_event_closure_v1.sql";
+    private static final String SCHEMA_RESOURCE = "sql/migrations/V20260701__supervision_event_closure_baseline.sql";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
@@ -400,7 +400,7 @@ class SupervisionSchemaSqlTest {
     @Test
     void alertReviewRuntimeOutboxDeliveryMigrationTracksRecipientIdempotency() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql");
-        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path baseline = modulePath("src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql");
 
         assertTrue(Files.exists(migration), "runtime outbox delivery migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -420,7 +420,7 @@ class SupervisionSchemaSqlTest {
     @Test
     void alertReviewRuntimeOutboxClaimMigrationTracksProcessingOwnership() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260708_6__alert_review_runtime_outbox_claim.sql");
-        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path baseline = modulePath("src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql");
 
         assertTrue(Files.exists(migration), "runtime outbox claim migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -438,7 +438,7 @@ class SupervisionSchemaSqlTest {
     @Test
     void alertReviewSegmentEndTimeGuardMigrationRequiresEndedSegmentsToHaveEndTime() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql");
-        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path baseline = modulePath("src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql");
 
         assertTrue(Files.exists(migration), "segment end-time guard migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -453,7 +453,7 @@ class SupervisionSchemaSqlTest {
     @Test
     void alertReviewSegmentAlertSeverityGuardMigrationRequiresAlertSegmentsToKeepAlertSeverity() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql");
-        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path baseline = modulePath("src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql");
 
         assertTrue(Files.exists(migration), "segment alert severity guard migration should exist");
         String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
@@ -468,7 +468,7 @@ class SupervisionSchemaSqlTest {
     @Test
     void alertReviewMergeIndexMigrationUsesSameCameraWindowSemantics() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql");
-        Path baseline = modulePath("src/main/resources/sql/supervision_event_closure_v1.sql");
+        Path baseline = modulePath("src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql");
         String sameCameraIndex = "ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time)";
         String oldZoneRuleIndex = "ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, zone_code, rule_code";
 
