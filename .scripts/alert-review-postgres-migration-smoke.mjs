@@ -19,6 +19,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -133,19 +134,57 @@ INSERT INTO system_supervision_alert_review_item(
 VALUES
   (1, 1001, 'fixture-review-1', 'video', 'motion', E'a-shared\\na-unique-1\\na-shared', 'person', '2026-07-05 10:00',
    'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00',
-   '{"correlationId":"legacy-correlation","confidence":0.87,"bbox":[1,2,3,4]}', false),
+   '{"correlationId":"legacy-correlation","confidence":0.87,"bbox":[1,2,3,4]}', 0),
   (2, 2002, 'fixture-review-2', 'video', 'alert', E'a-shared\\na-unique-2', 'car', '2026-07-05 10:00',
-   'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00', NULL, false),
+   'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:00', NULL, 0),
   (3, 1001, 'fixture-review-3', 'video', 'alert', 'a-shared', 'dog', '2026-07-05 10:10',
    'pending_review', 'camera-02', 'zone-b', 'rule-b', '2026-07-05 10:10',
-   '{"reviewDataVersion":1,"labels":["dog"],"zones":["zone-b"],"objectIds":[],"objects":[{"label":"dog"}],"detections":[{"sourceAlertId":"a-shared","alertTime":"2026-07-05 10:10:00","cameraId":"camera-02"}],"reviewSegment":{"segmentId":"legacy-seg","cameraId":"camera-02","severity":"alert","status":"active","startTime":"2026-07-05 10:10:00","endTime":"2026-07-05 10:10:00","sourceAlertIds":["a-shared"]}}', false);
+   '{"reviewDataVersion":1,"labels":["dog"],"zones":["zone-b"],"objectIds":[],"objects":[{"label":"dog"}],"detections":[{"sourceAlertId":"a-shared","alertTime":"2026-07-05 10:10:00","cameraId":"camera-02"}],"reviewSegment":{"segmentId":"legacy-seg","cameraId":"camera-02","severity":"alert","status":"active","startTime":"2026-07-05 10:10:00","endTime":"2026-07-05 10:10:00","sourceAlertIds":["a-shared"]}}', 0);
 
 INSERT INTO system_supervision_alert_review_segment(
   review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
 )
 VALUES
-  (1, 'seg-tenant-1001', 1001, 'camera-01', 'alert', 'active', '2026-07-05 10:00', '2026-07-05 10:05', false),
-  (2, 'seg-tenant-2002', 2002, 'camera-01', 'alert', 'active', '2026-07-05 10:01', '2026-07-05 10:04', false);
+  (1, 'seg-tenant-1001', 1001, 'camera-01', 'alert', 'active', '2026-07-05 10:00', '2026-07-05 10:05', 0),
+  (2, 'seg-tenant-2002', 2002, 'camera-01', 'alert', 'active', '2026-07-05 10:01', '2026-07-05 10:04', 0);
+`;
+}
+
+export function buildLegacyBooleanDeletedFixtureSql() {
+  return `
+DROP INDEX IF EXISTS uk_supervision_alert_review_runtime_outbox_delivery_recipient;
+DROP INDEX IF EXISTS idx_supervision_alert_review_runtime_outbox_delivery_status;
+DROP INDEX IF EXISTS idx_supervision_alert_review_runtime_outbox_delivery_alert;
+
+ALTER TABLE system_supervision_alert_review_runtime_outbox_delivery
+  DROP COLUMN tenant_id;
+ALTER TABLE system_supervision_alert_review_runtime_outbox_delivery
+  ALTER COLUMN deleted DROP DEFAULT;
+ALTER TABLE system_supervision_alert_review_runtime_outbox_delivery
+  ALTER COLUMN deleted TYPE BOOLEAN USING (deleted <> 0);
+ALTER TABLE system_supervision_alert_review_runtime_outbox_delivery
+  ALTER COLUMN deleted SET DEFAULT FALSE;
+
+INSERT INTO system_supervision_alert_review_runtime_outbox(
+  id, tenant_id, run_id, event_type, alert_key, outbox_status, deleted
+)
+VALUES (99001, 1001, 'legacy-boolean-deleted', 'runtime_alert', 'legacy-boolean-deleted', 'pending', 0);
+
+INSERT INTO system_supervision_alert_review_runtime_outbox_delivery(
+  id, outbox_id, event_type, alert_key, channel, recipient_user_id, template_code, delivery_status, deleted
+)
+VALUES (99002, 99001, 'runtime_alert', 'legacy-boolean-deleted', 'notify', 1,
+        'YFEIEYE_REVIEW_RUNTIME_ALERT', 'pending', TRUE);
+
+CREATE UNIQUE INDEX uk_supervision_alert_review_runtime_outbox_delivery_recipient
+ON system_supervision_alert_review_runtime_outbox_delivery(outbox_id, channel, recipient_user_id, template_code)
+WHERE deleted = FALSE;
+
+CREATE INDEX idx_supervision_alert_review_runtime_outbox_delivery_status
+ON system_supervision_alert_review_runtime_outbox_delivery(delivery_status, last_attempt_at);
+
+CREATE INDEX idx_supervision_alert_review_runtime_outbox_delivery_alert
+ON system_supervision_alert_review_runtime_outbox_delivery(event_type, alert_key);
 `;
 }
 
@@ -153,6 +192,68 @@ export function buildPostMigrationAssertionSql() {
   return `
 DO $$
 BEGIN
+  IF (
+    WITH expected(table_name) AS (
+      VALUES
+        ('system_supervision_event'),
+        ('system_supervision_task'),
+        ('system_supervision_alert_review_item'),
+        ('system_supervision_alert_review_ingest_identity'),
+        ('system_supervision_alert_review_segment'),
+        ('system_supervision_alert_review_user_status'),
+        ('system_supervision_alert_review_evidence'),
+        ('system_supervision_alert_review_rule'),
+        ('system_supervision_alert_review_case'),
+        ('system_supervision_alert_review_case_item'),
+        ('system_supervision_alert_review_case_audit'),
+        ('system_supervision_alert_review_semantic_index'),
+        ('system_supervision_alert_review_export_job'),
+        ('system_supervision_alert_review_runtime_lock'),
+        ('system_supervision_alert_review_runtime_run'),
+        ('system_supervision_alert_review_runtime_outbox'),
+        ('system_supervision_alert_review_runtime_outbox_delivery'),
+        ('system_supervision_alert_review_report_ack')
+    )
+    SELECT count(*)
+    FROM expected
+    JOIN information_schema.columns AS tenant_column
+      ON tenant_column.table_schema = current_schema()
+     AND tenant_column.table_name = expected.table_name
+     AND tenant_column.column_name = 'tenant_id'
+     AND tenant_column.data_type = 'bigint'
+     AND tenant_column.is_nullable = 'NO'
+     AND tenant_column.column_default LIKE '0%'
+    JOIN information_schema.columns AS deleted_column
+      ON deleted_column.table_schema = current_schema()
+     AND deleted_column.table_name = expected.table_name
+     AND deleted_column.column_name = 'deleted'
+     AND deleted_column.data_type = 'smallint'
+     AND deleted_column.is_nullable = 'NO'
+     AND deleted_column.column_default LIKE '0%'
+  ) <> 18 THEN
+    RAISE EXCEPTION 'expected all BaseDO review tables to use tenant BIGINT and deleted SMALLINT platform columns';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_runtime_outbox_delivery
+    WHERE id = 99002
+      AND tenant_id = 0
+      AND deleted = 1
+  ) THEN
+    RAISE EXCEPTION 'expected historical BOOLEAN deleted and missing tenant column to migrate to SMALLINT 1 and tenant 0';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = current_schema()
+      AND indexname = 'uk_supervision_alert_review_runtime_outbox_delivery_recipient'
+      AND indexdef LIKE '%(tenant_id, outbox_id, channel, recipient_user_id, template_code)%'
+  ) THEN
+    RAISE EXCEPTION 'expected runtime outbox delivery identity to be tenant scoped';
+  END IF;
+
   IF (
     SELECT count(*)
     FROM system_menu
@@ -319,7 +420,7 @@ BEGIN
   IF (
     SELECT count(*)
     FROM system_supervision_alert_review_ingest_identity
-    WHERE deleted = FALSE
+    WHERE deleted = 0
   ) <> 4 THEN
     RAISE EXCEPTION 'expected tenant-scoped ingest identity backfill to deduplicate historical source alerts into 4 rows';
   END IF;
@@ -330,7 +431,7 @@ BEGIN
     WHERE tenant_id = 1001
       AND source_system = 'video'
       AND identity_key = 'video:alert:a-shared'
-      AND deleted = FALSE
+      AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected tenant-scoped ingest identity backfill for tenant 1001 shared alert';
   END IF;
@@ -341,7 +442,7 @@ BEGIN
     WHERE tenant_id = 2002
       AND source_system = 'video'
       AND identity_key = 'video:alert:a-shared'
-      AND deleted = FALSE
+      AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected tenant-scoped ingest identity backfill for tenant 2002 shared alert';
   END IF;
@@ -370,7 +471,7 @@ BEGIN
   IF (
     SELECT count(*)
     FROM system_supervision_alert_review_item
-    WHERE deleted = FALSE
+    WHERE deleted = 0
       AND (
         review_data IS NULL
         OR btrim(review_data) = ''
@@ -439,7 +540,7 @@ BEGIN
     INSERT INTO system_supervision_alert_review_ingest_identity(
       tenant_id, review_item_id, source_system, identity_key, source_alert_id, deleted
     )
-    VALUES (1001, 999, 'video', 'video:alert:a-shared', 'a-shared', false);
+    VALUES (1001, 999, 'video', 'video:alert:a-shared', 'a-shared', 0);
     RAISE EXCEPTION 'expected duplicate tenant/source identity to be rejected';
   EXCEPTION WHEN unique_violation THEN
     NULL;
@@ -451,7 +552,7 @@ INSERT INTO system_supervision_alert_review_item(
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES (4, 1001, 'fixture-review-4', 'video', 'alert', 'a-overlap', 'person', '2026-07-05 10:02',
-  'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:02', NULL, false);
+  'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:02', NULL, 0);
 
 DO $$
 BEGIN
@@ -459,7 +560,7 @@ BEGIN
     INSERT INTO system_supervision_alert_review_segment(
       review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
     )
-    VALUES (4, 'seg-overlap-tenant-1001', 1001, 'camera-01', 'alert', 'active', '2026-07-05 10:02', '2026-07-05 10:03', false);
+    VALUES (4, 'seg-overlap-tenant-1001', 1001, 'camera-01', 'alert', 'active', '2026-07-05 10:02', '2026-07-05 10:03', 0);
     RAISE EXCEPTION 'expected same-tenant camera/time overlap to be rejected';
   EXCEPTION WHEN exclusion_violation THEN
     NULL;
@@ -471,12 +572,12 @@ INSERT INTO system_supervision_alert_review_item(
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES (9, 1001, 'fixture-review-9', 'video', 'motion', 'a-adjacent-boundary', 'person', '2026-07-05 10:05',
-  'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:05', NULL, false);
+  'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:05', NULL, 0);
 
 INSERT INTO system_supervision_alert_review_segment(
   review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
 )
-VALUES (9, 'seg-adjacent-boundary-tenant-1001', 1001, 'camera-01', 'detection', 'detection', '2026-07-05 10:05', '2026-07-05 10:06', false);
+VALUES (9, 'seg-adjacent-boundary-tenant-1001', 1001, 'camera-01', 'detection', 'detection', '2026-07-05 10:05', '2026-07-05 10:06', 0);
 
 DO $$
 BEGIN
@@ -487,7 +588,7 @@ BEGIN
       AND camera_id = 'camera-01'
       AND start_time = '2026-07-05 10:05'
       AND end_time = '2026-07-05 10:06'
-      AND deleted = FALSE
+      AND deleted = 0
   ) <> 1 THEN
     RAISE EXCEPTION 'expected adjacent same-camera ReviewSegment boundary to be allowed';
   END IF;
@@ -499,7 +600,7 @@ BEGIN
     INSERT INTO system_supervision_alert_review_segment(
       review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
     )
-    VALUES (1, 'seg-duplicate-review-item-active', 1001, 'camera-review-item-unique-01', 'alert', 'active', '2026-07-05 12:30', '2026-07-05 12:31', false);
+    VALUES (1, 'seg-duplicate-review-item-active', 1001, 'camera-review-item-unique-01', 'alert', 'active', '2026-07-05 12:30', '2026-07-05 12:31', 0);
     RAISE EXCEPTION 'expected duplicate active ReviewSegment review_item_id to be rejected';
   EXCEPTION WHEN unique_violation THEN
     NULL;
@@ -508,14 +609,14 @@ BEGIN
   INSERT INTO system_supervision_alert_review_segment(
     review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
   )
-  VALUES (1, 'seg-duplicate-review-item-deleted', 1001, 'camera-review-item-unique-02', 'alert', 'active', '2026-07-05 12:32', '2026-07-05 12:33', true);
+  VALUES (1, 'seg-duplicate-review-item-deleted', 1001, 'camera-review-item-unique-02', 'alert', 'active', '2026-07-05 12:32', '2026-07-05 12:33', 1);
 
   IF (
     SELECT count(*)
     FROM system_supervision_alert_review_segment
     WHERE review_item_id = 1
       AND segment_no = 'seg-duplicate-review-item-deleted'
-      AND deleted = TRUE
+      AND deleted = 1
   ) <> 1 THEN
     RAISE EXCEPTION 'expected deleted duplicate ReviewSegment review_item_id to be allowed';
   END IF;
@@ -527,21 +628,21 @@ INSERT INTO system_supervision_alert_review_item(
 )
 VALUES
   (5, 1001, 'fixture-review-5', 'video', 'motion', 'a-open-active-1', 'person', '2026-07-05 11:00',
-   'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:00', NULL, false),
+   'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:00', NULL, 0),
   (6, 1001, 'fixture-review-6', 'video', 'motion', 'a-open-active-2', 'person', '2026-07-05 11:01',
-   'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:01', NULL, false);
+   'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:01', NULL, 0);
 
 DO $$
 BEGIN
   INSERT INTO system_supervision_alert_review_segment(
     review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
   )
-  VALUES (5, 'seg-open-active-tenant-1001', 1001, 'camera-open-01', 'detection', 'active', '2026-07-05 11:00', NULL, false);
+  VALUES (5, 'seg-open-active-tenant-1001', 1001, 'camera-open-01', 'detection', 'active', '2026-07-05 11:00', NULL, 0);
   BEGIN
     INSERT INTO system_supervision_alert_review_segment(
       review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
     )
-    VALUES (6, 'seg-open-active-overlap-tenant-1001', 1001, 'camera-open-01', 'detection', 'active', '2026-07-05 11:01', NULL, false);
+    VALUES (6, 'seg-open-active-overlap-tenant-1001', 1001, 'camera-open-01', 'detection', 'active', '2026-07-05 11:01', NULL, 0);
     RAISE EXCEPTION 'expected open active ReviewSegment to block later same-camera segment';
   EXCEPTION WHEN exclusion_violation THEN
     NULL;
@@ -554,30 +655,30 @@ INSERT INTO system_supervision_alert_review_item(
 )
 VALUES
   (7, 1001, 'fixture-review-7', 'video', 'motion', 'a-transition-1', 'person', '2026-07-05 11:10',
-   'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:10', NULL, false),
+   'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:10', NULL, 0),
   (8, 1001, 'fixture-review-8', 'video', 'motion', 'a-transition-2', 'person', '2026-07-05 11:20',
-   'pending_review', 'camera-transition-ended-01', 'zone-a', 'rule-a', '2026-07-05 11:20', NULL, false);
+   'pending_review', 'camera-transition-ended-01', 'zone-a', 'rule-a', '2026-07-05 11:20', NULL, 0);
 
 INSERT INTO system_supervision_alert_review_segment(
   review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
 )
 VALUES
-  (7, 'seg-transition-active', 1001, 'camera-transition-01', 'detection', 'active', '2026-07-05 11:10', NULL, false),
-  (8, 'seg-transition-ended', 1001, 'camera-transition-ended-01', 'alert', 'ended', '2026-07-05 11:20', '2026-07-05 11:21', false);
+  (7, 'seg-transition-active', 1001, 'camera-transition-01', 'detection', 'active', '2026-07-05 11:10', NULL, 0),
+  (8, 'seg-transition-ended', 1001, 'camera-transition-ended-01', 'alert', 'ended', '2026-07-05 11:20', '2026-07-05 11:21', 0);
 
 INSERT INTO system_supervision_alert_review_item(
   id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES (10, 1001, 'fixture-review-10', 'video', 'motion', 'a-ended-null-end-time', 'person', '2026-07-05 11:30',
-  'pending_review', 'camera-transition-02', 'zone-a', 'rule-a', '2026-07-05 11:30', NULL, false);
+  'pending_review', 'camera-transition-02', 'zone-a', 'rule-a', '2026-07-05 11:30', NULL, 0);
 
 INSERT INTO system_supervision_alert_review_item(
   id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES (11, 1001, 'fixture-review-11', 'video', 'motion', 'a-alert-detection-severity', 'person', '2026-07-05 11:40',
-  'pending_review', 'camera-transition-03', 'zone-a', 'rule-a', '2026-07-05 11:40', NULL, false);
+  'pending_review', 'camera-transition-03', 'zone-a', 'rule-a', '2026-07-05 11:40', NULL, 0);
 
 UPDATE system_supervision_alert_review_segment
 SET segment_status = 'alert',
@@ -625,7 +726,7 @@ BEGIN
     INSERT INTO system_supervision_alert_review_segment(
       review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
     )
-    VALUES (10, 'seg-ended-null-end-time', 1001, 'camera-transition-02', 'alert', 'ended', '2026-07-05 11:30', NULL, false);
+    VALUES (10, 'seg-ended-null-end-time', 1001, 'camera-transition-02', 'alert', 'ended', '2026-07-05 11:30', NULL, 0);
     RAISE EXCEPTION 'expected ended ReviewSegment without end_time to be rejected';
   EXCEPTION WHEN check_violation THEN
     NULL;
@@ -638,7 +739,7 @@ BEGIN
     INSERT INTO system_supervision_alert_review_segment(
       review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
     )
-    VALUES (11, 'seg-alert-detection-severity', 1001, 'camera-transition-03', 'detection', 'alert', '2026-07-05 11:40', '2026-07-05 11:41', false);
+    VALUES (11, 'seg-alert-detection-severity', 1001, 'camera-transition-03', 'detection', 'alert', '2026-07-05 11:40', '2026-07-05 11:41', 0);
     RAISE EXCEPTION 'expected alert ReviewSegment with detection severity to be rejected';
   EXCEPTION WHEN check_violation THEN
     NULL;
@@ -654,7 +755,7 @@ export function buildConcurrentDuplicateIdentityInsertSql() {
 INSERT INTO system_supervision_alert_review_ingest_identity(
   tenant_id, review_item_id, source_system, identity_key, source_alert_id, deleted
 )
-VALUES (3003, 3003, 'video', 'video:alert:a-race', 'a-race', false);
+VALUES (3003, 3003, 'video', 'video:alert:a-race', 'a-race', 0);
 `;
 }
 
@@ -665,7 +766,7 @@ INSERT INTO system_supervision_alert_review_item(
   first_alert_time, last_alert_time, version, deleted
 )
 VALUES (8001, 5005, 'fixture-review-status-8001', 'video', 'review-status-race', 'pending_review', 'camera-review-status-race-01', 'zone-a', 'rule-a',
-  '2026-07-05 13:00', '2026-07-05 13:00', 0, false);
+  '2026-07-05 13:00', '2026-07-05 13:00', 0, 0);
 `;
 }
 
@@ -688,9 +789,9 @@ INSERT INTO system_supervision_alert_review_item(
 )
 VALUES
   (7001, 4004, 'fixture-review-segment-7001', 'video', 'a-segment-race-1', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a',
-   '2026-07-05 12:00', '2026-07-05 12:00', false),
+   '2026-07-05 12:00', '2026-07-05 12:00', 0),
   (7002, 4004, 'fixture-review-segment-7002', 'video', 'a-segment-race-2', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a',
-   '2026-07-05 12:00', '2026-07-05 12:00', false);
+   '2026-07-05 12:00', '2026-07-05 12:00', 0);
 `;
 }
 
@@ -699,7 +800,7 @@ export function buildConcurrentReviewSegmentInsertSql({ reviewItemId, segmentNo 
 INSERT INTO system_supervision_alert_review_segment(
   review_item_id, segment_no, tenant_id, camera_id, severity, segment_status, start_time, end_time, deleted
 )
-VALUES (${reviewItemId}, '${segmentNo}', 4004, 'camera-segment-race-01', 'detection', 'active', '2026-07-05 12:00', NULL, false);
+VALUES (${reviewItemId}, '${segmentNo}', 4004, 'camera-segment-race-01', 'detection', 'active', '2026-07-05 12:00', NULL, 0);
 `;
 }
 
@@ -765,7 +866,7 @@ function printHelp() {
 Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container or a direct PostgreSQL URL.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
 The direct URL must be a maintenance database URL accepted by local psql; the smoke creates --database on the same server.
-The smoke creates a temporary database, applies V20260702, V20260704, V20260705, V20260706, V20260707, V20260708, V20260708_2, V20260708_3, V20260708_4, V20260708_5, V20260708_6, V20260708_7, V20260708_8, and V20260708_9, and verifies ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260701 through V20260708_10 in MIGRATION_FILES order, and verifies platform SMALLINT deleted semantics, BaseDO tenant columns and indexes, the historical BOOLEAN upgrade path, ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {
@@ -920,6 +1021,9 @@ export async function runSmoke(options) {
   try {
     runPsql(options, options.database, buildBootstrapSql());
     for (const [index, migrationFile] of MIGRATION_FILES.entries()) {
+      if (migrationFile.endsWith('V20260708_10__alert_review_deleted_smallint.sql')) {
+        runPsql(options, options.database, buildLegacyBooleanDeletedFixtureSql());
+      }
       runPsql(options, options.database, readMigrationSql(options.repoRoot, migrationFile));
       if (index === 0) {
         runPsql(options, options.database, buildLegacyReviewFixtureSql());

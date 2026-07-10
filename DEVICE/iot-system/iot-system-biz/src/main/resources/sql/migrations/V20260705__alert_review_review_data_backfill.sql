@@ -27,7 +27,7 @@ BEGIN
       item_row.zone_code,
       item_row.rule_code
     FROM system_supervision_alert_review_item item_row
-    WHERE item_row.deleted = FALSE
+    WHERE item_row.deleted = 0
   LOOP
     BEGIN
       current_data := CASE

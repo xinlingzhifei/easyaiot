@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import * as postgresSmoke from './alert-review-postgres-migration-smoke.mjs';
+
 import {
   MIGRATION_FILES,
   buildBootstrapSql,
@@ -23,6 +25,45 @@ import {
   releaseEntriesForTrackedPaths,
 } from './verify-alert-review-release-package.mjs';
 
+const tenantScopedBaseDoTables = [
+  'system_supervision_event',
+  'system_supervision_task',
+  'system_supervision_alert_review_item',
+  'system_supervision_alert_review_ingest_identity',
+  'system_supervision_alert_review_segment',
+  'system_supervision_alert_review_user_status',
+  'system_supervision_alert_review_evidence',
+  'system_supervision_alert_review_rule',
+  'system_supervision_alert_review_case',
+  'system_supervision_alert_review_case_item',
+  'system_supervision_alert_review_case_audit',
+  'system_supervision_alert_review_semantic_index',
+  'system_supervision_alert_review_export_job',
+  'system_supervision_alert_review_runtime_lock',
+  'system_supervision_alert_review_runtime_run',
+  'system_supervision_alert_review_runtime_outbox',
+  'system_supervision_alert_review_runtime_outbox_delivery',
+  'system_supervision_alert_review_report_ack',
+];
+const baselineSql = readFileSync(MIGRATION_FILES[0], 'utf8');
+for (const tableName of tenantScopedBaseDoTables) {
+  const tableBody = baselineSql.match(
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${tableName} \\(([\\s\\S]*?)\\n\\);`),
+  )?.[1];
+  assert.ok(tableBody, `${tableName} must be declared by the baseline migration`);
+  assert.match(
+    tableBody,
+    /tenant_id BIGINT NOT NULL DEFAULT 0/,
+    `${tableName} must expose the tenant_id column injected by TenantLineInterceptor`,
+  );
+}
+
+const currentMigrationBundleSql = MIGRATION_FILES
+  .map((file) => readFileSync(file, 'utf8'))
+  .join('\n');
+assert.doesNotMatch(currentMigrationBundleSql, /\bdeleted\s+BOOLEAN\b/i);
+assert.doesNotMatch(currentMigrationBundleSql, /\bdeleted\s*=\s*(?:FALSE|TRUE)\b/i);
+
 assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql',
@@ -39,7 +80,25 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
 ]);
+
+assert.equal(
+  typeof postgresSmoke.buildLegacyBooleanDeletedFixtureSql,
+  'function',
+  'the real PostgreSQL smoke must exercise the historical BOOLEAN deleted upgrade path',
+);
+const legacyBooleanDeletedFixtureSql = postgresSmoke.buildLegacyBooleanDeletedFixtureSql();
+assert.match(legacyBooleanDeletedFixtureSql, /DROP COLUMN tenant_id/);
+assert.match(legacyBooleanDeletedFixtureSql, /ALTER COLUMN deleted TYPE BOOLEAN/);
+assert.match(legacyBooleanDeletedFixtureSql, /WHERE deleted = FALSE/);
+assert.match(legacyBooleanDeletedFixtureSql, /'pending', TRUE/);
+
+const platformCompatibilityMigrationSql = readFileSync(MIGRATION_FILES.at(-1), 'utf8');
+for (const tableName of tenantScopedBaseDoTables) {
+  assert.match(platformCompatibilityMigrationSql, new RegExp(`'${tableName}'`));
+}
+assert.match(platformCompatibilityMigrationSql, /SET tenant_id = 0/);
 
 const schedulerJobMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('scheduler_jobs')), 'utf8');
 assert.doesNotMatch(schedulerJobMigrationSql, /existing\.id\s*=\s*seed\.id/);
@@ -217,7 +276,7 @@ const concurrentSegmentInsertSql = buildConcurrentReviewSegmentInsertSql({
 assert.match(concurrentSegmentInsertSql, /review_item_id, segment_no, tenant_id, camera_id/);
 assert.match(concurrentSegmentInsertSql, /7001, 'seg-race-1'/);
 assert.match(concurrentSegmentInsertSql, /camera-segment-race-01/);
-assert.match(concurrentSegmentInsertSql, /NULL, false/);
+assert.match(concurrentSegmentInsertSql, /NULL, 0/);
 
 assert.equal(
   summarizeConcurrentDuplicateResults([

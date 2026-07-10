@@ -59,4 +59,4 @@ ALTER TABLE system_supervision_alert_review_segment
     camera_id WITH =,
     tsrange(start_time, COALESCE(end_time, 'infinity'::timestamp), '[)') WITH &&
   )
-  WHERE (deleted = FALSE);
+  WHERE (deleted = 0);

@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS system_supervision_event (
   id BIGSERIAL PRIMARY KEY,
   event_no VARCHAR(64) NOT NULL,
-  tenant_id BIGINT,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   org_id BIGINT,
   site_type VARCHAR(32) NOT NULL DEFAULT 'prison',
   source_system VARCHAR(64) NOT NULL,
@@ -37,15 +37,16 @@ CREATE TABLE IF NOT EXISTS system_supervision_event (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_event_open_alert
-ON system_supervision_event(source_system, source_alert_id)
-WHERE deleted = FALSE AND event_status <> 'closed' AND source_alert_id IS NOT NULL;
+ON system_supervision_event(tenant_id, source_system, source_alert_id)
+WHERE deleted = 0 AND event_status <> 'closed' AND source_alert_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS system_supervision_task (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   event_id BIGINT NOT NULL,
   task_no VARCHAR(64) NOT NULL,
   task_type VARCHAR(64) NOT NULL,
@@ -64,11 +65,11 @@ CREATE TABLE IF NOT EXISTS system_supervision_task (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_task_event_id
-ON system_supervision_task(event_id);
+ON system_supervision_task(tenant_id, event_id);
 
 CREATE TABLE IF NOT EXISTS system_supervision_action (
   id BIGSERIAL PRIMARY KEY,
@@ -84,7 +85,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_action (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_action_event_id
@@ -106,7 +107,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_evidence_item (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_evidence_event_id
@@ -114,7 +115,7 @@ ON system_supervision_evidence_item(event_id);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_item (
   id BIGSERIAL PRIMARY KEY,
-  tenant_id BIGINT,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_item_no VARCHAR(64) NOT NULL,
   source_system VARCHAR(64) NOT NULL,
   rule_code VARCHAR(128) NOT NULL,
@@ -145,12 +146,12 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_item (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_item_no
-ON system_supervision_alert_review_item(review_item_no)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_item(tenant_id, review_item_no)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_workbench
 ON system_supervision_alert_review_item(tenant_id, review_status, camera_id, last_alert_time);
@@ -159,10 +160,10 @@ CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_merge
 ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_event
-ON system_supervision_alert_review_item(event_id);
+ON system_supervision_alert_review_item(tenant_id, event_id);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_rule_suggestion
-ON system_supervision_alert_review_item(rule_suggestion_status, camera_id, zone_code, object_label);
+ON system_supervision_alert_review_item(tenant_id, rule_suggestion_status, camera_id, zone_code, object_label);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity (
   id BIGSERIAL PRIMARY KEY,
@@ -176,15 +177,15 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity
 ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)
-WHERE deleted = FALSE;
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_ingest_identity_item
-ON system_supervision_alert_review_ingest_identity(review_item_id);
+ON system_supervision_alert_review_ingest_identity(tenant_id, review_item_id);
 
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
@@ -208,7 +209,7 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  deleted SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT ck_supervision_alert_review_segment_time CHECK (end_time IS NULL OR end_time >= start_time),
   CONSTRAINT ck_supervision_alert_review_segment_ended_time CHECK (segment_status <> 'ended' OR end_time IS NOT NULL),
   CONSTRAINT ck_supervision_alert_review_segment_status CHECK (segment_status IN ('active', 'detection', 'alert', 'ended')),
@@ -218,25 +219,26 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_segment (
     tenant_id WITH =,
     camera_id WITH =,
     tsrange(start_time, COALESCE(end_time, 'infinity'::timestamp), '[)') WITH &&
-  ) WHERE (deleted = FALSE)
+  ) WHERE (deleted = 0)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_no
-ON system_supervision_alert_review_segment(segment_no)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_segment(tenant_id, segment_no)
+WHERE deleted = 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_item
-ON system_supervision_alert_review_segment(review_item_id)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_segment(tenant_id, review_item_id)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time
 ON system_supervision_alert_review_segment(tenant_id, camera_id, start_time, end_time);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_status
-ON system_supervision_alert_review_segment(segment_status, severity, start_time);
+ON system_supervision_alert_review_segment(tenant_id, segment_status, severity, start_time);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_user_status (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_item_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   has_been_reviewed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -246,18 +248,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_user_status (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_user_status
-ON system_supervision_alert_review_user_status(review_item_id, user_id)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_user_status(tenant_id, review_item_id, user_id)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_user_reviewed
-ON system_supervision_alert_review_user_status(user_id, has_been_reviewed, review_item_id);
+ON system_supervision_alert_review_user_status(tenant_id, user_id, has_been_reviewed, review_item_id);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_evidence (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_item_id BIGINT NOT NULL,
   source_alert_id VARCHAR(128) NOT NULL,
   material_type VARCHAR(64) NOT NULL,
@@ -267,14 +270,15 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_evidence (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_evidence_item_time
-ON system_supervision_alert_review_evidence(review_item_id, happened_at);
+ON system_supervision_alert_review_evidence(tenant_id, review_item_id, happened_at);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_rule (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   rule_code VARCHAR(128) NOT NULL,
   rule_name VARCHAR(128) NOT NULL,
   source_system VARCHAR(64),
@@ -292,14 +296,15 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_rule (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_rule_enabled
-ON system_supervision_alert_review_rule(enabled, source_system, camera_id, zone_code);
+ON system_supervision_alert_review_rule(tenant_id, enabled, source_system, camera_id, zone_code);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   case_no VARCHAR(64) NOT NULL,
   title VARCHAR(128) NOT NULL,
   status VARCHAR(64) NOT NULL DEFAULT 'open',
@@ -314,18 +319,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_case_no
-ON system_supervision_alert_review_case(case_no)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_case(tenant_id, case_no)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_case_time
-ON system_supervision_alert_review_case(status, start_time, end_time);
+ON system_supervision_alert_review_case(tenant_id, status, start_time, end_time);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_item (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_case_id BIGINT NOT NULL,
   review_item_id BIGINT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -335,18 +341,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_item (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_case_item
-ON system_supervision_alert_review_case_item(review_case_id, review_item_id)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_case_item(tenant_id, review_case_id, review_item_id)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_case_item_case
-ON system_supervision_alert_review_case_item(review_case_id, sort_order);
+ON system_supervision_alert_review_case_item(tenant_id, review_case_id, sort_order);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_audit (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_case_id BIGINT,
   review_item_id BIGINT,
   action_type VARCHAR(64) NOT NULL,
@@ -359,17 +366,18 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_case_audit (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_case_audit_case
-ON system_supervision_alert_review_case_audit(review_case_id, happened_at);
+ON system_supervision_alert_review_case_audit(tenant_id, review_case_id, happened_at);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_case_audit_item
-ON system_supervision_alert_review_case_audit(review_item_id, happened_at);
+ON system_supervision_alert_review_case_audit(tenant_id, review_item_id, happened_at);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_semantic_index (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   review_item_id BIGINT NOT NULL,
   camera_id VARCHAR(128),
   first_alert_time TIMESTAMP,
@@ -387,18 +395,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_semantic_index (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_semantic_item
-ON system_supervision_alert_review_semantic_index(review_item_id)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_semantic_index(tenant_id, review_item_id)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_semantic_filter
-ON system_supervision_alert_review_semantic_index(index_status, camera_id, first_alert_time, last_alert_time);
+ON system_supervision_alert_review_semantic_index(tenant_id, index_status, camera_id, first_alert_time, last_alert_time);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_export_job (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   job_no VARCHAR(64) NOT NULL,
   status VARCHAR(64) NOT NULL DEFAULT 'pending',
   package_no VARCHAR(64) NOT NULL,
@@ -417,18 +426,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_export_job (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_export_job_no
-ON system_supervision_alert_review_export_job(job_no)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_export_job(tenant_id, job_no)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_export_job_case
-ON system_supervision_alert_review_export_job(review_case_id, status, expires_at);
+ON system_supervision_alert_review_export_job(tenant_id, review_case_id, status, expires_at);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_lock (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   lock_name VARCHAR(128) NOT NULL,
   owner_user_id BIGINT,
   locked_until TIMESTAMP,
@@ -438,18 +448,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_lock (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_runtime_lock
-ON system_supervision_alert_review_runtime_lock(lock_name)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_runtime_lock(tenant_id, lock_name)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_lock_until
-ON system_supervision_alert_review_runtime_lock(locked_until);
+ON system_supervision_alert_review_runtime_lock(tenant_id, locked_until);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_run (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   run_id VARCHAR(64) NOT NULL,
   status VARCHAR(64) NOT NULL,
   attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -463,18 +474,19 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_run (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_runtime_run
-ON system_supervision_alert_review_runtime_run(run_id)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_runtime_run(tenant_id, run_id)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_run_status
-ON system_supervision_alert_review_runtime_run(status, executed_at);
+ON system_supervision_alert_review_runtime_run(tenant_id, status, executed_at);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   run_id VARCHAR(64) NOT NULL,
   event_type VARCHAR(64) NOT NULL,
   alert_key VARCHAR(128) NOT NULL,
@@ -493,25 +505,26 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_status
-ON system_supervision_alert_review_runtime_outbox(outbox_status, created_at);
+ON system_supervision_alert_review_runtime_outbox(tenant_id, outbox_status, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_claim
-ON system_supervision_alert_review_runtime_outbox(outbox_status, claim_token)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_runtime_outbox(tenant_id, outbox_status, claim_token)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_claimed_at
-ON system_supervision_alert_review_runtime_outbox(outbox_status, claimed_at)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_runtime_outbox(tenant_id, outbox_status, claimed_at)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_run
-ON system_supervision_alert_review_runtime_outbox(run_id);
+ON system_supervision_alert_review_runtime_outbox(tenant_id, run_id);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox_delivery (
   id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL DEFAULT 0,
   outbox_id BIGINT NOT NULL,
   event_type VARCHAR(64) NOT NULL,
   alert_key VARCHAR(128) NOT NULL,
@@ -529,21 +542,21 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_runtime_outbox_delive
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  deleted SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT fk_supervision_alert_review_runtime_outbox_delivery_outbox
     FOREIGN KEY (outbox_id)
     REFERENCES system_supervision_alert_review_runtime_outbox(id)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_runtime_outbox_delivery_recipient
-ON system_supervision_alert_review_runtime_outbox_delivery(outbox_id, channel, recipient_user_id, template_code)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_runtime_outbox_delivery(tenant_id, outbox_id, channel, recipient_user_id, template_code)
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_delivery_status
-ON system_supervision_alert_review_runtime_outbox_delivery(delivery_status, last_attempt_at);
+ON system_supervision_alert_review_runtime_outbox_delivery(tenant_id, delivery_status, last_attempt_at);
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_runtime_outbox_delivery_alert
-ON system_supervision_alert_review_runtime_outbox_delivery(event_type, alert_key);
+ON system_supervision_alert_review_runtime_outbox_delivery(tenant_id, event_type, alert_key);
 
 CREATE TABLE IF NOT EXISTS system_supervision_alert_review_report_ack (
   id BIGSERIAL PRIMARY KEY,
@@ -563,12 +576,12 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_report_ack (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key
 ON system_supervision_alert_review_report_ack(tenant_id, report_key)
-WHERE deleted = FALSE;
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_report_ack_scope
 ON system_supervision_alert_review_report_ack(tenant_id, report_type, period_start, period_end);
@@ -587,5 +600,5 @@ CREATE TABLE IF NOT EXISTS system_supervision_close_check_result (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );

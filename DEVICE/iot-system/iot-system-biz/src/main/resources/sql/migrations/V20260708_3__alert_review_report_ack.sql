@@ -16,12 +16,12 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_report_ack (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key
 ON system_supervision_alert_review_report_ack(tenant_id, report_key)
-WHERE deleted = FALSE;
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_report_ack_scope
 ON system_supervision_alert_review_report_ack(tenant_id, report_type, period_start, period_end);

@@ -34,8 +34,8 @@ CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_merge
 ON system_supervision_alert_review_item(tenant_id, source_system, camera_id, review_status, last_alert_time);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_item
-ON system_supervision_alert_review_segment(review_item_id)
-WHERE deleted = FALSE;
+ON system_supervision_alert_review_segment(tenant_id, review_item_id)
+WHERE deleted = 0;
 
 DROP INDEX IF EXISTS idx_supervision_alert_review_segment_camera_time;
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time
@@ -53,15 +53,15 @@ CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity (
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updater VARCHAR(64),
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  deleted SMALLINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity
 ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)
-WHERE deleted = FALSE;
+WHERE deleted = 0;
 
 CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_ingest_identity_item
-ON system_supervision_alert_review_ingest_identity(review_item_id);
+ON system_supervision_alert_review_ingest_identity(tenant_id, review_item_id);
 
 INSERT INTO system_supervision_alert_review_ingest_identity (
   tenant_id,
@@ -78,7 +78,7 @@ SELECT DISTINCT
   trim(source_alert_id)
 FROM system_supervision_alert_review_item item
 CROSS JOIN LATERAL regexp_split_to_table(item.source_alert_ids, E'\n') AS source_alert_id
-WHERE item.deleted = FALSE
+WHERE item.deleted = 0
   AND item.source_alert_ids IS NOT NULL
   AND trim(source_alert_id) <> ''
 ON CONFLICT DO NOTHING;
@@ -132,4 +132,4 @@ ALTER TABLE system_supervision_alert_review_segment
     camera_id WITH =,
     tsrange(start_time, COALESCE(end_time, 'infinity'::timestamp), '[)') WITH &&
   )
-  WHERE (deleted = FALSE);
+  WHERE (deleted = 0);

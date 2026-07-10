@@ -26,6 +26,26 @@ class SupervisionSchemaSqlTest {
 
     private static final String SCHEMA_RESOURCE = "sql/migrations/V20260701__supervision_event_closure_baseline.sql";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Set<String> TENANT_SCOPED_BASE_DO_TABLES = Set.of(
+            "system_supervision_event",
+            "system_supervision_task",
+            "system_supervision_alert_review_item",
+            "system_supervision_alert_review_ingest_identity",
+            "system_supervision_alert_review_segment",
+            "system_supervision_alert_review_user_status",
+            "system_supervision_alert_review_evidence",
+            "system_supervision_alert_review_rule",
+            "system_supervision_alert_review_case",
+            "system_supervision_alert_review_case_item",
+            "system_supervision_alert_review_case_audit",
+            "system_supervision_alert_review_semantic_index",
+            "system_supervision_alert_review_export_job",
+            "system_supervision_alert_review_runtime_lock",
+            "system_supervision_alert_review_runtime_run",
+            "system_supervision_alert_review_runtime_outbox",
+            "system_supervision_alert_review_runtime_outbox_delivery",
+            "system_supervision_alert_review_report_ack"
+    );
 
     @Test
     void schemaCreatesOnlySupervisionTables() throws IOException {
@@ -73,7 +93,7 @@ class SupervisionSchemaSqlTest {
         String sql = readSchemaSql();
 
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_event_open_alert"));
-        assertTrue(sql.contains("ON system_supervision_event(source_system, source_alert_id)"));
+        assertTrue(sql.contains("ON system_supervision_event(tenant_id, source_system, source_alert_id)"));
         assertTrue(sql.contains("event_status <> 'closed'"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_task_event_id"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_action_event_id"));
@@ -83,7 +103,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)"));
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_no"));
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_segment_item"));
-        assertTrue(sql.contains("ON system_supervision_alert_review_segment(review_item_id)"));
+        assertTrue(sql.contains("ON system_supervision_alert_review_segment(tenant_id, review_item_id)"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_camera_time"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_segment_status"));
         assertTrue(sql.contains("CONSTRAINT ck_supervision_alert_review_segment_time"));
@@ -122,6 +142,28 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key"));
         assertTrue(sql.contains("ON system_supervision_alert_review_report_ack(tenant_id, report_key)"));
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_supervision_alert_review_report_ack_scope"));
+
+        for (String tenantScopedIndex : Set.of(
+                "ON system_supervision_task(tenant_id, event_id)",
+                "ON system_supervision_alert_review_item(tenant_id, review_item_no)",
+                "ON system_supervision_alert_review_item(tenant_id, event_id)",
+                "ON system_supervision_alert_review_ingest_identity(tenant_id, review_item_id)",
+                "ON system_supervision_alert_review_segment(tenant_id, segment_no)",
+                "ON system_supervision_alert_review_user_status(tenant_id, review_item_id, user_id)",
+                "ON system_supervision_alert_review_evidence(tenant_id, review_item_id, happened_at)",
+                "ON system_supervision_alert_review_rule(tenant_id, enabled, source_system, camera_id, zone_code)",
+                "ON system_supervision_alert_review_case(tenant_id, case_no)",
+                "ON system_supervision_alert_review_case_item(tenant_id, review_case_id, review_item_id)",
+                "ON system_supervision_alert_review_case_audit(tenant_id, review_case_id, happened_at)",
+                "ON system_supervision_alert_review_semantic_index(tenant_id, review_item_id)",
+                "ON system_supervision_alert_review_export_job(tenant_id, job_no)",
+                "ON system_supervision_alert_review_runtime_lock(tenant_id, lock_name)",
+                "ON system_supervision_alert_review_runtime_run(tenant_id, run_id)",
+                "ON system_supervision_alert_review_runtime_outbox(tenant_id, outbox_status, created_at)",
+                "ON system_supervision_alert_review_runtime_outbox_delivery(tenant_id, outbox_id, channel, recipient_user_id, template_code)"
+        )) {
+            assertTrue(sql.contains(tenantScopedIndex), tenantScopedIndex + " must be tenant scoped");
+        }
     }
 
     @Test
@@ -151,7 +193,46 @@ class SupervisionSchemaSqlTest {
             assertTrue(tableBody.contains("create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"));
             assertTrue(tableBody.contains("updater VARCHAR(64)"));
             assertTrue(tableBody.contains("update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"));
-            assertTrue(tableBody.contains("deleted BOOLEAN NOT NULL DEFAULT FALSE"));
+            assertTrue(tableBody.contains("deleted SMALLINT NOT NULL DEFAULT 0"));
+        }
+
+        for (String tableName : TENANT_SCOPED_BASE_DO_TABLES) {
+            assertTrue(extractTableBody(sql, tableName).contains("tenant_id BIGINT NOT NULL DEFAULT 0"),
+                    tableName + " must expose the tenant_id column injected by TenantLineInterceptor");
+        }
+    }
+
+    @Test
+    void alertReviewMigrationsUsePlatformSmallintSoftDeleteSemantics() throws IOException {
+        Path migrationDirectory = modulePath("src/main/resources/sql/migrations");
+        Path compatibilityMigration = migrationDirectory.resolve(
+                "V20260708_10__alert_review_deleted_smallint.sql");
+
+        assertTrue(Files.exists(compatibilityMigration),
+                "a compatibility migration must convert historical BOOLEAN deleted columns");
+        try (var paths = Files.list(migrationDirectory)) {
+            for (Path migration : paths
+                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .filter(path -> !path.equals(compatibilityMigration))
+                    .toList()) {
+                String sql = Files.readString(migration, StandardCharsets.UTF_8);
+                assertFalse(Pattern.compile("(?i)\\bdeleted\\s+BOOLEAN\\b").matcher(sql).find(),
+                        migration.getFileName() + " must declare deleted as SMALLINT");
+                assertFalse(Pattern.compile("(?i)\\bdeleted\\s*=\\s*(?:FALSE|TRUE)\\b").matcher(sql).find(),
+                        migration.getFileName() + " must compare deleted with 0/1");
+            }
+        }
+
+        String compatibilitySql = Files.readString(compatibilityMigration, StandardCharsets.UTF_8);
+        assertTrue(compatibilitySql.contains("deleted_type = 'boolean'"));
+        assertTrue(compatibilitySql.contains("TYPE SMALLINT"));
+        assertTrue(compatibilitySql.contains("CASE WHEN deleted THEN 1 ELSE 0 END"));
+        assertTrue(compatibilitySql.contains("SET DEFAULT 0"));
+        assertTrue(compatibilitySql.contains("SET NOT NULL"));
+        assertTrue(compatibilitySql.contains("SET tenant_id = 0"));
+        for (String tableName : TENANT_SCOPED_BASE_DO_TABLES) {
+            assertTrue(compatibilitySql.contains("'" + tableName + "'"),
+                    tableName + " must be covered by the platform compatibility migration");
         }
     }
 
@@ -253,7 +334,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(caseAuditTable.contains("action_type VARCHAR(64) NOT NULL"));
         assertTrue(caseAuditTable.contains("action_note TEXT"));
         assertTrue(caseAuditTable.contains("metadata TEXT"));
-        assertTrue(sql.contains("ON system_supervision_alert_review_case_audit(review_item_id, happened_at)"));
+        assertTrue(sql.contains("ON system_supervision_alert_review_case_audit(tenant_id, review_item_id, happened_at)"));
         assertTrue(semanticIndexTable.contains("review_item_id BIGINT NOT NULL"));
         assertTrue(semanticIndexTable.contains("camera_id VARCHAR(128)"));
         assertTrue(semanticIndexTable.contains("first_alert_time TIMESTAMP"));
@@ -322,7 +403,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("CREATE TABLE IF NOT EXISTS system_supervision_alert_review_ingest_identity"));
         assertTrue(migrationSql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_ingest_identity"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_ingest_identity(tenant_id, source_system, identity_key)"));
-        assertTrue(migrationSql.contains("ON system_supervision_alert_review_segment(review_item_id)"));
+        assertTrue(migrationSql.contains("ON system_supervision_alert_review_segment(tenant_id, review_item_id)"));
         assertTrue(migrationSql.contains("UPDATE system_supervision_alert_review_segment segment"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_segment(tenant_id, camera_id, start_time, end_time)"));
         assertTrue(migrationSql.contains("ck_supervision_alert_review_segment_time"));

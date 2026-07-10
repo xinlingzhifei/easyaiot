@@ -43,5 +43,5 @@ CREATE TRIGGER tr_supervision_alert_review_segment_status_transition
 BEFORE UPDATE OF segment_status
 ON system_supervision_alert_review_segment
 FOR EACH ROW
-WHEN (OLD.deleted = FALSE AND NEW.deleted = FALSE)
+WHEN (OLD.deleted = 0 AND NEW.deleted = 0)
 EXECUTE FUNCTION fn_supervision_alert_review_segment_status_transition();
