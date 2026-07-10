@@ -22,6 +22,11 @@ const parsed = parseArgs([
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
   '--profile=device-video-web',
+  '--device-id=device-real-01',
+  '--camera-id=camera-real-01',
+  '--zone-code=zone-real-01',
+  '--source-alert-id=alert-real-01',
+  '--allowed-camera-ids=camera-real-01',
   '--timeout-ms=5000',
   '--playback-review-item-id=1001',
   '--playback-review-case-id=2001',
@@ -35,6 +40,11 @@ assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.alertTime, '2026-07-05T10:00:00');
 assert.equal(parsed.profile, 'device-video-web');
+assert.equal(parsed.deviceId, 'device-real-01');
+assert.equal(parsed.cameraId, 'camera-real-01');
+assert.equal(parsed.zoneCode, 'zone-real-01');
+assert.equal(parsed.sourceAlertId, 'alert-real-01');
+assert.deepEqual(parsed.allowedCameraIds, ['camera-real-01']);
 assert.equal(parsed.includeVideoExport, true);
 assert.equal(parsed.timeoutMs, 5000);
 assert.equal(parsed.playbackReviewItemId, 1001);
@@ -49,6 +59,11 @@ const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_AUTH_TOKEN: 'env-token',
   YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID: '9200',
   YFEIEYE_DEVICE_SMOKE_ALERT_TIME: '2026-07-05T11:00:00',
+  YFEIEYE_DEVICE_SMOKE_DEVICE_ID: 'device-env-01',
+  YFEIEYE_DEVICE_SMOKE_CAMERA_ID: 'camera-env-01',
+  YFEIEYE_DEVICE_SMOKE_ZONE_CODE: 'zone-env-01',
+  YFEIEYE_DEVICE_SMOKE_SOURCE_ALERT_ID: 'alert-env-01',
+  YFEIEYE_DEVICE_SMOKE_ALLOWED_CAMERA_IDS: 'camera-env-01',
   YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS: 'camera-env-allow',
   YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS: 'camera-env-deny',
 });
@@ -57,10 +72,17 @@ assert.equal(fromEnv.token, 'env-token');
 assert.equal(fromEnv.operatorUserId, 9200);
 assert.equal(fromEnv.profile, 'release');
 assert.equal(fromEnv.includeVideoExport, true);
+assert.equal(fromEnv.deviceId, 'device-env-01');
+assert.equal(fromEnv.cameraId, 'camera-env-01');
+assert.equal(fromEnv.zoneCode, 'zone-env-01');
+assert.equal(fromEnv.sourceAlertId, 'alert-env-01');
+assert.deepEqual(fromEnv.allowedCameraIds, ['camera-env-01']);
 assert.deepEqual(fromEnv.playbackAllowedCameraIds, ['camera-env-allow']);
 assert.deepEqual(fromEnv.playbackDeniedCameraIds, ['camera-env-deny']);
 
-assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
+assert.deepEqual(requiredOptionErrors(parseArgs([], {
+  YFEIEYE_DEVICE_SMOKE_PROFILE: 'service-synthetic',
+})), [
   'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL',
   'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN',
   'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID',
@@ -77,6 +99,11 @@ assert.deepEqual(buildSmokeBody(parsed), {
   includeVideoExport: true,
   alertTime: '2026-07-05T10:00:00',
   profile: 'device-video-web',
+  deviceId: 'device-real-01',
+  cameraId: 'camera-real-01',
+  zoneCode: 'zone-real-01',
+  sourceAlertId: 'alert-real-01',
+  allowedCameraIds: ['camera-real-01'],
 });
 
 const validPayload = {
@@ -86,6 +113,7 @@ const validPayload = {
   exportJobNo: 'REJ-1',
   manifestValid: true,
   videoExportRequested: true,
+  videoExportConfirmed: true,
   ruleEvidence: {
     ruleCode: 'restricted_area',
     cameraId: 'camera-smoke',
@@ -97,6 +125,8 @@ const validPayload = {
   checkpoints: [
     'device_api_reachable',
     'video_record_query_checked',
+    'real_record_coverage_checked',
+    'video_export_confirmed',
     ...REQUIRED_CHECKPOINTS,
     'sample_web_contract_renderable',
   ],
@@ -110,6 +140,24 @@ assert.throws(
   () => validateSmokeResult({ ...validPayload, ruleEvidence: undefined }),
   /integration smoke response missing rule evidence/,
 );
+
+assert.throws(
+  () => validateSmokeResult({ ...validPayload, videoExportConfirmed: false }),
+  /integration smoke videoExportConfirmed was not true/,
+);
+
+assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--device-base-url=http://device.local/api',
+  '--token=token-1',
+  '--operator-user-id=9001',
+  '--alert-time=2026-07-05T10:00:00',
+  '--profile=device-video-web',
+], {})), [
+  'missing --camera-id or YFEIEYE_DEVICE_SMOKE_CAMERA_ID for real profile',
+  'missing --device-id or YFEIEYE_DEVICE_SMOKE_DEVICE_ID for real profile',
+  'missing --zone-code or YFEIEYE_DEVICE_SMOKE_ZONE_CODE for real profile',
+  'missing --allowed-camera-ids or YFEIEYE_DEVICE_SMOKE_ALLOWED_CAMERA_IDS for real profile',
+]);
 
 assert.throws(
   () => validateSmokeResult({

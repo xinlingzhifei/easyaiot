@@ -2604,36 +2604,61 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         LocalDateTime alertTime = command.alertTime() == null ? LocalDateTime.now() : command.alertTime();
         boolean includeVideoExport = Boolean.TRUE.equals(command.includeVideoExport());
         String profile = firstText(command.profile(), "service-synthetic");
+        boolean realProfile = "device-video-web".equals(profile) || "release".equals(profile);
+        if (realProfile) {
+            requirePositive(command.operatorUserId(), "operatorUserId");
+            requireText(command.deviceId(), "deviceId");
+            requireText(command.cameraId(), "cameraId");
+            requireText(command.zoneCode(), "zoneCode");
+            if (!includeVideoExport) {
+                throw new IllegalArgumentException("real integration smoke requires video export");
+            }
+            List<String> requestedCameraIds = normalizeCameraScope(command.allowedCameraIds());
+            if (requestedCameraIds == null || !requestedCameraIds.contains(command.cameraId())) {
+                throw new IllegalArgumentException("real integration smoke allowedCameraIds must contain cameraId");
+            }
+        }
         List<String> checkpoints = new ArrayList<>();
-        if ("device-video-web".equals(profile)) {
+        if (realProfile) {
             checkpoints.add("device_api_reachable");
-            checkpoints.add("video_record_query_checked");
             checkpoints.add("web_contract_checked");
         }
-        String sourceAlertId = "review-smoke-" + UUID.randomUUID();
+        String sourceAlertId = firstText(command.sourceAlertId(), "review-smoke-" + UUID.randomUUID());
+        String deviceId = realProfile ? command.deviceId() : "device-smoke";
+        String cameraId = realProfile ? command.cameraId() : "camera-smoke";
+        String zoneCode = realProfile ? command.zoneCode() : "zone-smoke";
         ReviewItemAggregate item = ingestClue(new AlertClueCommand(
                 "video",
                 sourceAlertId,
                 SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
                 "restricted_area",
                 alertTime,
-                "device-smoke",
-                "camera-smoke",
-                "zone-smoke",
+                deviceId,
+                cameraId,
+                zoneCode,
                 "person",
                 15,
-                "smoke-snapshot.jpg",
-                "smoke-record.mp4",
+                realProfile ? null : "smoke-snapshot.jpg",
+                realProfile ? null : "smoke-record.mp4",
                 "smoke:" + sourceAlertId,
                 List.of("person"),
-                List.of("zone-smoke"),
+                List.of(zoneCode),
                 List.of("obj-smoke"),
                 0.9D,
                 List.of(0D, 0D, 10D, 20D),
                 sourceAlertId
         ));
         checkpoints.add("ingest_review_item");
-        if ("device-video-web".equals(profile)) {
+        if (realProfile) {
+            boolean resolvedRecord = RECORD_EVIDENCE_FOUND.equals(item.recordEvidenceStatus())
+                    && reviewItemStore.listTimeline(item.id()).stream()
+                    .anyMatch(evidence -> MATERIAL_RECORD.equals(evidence.materialType())
+                            && hasText(evidence.materialUri()));
+            if (!resolvedRecord) {
+                throw new IllegalStateException("real VIDEO alert record query did not resolve recording: "
+                        + firstText(item.recordEvidenceMessage(), "unknown"));
+            }
+            checkpoints.add("video_record_query_checked");
             checkpoints.add("sample_alert_ingested");
         }
         ReviewRuleView smokeRule = saveRule(new ReviewRuleCommand(
@@ -2641,8 +2666,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
                 "integration smoke zone rule",
                 "video",
-                "camera-smoke",
-                "zone-smoke",
+                cameraId,
+                zoneCode,
                 "person",
                 15,
                 alertTime.minusMinutes(5),
@@ -2653,9 +2678,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         ));
         checkpoints.add("review_rule_saved");
         List<RecordCoverageSegment> coverage = getRecordCoverage(item.id());
+        if (realProfile && coverage.stream().noneMatch(segment -> segment != null
+                && !RECORD_COVERAGE_MISSING.equals(normalizeCoverageStatus(segment))
+                && hasText(segment.recordUri()))) {
+            throw new IllegalStateException("real VIDEO coverage did not return an exportable recording segment");
+        }
         syncRecordStorage(new ReviewRecordStorageSyncCommand(item.id(), command.operatorUserId(), coverage));
         checkpoints.add("record_coverage_synced");
-        if ("device-video-web".equals(profile)) {
+        if (realProfile) {
+            checkpoints.add("real_record_coverage_checked");
             checkpoints.add("sample_record_coverage_probed");
         }
         ReviewCaseView reviewCase = createReviewCase(new ReviewCaseCommand(
@@ -2671,16 +2702,34 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 List.of(item.id()),
                 command.operatorUserId(),
                 includeVideoExport ? "mp4" : "manifest",
-                "integration smoke"
+                "integration smoke",
+                null,
+                null,
+                command.allowedCameraIds()
         ));
         checkpoints.add("evidence_export_ready");
-        ReviewManifestVerification verification = verifyEvidenceExportManifest(job.jobNo());
+        boolean videoExportConfirmed = hasConfirmedVideoExport(job);
+        if (videoExportConfirmed) {
+            checkpoints.add("video_export_confirmed");
+        } else if (realProfile) {
+            throw new IllegalStateException("VIDEO export did not return a real artifact");
+        }
+        ReviewManifestVerification verification = verifyEvidenceExportManifest(
+                job.jobNo(),
+                command.operatorUserId(),
+                command.allowedCameraIds()
+        );
         if (verification.valid()) {
             checkpoints.add("manifest_verified");
-            recordEvidenceDownload(job.jobNo(), command.operatorUserId(), "integration smoke download audit");
+            recordEvidenceDownload(
+                    job.jobNo(),
+                    command.operatorUserId(),
+                    "integration smoke download audit",
+                    command.allowedCameraIds()
+            );
             checkpoints.add("evidence_download_audited");
         }
-        if ("device-video-web".equals(profile)) {
+        if (realProfile) {
             checkpoints.add("sample_web_contract_renderable");
         }
         return new ReviewIntegrationSmokeResult(
@@ -2690,12 +2739,24 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 job.jobNo(),
                 verification.valid(),
                 includeVideoExport,
+                videoExportConfirmed,
                 List.copyOf(checkpoints),
                 LocalDateTime.now(),
                 command.operatorUserId(),
                 profile,
                 smokeRule
         );
+    }
+
+    private static boolean hasConfirmedVideoExport(ReviewEvidenceExportJob job) {
+        return toMapList(job.exportPackage().manifest().get("videoExports")).stream()
+                .anyMatch(videoExport -> {
+                    String status = toText(videoExport.get("status"));
+                    String normalizedStatus = status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
+                    return hasText(toText(videoExport.get("exportId")))
+                            && hasText(toText(videoExport.get("exportUri")))
+                            && !Set.of("failed", "rejected", "unavailable").contains(normalizedStatus);
+                });
     }
 
     @Override

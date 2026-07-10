@@ -4731,6 +4731,107 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void realIntegrationSmokeUsesRequestedCameraAndRequiresRealVideoEvidence() {
+        LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 10, 6, 11, 30);
+        String cameraId = "gb28181-real-camera";
+        CapturingRecordEvidenceResolver recordResolver = new CapturingRecordEvidenceResolver(
+                Optional.of(new RecordEvidenceResult("/video/record/real.flv", "alert_record_match"))
+        );
+        CapturingRecordCoverageResolver coverageResolver = new CapturingRecordCoverageResolver(List.of(
+                new RecordCoverageSegment(
+                        "motion",
+                        smokeTime.minusSeconds(25),
+                        smokeTime.plusSeconds(5),
+                        2,
+                        "/video/record/real.flv"
+                )
+        ));
+        CapturingVideoEvidenceExportProvider exportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "real-export-001",
+                        "/video/record/export/real-export-001/download",
+                        "retained",
+                        "real ffmpeg export retained"
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                recordResolver,
+                noEventProjectionStore(),
+                coverageResolver,
+                ReviewIntelligenceProvider.unavailable(),
+                exportProvider
+        );
+
+        ReviewIntegrationSmokeResult smoke = service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                9201L,
+                true,
+                smokeTime,
+                "device-video-web",
+                cameraId,
+                cameraId,
+                "zone-real",
+                "alert-real-001",
+                List.of(cameraId)
+        ));
+
+        assertEquals("passed", smoke.status());
+        assertTrue(smoke.videoExportConfirmed());
+        assertTrue(smoke.checkpoints().contains("video_record_query_checked"));
+        assertTrue(smoke.checkpoints().contains("real_record_coverage_checked"));
+        assertTrue(smoke.checkpoints().contains("video_export_confirmed"));
+        assertEquals(cameraId, smoke.smokeRule().cameraId());
+        assertEquals("zone-real", smoke.smokeRule().zoneCode());
+        assertEquals(List.of(new RecordEvidenceRequest(
+                "alert-real-001",
+                cameraId,
+                cameraId,
+                smokeTime
+        )), recordResolver.requests());
+        assertEquals(cameraId, coverageResolver.requests().get(0).cameraId());
+        assertEquals(cameraId, exportProvider.requests().get(0).cameraId());
+    }
+
+    @Test
+    void realIntegrationSmokeFailsWhenVideoExportDoesNotReturnAnArtifact() {
+        LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 10, 6, 12);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> Optional.of(new RecordEvidenceResult("/video/record/real.flv", "alert_record_match")),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "motion",
+                        smokeTime.minusSeconds(20),
+                        smokeTime.plusSeconds(10),
+                        1,
+                        "/video/record/real.flv"
+                )),
+                ReviewIntelligenceProvider.unavailable(),
+                VideoEvidenceExportProvider.unavailable()
+        );
+        ReviewIntegrationSmokeCommand command = new ReviewIntegrationSmokeCommand(
+                9202L,
+                true,
+                smokeTime,
+                "release",
+                "device-real",
+                "camera-real",
+                "zone-real",
+                "alert-real-002",
+                List.of("camera-real")
+        );
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.runIntegrationSmoke(command));
+
+        assertTrue(error.getMessage().contains("VIDEO export did not return a real artifact"));
+    }
+
+    @Test
     void ruleGeometryUsesBottomCenterSemanticsAndReplayRequiresSafeVersionLifecycle() {
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(new InMemoryReviewItemStore(), ruleStore, unusedEventService());
@@ -4924,12 +5025,6 @@ class SupervisionAlertReviewServiceTest {
                 true
         ));
         List<RecordCoverageSegment> coverage = service.getRecordCoverage(missingRecord.id());
-        ReviewIntegrationSmokeResult smoke = service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
-                9502L,
-                true,
-                alertTime.plusHours(1),
-                "device-video-web"
-        ));
         ReviewRuleGeometryEvaluation geometry = service.evaluateRuleGeometry(new ReviewRuleGeometryCommand(
                 SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
                 "camera-01",
@@ -4950,10 +5045,6 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(patrol.notifications().contains("review_runtime_alert:record_evidence_gap"));
         assertTrue(patrol.recommendedActions().contains("backfill_record_evidence"));
         assertEquals("service_unavailable", coverage.get(0).metadata().get("gapReason"));
-        assertEquals("device-video-web", smoke.profile());
-        assertTrue(smoke.checkpoints().contains("device_api_reachable"));
-        assertTrue(smoke.checkpoints().contains("video_record_query_checked"));
-        assertTrue(smoke.checkpoints().contains("web_contract_checked"));
         assertEquals(List.of(5D, 16D), firstTrace.get("bottomCenter"));
         assertEquals("zone-a", firstTrace.get("zoneCode"));
         assertEquals(15, firstTrace.get("minStaySeconds"));
@@ -5098,12 +5189,6 @@ class SupervisionAlertReviewServiceTest {
                 new ReviewQuery(null, null, null, null),
                 9602L
         ));
-        ReviewIntegrationSmokeResult smoke = service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
-                9603L,
-                true,
-                firstTime.plusHours(1),
-                "device-video-web"
-        ));
         Map<?, ?> firstTrace = (Map<?, ?>) geometry.matchTraces().get(0);
 
         assertEquals(first.id(), updated.id());
@@ -5126,9 +5211,6 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("yfeieye-rule-geometry-v1", geometry.ruleVersion().get("semanticEngine"));
         assertEquals("yfeieye-rule-geometry-v1", firstTrace.get("semanticEngine"));
         assertEquals("bottom_center", firstTrace.get("pointStrategy"));
-        assertTrue(smoke.checkpoints().contains("sample_alert_ingested"));
-        assertTrue(smoke.checkpoints().contains("sample_record_coverage_probed"));
-        assertTrue(smoke.checkpoints().contains("sample_web_contract_renderable"));
     }
 
     @Test

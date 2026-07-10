@@ -1204,6 +1204,11 @@ public final class AlertReviewVO {
         private Boolean includeVideoExport;
         private LocalDateTime alertTime;
         private String profile;
+        private String deviceId;
+        private String cameraId;
+        private String zoneCode;
+        private String sourceAlertId;
+        private List<String> allowedCameraIds;
 
     }
 
@@ -1217,6 +1222,7 @@ public final class AlertReviewVO {
         private String exportJobNo;
         private boolean manifestValid;
         private boolean videoExportRequested;
+        private boolean videoExportConfirmed;
         private List<String> checkpoints;
         private LocalDateTime executedAt;
         private Long operatorUserId;
@@ -1231,6 +1237,7 @@ public final class AlertReviewVO {
             respVO.setExportJobNo(result.exportJobNo());
             respVO.setManifestValid(result.manifestValid());
             respVO.setVideoExportRequested(result.videoExportRequested());
+            respVO.setVideoExportConfirmed(result.videoExportConfirmed());
             respVO.setCheckpoints(result.checkpoints());
             respVO.setExecutedAt(result.executedAt());
             respVO.setOperatorUserId(result.operatorUserId());

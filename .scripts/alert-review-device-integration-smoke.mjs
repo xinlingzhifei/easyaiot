@@ -4,11 +4,14 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export const REQUIRED_CHECKPOINTS = [
+  'video_record_query_checked',
+  'real_record_coverage_checked',
   'ingest_review_item',
   'review_rule_saved',
   'record_coverage_synced',
   'review_case_created',
   'evidence_export_ready',
+  'video_export_confirmed',
   'manifest_verified',
   'evidence_download_audited',
 ];
@@ -21,6 +24,11 @@ export function parseArgs(args, env = process.env) {
     alertTime: env.YFEIEYE_DEVICE_SMOKE_ALERT_TIME || '',
     profile: env.YFEIEYE_DEVICE_SMOKE_PROFILE || 'release',
     includeVideoExport: parseBoolean(env.YFEIEYE_DEVICE_SMOKE_INCLUDE_VIDEO_EXPORT, true),
+    deviceId: env.YFEIEYE_DEVICE_SMOKE_DEVICE_ID || '',
+    cameraId: env.YFEIEYE_DEVICE_SMOKE_CAMERA_ID || '',
+    zoneCode: env.YFEIEYE_DEVICE_SMOKE_ZONE_CODE || '',
+    sourceAlertId: env.YFEIEYE_DEVICE_SMOKE_SOURCE_ALERT_ID || '',
+    allowedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_SMOKE_ALLOWED_CAMERA_IDS),
     timeoutMs: Number(env.YFEIEYE_DEVICE_SMOKE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
     playbackReviewItemId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_ITEM_ID),
     playbackReviewCaseId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_CASE_ID),
@@ -46,6 +54,16 @@ export function parseArgs(args, env = process.env) {
       parsed.profile = arg.slice('--profile='.length);
     } else if (arg.startsWith('--include-video-export=')) {
       parsed.includeVideoExport = parseBoolean(arg.slice('--include-video-export='.length), true);
+    } else if (arg.startsWith('--device-id=')) {
+      parsed.deviceId = arg.slice('--device-id='.length);
+    } else if (arg.startsWith('--camera-id=')) {
+      parsed.cameraId = arg.slice('--camera-id='.length);
+    } else if (arg.startsWith('--zone-code=')) {
+      parsed.zoneCode = arg.slice('--zone-code='.length);
+    } else if (arg.startsWith('--source-alert-id=')) {
+      parsed.sourceAlertId = arg.slice('--source-alert-id='.length);
+    } else if (arg.startsWith('--allowed-camera-ids=')) {
+      parsed.allowedCameraIds = parseCsvList(arg.slice('--allowed-camera-ids='.length));
     } else if (arg.startsWith('--timeout-ms=')) {
       parsed.timeoutMs = Number(arg.slice('--timeout-ms='.length));
     } else if (arg.startsWith('--playback-review-item-id=')) {
@@ -85,6 +103,23 @@ export function requiredOptionErrors(options) {
   if (!hasText(options.alertTime)) {
     errors.push('missing --alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME');
   }
+  if (isRealProfile(options.profile)) {
+    if (!hasText(options.cameraId)) {
+      errors.push('missing --camera-id or YFEIEYE_DEVICE_SMOKE_CAMERA_ID for real profile');
+    }
+    if (!hasText(options.deviceId)) {
+      errors.push('missing --device-id or YFEIEYE_DEVICE_SMOKE_DEVICE_ID for real profile');
+    }
+    if (!hasText(options.zoneCode)) {
+      errors.push('missing --zone-code or YFEIEYE_DEVICE_SMOKE_ZONE_CODE for real profile');
+    }
+    if (!Array.isArray(options.allowedCameraIds) || options.allowedCameraIds.length === 0) {
+      errors.push('missing --allowed-camera-ids or YFEIEYE_DEVICE_SMOKE_ALLOWED_CAMERA_IDS for real profile');
+    }
+    if (options.includeVideoExport !== true) {
+      errors.push('real profile requires --include-video-export=true');
+    }
+  }
   return errors;
 }
 
@@ -98,6 +133,11 @@ export function buildSmokeBody(options) {
     includeVideoExport: options.includeVideoExport,
     alertTime: options.alertTime,
     profile: options.profile,
+    deviceId: options.deviceId,
+    cameraId: options.cameraId,
+    zoneCode: options.zoneCode,
+    sourceAlertId: options.sourceAlertId,
+    allowedCameraIds: options.allowedCameraIds,
   };
 }
 
@@ -176,6 +216,9 @@ export function validateSmokeResult(result) {
   }
   if (result.videoExportRequested !== true) {
     throw new Error('integration smoke videoExportRequested was not true');
+  }
+  if (result.videoExportConfirmed !== true) {
+    throw new Error('integration smoke videoExportConfirmed was not true');
   }
   const checkpoints = Array.isArray(result.checkpoints) ? result.checkpoints.map(String) : [];
   for (const checkpoint of REQUIRED_CHECKPOINTS) {
@@ -360,6 +403,10 @@ function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+function isRealProfile(profile) {
+  return profile === 'device-video-web' || profile === 'release';
+}
+
 function hasValues(values) {
   return Array.isArray(values) && values.length > 0;
 }
@@ -413,6 +460,8 @@ function printHelp() {
   --token=JWT_TOKEN \\
   --operator-user-id=9200 \\
   --alert-time="2026-07-05T10:00:00" [--profile=release] \\
+  --device-id=REAL_DEVICE_ID --camera-id=REAL_CAMERA_ID --zone-code=REAL_ZONE \\
+  --allowed-camera-ids=REAL_CAMERA_ID [--source-alert-id=REAL_ALERT_ID] \\
   [--playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02]
 
 Runs the deployed FR-32 DEVICE smoke endpoint and requires the full review loop:
@@ -438,6 +487,7 @@ async function runCli() {
     exportJobNo: smoke.result.exportJobNo,
     manifestValid: smoke.result.manifestValid,
     videoExportRequested: smoke.result.videoExportRequested,
+    videoExportConfirmed: smoke.result.videoExportConfirmed,
     ruleEvidence: smoke.result.ruleEvidence,
     playback: smoke.playback ? {
       grantedDecision: smoke.playback.granted.decision,

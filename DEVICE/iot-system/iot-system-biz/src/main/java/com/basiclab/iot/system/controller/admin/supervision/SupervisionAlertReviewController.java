@@ -936,10 +936,15 @@ public class SupervisionAlertReviewController {
         IntegrationSmokeReqVO body = reqVO == null ? new IntegrationSmokeReqVO() : reqVO;
         return success(IntegrationSmokeRespVO.from(supervisionAlertReviewService.runIntegrationSmoke(
                 new ReviewIntegrationSmokeCommand(
-                        body.getOperatorUserId(),
+                        currentOperatorUserId(body.getOperatorUserId()),
                         body.getIncludeVideoExport(),
                         body.getAlertTime(),
-                        body.getProfile()
+                        body.getProfile(),
+                        body.getDeviceId(),
+                        body.getCameraId(),
+                        body.getZoneCode(),
+                        body.getSourceAlertId(),
+                        body.getAllowedCameraIds()
                 )
         )));
     }

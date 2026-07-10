@@ -18,6 +18,11 @@ export function parseArgs(args, env = process.env) {
     operatorUserId: numberOrNaN(env.YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID),
     deviceAlertTime: env.YFEIEYE_DEVICE_SMOKE_ALERT_TIME || '',
     deviceProfile: env.YFEIEYE_DEVICE_SMOKE_PROFILE || 'release',
+    deviceId: env.YFEIEYE_DEVICE_SMOKE_DEVICE_ID || '',
+    deviceCameraId: env.YFEIEYE_DEVICE_SMOKE_CAMERA_ID || '',
+    deviceZoneCode: env.YFEIEYE_DEVICE_SMOKE_ZONE_CODE || 'production-smoke',
+    deviceSourceAlertId: env.YFEIEYE_DEVICE_SMOKE_SOURCE_ALERT_ID || '',
+    deviceAllowedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_SMOKE_ALLOWED_CAMERA_IDS),
     devicePlaybackReviewItemId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_ITEM_ID),
     devicePlaybackReviewCaseId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_CASE_ID),
     devicePlaybackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI || '',
@@ -73,6 +78,16 @@ export function parseArgs(args, env = process.env) {
       parsed.deviceAlertTime = arg.slice('--device-alert-time='.length);
     } else if (arg.startsWith('--device-profile=')) {
       parsed.deviceProfile = arg.slice('--device-profile='.length);
+    } else if (arg.startsWith('--device-id=')) {
+      parsed.deviceId = arg.slice('--device-id='.length);
+    } else if (arg.startsWith('--device-camera-id=')) {
+      parsed.deviceCameraId = arg.slice('--device-camera-id='.length);
+    } else if (arg.startsWith('--device-zone-code=')) {
+      parsed.deviceZoneCode = arg.slice('--device-zone-code='.length);
+    } else if (arg.startsWith('--device-source-alert-id=')) {
+      parsed.deviceSourceAlertId = arg.slice('--device-source-alert-id='.length);
+    } else if (arg.startsWith('--device-allowed-camera-ids=')) {
+      parsed.deviceAllowedCameraIds = parseCsvList(arg.slice('--device-allowed-camera-ids='.length));
     } else if (arg.startsWith('--device-playback-review-item-id=')) {
       parsed.devicePlaybackReviewItemId = numberOrNaN(arg.slice('--device-playback-review-item-id='.length));
     } else if (arg.startsWith('--device-playback-review-case-id=')) {
@@ -140,6 +155,11 @@ export function parseArgs(args, env = process.env) {
 
   if (!Number.isFinite(parsed.stepTimeoutMs) || parsed.stepTimeoutMs <= 0) {
     parsed.stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS;
+  }
+  parsed.deviceId = firstText(parsed.deviceId, parsed.videoDeviceId);
+  parsed.deviceCameraId = firstText(parsed.deviceCameraId, parsed.videoCameraId, parsed.videoDeviceId);
+  if (!Array.isArray(parsed.deviceAllowedCameraIds) || parsed.deviceAllowedCameraIds.length === 0) {
+    parsed.deviceAllowedCameraIds = parsed.devicePlaybackAllowedCameraIds;
   }
   return parsed;
 }
@@ -213,6 +233,11 @@ export function buildSmokeSteps(options, runtime = {}) {
         `--operator-user-id=${options.operatorUserId}`,
         `--alert-time=${options.deviceAlertTime}`,
         `--profile=${options.deviceProfile}`,
+        `--device-id=${options.deviceId}`,
+        `--camera-id=${options.deviceCameraId}`,
+        `--zone-code=${options.deviceZoneCode}`,
+        hasText(options.deviceSourceAlertId) ? `--source-alert-id=${options.deviceSourceAlertId}` : '',
+        cameraListArg('--allowed-camera-ids', options.deviceAllowedCameraIds),
         positiveNumberArg('--playback-review-item-id', options.devicePlaybackReviewItemId),
         positiveNumberArg('--playback-review-case-id', options.devicePlaybackReviewCaseId),
         hasText(options.devicePlaybackMaterialUri) ? `--playback-material-uri=${options.devicePlaybackMaterialUri}` : '',

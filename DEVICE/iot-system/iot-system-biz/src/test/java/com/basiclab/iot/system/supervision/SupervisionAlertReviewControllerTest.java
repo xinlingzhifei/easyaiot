@@ -14,6 +14,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
@@ -145,6 +147,55 @@ class SupervisionAlertReviewControllerTest {
 
         assertEquals(new ReviewEvidenceVerificationCommand("JOB-1", 777L, List.of("camera-01", "camera-02")),
                 reviewService.command("verifyEvidencePackage"));
+    }
+
+    @Test
+    void integrationSmokeUsesLoginUserAndPassesRealCameraScope() throws Exception {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SupervisionAlertReviewController(reviewService.proxy()))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser().setId(780L),
+                null,
+                List.of()
+        ));
+        try {
+            mockMvc.perform(post("/system/supervision/alert-review/integration-smoke")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "operatorUserId": 9999,
+                                      "includeVideoExport": true,
+                                      "alertTime": "2026-07-10T06:11:30",
+                                      "profile": "device-video-web",
+                                      "deviceId": "device-real",
+                                      "cameraId": "camera-real",
+                                      "zoneCode": "zone-real",
+                                      "sourceAlertId": "alert-real",
+                                      "allowedCameraIds": ["camera-real"]
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.operatorUserId").value(780))
+                    .andExpect(jsonPath("$.data.videoExportConfirmed").value(true));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertEquals(new ReviewIntegrationSmokeCommand(
+                        780L,
+                        true,
+                        LocalDateTime.of(2026, 7, 10, 6, 11, 30),
+                        "device-video-web",
+                        "device-real",
+                        "camera-real",
+                        "zone-real",
+                        "alert-real",
+                        List.of("camera-real")
+                ),
+                reviewService.command("runIntegrationSmoke"));
     }
 
     @Test
@@ -347,6 +398,7 @@ class SupervisionAlertReviewControllerTest {
                 );
                 case "prepareReviewPlayback" -> playbackAccess((ReviewPlaybackCommand) command);
                 case "verifyEvidencePackage" -> verificationReport((ReviewEvidenceVerificationCommand) command);
+                case "runIntegrationSmoke" -> integrationSmokeResult((ReviewIntegrationSmokeCommand) command);
                 case "generateReviewReport" -> operationsReport((ReviewReportCommand) command);
                 case "acknowledgeReviewReport" -> reportAcknowledgement((ReviewReportAcknowledgementCommand) command);
                 default -> throw new AssertionError("unexpected service method: " + method.getName());
@@ -405,6 +457,23 @@ class SupervisionAlertReviewControllerTest {
                 List.of(),
                 LocalDateTime.of(2026, 7, 6, 10, 0),
                 command.operatorUserId()
+        );
+    }
+
+    private static ReviewIntegrationSmokeResult integrationSmokeResult(ReviewIntegrationSmokeCommand command) {
+        return new ReviewIntegrationSmokeResult(
+                "passed",
+                100L,
+                10L,
+                "JOB-SMOKE",
+                true,
+                true,
+                true,
+                List.of("video_export_confirmed"),
+                LocalDateTime.of(2026, 7, 10, 6, 12),
+                command.operatorUserId(),
+                command.profile(),
+                null
         );
     }
 

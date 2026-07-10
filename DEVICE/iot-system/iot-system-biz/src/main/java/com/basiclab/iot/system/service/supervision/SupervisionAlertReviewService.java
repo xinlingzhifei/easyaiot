@@ -1143,11 +1143,25 @@ public interface SupervisionAlertReviewService {
     record ReviewIntegrationSmokeCommand(Long operatorUserId,
                                          Boolean includeVideoExport,
                                          LocalDateTime alertTime,
-                                         String profile) {
+                                         String profile,
+                                         String deviceId,
+                                         String cameraId,
+                                         String zoneCode,
+                                         String sourceAlertId,
+                                         List<String> allowedCameraIds) {
         public ReviewIntegrationSmokeCommand(Long operatorUserId,
                                              Boolean includeVideoExport,
                                              LocalDateTime alertTime) {
-            this(operatorUserId, includeVideoExport, alertTime, "service-synthetic");
+            this(operatorUserId, includeVideoExport, alertTime, "service-synthetic",
+                    null, null, null, null, null);
+        }
+
+        public ReviewIntegrationSmokeCommand(Long operatorUserId,
+                                             Boolean includeVideoExport,
+                                             LocalDateTime alertTime,
+                                             String profile) {
+            this(operatorUserId, includeVideoExport, alertTime, profile,
+                    null, null, null, null, null);
         }
     }
 
@@ -1157,6 +1171,7 @@ public interface SupervisionAlertReviewService {
                                         String exportJobNo,
                                         boolean manifestValid,
                                         boolean videoExportRequested,
+                                        boolean videoExportConfirmed,
                                         List<String> checkpoints,
                                         LocalDateTime executedAt,
                                         Long operatorUserId,
@@ -1171,7 +1186,7 @@ public interface SupervisionAlertReviewService {
                                             List<String> checkpoints,
                                             LocalDateTime executedAt,
                                             Long operatorUserId) {
-            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested,
+            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested, false,
                     checkpoints, executedAt, operatorUserId, "service-synthetic", null);
         }
 
@@ -1185,7 +1200,7 @@ public interface SupervisionAlertReviewService {
                                             LocalDateTime executedAt,
                                             Long operatorUserId,
                                             String profile) {
-            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested,
+            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested, false,
                     checkpoints, executedAt, operatorUserId, profile, null);
         }
     }

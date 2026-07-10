@@ -60,6 +60,10 @@ assert.equal(parsed.deviceBaseUrl, 'https://device.release.example/api');
 assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.deviceAlertTime, '2026-07-05T10:00:00');
+assert.equal(parsed.deviceId, 'device-01');
+assert.equal(parsed.deviceCameraId, 'camera-01');
+assert.equal(parsed.deviceZoneCode, 'production-smoke');
+assert.deepEqual(parsed.deviceAllowedCameraIds, ['camera-01']);
 assert.deepEqual(parsed.devicePlaybackAllowedCameraIds, ['camera-01']);
 assert.deepEqual(parsed.devicePlaybackDeniedCameraIds, ['camera-02']);
 assert.equal(parsed.devicePlaybackReviewItemId, 1001);
@@ -263,6 +267,10 @@ assert.deepEqual(steps[2].args.slice(0, 5), [
   '--alert-time=2026-07-05T10:00:00',
 ]);
 assert.ok(steps[2].args.includes('--playback-allowed-camera-ids=camera-01'));
+assert.ok(steps[2].args.includes('--device-id=device-01'));
+assert.ok(steps[2].args.includes('--camera-id=camera-01'));
+assert.ok(steps[2].args.includes('--zone-code=production-smoke'));
+assert.ok(steps[2].args.includes('--allowed-camera-ids=camera-01'));
 assert.ok(steps[2].args.includes('--playback-denied-camera-ids=camera-02'));
 assert.ok(steps[2].args.includes('--playback-review-item-id=1001'));
 assert.ok(steps[2].args.includes('--playback-review-case-id=2001'));
@@ -287,7 +295,7 @@ assert.ok(steps[6].args.includes('--timeout-ms=900000'));
 assert.ok(steps[6].args.includes('--assert-native-current-time'));
 assert.equal(
   formatStepCommand(steps[2]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --device-id=device-01 --camera-id=camera-01 --zone-code=production-smoke --allowed-camera-ids=camera-01 --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
 );
 
 const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smoke.mjs', '--help'], {
