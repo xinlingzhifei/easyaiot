@@ -814,6 +814,43 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void ingestRejectsReviewDataThatViolatesVersionedConfidenceAndBboxSchema() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        AlertClueCommand invalid = new AlertClueCommand(
+                "video",
+                "alert-invalid-review-data",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 7, 10, 8, 0),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                10,
+                "invalid.jpg",
+                null,
+                "invalid-review-data-hash",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("object-01"),
+                1.2D,
+                List.of(1D, 2D, 3D),
+                "corr-invalid"
+        );
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.ingestClue(invalid));
+
+        assertTrue(error.getMessage().contains("reviewData schema validation failed"));
+        assertTrue(error.getMessage().contains("confidence:range="));
+        assertTrue(error.getMessage().contains("bbox:items="));
+    }
+
+    @Test
     void recordCoverageReturnsAvailableOrMissingWindowSegments() {
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
@@ -4651,6 +4688,70 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(List.of("zone-a"), segment.get("zones"));
         assertFalse(result.healthReport().alerts().contains("review_data_schema_drift"));
         assertFalse(result.healthReport().alerts().contains("review_segment_double_write_drift"));
+    }
+
+    @Test
+    void reviewReconciliationRemovesInvalidOptionalReviewDataFields() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 10, 8, 30);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-invalid-legacy-reviewdata",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime,
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                10,
+                "legacy-invalid.jpg",
+                null,
+                "legacy-invalid-hash",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("object-01"),
+                0.8D,
+                List.of(1D, 2D, 3D, 4D),
+                "corr-valid"
+        ));
+        Map<String, Object> invalidReviewData = new LinkedHashMap<>(item.reviewData());
+        invalidReviewData.put("confidence", 1.7D);
+        invalidReviewData.put("bbox", List.of(1D, 2D, 3D));
+        invalidReviewData.put("correlationId", 123L);
+        itemStore.updateReviewLifecycle(
+                item.id(),
+                Map.copyOf(invalidReviewData),
+                item.firstAlertTime(),
+                item.lastAlertTime(),
+                List.of(),
+                item.recordEvidenceStatus(),
+                item.recordEvidenceCheckedAt(),
+                item.recordEvidenceMessage()
+        );
+
+        ReviewRuntimeHealthReport before = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9310L
+        ));
+        ReviewReconciliationResult repaired = service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9311L,
+                true
+        ));
+        ReviewItemAggregate normalized = service.listWorkbench(new ReviewQuery(null, null, null, null)).get(0);
+
+        assertTrue(before.alerts().contains("review_data_schema_drift"));
+        assertTrue(repaired.findings().contains("review_data_repaired:" + item.id()));
+        assertFalse(normalized.reviewData().containsKey("confidence"));
+        assertFalse(normalized.reviewData().containsKey("bbox"));
+        assertFalse(normalized.reviewData().containsKey("correlationId"));
+        assertFalse(repaired.healthReport().alerts().contains("review_data_schema_drift"));
     }
 
     @Test

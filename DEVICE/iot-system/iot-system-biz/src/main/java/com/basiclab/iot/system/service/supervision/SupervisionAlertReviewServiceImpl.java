@@ -48,6 +48,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final int MAX_SEMANTIC_WORKER_LIMIT = 200;
     private static final int MIN_RULE_SUGGESTION_SAMPLE_COUNT = 3;
     private static final int REVIEW_DATA_VERSION = 1;
+    private static final AlertReviewDataSchemaValidator REVIEW_DATA_SCHEMA_VALIDATOR =
+            AlertReviewDataSchemaValidator.loadV1();
     private static final String LOCAL_EMBEDDING_MODEL = "yfeieye-review-local-v1";
     private static final String LOCAL_RULE_SUMMARY_MODEL = "local-rule-summary";
     private static final String REVIEW_AI_SUMMARY_PROVIDER_VERSION = "review-ai-provider-v1";
@@ -3829,14 +3831,28 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 ? Map.of()
                 : item.reviewData();
         Map<String, Object> normalized = new LinkedHashMap<>(current);
+        AlertReviewDataSchemaValidator.ValidationResult schemaValidation =
+                REVIEW_DATA_SCHEMA_VALIDATOR.validate(current);
 
         List<String> labels = toStringList(normalized.get("labels"), item.objectLabel());
         List<String> zones = toStringList(normalized.get("zones"), item.zoneCode());
         List<String> objectIds = toStringList(normalized.get("objectIds"), null);
         List<Double> bbox = toDoubleList(normalized.get("bbox"));
         Double confidence = toDouble(normalized.get("confidence"));
+        if (!validReviewConfidence(confidence)) {
+            confidence = null;
+            normalized.remove("confidence");
+        }
+        if (!validReviewBbox(bbox)) {
+            bbox = List.of();
+            normalized.remove("bbox");
+        }
+        if (normalized.get("correlationId") != null && !(normalized.get("correlationId") instanceof String)) {
+            normalized.remove("correlationId");
+        }
 
-        boolean schemaDrift = !Objects.equals(toInteger(normalized.get("reviewDataVersion")), REVIEW_DATA_VERSION)
+        boolean schemaDrift = !schemaValidation.valid()
+                || !Objects.equals(toInteger(normalized.get("reviewDataVersion")), REVIEW_DATA_VERSION)
                 || !normalized.containsKey("labels")
                 || !normalized.containsKey("zones")
                 || !normalized.containsKey("objectIds")
@@ -3846,10 +3862,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         normalized.put("labels", labels);
         normalized.put("zones", zones);
         normalized.put("objectIds", objectIds);
-        if (toMapList(normalized.get("objects")).isEmpty()) {
+        if (toMapList(normalized.get("objects")).isEmpty()
+                || hasSchemaViolationPrefix(schemaValidation, "objects[")) {
             normalized.put("objects", buildReviewObjects(labels, objectIds, confidence, bbox));
         }
-        if (toMapList(normalized.get("detections")).isEmpty()) {
+        if (toMapList(normalized.get("detections")).isEmpty()
+                || hasSchemaViolationPrefix(schemaValidation, "detections[")) {
             normalized.put("detections", List.of(buildRuntimeRepairDetection(item, labels, zones, objectIds, confidence, bbox)));
         }
 
@@ -3857,6 +3875,20 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         boolean segmentDoubleWriteDrift = reviewSegmentDoubleWriteDrift(item, toStringObjectMap(normalized.get("reviewSegment")), segment);
         normalized.put("reviewSegment", segment);
         return new ReviewDataConsistency(Map.copyOf(normalized), schemaDrift, segmentDoubleWriteDrift);
+    }
+
+    private static boolean hasSchemaViolationPrefix(AlertReviewDataSchemaValidator.ValidationResult validation,
+                                                    String prefix) {
+        return validation.violations().stream().anyMatch(violation -> violation.startsWith(prefix));
+    }
+
+    private static boolean validReviewConfidence(Double confidence) {
+        return confidence == null || (Double.isFinite(confidence) && confidence >= 0D && confidence <= 1D);
+    }
+
+    private static boolean validReviewBbox(List<Double> bbox) {
+        return bbox == null || bbox.isEmpty()
+                || (bbox.size() == 4 && bbox.stream().allMatch(value -> value != null && Double.isFinite(value)));
     }
 
     private static Map<String, Object> buildRuntimeRepairDetection(ReviewItemAggregate item,
@@ -3888,8 +3920,14 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         Map<String, Object> segment = new LinkedHashMap<>(toStringObjectMap(currentSegment));
         segment.put("segmentId", firstText(segment.get("segmentId"), buildReviewSegmentId(item.cameraId(), item.firstAlertTime())));
         segment.put("cameraId", item.cameraId());
-        segment.put("severity", firstText(segment.get("severity"), reviewSegmentSeverity(item.sourceAlertType())));
-        segment.put("status", firstText(segment.get("status"), "active"));
+        String severity = firstText(segment.get("severity"), reviewSegmentSeverity(item.sourceAlertType()));
+        segment.put("severity", Set.of("detection", "alert").contains(severity)
+                ? severity
+                : reviewSegmentSeverity(item.sourceAlertType()));
+        String status = firstText(segment.get("status"), "active");
+        segment.put("status", Set.of("active", "detection", "alert", "ended").contains(status)
+                ? status
+                : "active");
         segment.put("startTime", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
         segment.put("endTime", item.lastAlertTime() == null ? null : item.lastAlertTime().toString());
         segment.put("objectIds", objectIds.isEmpty()
@@ -6009,7 +6047,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (command.thumbTime() != null) {
             reviewData.put("thumbTime", command.thumbTime().toString());
         }
-        return Map.copyOf(reviewData);
+        Map<String, Object> result = Map.copyOf(reviewData);
+        AlertReviewDataSchemaValidator.ValidationResult validation = REVIEW_DATA_SCHEMA_VALIDATOR.validate(result);
+        if (!validation.valid()) {
+            throw new IllegalArgumentException("reviewData schema validation failed: "
+                    + String.join(",", validation.violations()));
+        }
+        return result;
     }
 
     private static List<String> ingestIdentityKeys(AlertClueCommand command) {

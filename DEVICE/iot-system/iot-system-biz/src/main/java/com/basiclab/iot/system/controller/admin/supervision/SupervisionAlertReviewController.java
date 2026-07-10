@@ -214,7 +214,7 @@ public class SupervisionAlertReviewController {
                 new ReviewRuntimeHealthCommand(
                         new ReviewQuery(reviewStatus, cameraId, zoneCode, objectLabel, recordEvidenceStatus,
                                 converted, inReviewCase, reviewerUserId, beginTime, endTime),
-                        operatorUserId
+                        currentOperatorUserId(operatorUserId)
                 )
         )));
     }
@@ -238,7 +238,7 @@ public class SupervisionAlertReviewController {
                 new ReviewReconciliationCommand(
                         new ReviewQuery(reviewStatus, cameraId, zoneCode, objectLabel, recordEvidenceStatus,
                                 converted, inReviewCase, reviewerUserId, beginTime, endTime),
-                        operatorUserId,
+                        currentOperatorUserId(operatorUserId),
                         repair
                 )
         )));
@@ -262,7 +262,7 @@ public class SupervisionAlertReviewController {
                                 body.getBeginTime(),
                                 body.getEndTime()
                         ),
-                        body.getOperatorUserId(),
+                        currentOperatorUserId(body.getOperatorUserId()),
                         body.getRepair(),
                         body.getMaxAttempts(),
                         body.getScheduled()
@@ -418,7 +418,7 @@ public class SupervisionAlertReviewController {
                                 beginTime,
                                 endTime
                         ),
-                        operatorUserId
+                        currentOperatorUserId(operatorUserId)
                 )
         )));
     }
@@ -451,12 +451,13 @@ public class SupervisionAlertReviewController {
                                 beginTime,
                                 endTime
                         ),
-                        operatorUserId
+                        currentOperatorUserId(operatorUserId)
                 )
         )));
     }
 
     @GetMapping("/items/{reviewItemId}/record-coverage")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:playback')")
     @Operation(summary = "Get alert review record coverage")
     public CommonResult<List<CoverageRespVO>> getRecordCoverage(
             @PathVariable("reviewItemId") Long reviewItemId,
@@ -475,6 +476,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/items/{reviewItemId}/playback-url")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:playback')")
     @Operation(summary = "Prepare alert review playback URL")
     public CommonResult<PlaybackAccessRespVO> preparePlaybackUrl(
             @PathVariable("reviewItemId") Long reviewItemId,
@@ -504,7 +506,7 @@ public class SupervisionAlertReviewController {
         return success(RecordStorageSyncRespVO.from(supervisionAlertReviewService.syncRecordStorage(
                 new ReviewRecordStorageSyncCommand(
                         reviewItemId,
-                        body.getOperatorUserId(),
+                        currentOperatorUserId(body.getOperatorUserId()),
                         body.getCoverageSegments() == null
                                 ? List.of()
                                 : body.getCoverageSegments().stream().map(CoverageSegmentReqVO::toSegment).toList()
@@ -513,6 +515,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/items/{reviewItemId}/timeline")
+    @PreAuthorize("@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot')")
     @Operation(summary = "Get alert review timeline")
     public CommonResult<List<EvidenceRespVO>> getTimeline(
             @PathVariable("reviewItemId") Long reviewItemId,
@@ -586,7 +589,7 @@ public class SupervisionAlertReviewController {
         OperationReqVO body = reqVO == null ? new OperationReqVO() : reqVO;
         return success(ItemRespVO.from(supervisionAlertReviewService.markReviewed(new ReviewOperationCommand(
                 reviewItemId,
-                body.getReviewerUserId(),
+                currentOperatorUserId(body.getReviewerUserId()),
                 body.getReason()
         ))));
     }
@@ -597,7 +600,7 @@ public class SupervisionAlertReviewController {
                                                                @RequestBody UserStatusReqVO reqVO) {
         return success(UserStatusRespVO.from(supervisionAlertReviewService.markUserReviewStatus(new ReviewUserStatusCommand(
                 reviewItemId,
-                reqVO.getUserId(),
+                currentOperatorUserId(reqVO.getUserId()),
                 reqVO.getHasBeenReviewed()
         ))));
     }
@@ -609,7 +612,7 @@ public class SupervisionAlertReviewController {
         OperationReqVO body = reqVO == null ? new OperationReqVO() : reqVO;
         return success(ItemRespVO.from(supervisionAlertReviewService.ignore(new ReviewOperationCommand(
                 reviewItemId,
-                body.getReviewerUserId(),
+                currentOperatorUserId(body.getReviewerUserId()),
                 body.getReason()
         ))));
     }
@@ -621,7 +624,7 @@ public class SupervisionAlertReviewController {
         OperationReqVO body = reqVO == null ? new OperationReqVO() : reqVO;
         return success(ItemRespVO.from(supervisionAlertReviewService.markFalsePositive(new ReviewOperationCommand(
                 reviewItemId,
-                body.getReviewerUserId(),
+                currentOperatorUserId(body.getReviewerUserId()),
                 body.getReason()
         ))));
     }
@@ -634,7 +637,7 @@ public class SupervisionAlertReviewController {
         return success(ItemRespVO.from(supervisionAlertReviewService.updateRuleSuggestionStatus(
                 new RuleSuggestionOperationCommand(
                         reviewItemId,
-                        reqVO.getReviewerUserId(),
+                        currentOperatorUserId(reqVO.getReviewerUserId()),
                         reqVO.getStatus(),
                         reqVO.getNote()
                 )
@@ -655,7 +658,7 @@ public class SupervisionAlertReviewController {
         return success(ItemRespVO.from(supervisionAlertReviewService.revertRuleSuggestion(
                 new RuleSuggestionOperationCommand(
                         reviewItemId,
-                        reqVO.getReviewerUserId(),
+                        currentOperatorUserId(reqVO.getReviewerUserId()),
                         reqVO.getStatus(),
                         reqVO.getNote()
                 )
@@ -694,7 +697,7 @@ public class SupervisionAlertReviewController {
         OperationReqVO body = reqVO == null ? new OperationReqVO() : reqVO;
         return success(ToEventRespVO.from(supervisionAlertReviewService.convertToEvent(new ReviewToEventCommand(
                 reviewItemId,
-                body.getReviewerUserId()
+                currentOperatorUserId(body.getReviewerUserId())
         ))));
     }
 
@@ -768,6 +771,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/cases/{reviewCaseId}/timeline")
+    @PreAuthorize("@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot')")
     @Operation(summary = "Get alert review case timeline")
     public CommonResult<List<CaseTimelineRespVO>> getReviewCaseTimeline(
             @PathVariable("reviewCaseId") Long reviewCaseId,
@@ -790,7 +794,7 @@ public class SupervisionAlertReviewController {
             @RequestParam(value = "operatorUserId", required = false) Long operatorUserId) {
         return success(AiSummaryRespVO.from(supervisionAlertReviewService.summarizeReviewCase(
                 reviewCaseId,
-                operatorUserId
+                currentOperatorUserId(operatorUserId)
         )));
     }
 
@@ -810,6 +814,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/cases/{reviewCaseId}/evidence-export")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:export')")
     @Operation(summary = "Export alert review case evidence")
     public CommonResult<EvidenceExportRespVO> exportReviewEvidence(@PathVariable("reviewCaseId") Long reviewCaseId,
                                                                    @RequestBody(required = false) EvidenceExportReqVO reqVO) {
@@ -829,6 +834,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/cases/{reviewCaseId}/evidence-export-jobs")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:export')")
     @Operation(summary = "Create alert review evidence export job")
     public CommonResult<EvidenceExportJobRespVO> createReviewEvidenceExportJob(
             @PathVariable("reviewCaseId") Long reviewCaseId,
@@ -849,6 +855,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/cases/{reviewCaseId}/media-access/audit")
+    @PreAuthorize("@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot','system:supervision-alert-review:media:export','system:supervision-alert-review:media:download','system:supervision-alert-review:media:manifest')")
     @Operation(summary = "Audit alert review media access")
     public CommonResult<MediaAccessAuditRespVO> auditMediaAccess(
             @PathVariable("reviewCaseId") Long reviewCaseId,
@@ -869,6 +876,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/items/{reviewItemId}/media-access/audit")
+    @PreAuthorize("@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot','system:supervision-alert-review:media:export','system:supervision-alert-review:media:download','system:supervision-alert-review:media:manifest')")
     @Operation(summary = "Audit alert review item media access")
     public CommonResult<MediaAccessAuditRespVO> auditItemMediaAccess(
             @PathVariable("reviewItemId") Long reviewItemId,
@@ -889,6 +897,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/cases/{reviewCaseId}/evidence-audit")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:manifest')")
     @Operation(summary = "List alert review evidence audit trail")
     public CommonResult<List<EvidenceAuditRespVO>> getEvidenceAuditTrail(@PathVariable("reviewCaseId") Long reviewCaseId) {
         return success(supervisionAlertReviewService.getEvidenceAuditTrail(reviewCaseId)
@@ -898,6 +907,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/items/{reviewItemId}/evidence-audit")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:manifest')")
     @Operation(summary = "List alert review item evidence audit trail")
     public CommonResult<List<EvidenceAuditRespVO>> getReviewItemEvidenceAuditTrail(@PathVariable("reviewItemId") Long reviewItemId) {
         return success(supervisionAlertReviewService.getReviewItemEvidenceAuditTrail(reviewItemId)
@@ -907,6 +917,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/evidence-export-jobs/{jobNo}/manifest/verify")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:manifest')")
     @Operation(summary = "Verify alert review evidence export manifest")
     public CommonResult<ManifestVerificationRespVO> verifyEvidenceExportManifest(
             @PathVariable("jobNo") String jobNo,
@@ -920,6 +931,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/evidence-export-jobs/{jobNo}/verify")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:manifest')")
     @Operation(summary = "Verify alert review evidence package reproducibility")
     public CommonResult<EvidenceVerificationRespVO> verifyEvidencePackage(
             @PathVariable("jobNo") String jobNo,
@@ -931,6 +943,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/integration-smoke")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:export')")
     @Operation(summary = "Run alert review integration smoke")
     public CommonResult<IntegrationSmokeRespVO> runIntegrationSmoke(@RequestBody(required = false) IntegrationSmokeReqVO reqVO) {
         IntegrationSmokeReqVO body = reqVO == null ? new IntegrationSmokeReqVO() : reqVO;
@@ -950,6 +963,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/evidence-export-jobs/{jobNo}/downloads")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:download')")
     @Operation(summary = "Record alert review evidence export download")
     public CommonResult<EvidenceAuditRespVO> recordEvidenceDownload(
             @PathVariable("jobNo") String jobNo,
@@ -1016,7 +1030,7 @@ public class SupervisionAlertReviewController {
                 reqVO.getMinStaySeconds(),
                 reqVO.getBeginTime(),
                 reqVO.getEndTime(),
-                reqVO.getOperatorUserId()
+                currentOperatorUserId(reqVO.getOperatorUserId())
         ))));
     }
 
@@ -1032,7 +1046,7 @@ public class SupervisionAlertReviewController {
                 reqVO.getObjectLabel(),
                 new ReviewQuery(null, reqVO.getCameraId(), reqVO.getZoneCode(), reqVO.getObjectLabel(),
                         null, null, null, null, reqVO.getBeginTime(), reqVO.getEndTime()),
-                reqVO.getOperatorUserId()
+                currentOperatorUserId(reqVO.getOperatorUserId())
         ))));
     }
 

@@ -2,8 +2,13 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.domain.LoginUser;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionAlertReviewController;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.OperationReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.EvidenceDownloadAuditReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.EvidenceExportReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.IntegrationSmokeReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleReplayReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.RuleSuggestionStatusReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.UserStatusReqVO;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeResult;
@@ -18,9 +23,13 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewManifestVerification;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewMediaAccessAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackAccess;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewPlaybackCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewToEventCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RuleSuggestionOperationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgementCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportCommand;
@@ -43,6 +52,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -199,6 +209,53 @@ class SupervisionAlertReviewControllerTest {
     }
 
     @Test
+    void reviewMutationsUseLoginUserInsteadOfBodyIdentity() {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        SupervisionAlertReviewController controller = new SupervisionAlertReviewController(reviewService.proxy());
+        OperationReqVO operation = new OperationReqVO();
+        operation.setReviewerUserId(9999L);
+        operation.setReason("review reason");
+        UserStatusReqVO userStatus = new UserStatusReqVO();
+        userStatus.setUserId(9998L);
+        userStatus.setHasBeenReviewed(true);
+        RuleSuggestionStatusReqVO suggestion = new RuleSuggestionStatusReqVO();
+        suggestion.setReviewerUserId(9997L);
+        suggestion.setStatus("approved");
+        suggestion.setNote("approval note");
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser().setId(781L),
+                null,
+                List.of()
+        ));
+        try {
+            assertThrows(AssertionError.class, () -> controller.markReviewed(100L, operation));
+            assertThrows(AssertionError.class, () -> controller.markUserReviewStatus(100L, userStatus));
+            assertThrows(AssertionError.class, () -> controller.ignore(100L, operation));
+            assertThrows(AssertionError.class, () -> controller.markFalsePositive(100L, operation));
+            assertThrows(AssertionError.class, () -> controller.updateRuleSuggestionStatus(100L, suggestion));
+            assertThrows(AssertionError.class, () -> controller.revertRuleSuggestion(100L, suggestion));
+            assertThrows(AssertionError.class, () -> controller.convertToEvent(100L, operation));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertEquals(new ReviewOperationCommand(100L, 781L, "review reason"),
+                reviewService.command("markReviewed"));
+        assertEquals(new ReviewUserStatusCommand(100L, 781L, true),
+                reviewService.command("markUserReviewStatus"));
+        assertEquals(new ReviewOperationCommand(100L, 781L, "review reason"),
+                reviewService.command("ignore"));
+        assertEquals(new ReviewOperationCommand(100L, 781L, "review reason"),
+                reviewService.command("markFalsePositive"));
+        assertEquals(new RuleSuggestionOperationCommand(100L, 781L, "approved", "approval note"),
+                reviewService.command("updateRuleSuggestionStatus"));
+        assertEquals(new RuleSuggestionOperationCommand(100L, 781L, "approved", "approval note"),
+                reviewService.command("revertRuleSuggestion"));
+        assertEquals(new ReviewToEventCommand(100L, 781L),
+                reviewService.command("convertToEvent"));
+    }
+
+    @Test
     void playbackUrlEndpointUsesLoginUserAndPreparesAuditedPlayback() throws Exception {
         CapturingReviewService reviewService = new CapturingReviewService();
         MockMvc mockMvc = MockMvcBuilders
@@ -332,13 +389,73 @@ class SupervisionAlertReviewControllerTest {
         );
     }
 
+    @Test
+    void mediaEndpointsDeclareSeededPermissions() throws Exception {
+        assertPreAuthorize(
+                "getRecordCoverage",
+                new Class<?>[]{Long.class, Long.class, Long.class, List.class},
+                "system:supervision-alert-review:media:playback"
+        );
+        assertPreAuthorize(
+                "preparePlaybackUrl",
+                new Class<?>[]{Long.class, Long.class, Long.class, String.class, List.class, String.class},
+                "system:supervision-alert-review:media:playback"
+        );
+        assertPreAuthorizeExpression(
+                "getTimeline",
+                new Class<?>[]{Long.class, Long.class, Long.class, List.class},
+                "@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot')"
+        );
+        assertPreAuthorizeExpression(
+                "getReviewCaseTimeline",
+                new Class<?>[]{Long.class, Long.class, List.class},
+                "@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot')"
+        );
+        assertPreAuthorize(
+                "exportReviewEvidence",
+                new Class<?>[]{Long.class, EvidenceExportReqVO.class},
+                "system:supervision-alert-review:media:export"
+        );
+        assertPreAuthorize(
+                "createReviewEvidenceExportJob",
+                new Class<?>[]{Long.class, EvidenceExportReqVO.class},
+                "system:supervision-alert-review:media:export"
+        );
+        assertPreAuthorize(
+                "verifyEvidenceExportManifest",
+                new Class<?>[]{String.class, Long.class, List.class},
+                "system:supervision-alert-review:media:manifest"
+        );
+        assertPreAuthorize(
+                "verifyEvidencePackage",
+                new Class<?>[]{String.class, Long.class, List.class},
+                "system:supervision-alert-review:media:manifest"
+        );
+        assertPreAuthorize(
+                "recordEvidenceDownload",
+                new Class<?>[]{String.class, EvidenceDownloadAuditReqVO.class},
+                "system:supervision-alert-review:media:download"
+        );
+        assertPreAuthorize(
+                "runIntegrationSmoke",
+                new Class<?>[]{IntegrationSmokeReqVO.class},
+                "system:supervision-alert-review:media:export"
+        );
+    }
+
     private static void assertPreAuthorize(String methodName,
                                            Class<?>[] parameterTypes,
                                            String permission) throws NoSuchMethodException {
+        assertPreAuthorizeExpression(methodName, parameterTypes, "@ss.hasPermission('" + permission + "')");
+    }
+
+    private static void assertPreAuthorizeExpression(String methodName,
+                                                     Class<?>[] parameterTypes,
+                                                     String expression) throws NoSuchMethodException {
         Method method = SupervisionAlertReviewController.class.getMethod(methodName, parameterTypes);
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize, methodName + " must declare @PreAuthorize");
-        assertEquals("@ss.hasPermission('" + permission + "')", preAuthorize.value());
+        assertEquals(expression, preAuthorize.value());
     }
 
     private static ReviewCaseView caseView(Long id,
