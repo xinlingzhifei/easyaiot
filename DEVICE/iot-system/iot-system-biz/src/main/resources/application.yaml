@@ -162,7 +162,6 @@ yfeieye:
     runtime-outbox:
       notify:
         enabled: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:false}
-        admin-user-ids: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:[]}
         runtime-alert-template-code: ${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:YFEIEYE_REVIEW_RUNTIME_ALERT}
         operations-report-template-code: ${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:YFEIEYE_REVIEW_OPERATIONS_REPORT}
 

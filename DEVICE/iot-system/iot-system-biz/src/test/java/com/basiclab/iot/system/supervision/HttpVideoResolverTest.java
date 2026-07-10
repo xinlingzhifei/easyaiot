@@ -65,6 +65,14 @@ class HttpVideoResolverTest {
     }
 
     @Test
+    void runtimeOutboxAdminUsersStayUnconfiguredWhenEnvironmentIsAbsent() throws Exception {
+        String applicationYaml = Files.readString(modulePath("src/main/resources/application.yaml"), StandardCharsets.UTF_8);
+
+        assertFalse(applicationYaml.contains(
+                "admin-user-ids: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:[]}"));
+    }
+
+    @Test
     void reviewIntelligenceProviderKeepsStructuredSummaryData() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
