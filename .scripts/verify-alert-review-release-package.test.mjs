@@ -92,13 +92,14 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_7__alert_review_segment_end_time_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryDO.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/pgsql/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryMapper.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryStore.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryMapperStore.java',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/NotifyReviewRuntimeOutboxPublisherTest.java',
 ]);
-assert.equal(trackedReleaseEntries.length, 38);
+assert.equal(trackedReleaseEntries.length, 39);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -189,6 +190,11 @@ assert.deepEqual(
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
+      'DEVICE schema and migration',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
       'DEVICE schema and migration',
     ],
     [
@@ -296,6 +302,12 @@ const untrackedMergeIndexSameCameraMigration = evaluateStatus(`
 `);
 assert.equal(untrackedMergeIndexSameCameraMigration.ok, false);
 assert.equal(untrackedMergeIndexSameCameraMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const untrackedDeletedSmallintMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql
+`);
+assert.equal(untrackedDeletedSmallintMigration.ok, false);
+assert.equal(untrackedDeletedSmallintMigration.blockers[0].group, 'DEVICE schema and migration');
 
 const untrackedWorkbenchRunner = evaluateStatus(`
 ?? WEB/scripts/alert-review-workbench-e2e-check.test.mjs
