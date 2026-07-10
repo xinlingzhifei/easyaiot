@@ -447,10 +447,10 @@ BEGIN
 END $$;
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
-VALUES (4, 1001, 'video', 'alert', 'a-overlap', 'person', '2026-07-05 10:02',
+VALUES (4, 1001, 'fixture-review-4', 'video', 'alert', 'a-overlap', 'person', '2026-07-05 10:02',
   'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:02', NULL, false);
 
 DO $$
@@ -467,10 +467,10 @@ BEGIN
 END $$;
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
-VALUES (9, 1001, 'video', 'motion', 'a-adjacent-boundary', 'person', '2026-07-05 10:05',
+VALUES (9, 1001, 'fixture-review-9', 'video', 'motion', 'a-adjacent-boundary', 'person', '2026-07-05 10:05',
   'pending_review', 'camera-01', 'zone-a', 'rule-a', '2026-07-05 10:05', NULL, false);
 
 INSERT INTO system_supervision_alert_review_segment(
@@ -522,13 +522,13 @@ BEGIN
 END $$;
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES
-  (5, 1001, 'video', 'motion', 'a-open-active-1', 'person', '2026-07-05 11:00',
+  (5, 1001, 'fixture-review-5', 'video', 'motion', 'a-open-active-1', 'person', '2026-07-05 11:00',
    'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:00', NULL, false),
-  (6, 1001, 'video', 'motion', 'a-open-active-2', 'person', '2026-07-05 11:01',
+  (6, 1001, 'fixture-review-6', 'video', 'motion', 'a-open-active-2', 'person', '2026-07-05 11:01',
    'pending_review', 'camera-open-01', 'zone-a', 'rule-a', '2026-07-05 11:01', NULL, false);
 
 DO $$
@@ -549,13 +549,13 @@ BEGIN
 END $$;
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
 VALUES
-  (7, 1001, 'video', 'motion', 'a-transition-1', 'person', '2026-07-05 11:10',
+  (7, 1001, 'fixture-review-7', 'video', 'motion', 'a-transition-1', 'person', '2026-07-05 11:10',
    'pending_review', 'camera-transition-01', 'zone-a', 'rule-a', '2026-07-05 11:10', NULL, false),
-  (8, 1001, 'video', 'motion', 'a-transition-2', 'person', '2026-07-05 11:20',
+  (8, 1001, 'fixture-review-8', 'video', 'motion', 'a-transition-2', 'person', '2026-07-05 11:20',
    'pending_review', 'camera-transition-ended-01', 'zone-a', 'rule-a', '2026-07-05 11:20', NULL, false);
 
 INSERT INTO system_supervision_alert_review_segment(
@@ -566,17 +566,17 @@ VALUES
   (8, 'seg-transition-ended', 1001, 'camera-transition-ended-01', 'alert', 'ended', '2026-07-05 11:20', '2026-07-05 11:21', false);
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
-VALUES (10, 1001, 'video', 'motion', 'a-ended-null-end-time', 'person', '2026-07-05 11:30',
+VALUES (10, 1001, 'fixture-review-10', 'video', 'motion', 'a-ended-null-end-time', 'person', '2026-07-05 11:30',
   'pending_review', 'camera-transition-02', 'zone-a', 'rule-a', '2026-07-05 11:30', NULL, false);
 
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
+  id, tenant_id, review_item_no, source_system, source_alert_type, source_alert_ids, object_label, first_alert_time,
   review_status, camera_id, zone_code, rule_code, last_alert_time, review_data, deleted
 )
-VALUES (11, 1001, 'video', 'motion', 'a-alert-detection-severity', 'person', '2026-07-05 11:40',
+VALUES (11, 1001, 'fixture-review-11', 'video', 'motion', 'a-alert-detection-severity', 'person', '2026-07-05 11:40',
   'pending_review', 'camera-transition-03', 'zone-a', 'rule-a', '2026-07-05 11:40', NULL, false);
 
 UPDATE system_supervision_alert_review_segment
@@ -661,9 +661,9 @@ VALUES (3003, 3003, 'video', 'video:alert:a-race', 'a-race', false);
 export function buildConcurrentReviewStatusBootstrapSql() {
   return `
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, version, deleted
+  id, tenant_id, review_item_no, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, version, deleted
 )
-VALUES (8001, 5005, 'video', 'review-status-race', 'pending_review', 'camera-review-status-race-01', 'zone-a', 'rule-a', '2026-07-05 13:00', 0, false);
+VALUES (8001, 5005, 'fixture-review-status-8001', 'video', 'review-status-race', 'pending_review', 'camera-review-status-race-01', 'zone-a', 'rule-a', '2026-07-05 13:00', 0, false);
 `;
 }
 
@@ -681,11 +681,11 @@ WHERE id = 8001
 export function buildConcurrentReviewSegmentBootstrapSql() {
   return `
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+  id, tenant_id, review_item_no, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
 )
 VALUES
-  (7001, 4004, 'video', 'a-segment-race-1', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false),
-  (7002, 4004, 'video', 'a-segment-race-2', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false);
+  (7001, 4004, 'fixture-review-segment-7001', 'video', 'a-segment-race-1', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false),
+  (7002, 4004, 'fixture-review-segment-7002', 'video', 'a-segment-race-2', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false);
 `;
 }
 

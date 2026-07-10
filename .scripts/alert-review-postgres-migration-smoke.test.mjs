@@ -120,11 +120,22 @@ assert.doesNotMatch(bootstrapSql, /CREATE TABLE system_supervision_alert_review_
 assert.doesNotMatch(bootstrapSql, /CREATE TABLE system_supervision_alert_review_item/);
 assert.doesNotMatch(bootstrapSql, /CREATE TABLE system_supervision_alert_review_segment/);
 
+function assertReviewItemFixtureNumbers(sql, label) {
+  const inserts = [...sql.matchAll(
+    /INSERT INTO system_supervision_alert_review_item\s*\(\s*([\s\S]*?)\s*\)\s*VALUES/g,
+  )];
+  assert.ok(inserts.length > 0, `${label} must contain a review item fixture`);
+  for (const insert of inserts) {
+    assert.match(insert[1], /\breview_item_no\b/, `${label} review item fixtures must set review_item_no`);
+  }
+}
+
 const legacyReviewFixtureSql = buildLegacyReviewFixtureSql();
 assert.match(legacyReviewFixtureSql, /source_alert_ids/);
 assert.match(legacyReviewFixtureSql, /a-shared/);
 assert.match(legacyReviewFixtureSql, /legacy-correlation/);
 assert.match(legacyReviewFixtureSql, /seg-tenant-1001/);
+assertReviewItemFixtureNumbers(legacyReviewFixtureSql, 'legacy migration');
 
 const assertionSql = buildPostMigrationAssertionSql();
 assert.match(assertionSql, /system_supervision_alert_review_ingest_identity/);
@@ -161,6 +172,7 @@ assert.match(assertionSql, /expected alert ReviewSegment downgrade to detection 
 assert.match(assertionSql, /expected ended ReviewSegment without end_time to be rejected/);
 assert.match(assertionSql, /expected alert ReviewSegment with detection severity to be rejected/);
 assert.match(assertionSql, /tr_supervision_alert_review_segment_status_transition/);
+assertReviewItemFixtureNumbers(assertionSql, 'post-migration assertions');
 
 const concurrentInsertSql = buildConcurrentDuplicateIdentityInsertSql();
 assert.match(concurrentInsertSql, /video:alert:a-race/);
@@ -170,6 +182,7 @@ const concurrentReviewStatusBootstrapSql = buildConcurrentReviewStatusBootstrapS
 assert.match(concurrentReviewStatusBootstrapSql, /review-status-race/);
 assert.match(concurrentReviewStatusBootstrapSql, /pending_review/);
 assert.match(concurrentReviewStatusBootstrapSql, /8001/);
+assertReviewItemFixtureNumbers(concurrentReviewStatusBootstrapSql, 'concurrent review status bootstrap');
 
 const concurrentReviewStatusUpdateSql = buildConcurrentReviewStatusUpdateSql();
 assert.match(concurrentReviewStatusUpdateSql, /UPDATE system_supervision_alert_review_item/);
@@ -182,6 +195,7 @@ const concurrentSegmentBootstrapSql = buildConcurrentReviewSegmentBootstrapSql()
 assert.match(concurrentSegmentBootstrapSql, /a-segment-race-1/);
 assert.match(concurrentSegmentBootstrapSql, /a-segment-race-2/);
 assert.match(concurrentSegmentBootstrapSql, /camera-segment-race-01/);
+assertReviewItemFixtureNumbers(concurrentSegmentBootstrapSql, 'concurrent segment bootstrap');
 
 const concurrentSegmentInsertSql = buildConcurrentReviewSegmentInsertSql({
   reviewItemId: 7001,
