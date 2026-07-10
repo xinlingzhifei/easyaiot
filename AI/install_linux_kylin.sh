@@ -65,15 +65,15 @@ prepare_cached_resources() {
     wheels="$(arm_pip_wheels_build_context_dir_for "$YFEIEYE_ROOT" ai)"
     local cache_script="${SCRIPT_DIR}/cache_resources_arm.sh"
 
-    if find "$wheels" -maxdepth 1 -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.zip" \) 2>/dev/null | grep -q .; then
-        print_success "检测到 pip-wheels: $wheels"
+    if arm_pip_wheels_ready_for "$EASYAIOT_ROOT" ai; then
+        print_success "检测到完整 pip-wheels: $wheels"
         return 0
     fi
     if [ "${AUTO_CACHE_PIP:-1}" != "1" ] || [ ! -f "$cache_script" ]; then
-        print_info "构建时将使用 pip-cache 在线安装（清华源）"
+        print_info "ARM pip-wheels 缺失或不完整，构建时将使用 pip-cache 在线安装（清华源）"
         return 0
     fi
-    print_warning "自动执行 cache_resources_arm.sh 预下载 wheel..."
+    print_warning "ARM pip-wheels 缺失或不完整，自动执行 cache_resources_arm.sh 预下载 wheel..."
     if [ -x "$cache_script" ]; then
         "$cache_script" || true
     else
@@ -88,6 +88,7 @@ build_with_cache() {
 
     init_yfeieye_build_cache_dirs "$YFEIEYE_ROOT"
     enable_docker_buildkit
+    prepare_cached_resources
 
     print_info "docker build（麒麟 ARM，Dockerfile.arm，项目根 .build-cache bind mount）..."
     set +e
@@ -849,14 +850,20 @@ build_image() {
     detect_architecture
     configure_architecture
     configure_kylin_dockerfile
+
+    if [ "${FORCE_REBUILD:-0}" != "1" ] && docker image inspect ai-service:latest >/dev/null 2>&1; then
+        print_success "ai-service:latest 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        return 0
+    fi
     
     print_info "架构: $ARCH, 平台: $DOCKER_PLATFORM, 基础镜像: $ARM_BASE_IMAGE"
     print_warning "重新构建可能需要较长时间（20-40分钟），请耐心等待..."
-    print_info "正在重新下载基础镜像和安装依赖..."
     print_info "构建进度将实时显示，请勿中断..."
     echo ""
-    
-    if ! build_with_cache "--no-cache"; then
+
+    local cache_flag=""
+    [ "${FORCE_REBUILD:-0}" = "1" ] && cache_flag="--no-cache"
+    if ! build_with_cache "$cache_flag"; then
         exit 1
     fi
     echo ""

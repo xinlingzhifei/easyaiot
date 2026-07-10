@@ -2,10 +2,26 @@
 算法任务统一检测入口：Ultralytics(.pt) 与 ONNXInference(.onnx)
 """
 import json
+import threading
 from collections.abc import Iterable as IterableABC
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from app.utils.onnx_inference import ONNXInference
+
+
+# Ultralytics YOLO is not thread-safe during first-time predictor/fuse setup.
+_MODEL_INFER_LOCKS: Dict[int, threading.Lock] = {}
+_MODEL_INFER_LOCKS_GUARD = threading.Lock()
+
+
+def _get_model_infer_lock(model: Any) -> threading.Lock:
+    key = id(model)
+    with _MODEL_INFER_LOCKS_GUARD:
+        lock = _MODEL_INFER_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _MODEL_INFER_LOCKS[key] = lock
+        return lock
 
 
 MODEL_NAME_CLASS_FALLBACKS = [
@@ -54,6 +70,71 @@ PERSON_CLASS_ALIASES = ("person", "human", "pedestrian", "人", "行人", "人�
 
 def is_onnx_detector(model: Any) -> bool:
     return isinstance(model, ONNXInference)
+
+
+def is_yolo26_model(
+    model: Any,
+    *,
+    model_path: str = '',
+    model_id: Optional[int] = None,
+) -> bool:
+    """识别 YOLO26 模型，兼容旧版 ultralytics 未暴露 end2end 属性的情况。"""
+    if model_id == -3:
+        return True
+    path_lower = str(model_path or '').lower()
+    if 'yolo26' in path_lower:
+        return True
+    if is_onnx_detector(model):
+        return False
+    overrides = getattr(model, 'overrides', None) or {}
+    if 'yolo26' in str(overrides.get('model', '')).lower():
+        return True
+    inner = getattr(model, 'model', None)
+    if inner is not None:
+        if bool(getattr(inner, 'end2end', False)):
+            return True
+        yaml_cfg = getattr(inner, 'yaml', None)
+        if isinstance(yaml_cfg, dict):
+            yaml_file = str(yaml_cfg.get('yaml_file', '')).lower()
+            if 'yolo26' in yaml_file or yaml_cfg.get('end2end'):
+                return True
+    return False
+
+
+def is_end2end_ultralytics_model(model: Any) -> bool:
+    """YOLO26 等 end2end 模型内置 NMS，推理参数需与普通 YOLO 区分。"""
+    if is_yolo26_model(model):
+        return True
+    if is_onnx_detector(model):
+        return False
+    inner = getattr(model, 'model', None)
+    if inner is not None and bool(getattr(inner, 'end2end', False)):
+        return True
+    yaml_cfg = getattr(inner, 'yaml', None) if inner is not None else None
+    return bool(isinstance(yaml_cfg, dict) and yaml_cfg.get('end2end'))
+
+
+def warmup_model_detection(
+    model: Any,
+    *,
+    infer_device: str = 'cpu',
+    imgsz: int = 640,
+    conf: float = 0.25,
+    iou: float = 0.45,
+) -> None:
+    """单线程预热 predictor，避免多 worker 首次推理时出现竞态。"""
+    import numpy as np
+
+    size = max(32, int(imgsz))
+    dummy = np.zeros((size, size, 3), dtype=np.uint8)
+    run_model_detection(
+        model,
+        dummy,
+        conf=conf,
+        iou=iou,
+        imgsz=imgsz,
+        infer_device=infer_device,
+    )
 
 
 def normalize_class_name(class_name: Any) -> str:
@@ -340,7 +421,8 @@ def run_model_detection(
 ) -> List[Dict[str, Any]]:
     """对单帧执行检测，返回统一格式的检测列表。"""
     if is_onnx_detector(model):
-        _, raw_detections = model.detect(frame, conf_threshold=conf, iou_threshold=iou, draw=False)
+        with _get_model_infer_lock(model):
+            _, raw_detections = model.detect(frame, conf_threshold=conf, iou_threshold=iou, draw=False)
         detections = []
         for det in raw_detections:
             class_name = det['class_name']
@@ -357,8 +439,7 @@ def run_model_detection(
             })
         return detections
 
-    results = model(
-        frame,
+    predict_kwargs = dict(
         conf=conf,
         iou=iou,
         imgsz=imgsz,
@@ -366,6 +447,11 @@ def run_model_detection(
         half=False,
         device=infer_device,
     )
+    if is_end2end_ultralytics_model(model) or is_yolo26_model(model):
+        predict_kwargs['max_det'] = 300
+        predict_kwargs['iou'] = max(iou, 0.7)
+    with _get_model_infer_lock(model):
+        results = model(frame, **predict_kwargs)
     result = results[0]
     detections = []
     if result.boxes is None or len(result.boxes) == 0:

@@ -63,13 +63,14 @@
         <TypographyParagraph>
           1、在企业微信群中添加群机器人，复制 Webhook 地址<br />
           2、消息内容支持变量：${device_name}、${event}、${time}、${object} 等<br />
-          3、保存后可点「测试发送」验证
+          3、保存模板后，在列表点击「测试发送」验证（也可在「消息推送」中测试）
         </TypographyParagraph>
         <TypographyTitle :level="5">3. 工作通知配置</TypographyTitle>
         <TypographyParagraph>
           1、选择应用 AgentId（与消息配置中的应用一致）<br />
           2、选择用户分组（分组内用户须填写企业微信成员 UserID）<br />
-          3、AgentId 获取路径：管理后台 → 应用管理 → 应用 → 查看 AgentId
+          3、保存模板后，在「消息模板」列表点击「测试发送」验证配置是否正确<br />
+          4、AgentId 获取路径：管理后台 → 应用管理 → 应用 → 查看 AgentId
         </TypographyParagraph>
         <TypographyParagraph>
           <img :src="Agentid" width="487" @click="handlePreviewImage(Agentid)" />

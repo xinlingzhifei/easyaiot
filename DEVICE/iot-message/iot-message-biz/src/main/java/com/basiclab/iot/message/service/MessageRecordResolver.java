@@ -141,6 +141,10 @@ public class MessageRecordResolver {
         target.setBtnTxt(template.getBtnTxt());
         target.setRadioType(template.getRadioType());
         target.setWebHook(template.getWebHook());
+        // 推送记录未单独指定用户组时，回退使用模板上的用户组
+        if (StringUtils.isBlank(target.getUserGroupId())) {
+            target.setUserGroupId(template.getUserGroupId());
+        }
     }
 
     private void mergeDingContent(TMsgDing target, TMsgDing template) {

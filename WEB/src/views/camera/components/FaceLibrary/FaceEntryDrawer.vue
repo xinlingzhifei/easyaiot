@@ -110,13 +110,17 @@
                     <EditOutlined />
                   </Button>
                 </a-tooltip>
-                <a-popconfirm title="确认删除该人脸？" @confirm="handleDelete(item.id)">
+                <PopConfirmButton
+                  type="text"
+                  size="small"
+                  danger
+                  title="确认删除该人脸？"
+                  @confirm="handleDelete(item.id)"
+                >
                   <a-tooltip title="删除">
-                    <Button type="text" size="small" danger>
-                      <DeleteOutlined />
-                    </Button>
+                    <DeleteOutlined />
                   </a-tooltip>
-                </a-popconfirm>
+                </PopConfirmButton>
               </div>
             </a-card>
           </a-col>
@@ -157,7 +161,7 @@ import {
 import { getEntryColumns } from './Data';
 import FaceEntryModal from './FaceEntryModal.vue';
 import FaceNormalizeModal from './FaceNormalizeModal.vue';
-import { Button } from '@/components/Button'
+import { Button, PopConfirmButton } from '@/components/Button'
 defineOptions({ name: 'FaceEntryDrawer' });
 
 const emit = defineEmits(['success', 'register']);
@@ -303,13 +307,9 @@ function handleEdit(record: FaceEntry) {
 
 async function handleDelete(entryId: number) {
   try {
-    const response = await deleteFaceEntry(entryId);
-    if (response.code === 0) {
-      createMessage.success('删除成功');
-      handleEntrySuccess();
-    } else {
-      createMessage.error(response.msg || '删除失败');
-    }
+    await deleteFaceEntry(entryId);
+    createMessage.success('删除成功');
+    handleEntrySuccess();
   } catch (e: any) {
     createMessage.error(e?.message || '删除失败');
   }

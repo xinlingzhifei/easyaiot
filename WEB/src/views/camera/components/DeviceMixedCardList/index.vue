@@ -118,20 +118,12 @@
                 </div>
                 <div class="btns">
                   <div
-                    v-if="hasDirectPlayStream(item.device)"
+                    v-if="hasPlayableStream(item.device)"
                     class="btn"
-                    title="播放视频流"
+                    :title="playButtonTitle"
                     @click="handlePlay(item.device)"
                   >
                     <Icon icon="octicon:play-16" :size="15" color="#3B82F6" />
-                  </div>
-                  <div
-                    v-if="hasDirectPlayStream(item.device, true)"
-                    class="btn"
-                    title="查看AI流"
-                    @click="handlePlayAI(item.device)"
-                  >
-                    <Icon icon="hugeicons:ai-video" :size="15" color="#3B82F6" />
                   </div>
                   <div class="btn" title="详情" @click="handleView(item.device)">
                     <Icon icon="ant-design:eye-filled" :size="15" color="#3B82F6" />
@@ -195,7 +187,7 @@ import {
   hasCopyableDeviceModel,
   hasCopyableManufacturer,
 } from '@/views/camera/utils/deviceLabel';
-import { hasDirectPlayStream } from '@/views/camera/utils/devicePlay';
+import { hasPlayableStream } from '@/views/camera/utils/devicePlay';
 import { canSetDeviceLocation } from '@/views/camera/utils/deviceLocation';
 import { queryAllVideoList } from '@/api/device/gb28181';
 import {
@@ -213,6 +205,7 @@ const ListItem = List.Item;
 
 const props = defineProps({
   params: propTypes.object.def({}),
+  playButtonTitle: propTypes.string.def('播放视频流'),
 });
 
 const emit = defineEmits([
@@ -222,7 +215,6 @@ const emit = defineEmits([
   'view',
   'setLocation',
   'play',
-  'playAI',
   'openGbDevice',
   'refreshGbDevice',
   'viewGbDevice',
@@ -471,9 +463,6 @@ function handleDelete(record: DeviceInfo) {
 }
 function handlePlay(record: DeviceInfo) {
   emit('play', record);
-}
-function handlePlayAI(record: DeviceInfo) {
-  emit('playAI', record);
 }
 async function handleCopy(text: string) {
   if (!text || text === '-') return;

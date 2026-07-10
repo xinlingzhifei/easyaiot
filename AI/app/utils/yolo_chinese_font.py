@@ -154,19 +154,14 @@ def draw_utf8_label_on_bgr(
     h, w = img.shape[:2]
     tw, th = _pil_text_size(font, text)
     lx, ly = int(org_xy[0]), int(org_xy[1])
-    pad = 2
-    x1, y1 = lx - pad, ly - pad
-    x2, y2 = lx + tw + pad, ly + th + pad
-    x1c, y1c = max(0, x1), max(0, y1)
-    x2c, y2c = min(w, x2), min(h, y2)
-    if x2c <= x1c or y2c <= y1c:
-        return False
+    # 整图画字，避免 ROI 裁切导致文字/置信度显示不全
+    if lx + tw > w or ly + th > h or lx < 0 or ly < 0:
+        lx = max(0, min(lx, w - tw - 1))
+        ly = max(0, min(ly, h - th - 1))
 
-    roi = img[y1c:y2c, x1c:x2c]
-    roi_rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
-    pil_im = Image.fromarray(roi_rgb)
+    canvas_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil_im = Image.fromarray(canvas_rgb)
     draw = ImageDraw.Draw(pil_im)
-    tx, ty = lx - x1c, ly - y1c
-    draw.text((tx, ty), text, font=font, fill=text_color_rgb)
-    img[y1c:y2c, x1c:x2c] = cv2.cvtColor(np.asarray(pil_im), cv2.COLOR_RGB2BGR)
+    draw.text((lx, ly), text, font=font, fill=text_color_rgb)
+    img[:] = cv2.cvtColor(np.asarray(pil_im), cv2.COLOR_RGB2BGR)
     return True

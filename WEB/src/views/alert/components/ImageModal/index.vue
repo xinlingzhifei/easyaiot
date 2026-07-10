@@ -3,26 +3,31 @@
     v-bind="$attrs"
     @register="register"
     title="告警图片"
-    :width="1000"
-    :showOkBtn="false"
-    :showCancelBtn="false"
+    :footer="null"
     :maskClosable="true"
+    @cancel="handleCancel"
   >
-    <div class="image-viewer-container">
-      <Spin :spinning="loading" tip="加载中...">
-        <div v-if="imageUrl" class="image-wrapper">
+    <div class="monitor-dialog monitor-dialog--vod">
+      <div class="monitor-dialog__vod-viewer">
+        <div class="monitor-dialog__video-body">
+          <div v-if="loading" class="monitor-dialog__loading">
+            <Spin size="large" />
+            <span>加载中...</span>
+          </div>
           <img
+            v-else-if="imageUrl"
             :src="imageUrl"
             alt="告警图片"
-            style="max-width: 100%; max-height: 70vh; display: block; margin: 0 auto"
+            class="monitor-dialog__alert-image"
             @error="handleImageError"
             @load="handleImageLoad"
           />
+          <div v-else class="monitor-dialog__loading">
+            <Icon icon="ant-design:picture-outlined" :size="48" />
+            <span>图片加载失败</span>
+          </div>
         </div>
-        <div v-else-if="!loading" class="no-image">
-          <a-empty description="图片加载失败" />
-        </div>
-      </Spin>
+      </div>
     </div>
   </BasicModal>
 </template>
@@ -30,7 +35,8 @@
 <script lang="ts" setup>
 import { ref } from 'vue';
 import { BasicModal, useModalInner } from '@/components/Modal';
-import { Spin, Empty as AEmpty } from 'ant-design-vue';
+import { Spin } from 'ant-design-vue';
+import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage';
 
@@ -38,10 +44,23 @@ const { createMessage } = useMessage();
 const loading = ref(false);
 const imageUrl = ref<string>('');
 
+function applyModalLayout() {
+  setModalProps({
+    defaultFullscreen: false,
+    canFullscreen: false,
+    width: 1000,
+    title: '告警图片',
+    minHeight: 0,
+    bodyStyle: { padding: 0 },
+    wrapClassName: 'monitor-dialog-wrap monitor-dialog-wrap--vod',
+  });
+}
+
 const [register, { setModalProps, closeModal }] = useModalInner(async (data) => {
+  applyModalLayout();
   loading.value = true;
   imageUrl.value = '';
-  
+
   try {
     const url = resolveAlertImageDisplayUrl(data?.image_url);
 
@@ -69,26 +88,28 @@ const handleImageError = (event: Event) => {
 const handleImageLoad = () => {
   // 图片加载成功
 };
+
+function handleCancel() {
+  imageUrl.value = '';
+  loading.value = false;
+  closeModal();
+}
 </script>
 
-<style lang="less" scoped>
-.image-viewer-container {
-  padding: 20px;
-  text-align: center;
-  
-  .image-wrapper {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
-  }
-  
-  .no-image {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
+<style lang="less">
+.monitor-dialog-wrap--vod {
+  .monitor-dialog__video-body {
+    .monitor-dialog__alert-image {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      margin: 0;
+      padding: 0;
+      background: #000;
+    }
   }
 }
 </style>
-

@@ -125,7 +125,7 @@ prepare_cached_resources() {
     if ! is_image_available_offline "$ARM_BASE_IMAGE" "$base_tar"; then
         need_prefetch=1
     fi
-    if ! find "$arm_wheels" -maxdepth 1 -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.zip" \) | grep -q .; then
+    if ! arm_pip_wheels_ready_for "$EASYAIOT_ROOT" video; then
         need_prefetch=1
     fi
 
@@ -136,6 +136,7 @@ prepare_cached_resources() {
             if ! find "$arm_wheels" -maxdepth 1 -type f -name "torch-*-${py_tag}-*.whl" | grep -q .; then
                 print_warning "检测到离线 pip 包 ABI 不匹配（目标: ${py_tag}），将自动清理并重新下载..."
                 rm -f "$arm_wheels"/*
+                rm -f "$(arm_pip_wheels_stamp_file_for "$EASYAIOT_ROOT" video)"
                 need_prefetch=1
             fi
         fi
@@ -158,10 +159,12 @@ prepare_cached_resources() {
     print_info "检查并导入本地离线镜像（如存在）..."
     try_import_cached_image "$ARM_BASE_IMAGE" "$base_tar" || true
 
-    if find "$arm_wheels" -maxdepth 1 -type f 2>/dev/null | grep -q .; then
-        print_success "检测到 pip-wheels: $arm_wheels"
+    prepare_arm_ffmpeg_for_build || true
+
+    if arm_pip_wheels_ready_for "$EASYAIOT_ROOT" video; then
+        print_success "检测到完整 pip-wheels: $arm_wheels"
     else
-        print_info "未检测到 pip-wheels，构建时将使用 pip-cache 在线安装"
+        print_info "ARM pip-wheels 缺失或不完整，构建时将使用 pip-cache 在线安装"
     fi
 }
 
@@ -189,6 +192,7 @@ build_with_cache() {
     init_build_cache_dirs
     enable_docker_buildkit
     optimize_dockerfile_pip_cache Dockerfile.arm
+    prepare_cached_resources
 
     # ★ 确保 ARM 基础镜像在构建前已拉取（尤其是交叉构建场景）
     # --pull=false 仅在镜像已存在时有效，交叉构建时必须先拉取
@@ -206,8 +210,8 @@ build_with_cache() {
     fi
 
     cache_opts="--build-arg OFFLINE_MODE=${OFFLINE_MODE:-0}"
-    cache_opts="$cache_opts --build-arg YUM_MIRROR_URL=${YUM_MIRROR_URL:-https://mirrors.cloud.tencent.com}"
-    cache_opts="$cache_opts --build-arg PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}"
+    cache_opts="$cache_opts --build-arg YUM_MIRROR_URL=${YUM_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
+    cache_opts="$cache_opts --build-arg PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
     print_info "docker build（ARM，Dockerfile.arm，.build-cache bind mount）..."
     while [ $attempt -le $max_retries ]; do
         print_info "执行构建（第 ${attempt}/${max_retries} 次）..."
@@ -339,29 +343,19 @@ detect_architecture() {
     export ARM_BASE_IMAGE
 }
 
-# 检查本地是否有 ffmpeg 文件
-check_local_ffmpeg() {
-    local ffmpeg_file="ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
-    
-    if [ -f "$ffmpeg_file" ]; then
-        local file_size=$(stat -f%z "$ffmpeg_file" 2>/dev/null || stat -c%s "$ffmpeg_file" 2>/dev/null || echo 0)
-        if [ "$file_size" -gt 1048576 ]; then  # 大于 1MB
-            print_success "发现本地 ffmpeg 文件: $ffmpeg_file (大小: $(numfmt --to=iec-i --suffix=B $file_size 2>/dev/null || echo ${file_size} bytes))"
-            print_info "将优先使用本地文件，不从 GitHub 下载"
-            return 0
-        else
-            # ★ 占位符文件需要保留，否则 Dockerfile.arm 中的 COPY ...* 通配符无法匹配
-            # Dockerfile.arm 内会检查文件大小并跳过使用
-            print_info "本地 ffmpeg 文件为占位符（${file_size} bytes），构建时将从 GitHub 下载"
-            return 1
-        fi
-    else
-        print_info "未找到本地 ffmpeg 文件: $ffmpeg_file"
-        print_info "构建时将从 GitHub 下载"
-        # ★ 创建占位符文件，确保 Dockerfile.arm 中的 COPY ffmpeg-*.tar.xz* 通配符能匹配
-        touch "$ffmpeg_file" 2>/dev/null || true
-        return 1
+# 将 .build-cache/arm/video/ffmpeg 链入构建上下文（供 Dockerfile.arm COPY）
+prepare_arm_ffmpeg_for_build() {
+    if stage_arm_ffmpeg_into_build_context "$EASYAIOT_ROOT" "$SCRIPT_DIR"; then
+        print_success "ARM ffmpeg 离线包已就绪（.build-cache/arm/video/ffmpeg）"
+        return 0
     fi
+    print_warning "ARM ffmpeg 离线包未缓存，构建时 Dockerfile 将尝试在线下载"
+    return 1
+}
+
+# 兼容旧调用名
+check_local_ffmpeg() {
+    prepare_arm_ffmpeg_for_build
 }
 
 # 确保 ARM 架构 Dockerfile（Dockerfile.arm）存在，不覆写 x86 Dockerfile
@@ -383,7 +377,7 @@ configure_arm_dockerfile() {
         print_success "已创建 ARM 版本的 Dockerfile.arm"
     fi
     
-    # 检查本地是否有 ffmpeg 文件（找不到不影响构建，Dockerfile 内会从 GitHub 下载）
+    # 检查本地是否有 ffmpeg 文件（优先 .build-cache/arm/video/ffmpeg）
     check_local_ffmpeg || true
 
     optimize_dockerfile_pip_cache Dockerfile.arm
@@ -769,6 +763,11 @@ build_image() {
     check_docker_compose
     detect_architecture
     configure_arm_dockerfile
+
+    if [ "${FORCE_REBUILD:-0}" != "1" ] && docker image inspect video-service:latest >/dev/null 2>&1; then
+        print_success "video-service:latest 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        return 0
+    fi
     
     # 检查本地 ffmpeg 文件（找不到不影响构建，Dockerfile 内会从 GitHub 下载）
     check_local_ffmpeg || true
@@ -777,8 +776,10 @@ build_image() {
     print_warning "重新构建可能需要较长时间（20-40分钟），请耐心等待..."
     print_info "构建进度将实时显示，请勿中断..."
     echo ""
-    
-    if ! build_with_cache "--no-cache"; then
+
+    local cache_flag=""
+    [ "${FORCE_REBUILD:-0}" = "1" ] && cache_flag="--no-cache"
+    if ! build_with_cache "$cache_flag"; then
         exit 1
     fi
     echo ""

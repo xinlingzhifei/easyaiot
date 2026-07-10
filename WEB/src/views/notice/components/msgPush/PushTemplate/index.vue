@@ -2,7 +2,7 @@
   <div>
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <Button type="primary" @click="openConfigModal(true, { type: 'add', pushType })"
+        <Button type="primary" preIcon="ant-design:send-outlined" @click="openConfigModal(true, { type: 'add', pushType })"
           >新增推送</Button
         >
       </template>

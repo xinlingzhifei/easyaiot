@@ -1,9 +1,8 @@
-import { Button } from '@/components/Button'
 <template>
   <div class="group-warpper">
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <Button type="primary" @click="openUserModal(true, { type: 'add' })">新增分组</Button>
+        <Button type="primary" preIcon="ant-design:folder-add-outlined" @click="openUserModal(true, { type: 'add' })">新增分组</Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">
@@ -39,6 +38,7 @@ import { Button } from '@/components/Button'
 </template>
 <script lang="ts" setup name="planTask">
   import {} from 'vue';
+  import { Button } from '@/components/Button';
   import { BasicTable, useTable, TableAction } from '/@/components/Table';
   import { getColumns, getFormConfig } from './Data.tsx';
   import { useMessage } from '/@/hooks/web/useMessage';

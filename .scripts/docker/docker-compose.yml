@@ -343,7 +343,7 @@ services:
     volumes:
       - "./srs_data/conf:/usr/local/srs/conf:rw"
       - "./srs_data/conf:/opt/srs/trunk/conf:rw"
-      # 宿主机数据目录映射为容器内录像与日志目录
+      # 宿主机数据目录映射为容器内录像与日志目录（统一 ~/easyaiot/data）
       - "~/easyaiot/data:/data:rw"
       - "./srs-entrypoint.sh:/usr/local/bin/srs-entrypoint.sh:ro"
       - "./srs-healthcheck.sh:/usr/local/bin/srs-healthcheck.sh:ro"

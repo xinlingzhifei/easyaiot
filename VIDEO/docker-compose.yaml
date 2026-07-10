@@ -39,14 +39,9 @@ services:
       # 宿主机不存在时 Docker 会把 ./face_rec.onnx 建成目录，导致 WEB 下载后 os.replace 报 Errno 21
       # 告警图片目录（与iot-sink服务共享，用于大模型实时分析等服务的图片上传）
       - ./alert_images:/app/alert_images
-      # SRS录像目录（与SRS服务共享，用于访问SRS生成的录像文件）
-      # 重要说明：
-      # 1. 与 .scripts/docker/docker-compose.yml 中 SRS 一致：宿主机 /data -> 容器 /data
-      # 2. SRS录像实际存储在 /data/playbacks 目录下（由SRS配置的 dvr_path 决定）
-      # 3. 这里挂载相同宿主机目录到容器的 /data，确保 VIDEO 服务可访问 SRS 生成的录像
-      # 4. 在容器内，SRS录像文件位于 /data/playbacks/live/{device_id}/YYYY/MM/DD/*.flv
-      # 5. 应用数据目录在 /app/data，SRS录像目录在 /data，两者是不同的挂载点
-      - /data:/data:rw
+      # SRS录像目录（与 middleware compose 中 SRS 一致：宿主机 ~/easyaiot/data -> 容器 /data）
+      # 容器内路径仍为 /data/playbacks/{live,ai}/...（由 SRS dvr_path 决定）
+      - ~/easyaiot/data:/data:rw
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
       - ./.env.docker:/app/.env:ro
 

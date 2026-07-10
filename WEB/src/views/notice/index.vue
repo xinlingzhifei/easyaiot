@@ -10,7 +10,7 @@
         <TabPane key="1" tab="消息配置">
           <BasicTable @register="registerTable" v-if="state.isTableMode">
             <template #toolbar>
-              <Button type="primary" @click="openConfigModal(true, { type: 'add' })">新增设置
+              <Button type="primary" preIcon="ant-design:plus-outlined" @click="openConfigModal(true, { type: 'add' })">新增设置
               </Button>
               <Button type="default" @click="handleClickSwap"
                         preIcon="ant-design:swap-outlined">切换视图
@@ -57,7 +57,7 @@
             <NoficeCardList :params="params" :api="messageConfigQuery" @get-method="getMethod"
                             @delete="handleDel" @edit="handleEdit" @view="handleView">
               <template #header>
-                <Button type="primary" @click="openConfigModal(true, { type: 'add' })">新增设置
+                <Button type="primary" preIcon="ant-design:plus-outlined" @click="openConfigModal(true, { type: 'add' })">新增设置
                 </Button>
                 <Button type="default" @click="handleClickSwap"
                           preIcon="ant-design:swap-outlined">切换视图

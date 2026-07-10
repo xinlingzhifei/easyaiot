@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
@@ -68,6 +69,18 @@ public class PreviewUserController extends BaseController {
     @ApiOperation("导入excel")
     public void exportExcel(HttpServletResponse response) throws IOException {
         List<TPreviewUserExcelVo> tPreviewUsers = new ArrayList<>();
+        TPreviewUserExcelVo wxExample = new TPreviewUserExcelVo();
+        wxExample.setMsgType("企业微信");
+        wxExample.setPreviewUser("（示例）zhangsan");
+        tPreviewUsers.add(wxExample);
+        TPreviewUserExcelVo emailExample = new TPreviewUserExcelVo();
+        emailExample.setMsgType("邮件");
+        emailExample.setPreviewUser("（示例）alert@company.com");
+        tPreviewUsers.add(emailExample);
+        TPreviewUserExcelVo smsExample = new TPreviewUserExcelVo();
+        smsExample.setMsgType("阿里云短信");
+        smsExample.setPreviewUser("（示例）13900001234");
+        tPreviewUsers.add(smsExample);
         ExcelUtils.write(response,"目标用户导入模板","数据", TPreviewUserExcelVo.class,tPreviewUsers);
     }
 
@@ -79,6 +92,10 @@ public class PreviewUserController extends BaseController {
         List<TPreviewUser> tPreviewUserList = dataHandler.dataHandler(tPreviewUsers,errorList);
         if(CollectionUtils.isNotEmpty(errorList)){
             return AjaxResult.error(500, JSONObject.toJSONString(errorList));
+        }
+        if(CollectionUtils.isEmpty(tPreviewUserList)){
+            return AjaxResult.error(500, JSONObject.toJSONString(Collections.singletonList(
+                    "未检测到有效数据，请按模板填写用户信息（以「（示例）」开头的行会自动忽略）")));
         }
         for (TPreviewUser tPreviewUser : CollectionUtils.emptyIfNull(tPreviewUserList)){
             tPreviewUserService.add(tPreviewUser);

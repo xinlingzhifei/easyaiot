@@ -61,9 +61,19 @@ export const messageConfigDelete = (params) => {
   return commonApi('get', Api.message_config_delete, { params });
 };
 
-// 查询
-export const messageConfigQuery = (data) => {
-  return commonApi('get', Api.message_config_query, { data });
+// 查询（GET 须走 params，否则 msgType 等筛选条件不会拼到 URL）
+export const messageConfigQuery = (params = {}) => {
+  const clean = { ...params };
+  Object.keys(clean).forEach((key) => {
+    const value = clean[key];
+    if (value === undefined || value === null || value === '') {
+      delete clean[key];
+    }
+  });
+  if ('msgType' in clean && !Number.isFinite(Number(clean.msgType))) {
+    delete clean.msgType;
+  }
+  return commonApi('get', Api.message_config_query, { params: clean });
 };
 
 // 根据邮件调试

@@ -30,6 +30,11 @@ _query_cache = {}
 _cache_lock = Lock()
 _cache_ttl = 5  # 缓存有效期5秒
 
+# 仪表板统计缓存（大屏多组件轮询）
+_stats_cache = {'data': None, 'ts': 0.0}
+_stats_cache_lock = Lock()
+_stats_cache_ttl = 5
+
 
 def _parse_alert_time_str(alert_time_str: str):
     return parse_alert_time_str(alert_time_str)
@@ -107,7 +112,17 @@ def get_alert_count_route():
 def get_dashboard_statistics_route():
     """获取仪表板统计信息（统一接口）"""
     try:
+        current_time = time.time()
+        with _stats_cache_lock:
+            cached = _stats_cache.get('data')
+            cached_ts = _stats_cache.get('ts') or 0.0
+            if cached is not None and current_time - cached_ts < _stats_cache_ttl:
+                return api_response(data=cached)
+
         result = get_dashboard_statistics()
+        with _stats_cache_lock:
+            _stats_cache['data'] = result
+            _stats_cache['ts'] = current_time
         return api_response(data=result)
     except Exception as e:
         logger.error(f'获取仪表板统计信息失败: {str(e)}')

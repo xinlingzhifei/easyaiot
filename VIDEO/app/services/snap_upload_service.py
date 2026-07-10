@@ -12,7 +12,7 @@ from app.services.media_dvr_utils import resolve_playback_absolute_path
 from app.services.media_kafka_service import publish_snap_dlq
 from app.services.playback_disk_guard_service import get_snap_staging_dir, remove_playback_file
 from app.utils.minio_bucket_policy import ensure_bucket_public_read_write_policy
-from app.utils.service_urls import minio_storage_enabled
+from app.utils.service_urls import minio_storage_enabled, now_shanghai_naive
 from models import SnapSpace, db
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,6 @@ def process_snap_event(event: Dict[str, Any]) -> bool:
         file_url = absolute_path
         try:
             from app.services.space_file_metadata_service import upsert_snap_image
-            captured_at = datetime.utcnow()
             upsert_snap_image(
                 space_id=snap_space.id,
                 device_id=device_id,
@@ -99,7 +98,7 @@ def process_snap_event(event: Dict[str, Any]) -> bool:
                 bucket_name=bucket_name,
                 file_size=file_size,
                 url=file_url,
-                captured_at=captured_at,
+                captured_at=now_shanghai_naive(),
                 task_id=event.get('task_id'),
                 source=event.get('source') or 'algorithm',
             )
@@ -128,7 +127,6 @@ def process_snap_event(event: Dict[str, Any]) -> bool:
     file_url = f'/api/v1/buckets/{bucket_name}/objects/download?prefix={quote(object_name, safe="")}'
     try:
         from app.services.space_file_metadata_service import upsert_snap_image
-        captured_at = datetime.utcnow()
         upsert_snap_image(
             space_id=snap_space.id,
             device_id=device_id,
@@ -136,7 +134,7 @@ def process_snap_event(event: Dict[str, Any]) -> bool:
             bucket_name=bucket_name,
             file_size=file_size,
             url=file_url,
-            captured_at=captured_at,
+            captured_at=now_shanghai_naive(),
             task_id=event.get('task_id'),
             source=event.get('source') or 'algorithm',
         )

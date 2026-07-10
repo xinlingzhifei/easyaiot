@@ -97,7 +97,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { Empty, Input, Spin, Table, Tag } from 'ant-design-vue';
 import { BasicForm, useForm } from '@/components/Form';
 import { Button } from '@/components/Button';
@@ -225,22 +225,27 @@ const [registerForm, { validate, getFieldsValue, setFieldsValue, updateSchema }]
 
 watch(
   () => props.mode,
-  (m) => {
+  async (m) => {
     state.mode = m || 'camera';
     state.devices = [];
     resetCredentials();
     resetRegisterStatus();
-    updateSchema([
-      {
-        field: '_credentials',
-        label: state.mode === 'nvr' ? 'Web 登录凭证' : '登录凭证',
-        required: state.mode === 'nvr',
-        helpMessage:
-          state.mode === 'nvr'
-            ? '登记 NVR 及枚举通道须填写正确密码；按列表顺序依次尝试'
-            : undefined,
-      },
-    ]);
+    await nextTick();
+    try {
+      await updateSchema([
+        {
+          field: '_credentials',
+          label: state.mode === 'nvr' ? 'Web 登录凭证' : '登录凭证',
+          required: state.mode === 'nvr',
+          helpMessage:
+            state.mode === 'nvr'
+              ? '登记 NVR 及枚举通道须填写正确密码；按列表顺序依次尝试'
+              : undefined,
+        },
+      ]);
+    } catch {
+      /* 表单尚未挂载（immediate 首次触发） */
+    }
   },
   { immediate: true },
 );

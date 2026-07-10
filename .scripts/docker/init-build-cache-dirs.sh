@@ -210,6 +210,7 @@ init_yfeieye_build_cache_dirs() {
         pip_wheels_build_context_dir_for "$root" "$module" >/dev/null
         arm_pip_wheels_build_context_dir_for "$root" "$module" >/dev/null
     done
+    arm_ffmpeg_cache_dir_for "$root" >/dev/null
 
     maven_repository_dir_for "$root" >/dev/null
     pnpm_store_dir_for "$root" web >/dev/null
@@ -219,6 +220,7 @@ init_yfeieye_build_cache_dirs() {
 
     migrate_legacy_python_cache_if_needed "$root"
     migrate_legacy_device_web_cache_if_needed "$root"
+    migrate_legacy_arm_ffmpeg_cache_if_needed "$root"
 
     yfeieye_chown_build_cache "${base}"
 }
@@ -258,10 +260,182 @@ ensure_dockerfile_frontend() {
     fi
 }
 
+ARM_FFMPEG_TAR_NAME="ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+ARM_FFMPEG_MIN_BYTES=1048576
+
+arm_ffmpeg_cache_dir_for() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local dir
+    dir="$(easyaiot_build_cache_base "$root")/arm/video/ffmpeg"
+    mkdir -p "$dir"
+    echo "$dir"
+}
+
+arm_ffmpeg_tar_path_for() {
+    echo "$(arm_ffmpeg_cache_dir_for "$1")/${ARM_FFMPEG_TAR_NAME}"
+}
+
+arm_ffmpeg_file_size() {
+    local path="$1"
+    stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo 0
+}
+
+arm_ffmpeg_ready_for() {
+    local path size
+    path="$(arm_ffmpeg_tar_path_for "$1")"
+    [ -f "$path" ] || return 1
+    size="$(arm_ffmpeg_file_size "$path")"
+    [ "$size" -gt "$ARM_FFMPEG_MIN_BYTES" ]
+}
+
+migrate_legacy_arm_ffmpeg_cache_if_needed() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local target legacy_dir legacy_staging size
+
+    target="$(arm_ffmpeg_tar_path_for "$root")"
+    if arm_ffmpeg_ready_for "$root"; then
+        return 0
+    fi
+
+    legacy_dir="${root}/VIDEO/.bundle-ffmpeg/arm64/${ARM_FFMPEG_TAR_NAME}"
+    legacy_staging="${root}/VIDEO/${ARM_FFMPEG_TAR_NAME}"
+
+    for legacy_dir in \
+        "${root}/VIDEO/.bundle-ffmpeg/arm64/${ARM_FFMPEG_TAR_NAME}" \
+        "${root}/VIDEO/${ARM_FFMPEG_TAR_NAME}"; do
+        if [ -f "$legacy_dir" ]; then
+            size="$(arm_ffmpeg_file_size "$legacy_dir")"
+            if [ "$size" -gt "$ARM_FFMPEG_MIN_BYTES" ]; then
+                mkdir -p "$(dirname "$target")"
+                cp -f "$legacy_dir" "$target" 2>/dev/null || true
+                arm_ffmpeg_ready_for "$root" && return 0
+            fi
+        fi
+    done
+}
+
+ensure_arm_ffmpeg_cached() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local cache_dir export_script
+
+    init_easyaiot_build_cache_dirs "$root"
+    migrate_legacy_arm_ffmpeg_cache_if_needed "$root"
+
+    if arm_ffmpeg_ready_for "$root"; then
+        echo "[build-cache] ARM ffmpeg 已就绪: $(arm_ffmpeg_tar_path_for "$root")"
+        return 0
+    fi
+
+    export_script="${root}/VIDEO/export_ffmpeg_static.sh"
+    if [ ! -f "$export_script" ]; then
+        echo "[build-cache] 未找到 export_ffmpeg_static.sh，跳过 ARM ffmpeg 预下载" >&2
+        return 1
+    fi
+
+    cache_dir="$(arm_ffmpeg_cache_dir_for "$root")"
+    echo "[build-cache] ARM ffmpeg 缺失，下载到 ${cache_dir} ..."
+    FFMPEG_CACHE_DIR="$cache_dir" FFMPEG_ARCH=arm64 /bin/bash "$export_script" || return 1
+    easyaiot_chown_build_cache "$(easyaiot_build_cache_base "$root")"
+}
+
+# 将 .build-cache 中的 ffmpeg 包链入 VIDEO 构建上下文（供 Dockerfile.arm COPY）
+stage_arm_ffmpeg_into_build_context() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local video_dir="${2:-${root}/VIDEO}"
+    local staging cache_tar staging_size
+
+    staging="${video_dir}/${ARM_FFMPEG_TAR_NAME}"
+    cache_tar="$(arm_ffmpeg_tar_path_for "$root")"
+
+    ensure_arm_ffmpeg_cached "$root" || true
+
+    if ! arm_ffmpeg_ready_for "$root"; then
+        touch "$staging" 2>/dev/null || true
+        return 1
+    fi
+
+    staging_size="$(arm_ffmpeg_file_size "$staging")"
+    if [ -f "$staging" ] && [ "$staging_size" -gt "$ARM_FFMPEG_MIN_BYTES" ]; then
+        if cmp -s "$cache_tar" "$staging" 2>/dev/null; then
+            echo "[build-cache] ffmpeg 构建上下文已就绪: ${staging}"
+            return 0
+        fi
+    fi
+
+    rm -f "$staging" 2>/dev/null || true
+    if ln "$cache_tar" "$staging" 2>/dev/null || cp -f "$cache_tar" "$staging"; then
+        echo "[build-cache] ffmpeg 已链入构建上下文: ${staging}（缓存: ${cache_tar}）"
+        return 0
+    fi
+    return 1
+}
+
 arm_docker_images_dir() {
     local root="${1:-${YFEIEYE_ROOT:-.}}"
     local dir
     dir="$(yfeieye_build_cache_base "$root")/arm/docker-images"
     mkdir -p "$dir"
     echo "$dir"
+}
+
+arm_pip_wheels_stamp_file_for() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local module="$2"
+    local wheels
+    wheels="$(arm_pip_wheels_build_context_dir_for "$root" "$module")" || return 1
+    echo "${wheels}/.requirements-flat-lines"
+}
+
+# ARM pip-wheels 是否已有完整离线包（供 build-runtime / install 脚本复用）
+arm_pip_wheels_ready_for() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local module="$2"
+    local wheels stamp stamped_lines min_lines=8
+    wheels="$(arm_pip_wheels_build_context_dir_for "$root" "$module")" || return 1
+    stamp="$(arm_pip_wheels_stamp_file_for "$root" "$module")" || return 1
+
+    if ! find "$wheels" -maxdepth 1 -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.zip" \) 2>/dev/null | grep -q .; then
+        return 1
+    fi
+    if [ ! -f "$stamp" ]; then
+        return 1
+    fi
+    stamped_lines=$(tr -d '[:space:]' < "$stamp" 2>/dev/null || echo 0)
+    if [ "${stamped_lines:-0}" -lt "$min_lines" ]; then
+        return 1
+    fi
+    return 0
+}
+
+# build-runtime 跨架构构建前：缺失则预下载 .build-cache/arm/{ai,video}/pip-wheels
+ensure_arm_python_wheels_cached() {
+    local root="${1:-${EASYAIOT_ROOT:-.}}"
+    local module cache_script base
+    base="$(easyaiot_build_cache_base "$root")"
+
+    init_easyaiot_build_cache_dirs "$root"
+
+    for module in "${EASYAIOT_PYTHON_CACHE_MODULES[@]}"; do
+        if arm_pip_wheels_ready_for "$root" "$module"; then
+            echo "[build-cache] [${module}] ARM pip-wheels 已就绪: $(arm_pip_wheels_build_context_dir_for "$root" "$module")"
+            continue
+        fi
+        case "$module" in
+            ai) cache_script="${root}/AI/cache_resources_arm.sh" ;;
+            video) cache_script="${root}/VIDEO/cache_resources_arm.sh" ;;
+            *) continue ;;
+        esac
+        if [ "${AUTO_CACHE_PIP:-1}" != "1" ] || [ ! -f "$cache_script" ]; then
+            echo "[build-cache] [${module}] ARM pip-wheels 缺失且 AUTO_CACHE_PIP=0，跳过预下载" >&2
+            continue
+        fi
+        echo "[build-cache] [${module}] ARM pip-wheels 缺失，预下载到 $(arm_pip_wheels_build_context_dir_for "$root" "$module") ..."
+        if [ -x "$cache_script" ]; then
+            "$cache_script" || /bin/bash "$cache_script" || true
+        else
+            /bin/bash "$cache_script" || true
+        fi
+    done
+
+    easyaiot_chown_build_cache "$base"
 }

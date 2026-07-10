@@ -4,7 +4,8 @@
 # yFeiEye 统一安装脚本
 # ============================================
 # 使用方法：
-#   ./install_linux.sh [命令]
+#   ./install_linux.sh              # 无参数：打开两层交互引导（部署 / 分析）
+#   ./install_linux.sh [命令]       # 直接执行命令（适合脚本/automation）
 #
 # 可用命令：
 #   install    - 安装并启动所有服务（首次运行，交互选择部署形态）
@@ -14,13 +15,17 @@
 #   status     - 查看所有服务状态
 #   logs       - 查看服务日志
 #   build           - 重新构建所有镜像（各模块本地构建）
-#   build-runtime   - 构建/推送运行时镜像到远程仓库
+#   build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）
 #   pull            - 从远程仓库拉取预构建运行时镜像（等同 runtime_image.sh pull）
 #   clean      - 清理所有容器和镜像
-#   update     - 更新并重启所有服务
+#   update     - 更新镜像并重启所有服务（交互可选拉取/本地重建）
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
 #   profile    - 显示当前部署形态与服务范围
+#   menu       - 打开两层交互引导（同无参数）
+#   diagnose       - 问题分析定位（进入【分析】子菜单）
+#   analyze-logs   - 多模块日志合并分析（各模块约 500 行，带分割线）
+#   analyze-disk   - 项目关键目录磁盘占用分析
 #
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
 #   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra）
@@ -40,6 +45,7 @@ NC='\033[0m' # No Color
 # 脚本所在目录（必须在 cd 之前计算：相对路径调用时，cd 后 dirname 会解析错位，
 # 曾导致日志目录落到项目根 /logs 而非 .scripts/docker/logs）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EASYAIOT_INSTALL_LABEL="${EASYAIOT_INSTALL_LABEL:-yFeiEye 统一安装脚本 (AMD64/x86_64)}"
 
 # 项目根目录（从.scripts/docker回到项目根目录）
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -50,6 +56,9 @@ source "${SCRIPT_DIR}/deploy_profile.sh"
 
 # shellcheck source=runtime_image_common.sh
 source "${SCRIPT_DIR}/runtime_image_common.sh"
+
+# shellcheck source=diagnose_tools.sh
+source "${SCRIPT_DIR}/diagnose_tools.sh"
 
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
@@ -266,16 +275,44 @@ _detect_docker_rootless() {
     docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q "rootless"
 }
 
+# 容器创建实测用的探测镜像（按优先级）。
+# 注：registry-mirrors 代理拉取时，错误/日志里仍会显示 docker.io/library/...，属 Docker 正常行为，不代表未走镜像源。
+_DOCKER_PROBE_IMAGES=(
+    "alpine:latest"
+    "docker.m.daocloud.io/library/alpine:latest"
+)
+
+# 确保探测镜像在本地可用；本地已有则跳过拉取。
+_ensure_docker_probe_image() {
+    local _img="$1"
+    docker image inspect "$_img" >/dev/null 2>&1 && return 0
+    docker pull "$_img" >/dev/null 2>&1
+}
+
 # 用最简单的容器实测 Docker 是否当前能成功创建容器。
 # 成功返回 0，失败返回 1 并设置 _DOCKER_CREATE_FAIL_MSG。
 _verify_docker_create() {
-    local _test_output
-    _test_output=$(docker run --rm alpine:latest echo "docker_create_test" 2>&1) && return 0
-    _DOCKER_CREATE_FAIL_MSG="$_test_output"
+    local _img _test_output _pull_failed=0
+    for _img in "${_DOCKER_PROBE_IMAGES[@]}"; do
+        if ! _ensure_docker_probe_image "$_img"; then
+            _pull_failed=1
+            continue
+        fi
+        _test_output=$(docker run --rm "$_img" echo "docker_create_test" 2>&1) && return 0
+        _DOCKER_CREATE_FAIL_MSG="$_test_output"
 
-    # 尝试用 io.containerd.runc.v2 运行时（部分环境与 runc 行为不同）
-    _test_output=$(docker run --rm --runtime io.containerd.runc.v2 alpine:latest echo "docker_create_test" 2>&1) && return 0
-    _DOCKER_CREATE_FAIL_MSG="$_test_output"
+        # 尝试用 io.containerd.runc.v2 运行时（部分环境与 runc 行为不同）
+        _test_output=$(docker run --rm --runtime io.containerd.runc.v2 "$_img" echo "docker_create_test" 2>&1) && return 0
+        _DOCKER_CREATE_FAIL_MSG="$_test_output"
+    done
+
+    if [ "$_pull_failed" -eq 1 ]; then
+        _DOCKER_CREATE_FAIL_MSG="${_DOCKER_CREATE_FAIL_MSG:-探测镜像拉取失败}"
+        _DOCKER_CREATE_FAIL_MSG="${_DOCKER_CREATE_FAIL_MSG}
+
+提示：错误里出现 docker.io 是 Docker 的镜像引用写法；若已配置 registry-mirrors，实际请求可能经镜像站转发。
+请确认: docker info | grep -A5 'Registry Mirrors'；或手动拉取: docker pull docker.m.daocloud.io/library/alpine:latest"
+    fi
 
     return 1
 }
@@ -711,8 +748,8 @@ install_linux() {
 
     check_docker "$@"
     check_docker_compose
-    prepare_runtime_environment
     configure_docker_mirror
+    prepare_runtime_environment
     create_network
 
     # 若已拉取预构建镜像，业务模块跳过 docker build
@@ -1093,6 +1130,7 @@ start_all() {
     print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     prepare_runtime_environment
     create_network
     
@@ -1158,6 +1196,7 @@ restart_all() {
     print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     prepare_runtime_environment
     create_network
     
@@ -1265,9 +1304,10 @@ pull_runtime_images() {
     export EASYAIOT_SKIP_IMAGE_PROMPT=1
 }
 
-# 构建并可选推送运行时镜像到远程仓库（交互式）
+# 构建并可选推送运行时镜像到远程仓库（交互式；第二参数可指定单模块）
 build_runtime_images() {
     check_docker "$@"
+    runtime_apply_build_module_arg "${2:-}" || exit 1
     runtime_images_prepare_build_interactive
     runtime_images_export_for_invoke
     runtime_images_invoke build || exit 1
@@ -1310,8 +1350,17 @@ update_all() {
     print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux.sh"
+    runtime_images_acquire_for_update
     prepare_runtime_environment
     create_network
+
+    if runtime_images_should_skip_build; then
+        print_info "镜像已从远程拉取，业务模块将跳过 docker build"
+    else
+        print_info "将进行本地重建更新（各模块 docker build，耗时较长）"
+    fi
     
     # 基础服务先更新并等就绪，业务模块随后
     if execute_module_command ".scripts/docker" "update"; then
@@ -1466,7 +1515,13 @@ show_help() {
     echo "yFeiEye 统一安装脚本"
     echo ""
     echo "使用方法:"
+    echo "  ./install_linux.sh                 - 打开交互式引导（推荐新手）"
+    echo "  ./install_linux.sh menu            - 同上"
     echo "  ./install_linux.sh [命令] [模块]"
+    echo ""
+    echo "交互引导两层结构:"
+    echo "  1) 部署 — 安装/启停/更新/状态/日志等"
+    echo "  2) 分析 — 日志合并/磁盘占用/健康检查等"
     echo ""
     echo "可用命令:"
     echo "  install         - 安装并启动所有服务（首次运行）"
@@ -1477,13 +1532,17 @@ show_help() {
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
     echo "  build           - 重新构建所有镜像（各模块本地构建）"
-    echo "  build-runtime   - 构建/推送运行时镜像到远程仓库"
+    echo "  build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
-    echo "  update          - 更新并重启所有服务"
+    echo "  update          - 更新镜像并重启所有服务（交互可选拉取/本地重建）"
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
     echo "  profile         - 显示当前部署形态与服务范围"
+    echo "  menu            - 打开两层交互引导（部署 / 分析）"
+    echo "  diagnose        - 进入【分析】子菜单"
+    echo "  analyze-logs    - 多模块日志合并分析（各模块约 500 行，带分割线）"
+    echo "  analyze-disk    - 项目关键目录磁盘占用分析"
     echo "  help            - 显示此帮助信息"
     echo ""
     echo "模块列表:"
@@ -1499,13 +1558,23 @@ show_help() {
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
     echo "  EASYAIOT_RUNTIME_REGISTRY    - 运行时镜像仓库（默认见 runtime_registry.conf）"
     echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
+    echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP"
     echo ""
 }
 
 # 主函数
 main() {
-    
-    case "${1:-help}" in
+    local cmd="${1:-}"
+
+    if [ -z "$cmd" ] || [ "$cmd" = "menu" ] || [ "$cmd" = "interactive" ]; then
+        if [ "${EASYAIOT_FROM_MENU:-}" != "1" ]; then
+            run_install_root_menu
+            return 0
+        fi
+        cmd="help"
+    fi
+
+    case "$cmd" in
         install)
             install_linux
             ;;
@@ -1528,7 +1597,7 @@ main() {
             build_all
             ;;
         build-runtime|images-build)
-            build_runtime_images
+            build_runtime_images "$@"
             ;;
         pull|images-pull)
             pull_runtime_images
@@ -1548,6 +1617,15 @@ main() {
         profile)
             ensure_deploy_profile
             print_deploy_profile_summary
+            ;;
+        diagnose|diagnose-tools)
+            run_analyze_interactive_menu
+            ;;
+        analyze-logs|analyze-log|merge-logs)
+            invoke_analyze_merge_logs "${@:2}"
+            ;;
+        analyze-disk|analyze-disk-usage|disk-usage)
+            invoke_analyze_disk_usage "${@:2}"
             ;;
         help|--help|-h)
             show_help

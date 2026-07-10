@@ -4,6 +4,7 @@
 import logging
 from datetime import timedelta
 
+from app.utils.service_urls import save_time_cutoff_naive
 from models import db, Device, DeviceDirectory, SnapSpace, RecordSpace
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,12 @@ def save_time_to_timedelta(save_time):
     if save_time <= 0:
         return None
     return timedelta(hours=save_time)
+
+
+def save_time_cutoff_naive(save_time_hours):
+    """见 app.utils.service_urls.save_time_cutoff_naive（此处保留 re-export 兼容旧引用）。"""
+    from app.utils.service_urls import save_time_cutoff_naive as _cutoff
+    return _cutoff(save_time_hours)
 
 
 def get_directory_save_time(directory, space_kind):

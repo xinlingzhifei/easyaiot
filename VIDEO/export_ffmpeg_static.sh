@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="${FFMPEG_ARCH:-x86_64}"
-CACHE_DIR="${FFMPEG_CACHE_DIR:-${ROOT}/.bundle-ffmpeg/${ARCH}}"
+EASYAIOT_ROOT="$(cd "${ROOT}/.." && pwd)"
 BASE_URL="${FFMPEG_DOWNLOAD_BASE:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest}"
 
 case "${ARCH}" in
@@ -16,11 +16,20 @@ case "${ARCH}" in
     ARCH="arm64"
     TAR_NAME="ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
     ;;
-  *)
-    echo "[ERROR] 不支持的 FFMPEG_ARCH=${ARCH}（支持 x86_64 / arm64）" >&2
-    exit 1
-    ;;
+    *)
+        echo "[ERROR] 不支持的 FFMPEG_ARCH=${ARCH}（支持 x86_64 / arm64）" >&2
+        exit 1
+        ;;
 esac
+
+if [ -z "${FFMPEG_CACHE_DIR:-}" ]; then
+    if [ "$ARCH" = "arm64" ]; then
+        FFMPEG_CACHE_DIR="${EASYAIOT_ROOT}/.build-cache/arm/video/ffmpeg"
+    else
+        FFMPEG_CACHE_DIR="${ROOT}/.bundle-ffmpeg/${ARCH}"
+    fi
+fi
+CACHE_DIR="${FFMPEG_CACHE_DIR}"
 
 mkdir -p "${CACHE_DIR}"
 TAR_PATH="${CACHE_DIR}/${TAR_NAME}"

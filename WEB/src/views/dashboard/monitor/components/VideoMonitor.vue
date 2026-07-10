@@ -81,6 +81,9 @@
             :hasAudio="false"
             :playerEngine="video.playerEngine || ''"
             :videoCodec="video.videoCodec || ''"
+            :fill-video="true"
+            :multi-view="getMaxVideoCount(currentLayout) > 1"
+            :ai-with-fallback="!!video.fallbackUrl"
             :ref="el => setVideoRef(el, index)"
             class="video-player"
             @playing="handleVideoPlaying(index, $event)"
@@ -188,6 +191,7 @@ import {
   loadGbChannelSyncedDevice,
   pickDirectPlayUrls,
   resolveGbChannelPlayUrls,
+  schedulePendingAiStreamUpgrade,
 } from '@/views/camera/utils/devicePlay'
 import { parseGbChannelKey } from '@/views/camera/utils/gb28181Tree'
 import type { WvpPlaySourceOption } from '@/views/camera/utils/livePlayer'
@@ -233,7 +237,7 @@ const emit = defineEmits<{
 const { createMessage, createConfirm } = useMessage()
 
 // 播放器弹窗
-const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal }] = useModal()
+const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps }] = useModal()
 
 const currentTime = ref('')
 const activeVideoIndex = ref(0)
@@ -672,7 +676,7 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
         enableAi.value = false
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources, pendingAiUrl } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -693,6 +697,7 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
       playerEngine,
       videoCodec,
       playSources,
+      pendingAiUrl,
     })
     return
   }
@@ -708,7 +713,7 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
       enableAi.value = false
     }
   }
-  const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)
+  const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolvePlayUrlsForDevice(dev)
   if (!url) {
     createMessage.warn(`方案恢复失败：${saved.name}`)
     return
@@ -722,6 +727,7 @@ async function playSavedSlot(index: number, saved: MonitorLayoutSlot) {
     device: dev,
     fallbackUrl,
     preferAi,
+    pendingAiUrl,
   })
 }
 
@@ -757,12 +763,8 @@ async function activateLayoutPreset(presetId: number) {
   aiFallbackTimers.clear()
 
   videoRefs.value.forEach((ref) => {
-    if (ref?.jessibuca) {
-      try {
-        ref.destroy()
-      } catch {
-        /* ignore */
-      }
+    if (ref) {
+      ref._unmounting = true
     }
   })
   videoRefs.value = []
@@ -1079,11 +1081,11 @@ function handleDragLeave(index: number) {
 async function swapVideoChannels(fromIndex: number, toIndex: number) {
   if (fromIndex === toIndex) return
 
+  clearAiFallbackTimer(fromIndex)
+  clearAiFallbackTimer(toIndex)
+
   const fromSlot = { ...internalVideoList.value[fromIndex] }
   const toSlot = { ...internalVideoList.value[toIndex] }
-
-  destroyPlayerAtIndex(fromIndex)
-  destroyPlayerAtIndex(toIndex)
 
   internalVideoList.value[fromIndex] = hasVideoContent(toSlot)
     ? { ...toSlot, id: `video-${toSlot.deviceId || 'slot'}-${fromIndex}` }
@@ -1150,6 +1152,7 @@ async function startPlayAtScreen(
     playerEngine?: string | null
     videoCodec?: string | null
     playSources?: WvpPlaySourceOption[] | null
+    pendingAiUrl?: string | null
   },
 ) {
   clearAiFallbackTimer(targetIndex)
@@ -1168,6 +1171,7 @@ async function startPlayAtScreen(
 
   const fallbackUrl = payload.fallbackUrl?.trim()
   const hasFallback = !!(payload.preferAi && fallbackUrl && fallbackUrl !== payload.url)
+  const pendingAi = payload.pendingAiUrl?.trim()
   const playSources = payload.playSources?.filter((source) => source.url?.trim()) ?? null
 
   internalVideoList.value[targetIndex] = {
@@ -1184,6 +1188,25 @@ async function startPlayAtScreen(
   }
   persistDashboardVideoState()
 
+  if (pendingAi && pendingAi !== payload.url && payload.deviceId) {
+    schedulePendingAiStreamUpgrade(
+      pendingAi,
+      payload.url,
+      () => {
+        const slot = internalVideoList.value[targetIndex]
+        return !!slot && slot.deviceId === payload.deviceId && slot.url !== pendingAi
+      },
+      () => {
+        const slot = internalVideoList.value[targetIndex]
+        if (!slot) return
+        internalVideoList.value[targetIndex] = {
+          ...slot,
+          url: pendingAi,
+          fallbackUrl: payload.url,
+        }
+      },
+    )
+  }
   if (!hasFallback) return
 
   const primaryUrl = payload.url
@@ -1264,7 +1287,7 @@ async function reloadVideoAtIndex(index: number) {
         enableAi.value = false
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources, pendingAiUrl } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -1282,6 +1305,7 @@ async function reloadVideoAtIndex(index: number) {
         videoCodec,
         playSources,
         device: playDevice ?? undefined,
+        pendingAiUrl,
       })
     }
     return
@@ -1290,7 +1314,7 @@ async function reloadVideoAtIndex(index: number) {
   const dev = (slot as any).device as MonitorTreeDeviceNode | undefined
   if (!dev) return
 
-  const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)
+  const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolvePlayUrlsForDevice(dev)
   if (!url) {
     createMessage.warn(enableAi.value ? '该设备暂无 AI 流或原始流地址' : '该设备暂无播放地址')
     return
@@ -1303,6 +1327,7 @@ async function reloadVideoAtIndex(index: number) {
     location: slot.location,
     fallbackUrl,
     preferAi,
+    pendingAiUrl,
   })
 }
 
@@ -1333,7 +1358,7 @@ watch(enableAi, async (checked) => {
   reloadAllVideosForAiToggle()
 })
 
-// 播放设备流
+// 播放设备流（与分屏监控一致：默认 /live 原始流，启用 AI 时后台升级）
 const playDeviceStream = async (device: any) => {
   const dev: MonitorTreeDeviceNode = (device.device || device) as MonitorTreeDeviceNode
   const playId = String(device.id || dev.id || '')
@@ -1365,7 +1390,7 @@ const playDeviceStream = async (device: any) => {
         enableAi.value = false
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources, pendingAiUrl } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -1390,6 +1415,7 @@ const playDeviceStream = async (device: any) => {
       playerEngine,
       videoCodec,
       playSources,
+      pendingAiUrl,
     })
     return
   }
@@ -1406,7 +1432,7 @@ const playDeviceStream = async (device: any) => {
     }
   }
 
-  const { url, fallbackUrl, preferAi } = await resolvePlayUrlsForDevice(dev)
+  const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolvePlayUrlsForDevice(dev)
   if (!url) {
     createMessage.warning(
       enableAi.value
@@ -1425,6 +1451,7 @@ const playDeviceStream = async (device: any) => {
     device: dev,
     fallbackUrl,
     preferAi,
+    pendingAiUrl,
   })
 }
 
@@ -1520,7 +1547,7 @@ const loadAlertRecords = async () => {
     const response = await queryAlarmList({
       pageNo: 1,
       pageSize: 20, // 显示最近20条
-    })
+    }, { polling: true })
     if (response && response.alert_list) {
       alertRecordList.value = response.alert_list.map((item: any) => {
         let imageUrl = resolveAlertImageDisplayUrl(item.image_url) || null
@@ -1582,7 +1609,7 @@ const playAlertRecord = async (record: any) => {
 
   try {
     const ok = await playAlertRecordInModal(
-      { openModal: openPlayerModal, closeModal: closePlayerModal },
+      { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps },
       record,
     )
     if (ok) {
@@ -1694,8 +1721,8 @@ onUnmounted(() => {
   
   // 清理所有视频播放器实例
   videoRefs.value.forEach((ref) => {
-    if (ref && ref.jessibuca) {
-      ref.destroy()
+    if (ref?.jessibuca) {
+      ref._unmounting = true
     }
   })
   videoRefs.value = []

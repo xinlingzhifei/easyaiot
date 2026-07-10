@@ -13,8 +13,8 @@ import { signStreamTicket, type StreamTicketResp } from '@/api/device/camera';
 const PROTECTED_PATH_RE = /^\/(ai|live|rtp)\//i;
 /** 服务端票据 TTL（秒），与调用保持一致 */
 const DEFAULT_TTL = 90;
-/** 本地缓存有效期，取得短于服务端 TTL，避免边界过期 */
-const TICKET_CACHE_TTL_MS = 45_000;
+/** 本地缓存有效期，略短于服务端 TTL，避免边界过期 */
+const TICKET_CACHE_TTL_MS = 60_000;
 
 interface CacheEntry {
   ticket: StreamTicketResp;

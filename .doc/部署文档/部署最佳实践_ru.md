@@ -1,531 +1,602 @@
-# Руководство по развёртыванию yFeiEye
+# Лучшие практики развертывания yFeiEye
 
-> Документ сформирован на основе анализа исходного кода проекта; подходит для развёртывания в один клик в среде Linux.
+> Этот документ синхронизирован со скриптами проекта и охватывает развертывание и эксплуатацию в production.  
+> Для быстрого старта см. [Руководство по развертыванию платформы](./平台部署文档_ru.md).
 
 ---
 
-## 1. Требования к окружению
+## Содержание
 
-### 1.1 Аппаратные требования
+- [Два режима использования (подробно)](#два-режима-использования-подробно)
+- [Процесс развертывания за 5 минут](#процесс-развертывания-за-5-минут)
+- [Выбор профиля развертывания](#выбор-профиля-развертывания)
+- [Требования к окружению и проверки перед развертыванием](#требования-к-окружению-и-проверки-перед-развертыванием)
+- [Развертывание в один клик и поэтапное развертывание](#развертывание-в-один-клик-и-поэтапное-развертывание)
+- [Типовые операции](#типовые-операции)
+- [Предварительно собранные образы](#предварительно-собранные-образы)
+- [Настройка GPU](#настройка-gpu)
+- [Особые среды](#особые-среды)
+- [Примечания по базам данных](#примечания-по-базам-данных)
+- [Учетные данные по умолчанию](#учетные-данные-по-умолчанию)
+- [Устранение неполадок](#устранение-неполадок)
+- [Расположение журналов](#расположение-журналов)
+- [Обновление и удаление](#обновление-и-удаление)
+- [Справка по архитектуре](#справка-по-архитектуре)
 
-| Ресурс | Минимальная конфигурация | Рекомендуемая конфигурация |
-|------|---------|---------|
-| CPU | 4 ядра | 8 ядер+ |
-| Память | 8 GB | 16 GB+ |
-| Диск | 100 GB | 500 GB+ SSD |
-| GPU | Нет (можно на CPU) | NVIDIA GPU (CUDA 12.8) |
+---
 
-### 1.2 Программные требования
+## Два режима использования (подробно)
 
-| ПО | Минимальная версия | Примечание |
-|------|---------|------|
-| ОС | Ubuntu 20.04 / CentOS 7 | Рекомендуется Ubuntu 22.04 LTS |
-| Docker | 20.10+ | Требуется поддержка `docker compose` v2 |
-| Docker Compose | v2 | Устанавливается с Docker Desktop или отдельно |
-| NVIDIA Driver | 525+ | Только для сценариев с GPU |
-| NVIDIA Container Toolkit | Последняя версия | Только для сценариев с GPU |
+Единые входные скрипты (`install_linux.sh` / `install_linux_arm.sh` / `install_linux_kylin.sh`) поддерживают **два эквивалентных способа использования**:
 
-### 1.3 Требования к портам
+| Режим | Вход | Аудитория | Характеристики |
+|-------|------|-----------|----------------|
+| **Интерактивный** | Без аргументов / `menu` / `interactive` | Операции на месте, ручные действия | Управление через меню, пошагово, возврат в текущее меню после выполнения |
+| **Прямая команда** | `<command> [args]` | Разработка, SRE, CI/CD | Скриптуемый, повторяемый, завершается по окончании |
 
-Перед развёртыванием убедитесь, что следующие порты свободны:
+```bash
+# Интерактивный
+sudo .scripts/docker/install_linux.sh
 
-| Порт | Сервис | Примечание |
-|------|------|------|
-| 1880 | Node-RED | Движок правил |
-| 1883 | EMQX | MQTT Broker |
-| 1935 | SRS | Потоковое RTMP |
-| 5432 | PostgreSQL | Основная БД |
-| 6000 | VIDEO 服务 | Обработка видео |
-| 6030 | TDengine | Временная БД |
+# Прямая команда
+sudo .scripts/docker/install_linux.sh install
+.scripts/docker/install_linux.sh status
+```
+
+**Руководство по выбору:** Для ручных операций предпочитайте интерактивный режим; для сценариев со скриптами (Cron / Ansible / CI) используйте прямые команды. **Не** вызывайте без аргументов в автоматизации.
+
+### Интерактивный: структура меню
+
+**Корневое меню**
+
+```
+  1) Deploy — install, start/stop, update, status, logs
+  2) Analyze — logs, disk, status diagnostics
+  0) Exit
+```
+
+**Подменю [Deploy]**
+
+| # | Действие | Эквивалентная команда |
+|:-:|----------|----------------------|
+| 1 | Первая установка и запуск | `install` |
+| 2 | Запустить все сервисы | `start` |
+| 3 | Остановить все сервисы | `stop` |
+| 4 | Перезапустить все сервисы | `restart` |
+| 5 | Просмотр состояния | `status` |
+| 6 | Просмотр журналов | `logs` |
+| 7 | Проверка работоспособности | `verify` |
+| 8 | Обновить образы и перезапустить | `update` |
+| 9 | Проверка окружения Docker | `check` |
+| 10 | Просмотр профиля развертывания | `profile` |
+| 11 | Полная справка CLI | `help` |
+
+**Подменю [Analyze]** — вывод, подходящий для команд поддержки
+
+| # | Действие | Эквивалентная команда |
+|:-:|----------|----------------------|
+| 1 | Объединение журналов нескольких модулей | `analyze-logs` |
+| 2 | Анализ использования диска | `analyze-disk` |
+| 3 | Состояние + проверка работоспособности | `status` + `verify` |
+| 4 | Проверка окружения Docker | `check` |
+
+**Внутреннее меню объединения журналов** (из Analyze → 1): выберите источники по номеру (напр. `24,23,27`), `0` = все для текущего профиля, `b` = назад в [Analyze].
+
+### Прямая команда: полный справочник
+
+```bash
+cd .scripts/docker   # или используйте .scripts/docker/install_linux.sh из корня проекта
+
+# Жизненный цикл
+./install_linux.sh install | start | stop | restart | update | clean
+
+# Наблюдаемость
+./install_linux.sh status | logs | logs WEB | verify | check | profile
+
+# Сборка и образы
+./install_linux.sh build | pull | build-runtime [module]
+
+# Диагностика
+./install_linux.sh diagnose          # Вход в подменю [Analyze] (по-прежнему интерактивно)
+./install_linux.sh analyze-logs      # Объединение журналов
+./install_linux.sh analyze-disk      # Отчет по диску
+
+# Справка
+./install_linux.sh help | menu
+```
+
+### Инструменты анализа: расширенное использование
+
+Скрипты анализа в `.scripts/docker/` можно запускать автономно:
+
+**Объединение журналов нескольких модулей `analyze_merge_logs.sh`**
+
+```bash
+cd .scripts/docker
+
+# Неинтерактивный (рекомендуется для runbook)
+./analyze_merge_logs.sh --non-interactive \
+  --modules dev-iot-sink,dev-iot-message,biz-video --lines 500 --save
+
+# Псевдонимы модулей
+./analyze_merge_logs.sh --non-interactive --modules DEVICE
+./analyze_merge_logs.sh --non-interactive --modules .scripts/docker
+./analyze_merge_logs.sh --non-interactive --modules all --save
+
+# Распространенные ID юнитов: mw-nacos / mw-postgres / dev-iot-gateway / dev-iot-sink / biz-ai / biz-video / biz-web
+./analyze_merge_logs.sh --help
+```
+
+Стратегия сбора: `docker logs` (последние N строк) → файлы журналов хоста, если контейнер недоступен → tail последнего ротированного файла.
+
+**Использование диска `analyze_disk_usage.sh`**
+
+```bash
+./analyze_disk_usage.sh                  # Отчет в терминале
+./analyze_disk_usage.sh --save           # Сохранить в logs/disk_usage_*.log
+./analyze_disk_usage.sh --top 20
+```
+
+Ключевые каталоги: MinIO `record-space` / `alert-images`, локальный `playbacks`, промежуточное хранение изображений оповещений.
+
+### Примечания по автоматизации
+
+- Cron / Ansible / CI **не должны** вызывать без аргументов (блокируется на меню)
+- Операции, запущенные из меню, устанавливают `EASYAIOT_FROM_MENU=1`, чтобы не возвращаться в корневое меню после установки
+- Неинтерактивный профиль: `export EASYAIOT_DEPLOY_PROFILE=full`
+
+### Связь со скриптами отдельных модулей
+
+Каталоги модулей (`DEVICE/`, `AI/`, `VIDEO/` …) имеют независимый `install_linux.sh` только для этого модуля — **без** единого меню [Analyze].  
+Полная оркестрация платформы + интерактивное руководство + межмодульный анализ журналов/диска → используйте только `.scripts/docker/install_linux.sh`.
+
+---
+
+## Процесс развертывания за 5 минут
+
+```bash
+git clone https://gitee.com/volara/easyaiot.git && cd easyaiot
+
+docker --version && docker compose version
+
+# Вариант A: Прямая команда
+sudo .scripts/docker/install_linux.sh pull    # Опционально: предсобранные образы
+sudo .scripts/docker/install_linux.sh install
+.scripts/docker/install_linux.sh verify
+
+# Вариант B: Интерактивный
+sudo .scripts/docker/install_linux.sh         # 1 Deploy → 1 Install → 7 Verify
+
+# Доступ: http://<server-ip>:8888
+```
+
+### Длительность установки
+
+| Сценарий | Время |
+|----------|-------|
+| Предсобранные образы загружены | 10–30 минут |
+| Полная локальная сборка | от 30 минут до нескольких часов |
+
+---
+
+## Выбор профиля развертывания
+
+Выбирается интерактивно при первом `install` или через `export EASYAIOT_DEPLOY_PROFILE=mini|standard|full`.  
+Сохраняется в `.scripts/docker/.deploy_profile`, повторно используется `start` / `stop` / `update`.
+
+| Профиль | Псевдонимы | Рекомендуемая RAM | Сценарий |
+|---------|------------|-------------------|----------|
+| **mini** | `1` / `4g` | ≥ 4 ГБ | Edge-узлы, PoC |
+| **standard** | `2` / `16g` | ≥ 16 ГБ | Обычный production |
+| **full** | `3` (по умолчанию) | ≥ 20 ГБ | Полный функционал + APP H5 |
+
+```bash
+.scripts/docker/install_linux.sh profile
+```
+
+### Сервисы по профилям
+
+**mini**
+
+- Бизнес: `iot-system`, VIDEO, AI, WEB
+- Middleware: PostgreSQL, Redis, SRS
+- Не запускаются: Nacos, Gateway, Kafka, iot-sink, MinIO, Milvus, ZLMediaKit, Node-RED, TDengine, EMQX и большинство подмодулей DEVICE
+- Маршрутизация API: nginx проксирует `/admin-api` и `/dev-api` на `iot-system:48099`
+
+**standard**
+
+- Не запускаются: TDengine, EMQX, Node-RED, `iot-device`, `iot-tdengine`
+- Все остальные запускаются
+
+**full**
+
+- Все бизнес-модули и middleware, включая **мобильное APP H5** (9010)
+
+Анализ памяти:
+
+```bash
+.scripts/docker/analyze_deploy_memory.sh
+.scripts/docker/analyze_deploy_memory.sh --all-profiles
+```
+
+---
+
+## Требования к окружению и проверки перед развертыванием
+
+### Оборудование
+
+| Ресурс | Минимум | Рекомендуется |
+|--------|---------|---------------|
+| CPU | 4 ядра | 8+ ядер |
+| RAM | См. профили (full ≥ 20 ГБ) | 32 ГБ+ |
+| Диск | **300 ГБ** свободно | 500 ГБ+ SSD |
+| GPU | Нет (работает CPU) | NVIDIA GPU (CUDA 12.8) |
+
+### Программное обеспечение
+
+| ПО | Требование |
+|----|------------|
+| ОС | Ubuntu 24.04+ (рекомендуется 26.04); также поддерживаются Kylin, ARM64 |
+| Docker | Установлен, демон доступен |
+| Docker Compose | **v2.35.0+** (плагин `docker compose`) |
+| NVIDIA Driver / Container Toolkit | Только для сценариев с GPU |
+
+### Права Docker
+
+```bash
+sudo usermod -aG docker $USER && newgrp docker
+docker ps   # должно выполняться без permission denied
+```
+
+Используйте `sudo` при первой установке для настройки зеркала и портов RTP.
+
+### Проверки перед развертыванием
+
+```bash
+.scripts/docker/detect_system_info.sh
+.scripts/docker/install_linux.sh check
+df -h / && docker system df
+```
+
+### Требования к портам
+
+| Порт | Сервис | Примечания |
+|------|--------|------------|
+| 1880 | Node-RED | full/standard |
+| 1883 | EMQX | full |
+| 1935 | SRS | RTMP |
+| 5432 | PostgreSQL | Основная база данных |
+| 6000 | VIDEO | Обработка видео |
+| 6030 | TDengine | full |
 | 6080 | ZLMediaKit | Медиасервер |
 | 6379 | Redis | Кэш |
-| 8848 | Nacos | Регистрация/конфигурация |
-| 8888 | WEB 前端 | Веб-интерфейс |
-| 9000 | MinIO API | Объектное хранилище |
-| 9001 | MinIO Console | Консоль объектного хранилища |
+| 8848 | Nacos | Реестр/конфигурация |
+| 8888 | WEB | Панель управления |
+| 9000/9001 | MinIO | Объектное хранилище |
+| 9010 | APP | только full |
 | 9092 | Kafka | Очередь сообщений |
-| 10180 | GPUStack | Управление GPU |
-| 10190 | Dify | Платформа LLM-приложений |
 | 19530 | Milvus | Векторная БД |
-| 48080 | API Gateway | Шлюз бэкенда |
-| 5000 | AI 服务 | AI-инференс |
+| 48080 | Gateway | API-шлюз |
+| 5000 | AI | Сервис ИИ |
+| 30000-30500 | ZLM RTP | Скрипт пытается зарезервировать |
+
+```bash
+ss -tlnp | grep -E '8848|5432|6379|9092|5000|6000|8888|48080'
+```
 
 ---
 
-## 2. Быстрое развёртывание (установка в один клик)
+## Развертывание в один клик и поэтапное развертывание
 
-### 2.1 Получение исходного кода
-
-```bash
-git clone https://gitee.com/volara/yfeieye.git
-cd yfeieye
-```
-
-### 2.2 Установка в один клик
+### В один клик
 
 ```bash
-# 需要 root 权限（用于配置 Docker 镜像源、RTP 端口预留等）
 sudo .scripts/docker/install_linux.sh install
-```
-
-Эта команда автоматически выполняет следующие шаги:
-
-1. **Проверка окружения** — проверка установки Docker / Docker Compose
-2. **Определение IP** — автоматическое определение IP хоста (для инъекции медиа-адресов GB28181/ZLMediaKit)
-3. **Резервирование RTP-портов** — настройка ядра Linux: зарезервированы порты 30000-30500 (чтобы не занимались временными портами)
-4. **Настройка зеркала Docker** — автоматическая настройка ускорения образов `docker.m.daocloud.io` ([публичное зеркало DaoCloud](https://github.com/DaoCloud/public-image-mirror))
-5. **Создание сети Docker** — единая сеть `yfeieye-network`
-6. **Развёртывание middleware** — последовательный запуск Nacos, PostgreSQL, Redis, Kafka, MinIO, TDengine, Milvus, SRS, EMQX, ZLMediaKit, GPUStack, Dify, Node-RED
-7. **Ожидание готовности базовых сервисов** — автоматическое ожидание прохождения health check PostgreSQL / Nacos / Redis
-8. **Развёртывание DEVICE** — сборка и запуск кластера Java-микросервисов (шлюз + 8 бизнес-сервисов)
-9. **Развёртывание AI** — сборка и запуск Python-сервиса AI-инференса
-10. **Развёртывание VIDEO** — сборка и запуск Python-сервиса обработки видео и 6 подсервисов
-11. **Развёртывание WEB** — сборка и запуск фронтенда Vue 3
-
-### 2.3 Проверка развёртывания
-
-```bash
-# 验证所有服务是否启动成功
 .scripts/docker/install_linux.sh verify
 ```
 
-При успехе отображаются адреса доступа ко всем сервисам:
+**Автоматический поток `install`:**
 
+1. Выбор профиля → сохранение в `.deploy_profile`
+2. Обнаружение предсобранных образов (пропуск локальной сборки, если загружены)
+3. Проверки Docker / Compose / создания контейнеров
+4. Определение IP хоста (переопределить: `HOST_IP=<ip>`)
+5. Резервирование портов RTP 30000-30500 (требуется root)
+6. Настройка зеркала Docker (требуется root)
+7. Создание `easyaiot-network`
+8. Развертывание по порядку: middleware → DEVICE → AI → VIDEO → WEB → APP (full)
+9. Ожидание PostgreSQL / Nacos / Redis
+10. Обеспечение edge Agent при необходимости
+
+### Поэтапное
+
+Сначала задайте профиль:
+
+```bash
+export EASYAIOT_DEPLOY_PROFILE=full
 ```
-服务访问地址:
-  基础服务 (Nacos):     http://localhost:8848/nacos
-  基础服务 (MinIO):     http://localhost:9000 (API), http://localhost:9001 (Console)
-  基础服务 (Milvus):    http://localhost:9091 (Health), localhost:19530 (gRPC)
-  基础服务 (GPUStack):  http://localhost:10180  (用户 admin)
-  Device服务 (Gateway): http://localhost:48080
-  AI服务:               http://localhost:5000
-  Video服务:            http://localhost:6000
-  Web前端:              http://localhost:8888
+
+**Шаг 1: Middleware**
+
+```bash
+cd .scripts/docker && ./install_middleware_linux.sh install
 ```
 
-### 2.4 Доступ к системе
+| Middleware | Порт | Назначение |
+|------------|------|------------|
+| Nacos | 8848 | Реестр/конфигурация |
+| PostgreSQL | 5432 | Основная БД (6 баз) |
+| Redis | 6379 | Кэш |
+| Kafka | 9092 | Очередь сообщений |
+| MinIO | 9000/9001 | Объектное хранилище |
+| Milvus | 19530/9091 | Векторная БД |
+| SRS | 1935 | Стриминг |
+| EMQX | 1883 | MQTT (full) |
+| ZLMediaKit | 6080 | Медиасервер |
+| TDengine | 6030 | БД временных рядов (full) |
+| Node-RED | 1880 | Движок правил |
 
-Откройте в браузере `http://<服务器IP>:8888` для доступа к платформе управления yFeiEye.
+**Шаги 2+: Бизнес-модули**
 
----
+```bash
+cd DEVICE && ./install_linux.sh install
+cd AI    && ./install_linux.sh install
+cd VIDEO && ./install_linux.sh install
+cd WEB   && ./install_linux.sh install
+cd APP   && ./install_linux.sh install   # только full
+```
 
-## 3. Пошаговое развёртывание (ручные операции)
-
-При необходимости более тонкого контроля можно разворачивать по модулям.
-
-### 3.1 Шаг 1: развёртывание middleware
+**Только бизнес-модули**
 
 ```bash
 cd .scripts/docker
-./install_middleware_linux.sh install
+./install_business_linux.sh install
+./install_business_linux.sh update DEVICE WEB
+./install_business_linux.sh verify
 ```
-
-**Список middleware:**
-
-| Middleware | Образ | Порт | Назначение |
-|--------|------|------|------|
-| Nacos | nacos/nacos-server:v2.5.1 | 8848, 9848, 9849 | Регистрация сервисов и центр конфигурации |
-| PostgreSQL | postgres:18 | 5432 | Основная БД (6 бизнес-баз) |
-| TDengine | tdengine/tsdb:3.3.8.4 | 6030, 6041, 6060 | Временная БД |
-| Redis | redis:7.4.8 | 6379 | Кэш и распределённые блокировки |
-| Kafka | apache/kafka:3.8.0 | 9092, 9093, 9094 | Очередь сообщений |
-| MinIO | minio/minio | 9000, 9001 | Объектное хранилище |
-| Milvus | milvusdb/milvus:v2.6.0 | 19530, 9091 | Векторная БД (распознавание лиц) |
-| SRS | ossrs/srs:5 | 1935, 1985 | Потоковый сервер |
-| EMQX | emqx/emqx:5.8.7 | 1883, 8083, 18083 | MQTT Broker |
-| ZLMediaKit | zlmediakit/zlmediakit:master | 6080, 5540, 10935 | Медиасервер |
-| GPUStack | gpustack/gpustack:v2.1.2 | 10180 | Управление ресурсами GPU |
-| Dify | dify-api / dify-web / ... | 10190 | Платформа LLM-приложений |
-| Node-RED | nodered/node-red:latest | 1880 | Движок правил |
-
-Ожидание готовности middleware:
-
-```bash
-# 检查 PostgreSQL
-docker exec postgres-server pg_isready -U postgres
-
-# 检查 Nacos
-curl -s http://localhost:8848/nacos/actuator/health
-
-# 检查 Redis
-docker exec redis-server redis-cli -a basiclab@iot975248395 ping
-```
-
-### 3.2 Шаг 2: развёртывание DEVICE
-
-```bash
-cd DEVICE
-./install_linux.sh install
-```
-
-**Список сервисов DEVICE:**
-
-| Сервис | Порт | Примечание |
-|------|------|------|
-| iot-gateway | 48080 | API-шлюз (Spring Cloud Gateway) |
-| iot-system | 48099 | Управление системой |
-| iot-infra | 48066 | Инфраструктура |
-| iot-device | 48055 | Управление устройствами |
-| iot-dataset | 48077 | Управление наборами данных |
-| iot-message | 48033 | Push-уведомления |
-| iot-file | 48022 | Файловый сервис |
-| iot-sink | 48011 | Адаптация протоколов (MQTT/TCP/HTTP/EMQX) |
-| iot-gb28181 | 5060 | Протокол видеонаблюдения GB28181 |
-
-**Способ сборки:**
-- Двухэтапная сборка: `Dockerfile.base` (кэш зависимостей Maven) → `Dockerfile` каждого модуля
-- Java 21 + Spring Boot 2.7.18
-- Каталог кэша сборки: `.build-cache/device/m2/repository`
-
-### 3.3 Шаг 3: развёртывание AI
-
-```bash
-cd AI
-./install_linux.sh install
-```
-
-**Описание AI-сервиса:**
-- Порт: 5000
-- Стек: Flask + PyTorch 2.9+ (CUDA 12.8)
-- Функции: обучение моделей, инференс, развёртывание, OCR, речь, LLM
-- GPU: автоматическое обнаружение GPU и включение NVIDIA Container Runtime
-- Кэш сборки: `.build-cache/ai/pip-cache`、`.build-cache/ai/pip-wheels`
-- Базовый образ: `pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel`
-
-### 3.4 Шаг 4: развёртывание VIDEO
-
-```bash
-cd VIDEO
-./install_linux.sh install
-```
-
-**Описание VIDEO-сервиса:**
-- Порт: 6000
-- Стек: Flask + OpenCV + FFmpeg
-- Функции: обработка видеопотоков, анализ в реальном времени/по снимкам, запись, оповещения, распознавание лиц
-- Подсервисы: 6 независимых микросервисов (алгоритм в реальном времени, по снимкам, извлечение кадров, сортировка, push потока, пересылка потока)
-- Очередь сообщений: Kafka (события оповещений)
-- Векторная БД: Milvus (распознавание лиц)
-
-### 3.5 Шаг 5: развёртывание WEB
-
-```bash
-cd WEB
-./install_linux.sh install
-```
-
-**Описание WEB-фронтенда:**
-- Порт: 8888
-- Стек: Vue 3.4 + TypeScript + Vite
-- UI: Ant Design Vue 4.0
-- Сборка: Node.js 18+ / 20+，pnpm 11.3+
 
 ---
 
-## 4. Управление отдельными модулями
+## Типовые операции
 
-Каждый модуль поддерживает следующие команды:
+### Единый скрипт
 
 ```bash
-./install_linux.sh install    # 安装并启动（首次运行）
-./install_linux.sh start      # 启动
-./install_linux.sh stop       # 停止
-./install_linux.sh restart    # 重启
-./install_linux.sh status     # 查看状态
-./install_linux.sh logs       # 查看日志
-./install_linux.sh build      # 重新构建镜像
-./install_linux.sh clean      # 清理容器和镜像
-./install_linux.sh update     # 更新并重启
+./install_linux.sh install | start | stop | restart | status
+./install_linux.sh logs | logs WEB | verify | check | profile
+./install_linux.sh build | pull | update | clean
+./install_linux.sh diagnose | analyze-logs | analyze-disk | help
 ```
 
-**Отдельное управление middleware:**
+### Скрипты по модулям
+
+Каждый модуль (`DEVICE` / `AI` / `VIDEO` / `WEB` / `APP`):
+
+```bash
+./install_linux.sh install | start | stop | restart | status | logs | build | clean | update
+```
+
+Middleware:
 
 ```bash
 cd .scripts/docker
-./install_middleware_linux.sh install    # 安装所有中间件
-./install_middleware_linux.sh start      # 启动
-./install_middleware_linux.sh stop       # 停止
-./install_middleware_linux.sh status     # 状态
-./install_middleware_linux.sh logs       # 日志
+./install_middleware_linux.sh install | start | stop | restart | status | logs | build | clean | update
 ```
+
+### Переменные окружения
+
+| Переменная | Описание |
+|------------|----------|
+| `EASYAIOT_DEPLOY_PROFILE` | `mini` / `standard` / `full` |
+| `HOST_IP` | Принудительно задать IP хоста |
+| `PARALLEL_MODULES=true` | Параллельный запуск/обновление бизнес-модулей |
+| `PARALLEL_BUILD=true` | Параллельная сборка (по умолчанию последовательно, чтобы избежать OOM) |
+| `FORCE_NETWORK_RECREATE=true` | Пересоздать сеть после смены IP |
+| `EASYAIOT_RUNTIME_REGISTRY` | Реестр предсобранных образов |
 
 ---
 
-## 5. Настройка GPU
+## Предварительно собранные образы
 
-### 5.1 Установка драйвера NVIDIA
+Конфигурация: `.scripts/docker/runtime_registry.conf`
 
 ```bash
-# 检查 GPU 是否可用
+.scripts/docker/install_linux.sh pull                    # Интерактивная загрузка
+.scripts/docker/install_linux.sh build-runtime           # Сборка и push (CI/release)
+.scripts/docker/install_linux.sh build-runtime DEVICE    # Один модуль
+```
+
+После загрузки `install` / `update` обнаруживает `.runtime_images_pulled` и запускает контейнеры напрямую.
+
+---
+
+## Настройка GPU
+
+```bash
 nvidia-smi
-
-# 安装 NVIDIA Container Toolkit
-# 参考：https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-
-# 验证 Docker GPU 支持
-docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
 ```
 
-### 5.2 Автоопределение GPU
+Автоопределение: GPU есть → `runtime: nvidia`; GPU нет → режим CPU.
 
-Скрипт установки автоматически определяет GPU:
-- GPU обнаружен → автоматически включается `runtime: nvidia`, задаётся `NVIDIA_VISIBLE_DEVICES=all`
-- GPU не обнаружен → работа в режиме CPU
+Несколько GPU: `export CUDA_VISIBLE_DEVICES=0,1`
 
-### 5.3 Конфигурация нескольких GPU
+---
 
-AI-сервис поддерживает параллельный инференс на нескольких GPU через переменные окружения:
+## Особые среды
 
 ```bash
-# 指定使用 GPU 0 和 1
-export CUDA_VISIBLE_DEVICES=0,1
+# Kylin OS
+sudo .scripts/docker/install_linux_kylin.sh install
+
+# ARM64
+sudo .scripts/docker/install_linux_arm.sh install
 ```
 
 ---
 
-## 6. Адаптация для отечественных платформ
+## Примечания по базам данных
 
-### 6.1 Kylin OS
+### PostgreSQL (6 баз, скрипты в `.scripts/postgresql/`)
 
-```bash
-.scripts/docker/install_linux_kylin.sh install
-```
+| База данных | Назначение |
+|-------------|------------|
+| ruoyi-vue-pro20 | Управление системой |
+| iot-ai20 | Сервис ИИ |
+| iot-device10 | Управление устройствами |
+| iot-gb2818110 | Видеонаблюдение |
+| iot-message10 | Обмен сообщениями |
+| iot-video10 | Обработка видео |
 
-### 6.2 Архитектура ARM64
+### TDengine
 
-```bash
-# 中间件
-.scripts/docker/install_linux_arm.sh install
+SQL в `.scripts/tdengine/tdengine_super_tables.sql`; автоматическая инициализация в профиле full.
 
-# AI 服务（ARM 版 Dockerfile）
-cd AI
-./install_linux.sh install  # 脚本会自动选择 ARM Dockerfile
-```
-
----
-
-## 7. Описание баз данных
-
-### 7.1 Бизнес-базы PostgreSQL
-
-При запуске PostgreSQL автоматически создаются следующие 6 бизнес-баз:
-
-| Имя БД | SQL-файл | Назначение |
-|------|---------|------|
-| ruoyi-vue-pro20 | ruoyi-vue-pro10.sql | Основная БД управления системой |
-| iot-ai20 | iot-ai10.sql | БД AI-сервиса |
-| iot-device10 | iot-device10.sql | БД управления устройствами |
-| iot-gb2818110 | iot-gb2818110.sql | БД видеонаблюдения |
-| iot-message10 | iot-message10.sql | БД push-сообщений |
-| iot-video10 | iot-video10.sql | БД обработки видео |
-
-Скрипты инициализации в каталоге `.scripts/postgresql/`; при запуске Docker выполняются через `docker-entrypoint-initdb.d`.
-
-### 7.2 Временная БД TDengine
-
-После запуска TDengine автоматически инициализируются супертаблицы; SQL-файл: `.scripts/tdengine/tdengine_super_tables.sql`.
-
-### 7.3 Резервное копирование БД
+### Резервное копирование
 
 ```bash
-# 备份所有数据库
 .scripts/postgresql/backup_databases.sh
 ```
 
 ---
 
-## 8. Учётные данные middleware по умолчанию
+## Учетные данные по умолчанию
 
-| Middleware | Имя пользователя | Пароль | Адрес консоли |
-|--------|--------|------|-----------|
-| Nacos | nacos | nacos | http://<IP>:8848/nacos |
+| Middleware | Имя пользователя | Пароль | Консоль |
+|------------|------------------|--------|---------|
+| Nacos | nacos | nacos | :8848/nacos |
 | PostgreSQL | postgres | iot45722414822 | — |
 | Redis | — | basiclab@iot975248395 | — |
-| MinIO | minioadmin | basiclab@iot975248395 | http://<IP>:9001 |
-| EMQX | admin | basiclab@iot6874125784 | http://<IP>:18083 |
-| GPUStack | admin | basiclab@iotp4JWmQSvzdh0z4mF | http://<IP>:10180 |
-| Milvus | — | — | http://<IP>:9091 |
+| MinIO | minioadmin | basiclab@iot975248395 | :9001 |
+| EMQX | admin | basiclab@iot6874125784 | :18083 |
+| Milvus | — | — | :9091 |
 
-> ⚠️ **Предупреждение безопасности**: в production обязательно смените все пароли по умолчанию.
+> **Измените все пароли по умолчанию в production.**
 
 ---
 
-## 9. Устранение неполадок
+## Устранение неполадок
 
-### 9.1 Сбой запуска сервиса
+### Рекомендуемый поток
+
+**Интерактивный:**
+
+```
+No args → 2 Analyze → 4 Docker check → 3 Status+health → 1 Logs → 2 Disk
+```
+
+**Прямая команда:**
 
 ```bash
-# 查看具体服务日志
-docker logs -f postgres-server
-docker logs -f nacos-server
-docker logs -f ai-service
-docker logs -f video-service
+.scripts/docker/install_linux.sh check
+.scripts/docker/install_linux.sh status
+.scripts/docker/install_linux.sh verify
 
-# 查看所有服务状态
+cd .scripts/docker
+./analyze_disk_usage.sh --save
+./analyze_merge_logs.sh --non-interactive --modules dev-iot-sink,biz-video,mw-nacos --lines 500 --save
+```
+
+### Распространенные проблемы
+
+**Сбои запуска сервисов**
+
+```bash
 docker ps -a
+docker logs -f postgres-server
+.scripts/docker/install_linux.sh logs
 ```
 
-### 9.2 Проблемы с сетью
+**Сеть (изменился IP хоста)**
 
 ```bash
-# 检查 Docker 网络
-docker network ls | grep yfeieye
-docker network inspect yfeieye-network
-
-# 重建网络（宿主机 IP 变化后）
-docker network rm yfeieye-network
-docker network create yfeieye-network
-docker compose restart
+export FORCE_NETWORK_RECREATE=true
+.scripts/docker/install_linux.sh restart
 ```
 
-### 9.3 Проблемы подключения к PostgreSQL
+**PostgreSQL / Redis**
 
 ```bash
-# 自动修复
 .scripts/docker/fix_postgresql.sh
-
-# 手动检查
-docker exec postgres-server pg_isready -U postgres
-docker exec postgres-server psql -U postgres -c "SELECT 1;"
-```
-
-### 9.4 Проблемы подключения к Redis
-
-```bash
-# 自动修复
 .scripts/docker/fix_redis.sh
-
-# 手动检查
-docker exec redis-server redis-cli -a basiclab@iot975248395 ping
 ```
 
-### 9.5 Проблемы сервиса Docker
+**Система Docker**
 
 ```bash
-# 诊断 Docker systemd 问题
 sudo .scripts/docker/diagnose_docker_systemd.sh diagnose
-
-# 修复 systemd 超时
-sudo .scripts/docker/diagnose_docker_systemd.sh fix-all
-
-# 检查磁盘空间
-df -h
-docker system df
-
-# 清理 Docker 垃圾
 .scripts/docker/cleanup_docker_space.sh
 ```
 
-### 9.6 Проблемы группы потребителей Kafka
+**Группа потребителей Kafka**
 
 ```bash
-# 修复 Kafka 消费组
-cd VIDEO
-python fix_kafka_consumer_group.py
+cd VIDEO && ./fix_kafka_consumer_group.sh
 ```
 
-### 9.7 Конфликт портов
+**WEB после смены профиля**
 
 ```bash
-# 检查端口占用
-ss -tlnp | grep -E "8848|5432|6379|9092|5000|6000|8888"
-
-# 如有冲突，修改对应 docker-compose.yml 中的端口映射
+cd WEB && ./install_linux.sh build
 ```
 
 ---
 
-## 10. Расположение файлов логов
+## Расположение журналов
 
-| Расположение | Примечание |
-|------|------|
-| `.scripts/docker/logs/` | Логи скриптов установки |
-| `DEVICE/logs/` | Логи сервисов DEVICE |
-| `AI/data/logs/` | Логи AI-сервиса |
-| `VIDEO/data/logs/` | Логи VIDEO-сервиса |
-| `docker logs <容器名>` | Логи контейнера в реальном времени |
+| Расположение | Описание |
+|--------------|----------|
+| `.scripts/docker/logs/` | Журналы скрипта установки; отчеты `merged_logs_*`, `disk_usage_*` |
+| `.scripts/docker/standalone-logs/` | Журналы на диске Nacos и другого middleware |
+| `.build-cache/device/logs/` | Spring-журналы микросервисов DEVICE |
+| `~/easyaiot/data/srs.log` | Стриминг SRS |
+| `WEB/logs/runtime.log` | Журнал выполнения WEB |
+| `docker logs <container>` | stdout контейнера (типично для AI/VIDEO) |
+
+| Потребность | Интерактивный | Прямая команда |
+|-------------|---------------|----------------|
+| Последние 500 строк, несколько сервисов | Analyze → 1 | `analyze-logs` или `analyze_merge_logs.sh --modules ...` |
+| Один модуль, live tail | Deploy → 6 | `logs VIDEO` или `docker compose logs -f` |
+| Сбой установки | — | `tail .scripts/docker/logs/install_linux_*.log` |
 
 ---
 
-## 11. Обновление и апгрейд
-
-### 11.1 Обновление кода
+## Обновление и удаление
 
 ```bash
-cd yfeieye
 git pull origin main
-```
-
-### 11.2 Обновление и перезапуск всех сервисов
-
-```bash
 sudo .scripts/docker/install_linux.sh update
+.scripts/docker/install_linux.sh verify
 ```
 
-### 11.3 Обновление одного модуля
+Один модуль: `cd AI && ./install_linux.sh update`
+
+Удаление:
 
 ```bash
-# 例如只更新 AI 服务
-cd AI
-./install_linux.sh update
-```
-
-### 11.4 Пересборка образов
-
-```bash
-# 重新构建所有镜像
-sudo .scripts/docker/install_linux.sh build
-
-# 重新构建单个模块
-cd DEVICE
-./install_linux.sh build
+sudo .scripts/docker/install_linux.sh clean   # ⚠️ Удаляет контейнеры, образы, тома
 ```
 
 ---
 
-## 12. Удаление
-
-```bash
-# 停止并删除所有容器、镜像和网络
-sudo .scripts/docker/install_linux.sh clean
-
-# 手动清理数据卷（可选）
-rm -rf .scripts/docker/db_data
-rm -rf .scripts/docker/redis_data
-rm -rf .scripts/docker/minio_data
-rm -rf .scripts/docker/mq_data
-rm -rf .scripts/docker/taos_data
-rm -rf .scripts/docker/milvus_data
-rm -rf .scripts/docker/gpustack_data
-```
-
----
-
-## 13. Справка по архитектуре
+## Справка по архитектуре
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    WEB 前端 (:8888)                              │
-│              Vue 3 + Ant Design Vue + Vite                       │
+│                    WEB Frontend (:8888)                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                 API Gateway (:48080)                              │
-│              Spring Cloud Gateway + Nacos                        │
 ├───────────┬───────────┬───────────┬───────────┬─────────────────┤
 │ iot-system│ iot-infra │ iot-device│ iot-dataset│  iot-message   │
 │ iot-file  │ iot-sink  │ iot-gb28181                        │
-│           │           │           │           │                  │
-│    Java 21 + Spring Boot 2.7 + MyBatis-Plus                     │
 ├───────────┴───────────┴───────────┴───────────┴─────────────────┤
-│  AI 服务 (:5000)         │  VIDEO 服务 (:6000)    │  TASK (C++)  │
-│  Flask + PyTorch + YOLO  │  Flask + OpenCV + FFmpeg│  ONNX Runtime│
-│  Обучение/инференс/развёртывание/OCR/LLM  │  Потоки/оповещения/запись/лица  │  Инференс на краю    │
-├──────────────────────────┴───────────────────────┴──────────────┤
-│                     Слой middleware                                     │
+│  AI (:5000)              │  VIDEO (:6000)    │  APP H5 (:9010) │
+├──────────────────────────┴───────────────────┴─────────────────┤
 │  Nacos │ PostgreSQL │ Redis │ Kafka │ MinIO │ TDengine          │
-│  Milvus │ SRS │ EMQX │ ZLMediaKit │ GPUStack │ Dify │ Node-RED  │
+│  Milvus │ SRS │ EMQX │ ZLMediaKit │ Node-RED                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-*Дата создания документа: 2026-05-31 | Проект: https://gitee.com/volara/yfeieye*
+*Версия документа: 3.1 | 2026-07-08 | Точка входа скрипта: `.scripts/docker/install_linux.sh` (без аргументов=интерактивный; `<command>`=прямой)*

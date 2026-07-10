@@ -10,7 +10,9 @@
       <div class="channel-section">
         <div class="section-header">
           <span class="section-title">挂载摄像头（{{ cameras.length }}）</span>
-          <Button
+          <div class="section-actions">
+            <Checkbox v-model:checked="enableAiModel">启用 AI</Checkbox>
+            <Button
             type="primary"
             size="small"
             :loading="syncing"
@@ -19,6 +21,7 @@
           >
             同步通道
           </Button>
+          </div>
         </div>
         <Empty v-if="!cameras.length" description="暂无挂载摄像头，可通过网段扫描 NVR 登记并同步通道" />
         <List
@@ -31,11 +34,11 @@
             <ListItem class="nvr-channel-list-item">
               <NvrChannelCard
                 :item="item"
+                :play-button-title="playButtonTitle"
                 @view="emit('view', $event)"
                 @edit="emit('edit', $event)"
                 @set-location="emit('setLocation', $event)"
                 @play="emit('play', $event)"
-                @playAI="emit('playAI', $event)"
                 @delete="emit('delete', $event)"
               />
             </ListItem>
@@ -48,7 +51,7 @@
 
 <script lang="ts" setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { Empty, List, PageHeader, Spin } from 'ant-design-vue';
+import { Empty, List, PageHeader, Spin, Checkbox } from 'ant-design-vue';
 import { getNvrDetail, registerNvrWithChannels, type DeviceInfo, type NvrInfo } from '@/api/device/camera';
 import { nvrRegisterRegisteredCount } from '@/views/camera/utils/nvrRegisterMessage';
 import NvrChannelCard from '@/views/camera/components/NvrChannelCard/index.vue';
@@ -59,7 +62,14 @@ const ListItem = List.Item;
 const props = defineProps<{
   nvrId: number;
   title?: string;
+  playButtonTitle?: string;
+  enableAi?: boolean;
 }>();
+
+const enableAiModel = computed({
+  get: () => props.enableAi ?? true,
+  set: (value: boolean) => emit('update:enableAi', value),
+});
 
 const emit = defineEmits<{
   back: [];
@@ -67,8 +77,8 @@ const emit = defineEmits<{
   edit: [device: DeviceInfo];
   setLocation: [device: DeviceInfo];
   play: [device: DeviceInfo];
-  playAI: [device: DeviceInfo];
   delete: [device: DeviceInfo];
+  'update:enableAi': [value: boolean];
 }>();
 
 const { createMessage } = useMessage();
@@ -194,6 +204,12 @@ defineExpose({ load });
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
+    }
+
+    .section-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
     .section-title {

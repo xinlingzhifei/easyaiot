@@ -137,7 +137,8 @@ public class AlertNotificationConsumer {
                         "hasNotificationConfig={}", 
                         message.getDeviceId(), alertIdRef[0], shouldNotify, hasNotificationConfig);
                 
-                if (shouldNotify && hasNotificationConfig) {
+                // 告警未落库（如不在布防时段内）时不发送通知，与布防时段限制保持一致
+                if (shouldNotify && hasNotificationConfig && alertIdRef[0] != null) {
                     // 发送到通知主题供iot-message消费
                     if (iotKafkaTemplate != null) {
                         try {
@@ -180,6 +181,12 @@ public class AlertNotificationConsumer {
                         log.warn("⚠️  KafkaTemplate不可用，无法发送通知消息: alertId={}, deviceId={}", 
                                 alertIdRef[0], message.getDeviceId());
                     }
+                } else if (shouldNotify && hasNotificationConfig && alertIdRef[0] == null) {
+                    log.info("ℹ️  告警未落库（可能不在布防时段内），跳过发送通知: " +
+                            "deviceId={}, shouldNotify={}, channels数量={}, notifyUsers数量={}",
+                            message.getDeviceId(), shouldNotify,
+                            (channels != null ? channels.size() : 0),
+                            (notifyUsers != null ? notifyUsers.size() : 0));
                 } else {
                     log.info("ℹ️  告警消息中没有通知配置或shouldNotify=false，跳过发送通知: " +
                             "deviceId={}, alertId={}, shouldNotify={}, channels数量={}, notifyUsers数量={}", 
@@ -209,7 +216,7 @@ public class AlertNotificationConsumer {
     }
 
     /**
-     * HTTP/Webhook 渠道的目标 URL 在消息模板中，不依赖 notifyUsers。
+     * 群机器人 / Webhook 等渠道的目标在消息模板中，不依赖 notifyUsers。
      */
     private static boolean hasAlertNotificationConfig(
             List<Map<String, Object>> channels,
@@ -220,14 +227,31 @@ public class AlertNotificationConsumer {
         if (notifyUsers != null && !notifyUsers.isEmpty()) {
             return true;
         }
-        return channels.stream().anyMatch(ch -> {
-            Object method = ch.get("method");
-            if (method == null) {
-                return false;
-            }
-            String m = method.toString().toLowerCase();
-            return "http".equals(m) || "webhook".equals(m);
-        });
+        return channels.stream().anyMatch(AlertNotificationConsumer::isUserlessAlertChannel);
+    }
+
+    private static boolean isUserlessAlertChannel(Map<String, Object> channel) {
+        if (channel == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(channel.get("userless"))) {
+            return true;
+        }
+        Object method = channel.get("method");
+        if (method == null) {
+            return false;
+        }
+        String m = method.toString().toLowerCase();
+        if ("http".equals(m) || "webhook".equals(m)) {
+            return true;
+        }
+        Object templateId = channel.get("template_id");
+        if (templateId == null) {
+            return false;
+        }
+        return "wxcp".equals(m) || "wechat".equals(m) || "weixin".equals(m)
+                || "ding".equals(m) || "dingtalk".equals(m)
+                || "feishu".equals(m) || "lark".equals(m);
     }
 }
 

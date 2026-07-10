@@ -225,10 +225,12 @@ def create_app(start_background_tasks=None):
                 ensure_algorithm_task_sam_columns,
                 ensure_algorithm_task_post_process_columns,
                 ensure_algorithm_task_alert_class_columns,
+                ensure_algorithm_task_detect_conf_column,
             )
             ensure_algorithm_task_sam_columns(db.engine)
             ensure_algorithm_task_post_process_columns(db.engine)
             ensure_algorithm_task_alert_class_columns(db.engine)
+            ensure_algorithm_task_detect_conf_column(db.engine)
             
             # 迁移：检查并添加缺失的列和表
             try:
@@ -692,6 +694,20 @@ def create_app(start_background_tasks=None):
                     traceback.print_exc()
                     db.session.rollback()
 
+                # alert.time：列表排序、今日统计、时间范围筛选
+                try:
+                    db.session.execute(text("""
+                        CREATE INDEX IF NOT EXISTS idx_alert_time
+                        ON alert (time DESC);
+                    """))
+                    db.session.commit()
+                    print("✅ alert.time 索引检查完成")
+                except Exception as e:
+                    print(f"⚠️  alert.time 索引检查失败: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    db.session.rollback()
+
                 # GB28181 等设备 ID 超过原 VARCHAR(30)，会导致 iot-sink 写入 alert 失败，前端告警列表为空
                 try:
                     widen_specs = [
@@ -829,6 +845,13 @@ def create_app(start_background_tasks=None):
         traceback.print_exc()
 
     try:
+        from app.blueprints import audio_talk
+        app.register_blueprint(audio_talk.audio_talk_bp, url_prefix='/video/camera/audio/talk')
+        print(f"✅ Audio Talk Blueprint 注册成功")
+    except Exception as e:
+        print(f"⚠️  Audio Talk Blueprint 注册失败: {str(e)}")
+
+    try:
         from app.blueprints import media_hook
         app.register_blueprint(media_hook.media_hook_bp, url_prefix='/video/media')
         print(f"✅ Media Hook Blueprint 注册成功")
@@ -943,6 +966,13 @@ def create_app(start_background_tasks=None):
         skip = os.getenv('VIDEO_SKIP_BACKGROUND_TASKS', '').strip().lower()
         start_background_tasks = skip not in ('1', 'true', 'yes', 'on')
 
+    if start_background_tasks:
+        try:
+            from app.services.srs_container_guard_service import maybe_fix_srs_on_startup
+            maybe_fix_srs_on_startup()
+        except Exception as e:
+            logger.warning('SRS 启动自检失败（可忽略）: %s', e)
+
     if not start_background_tasks:
         return app
 
@@ -1047,15 +1077,20 @@ def create_app(start_background_tasks=None):
             scheduler,
         )
         _start_search(app)
-        # 安全关闭所有算法任务守护进程
+        # 安全关闭所有任务 worker 守护进程（算法 + 推流转发）
         def safe_shutdown_daemons():
             try:
-                from app.services.algorithm_task_launcher_service import stop_all_daemons
-                stop_all_daemons()
+                from app.services.algorithm_task_launcher_service import stop_all_daemons as stop_algorithm_daemons
+                stop_algorithm_daemons()
                 print('✅ 所有算法任务守护进程已安全关闭')
             except Exception as e:
-                # 忽略守护进程未运行或已关闭的异常
-                print(f'⚠️  关闭守护进程时出错: {str(e)}')
+                print(f'⚠️  关闭算法守护进程时出错: {str(e)}')
+            try:
+                from app.services.stream_forward_launcher_service import stop_all_daemons as stop_stream_forward_daemons
+                stop_stream_forward_daemons()
+                print('✅ 所有推流转发 worker 已安全关闭')
+            except Exception as e:
+                print(f'⚠️  关闭推流转发 worker 时出错: {str(e)}')
         atexit.register(safe_shutdown_daemons)
 
     # 应用启动后自动启动需要推流的设备
@@ -1111,6 +1146,16 @@ def create_app(start_background_tasks=None):
                 **_interval_job_kwargs,
             )
             print('✅ 录像空间自动清理任务已启动（每 30 分钟执行）')
+            try:
+                snap_boot = cleanup_wrapper()
+                print(f'✅ 抓拍空间启动清理完成: {snap_boot}')
+            except Exception as boot_snap_err:
+                print(f'⚠️ 抓拍空间启动清理失败: {boot_snap_err}')
+            try:
+                record_boot = record_cleanup_wrapper()
+                print(f'✅ 录像空间启动清理完成: {record_boot}')
+            except Exception as boot_record_err:
+                print(f'⚠️ 录像空间启动清理失败: {boot_record_err}')
         except Exception as e:
             print(f"❌ 启动空间自动清理任务失败: {str(e)}")
             import traceback
@@ -1195,6 +1240,34 @@ def create_app(start_background_tasks=None):
                 print(f'✅ 推流转发健康监控已启动（每 {health_interval} 秒）')
         except Exception as e:
             print(f'❌ 启动推流转发健康监控失败: {str(e)}')
+            import traceback
+            traceback.print_exc()
+
+        # 算法任务健康监控：守护进程退出 / 心跳超时后重新拉起
+        try:
+            from app.services.algorithm_task_health_service import (
+                is_health_monitor_enabled as is_algorithm_health_enabled,
+                run_algorithm_task_health_cycle,
+            )
+
+            if is_algorithm_health_enabled():
+                algorithm_health_interval = int(os.getenv('ALGORITHM_HEALTH_INTERVAL_SECONDS', '60'))
+
+                def algorithm_task_health_wrapper():
+                    with app.app_context():
+                        return run_algorithm_task_health_cycle()
+
+                scheduler.add_job(
+                    algorithm_task_health_wrapper,
+                    'interval',
+                    seconds=algorithm_health_interval,
+                    id='algorithm_task_health',
+                    replace_existing=True,
+                    **_interval_job_kwargs,
+                )
+                print(f'✅ 算法任务健康监控已启动（每 {algorithm_health_interval} 秒）')
+        except Exception as e:
+            print(f'❌ 启动算法任务健康监控失败: {str(e)}')
             import traceback
             traceback.print_exc()
         
@@ -1358,6 +1431,23 @@ def create_app(start_background_tasks=None):
             print(f"❌ 自动启动推流转发任务服务失败: {str(e)}")
             import traceback
             traceback.print_exc()
+
+        # 启动后立即做一次健康恢复（不等待定时任务，避免重启后长时间无推流/无 AI）
+        try:
+            from app.services.stream_forward_health_service import run_stream_forward_health_cycle
+            sf_stats = run_stream_forward_health_cycle()
+            if sf_stats.get('migrated'):
+                print(f"ℹ️  推流转发启动恢复: migrated={sf_stats.get('migrated')}")
+        except Exception as e:
+            print(f"⚠️  推流转发启动恢复失败: {str(e)}")
+
+        try:
+            from app.services.algorithm_task_health_service import run_algorithm_task_health_cycle
+            alg_recovered = run_algorithm_task_health_cycle()
+            if alg_recovered:
+                print(f"ℹ️  算法任务启动恢复: recovered={alg_recovered}")
+        except Exception as e:
+            print(f"⚠️  算法任务启动恢复失败: {str(e)}")
 
     # 最后注册退出钩子，确保 LIFO 下最先执行：停止监控线程与调度器
     from app.services.camera_service import register_scheduler_shutdown

@@ -28,13 +28,17 @@ def is_cluster_mode() -> bool:
     return raw in ('1', 'true', 'yes', 'on')
 
 
+DEFAULT_SRS_HOST_DATA_ROOT = '~/easyaiot/data'
+
+
 def get_mount_root() -> str:
     explicit = (os.getenv('MEDIA_HOST_DATA_ROOT') or os.getenv('CEPH_MOUNT_ROOT') or '').strip()
     if explicit:
         return os.path.normpath(os.path.expanduser(os.path.expandvars(explicit)))
     if is_cluster_mode():
         return DEFAULT_MOUNT_ROOT
-    return (os.getenv('SRS_HOST_DATA_ROOT') or '/data').strip()
+    raw = (os.getenv('SRS_HOST_DATA_ROOT') or DEFAULT_SRS_HOST_DATA_ROOT).strip()
+    return os.path.normpath(os.path.expanduser(os.path.expandvars(raw)))
 
 
 def get_playbacks_dir() -> str:

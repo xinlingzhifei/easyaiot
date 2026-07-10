@@ -35,6 +35,7 @@ video_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 sys.path.insert(0, video_root)
 
 from app.utils.video_env import load_video_env
+from app.utils.ffmpeg_compat import ffmpeg_rtsp_timeout_args
 
 # 子进程由 launcher 注入 POD_IP / SRS_* / DEVICE_IDS 等；.env 中空 POD_IP= 会覆盖注入值，
 # 导致误用 device.rtmp_stream（节点外网播放地址）推流而非本机 127.0.0.1:SRS。
@@ -248,6 +249,14 @@ logger = logging.getLogger(__name__)
 TASK_ID = int(os.getenv('TASK_ID', '0'))
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/iot_video')
 VIDEO_SERVICE_PORT = os.getenv('VIDEO_SERVICE_PORT', '6000')
+# 控制面心跳连续失败 N 次后 worker 自行退出，避免主程序停止后孤儿进程持续推流
+HEARTBEAT_EXIT_ENABLED = os.getenv('STREAM_FORWARD_HEARTBEAT_EXIT', 'true').strip().lower() in (
+    '1', 'true', 'yes', 'on',
+)
+try:
+    HEARTBEAT_EXIT_FAILURES = max(1, int(os.getenv('STREAM_FORWARD_HEARTBEAT_EXIT_FAILURES', '6')))
+except (TypeError, ValueError):
+    HEARTBEAT_EXIT_FAILURES = 6
 # GATEWAY_URL 已不再用于心跳上报，心跳上报直接使用 localhost:VIDEO_SERVICE_PORT
 GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://localhost:48080')
 
@@ -257,43 +266,42 @@ SessionLocal = sessionmaker(bind=engine)
 db_session = scoped_session(SessionLocal)
 
 # 配置参数（观看链路）：优先 VIEW_*，回退到历史通用变量
-SOURCE_FPS = int(os.getenv('VIEW_SOURCE_FPS', os.getenv('SOURCE_FPS', '25')))  # 源流帧率（高清流畅）
-TARGET_WIDTH = int(os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280')))  # 目标宽度（高清）
-TARGET_HEIGHT = int(os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720')))  # 目标高度（高清）
+# 观感推流帧率（与 AI 检测 EXTRACT_INTERVAL 完全解耦）
+VIEW_OUTPUT_FPS = int(os.getenv('VIEW_OUTPUT_FPS', os.getenv('VIEW_SOURCE_FPS', os.getenv('SOURCE_FPS', '25'))))
+SOURCE_FPS = VIEW_OUTPUT_FPS
+TARGET_WIDTH = int(os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280')))
+TARGET_HEIGHT = int(os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720')))
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
-EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '2'))  # 抽帧间隔（每N帧抽1帧）
-# 计算实际推流帧率（抽帧后的帧率）
-TARGET_FPS = max(1, SOURCE_FPS // EXTRACT_INTERVAL)  # 实际推流帧率，至少1fps
+# 观看链路不抽帧（全帧率推流）；勿读取 EXTRACT_INTERVAL（算法检测专用）
+EXTRACT_INTERVAL = int(os.getenv('VIEW_EXTRACT_INTERVAL', '1'))
+TARGET_FPS = max(1, VIEW_OUTPUT_FPS // EXTRACT_INTERVAL)
 
-# FFmpeg编码参数
-FFMPEG_PRESET_ENV = os.getenv('VIEW_FFMPEG_PRESET', os.getenv('FFMPEG_PRESET', 'veryfast'))
-FFMPEG_PRESET = FFMPEG_PRESET_ENV.strip() if FFMPEG_PRESET_ENV and FFMPEG_PRESET_ENV.strip() else 'veryfast'
+# FFmpeg编码参数（推流转发默认 ultrafast + 每路限线程，减轻多路 CPU 争抢）
+FFMPEG_PRESET_ENV = os.getenv('VIEW_FFMPEG_PRESET', os.getenv('FFMPEG_PRESET', 'ultrafast'))
+FFMPEG_PRESET = FFMPEG_PRESET_ENV.strip() if FFMPEG_PRESET_ENV and FFMPEG_PRESET_ENV.strip() else 'ultrafast'
 FFMPEG_VIDEO_BITRATE_ENV = os.getenv('VIEW_FFMPEG_VIDEO_BITRATE', os.getenv('FFMPEG_VIDEO_BITRATE', '3500k'))
 FFMPEG_VIDEO_BITRATE = FFMPEG_VIDEO_BITRATE_ENV.strip() if FFMPEG_VIDEO_BITRATE_ENV and FFMPEG_VIDEO_BITRATE_ENV.strip() else '3500k'
-FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', None)
+FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', os.getenv('STREAM_FORWARD_X264_THREADS', '2'))
 FFMPEG_THREADS = None if not FFMPEG_THREADS_ENV or FFMPEG_THREADS_ENV.strip() == '' else FFMPEG_THREADS_ENV.strip()
 FFMPEG_GOP_SIZE_ENV = os.getenv('VIEW_FFMPEG_GOP_SIZE', os.getenv('FFMPEG_GOP_SIZE', None))
 # 优化：减小GOP大小，提高关键帧频率，减少首帧加载时间
 # 默认GOP设为实际推流帧率（约1秒一个关键帧），而不是源流帧率的2倍
 # 这样可以更快地开始播放，减少转圈时间
-FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else max(1, SOURCE_FPS * 2)
+FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else max(1, VIEW_OUTPUT_FPS * 2)
 # 画质分档（low/medium/high）
 VIDEO_QUALITY_PROFILE = os.getenv('VIEW_VIDEO_QUALITY_PROFILE', os.getenv('VIDEO_QUALITY_PROFILE', '')).strip().lower()
 QUALITY_PROFILE_PRESETS = {
     'low': {
-        'source_fps': 15,
         'target_width': 640,
         'target_height': 360,
-        'ffmpeg_video_bitrate': '1000k',
+        'ffmpeg_video_bitrate': '1500k',
     },
     'medium': {
-        'source_fps': 20,
         'target_width': 1280,
         'target_height': 720,
         'ffmpeg_video_bitrate': '2500k',
     },
     'high': {
-        'source_fps': 25,
         'target_width': 1280,
         'target_height': 720,
         'ffmpeg_video_bitrate': '3500k',
@@ -301,17 +309,16 @@ QUALITY_PROFILE_PRESETS = {
 }
 if VIDEO_QUALITY_PROFILE in QUALITY_PROFILE_PRESETS:
     selected_profile = QUALITY_PROFILE_PRESETS[VIDEO_QUALITY_PROFILE]
-    SOURCE_FPS = selected_profile['source_fps']
     TARGET_WIDTH = selected_profile['target_width']
     TARGET_HEIGHT = selected_profile['target_height']
     TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
     FFMPEG_VIDEO_BITRATE = selected_profile['ffmpeg_video_bitrate']
-    TARGET_FPS = max(1, SOURCE_FPS // EXTRACT_INTERVAL)
+    TARGET_FPS = max(1, VIEW_OUTPUT_FPS // EXTRACT_INTERVAL)
     if not FFMPEG_GOP_SIZE_ENV:
-        FFMPEG_GOP_SIZE = max(1, SOURCE_FPS * 2)
+        FFMPEG_GOP_SIZE = max(1, VIEW_OUTPUT_FPS * 2)
 
-# 自适应画质配置：根据推流稳定性自动升降档
-AUTO_QUALITY_ENABLED = os.getenv('AUTO_QUALITY_ENABLED', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+# 自适应画质：推流转发默认关闭，避免降档触发重编码导致画面卡顿
+AUTO_QUALITY_ENABLED = os.getenv('VIEW_AUTO_QUALITY_ENABLED', os.getenv('AUTO_QUALITY_ENABLED', 'false')).strip().lower() in ('1', 'true', 'yes', 'on')
 AUTO_QUALITY_FAILURE_THRESHOLD = int(os.getenv('AUTO_QUALITY_FAILURE_THRESHOLD', '5'))
 AUTO_QUALITY_RECOVERY_SECONDS = int(os.getenv('AUTO_QUALITY_RECOVERY_SECONDS', '180'))
 AUTO_QUALITY_SWITCH_COOLDOWN_SECONDS = int(os.getenv('AUTO_QUALITY_SWITCH_COOLDOWN_SECONDS', '30'))
@@ -330,14 +337,15 @@ def _get_effective_quality_profile_name() -> str:
 
 
 def _get_effective_stream_params():
+    """返回观感推流参数；output_fps 固定走 VIEW_OUTPUT_FPS，与 EXTRACT_INTERVAL 无关。"""
     profile_name = AUTO_QUALITY_LOCK_PROFILE if AUTO_QUALITY_LOCK_PROFILE in QUALITY_PROFILE_PRESETS else _get_effective_quality_profile_name()
     preset = QUALITY_PROFILE_PRESETS.get(profile_name, QUALITY_PROFILE_PRESETS['high'])
-    source_fps = int(preset['source_fps'])
+    output_fps = max(1, int(VIEW_OUTPUT_FPS))
     target_width = int(preset['target_width'])
     target_height = int(preset['target_height'])
     bitrate = str(preset['ffmpeg_video_bitrate'])
-    gop_size = int(FFMPEG_GOP_SIZE) if FFMPEG_GOP_SIZE_ENV else max(1, source_fps * 2)
-    return profile_name, source_fps, target_width, target_height, bitrate, gop_size
+    gop_size = int(FFMPEG_GOP_SIZE) if FFMPEG_GOP_SIZE_ENV else max(1, output_fps * 2)
+    return profile_name, output_fps, target_width, target_height, bitrate, gop_size
 
 
 def _mark_quality_failure(reason: str):
@@ -391,6 +399,8 @@ FFMPEG_HWACCEL = FFMPEG_HWACCEL_ENV if FFMPEG_HWACCEL_ENV in ['auto', 'nvenc', '
 
 # 全局变量
 stop_event = threading.Event()
+_heartbeat_fail_streak = 0
+_heartbeat_fail_lock = threading.Lock()
 task_config = None
 # 最新帧缓存（拉流线程写、推流线程读，只保留最新一帧）
 device_latest_frames = {}  # {device_id: {'frame': np.ndarray, 'w': int, 'h': int} | None}
@@ -404,6 +414,9 @@ native_mux_stderr_thread: Optional[threading.Thread] = None
 device_push_threads = {}  # {device_id: threading.Thread}
 device_push_running = {}  # {device_id: threading.Event}  set() 表示停止
 device_codec_fallback = {}  # {device_id: bool} True 表示已回退到软件编码
+device_copy_fallback = {}  # {device_id: bool} True 表示 copy 直通失败，已回退转码
+device_source_codec = {}  # {device_id: str} RTSP 源视频编码（h264/hevc/...）
+device_relay_use_copy = {}  # {device_id: bool} 当前进程是否为 copy 模式
 device_push_success_counts = {}  # {device_id: int}
 # FFmpeg进程的stderr读取线程和错误信息
 device_pusher_stderr_threads = {}  # {device_id: threading.Thread}
@@ -427,6 +440,91 @@ def get_local_ip():
         return ip
     except:
         return '127.0.0.1'
+
+
+def _resolve_ffmpeg_binary() -> str:
+    path = os.getenv('FFMPEG_PATH', '').strip()
+    if path and os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+    return 'ffmpeg'
+
+
+def _resolve_ffprobe_binary() -> str:
+    probe = os.getenv('FFPROBE_PATH', '').strip()
+    if probe and os.path.isfile(probe) and os.access(probe, os.X_OK):
+        return probe
+    ffmpeg = _resolve_ffmpeg_binary()
+    if ffmpeg.endswith('ffmpeg'):
+        candidate = ffmpeg[:-6] + 'ffprobe'
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return 'ffprobe'
+
+
+_FFMPEG_CAPS: Optional[Dict[str, bool]] = None
+
+
+def _ffmpeg_supports_input_option(option_flag: str, option_value: str) -> bool:
+    """探测 FFmpeg 在 -i 之前是否接受该输入选项。"""
+    try:
+        result = subprocess.run(
+            [
+                _resolve_ffmpeg_binary(),
+                '-hide_banner',
+                option_flag,
+                option_value,
+                '-f',
+                'lavfi',
+                '-i',
+                'testsrc=duration=0.01:size=16x16:rate=1',
+                '-frames:v',
+                '1',
+                '-f',
+                'null',
+                '-',
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+        err = (result.stderr or b'').decode('utf-8', errors='ignore')
+        return 'Option not found' not in err and 'Unrecognized option' not in err
+    except Exception:
+        return False
+
+
+def _get_ffmpeg_caps() -> Dict[str, bool]:
+    """探测当前 FFmpeg 支持的选项，避免 RTSP 输入报 Option not found。"""
+    global _FFMPEG_CAPS
+    if _FFMPEG_CAPS is not None:
+        return _FFMPEG_CAPS
+    caps = {
+        'fps_mode': False,
+        'max_muxing_queue_size': False,
+        'thread_queue_size': False,
+        'err_detect': False,
+    }
+    try:
+        result = subprocess.run(
+            [_resolve_ffmpeg_binary(), '-hide_banner', '-h', 'full'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=8,
+        )
+        help_text = result.stdout.decode('utf-8', errors='ignore')
+        caps['fps_mode'] = '-fps_mode' in help_text
+        caps['max_muxing_queue_size'] = '-max_muxing_queue_size' in help_text
+    except Exception as exc:
+        logger.warning('FFmpeg 能力探测失败: %s', exc)
+    caps['thread_queue_size'] = _ffmpeg_supports_input_option('-thread_queue_size', '512')
+    caps['err_detect'] = _ffmpeg_supports_input_option('-err_detect', 'ignore_err')
+    _FFMPEG_CAPS = caps
+    logger.info(
+        'FFmpeg 能力探测: fps_mode=%s, max_muxing_queue_size=%s, thread_queue_size=%s, err_detect=%s',
+        caps['fps_mode'], caps['max_muxing_queue_size'],
+        caps['thread_queue_size'], caps['err_detect'],
+    )
+    return caps
 
 
 def check_hardware_acceleration():
@@ -457,29 +555,42 @@ def check_hardware_acceleration():
             output = result.stdout.decode('utf-8', errors='ignore') + result.stderr.decode('utf-8', errors='ignore')
             
             if 'h264_nvenc' in output:
-                # 进一步测试编码器是否真的可用（使用测试编码）
-                try:
-                    # 测试编码器是否能正常工作（使用很小的测试帧）
-                    test_cmd = [
-                        _resolve_ffmpeg_binary(), '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=640x360:rate=1',
-                        '-c:v', 'h264_nvenc', '-preset', 'p3', '-b:v', '500k',
-                        '-frames:v', '1', '-f', 'null', '-'
-                    ]
-                    test_result = subprocess.run(
-                        test_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        timeout=10
+                skip_test = os.getenv('STREAM_FORWARD_NVENC_SKIP_TEST', 'true').strip().lower() in (
+                    '1', 'true', 'yes', 'on',
+                )
+                if skip_test:
+                    use_nvenc = True
+                    codec_name = 'h264_nvenc'
+                    logger.info(
+                        '✅ 检测到 h264_nvenc（跳过 lavfi 自检；推流失败时自动回退 libx264）'
                     )
-                    if test_result.returncode == 0:
-                        use_nvenc = True
-                        codec_name = 'h264_nvenc'
-                        logger.info("✅ 检测到硬件加速支持，使用 h264_nvenc 编码器")
-                    else:
-                        logger.warning("⚠️  h264_nvenc 编码器检测到但测试失败，使用软件编码 libx264")
-                        logger.debug(f"测试输出: {test_result.stderr.decode('utf-8', errors='ignore')[:200]}")
-                except Exception as test_e:
-                    logger.warning(f"⚠️  测试 h264_nvenc 编码器时出错: {str(test_e)}，使用软件编码 libx264")
+                else:
+                    try:
+                        test_cmd = [
+                            _resolve_ffmpeg_binary(), '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=640x360:rate=1',
+                            '-c:v', 'h264_nvenc', '-preset', 'p3', '-b:v', '500k',
+                            '-frames:v', '1', '-f', 'null', '-',
+                        ]
+                        test_result = subprocess.run(
+                            test_cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=10,
+                        )
+                        if test_result.returncode == 0:
+                            use_nvenc = True
+                            codec_name = 'h264_nvenc'
+                            logger.info('✅ 检测到硬件加速支持，使用 h264_nvenc 编码器')
+                        else:
+                            logger.warning('⚠️  h264_nvenc 编码器检测到但测试失败，使用软件编码 libx264')
+                            logger.debug(
+                                '测试输出: %s',
+                                test_result.stderr.decode('utf-8', errors='ignore')[:200],
+                            )
+                    except Exception as test_e:
+                        logger.warning(
+                            '⚠️  测试 h264_nvenc 编码器时出错: %s，使用软件编码 libx264', test_e,
+                        )
             else:
                 logger.info("⚠️  未检测到 h264_nvenc 编码器，使用软件编码 libx264")
         except Exception as e:
@@ -511,6 +622,7 @@ def align_resolution(width: int, height: int, align: int = 16) -> tuple:
 
 # 在启动时检测硬件加速
 _hwaccel_nvenc, _hwaccel_cuvid, _hwaccel_codec = check_hardware_acceleration()
+_nvenc_relay_verified: Optional[bool] = None
 
 
 def load_task_config():
@@ -678,6 +790,117 @@ def _check_srs_api_ready(host: str, api_port: int, timeout: float = 3.0) -> bool
         return False
 
 
+def _srs_stream_path_key(stream: dict) -> str:
+    """从 SRS streams API 条目解析 app/stream 路径，如 live/device_id。"""
+    url = (stream.get('url') or '').strip().lstrip('/')
+    if url:
+        return url
+    stream_app = (stream.get('app') or '').strip()
+    stream_name = (stream.get('name') or '').strip()
+    if stream_name.endswith('.flv'):
+        stream_name = stream_name[:-4]
+    if stream_app and stream_name:
+        return f'{stream_app}/{stream_name}'
+    return stream_app
+
+
+def check_and_stop_existing_stream(stream_url: str) -> None:
+    """推流前清理 SRS 上同路径的旧 publisher，避免 StreamBusy / Broken pipe。"""
+    try:
+        if not stream_url or not stream_url.startswith('rtmp://'):
+            return
+
+        url_part = stream_url.replace('rtmp://', '')
+        if '/' not in url_part:
+            return
+        host_port, stream_path = url_part.split('/', 1)[0], '/'.join(url_part.split('/')[1:])
+        if not stream_path:
+            return
+
+        rtmp_host = host_port.split(':')[0] if ':' in host_port else host_port
+        if rtmp_host in ('srs-server', 'srs', 'SRS'):
+            rtmp_host = '127.0.0.1'
+        if rtmp_host in ('localhost', '127.0.0.1'):
+            rtmp_host = '127.0.0.1'
+
+        api_port = _srs_api_port()
+        srs_streams_base = f'http://{rtmp_host}:{api_port}/api/v1/streams/'
+        srs_streams_list_url = f'{srs_streams_base}?count=100'
+        srs_clients_api_url = f'http://{rtmp_host}:{api_port}/api/v1/clients/'
+        logger.info('检查现有流: %s', stream_path)
+
+        response = requests.get(srs_streams_list_url, timeout=3)
+        if response.status_code != 200:
+            logger.warning('无法获取 SRS 流列表 (状态码: %s)，继续推流', response.status_code)
+            return
+
+        streams = response.json()
+        if isinstance(streams, dict) and 'streams' in streams:
+            stream_list = streams['streams']
+        elif isinstance(streams, list):
+            stream_list = streams
+        else:
+            stream_list = []
+
+        stream_to_stop = None
+        for stream in stream_list:
+            if _srs_stream_path_key(stream) == stream_path:
+                stream_to_stop = stream
+                break
+
+        if not stream_to_stop:
+            logger.debug('未发现现有流: %s', stream_path)
+            return
+
+        stream_id = stream_to_stop.get('id', '')
+        publish_info = stream_to_stop.get('publish', {})
+        publish_active = bool(publish_info.get('active')) if isinstance(publish_info, dict) else False
+        publish_cid = publish_info.get('cid', '') if isinstance(publish_info, dict) else None
+        logger.warning('发现现有流: %s (ID: %s)，正在清理...', stream_path, stream_id)
+
+        if publish_cid and publish_active:
+            client_info_url = f'{srs_clients_api_url}{publish_cid}'
+            try:
+                stop_response = requests.delete(client_info_url, timeout=3)
+                if stop_response.status_code in (200, 204):
+                    logger.info('已断开发布者客户端: %s', stream_path)
+                    time.sleep(1)
+                    return
+            except Exception as e:
+                logger.warning('断开客户端异常: %s', e)
+
+        if stream_id:
+            try:
+                stop_response = requests.delete(f'{srs_streams_base}{stream_id}', timeout=3)
+                if stop_response.status_code in (200, 204):
+                    logger.info('已停止现有流: %s', stream_path)
+                    time.sleep(1)
+                    return
+            except Exception as e:
+                logger.warning('停止流异常: %s', e)
+
+        stream_key = stream_path.split('/')[-1]
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', f'rtmp://.*{stream_key}'],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                for pid in result.stdout.strip().split('\n'):
+                    pid = pid.strip()
+                    if not pid:
+                        continue
+                    logger.info('终止占用流的进程 PID: %s', pid)
+                    subprocess.run(['kill', '-TERM', pid], timeout=2)
+                time.sleep(1)
+        except Exception as e:
+            logger.warning('查找占用流进程失败: %s', e)
+    except Exception as e:
+        logger.warning('检查现有流时出错: %s，继续推流', e)
+
+
 def read_ffmpeg_stderr(device_id: str, stderr_pipe, stderr_buffer: list, stderr_lock: threading.Lock):
     """读取FFmpeg进程的stderr输出"""
     try:
@@ -777,7 +1000,7 @@ def _build_ffmpeg_cmd(
         "-s", f"{frame_width}x{frame_height}",
         "-r", str(effective_fps),
         "-i", "-",
-        "-vf", f"scale={target_w}:{target_h}:flags=lanczos",
+        "-vf", f"scale={target_w}:{target_h}:flags=bilinear",
     ]
 
     if use_hardware:
@@ -852,15 +1075,8 @@ def _get_rtsp_transport() -> str:
 
 
 def _get_push_fps() -> int:
-    """推流输出帧率（含 EXTRACT_INTERVAL 抽帧）。"""
+    """推流输出帧率（VIEW_OUTPUT_FPS / VIEW_EXTRACT_INTERVAL，与 AI EXTRACT_INTERVAL 无关）。"""
     return max(1, TARGET_FPS)
-
-
-def _resolve_ffmpeg_binary() -> str:
-    path = os.getenv('FFMPEG_PATH', '').strip()
-    if path and os.path.isfile(path) and os.access(path, os.X_OK):
-        return path
-    return 'ffmpeg'
 
 
 def _is_ffmpeg_option_stderr_error(stderr_lines: List[str]) -> bool:
@@ -876,15 +1092,275 @@ def _is_ffmpeg_option_stderr_error(stderr_lines: List[str]) -> bool:
     return False
 
 
+def _stream_forward_env_int(name: str, default: int) -> int:
+    try:
+        raw = os.getenv(name, '').strip()
+        return int(raw) if raw else default
+    except (ValueError, TypeError):
+        return default
+
+
+def _expected_relay_stream_count() -> int:
+    """预期并发推流路数：显式配置 > 当前任务设备数 > 默认 8。"""
+    configured = _stream_forward_env_int('STREAM_FORWARD_TARGET_STREAMS', 0)
+    if configured > 0:
+        return configured
+    if task_config and getattr(task_config, 'device_streams', None):
+        return max(1, len(task_config.device_streams))
+    return 8
+
+
+def _resolve_relay_thread_queue_size() -> int:
+    """
+    FFmpeg -thread_queue_size：每路输入 demux 包队列深度（非全局路数上限）。
+    2 路及以上默认 512（4 路场景实测有效）；仅在大规模部署时自动抬高。
+    """
+    explicit = os.getenv('STREAM_FORWARD_THREAD_QUEUE_SIZE', '').strip()
+    if explicit:
+        return max(8, _stream_forward_env_int('STREAM_FORWARD_THREAD_QUEUE_SIZE', 512))
+    stream_count = _expected_relay_stream_count()
+    if stream_count >= 100:
+        return 1024
+    if stream_count >= 32:
+        return 768
+    if stream_count >= 2:
+        return 512
+    return 256
+
+
+def _resolve_relay_mux_queue_size() -> int:
+    """转码输出 mux 队列；多路并发时与 thread_queue_size 同步抬高。"""
+    explicit = os.getenv('STREAM_FORWARD_MAX_MUXING_QUEUE_SIZE', '').strip()
+    if explicit:
+        return max(128, _stream_forward_env_int('STREAM_FORWARD_MAX_MUXING_QUEUE_SIZE', 1024))
+    stream_count = _expected_relay_stream_count()
+    if stream_count >= 100:
+        return 2048
+    if stream_count >= 32:
+        return 1536
+    return 1024
+
+
 def _native_relay_input_options(rtsp_transport: str) -> List[str]:
-    """拉流通用输入参数。"""
-    return [
+    """拉流输入参数：多路并发时需超时/thread_queue，避免部分 RTSP 挂死导致画面时间停住。"""
+    caps = _get_ffmpeg_caps()
+    analyzeduration = os.getenv('STREAM_FORWARD_ANALYZEDURATION', '2000000').strip() or '2000000'
+    probesize = os.getenv('STREAM_FORWARD_PROBESIZE', '2000000').strip() or '2000000'
+    open_timeout_us = _stream_forward_env_int('STREAM_FORWARD_RTSP_OPEN_TIMEOUT_US', 10_000_000)
+    rw_timeout_us = _stream_forward_env_int('STREAM_FORWARD_RW_TIMEOUT_US', 5_000_000)
+    thread_queue_size = _resolve_relay_thread_queue_size()
+
+    opts: List[str] = [
         '-rtsp_transport', rtsp_transport,
-        '-analyzeduration', '10000000',
-        '-probesize', '10000000',
-        '-fflags', '+genpts+discardcorrupt',
-        '-err_detect', 'ignore_err',
+        '-analyzeduration', analyzeduration,
+        '-probesize', probesize,
     ]
+    if rtsp_transport == 'tcp':
+        opts.extend(['-rtsp_flags', 'prefer_tcp'])
+    opts.extend(ffmpeg_rtsp_timeout_args(open_timeout_us, rw_timeout_us))
+    if caps.get('thread_queue_size') and thread_queue_size > 0:
+        opts.extend(['-thread_queue_size', str(thread_queue_size)])
+    opts.extend(['-fflags', '+genpts+discardcorrupt', '-flags', 'low_delay'])
+    if caps.get('err_detect'):
+        opts.extend(['-err_detect', 'ignore_err'])
+    if os.getenv('STREAM_FORWARD_USE_WALLCLOCK_TS', 'false').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    ):
+        opts.append('-use_wallclock_as_timestamps')
+        opts.append('1')
+    return opts
+
+
+def _native_relay_mux_output_options() -> List[str]:
+    """copy/转码共用：避免多路 RTSP 时间戳异常导致 FLV 播放时间停住。"""
+    return ['-avoid_negative_ts', 'make_zero', '-muxdelay', '0', '-muxpreload', '0']
+
+
+def _stream_forward_copy_enabled() -> bool:
+    """H.264 直通(copy) 不转码，多路观看最流畅（HEVC 等会自动回退转码）。"""
+    return os.getenv('STREAM_FORWARD_VIDEO_COPY', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+
+
+def _is_h264_source_codec(codec: Optional[str]) -> bool:
+    if not codec:
+        return False
+    return codec.lower() in ('h264', 'avc', 'avc1')
+
+
+def _probe_rtsp_video_codec(rtsp_url: str, timeout: float = 10.0) -> Optional[str]:
+    """探测 RTSP 主视频轨编码，用于判断是否可 copy。"""
+    try:
+        rtsp_transport = _get_rtsp_transport()
+        analyzeduration = os.getenv('STREAM_FORWARD_ANALYZEDURATION', '3000000').strip() or '3000000'
+        probesize = os.getenv('STREAM_FORWARD_PROBESIZE', '3000000').strip() or '3000000'
+        cmd = [
+            _resolve_ffprobe_binary(),
+            '-hide_banner', '-loglevel', 'error',
+            '-rtsp_transport', rtsp_transport,
+            '-analyzeduration', analyzeduration,
+            '-probesize', probesize,
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            rtsp_url,
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            logger.debug('ffprobe 探测失败: %s', (result.stderr or result.stdout or '').strip()[:200])
+            return None
+        codec = (result.stdout or '').strip().lower()
+        return codec or None
+    except subprocess.TimeoutExpired:
+        logger.warning('ffprobe 探测 RTSP 编码超时: %s', rtsp_url)
+        return None
+    except Exception as exc:
+        logger.debug('ffprobe 探测 RTSP 编码异常: %s', exc)
+        return None
+
+
+def _ensure_copy_compatible_source(device_id: str, rtsp_url: str) -> None:
+    """非 H.264 源 copy 到 FLV 无法 Web 播放，启动前探测并自动转码。"""
+    if device_copy_fallback.get(device_id, False):
+        return
+
+    codec = device_source_codec.get(device_id)
+    if codec is None:
+        codec = _probe_rtsp_video_codec(rtsp_url)
+        if codec:
+            device_source_codec[device_id] = codec
+
+    if not codec:
+        logger.debug('设备 %s RTSP 编码探测失败，先尝试 copy', device_id)
+        return
+
+    logger.info('设备 %s RTSP 源编码: %s', device_id, codec)
+    if not _is_h264_source_codec(codec):
+        logger.info(
+            '设备 %s 源为 %s（非 H.264），copy 无法 Web 播放，自动使用 H.264 转码',
+            device_id, codec,
+        )
+        device_copy_fallback[device_id] = True
+
+
+def _is_copy_mode_stderr_error(stderr_lines: List[str]) -> bool:
+    for line in stderr_lines:
+        line_lower = line.lower()
+        if any(token in line_lower for token in (
+            'hevc', 'h265', 'could not find tag', 'codec not currently supported',
+            'error while opening encoder', 'cannot copy', 'non-key frame',
+        )):
+            return True
+    return False
+
+
+def _is_broken_pipe_stderr_error(stderr_lines: List[str]) -> bool:
+    for line in stderr_lines:
+        line_lower = line.lower()
+        if 'broken pipe' in line_lower or 'error code: -32' in line_lower:
+            return True
+    return False
+
+
+def _is_rtmp_connect_stderr_error(stderr_lines: List[str]) -> bool:
+    for line in stderr_lines:
+        line_lower = line.lower()
+        if 'cannot open connection' in line_lower and ('1935' in line_lower or 'rtmp' in line_lower):
+            return True
+        if 'error opening output' in line_lower and 'rtmp://' in line_lower:
+            return True
+        if 'immediate exit requested' in line_lower:
+            return True
+    return False
+
+
+def _is_srs_disconnect_stderr_error(stderr_lines: List[str]) -> bool:
+    return _is_broken_pipe_stderr_error(stderr_lines) or _is_rtmp_connect_stderr_error(stderr_lines)
+
+
+def _should_fallback_copy_to_transcode(stderr_lines: List[str]) -> bool:
+    if _is_srs_disconnect_stderr_error(stderr_lines):
+        return False
+    return _is_copy_mode_stderr_error(stderr_lines)
+
+
+def _disable_hwaccel_globally(reason: str) -> None:
+    global _hwaccel_codec, _nvenc_relay_verified
+    if _hwaccel_codec == 'h264_nvenc':
+        _hwaccel_codec = 'libx264'
+        _nvenc_relay_verified = False
+        logger.warning('本节点 NVENC 不可用 (%s)，后续推流统一使用 libx264', reason)
+
+
+def _verify_nvenc_for_relay() -> bool:
+    """首次转码前用与推流一致的 scale+NVENC 参数自检，避免 skip_test 误报导致首包失败。"""
+    global _nvenc_relay_verified
+    if _nvenc_relay_verified is not None:
+        return _nvenc_relay_verified
+    if _hwaccel_codec != 'h264_nvenc':
+        _nvenc_relay_verified = False
+        return False
+
+    _profile_name, _effective_fps, effective_w, effective_h, effective_bitrate, _effective_gop = _get_effective_stream_params()
+    target_w, target_h = align_resolution(effective_w, effective_h, 16)
+    gpu_id = get_ffmpeg_gpu_id('nvenc-relay-selftest')
+    preset = os.getenv('STREAM_FORWARD_NVENC_PRESET', 'p1')
+    test_cmd = [
+        _resolve_ffmpeg_binary(),
+        '-y',
+        '-hide_banner',
+        '-f', 'lavfi',
+        '-i', f'testsrc=duration=1:size={target_w}x{target_h}:rate=1',
+        '-vf', f'scale={target_w}:{target_h}:flags=fast_bilinear',
+        '-c:v', 'h264_nvenc',
+        '-preset', preset,
+        '-tune', 'll',
+        '-gpu', str(gpu_id),
+        '-b:v', effective_bitrate,
+        '-frames:v', '1',
+        '-f', 'null',
+        '-',
+    ]
+    try:
+        test_result = subprocess.run(
+            test_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+        )
+        _nvenc_relay_verified = test_result.returncode == 0
+        if not _nvenc_relay_verified:
+            err_snip = test_result.stderr.decode('utf-8', errors='ignore').strip()[-400:]
+            logger.warning('NVENC 转码自检失败 (%dx%d preset=%s gpu=%s): %s',
+                           target_w, target_h, preset, gpu_id, err_snip)
+            _disable_hwaccel_globally('NVENC 转码自检未通过')
+        else:
+            logger.info('NVENC 转码自检通过 (%dx%d, preset=%s, gpu=%s)',
+                        target_w, target_h, preset, gpu_id)
+    except Exception as exc:
+        logger.warning('NVENC 转码自检异常: %s', exc)
+        _nvenc_relay_verified = False
+        _disable_hwaccel_globally('NVENC 转码自检异常')
+
+    return _nvenc_relay_verified
+
+
+def _build_native_ffmpeg_copy_cmd(device_id: str, rtsp_url: str, rtmp_url: str) -> List[str]:
+    """H.264 直通：RTSP -> RTMP，零转码，CPU 占用最低。"""
+    rtsp_transport = _get_rtsp_transport()
+    cmd = [_resolve_ffmpeg_binary(), '-nostdin', '-hide_banner', '-loglevel', 'warning']
+    cmd.extend(_native_relay_input_options(rtsp_transport))
+    cmd.extend(['-i', rtsp_url, '-an', '-c:v', 'copy'])
+    cmd.extend(_native_relay_mux_output_options())
+    cmd.extend(['-f', 'flv', '-flvflags', 'no_duration_filesize', rtmp_url])
+    logger.info('设备推流 [%s]: 模式 copy(直通), 无转码', device_id)
+    return cmd
 
 
 def _native_relay_encode_options(
@@ -892,14 +1368,23 @@ def _native_relay_encode_options(
     use_hardware: bool,
     effective_bitrate: str,
     effective_gop: int,
+    push_fps: int,
 ) -> List[str]:
+    caps = _get_ffmpeg_caps()
     opts: List[str] = ['-an']
+    if caps.get('max_muxing_queue_size'):
+        opts.extend(['-max_muxing_queue_size', str(_resolve_relay_mux_queue_size())])
+    push_fps = max(1, int(push_fps))
+    if caps.get('fps_mode'):
+        opts.extend(['-fps_mode', 'cfr', '-r', str(push_fps)])
+    else:
+        opts.extend(['-vsync', 'cfr', '-r', str(push_fps)])
     if use_hardware:
         ffmpeg_gpu_id = get_ffmpeg_gpu_id(device_id)
         opts.extend([
             '-c:v', 'h264_nvenc',
             '-b:v', effective_bitrate,
-            '-preset', 'p3',
+            '-preset', os.getenv('STREAM_FORWARD_NVENC_PRESET', 'p1'),
             '-tune', 'll',
             '-gpu', str(ffmpeg_gpu_id),
             '-rc', 'vbr',
@@ -948,9 +1433,10 @@ def _build_native_ffmpeg_relay_cmd(
     cmd.extend(_native_relay_input_options(rtsp_transport))
     cmd.extend(['-i', rtsp_url])
     cmd.extend([
-        '-vf', f'scale={target_w}:{target_h}:flags=lanczos,fps={push_fps}',
+        '-vf', f'scale={target_w}:{target_h}:flags=fast_bilinear',
     ])
-    cmd.extend(_native_relay_encode_options(device_id, use_hardware, effective_bitrate, effective_gop))
+    cmd.extend(_native_relay_encode_options(device_id, use_hardware, effective_bitrate, effective_gop, push_fps))
+    cmd.extend(_native_relay_mux_output_options())
     cmd.extend(['-f', 'flv', '-flvflags', 'no_duration_filesize', rtmp_url])
 
     logger.info(
@@ -984,9 +1470,10 @@ def _build_native_ffmpeg_mux_cmd(device_streams: Dict[str, dict]) -> List[str]:
         use_hw = use_hardware and not device_codec_fallback.get(device_id, False)
         cmd.extend([
             '-map', f'{idx}:v:0?',
-            '-vf', f'scale={target_w}:{target_h}:flags=lanczos,fps={push_fps}',
+            '-vf', f'scale={target_w}:{target_h}:flags=fast_bilinear',
         ])
-        cmd.extend(_native_relay_encode_options(device_id, use_hw, effective_bitrate, effective_gop))
+        cmd.extend(_native_relay_encode_options(device_id, use_hw, effective_bitrate, effective_gop, push_fps))
+        cmd.extend(_native_relay_mux_output_options())
         cmd.extend(['-f', 'flv', '-flvflags', 'no_duration_filesize', rtmp_url])
 
     logger.info(
@@ -1034,9 +1521,39 @@ def _stop_native_relay_process(device_id: str) -> None:
 
 def _handle_native_relay_exit(device_id: str, exit_code: Optional[int]) -> None:
     stderr_lines = _get_device_stderr_lines(device_id)
+    if stop_event.is_set():
+        device_relay_use_copy.pop(device_id, None)
+        device_pushers.pop(device_id, None)
+        return
+
+    rtmp_url = None
+    if task_config and device_id in task_config.device_streams:
+        rtmp_url = task_config.device_streams[device_id].get('rtmp_url')
+
+    if (
+        device_relay_use_copy.get(device_id)
+        and not device_copy_fallback.get(device_id, False)
+    ):
+        if _should_fallback_copy_to_transcode(stderr_lines):
+            logger.warning('设备 %s copy 直通不兼容，下次重启将回退转码', device_id)
+            device_copy_fallback[device_id] = True
+        elif _is_srs_disconnect_stderr_error(stderr_lines):
+            logger.warning(
+                '设备 %s copy 推流 SRS 连接断开 (code=%s)，清理后仍以 copy 重试',
+                device_id, exit_code,
+            )
+            if rtmp_url:
+                check_and_stop_existing_stream(rtmp_url)
+        else:
+            logger.warning(
+                '设备 %s copy 进程退出 (code=%s)，仍以 copy 模式重试',
+                device_id, exit_code,
+            )
+    device_relay_use_copy.pop(device_id, None)
     if _is_hw_encoder_stderr_error(stderr_lines) and not device_codec_fallback.get(device_id, False):
         logger.warning('设备 %s 硬件编码失败，自动回退到软件编码', device_id)
         device_codec_fallback[device_id] = True
+        _disable_hwaccel_globally('硬件编码运行失败')
         _mark_quality_failure('硬件编码运行失败')
     logger.warning('设备 %s 推流进程退出 (code=%s)', device_id, exit_code)
     if not _is_ffmpeg_option_stderr_error(stderr_lines):
@@ -1063,11 +1580,31 @@ def _start_native_relay_process(device_id: str) -> Optional[subprocess.Popen]:
         _mark_quality_failure('RTMP服务器不可用')
         return None
 
+    check_and_stop_existing_stream(rtmp_url)
+
+    if _stream_forward_copy_enabled() and not device_copy_fallback.get(device_id, False):
+        _ensure_copy_compatible_source(device_id, rtsp_url)
+
+    use_copy = _stream_forward_copy_enabled() and not device_copy_fallback.get(device_id, False)
     use_hardware = (
-        _hwaccel_codec == 'h264_nvenc'
+        not use_copy
+        and _hwaccel_codec == 'h264_nvenc'
         and not device_codec_fallback.get(device_id, False)
     )
-    ffmpeg_cmd = _build_native_ffmpeg_relay_cmd(device_id, rtsp_url, rtmp_url, use_hardware)
+    if use_hardware and not _verify_nvenc_for_relay():
+        use_hardware = False
+    if use_copy:
+        ffmpeg_cmd = _build_native_ffmpeg_copy_cmd(device_id, rtsp_url, rtmp_url)
+    else:
+        source_codec = device_source_codec.get(device_id)
+        if device_copy_fallback.get(device_id, False) and source_codec:
+            logger.info(
+                '设备 %s 使用 H.264 转码 (源编码 %s，非 H.264 或 copy 不可用)',
+                device_id, source_codec,
+            )
+        elif not _stream_forward_copy_enabled():
+            logger.info('设备 %s 使用 H.264 转码 (STREAM_FORWARD_VIDEO_COPY=false)', device_id)
+        ffmpeg_cmd = _build_native_ffmpeg_relay_cmd(device_id, rtsp_url, rtmp_url, use_hardware)
 
     if device_id not in device_pusher_stderr_buffers:
         device_pusher_stderr_buffers[device_id] = []
@@ -1096,9 +1633,33 @@ def _start_native_relay_process(device_id: str) -> Optional[subprocess.Popen]:
         if proc.poll() is not None:
             error_lines = _get_device_stderr_lines(device_id)
             exit_code = proc.returncode
+            if use_copy and not device_copy_fallback.get(device_id, False):
+                key_errors = _collect_key_stderr_errors(error_lines)
+                if stop_event.is_set():
+                    return None
+                if _should_fallback_copy_to_transcode(error_lines):
+                    logger.warning('设备 %s copy 直通启动失败 (code=%s)，回退转码', device_id, exit_code)
+                    device_copy_fallback[device_id] = True
+                    if key_errors:
+                        logger.warning('   copy 失败原因: %s', key_errors[-3:])
+                    return _start_native_relay_process(device_id)
+                if _is_srs_disconnect_stderr_error(error_lines):
+                    logger.warning(
+                        '设备 %s copy 启动时 SRS 不可用 (code=%s)，清理后重试 copy',
+                        device_id, exit_code,
+                    )
+                    if key_errors:
+                        logger.warning('   连接错误: %s', key_errors[-3:])
+                    check_and_stop_existing_stream(rtmp_url)
+                    return None
+                logger.warning('设备 %s copy 启动失败 (code=%s)，将重试 copy', device_id, exit_code)
+                if key_errors:
+                    logger.warning('   失败原因: %s', key_errors[-3:])
+                return None
             if _is_hw_encoder_stderr_error(error_lines) and use_hardware and not device_codec_fallback.get(device_id, False):
                 logger.warning('设备 %s 硬件编码启动失败，回退软件编码', device_id)
                 device_codec_fallback[device_id] = True
+                _disable_hwaccel_globally('硬件编码启动失败')
                 _mark_quality_failure('硬件编码启动失败')
                 return _start_native_relay_process(device_id)
 
@@ -1107,13 +1668,18 @@ def _start_native_relay_process(device_id: str) -> Optional[subprocess.Popen]:
                 _mark_quality_failure(f'推流启动失败({exit_code})')
             else:
                 logger.error('设备 %s FFmpeg 参数与当前版本不兼容，请检查 FFMPEG_PATH', device_id)
+            logger.error('   FFmpeg 命令: %s', ' '.join(ffmpeg_cmd))
             key_errors = _collect_key_stderr_errors(error_lines)
             if key_errors:
                 logger.error('   关键错误: %s', key_errors[-5:])
             return None
 
         device_pushers[device_id] = proc
-        actual_codec = 'libx264' if device_codec_fallback.get(device_id, False) else _hwaccel_codec
+        device_relay_use_copy[device_id] = use_copy
+        if use_copy:
+            actual_codec = 'copy'
+        else:
+            actual_codec = 'libx264' if device_codec_fallback.get(device_id, False) else _hwaccel_codec
         logger.info('设备 %s 推流已启动 PID=%s -> %s (%s)', device_id, proc.pid, rtmp_url, actual_codec)
         return proc
     except Exception as e:
@@ -1193,6 +1759,45 @@ def _run_native_ffmpeg_mux_mode(device_streams: Dict[str, dict]) -> None:
         logger.info('FFmpeg 多路复用模式已停止')
 
 
+def _prefetch_source_codecs_parallel(device_streams: Dict[str, dict]) -> None:
+    """并行预探测各路 RTSP 编码，避免监督线程顺序 ffprobe 阻塞多路同时启动。"""
+    if not _stream_forward_copy_enabled():
+        return
+
+    def _probe_one(device_id: str, rtsp_url: str) -> None:
+        if device_id in device_source_codec or device_copy_fallback.get(device_id, False):
+            return
+        codec = _probe_rtsp_video_codec(rtsp_url)
+        if not codec:
+            return
+        device_source_codec[device_id] = codec
+        logger.info('设备 %s RTSP 源编码(预探测): %s', device_id, codec)
+        if not _is_h264_source_codec(codec):
+            device_copy_fallback[device_id] = True
+            logger.info(
+                '设备 %s 源为 %s（非 H.264），copy 无法 Web 播放，将使用 H.264 转码',
+                device_id, codec,
+            )
+
+    threads: List[threading.Thread] = []
+    for device_id, info in device_streams.items():
+        rtsp_url = info.get('rtsp_url')
+        if not rtsp_url:
+            continue
+        thread = threading.Thread(
+            target=_probe_one,
+            args=(device_id, rtsp_url),
+            daemon=True,
+            name=f'probe-{device_id}',
+        )
+        thread.start()
+        threads.append(thread)
+
+    probe_timeout = max(12.0, float(os.getenv('STREAM_FORWARD_PROBE_TIMEOUT_SEC', '12')))
+    for thread in threads:
+        thread.join(timeout=probe_timeout)
+
+
 def _run_native_ffmpeg_relay_mode(device_streams: Dict[str, dict]) -> None:
     """独立推流模式：监督线程自动重启。"""
     global heartbeat_thread
@@ -1214,21 +1819,32 @@ def _run_native_ffmpeg_relay_mode(device_streams: Dict[str, dict]) -> None:
         update_task_status(status=1, exception_reason=reason[:200])
         return
 
-    restart_delay_sec = max(1.0, float(os.getenv('STREAM_FORWARD_RELAY_RESTART_DELAY_SEC', '3')))
-    restart_cooldown_sec = max(restart_delay_sec, float(os.getenv('STREAM_FORWARD_RELAY_RESTART_COOLDOWN_SEC', '10')))
-    max_backoff_sec = max(restart_cooldown_sec, float(os.getenv('STREAM_FORWARD_RELAY_MAX_BACKOFF_SEC', '60')))
+    restart_delay_sec = max(0.3, float(os.getenv('STREAM_FORWARD_RELAY_RESTART_DELAY_SEC', '0.5')))
+    restart_cooldown_sec = max(restart_delay_sec, float(os.getenv('STREAM_FORWARD_RELAY_RESTART_COOLDOWN_SEC', '3')))
+    max_backoff_sec = max(restart_cooldown_sec, float(os.getenv('STREAM_FORWARD_RELAY_MAX_BACKOFF_SEC', '15')))
     relay_fail_counts: Dict[str, int] = {}
     relay_next_retry: Dict[str, float] = {}
+    stagger_sec = max(0.0, float(os.getenv('STREAM_FORWARD_RELAY_STAGGER_SEC', '0.3')))
 
     for device_id in device_streams:
         device_codec_fallback[device_id] = False
+        device_copy_fallback[device_id] = False
+        device_source_codec.pop(device_id, None)
+
+    _prefetch_source_codecs_parallel(device_streams)
+
+    device_ids_ordered = list(device_streams.keys())
+    start_base = time.time()
+    for idx, device_id in enumerate(device_ids_ordered):
         device_push_success_counts[device_id] = 0
         relay_fail_counts[device_id] = 0
-        relay_next_retry[device_id] = 0.0
+        relay_next_retry[device_id] = start_base + idx * stagger_sec
 
     logger.info(
-        '独立推流模式: %d 路, 重启间隔 %.1fs~%.1fs',
-        len(device_streams), restart_delay_sec, max_backoff_sec,
+        '独立推流模式: %d 路, 重启间隔 %.1fs~%.1fs, 启动错峰 %.1fs/路, '
+        'thread_queue_size=%d/路, max_muxing_queue_size=%d',
+        len(device_streams), restart_delay_sec, max_backoff_sec, stagger_sec,
+        _resolve_relay_thread_queue_size(), _resolve_relay_mux_queue_size(),
     )
 
     heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
@@ -1720,13 +2336,13 @@ def update_task_status(status: str = None, exception_reason: str = None):
         logger.warning(f"更新任务状态失败: {str(e)}")
 
 
-def send_heartbeat():
-    """发送心跳到VIDEO服务"""
+def send_heartbeat() -> bool:
+    """发送心跳到 VIDEO 服务，成功返回 True。"""
+    global _heartbeat_fail_streak
     try:
         import socket
         import os as os_module
-        
-        # 获取服务器IP
+
         server_ip = os_module.getenv('POD_IP', '')
         if not server_ip:
             try:
@@ -1734,21 +2350,20 @@ def send_heartbeat():
                 s.connect(('8.8.8.8', 80))
                 server_ip = s.getsockname()[0]
                 s.close()
-            except:
+            except Exception:
                 server_ip = 'localhost'
-        
-        # 获取进程ID
+
         process_id = os_module.getpid()
-        
-        # 构建日志路径
-        log_path_for_heartbeat = SERVICE_LOG_DIR if 'SERVICE_LOG_DIR' in globals() else os.path.join(video_root, 'logs', f'stream_forward_task_{TASK_ID}')
-        
-        # 构建心跳URL（远程节点走 VIDEO_HEARTBEAT_URL，本机默认 localhost）
+        log_path_for_heartbeat = (
+            SERVICE_LOG_DIR
+            if 'SERVICE_LOG_DIR' in globals()
+            else os.path.join(video_root, 'logs', f'stream_forward_task_{TASK_ID}')
+        )
+
         heartbeat_url = os.getenv('VIDEO_HEARTBEAT_URL', '').strip()
         if not heartbeat_url:
             heartbeat_url = f"http://localhost:{VIDEO_SERVICE_PORT}/video/stream-forward/heartbeat"
-        
-        # 发送心跳
+
         response = requests.post(
             heartbeat_url,
             json={
@@ -1756,33 +2371,54 @@ def send_heartbeat():
                 'server_ip': server_ip,
                 'port': int(VIDEO_SERVICE_PORT),
                 'process_id': process_id,
-                'log_path': log_path_for_heartbeat
+                'log_path': log_path_for_heartbeat,
             },
-            timeout=5
+            timeout=5,
         )
         response.raise_for_status()
-        logger.debug(f"心跳上报成功: task_id={TASK_ID}")
-        # 心跳成功，更新状态为正常
+        logger.debug('心跳上报成功: task_id=%s', TASK_ID)
         update_task_status(status=0, exception_reason=None)
+        with _heartbeat_fail_lock:
+            _heartbeat_fail_streak = 0
+        return True
     except Exception as e:
-        logger.warning(f"心跳上报失败: {str(e)}")
+        logger.warning('心跳上报失败: %s', e)
+        return False
 
 
 def heartbeat_worker():
     """心跳上报工作线程"""
-    logger.info("💓 心跳上报线程启动")
+    global _heartbeat_fail_streak
+    logger.info('💓 心跳上报线程启动')
     while not stop_event.is_set():
         try:
-            send_heartbeat()
-            # 每10秒发送一次心跳
+            if send_heartbeat():
+                for _ in range(10):
+                    if stop_event.is_set():
+                        break
+                    time.sleep(1)
+                continue
+
+            with _heartbeat_fail_lock:
+                _heartbeat_fail_streak += 1
+                streak = _heartbeat_fail_streak
+
+            if HEARTBEAT_EXIT_ENABLED and streak >= HEARTBEAT_EXIT_FAILURES:
+                logger.error(
+                    '连续 %d 次心跳失败，控制面不可用，推流 worker 退出 (task_id=%s)',
+                    streak, TASK_ID,
+                )
+                stop_event.set()
+                break
+
             for _ in range(10):
                 if stop_event.is_set():
                     break
                 time.sleep(1)
         except Exception as e:
-            logger.error(f"心跳上报线程异常: {str(e)}", exc_info=True)
+            logger.error('心跳上报线程异常: %s', e, exc_info=True)
             time.sleep(10)
-    logger.info("💓 心跳上报线程停止")
+    logger.info('💓 心跳上报线程停止')
 
 
 def signal_handler(signum, frame):
@@ -1801,7 +2437,7 @@ def main():
     logger.info(f"数据库URL: {DATABASE_URL}")
     logger.info(f"VIDEO服务端口: {VIDEO_SERVICE_PORT}")
     logger.info(f"心跳上报URL: http://localhost:{VIDEO_SERVICE_PORT}/video/stream-forward/heartbeat")
-    logger.info(f"源流帧率: {SOURCE_FPS} fps，抽帧间隔: {EXTRACT_INTERVAL}，推流帧率: {TARGET_FPS} fps")
+    logger.info(f"观感推流: {VIEW_OUTPUT_FPS} fps，VIEW_EXTRACT_INTERVAL={EXTRACT_INTERVAL}，实际推流 {TARGET_FPS} fps")
     logger.info(f"目标分辨率: {TARGET_WIDTH}x{TARGET_HEIGHT}")
     logger.info(f"GOP大小: {FFMPEG_GOP_SIZE}")
     logger.info("=" * 60)

@@ -1,5 +1,5 @@
 <template>
-  <div :class="['split-screen-container', { 'fullscreen-mode': state.isFull }]">
+  <div :class="['split-screen-container', { 'fullscreen-mode': state.isFull, 'preset-panel-open': presetPanelOpen }]">
     <a-layout class="monitor-layout">
       <a-layout-sider :width="350" class="device-tree-sider" theme="light">
         <CollapseContainer :can-expan="true" class="tree-container">
@@ -41,9 +41,9 @@
       </a-layout-sider>
 
       <a-layout class="monitor-content-layout">
-        <a-layout-header class="toolbar-header">
+        <a-layout-header :class="['toolbar-header', { 'panel-open': presetPanelOpen }]">
           <div class="toolbar-content">
-            <div class="toolbar-section">
+            <div class="header-toolbar">
               <a-radio-group
                 v-model:value="state.splitMode"
                 size="middle"
@@ -56,71 +56,21 @@
                 <a-radio-button :value="9">9分屏</a-radio-button>
                 <a-radio-button :value="16">16分屏</a-radio-button>
               </a-radio-group>
+              <div
+                :class="['layout-preset-trigger', { open: presetPanelOpen, 'has-active': !!activePresetId }]"
+                @click="presetPanelOpen = !presetPanelOpen"
+              >
+                <Icon icon="ant-design:layout-outlined" :size="15" />
+                <span class="trigger-label">布局方案</span>
+                <span v-if="activePresetSummary" class="trigger-badge">{{ activePresetSummary }}</span>
+                <Icon :icon="presetPanelOpen ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="12" />
+              </div>
             </div>
 
             <a-divider type="vertical" class="toolbar-divider" />
 
             <div class="toolbar-section">
               <a-checkbox v-model:checked="enableAi">启用 AI</a-checkbox>
-            </div>
-
-            <a-divider type="vertical" class="toolbar-divider" />
-
-            <div class="toolbar-section patrol-section">
-              <Space size="small" wrap>
-                <span class="patrol-label">间隔(s)</span>
-                <InputNumber
-                  v-model:value="patrolIntervalSec"
-                  :min="3"
-                  :max="300"
-                  size="middle"
-                  style="width: 72px"
-                  :disabled="patrolRunning"
-                />
-                <span class="patrol-label">模型</span>
-                <Select
-                  v-model:value="patrolModelId"
-                  size="middle"
-                  style="width: 140px"
-                  :disabled="patrolRunning"
-                  :loading="patrolModelsLoading"
-                  :options="patrolModelOptions"
-                  show-search
-                  option-filter-prop="label"
-                  placeholder="选择模型"
-                />
-                <Button
-                  v-if="!patrolRunning"
-                  type="primary"
-                  size="middle"
-                  :loading="patrolLoading"
-                  :disabled="loadedCount === 0"
-                  @click="handleStartPatrol"
-                >
-                  开始巡检
-                </Button>
-                <Button
-                  v-if="!patrolRunning"
-                  type="default"
-                  size="middle"
-                  :loading="patrolLoading"
-                  :disabled="!selectedPatrolDirectoryId"
-                  @click="handleStartDirectoryPatrol"
-                >
-                  目录巡检
-                </Button>
-                <Button
-                  v-else
-                  type="default"
-                  danger
-                  size="middle"
-                  :loading="patrolLoading"
-                  @click="handleStopPatrol"
-                >
-                  停止巡检
-                </Button>
-                <span v-if="patrolSessionId" class="status-text patrol-status">{{ patrolStatusText }}</span>
-              </Space>
             </div>
 
             <a-divider type="vertical" class="toolbar-divider" />
@@ -147,7 +97,21 @@
               <span class="status-text">已加载: {{ loadedCount }}/{{ state.splitMode }}</span>
             </div>
           </div>
+          <LayoutPresetPanel
+            :open="presetPanelOpen"
+            :presets="layoutPresets"
+            :active-preset-id="activePresetId"
+            :current-layout="currentLayout"
+            :current-camera-count="currentCameraCount"
+            :can-save-current="canSaveCurrentLayout"
+            @close="presetPanelOpen = false"
+            @apply="handleApplyPreset"
+            @save="handleSavePreset"
+            @delete="handleDeletePreset"
+          />
         </a-layout-header>
+
+        <div v-if="presetPanelOpen" class="preset-panel-backdrop" @click="presetPanelOpen = false" />
 
         <a-layout-content class="video-content">
           <div :class="['video-grid', `grid-${state.splitMode}`]" :style="gridStyle">
@@ -166,7 +130,13 @@
                 <span class="empty-hint">点击左侧摄像头即可播放</span>
               </div>
               <div v-else class="player-wrapper">
+                <div v-if="!state.playCells[i - 1]!.url" class="empty-cell restoring-cell">
+                  <Icon icon="ant-design:loading-outlined" class="empty-icon spinning" />
+                  <span class="empty-text">{{ state.playCells[i - 1]!.name }}</span>
+                  <span class="empty-hint">正在恢复播放...</span>
+                </div>
                 <Jessibuca
+                  v-else
                   :key="`player-${i - 1}-${state.playCells[i - 1]!.deviceId}`"
                   :ref="(el) => setPlayerRef(el, i - 1)"
                   :playUrl="state.playCells[i - 1]!.url"
@@ -174,9 +144,12 @@
                   :playerEngine="state.playCells[i - 1]!.playerEngine || ''"
                   :videoCodec="state.playCells[i - 1]!.videoCodec || ''"
                   @playing="handleCellPlaying(i - 1, $event)"
+                  :fill-video="true"
+                  :multi-view="state.splitMode > 1"
+                  :ai-with-fallback="!!state.playCells[i - 1]!.fallbackUrl"
                   @stream-error="handleCellStreamError(i - 1)"
                 />
-                <span class="cell-name" :title="state.playCells[i - 1]!.name">
+                <span v-if="state.playCells[i - 1]!.url" class="cell-name" :title="state.playCells[i - 1]!.name">
                   {{ state.playCells[i - 1]!.name }}
                 </span>
                 <Button
@@ -211,8 +184,6 @@ import {
   RadioGroup as ARadioGroup,
   RadioButton as ARadioButton,
   Checkbox as ACheckbox,
-  Select,
-  InputNumber,
 } from 'ant-design-vue';
 import { BasicTree, type TreeItem } from '@/components/Tree';
 import { BasicArrow } from '@/components/Basic';
@@ -226,13 +197,13 @@ import {
   AI_PLAY_FALLBACK_MS,
   loadGbChannelSyncedDevice,
   pickDirectPlayUrls,
+  schedulePendingAiStreamUpgrade,
   resolveGbChannelPlayUrls} from '@/views/camera/utils/devicePlay';
 import {
   collectMonitorTreeExpandedKeys,
   findMonitorDeviceById,
   findMonitorGbDeviceByChannel,
   findMonitorTreeNodeByKey,
-  parseMonitorDirectoryId,
 } from '@/views/camera/utils/monitorDeviceTree';
 import {
   buildWvpChannelTreeNodes,
@@ -253,6 +224,7 @@ import type { TreeProps } from 'ant-design-vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
 import { Button } from '@/components/Button';
+import LayoutPresetPanel from './LayoutPresetPanel.vue';
 import {
   createPatrolSession,
   createPatrolProgressEventSource,
@@ -276,7 +248,14 @@ import {
   type DashboardGuardScope,
   type DashboardGuardTaskApi,
 } from '@/views/dashboard/monitor/dashboardGuardTask';
-
+import {
+  loadCameraMonitorLayoutStorage,
+  saveCameraMonitorLayoutStorage,
+  serializeDeviceSnapshot,
+  MAX_CAMERA_MONITOR_LAYOUT_PRESETS,
+  type CameraMonitorLayoutPreset,
+  type CameraMonitorLayoutSlot,
+} from '@/views/camera/utils/monitorLayoutStorage';
 
 interface PlayCell {
   deviceId: string;
@@ -287,9 +266,11 @@ interface PlayCell {
   playerEngine?: string | null;
   videoCodec?: string | null;
   playSources?: WvpPlaySourceOption[] | null;
+  pendingRestore?: boolean;
+  device?: MonitorTreeDeviceNode;
 }
 
-const { createMessage } = useMessage();
+const { createMessage, createConfirm } = useMessage();
 
 /** 勾选后点播 AI 流（检测框由算法任务烧录在此路流上） */
 const enableAi = ref(false);
@@ -376,179 +357,6 @@ async function stopSplitScreenAiRecognitionForVisibleDevices() {
   }
 }
 
-const patrolIntervalSec = ref(10);
-const patrolModelId = ref<number | undefined>(undefined);
-const patrolModelOptions = ref<{ label: string; value: number }[]>([]);
-const patrolModelsLoading = ref(false);
-const patrolSessionId = ref<number | null>(null);
-const patrolRunning = ref(false);
-const patrolLoading = ref(false);
-const patrolStatusText = ref('');
-const selectedPatrolDirectoryId = ref<number | null>(null);
-const selectedPatrolDirectoryName = ref('');
-let patrolEventSource: EventSource | null = null;
-let patrolStatsTimer: number | undefined;
-
-async function loadPatrolModelOptions() {
-  patrolModelsLoading.value = true;
-  try {
-    const res = await getModelPage({ pageNo: 1, pageSize: 100 });
-    const list = res?.list || res?.data?.list || res?.items || [];
-    patrolModelOptions.value = list.map((m: { id: number; name?: string }) => ({
-      label: m.name ? `${m.name} (#${m.id})` : `模型 #${m.id}`,
-      value: m.id,
-    }));
-    if (!patrolModelId.value && patrolModelOptions.value.length) {
-      patrolModelId.value = patrolModelOptions.value[0].value;
-    }
-  } catch {
-    patrolModelOptions.value = [];
-  } finally {
-    patrolModelsLoading.value = false;
-  }
-}
-
-function applyPatrolStats(data?: PatrolSession | null) {
-  if (!data) return;
-  patrolRunning.value = data.status === 'running';
-  const done = data.completed_devices ?? 0;
-  const total = data.total_devices ?? 0;
-  const detections = data.total_detections ?? 0;
-  patrolStatusText.value = `巡检 ${done}/${total} 路 · 检测 ${detections} 次`;
-}
-
-async function refreshPatrolStats() {
-  if (!patrolSessionId.value) return;
-  try {
-    const res = await getPatrolSessionStats(patrolSessionId.value);
-    const data = (res?.data ?? res) as PatrolSession;
-    applyPatrolStats(data);
-  } catch {
-    // 忽略轮询失败
-  }
-}
-
-function stopPatrolProgressStream() {
-  if (patrolEventSource) {
-    patrolEventSource.close();
-    patrolEventSource = null;
-  }
-  stopPatrolStatsPolling();
-}
-
-function startPatrolProgressStream() {
-  stopPatrolProgressStream();
-  if (!patrolSessionId.value) return;
-  void refreshPatrolStats();
-  const es = createPatrolProgressEventSource(patrolSessionId.value);
-  patrolEventSource = es;
-  const onProgress = (ev: MessageEvent) => {
-    try {
-      applyPatrolStats(JSON.parse(ev.data) as PatrolSession);
-    } catch {
-      // ignore
-    }
-  };
-  es.addEventListener('progress', onProgress);
-  es.addEventListener('status', onProgress);
-  es.onerror = () => {
-    if (patrolEventSource === es) {
-      es.close();
-      patrolEventSource = null;
-    }
-    if (!patrolStatsTimer && patrolSessionId.value) {
-      startPatrolStatsPolling();
-    }
-  };
-}
-
-function startPatrolStatsPolling() {
-  stopPatrolStatsPolling();
-  void refreshPatrolStats();
-  patrolStatsTimer = window.setInterval(() => void refreshPatrolStats(), 5000);
-}
-
-function stopPatrolStatsPolling() {
-  if (patrolStatsTimer != null) {
-    window.clearInterval(patrolStatsTimer);
-    patrolStatsTimer = undefined;
-  }
-}
-
-async function startPatrolWithDeviceIds(deviceIds: string[], sessionName: string) {
-  if (!deviceIds.length) {
-    createMessage.warning('没有可巡检的设备');
-    return;
-  }
-  if (!patrolModelId.value) {
-    createMessage.warning('请选择模型');
-    return;
-  }
-  patrolLoading.value = true;
-  try {
-    const createRes = await createPatrolSession({
-      session_name: sessionName,
-      device_ids: deviceIds,
-      model_ids: [patrolModelId.value],
-      interval_sec: patrolIntervalSec.value,
-      pool_size: Math.min(4, deviceIds.length),
-    });
-    const session = (createRes?.data ?? createRes) as PatrolSession;
-    patrolSessionId.value = session.id;
-    await startPatrolSession(session.id);
-    patrolRunning.value = true;
-    startPatrolProgressStream();
-    createMessage.success(`巡检已启动（${deviceIds.length} 路）`);
-  } catch (e: any) {
-    createMessage.error(e?.message || '启动巡检失败');
-  } finally {
-    patrolLoading.value = false;
-  }
-}
-
-async function handleStartPatrol() {
-  const deviceIds = state.playCells.filter((c) => c?.deviceId).map((c) => c!.deviceId);
-  if (!deviceIds.length) {
-    createMessage.warning('请先在分屏中添加摄像头');
-    return;
-  }
-  await startPatrolWithDeviceIds(deviceIds, `分屏巡检-${new Date().toLocaleTimeString()}`);
-}
-
-async function handleStartDirectoryPatrol() {
-  if (!selectedPatrolDirectoryId.value) {
-    createMessage.warning('请先在左侧目录树中选择目录');
-    return;
-  }
-  patrolLoading.value = true;
-  try {
-    const res = await getPatrolDirectoryDevices(selectedPatrolDirectoryId.value);
-    const payload = res?.data ?? res;
-    const deviceIds = payload?.device_ids ?? [];
-    const dirName = payload?.directory_name || selectedPatrolDirectoryName.value || '目录';
-    await startPatrolWithDeviceIds(deviceIds, `${dirName}巡检-${new Date().toLocaleTimeString()}`);
-  } catch (e: any) {
-    createMessage.error(e?.message || '获取目录设备失败');
-    patrolLoading.value = false;
-  }
-}
-
-async function handleStopPatrol() {
-  if (!patrolSessionId.value) return;
-  patrolLoading.value = true;
-  try {
-    await stopPatrolSession(patrolSessionId.value);
-    patrolRunning.value = false;
-    stopPatrolProgressStream();
-    patrolStatusText.value = '已停止';
-    createMessage.success('巡检已停止');
-  } catch (e: any) {
-    createMessage.error(e?.message || '停止巡检失败');
-  } finally {
-    patrolLoading.value = false;
-  }
-}
-
 const selectedKeys = ref<string[]>([]);
 const expandedKeys = ref<string[]>([]);
 const treeData = ref<TreeItem[]>([]);
@@ -563,6 +371,258 @@ const state = reactive({
   playerIdx: 0,
   isFull: false,
   loadingCells: [] as number[]});
+
+const layoutPresets = ref<Record<number, CameraMonitorLayoutPreset>>({});
+const activePresetId = ref<number | null>(null);
+const isRestoringLayout = ref(false);
+const presetPanelOpen = ref(false);
+
+const currentLayout = computed(() => String(state.splitMode));
+const currentCameraCount = computed(() => state.playCells.filter((c) => c?.deviceId).length);
+const canSaveCurrentLayout = computed(() => currentCameraCount.value > 0);
+
+function getPresetDisplayName(preset: CameraMonitorLayoutPreset | undefined, id: number) {
+  if (!preset) return `方案 ${id}`;
+  return preset.name?.trim() || `方案 ${id}`;
+}
+
+const activePresetSummary = computed(() => {
+  if (!activePresetId.value) return '';
+  const preset = layoutPresets.value[activePresetId.value];
+  if (!preset) return `方案 ${activePresetId.value}`;
+  const count = preset.slots.filter((s) => s.deviceId).length;
+  return `${getPresetDisplayName(preset, activePresetId.value)} · ${count}路`;
+});
+
+function normalizeSplitMode(layout: string | number): number {
+  const count = typeof layout === 'number' ? layout : parseInt(layout) || 1;
+  if (count <= 1) return 1;
+  if (count <= 4) return 4;
+  if (count <= 9) return 9;
+  return 16;
+}
+
+function initLayoutPresetsFromStorage() {
+  const storage = loadCameraMonitorLayoutStorage();
+  const presets: Record<number, CameraMonitorLayoutPreset> = {};
+  for (const [key, preset] of Object.entries(storage.presets)) {
+    const id = Number(key);
+    if (id >= 1 && id <= MAX_CAMERA_MONITOR_LAYOUT_PRESETS) {
+      presets[id] = preset;
+    }
+  }
+  layoutPresets.value = presets;
+  activePresetId.value = storage.activePresetId;
+}
+
+function persistLayoutPresets() {
+  const presets: Record<string, CameraMonitorLayoutPreset> = {};
+  for (const [key, preset] of Object.entries(layoutPresets.value)) {
+    presets[String(key)] = preset;
+  }
+  saveCameraMonitorLayoutStorage({
+    presets,
+    activePresetId: activePresetId.value,
+  });
+}
+
+function resolveDeviceForCell(cell: PlayCell): MonitorTreeDeviceNode | undefined {
+  if (cell.device) return cell.device;
+  const playId = cell.deviceId;
+  if (playId.startsWith('gb_ch_')) {
+    const gb = parseGbChannelKey(playId);
+    if (!gb) return undefined;
+    return findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId);
+  }
+  return findMonitorDeviceById(treeData.value, playId);
+}
+
+function buildCurrentLayoutSlots(): CameraMonitorLayoutSlot[] {
+  const slots: CameraMonitorLayoutSlot[] = [];
+  for (let i = 0; i < state.splitMode; i++) {
+    const cell = state.playCells[i];
+    if (cell?.deviceId) {
+      slots.push({
+        deviceId: cell.deviceId,
+        name: cell.name,
+        device: serializeDeviceSnapshot(resolveDeviceForCell(cell)),
+      });
+    } else {
+      slots.push({ deviceId: '', name: '' });
+    }
+  }
+  return slots;
+}
+
+function saveToLayoutPreset(presetId: number, options?: { keepName?: boolean }) {
+  if (!canSaveCurrentLayout.value) {
+    createMessage.warning('当前没有已选摄像头，无法保存布局');
+    return false;
+  }
+
+  const existing = layoutPresets.value[presetId];
+  const preset: CameraMonitorLayoutPreset = {
+    id: presetId,
+    name: options?.keepName !== false && existing?.name ? existing.name : undefined,
+    layout: currentLayout.value,
+    enableAi: enableAi.value,
+    slots: buildCurrentLayoutSlots(),
+    updatedAt: Date.now(),
+  };
+  layoutPresets.value = { ...layoutPresets.value, [presetId]: preset };
+  activePresetId.value = presetId;
+  persistLayoutPresets();
+  createMessage.success(`已保存到${getPresetDisplayName(preset, presetId)}`);
+  return true;
+}
+
+function applyPresetStructure(preset: CameraMonitorLayoutPreset) {
+  playerRefs.value.forEach((p) => p?.destroy?.());
+  playerRefs.value = [];
+  aiFallbackTimers.forEach((id) => window.clearTimeout(id));
+  aiFallbackTimers.clear();
+
+  state.splitMode = normalizeSplitMode(preset.layout);
+  enableAi.value = preset.enableAi;
+  state.playerIdx = 0;
+
+  state.playCells = [];
+  for (let i = 0; i < state.splitMode; i++) {
+    const saved = preset.slots[i];
+    if (saved?.deviceId) {
+      state.playCells.push({
+        deviceId: saved.deviceId,
+        name: saved.name,
+        url: '',
+        pendingRestore: true,
+        device: saved.device,
+      });
+    } else {
+      state.playCells.push(null);
+    }
+  }
+}
+
+async function playSavedSlot(index: number, saved: CameraMonitorLayoutSlot) {
+  const playId = saved.deviceId;
+  if (!playId) return;
+
+  if (playId.startsWith('gb_ch_')) {
+    const gb = parseGbChannelKey(playId);
+    if (!gb) return;
+    const synced =
+      saved.device ?? findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId);
+    const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolveGbChannelPlayUrls(
+      gb.sipDeviceId,
+      gb.channelId,
+      { enableAi: enableAi.value, synced },
+    );
+    if (!url) {
+      createMessage.warn(`方案恢复失败：${saved.name}`);
+      state.playCells[index] = null;
+      return;
+    }
+    await startPlayAtCell(index, {
+      deviceId: playId,
+      name: saved.name,
+      url,
+      fallbackUrl,
+      preferAi,
+      pendingAiUrl,
+    });
+    return;
+  }
+
+  const dev = saved.device ?? findMonitorDeviceById(treeData.value, playId);
+  if (!dev) {
+    createMessage.warn(`方案恢复失败：${saved.name}（缺少设备信息）`);
+    state.playCells[index] = null;
+    return;
+  }
+  const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolveDirectPlayUrl(dev);
+  if (!url) {
+    createMessage.warn(`方案恢复失败：${saved.name}`);
+    state.playCells[index] = null;
+    return;
+  }
+  await startPlayAtCell(index, {
+    deviceId: playId,
+    name: saved.name,
+    url,
+    fallbackUrl,
+    preferAi,
+    pendingAiUrl,
+  });
+}
+
+async function restorePendingVideos() {
+  if (isRestoringLayout.value) return;
+  isRestoringLayout.value = true;
+  try {
+    const tasks: Promise<void>[] = [];
+    state.playCells.forEach((cell, idx) => {
+      if (!cell?.pendingRestore || !cell.deviceId) return;
+      tasks.push(
+        playSavedSlot(idx, {
+          deviceId: cell.deviceId,
+          name: cell.name,
+          device: cell.device,
+        }).finally(() => {
+          const current = state.playCells[idx];
+          if (current) {
+            state.playCells[idx] = { ...current, pendingRestore: false };
+          }
+        }),
+      );
+    });
+    await Promise.all(tasks);
+  } finally {
+    isRestoringLayout.value = false;
+  }
+}
+
+async function activateLayoutPreset(presetId: number) {
+  const preset = layoutPresets.value[presetId];
+  if (!preset) return;
+
+  applyPresetStructure(preset);
+  activePresetId.value = presetId;
+  persistLayoutPresets();
+  await nextTick();
+  await restorePendingVideos();
+}
+
+async function handleApplyPreset(presetId: number) {
+  await activateLayoutPreset(presetId);
+  presetPanelOpen.value = false;
+}
+
+function handleSavePreset(presetId: number) {
+  saveToLayoutPreset(presetId);
+}
+
+function handleDeletePreset(presetId: number) {
+  const preset = layoutPresets.value[presetId];
+  if (!preset) return;
+  const label = getPresetDisplayName(preset, presetId);
+  createConfirm({
+    iconType: 'warning',
+    title: '删除布局方案',
+    content: `确定删除「${label}」吗？删除后无法恢复。`,
+    onOk: () => {
+      const next = { ...layoutPresets.value };
+      delete next[presetId];
+      layoutPresets.value = next;
+      if (activePresetId.value === presetId) {
+        activePresetId.value = null;
+      }
+      persistLayoutPresets();
+      createMessage.success('已删除布局方案');
+    },
+  });
+}
+
+initLayoutPresetsFromStorage();
 
 const loadedCount = computed(() => state.playCells.filter((c) => c).length);
 
@@ -585,6 +645,30 @@ const setPlayerRef = (el: any, index: number) => {
   if (el) playerRefs.value[index] = el;
 };
 
+function triggerCellFillResize(cellIdx: number) {
+  const player = playerRefs.value[cellIdx];
+  if (!player?.jessibuca) return;
+  const run = () => {
+    const inst = playerRefs.value[cellIdx]?.jessibuca;
+    if (!inst || !playerRefs.value[cellIdx]?.playing) return;
+    try {
+      inst.setScaleMode?.(0);
+      inst.resize?.();
+    } catch {
+      /* 播放器尚未就绪 */
+    }
+  };
+  run();
+  window.setTimeout(run, 300);
+  window.setTimeout(run, 800);
+}
+
+function triggerAllCellFillResize() {
+  state.playCells.forEach((cell, idx) => {
+    if (cell) triggerCellFillResize(idx);
+  });
+}
+
 async function resolveDirectPlayUrl(device: MonitorTreeDeviceNode) {
   if (isGb28181Device(device.source, device.device_kind)) {
     return { url: null as string | null, fallbackUrl: null as string | null | undefined };
@@ -594,7 +678,6 @@ async function resolveDirectPlayUrl(device: MonitorTreeDeviceNode) {
 
 const aiFallbackTimers = new Map<number, number>();
 const aiFallbackPlayingUrls = new Map<number, string>();
-
 function clearAiFallbackTimer(cellIdx: number) {
   const timerId = aiFallbackTimers.get(cellIdx);
   if (timerId != null) {
@@ -610,6 +693,28 @@ function handleCellPlaying(cellIdx: number, playUrl?: string) {
   if (!currentUrl || (reportedUrl && reportedUrl !== currentUrl)) return;
   aiFallbackPlayingUrls.set(cellIdx, currentUrl);
   clearAiFallbackTimer(cellIdx);
+}
+
+/** 首帧已播原始流后，后台探测 AI 就绪再无缝切换 */
+function schedulePendingAiUpgrade(
+  cellIdx: number,
+  deviceId: string,
+  aiUrl: string,
+  fallbackUrl: string,
+) {
+  schedulePendingAiStreamUpgrade(
+    aiUrl,
+    fallbackUrl,
+    () => {
+      const cell = state.playCells[cellIdx];
+      return !!cell && cell.deviceId === deviceId && cell.url !== aiUrl;
+    },
+    () => {
+      const cell = state.playCells[cellIdx];
+      if (!cell) return;
+      state.playCells[cellIdx] = { ...cell, url: aiUrl, fallbackUrl };
+    },
+  );
 }
 
 
@@ -634,6 +739,7 @@ async function startPlayAtCell(
     playerEngine?: string | null;
     videoCodec?: string | null;
     playSources?: WvpPlaySourceOption[] | null;
+    pendingAiUrl?: string | null;
   },
 ) {
   clearAiFallbackTimer(cellIdx);
@@ -646,6 +752,7 @@ async function startPlayAtCell(
   const fallbackUrl = payload.fallbackUrl?.trim();
   const hasFallback = !!(payload.preferAi && fallbackUrl && fallbackUrl !== payload.url);
   const playSources = payload.playSources?.filter((source) => source.url?.trim()) ?? null;
+  const pendingAi = payload.pendingAiUrl?.trim();
 
   state.playerIdx = cellIdx;
   state.playCells[cellIdx] = {
@@ -658,9 +765,9 @@ async function startPlayAtCell(
     playSources};
 
   await nextTick();
-  const player = playerRefs.value[cellIdx];
-  if (player?.play) {
-    player.play();
+
+  if (pendingAi && pendingAi !== payload.url) {
+    schedulePendingAiUpgrade(cellIdx, payload.deviceId, pendingAi, payload.url);
   }
 
   if (!hasFallback) return;
@@ -677,8 +784,6 @@ async function startPlayAtCell(
       'AI 流暂不可用（请确认算法任务已启动且媒体服务器已收到 AI 推流），已切换为原始画面（无检测框）',
     );
     state.playCells[cellIdx] = { ...cell, url: fallbackUrl, fallbackUrl: null };
-    await nextTick();
-    playerRefs.value[cellIdx]?.play?.();
   }, AI_PLAY_FALLBACK_MS);
   aiFallbackTimers.set(cellIdx, timerId);
 }
@@ -734,7 +839,7 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
           enableAi.value = false;
         }
       }
-      const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
+      const { url, fallbackUrl, preferAi, pendingAiUrl, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
         gb.sipDeviceId,
         gb.channelId,
         { enableAi: enableAi.value, synced },
@@ -748,7 +853,8 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
           preferAi,
           playerEngine,
           videoCodec,
-          playSources});
+          playSources,
+          pendingAiUrl});
       }
     }
     return;
@@ -764,7 +870,7 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
     }
   }
 
-  const { url, fallbackUrl, preferAi } = await resolveDirectPlayUrl(device);
+  const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolveDirectPlayUrl(device);
   if (!url) {
     createMessage.warn(enableAi.value ? '该设备暂无 AI 流或原始流地址' : '该设备暂无播放地址');
     return;
@@ -774,7 +880,8 @@ async function reloadPlayCellAtIndex(cellIdx: number) {
     name: cell.name,
     url,
     fallbackUrl,
-    preferAi});
+    preferAi,
+    pendingAiUrl});
 }
 
 async function reloadAllPlayCellsForAiToggle() {
@@ -931,7 +1038,7 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
         enableAi.value = false;
       }
     }
-    const { url, fallbackUrl, preferAi, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
+    const { url, fallbackUrl, preferAi, pendingAiUrl, playerEngine, videoCodec, playSources } = await resolveGbChannelPlayUrls(
       gb.sipDeviceId,
       gb.channelId,
       { enableAi: enableAi.value, synced: playDevice },
@@ -953,7 +1060,8 @@ async function playGbChannel(cellIdx: number, gb: GbChannelRef) {
       preferAi,
       playerEngine,
       videoCodec,
-      playSources});
+      playSources,
+      pendingAiUrl});
   } catch (e) {
     console.error(e);
     createMessage.error('播放失败，请检查设备连接');
@@ -979,18 +1087,9 @@ async function handleTreeSelect(keys: string[] | string) {
   }
 
   if (String(key).startsWith('gb_dir_') || String(key).startsWith('dir_')) {
-    const dirId = parseMonitorDirectoryId(String(key));
-    if (dirId) {
-      selectedPatrolDirectoryId.value = dirId;
-      const node = findMonitorTreeNodeByKey(treeData.value, key);
-      selectedPatrolDirectoryName.value = String(node?.title ?? '').replace(/\(\d+\)$/, '').trim();
-      createMessage.info('已选中目录，可点击「目录巡检」对该目录下全部摄像头启动巡检');
-    }
+    createMessage.info('请选择目录下的摄像头或通道');
     return;
   }
-
-  selectedPatrolDirectoryId.value = null;
-  selectedPatrolDirectoryName.value = '';
 
   const cellIdx = resolveTargetCellIndex();
 
@@ -1041,7 +1140,7 @@ async function handleTreeSelect(keys: string[] | string) {
         enableAi.value = false;
       }
     }
-    const { url, fallbackUrl, preferAi } = await resolveDirectPlayUrl(device);
+    const { url, fallbackUrl, preferAi, pendingAiUrl } = await resolveDirectPlayUrl(device);
     if (!url) {
       createMessage.warn(
         enableAi.value
@@ -1055,7 +1154,8 @@ async function handleTreeSelect(keys: string[] | string) {
       name: formatCameraDeviceLabel(device),
       url,
       fallbackUrl,
-      preferAi});
+      preferAi,
+      pendingAiUrl});
   } catch (e) {
     console.error(e);
     createMessage.error('播放失败，请检查设备连接');
@@ -1076,6 +1176,7 @@ function handleSplitModeChange() {
     while (state.playCells.length < n) state.playCells.push(null);
   }
   if (state.playerIdx >= n) state.playerIdx = 0;
+  nextTick(() => triggerAllCellFillResize());
 }
 
 function handleGridDelete() {
@@ -1112,12 +1213,19 @@ function handleGridFull() {
 
 const handleFullscreenChange = () => {
   state.isFull = !!document.fullscreenElement;
+  nextTick(() => triggerAllCellFillResize());
 };
 
-onMounted(() => {
-  state.playCells = Array(state.splitMode).fill(null);
-  loadMonitorTree();
-  void loadPatrolModelOptions();
+onMounted(async () => {
+  if (activePresetId.value && layoutPresets.value[activePresetId.value]) {
+    applyPresetStructure(layoutPresets.value[activePresetId.value]);
+  } else {
+    state.playCells = Array(state.splitMode).fill(null);
+  }
+  await loadMonitorTree();
+  if (state.playCells.some((c) => c?.pendingRestore)) {
+    await restorePendingVideos();
+  }
   document.addEventListener('fullscreenchange', handleFullscreenChange);
 });
 
@@ -1169,6 +1277,7 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .device-tree-sider {
@@ -1328,20 +1437,47 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
 }
 
 .toolbar-header {
+  position: relative;
   height: auto;
-  min-height: 56px;
-  padding: 12px 16px;
+  min-height: 50px;
+  padding: 8px 16px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   line-height: normal;
+  z-index: 30;
+
+  &.panel-open {
+    z-index: 210;
+    border-bottom-color: transparent;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  }
 }
 
 .toolbar-content {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 10px 12px;
   width: 100%;
+}
+
+.header-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.toolbar-divider {
+  height: 20px;
+  margin: 0;
+  border-color: #e5e7eb;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .toolbar-status {
@@ -1351,14 +1487,73 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
     color: #6b7280;
     font-size: 13px;
   }
+}
 
-  .patrol-label {
-    font-size: 12px;
-    color: #64748b;
+.layout-preset-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
   }
 
-  .patrol-status {
-    min-width: 140px;
+  &.open {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  &.has-active {
+    border-color: #93c5fd;
+    background: #eff6ff;
+  }
+
+  .trigger-label {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .trigger-badge {
+    max-width: 140px;
+    padding: 0 6px;
+    height: 20px;
+    line-height: 20px;
+    border-radius: 10px;
+    font-size: 11px;
+    color: #1e40af;
+    background: #dbeafe;
+    border: 1px solid #93c5fd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.preset-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.split-screen-container.preset-panel-open {
+  .monitor-content-layout {
+    position: relative;
   }
 }
 
@@ -1420,11 +1615,37 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
   }
 }
 
+.restoring-cell {
+  background: #111;
+
+  .spinning {
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .player-wrapper {
   position: relative;
   width: 100%;
   height: 100%;
   min-height: 120px;
+  overflow: hidden;
+
+  :deep(.jessibuca-root) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  :deep(.jessibuca-container) {
+    width: 100% !important;
+    height: 100% !important;
+  }
 
   &:hover .cell-close-btn {
     opacity: 0.85;

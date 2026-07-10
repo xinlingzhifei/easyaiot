@@ -132,7 +132,7 @@ const emit = defineEmits<{
 const { createMessage } = useMessage()
 
 // 播放器弹窗
-const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal }] = useModal()
+const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps }] = useModal()
 
 const currentTime = ref('')
 const activeVideoIndex = ref(0)
@@ -634,7 +634,7 @@ const handleRecordClick = async (record: any) => {
 
   try {
     const ok = await playAlertRecordInModal(
-      { openModal: openPlayerModal, closeModal: closePlayerModal },
+      { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps },
       {
         id: record.id,
         device_id: record.device_id,

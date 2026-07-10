@@ -76,6 +76,53 @@ def _use_remote_deploy(task: AlgorithmTask) -> bool:
     return policy in ('auto', 'node')
 
 
+def _heartbeat_stale(last_heartbeat, timeout_sec: int) -> bool:
+    if not last_heartbeat:
+        return True
+    return (datetime.utcnow() - last_heartbeat).total_seconds() > timeout_sec
+
+
+def _algorithm_heartbeat_failover_seconds() -> int:
+    return max(30, int(os.getenv('ALGORITHM_HEARTBEAT_FAILOVER_SECONDS', '90')))
+
+
+def _is_compute_node_online(node_id: int) -> bool:
+    from app.utils import node_client
+    try:
+        node = node_client.get_node(node_id)
+        return str(node.get('status') or '').lower() == 'online'
+    except Exception as e:
+        logger.warning('查询节点状态失败 node_id=%s: %s', node_id, e)
+        return False
+
+
+def _local_algorithm_daemon_running(task_id: int) -> bool:
+    with _daemons_lock:
+        if task_id not in _running_daemons:
+            return False
+        daemon = _running_daemons[task_id]
+        return (
+            daemon._running
+            and daemon._process is not None
+            and daemon._process.poll() is None
+        )
+
+
+def _algorithm_task_service_healthy(task: AlgorithmTask) -> bool:
+    """判断算法任务服务是否仍在运行（本机守护进程 / 远程心跳）。"""
+    if _local_algorithm_daemon_running(task.id):
+        return True
+
+    timeout = _algorithm_heartbeat_failover_seconds()
+    if _heartbeat_stale(task.service_last_heartbeat, timeout):
+        return False
+
+    if _use_remote_deploy(task) and task.node_id:
+        return _is_compute_node_online(int(task.node_id))
+
+    return task.run_status in ('running', 'restarting')
+
+
 def _parse_task_model_ids(task: AlgorithmTask) -> list:
     raw = getattr(task, 'model_ids', None)
     if not raw:
@@ -196,6 +243,15 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
         'IOT_SINK_API_URL', 'IOT_SINK_USE_GATEWAY', 'IOT_SINK_HOST', 'IOT_SINK_PORT',
         'EASYAIOT_DEPLOY_PROFILE', 'ALERT_HOOK_URL', 'ALERT_KEEP_LATEST',
         'VIDEO_SERVICE_HOST', 'VIDEO_SERVICE_URL', 'VIDEO_API_USE_GATEWAY',
+        'FFMPEG_HWACCEL', 'FFMPEG_THREADS', 'FFMPEG_PRESET', 'FFMPEG_VIDEO_BITRATE', 'FFMPEG_GOP_SIZE',
+        'AI_RTSP_TRANSPORT', 'OPENCV_FFMPEG_RTSP_TRANSPORT', 'FFMPEG_RTSP_TRANSPORT',
+        'OPENCV_FFMPEG_CAPTURE_OPTIONS', 'RTSP_OPEN_TIMEOUT_MSEC', 'RTSP_READ_TIMEOUT_MSEC',
+        'REALTIME_TARGET_STREAMS', 'REALTIME_THREAD_QUEUE_SIZE', 'REALTIME_MAX_MUXING_QUEUE_SIZE',
+        'REALTIME_RW_TIMEOUT_US', 'REALTIME_RTSP_OPEN_TIMEOUT_US', 'REALTIME_NVENC_SKIP_TEST',
+        'REALTIME_NVENC_PRESET', 'REALTIME_STREAM_STAGGER_SEC',
+        'STREAM_FORWARD_TARGET_STREAMS', 'STREAM_FORWARD_THREAD_QUEUE_SIZE',
+        'STREAM_FORWARD_MAX_MUXING_QUEUE_SIZE', 'STREAM_FORWARD_NVENC_SKIP_TEST',
+        'STREAM_FORWARD_NVENC_PRESET', 'STREAM_FORWARD_RELAY_STAGGER_SEC',
     ):
         val = os.getenv(key)
         if val is not None and val != '':
@@ -715,10 +771,21 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
         # 实时算法任务和抓拍算法任务都需要启动服务进程
         if task.task_type in ['realtime', 'snap', 'patrol']:
             if _use_remote_deploy(task):
+                failover_sec = _algorithm_heartbeat_failover_seconds()
+                if task.node_id and not _heartbeat_stale(task.service_last_heartbeat, failover_sec):
+                    if _is_compute_node_online(int(task.node_id)):
+                        logger.info('任务 %s 已在远程节点 %s 运行，跳过重复部署', task_id, task.node_id)
+                        ok_pp, _ = _start_post_process_cluster(task)
+                        return (True, '任务已在远程节点运行', True) if ok_pp else (False, '后处理集群启动失败', False)
                 if task.node_id:
-                    logger.info('任务 %s 已在远程节点 %s 运行，跳过重复部署', task_id, task.node_id)
-                    ok_pp, _ = _start_post_process_cluster(task)
-                    return (True, '任务已在远程节点运行', True) if ok_pp else (False, '后处理集群启动失败', False)
+                    logger.info(
+                        '任务 %s 远程 node_id=%s 但分片未运行或心跳超时，重新部署',
+                        task_id, task.node_id,
+                    )
+                    _stop_remote_task(task_id, task.node_id)
+                    task.node_id = None
+                    task.service_process_id = None
+                    db.session.commit()
                 result = _deploy_task_on_remote_node(task_id, task)
                 if result[0]:
                     _start_post_process_cluster(task)
@@ -895,7 +962,14 @@ def _auto_start_all_tasks_internal():
         tasks = AlgorithmTask.query.filter_by(is_enabled=True).all()
         
         if not tasks:
-            logger.info("没有启用的算法任务，跳过服务启动")
+            disabled = AlgorithmTask.query.filter_by(is_enabled=False).count()
+            if disabled:
+                logger.info(
+                    '没有启用的算法任务，跳过服务启动（另有 %s 个已停用任务，需手动启动或 API 启用）',
+                    disabled,
+                )
+            else:
+                logger.info("没有启用的算法任务，跳过服务启动")
             return
         
         logger.info(f"发现 {len(tasks)} 个启用的算法任务，开始启动服务...")
@@ -946,6 +1020,31 @@ def _auto_start_all_tasks_internal():
         
     except Exception as e:
         logger.error(f"❌ 自动启动算法任务服务失败: {str(e)}", exc_info=True)
+
+
+def recover_unhealthy_algorithm_tasks() -> int:
+    """恢复已启用但进程已退出的算法任务，返回成功恢复数。"""
+    tasks = AlgorithmTask.query.filter_by(is_enabled=True).all()
+    recovered = 0
+    for task in tasks:
+        if _algorithm_task_service_healthy(task):
+            continue
+        try:
+            logger.info(
+                '算法任务 %s (%s) 服务未运行或心跳超时，尝试恢复',
+                task.id, task.task_name,
+            )
+            success, msg, _ = start_task_services(task.id, task)
+            if success:
+                recovered += 1
+                logger.info('算法任务 %s 恢复成功: %s', task.id, msg)
+            else:
+                logger.error('算法任务 %s 恢复失败: %s', task.id, msg)
+        except Exception as e:
+            logger.error('算法任务 %s 恢复异常: %s', task.id, e, exc_info=True)
+    if recovered:
+        logger.info('算法任务健康恢复完成: recovered=%s', recovered)
+    return recovered
 
 
 def cleanup_stopped_processes():

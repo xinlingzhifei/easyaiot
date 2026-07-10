@@ -257,7 +257,10 @@ const [registerForm, { setFieldsValue, resetFields, validate, updateSchema }] = 
 
 const loadNodes = async () => {
   try {
-    const res = await getNodePage({ pageNo: 1, pageSize: 200, status: 'online' });
+    const res = await getNodePage(
+      { pageNo: 1, pageSize: 200, status: 'online' },
+      { errorMessageMode: 'none' },
+    );
     const page = res?.data || res;
     const list = (page?.list || []).filter(
       (node: any) => node.nodeRole === 'compute' || node.nodeRole === 'gpu' || node.nodeRole === 'hybrid',

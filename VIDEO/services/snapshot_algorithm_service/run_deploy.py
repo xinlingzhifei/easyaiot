@@ -76,6 +76,8 @@ from app.utils.plate_capture_queue_service import (
     PLATE_CAPTURE_WORKER_THREADS,
 )
 from app.utils.service_urls import (
+    epoch_to_shanghai_datetime,
+    now_shanghai_naive,
     resolve_alert_hook_url,
     resolve_face_matching_publish_url,
     resolve_plate_matching_publish_url,
@@ -88,6 +90,11 @@ from app.utils.rtsp_stream_utils import (
     is_likely_rtsp_flat_corrupt_frame,
     task_streams_prefer_tcp,
 )
+
+
+def _shanghai_time_str(timestamp: float) -> str:
+    """Unix 时间戳格式化为东八区墙钟字符串（与告警/抓拍入库一致）。"""
+    return epoch_to_shanghai_datetime(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _parse_gpu_id_list(value: str) -> List[int]:
@@ -571,6 +578,7 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
                         bucket_name=bucket_name,
                         file_size=len(data),
                         source='algorithm',
+                        captured_at=now_shanghai_naive(),
                     )
         except Exception as meta_err:
             logger.debug(f"设备 {device_id} 写入抓拍元数据失败: {meta_err}")
@@ -582,10 +590,17 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
 
 
 def _get_detect_conf() -> float:
+    if task_config is not None:
+        task_conf = getattr(task_config, 'detect_conf', None)
+        if task_conf is not None:
+            try:
+                return float(task_conf)
+            except (TypeError, ValueError):
+                pass
     try:
-        return float(os.getenv('YOLO_DETECT_CONF', '0.25'))
+        return float(os.getenv('YOLO_DETECT_CONF', '0.5'))
     except ValueError:
-        return 0.25
+        return 0.5
 
 
 def _get_device_name(device_id: str) -> str:
@@ -1319,7 +1334,7 @@ def should_extract_frame_by_cron(device_id: str, current_time: float) -> bool:
                 return False
             if device_cron_match_logged_slot.get(device_id) != fire_time:
                 device_cron_match_logged_slot[device_id] = fire_time
-                current_dt = datetime.fromtimestamp(current_time)
+                current_dt = epoch_to_shanghai_datetime(current_time)
                 logger.info(
                     f"⏰ 设备 {device_id} cron 匹配，允许抽帧: "
                     f"当前={current_dt.strftime('%H:%M:%S')}, "
@@ -1395,7 +1410,7 @@ def try_send_snapshot_detection_alert(
         'device_name': device_name,
         'face_detection_enabled': bool(getattr(task_config, 'face_detection_enabled', False)),
         'plate_detection_enabled': bool(getattr(task_config, 'plate_detection_enabled', False)),
-        'time': datetime.fromtimestamp(frame_timestamp).strftime('%Y-%m-%d %H:%M:%S'),
+        'time': _shanghai_time_str(frame_timestamp),
         'correlation_id': correlation_id,
         'information': json.dumps({
             'total_count': len(detections),
@@ -1629,11 +1644,19 @@ def cleanup_alert_images(alert_image_dir: str, max_images: int = 300, keep_ratio
         logger.error(f"清理告警图片失败: {str(e)}", exc_info=True)
 
 
-def cleanup_srs_recordings(srs_record_dir: str = '/data/playbacks', max_recordings: int = 500, keep_ratio: float = 0.1):
+def cleanup_srs_recordings(srs_record_dir: str | None = None, max_recordings: int = 500, keep_ratio: float = 0.1):
     """清理 SRS 录像目录（委托 VIDEO 回放磁盘守护服务）。"""
     try:
-        if srs_record_dir:
-            os.environ.setdefault('SRS_RECORD_DIR', srs_record_dir)
+        if not srs_record_dir:
+            try:
+                from app.services.playback_disk_guard_service import get_srs_record_dir
+                srs_record_dir = get_srs_record_dir()
+            except Exception:
+                from app.services.media_dvr_utils import DEFAULT_SRS_HOST_DATA_ROOT
+                srs_record_dir = os.path.join(
+                    os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), 'playbacks',
+                )
+        os.environ.setdefault('SRS_RECORD_DIR', srs_record_dir)
         from app.services.playback_disk_guard_service import run_playback_disk_guard
         run_playback_disk_guard()
     except Exception as e:
@@ -1859,8 +1882,12 @@ def heartbeat_worker():
 def srs_recording_cleanup_worker():
     """SRS录像清理工作线程"""
     logger.info("🧹 SRS录像清理线程启动")
-    # 获取SRS录像目录路径（可通过环境变量配置，默认为 /data/playbacks）
-    srs_record_dir = os.getenv('SRS_RECORD_DIR', '/data/playbacks')
+    try:
+        from app.services.playback_disk_guard_service import get_srs_record_dir
+        srs_record_dir = get_srs_record_dir()
+    except Exception:
+        from app.services.media_dvr_utils import DEFAULT_SRS_HOST_DATA_ROOT
+        srs_record_dir = os.path.join(os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), 'playbacks')
 
     while not stop_event.is_set():
         try:
@@ -2201,7 +2228,7 @@ def buffer_streamer_worker(device_id: str):
                 mark_cron_slot_captured(device_id, current_timestamp)
                 logger.info(
                     f"📸 设备 {device_id} cron 抽帧已入检测队列: 帧号={frame_count}, "
-                    f"时间={datetime.fromtimestamp(current_timestamp).strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"时间={_shanghai_time_str(current_timestamp)}"
                 )
 
             _cleanup_stale_pending_snapshots(device_id)

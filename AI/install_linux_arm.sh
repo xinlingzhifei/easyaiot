@@ -81,12 +81,12 @@ prepare_cached_resources() {
     local wheels
     wheels="$(arm_pip_wheels_build_context_dir_for "$YFEIEYE_ROOT" ai)"
 
-    if find "$wheels" -maxdepth 1 -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.zip" \) 2>/dev/null | grep -q .; then
-        print_success "检测到 pip-wheels: $wheels"
+    if arm_pip_wheels_ready_for "$EASYAIOT_ROOT" ai; then
+        print_success "检测到完整 pip-wheels: $wheels"
         return 0
     fi
     if [ "${AUTO_CACHE_PIP:-1}" = "1" ] && [ -f "$cache_script" ]; then
-        print_warning "未检测到 pip-wheels，自动执行 cache_resources_arm.sh..."
+        print_warning "ARM pip-wheels 缺失或不完整，自动执行 cache_resources_arm.sh..."
         if [ -x "$cache_script" ]; then
             if "$cache_script"; then
                 print_success "预缓存完成，继续安装流程"
@@ -130,10 +130,11 @@ build_with_cache() {
     init_build_cache_dirs
     enable_docker_buildkit
     optimize_dockerfile_pip_cache Dockerfile.arm
+    prepare_cached_resources
 
     cache_opts="--build-arg BASE_IMAGE=${ARM_BASE_IMAGE} --build-arg OFFLINE_MODE=${OFFLINE_MODE:-0}"
-    cache_opts="$cache_opts --build-arg YUM_MIRROR_URL=${YUM_MIRROR_URL:-https://mirrors.cloud.tencent.com}"
-    cache_opts="$cache_opts --build-arg PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}"
+    cache_opts="$cache_opts --build-arg YUM_MIRROR_URL=${YUM_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
+    cache_opts="$cache_opts --build-arg PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
     print_info "docker build（ARM，Dockerfile.arm，.build-cache bind mount）..."
     while [ $attempt -le $max_retries ]; do
         print_info "执行构建（第 ${attempt}/${max_retries} 次）..."
@@ -584,12 +585,19 @@ build_image() {
     detect_architecture
     configure_architecture
     configure_arm_dockerfile
+
+    if [ "${FORCE_REBUILD:-0}" != "1" ] && docker image inspect ai-service:latest >/dev/null 2>&1; then
+        print_success "ai-service:latest 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        return 0
+    fi
     
     print_info "架构: $ARCH, 平台: $DOCKER_PLATFORM, 基础镜像: $ARM_BASE_IMAGE"
     print_warning "重新构建可能需要较长时间（20-40分钟），请耐心等待..."
     echo ""
-    
-    if ! build_with_cache "--no-cache"; then
+
+    local cache_flag=""
+    [ "${FORCE_REBUILD:-0}" = "1" ] && cache_flag="--no-cache"
+    if ! build_with_cache "$cache_flag"; then
         exit 1
     fi
     echo ""

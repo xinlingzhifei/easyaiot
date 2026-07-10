@@ -378,6 +378,42 @@ def _create_onvif_camera(camera_id, *args, **kwargs) -> OnvifCamera:
             raise RuntimeError(f'连接异常: {str(e)}')
 
 
+def list_onvif_presets(device_id: str) -> list[dict]:
+    """查询 ONVIF 设备预置点列表"""
+    cam = _get_onvif_camera(device_id)
+    if not cam._ptz_controller:
+        raise RuntimeError('该设备不支持云台/预置点')
+    return cam.list_positions()
+
+
+def set_onvif_preset(device_id: str, name: str, preset_token: str | None = None) -> str | None:
+    """保存当前云台位置为预置点"""
+    cam = _get_onvif_camera(device_id)
+    if not cam._ptz_controller:
+        raise RuntimeError('该设备不支持云台/预置点')
+    token = cam.save_position(name, preset_token)
+    if not token:
+        raise RuntimeError('保存预置点失败，设备可能不支持该操作')
+    return token
+
+
+def call_onvif_preset(device_id: str, preset_token: str) -> None:
+    """调用 ONVIF 预置点"""
+    cam = _get_onvif_camera(device_id)
+    if not cam._ptz_controller:
+        raise RuntimeError('该设备不支持云台/预置点')
+    cam.goto_position(preset_token)
+
+
+def delete_onvif_preset(device_id: str, preset_token: str) -> None:
+    """删除 ONVIF 预置点"""
+    cam = _get_onvif_camera(device_id)
+    if not cam._ptz_controller:
+        raise RuntimeError('该设备不支持云台/预置点')
+    if not cam.remove_position(preset_token):
+        raise RuntimeError('删除预置点失败')
+
+
 def _get_camera(id: str) -> Device:
     """获取单个设备ORM对象"""
     return Device.query.get(id)
@@ -1392,6 +1428,41 @@ def get_device_location_info(device_id: str, *, ensure_name: str | None = None) 
         'name': camera.name,
         'device_kind': payload.get('device_kind'),
         **_location_fields_for_device(camera),
+    }
+
+
+def resolve_device_inference_input(device_id: str) -> dict:
+    """为模型推理解析设备可取流的输入地址（含国标 WVP 点播解析）。"""
+    from app.services.stream_url_sync_service import resolve_device_stream_urls
+    from app.utils.gb28181_source import is_gb28181_source, resolve_gb28181_source
+
+    camera = _get_camera(device_id)
+    if not camera:
+        raise ValueError(f'设备 {device_id} 不存在')
+
+    source = (camera.source or '').strip()
+    rtsp_direct = (camera.rtsp_direct or '').strip()
+    rtmp_stream, http_stream, _, _ = resolve_device_stream_urls(camera)
+    rtmp_stream = (rtmp_stream or camera.rtmp_stream or '').strip()
+    http_stream = (http_stream or camera.http_stream or '').strip()
+
+    resolved_source = None
+    is_gb28181 = is_gb28181_source(source)
+    if is_gb28181:
+        resolved_source = resolve_gb28181_source(source, logger=logger)
+    elif source.lower().startswith(('rtsp://', 'rtmp://')):
+        resolved_source = source
+    elif rtsp_direct.lower().startswith(('rtsp://', 'rtmp://')):
+        resolved_source = rtsp_direct
+
+    return {
+        'device_id': device_id,
+        'source': source or None,
+        'rtsp_direct': rtsp_direct or None,
+        'rtmp_stream': rtmp_stream or None,
+        'http_stream': http_stream or None,
+        'resolved_source': (resolved_source or '').strip() or None,
+        'is_gb28181': is_gb28181,
     }
 
 

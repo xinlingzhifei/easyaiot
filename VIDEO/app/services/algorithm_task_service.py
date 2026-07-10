@@ -133,6 +133,18 @@ def _serialize_motion_gate_config(config) -> Optional[str]:
     return None
 
 
+def _normalize_detect_conf(value) -> float:
+    if value is None:
+        return 0.5
+    try:
+        conf = float(value)
+    except (TypeError, ValueError):
+        raise ValueError('检测置信度格式无效')
+    if conf < 0.01 or conf > 0.99:
+        raise ValueError('检测置信度必须在 1% ~ 99% 之间')
+    return conf
+
+
 def _has_library_matching_scope(library_ids) -> bool:
     return bool(_normalize_library_ids(library_ids))
 
@@ -191,6 +203,96 @@ def _enrich_channels_userless_flags(channels: List[Dict]) -> List[Dict]:
     return enriched
 
 
+def _message_service_base_url() -> str:
+    import os
+    try:
+        from flask import current_app
+        url = current_app.config.get('MESSAGE_SERVICE_URL') or os.getenv('MESSAGE_SERVICE_URL', 'http://localhost:48080')
+    except RuntimeError:
+        url = os.getenv('MESSAGE_SERVICE_URL', 'http://localhost:48080')
+    return str(url).rstrip('/')
+
+
+def _message_internal_api_headers() -> Dict[str, str]:
+    """告警通知链路内网调用消息服务：仅传 tenant-id，不传 JWT（过期 Token 会被网关 401 拦截）。"""
+    import os
+    tenant_id = '1'
+    try:
+        from flask import current_app
+        tenant_id = str(current_app.config.get('TENANT_ID', os.getenv('TENANT_ID', '1')))
+    except RuntimeError:
+        tenant_id = str(os.getenv('TENANT_ID', '1'))
+    return {'tenant-id': tenant_id}
+
+
+def _message_database_url() -> str:
+    """消息服务数据库连接串（API 不可用时用于查询群机器人模板元数据）。"""
+    import os
+    url = (os.getenv('MESSAGE_DATABASE_URL') or '').strip()
+    if url:
+        return url
+    video_url = (os.getenv('DATABASE_URL') or '').strip()
+    if video_url and 'iot-video' in video_url:
+        return video_url.replace('iot-video20', 'iot-message20')
+    return 'postgresql://postgres:iot45722414822@localhost:5432/iot-message20'
+
+
+def _fetch_message_template_meta_from_db(method: str, template_id) -> Optional[Dict]:
+    """从消息库直接查询模板元数据（HTTP API 鉴权失败时的后备）。"""
+    if not template_id:
+        return None
+    try:
+        import psycopg2
+
+        method = (method or '').lower()
+        conn = psycopg2.connect(_message_database_url())
+        try:
+            cur = conn.cursor()
+            if method in ('wxcp', 'wechat', 'weixin'):
+                cur.execute(
+                    'SELECT radio_type, web_hook FROM t_msg_wx_cp WHERE id = %s',
+                    (str(template_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {'radioType': row[0], 'webHook': row[1]}
+            if method in ('ding', 'dingtalk'):
+                cur.execute(
+                    'SELECT radio_type, web_hook FROM t_msg_ding WHERE id = %s',
+                    (str(template_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {'radioType': row[0], 'webHook': row[1]}
+            if method in ('feishu', 'lark'):
+                cur.execute(
+                    'SELECT web_hook FROM t_msg_feishu WHERE id = %s',
+                    (str(template_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {'webHook': row[0]}
+            if method in ('http', 'webhook'):
+                cur.execute(
+                    'SELECT url FROM t_msg_http WHERE id = %s',
+                    (str(template_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {'url': row[0]}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug(
+            f"从消息库查询模板元数据失败: method={method}, template_id={template_id}, error={e}"
+        )
+    return None
+
+
 def _fetch_message_template_meta(method: str, template_id) -> Optional[Dict]:
     """查询消息模板元数据，用于判断企业微信群机器人等免通知人渠道。"""
     if not template_id:
@@ -211,31 +313,29 @@ def _fetch_message_template_meta(method: str, template_id) -> Optional[Dict]:
 
         try:
             from flask import current_app
-            message_service_url = current_app.config.get('MESSAGE_SERVICE_URL', 'http://localhost:48080')
-            jwt_token = current_app.config.get('JWT_TOKEN', os.getenv('JWT_TOKEN', ''))
+            message_service_url = _message_service_base_url()
         except RuntimeError:
-            message_service_url = os.getenv('MESSAGE_SERVICE_URL', 'http://localhost:48080')
-            jwt_token = os.getenv('JWT_TOKEN', '')
+            message_service_url = _message_service_base_url()
 
-        headers = {}
-        if jwt_token:
-            headers['Authorization'] = f'Bearer {jwt_token}'
-
-        response = requests.get(
-            f"{message_service_url}/admin-api/message/template/get",
-            params={'id': template_id, 'msgType': msg_type},
-            headers=headers,
-            timeout=5,
-        )
-        if response.status_code != 200:
-            return None
-        result = response.json()
-        if result.get('code') == 0 or result.get('success'):
-            data = result.get('data') or result
-            return data if isinstance(data, dict) else None
+        headers = _message_internal_api_headers()
+        try:
+            response = requests.get(
+                f"{message_service_url}/admin-api/message/template/get",
+                params={'id': template_id, 'msgType': msg_type},
+                headers=headers,
+                timeout=5,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('code') == 0 or result.get('success'):
+                    data = result.get('data') or result
+                    if isinstance(data, dict):
+                        return data
+        except Exception:
+            pass
     except Exception as e:
         logger.debug(f"查询消息模板元数据失败: method={method}, template_id={template_id}, error={e}")
-    return None
+    return _fetch_message_template_meta_from_db(method, template_id)
 
 
 def _normalize_alert_interval_fields(
@@ -287,19 +387,9 @@ def _extract_notify_users_from_templates(channels: List[Dict]) -> List[Dict]:
         import os
         import requests
         
-        # 获取消息服务API地址
-        try:
-            from flask import current_app
-            message_service_url = current_app.config.get('MESSAGE_SERVICE_URL', 'http://localhost:48080')
-            jwt_token = current_app.config.get('JWT_TOKEN', os.getenv('JWT_TOKEN', ''))
-        except RuntimeError:
-            message_service_url = os.getenv('MESSAGE_SERVICE_URL', 'http://localhost:48080')
-            jwt_token = os.getenv('JWT_TOKEN', '')
-        
-        # 构建认证请求头
-        headers = {}
-        if jwt_token:
-            headers['Authorization'] = f'Bearer {jwt_token}'
+        # 获取消息服务API地址（内网免 Token 调用）
+        message_service_url = _message_service_base_url()
+        headers = _message_internal_api_headers()
         
         # 消息类型映射
         method_to_msg_type = {
@@ -548,7 +638,10 @@ def _extract_notify_users_from_templates(channels: List[Dict]) -> List[Dict]:
                           f"name={user.get('name')}")
         else:
             logger.warning(f"⚠️  从消息模板提取通知人失败，返回空列表: channels={channels}")
-            logger.warning(f"⚠️  请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功 4) 用户组中的用户是否有previewUser字段")
+            logger.warning(
+                "⚠️  请检查：1) 消息模板是否配置了 userGroupId 2) 用户组是否包含用户 "
+                "3) MESSAGE_SERVICE_URL 是否可达且 message 服务已放行内网接口"
+            )
         
     except Exception as e:
         logger.error(f"从消息模板提取通知人异常: {str(e)}", exc_info=True)
@@ -556,11 +649,59 @@ def _extract_notify_users_from_templates(channels: List[Dict]) -> List[Dict]:
     return notify_users
 
 
+def _parse_stored_notify_users(raw_config) -> List[Dict]:
+    if not raw_config:
+        return []
+    try:
+        config = json.loads(raw_config) if isinstance(raw_config, str) else raw_config
+        if not isinstance(config, dict):
+            return []
+        users = config.get('notify_users') or []
+        return users if isinstance(users, list) else []
+    except Exception:
+        return []
+
+
+def _merge_notify_users_for_save(
+        config_dict: Dict,
+        channels: List[Dict],
+        existing_notify_users: Optional[List[Dict]] = None) -> None:
+    """保存任务时通过 message API 提取 notify_users；提取失败则保留已有配置。"""
+    notify_users = _extract_notify_users_from_templates(channels)
+    if notify_users:
+        config_dict['notify_users'] = notify_users
+        logger.info(f"✅ 从消息模板提取到 {len(notify_users)} 个通知人，已保存到配置中")
+        for idx, user in enumerate(notify_users):
+            logger.info(
+                f"  通知人 {idx+1}: id={user.get('id')}, msgType={user.get('msgType')}, "
+                f"wxcp_userid={user.get('wxcp_userid')}, previewUser={user.get('previewUser')}"
+            )
+        return
+
+    if _has_userless_channel(channels):
+        logger.info("ℹ️  包含 HTTP/Webhook 或群机器人渠道，无需 notify_users")
+        config_dict.pop('notify_users', None)
+        return
+
+    if existing_notify_users:
+        config_dict['notify_users'] = existing_notify_users
+        logger.warning(
+            f"⚠️  未能重新提取通知人，保留已有 {len(existing_notify_users)} 个 notify_users"
+        )
+        return
+
+    config_dict.pop('notify_users', None)
+    logger.warning(
+        "⚠️  未能从消息模板提取通知人，配置中将不包含 notify_users。"
+        "请检查模板 userGroupId 及 MESSAGE_SERVICE_URL 配置"
+    )
+
+
 def create_algorithm_task(task_name: str,
                          task_type: str = 'realtime',
                          device_ids: Optional[List[str]] = None,
                          model_ids: Optional[List[int]] = None,
-                         extract_interval: Optional[int] = 25,
+                         extract_interval: Optional[int] = 12,
                          tracking_enabled: bool = False,
                          tracking_similarity_threshold: float = 0.2,
                          tracking_max_age: int = 25,
@@ -595,6 +736,7 @@ def create_algorithm_task(task_name: str,
                          sam_supplement_config=None,
                          motion_gate_enabled: bool = False,
                          motion_gate_config=None,
+                         detect_conf: float = 0.5,
                          post_process_enabled: bool = False,
                          post_process_replicas: int = 1) -> AlgorithmTask:
     """创建算法任务"""
@@ -788,27 +930,7 @@ def create_algorithm_task(task_name: str,
                 if channels:
                     # 从消息模板中提取通知人信息
                     logger.info(f"开始从消息模板提取通知人信息: channels={channels}")
-                    notify_users = _extract_notify_users_from_templates(channels)
-                    if notify_users:
-                        # 将通知人信息添加到配置中
-                        config_dict['notify_users'] = notify_users
-                        logger.info(f"✅ 从消息模板提取到 {len(notify_users)} 个通知人，已保存到配置中")
-                        # 打印每个通知人的详细信息（用于调试）
-                        for idx, user in enumerate(notify_users):
-                            logger.info(f"  通知人 {idx+1}: id={user.get('id')}, msgType={user.get('msgType')}, "
-                                      f"phone={user.get('phone')}, email={user.get('email')}, "
-                                      f"wxcp_userid={user.get('wxcp_userid')}, ding_userid={user.get('ding_userid')}, "
-                                      f"feishu_userid={user.get('feishu_userid')}, previewUser={user.get('previewUser')}")
-                    else:
-                        if _has_userless_channel(channels):
-                            logger.info(
-                                "ℹ️  包含 HTTP/Webhook 或企业微信群机器人渠道，无需从模板提取通知人（URL 在消息模板中）"
-                            )
-                        else:
-                            logger.warning(
-                                "⚠️  未能从消息模板提取通知人信息，配置中将不包含通知人。"
-                                "请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功"
-                            )
+                    _merge_notify_users_for_save(config_dict, channels)
                 else:
                     logger.warning(f"⚠️  告警通知配置中没有channels字段或channels为空")
                 
@@ -829,6 +951,7 @@ def create_algorithm_task(task_name: str,
             task_type=task_type,
             model_ids=model_ids_json,
             model_names=model_names,
+            detect_conf=_normalize_detect_conf(detect_conf),
             extract_interval=extract_interval if task_type == 'realtime' else None,
             rtmp_input_url=None,  # 不再使用，从摄像头列表获取RTSP流地址
             rtmp_output_url=None,  # 不再使用，从摄像头列表获取RTMP流地址
@@ -1026,6 +1149,7 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
         updatable_fields = [
             'task_name', 'task_type', 'pusher_id',
             'model_ids', 'model_names',  # 模型配置
+            'detect_conf',
             'extract_interval',  # 实时算法任务配置（rtmp_input_url和rtmp_output_url不再使用，从摄像头列表获取）
             'tracking_enabled', 'tracking_similarity_threshold', 'tracking_max_age', 'tracking_smooth_alpha',  # 追踪配置
             'alert_event_enabled', 'alert_event_suppress_time', 'alert_class_names',
@@ -1054,6 +1178,9 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             kwargs['motion_gate_config'] = _serialize_motion_gate_config(
                 kwargs['motion_gate_config']
             )
+
+        if 'detect_conf' in kwargs:
+            kwargs['detect_conf'] = _normalize_detect_conf(kwargs.get('detect_conf'))
         
         # 验证布防模式
         if 'defense_mode' in kwargs:
@@ -1146,27 +1273,10 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
                 if channels:
                     # 从消息模板中提取通知人信息
                     logger.info(f"开始从消息模板提取通知人信息（更新）: channels={channels}")
-                    notify_users = _extract_notify_users_from_templates(channels)
-                    if notify_users:
-                        # 将通知人信息添加到配置中
-                        config_dict['notify_users'] = notify_users
-                        logger.info(f"✅ 从消息模板提取到 {len(notify_users)} 个通知人，已保存到配置中（更新）")
-                        # 打印每个通知人的详细信息（用于调试）
-                        for idx, user in enumerate(notify_users):
-                            logger.info(f"  通知人 {idx+1}: id={user.get('id')}, msgType={user.get('msgType')}, "
-                                      f"phone={user.get('phone')}, email={user.get('email')}, "
-                                      f"wxcp_userid={user.get('wxcp_userid')}, ding_userid={user.get('ding_userid')}, "
-                                      f"feishu_userid={user.get('feishu_userid')}, previewUser={user.get('previewUser')}")
-                    else:
-                        if _has_userless_channel(channels):
-                            logger.info(
-                                "ℹ️  包含 HTTP/Webhook 或企业微信群机器人渠道，无需从模板提取通知人（URL 在消息模板中）（更新）"
-                            )
-                        else:
-                            logger.warning(
-                                "⚠️  未能从消息模板提取通知人信息，配置中将不包含通知人（更新）。"
-                                "请检查：1) 消息模板是否配置了userGroupId 2) 用户组是否包含用户 3) API调用是否成功"
-                            )
+                    existing_notify_users = _parse_stored_notify_users(task.alert_notification_config)
+                    _merge_notify_users_for_save(
+                        config_dict, channels, existing_notify_users=existing_notify_users
+                    )
                 else:
                     logger.warning(f"⚠️  告警通知配置中没有channels字段或channels为空（更新）")
                 

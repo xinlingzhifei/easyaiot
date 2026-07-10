@@ -99,6 +99,16 @@
   const httpParamsRef = ref(null);
   const describeRef = ref(null);
   const opertionType = ref('add');
+  const currentMsgType = ref<number | null>(null);
+
+  const MSG_TYPE_MAP: Record<string, number> = {
+    sms: 1,
+    email: 3,
+    weixin: 4,
+    http: 5,
+    ding: 6,
+    feishu: 7,
+  };
 
   const DESCRIBE_TYPE_MAP: Record<string, string> = {
     sms: 'sms',
@@ -137,6 +147,7 @@
       validate,
       setFieldsValue,
       resetFields,
+      updateSchema,
     },
   ] = useForm({
     schemas: templateFormSchemas({ isVariable }),
@@ -148,6 +159,7 @@
   function editConfigModal(record) {
     const { files, templateDataList, cookies, params, headers, ...ret } = record;
     const _msgType = +ret.msgType;
+    currentMsgType.value = Number.isFinite(_msgType) ? _msgType : null;
     if ([3].includes(_msgType) && files) {
       let _file = JSON.parse(files) || [];
       if (!Array.isArray(_file)) _file = [{ id: '0', ..._file }];
@@ -162,22 +174,35 @@
       if ([5].includes(_msgType)) {
         httpParamsRef.value?.setTabList({ cookies, params, headers });
       }
-      getUserGroupQueryByMsgType();
+      getUserGroupQueryByMsgType(_msgType);
+      if ([4, 6].includes(_msgType)) {
+        getMessageConfigQuery(_msgType);
+      }
     });
   }
 
   function handleNoticeType(type) {
-    const msgType = { sms: 1, email: 3, weixin: 4, http: 5, ding: 6, feishu: 7 };
+    const typeNum = MSG_TYPE_MAP[type] ?? 3;
+    currentMsgType.value = typeNum;
+    const usesTemplateTitle = ['weixin', 'ding', 'feishu'].includes(type);
+    updateSchema({
+      field: 'msgName',
+      label: usesTemplateTitle ? '模板标题' : '模板名称',
+      helpMessage: usesTemplateTitle ? '列表中展示的模板标识' : undefined,
+    });
     changeNoticeType(type);
     describeRef.value?.setNoticeType(DESCRIBE_TYPE_MAP[type] || 'email');
     setTimeout(() => {
       setFieldsValue({
-        msgType: msgType[type],
+        msgType: typeNum,
         method: 'GET',
         bodyType: 'text/plain',
         tabActive: 'Params',
         radioType: type === 'ding' ? '工作通知方式' : type === 'feishu' ? '群机器人消息' : '工作通知方式',
       });
+      if ([4, 6].includes(typeNum)) {
+        getMessageConfigQuery(typeNum);
+      }
     });
     reset();
   }
@@ -207,6 +232,15 @@
     if (getFieldsValue().msgType == 5) httpParamsRef.value?.reset();
   };
 
+  /** 邮件/企微/钉钉/飞书模板以 title 作为唯一标识，与 msgName 双向补齐 */
+  function syncTemplateIdentity(t_Msg: Record<string, unknown>, msgType: number) {
+    if (![3, 4, 6, 7].includes(msgType)) return;
+    const name = String(t_Msg.msgName ?? '').trim();
+    const title = String(t_Msg.title ?? '').trim();
+    if (!title && name) t_Msg.title = name;
+    if (!name && title) t_Msg.msgName = title;
+  }
+
   const handleCancel = () => {
     resetFields();
     reset();
@@ -223,6 +257,7 @@
         const { id, msgType, ...t_Msg } = getFieldsValue();
         const _msgType = +msgType;
         t_Msg.msgType = _msgType;
+        syncTemplateIdentity(t_Msg, _msgType);
         if (t_Msg.btnText !== undefined) {
           t_Msg.btnTxt = t_Msg.btnText;
           delete t_Msg.btnText;
@@ -266,14 +301,20 @@
         closeModal();
         emits('success');
         handleCancel();
-      })
-      .catch(() => createMessage.error('操作失败'));
+      });
   };
 
-  async function getUserGroupQueryByMsgType() {
+  function resolveMsgType(explicit?: number) {
+    const raw = explicit ?? getFieldsValue()?.msgType ?? currentMsgType.value;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  async function getUserGroupQueryByMsgType(msgType?: number) {
     try {
-      const { msgType } = getFieldsValue();
-      const ret = await userGroupQueryByMsgType({ msgType: +msgType });
+      const _msgType = resolveMsgType(msgType);
+      if (_msgType == null) return;
+      const ret = await userGroupQueryByMsgType({ msgType: _msgType });
       formData.value.userGroupList = ret.map((item) => ({
         label: item.userGroupName,
         value: item.id,
@@ -283,15 +324,38 @@
     }
   }
 
-  async function getMessageConfigQuery() {
+  function resolveConfigApps(configurationMap: Record<string, unknown> | undefined, msgType: number) {
+    const configKey: Record<number, string> = { 4: 'wxCpApp', 6: 'dingdingApp' };
+    const key = configKey[msgType];
+    if (!key || !configurationMap) return [];
+    let apps: unknown = configurationMap[key];
+    if (!apps && msgType === 4) {
+      apps = configurationMap.weixinApply;
+    }
+    if (typeof apps === 'string') {
+      try {
+        apps = JSON.parse(apps);
+      } catch {
+        apps = [];
+      }
+    }
+    if (!Array.isArray(apps)) {
+      apps = apps ? [apps] : [];
+    }
+    return apps as Array<{ appName?: string; agentId?: string | number }>;
+  }
+
+  async function getMessageConfigQuery(msgType?: number) {
     try {
-      const { msgType } = getFieldsValue();
-      const ret = await messageConfigQuery({ msgType: +msgType });
-      const configKey = { 4: 'wxCpApp', 6: 'dingdingApp' };
-      formData.value.agent = ret.data[0]?.configurationMap[configKey[msgType]]?.map((item) => ({
+      const _msgType = resolveMsgType(msgType);
+      if (_msgType == null) return;
+      const ret = await messageConfigQuery({ msgType: _msgType });
+      const rows = Array.isArray(ret) ? ret : ret?.data ?? [];
+      const row = rows.find((item) => +item.msgType === _msgType) ?? rows[0];
+      formData.value.agent = resolveConfigApps(row?.configurationMap, _msgType).map((item) => ({
         label: item.appName,
         value: item.agentId,
-      })) || [];
+      }));
     } catch (e) {
       console.error(e);
     }

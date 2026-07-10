@@ -123,23 +123,54 @@ class FaceRecognitionService:
         return {"insert_result": inserted.get("insert_result"), "face_count": len(faces),
                 "milvus_id": inserted.get("milvus_id")}
 
-    def add_face_to_library(self, library_id: int, face_entry_id: int, person_name: str,
-                            image: np.ndarray, person_code: Optional[str] = None) -> Dict[str, Any]:
+    def _resolve_embedding(
+        self,
+        image: np.ndarray,
+        embedding: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """解析人脸特征向量；已裁剪入库图优先复用原向量，避免二次检测失败。"""
+        if embedding is not None:
+            return embedding.astype(np.float32)
+
         faces = self._extract_faces(image)
         face = self._pick_largest_face(faces)
-        if face is None:
-            raise ValueError("图片中未检测到人脸")
-        embedding = face.normed_embedding.astype(np.float32)
+        if face is not None:
+            return face.normed_embedding.astype(np.float32)
+
+        try:
+            self._ensure_rec_model()
+            input_size = self._rec_model.input_size
+            resized = cv2.resize(image, input_size)
+            return self._embed_crop(resized)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            logger.warning('整图特征提取失败: %s', exc)
+            raise ValueError("图片中未检测到人脸") from exc
+
+    def add_face_to_library(
+        self,
+        library_id: int,
+        face_entry_id: int,
+        person_name: str,
+        image: np.ndarray,
+        person_code: Optional[str] = None,
+        embedding: Optional[np.ndarray] = None,
+    ) -> Dict[str, Any]:
+        resolved = self._resolve_embedding(image, embedding=embedding)
         inserted = self._vector_store.insert_embedding(
-            embedding,
+            resolved,
             label=person_name,
             library_id=library_id,
             face_entry_id=face_entry_id,
             person_name=person_name,
             person_code=person_code or "",
         )
-        return {"insert_result": inserted.get("insert_result"), "face_count": len(faces),
-                "milvus_id": inserted.get("milvus_id")}
+        return {
+            "insert_result": inserted.get("insert_result"),
+            "face_count": 1,
+            "milvus_id": inserted.get("milvus_id"),
+        }
 
     def update_face_entry_id(self, milvus_id, face_entry_id: int) -> None:
         self._vector_store.update_face_entry_id(milvus_id, face_entry_id)
@@ -255,22 +286,61 @@ class FaceRecognitionService:
         return result
 
     def extract_and_crop_largest_face(self, image: np.ndarray) -> Optional[Dict[str, Any]]:
-        faces = self._extract_faces(image)
-        face = self._pick_largest_face(faces)
-        if face is None:
-            return None
-        x1, y1, x2, y2 = [int(v) for v in face.bbox.tolist()]
+        from app.utils.face_capture_service import detect_faces
+
+        min_area_ratio = float(os.getenv('FACE_ENROLL_MIN_AREA_RATIO', '0.02'))
         h, w = image.shape[:2]
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
-        crop = image[y1:y2, x1:x2]
-        if crop.size == 0:
+        image_area = max(h * w, 1)
+
+        detections = detect_faces(image)
+        valid_boxes = []
+        for det in detections:
+            bbox = det.get('bbox') or []
+            if len(bbox) < 4:
+                continue
+            x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            area = (x2 - x1) * (y2 - y1)
+            if area / image_area < min_area_ratio:
+                continue
+            valid_boxes.append(([x1, y1, x2, y2], area))
+
+        if valid_boxes:
+            bbox, _ = max(valid_boxes, key=lambda item: item[1])
+            x1, y1, x2, y2 = bbox
+            crop = image[y1:y2, x1:x2]
+            if crop.size > 0:
+                try:
+                    embedding = self._embed_crop(crop)
+                except FileNotFoundError:
+                    raise
+                except Exception as exc:
+                    logger.warning('人脸区域特征提取失败: %s', exc)
+                else:
+                    return {
+                        'bbox': bbox,
+                        'crop': crop,
+                        'embedding': embedding,
+                    }
+
+        try:
+            self._ensure_rec_model()
+            input_size = self._rec_model.input_size
+            resized = cv2.resize(image, input_size)
+            embedding = self._embed_crop(resized)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            logger.warning('整图特征提取失败: %s', exc)
             return None
-        embedding = face.normed_embedding.astype(np.float32)
+
         return {
-            "bbox": [x1, y1, x2, y2],
-            "crop": crop,
-            "embedding": embedding,
+            'bbox': [0, 0, w, h],
+            'crop': image,
+            'embedding': embedding,
         }
 
     def ping(self) -> Dict[str, Any]:

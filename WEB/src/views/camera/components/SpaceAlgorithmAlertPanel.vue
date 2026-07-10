@@ -124,7 +124,7 @@
 import { computed, ref, watch } from 'vue';
 import { DatePicker, Empty, Spin, Tag } from 'ant-design-vue';
 import { PictureOutlined } from '@ant-design/icons-vue';
-import dayjs, { type Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
@@ -166,8 +166,8 @@ const emit = defineEmits<{
 
 const { createMessage } = useMessage();
 
-const selectedDate = ref<Dayjs>(dayjs());
-const selectedDateStr = computed(() => selectedDate.value.format('YYYY-MM-DD'));
+const selectedDate = ref<string>(dayjs().format('YYYY-MM-DD'));
+const selectedDateStr = computed(() => selectedDate.value);
 const alertList = ref<SpaceAlertItem[]>([]);
 const selectedAlert = ref<SpaceAlertItem | null>(null);
 const loading = ref(false);
@@ -202,7 +202,7 @@ function isPatrolAlert(alert: SpaceAlertItem) {
 
 function selectDate(date: string) {
   if (!props.deviceId) return;
-  selectedDate.value = dayjs(date);
+  selectedDate.value = date;
   void loadAlerts();
 }
 
@@ -231,7 +231,7 @@ async function loadDateHints() {
       }))
       .sort((a, b) => b.date.localeCompare(a.date));
     if (dateHints.value.length && !dateHints.value.some((d) => d.date === selectedDateStr.value)) {
-      selectedDate.value = dayjs(dateHints.value[0].date);
+      selectedDate.value = dateHints.value[0].date;
     }
   } catch (e) {
     console.error(e);

@@ -116,7 +116,7 @@ import { isSnapAlertTask } from '@/views/alert/alertDisplay';
 
 const router = useRouter();
 const [registerImageModal, { openModal: openImageModal }] = useModal();
-const [registerVideoModal, { openModal: openVideoModal, closeModal: closeVideoModal }] = useModal();
+const [registerVideoModal, { openModal: openVideoModal, closeModal: closeVideoModal, setModalProps: setVideoModalProps }] = useModal();
 const [registerLocationDrawer, { openModal: openLocationModal }] = useModal();
 
 defineOptions({ name: 'Alarm' });
@@ -315,7 +315,7 @@ const handleViewVideo = async (record) => {
 
   try {
     const ok = await playAlertRecordInModal(
-      { openModal: openVideoModal, closeModal: closeVideoModal },
+      { openModal: openVideoModal, closeModal: closeVideoModal, setModalProps: setVideoModalProps },
       {
         id: record['id'],
         device_id: record['device_id'],

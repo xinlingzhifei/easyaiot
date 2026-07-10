@@ -1,13 +1,9 @@
-import { Button } from '@/components/Button'
 <template>
   <div class="user-warpper">
     <BasicTable @register="registerTable">
       <template #toolbar>
-        <Button type="link" @click="handleDownloadTemplate">下载导入模版</Button>
-        <Button type="primary" @click="openUserModal(true, { type: 'add' })">新增用户</Button>
-        <Upload :show-upload-list="false" @change="handleUploadFile">
-          <Button type="primary">导入用户</Button>
-        </Upload>
+        <Button type="primary" preIcon="ant-design:plus-outlined" @click="openUserModal(true, { type: 'add' })">新增用户</Button>
+        <Button preIcon="ant-design:import-outlined" @click="openImportModal(true)">导入用户</Button>
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'action'">
@@ -39,28 +35,22 @@ import { Button } from '@/components/Button'
       </template>
     </BasicTable>
     <UserConfigModal @register="registerUserModal" @success="reload" />
+    <UserImportModal @register="registerImportModal" @success="reload" />
   </div>
 </template>
 <script lang="ts" setup name="planTask">
-  import { ref, h } from 'vue';
+  import { Button } from '@/components/Button';
   import { BasicTable, useTable, TableAction } from '/@/components/Table';
-  import { downloadByUrl } from '/@/utils/file/download';
-  import { Upload } from 'ant-design-vue';
   import { getColumns, getFormConfig } from './Data.tsx';
   import { useMessage } from '/@/hooks/web/useMessage';
   import UserConfigModal from './component/UserConfigModal.vue';
+  import UserImportModal from './component/UserImportModal.vue';
   import { useModal } from '/@/components/Modal';
-  import {
-    messagePreviewUserQuery,
-    messagePreviewUserDelete,
-    messagePreviewUserImport,
-    messagePreviewUserExportExcel,
-  } from '/@/api/modules/user';
-  import Icon from '@/components/Icon/index';
+  import { messagePreviewUserQuery, messagePreviewUserDelete } from '/@/api/modules/user';
 
-  const uploadLoading = ref(false);
-  const { createMessage, notification } = useMessage();
+  const { createMessage } = useMessage();
   const [registerUserModal, { openModal: openUserModal }] = useModal();
+  const [registerImportModal, { openModal: openImportModal }] = useModal();
   const [
     registerTable,
     {
@@ -104,59 +94,6 @@ import { Button } from '@/components/Button'
     }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const { protocol, host } = location;
-      const url = `${protocol}//${host}${messagePreviewUserExportExcel()}`;
-      downloadByUrl({
-        url,
-        target: '_self',
-      });
-    }catch (error) {
-    console.error(error)
-      console.log('handleDownloadTemplate', error);
-    }
-  };
-
-  const handleUploadFile = async (info) => {
-    try {
-      if (info.file.status === 'uploading') {
-        uploadLoading.value = true;
-        return;
-      }
-      if (info.file.status === 'error') {
-        if (info.file.size > 1048576) {
-          createMessage.warning('文件不能超过1MB');
-          uploadLoading.value = false;
-          return;
-        }
-        const formData = new FormData();
-        formData.append('file', info.file.originFileObj);
-        const ret = await messagePreviewUserImport(formData);
-        // console.log('handleUploadFile', ret);
-        reload();
-        if (ret.status == 200) {
-          createMessage.success(ret?.message);
-        } else {
-          notification.open({
-            getContainer: () => document.querySelector('.user-warpper'),
-            placement: 'topLeft',
-            message: '导入失败',
-            description: ret?.data?.map((item) => {
-              return h('div', item);
-            }),
-            icon: () => h(Icon, { style: 'color: red', icon: 'mi:circle-error', size: 22 }),
-          });
-        }
-        uploadLoading.value = false;
-      }
-    }catch (error) {
-    console.error(error)
-      console.log(error);
-      createMessage.error('操作失败');
-      uploadLoading.value = false;
-    }
-  };
 </script>
 
 <style lang="less" scoped>

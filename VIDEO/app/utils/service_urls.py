@@ -151,6 +151,36 @@ def epoch_to_shanghai_datetime(ts: float) -> datetime:
     return datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone(SHANGHAI_TZ)
 
 
+def now_shanghai_naive() -> datetime:
+    """当前东八区墙钟（naive），与 captured_at / event_time 存储约定一致。"""
+    return datetime.now(SHANGHAI_TZ).replace(tzinfo=None)
+
+
+def shanghai_isoformat(dt) -> str | None:
+    """东八区墙钟序列化为 ISO-8601（+08:00），便于前端按本地时间展示。"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        aware = dt.replace(tzinfo=SHANGHAI_TZ)
+    else:
+        aware = dt.astimezone(SHANGHAI_TZ)
+    return aware.isoformat()
+
+
+def save_time_cutoff_naive(save_time_hours) -> datetime | None:
+    """东八区 naive 截止时间，与 event_time/captured_at（东八区墙钟）直接比较。
+
+    save_time_hours <= 0 表示永久保存，返回 None。
+    """
+    try:
+        hours = int(save_time_hours)
+    except (TypeError, ValueError):
+        return None
+    if hours <= 0:
+        return None
+    return (datetime.now(SHANGHAI_TZ) - timedelta(hours=hours)).replace(tzinfo=None)
+
+
 def playback_segment_utc_starts(event_time):
     """返回录像片段可能的 UTC 起始时刻（含旧版时区误标数据）。"""
     aware = ensure_shanghai_aware(event_time)
@@ -199,6 +229,21 @@ def is_local_filesystem_path(path: str) -> bool:
 def build_alert_image_api_url(local_path: str) -> str:
     from urllib.parse import quote
     return f'/video/alert/image?path={quote(local_path, safe="")}'
+
+
+def build_alert_record_api_url(local_path: str) -> str:
+    from urllib.parse import quote
+    return f'/video/alert/record?path={quote(local_path, safe="")}'
+
+
+def resolve_playback_display_url(file_path: str) -> str:
+    """将 DB 中的录像 file_path 转为浏览器可请求的 VIDEO API 相对路径。"""
+    if not file_path:
+        return file_path
+    u = file_path.strip()
+    if is_local_filesystem_path(u):
+        return build_alert_record_api_url(u)
+    return u
 
 
 def build_snap_image_api_url(space_id: int, object_name: str) -> str:

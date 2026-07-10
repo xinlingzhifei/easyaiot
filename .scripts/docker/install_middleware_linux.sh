@@ -1657,15 +1657,36 @@ is_docker_interface() {
     return 1  # 不是 Docker 接口
 }
 
+# 校验 IPv4 字面量（拒绝 metric/table 等被误当成 IP 的纯数字，如 2022）
+is_valid_ipv4() {
+    local ip="$1" o
+    [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+    IFS='.' read -r -a _octets <<< "$ip"
+    for o in "${_octets[@]}"; do
+        [ "$o" -le 255 ] 2>/dev/null || return 1
+    done
+    return 0
+}
+
+# 从「ip route get」输出中提取 src 地址（禁止用固定字段号，避免误取 metric/table）
+_extract_route_src_ip() {
+    local route_line="$1"
+    if [[ "$route_line" =~ [[:space:]]src[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    fi
+}
+
 # 获取宿主机 IP 地址（排除 Docker 网络接口）
 get_host_ip() {
     local host_ip=""
     
     # 方法1: 通过路由获取（最可靠，通常返回物理网络接口的 IP）
     if command -v ip &> /dev/null; then
-        host_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7}' | head -n 1)
-        # ip route get 返回的是出站路由源地址，即物理网卡 IP；不因 172.17-172.31 网段误判为 Docker 网段
-        if [ -n "$host_ip" ] && [ "$host_ip" != "127.0.0.1" ]; then
+        local route_line
+        route_line=$(ip route get 8.8.8.8 2>/dev/null | head -n 1)
+        host_ip=$(_extract_route_src_ip "$route_line")
+        # 必须含 src 字段才是源地址；无 src 时 awk $7 可能误取 metric 2022 / table 2022
+        if is_valid_ipv4 "$host_ip" && [ "$host_ip" != "127.0.0.1" ] && ! is_docker_network_ip "$host_ip"; then
             echo "$host_ip"
             return 0
         fi
@@ -1677,7 +1698,7 @@ get_host_ip() {
         if [ -n "$all_ips" ]; then
             # 遍历所有 IP，找到第一个非 Docker 网络的 IP
             for ip in $all_ips; do
-                if [ "$ip" != "127.0.0.1" ] && [[ ! "$ip" =~ ^169\.254\. ]] && ! is_docker_network_ip "$ip"; then
+                if is_valid_ipv4 "$ip" && [ "$ip" != "127.0.0.1" ] && [[ ! "$ip" =~ ^169\.254\. ]] && ! is_docker_network_ip "$ip"; then
                     echo "$ip"
                     return 0
                 fi
@@ -1706,7 +1727,7 @@ get_host_ip() {
             # 提取 IP 地址（格式：    inet 192.168.1.100/24 ...）
             if [ -n "$current_iface" ] && [[ "$line" =~ inet[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) ]]; then
                 local ip="${BASH_REMATCH[1]}"
-                if [ "$ip" != "127.0.0.1" ] && [[ ! "$ip" =~ ^169\.254\. ]] && ! is_docker_network_ip "$ip"; then
+                if is_valid_ipv4 "$ip" && [ "$ip" != "127.0.0.1" ] && [[ ! "$ip" =~ ^169\.254\. ]] && ! is_docker_network_ip "$ip"; then
                     # 检查是否是物理接口
                     if [[ "$current_iface" =~ ^(eth|enp|ens|eno|wlan|wlp) ]]; then
                         physical_ips="$physical_ips $ip"
@@ -1753,7 +1774,7 @@ get_host_ip() {
             # 提取 IP 地址
             if [ -n "$current_iface" ] && [[ "$line" =~ inet[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) ]]; then
                 local ip="${BASH_REMATCH[1]}"
-                if [ "$ip" != "127.0.0.1" ] && [[ ! "$ip" =~ ^169\.254\. ]] && ! is_docker_network_ip "$ip"; then
+                if is_valid_ipv4 "$ip" && [ "$ip" != "127.0.0.1" ] && [[ ! "$ip" =~ ^169\.254\. ]] && ! is_docker_network_ip "$ip"; then
                     echo "$ip"
                     return 0
                 fi
@@ -1766,18 +1787,18 @@ get_host_ip() {
     return 1
 }
 
-# 在宿主机 /etc/hosts 中将 Kafka 解析为宿主机 IP（供宿主机进程使用 Kafka:9092）
+# 在宿主机 /etc/hosts 中将 Kafka 解析为本机回环（供宿主机进程使用 Kafka:9092）
+# Kafka 容器已映射 0.0.0.0:9092，127.0.0.1 最稳定；勿用 get_host_ip()（会误取 metric/VPN/tunnel 如 28.0.0.1）
+# 跨机部署可导出 KAFKA_HOSTS_IP=中间件内网IP 覆盖
 KAFKA_HOSTS_MARKER="# yFeiEye Kafka (install_middleware_linux.sh)"
 configure_kafka_hosts() {
     local host_ip hosts_file="/etc/hosts"
     local entry_line
 
-    host_ip=$(get_host_ip)
-    if [ -z "$host_ip" ]; then
+    host_ip="${KAFKA_HOSTS_IP:-127.0.0.1}"
+    if ! is_valid_ipv4 "$host_ip"; then
         host_ip="127.0.0.1"
-        print_warning "无法获取宿主机 IP，Kafka hosts 将使用 127.0.0.1"
-    else
-        print_info "检测到宿主机 IP: $host_ip"
+        print_warning "KAFKA_HOSTS_IP 无效，Kafka hosts 将使用 127.0.0.1"
     fi
 
     print_info "配置宿主机 hosts：Kafka -> ${host_ip}（供宿主机进程连接 Kafka:9092）"
@@ -2131,13 +2152,11 @@ create_all_storage_directories() {
         fi
     done
 
-    # SRS 容器绑定宿主机 /data -> 容器 /data（与 docker-compose.yml 一致）
-    # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
-    # （/data 下含本仓库及全部 docker 数据，递归 chmod 会扫描海量文件导致严重卡顿）
-    # playbacks 同样不递归：录像无限增长，新文件可删性由 SRS 容器入口 umask 0000 保证
-    # （与 fix_srs.sh / srs-entrypoint.sh / install_middleware_mac.sh 约定一致）
-    run_priv mkdir -p /data/playbacks 2>/dev/null || true
-    run_priv chmod 777 /data /data/playbacks 2>/dev/null || true
+    # SRS 容器绑定宿主机 ~/easyaiot/data -> 容器 /data（与 docker-compose.yml 一致）
+    # 注意：只对数据根目录顶层和 playbacks 设权限，绝不对整个目录树递归
+    local _host_data_dir="${EASYAIOT_HOST_DATA_DIR:-$HOME/easyaiot/data}"
+    run_priv mkdir -p "${_host_data_dir}/playbacks" 2>/dev/null || true
+    run_priv chmod 777 "${_host_data_dir}" "${_host_data_dir}/playbacks" 2>/dev/null || true
     
     if [ $created_count -eq $total_count ]; then
         print_success "所有存储目录已创建并设置为777权限（${created_count}/${total_count}）"
@@ -3128,20 +3147,20 @@ stop_dify() {
     dify_compose down 2>&1 | tee -a "$DIFY_LOG_FILE" || true
 }
 
-# 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data；compose 挂载 /data:/data）
+# 在安装 SRS 之前创建宿主机 ~/easyaiot/data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data）
 ensure_host_data_directory_before_srs() {
-    print_info "安装 SRS 前检查宿主机目录 /data ..."
-    # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
-    # （/data 下含本仓库及全部 docker 数据，递归 chmod 会扫描海量文件导致严重卡顿）
+    local _host_data_dir="${EASYAIOT_HOST_DATA_DIR:-$HOME/easyaiot/data}"
+    print_info "安装 SRS 前检查宿主机目录 ${_host_data_dir} ..."
+    # 注意：只对数据根目录顶层和 playbacks 设权限，绝不对整个目录树递归
     local created=0
-    if run_priv mkdir -p /data/playbacks 2>/dev/null; then
-        run_priv chmod 777 /data /data/playbacks 2>/dev/null || true
+    if run_priv mkdir -p "${_host_data_dir}/playbacks" 2>/dev/null; then
+        run_priv chmod 777 "${_host_data_dir}" "${_host_data_dir}/playbacks" 2>/dev/null || true
         created=1
     fi
     if [ "$created" -eq 1 ]; then
-        print_success "宿主机目录已就绪: /data（含 playbacks 子目录）"
+        print_success "宿主机目录已就绪: ${_host_data_dir}（含 playbacks 子目录）"
     else
-        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks && sudo chmod 777 /data /data/playbacks）。"
+        print_warning "无法在宿主机创建 ${_host_data_dir}（请使用 root/sudo 执行安装，或手动: mkdir -p ${_host_data_dir}/playbacks && chmod 777 ${_host_data_dir} ${_host_data_dir}/playbacks）。"
     fi
 }
 
@@ -3153,8 +3172,9 @@ _apply_srs_http_hooks() {
 
     if is_mini_deploy_profile; then
         local video_port="${FLASK_RUN_PORT:-6000}"
-        on_publish_url="http://localhost:${video_port}/video/camera/callback/on_publish"
-        on_dvr_url="http://localhost:${video_port}/video/camera/callback/on_dvr"
+        local host_ip=$(get_host_ip)
+        on_publish_url="http://${host_ip}:${video_port}/video/camera/callback/on_publish"
+        on_dvr_url="http://${host_ip}:${video_port}/video/camera/callback/on_dvr"
         print_info "mini 形态：SRS Hook 直连 VIDEO 服务 ${on_publish_url}（无 Gateway）"
     else
         on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
@@ -3223,8 +3243,8 @@ prepare_srs_config() {
     local on_publish_url on_dvr_url
     if is_mini_deploy_profile; then
         local video_port="${FLASK_RUN_PORT:-6000}"
-        on_publish_url="http://localhost:${video_port}/video/camera/callback/on_publish"
-        on_dvr_url="http://localhost:${video_port}/video/camera/callback/on_dvr"
+        on_publish_url="http://${host_ip}:${video_port}/video/camera/callback/on_publish"
+        on_dvr_url="http://${host_ip}:${video_port}/video/camera/callback/on_dvr"
     else
         on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
         on_dvr_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr"
@@ -6078,6 +6098,7 @@ start_middleware() {
     
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     check_compose_file
     create_network
     
@@ -6191,6 +6212,7 @@ restart_middleware() {
     
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     check_compose_file
     create_network
     
@@ -6537,6 +6559,7 @@ update_middleware() {
     
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     check_compose_file
     create_network
     

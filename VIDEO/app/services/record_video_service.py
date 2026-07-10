@@ -189,19 +189,95 @@ def get_record_video(space_id: int, object_name: str):
         raise RuntimeError(f"获取监控录像失败: {str(e)}")
 
 
+def cleanup_orphan_minio_record_objects(space_id: int, save_time_hours: int) -> Dict:
+    """清理 MinIO 中无 record_file 元数据且已过期的录像/缩略图（孤儿对象）。"""
+    from app.services.media_dvr_utils import parse_record_minio_object_event_time
+    from app.services.space_save_time_service import save_time_cutoff_naive
+
+    if not minio_storage_enabled():
+        return {'scanned_count': 0, 'deleted_count': 0, 'error_count': 0, 'skipped': 1}
+
+    cutoff_time = save_time_cutoff_naive(save_time_hours)
+    if cutoff_time is None:
+        return {'scanned_count': 0, 'deleted_count': 0, 'error_count': 0, 'skipped': 1}
+
+    record_space = RecordSpace.query.get_or_404(space_id)
+    bucket_name = record_space.bucket_name
+    device_id = record_space.device_id
+
+    minio_client = get_minio_client()
+    if not minio_client.bucket_exists(bucket_name):
+        return {'scanned_count': 0, 'deleted_count': 0, 'error_count': 0}
+
+    prefix = f'{device_id}/' if device_id else ''
+
+    db_query = RecordFile.query.filter_by(space_id=space_id, bucket_name=bucket_name)
+    if device_id:
+        db_query = db_query.filter_by(device_id=device_id)
+    known_objects = set()
+    for record in db_query.all():
+        known_objects.add(record.object_name)
+        if record.thumbnail_url:
+            thumb = extract_prefix_from_url(record.thumbnail_url)
+            if thumb:
+                known_objects.add(thumb)
+
+    scanned_count = deleted_count = error_count = 0
+    for obj in minio_client.list_objects(bucket_name, prefix=prefix, recursive=True):
+        object_name = obj.object_name
+        if not object_name or object_name.endswith('/'):
+            continue
+        scanned_count += 1
+        if object_name in known_objects:
+            continue
+
+        event_time = parse_record_minio_object_event_time(object_name, obj.last_modified)
+        if event_time is None or event_time >= cutoff_time:
+            continue
+
+        try:
+            minio_client.remove_object(bucket_name, object_name)
+            deleted_count += 1
+            logger.info(
+                '删除 MinIO 孤儿录像对象: bucket=%s object=%s event_time=%s cutoff=%s',
+                bucket_name, object_name, event_time, cutoff_time,
+            )
+        except Exception as e:
+            error_count += 1
+            logger.warning(
+                '删除 MinIO 孤儿录像对象失败: bucket=%s object=%s error=%s',
+                bucket_name, object_name, e,
+            )
+
+    if deleted_count > 0:
+        logger.info(
+            '录像空间 %s 孤儿对象清理: 扫描=%s, 删除=%s, 错误=%s',
+            record_space.space_name, scanned_count, deleted_count, error_count,
+        )
+
+    return {
+        'scanned_count': scanned_count,
+        'deleted_count': deleted_count,
+        'error_count': error_count,
+    }
+
+
 def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict:
     """根据保存时长（小时）清理旧的监控录像"""
     try:
-        from app.services.space_save_time_service import save_time_to_timedelta
+        from app.services.space_save_time_service import save_time_cutoff_naive
 
         record_space = RecordSpace.query.get_or_404(space_id)
         bucket_name = record_space.bucket_name
         save_mode = record_space.save_mode
 
-        delta = save_time_to_timedelta(save_time_hours)
-        if delta is None:
-            return {'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0}
-        cutoff_time = datetime.utcnow() - delta
+        cutoff_time = save_time_cutoff_naive(save_time_hours)
+        if cutoff_time is None:
+            return {
+                'processed_count': 0, 'deleted_count': 0, 'archived_count': 0,
+                'error_count': 0, 'orphan_deleted_count': 0, 'orphan_scanned_count': 0,
+                'orphan_error_count': 0,
+            }
         query = RecordFile.query.filter(
             RecordFile.space_id == space_id,
             RecordFile.event_time < cutoff_time,
@@ -210,12 +286,24 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
             query = query.filter(RecordFile.device_id == record_space.device_id)
 
         records = query.all()
-        if not records:
-            return {'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0}
+
+        def _merge_orphan(result: Dict) -> Dict:
+            orphan_result = cleanup_orphan_minio_record_objects(space_id, save_time_hours)
+            result['orphan_deleted_count'] = orphan_result.get('deleted_count', 0)
+            result['orphan_scanned_count'] = orphan_result.get('scanned_count', 0)
+            result['orphan_error_count'] = orphan_result.get('error_count', 0)
+            return result
 
         minio_client = get_minio_client()
-        if not minio_client.bucket_exists(bucket_name):
-            return {'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0}
+        if not minio_storage_enabled() or not minio_client.bucket_exists(bucket_name):
+            return _merge_orphan({
+                'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0,
+            })
+
+        if not records:
+            return _merge_orphan({
+                'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0,
+            })
 
         archive_bucket_name = current_app.config.get('MINIO_ARCHIVE_BUCKET', 'record-archive')
         if save_mode == 1 and not minio_client.bucket_exists(archive_bucket_name):
@@ -283,12 +371,12 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
                     error_count += len(record_list)
                     logger.error(f"归档设备录像失败: device_id={device_id}, error={e}", exc_info=True)
 
-        return {
+        return _merge_orphan({
             'processed_count': processed_count,
             'deleted_count': deleted_count,
             'archived_count': archived_count,
             'error_count': error_count,
-        }
+        })
     except Exception as e:
         logger.error(f"清理过期录像失败: {str(e)}", exc_info=True)
         raise RuntimeError(f"清理过期录像失败: {str(e)}")

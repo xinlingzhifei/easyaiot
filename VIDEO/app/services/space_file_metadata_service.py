@@ -9,6 +9,7 @@ from urllib.parse import quote, urlparse, parse_qs
 
 from models import db, RecordFile, SnapImage, Playback, RecordSpace, SnapSpace
 from app.services.record_space_service import get_minio_client
+from app.utils.service_urls import now_shanghai_naive, normalize_to_shanghai_naive
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def upsert_snap_image(
     """上传 MinIO 后写入或更新抓拍元数据"""
     filename = filename or object_name.split('/')[-1]
     url = url or build_download_url(bucket_name, object_name)
-    captured_at = captured_at or datetime.utcnow()
+    captured_at = captured_at or now_shanghai_naive()
 
     image = SnapImage.query.filter_by(bucket_name=bucket_name, object_name=object_name).first()
     if image:
@@ -303,7 +304,11 @@ def sync_snap_images_from_minio(space_id: int) -> Dict:
                 file_size=stat.size,
                 content_type=stat.content_type or 'image/jpeg',
                 etag=stat.etag,
-                captured_at=stat.last_modified.replace(tzinfo=None) if stat.last_modified else datetime.utcnow(),
+                captured_at=(
+                    normalize_to_shanghai_naive(stat.last_modified)
+                    if stat.last_modified
+                    else now_shanghai_naive()
+                ),
                 source='snap',
             )
             synced += 1

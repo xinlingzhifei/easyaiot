@@ -71,6 +71,25 @@ collect_device_up_services() {
     echo "${up_services[@]}"
 }
 
+# 判断 DEVICE compose 服务是否属于当前部署形态（与 pull 跳过逻辑、collect_device_up_services 一致）
+device_compose_service_enabled() {
+    local svc="$1"
+    local enabled_whitelist whitelist skip
+
+    enabled_whitelist=$(device_enabled_services)
+    if [ -n "$enabled_whitelist" ]; then
+        for whitelist in $enabled_whitelist; do
+            [ "$svc" = "$whitelist" ] && return 0
+        done
+        return 1
+    fi
+    for skip in $(device_skipped_services); do
+        [ -z "$skip" ] && continue
+        [ "$svc" = "$skip" ] && return 1
+    done
+    return 0
+}
+
 # 检查docker-compose是否存在
 if ! command -v docker-compose &> /dev/null && ! command -v docker &> /dev/null; then
     echo -e "${RED}错误: 未找到docker或docker-compose命令${NC}"
@@ -390,6 +409,26 @@ REQUIRED_RUNTIME_JARS=(
     iot-gb28181-biz.jar
 )
 
+# RUNTIME_IMAGE_SPECS 条目 → compose 服务名（dockerfile 首段目录）
+_runtime_spec_compose_service() {
+    local dockerfile="${1%%|*}"
+    echo "${dockerfile%%/*}"
+}
+
+# 收集当前部署形态实际需要的 DEVICE 运行时镜像 tag
+collect_device_required_runtime_image_tags() {
+    local -n _out=$1
+    ensure_deploy_profile
+    local spec tag compose_svc
+    _out=()
+    for spec in "${RUNTIME_IMAGE_SPECS[@]}"; do
+        compose_svc=$(_runtime_spec_compose_service "$spec")
+        device_compose_service_enabled "$compose_svc" || continue
+        tag="${spec##*|}"
+        _out+=("$tag")
+    done
+}
+
 check_jars_exist() {
     if [ ! -d "$JARS_DIR" ]; then
         return 1
@@ -544,7 +583,7 @@ store_module_hashes() {
 # 注意：如果 settings.xml 已存在但 mirror URL 与当前期望不一致，会重新生成
 ensure_maven_settings() {
     local s="$1"
-    local maven_mirror="${MAVEN_MIRROR_URL:-https://mirrors.cloud.tencent.com/nexus/repository/maven-public/}"
+    local maven_mirror="${MAVEN_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn/repository/maven-public/}"
     # 若已存在，检查 mirror URL 是否匹配当前配置
     if [ -f "$s" ]; then
         if grep -qF "${maven_mirror}" "$s" 2>/dev/null; then
@@ -641,7 +680,7 @@ ensure_mvnd_image() {
     if docker image inspect "$MVND_IMAGE" >/dev/null 2>&1; then
         return 0
     fi
-    local mvnd_url="${MVND_BASE_URL:-https://mirrors.cloud.tencent.com/apache/maven/mvnd}"
+    local mvnd_url="${MVND_BASE_URL:-https://mirrors.tuna.tsinghua.edu.cn/apache/maven/mvnd}"
     print_info "首次构建 mvnd 镜像 $MVND_IMAGE（mvnd $MVND_VERSION）..."
     docker build -f "${SCRIPT_DIR}/Dockerfile.mvnd" \
         --build-arg "MVND_BASE_IMAGE=${MVND_BASE_IMAGE}" \
@@ -898,6 +937,11 @@ build_runtime_images() {
         spec="${RUNTIME_IMAGE_SPECS[$idx]}"
         dockerfile="${spec%%|*}"
         tag="${spec##*|}"
+        compose_svc=$(_runtime_spec_compose_service "$spec")
+        if ! device_compose_service_enabled "$compose_svc"; then
+            print_info "  ⤳ 跳过（${EASYAIOT_DEPLOY_PROFILE} 形态不部署 ${compose_svc}）: $tag"
+            continue
+        fi
         jar="${JARS_DIR}/${REQUIRED_RUNTIME_JARS[$idx]}"
         img_hash="$(hash_runtime_image "$jar" "$dockerfile")"
         img_hashes[$idx]="$img_hash"
@@ -979,12 +1023,8 @@ build_runtime_images() {
 build_images_incremental() {
     if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ]; then
         local _all_present=1
-        local _img_list=(
-            iot-gateway:latest iot-module-system-biz:latest iot-module-infra-biz:latest
-            iot-module-device-biz:latest iot-module-dataset-biz:latest iot-module-node-biz:latest
-            iot-module-tdengine-biz:latest iot-module-file-biz:latest iot-module-message-biz:latest
-            iot-sink-biz:latest iot-gb28181-biz:latest
-        )
+        local -a _img_list=()
+        collect_device_required_runtime_image_tags _img_list
         for _img in "${_img_list[@]}"; do
             if ! docker image inspect "$_img" >/dev/null 2>&1; then
                 print_warning "镜像 ${_img} 不在本地，需要构建"
@@ -993,7 +1033,7 @@ build_images_incremental() {
             fi
         done
         if [ "$_all_present" -eq 1 ]; then
-            print_success "所有 Device 镜像已从远程拉取，跳过构建"
+            print_success "当前形态（${EASYAIOT_DEPLOY_PROFILE}）所需的 Device 镜像已从远程拉取，跳过构建"
             return 0
         fi
     fi

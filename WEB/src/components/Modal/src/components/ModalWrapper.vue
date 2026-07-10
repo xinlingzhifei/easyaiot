@@ -61,9 +61,17 @@ const spinStyle = computed((): CSSProperties => {
     : Math.min(props.minHeight, h || props.minHeight)
   return {
     minHeight: `${minH}px`,
-    ...(props.fullScreen ? { height: `${h}px` } : {}),
+    ...(props.fullScreen && h ? { height: `${h}px` } : {}),
   }
 })
+
+const unwrappedStyle = computed((): CSSProperties => ({
+  height: '100%',
+  minHeight: 0,
+  overflow: 'hidden',
+  display: 'flex',
+  flexDirection: 'column',
+}))
 
 watchEffect(() => {
   props.useWrapper && setModalHeight()
@@ -153,9 +161,24 @@ defineExpose({ scrollTop, setModalHeight })
 </script>
 
 <template>
-  <ScrollContainer ref="wrapperRef" :scroll-height="realHeight" :style="scrollStyle">
+  <ScrollContainer
+    v-if="props.useWrapper"
+    ref="wrapperRef"
+    :scroll-height="realHeight"
+    :style="scrollStyle"
+  >
     <div ref="spinRef" v-loading="loading" :style="spinStyle" :loading-tip="loadingTip">
       <slot />
     </div>
   </ScrollContainer>
+  <div
+    v-else
+    ref="spinRef"
+    v-loading="loading"
+    class="modal-wrapper__body"
+    :style="unwrappedStyle"
+    :loading-tip="loadingTip"
+  >
+    <slot />
+  </div>
 </template>

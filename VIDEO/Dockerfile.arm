@@ -72,10 +72,19 @@ RUN set -ex && \
     else \
         echo "ffmpeg 不在 EPEL 仓库中，使用预编译静态二进制文件安装（官方推荐方法）..." && \
         cd /tmp && \
-        # ★ 删除可能存在的占位符文件，避免干扰下载和 tar 校验
-        rm -f ffmpeg-master-latest-linuxarm64-gpl.tar.xz && \
         INSTALLED=0; \
-        # 方案1：从 GitHub BtbN/FFmpeg-Builds 下载 ARM64 版本
+        if [ -f ffmpeg-master-latest-linuxarm64-gpl.tar.xz ] && [ $(stat -c%s ffmpeg-master-latest-linuxarm64-gpl.tar.xz 2>/dev/null || echo 0) -gt 1048576 ]; then \
+            echo "使用 COPY 传入的离线 ffmpeg 包..." && \
+            tar -xf ffmpeg-master-latest-linuxarm64-gpl.tar.xz && \
+            cp ffmpeg-master-latest-linuxarm64-gpl/bin/ffmpeg /usr/local/bin/ && \
+            cp ffmpeg-master-latest-linuxarm64-gpl/bin/ffprobe /usr/local/bin/ && \
+            chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
+            echo "ffmpeg 已从离线包安装" && \
+            INSTALLED=1; \
+        else \
+            rm -f ffmpeg-master-latest-linuxarm64-gpl.tar.xz; \
+        fi; \
+        if [ "$INSTALLED" = "0" ]; then \
         echo "尝试从 GitHub BtbN/FFmpeg-Builds 下载 ARM64 版本..." && \
         { if wget -q -L --timeout=120 \
             "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" 2>/dev/null; then \
@@ -92,6 +101,7 @@ RUN set -ex && \
         else \
             echo "GitHub 下载失败，尝试下一方案..."; \
         fi; } || true; \
+        fi; \
         # 方案2：从 johnvansickle.com 下载 ARM64 静态二进制文件
         if [ "$INSTALLED" = "0" ]; then \
             echo "尝试从 johnvansickle.com 下载 ARM64 静态二进制文件..." && \
@@ -184,7 +194,7 @@ FROM python-env AS python-deps
 COPY requirements.txt requirements-base.txt ./
 COPY --from=pip-wheels . /opt/offline-pip
 ARG OFFLINE_MODE=0
-ARG PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 RUN --mount=type=bind,from=pip-cache,source=.,target=/mnt/pip-cache,rw \

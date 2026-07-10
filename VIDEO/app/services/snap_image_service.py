@@ -171,7 +171,7 @@ def get_snap_image(space_id: int, object_name: str):
 def cleanup_old_images_by_save_time(space_id: int, save_time_hours: int) -> Dict:
     """根据保存时长（小时）清理旧的抓拍图片"""
     try:
-        from app.services.space_save_time_service import save_time_to_timedelta
+        from app.services.space_save_time_service import save_time_cutoff_naive
 
         snap_space = SnapSpace.query.get_or_404(space_id)
         bucket_name = snap_space.bucket_name
@@ -180,10 +180,9 @@ def cleanup_old_images_by_save_time(space_id: int, save_time_hours: int) -> Dict
         if not snap_space.device_id:
             return {'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0}
 
-        delta = save_time_to_timedelta(save_time_hours)
-        if delta is None:
+        cutoff_time = save_time_cutoff_naive(save_time_hours)
+        if cutoff_time is None:
             return {'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0}
-        cutoff_time = datetime.utcnow() - delta
         records = SnapImage.query.filter(
             SnapImage.space_id == space_id,
             SnapImage.device_id == snap_space.device_id,

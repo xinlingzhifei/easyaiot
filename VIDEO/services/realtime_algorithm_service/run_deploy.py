@@ -62,10 +62,13 @@ from app.utils.algo_model_detect import (
     allowed_classes_include_person,
     dedupe_detections_by_iou,
     filter_person_like_detections,
+    is_end2end_ultralytics_model,
+    is_yolo26_model,
     prefer_loaded_person_classes,
     resolve_model_allowed_class_names,
     run_model_detection,
     run_tiled_model_detection,
+    warmup_model_detection,
 )
 from app.utils.face_capture_queue_service import (
     enqueue_face_capture,
@@ -273,16 +276,97 @@ if _EFFECTIVE_RTSP_TRANSPORT not in ("tcp", "udp"):
     _EFFECTIVE_RTSP_TRANSPORT = "udp"
 
 _OPENCV_FFMPEG_OPTIONS_CUSTOM = bool(os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"))
-if not _OPENCV_FFMPEG_OPTIONS_CUSTOM:
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
-        f"rtsp_transport;{_EFFECTIVE_RTSP_TRANSPORT}"
-        "|timeout;10000000"
-        "|rw_timeout;5000000"
-        "|max_delay;500000"
-        "|fflags;nobuffer+discardcorrupt+genpts"
-        "|flags;low_delay"
-        "|err_detect;ignore_err"
+
+
+def _realtime_env_int(name: str, default: int) -> int:
+    try:
+        raw = os.getenv(name, '').strip()
+        return int(raw) if raw else default
+    except (ValueError, TypeError):
+        return default
+
+
+def _expected_realtime_stream_count() -> int:
+    """预期并发路数：显式配置 > 任务设备数 > 默认 8。"""
+    for key in ('REALTIME_TARGET_STREAMS', 'STREAM_FORWARD_TARGET_STREAMS', 'AI_TARGET_STREAMS'):
+        configured = _realtime_env_int(key, 0)
+        if configured > 0:
+            return configured
+    cfg = globals().get('task_config')
+    if cfg and getattr(cfg, 'device_streams', None):
+        return max(1, len(cfg.device_streams))
+    return 8
+
+
+def _resolve_opencv_thread_queue_size() -> Optional[int]:
+    """OpenCV thread_queue_size：默认不写入（兼容性更好）；显式配置或 ≥32 路时启用。"""
+    explicit = os.getenv('REALTIME_THREAD_QUEUE_SIZE', '').strip()
+    if not explicit:
+        explicit = os.getenv('STREAM_FORWARD_THREAD_QUEUE_SIZE', '').strip()
+    if explicit:
+        try:
+            return max(8, int(explicit))
+        except (ValueError, TypeError):
+            pass
+    stream_count = _expected_realtime_stream_count()
+    if stream_count >= 100:
+        return 1024
+    if stream_count >= 32:
+        return 768
+    return None
+
+
+def _get_realtime_stream_stagger_sec() -> float:
+    """多路 RTSP 建连错峰（与 stream_forward RELAY_STAGGER 对齐）。"""
+    raw = os.getenv('REALTIME_STREAM_STAGGER_SEC', '').strip()
+    if not raw:
+        raw = os.getenv('STREAM_FORWARD_RELAY_STAGGER_SEC', '0.3').strip()
+    try:
+        return max(0.0, float(raw or '0.3'))
+    except (ValueError, TypeError):
+        return 0.3
+
+
+def _build_opencv_ffmpeg_capture_options() -> str:
+    rtsp_io_timeout_us = os.getenv('REALTIME_RW_TIMEOUT_US', '').strip() or os.getenv(
+        'STREAM_FORWARD_RW_TIMEOUT_US', '5000000'
+    ).strip() or '5000000'
+    rtsp_open_timeout_us = os.getenv('REALTIME_RTSP_OPEN_TIMEOUT_US', '').strip() or os.getenv(
+        'STREAM_FORWARD_RTSP_OPEN_TIMEOUT_US', '10000000'
+    ).strip() or '10000000'
+    parts = [
+        f"rtsp_transport;{_EFFECTIVE_RTSP_TRANSPORT}",
+        f"timeout;{rtsp_open_timeout_us}",
+        f"rw_timeout;{rtsp_io_timeout_us}",
+        "max_delay;500000",
+        "fflags;nobuffer+discardcorrupt+genpts",
+        "flags;low_delay",
+        "err_detect;ignore_err",
+    ]
+    thread_queue_size = _resolve_opencv_thread_queue_size()
+    if thread_queue_size is not None:
+        parts.insert(4, f"thread_queue_size;{thread_queue_size}")
+    return "|".join(parts)
+
+
+def _opencv_thread_queue_log_label() -> str:
+    tqs = _resolve_opencv_thread_queue_size()
+    return str(tqs) if tqs is not None else '默认(未设置)'
+
+
+def _refresh_opencv_ffmpeg_capture_options() -> None:
+    """任务配置加载后刷新 OpenCV RTSP 参数。"""
+    if _OPENCV_FFMPEG_OPTIONS_CUSTOM:
+        return
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = _build_opencv_ffmpeg_capture_options()
+    logger.info(
+        "OpenCV RTSP: rtsp_transport=%s, thread_queue_size=%s/路",
+        _EFFECTIVE_RTSP_TRANSPORT, _opencv_thread_queue_log_label(),
     )
+
+
+if not _OPENCV_FFMPEG_OPTIONS_CUSTOM:
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = _build_opencv_ffmpeg_capture_options()
 
 # 配置日志
 logging.basicConfig(
@@ -299,9 +383,9 @@ if _OPENCV_FFMPEG_OPTIONS_CUSTOM:
     )
 else:
     logger.info(
-        "OpenCV RTSP: rtsp_transport=%s（由 AI_RTSP_TRANSPORT / OPENCV_FFMPEG_RTSP_TRANSPORT / "
-        "FFMPEG_RTSP_TRANSPORT 决定；默认 udp；易丢包/跨主机可试 tcp）",
-        _EFFECTIVE_RTSP_TRANSPORT,
+        "OpenCV RTSP: rtsp_transport=%s, thread_queue_size=%s/路（由 AI_RTSP_TRANSPORT / "
+        "OPENCV_FFMPEG_RTSP_TRANSPORT / FFMPEG_RTSP_TRANSPORT 决定；默认 udp；易丢包/跨主机可试 tcp）",
+        _EFFECTIVE_RTSP_TRANSPORT, _opencv_thread_queue_log_label(),
     )
 
 # 时区设置（使用Asia/Shanghai，与Java端保持一致）
@@ -327,6 +411,7 @@ task_config = None
 yolo_models = {}
 yolo_model_devices = {}  # {model_id: 'cpu' | 'cuda:N'}
 yolo_model_allowed_classes = {}  # {model_id: set[str] | None}
+yolo_model_meta = {}  # {model_id: {'yolo26': bool, 'end2end': bool, 'path': str}}
 # 为每个摄像头创建独立的追踪器
 trackers = {}  # {device_id: SimpleTracker}
 # 为每个摄像头创建独立的帧索引计数器
@@ -375,14 +460,22 @@ def _alert_event_suppress_seconds() -> float:
     except (TypeError, ValueError):
         return 5.0
 
-# 配置参数（算法链路：解码/推理/画框输出）：优先 AI_*，其次 VIEW_*（与 stream_forward 对齐），再回退通用变量
-SOURCE_FPS = int(os.getenv('AI_SOURCE_FPS', os.getenv('VIEW_SOURCE_FPS', os.getenv('SOURCE_FPS', '25'))))
+# 配置参数（算法链路）
+# 观感推流帧率（与 AI 抽帧完全解耦）：默认 25fps
+AI_OUTPUT_FPS = int(os.getenv(
+    'AI_OUTPUT_FPS',
+    os.getenv('AI_SOURCE_FPS', os.getenv('VIEW_OUTPUT_FPS', os.getenv('VIEW_SOURCE_FPS', '25'))),
+))
 TARGET_WIDTH = int(os.getenv('AI_TARGET_WIDTH', os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280'))))
 TARGET_HEIGHT = int(os.getenv('AI_TARGET_HEIGHT', os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720'))))
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
-EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '25'))
+# AI 检测/告警抽帧间隔（仅影响告警推理队列，overlay 叠框见 OVERLAY_EXTRACT_INTERVAL）
+EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '12'))
 # 运行时任务级抽帧间隔（load_task_config 后覆盖环境变量默认值）
 _runtime_extract_interval = EXTRACT_INTERVAL
+# overlay 叠框专用抽帧间隔（与告警/任务 DB extract_interval 解耦，默认每 5 帧检测一次）
+OVERLAY_EXTRACT_INTERVAL = int(os.getenv('OVERLAY_EXTRACT_INTERVAL', '5'))
+_runtime_overlay_extract_interval = OVERLAY_EXTRACT_INTERVAL
 _runtime_alert_extract_interval = int(
     os.getenv('ALERT_EXTRACT_INTERVAL', str(max(EXTRACT_INTERVAL * 2, EXTRACT_INTERVAL)))
 )
@@ -406,7 +499,7 @@ FFMPEG_THREADS_ENV = os.getenv('FFMPEG_THREADS', None)
 FFMPEG_THREADS = None if not FFMPEG_THREADS_ENV or FFMPEG_THREADS_ENV.strip() == '' else FFMPEG_THREADS_ENV.strip()
 # GOP大小：2秒一个关键帧（在SOURCE_FPS定义后计算）
 FFMPEG_GOP_SIZE_ENV = os.getenv('AI_FFMPEG_GOP_SIZE', os.getenv('VIEW_FFMPEG_GOP_SIZE', os.getenv('FFMPEG_GOP_SIZE', None)))
-FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else max(1, SOURCE_FPS * 2)
+FFMPEG_GOP_SIZE = int(FFMPEG_GOP_SIZE_ENV) if FFMPEG_GOP_SIZE_ENV else max(1, AI_OUTPUT_FPS * 2)
 
 # 硬件加速配置
 FFMPEG_HWACCEL_ENV = os.getenv('FFMPEG_HWACCEL', 'auto').strip().lower()
@@ -414,6 +507,91 @@ FFMPEG_HWACCEL = FFMPEG_HWACCEL_ENV if FFMPEG_HWACCEL_ENV in ['auto', 'nvenc', '
 
 # YOLO检测参数（优化以降低CPU占用）
 YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '640'))  # 高清场景下提升小目标检测和叠框细节
+YOLO_DETECT_IOU = float(os.getenv('YOLO_DETECT_IOU', '0.45'))
+
+
+def _get_detect_conf(*, end2end: bool = False, yolo26: bool = False) -> float:
+    """检测置信度阈值；优先使用任务配置，其次环境变量，默认 0.5。"""
+    if task_config is not None:
+        task_conf = getattr(task_config, 'detect_conf', None)
+        if task_conf is not None:
+            try:
+                return float(task_conf)
+            except (TypeError, ValueError):
+                pass
+    raw = os.getenv('YOLO_DETECT_CONF', '').strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return 0.5
+
+
+def _any_loaded_model_is_end2end() -> bool:
+    if yolo_model_meta:
+        return any(meta.get('end2end') or meta.get('yolo26') for meta in yolo_model_meta.values())
+    return any(is_end2end_ultralytics_model(model) for model in yolo_models.values())
+
+
+def _any_loaded_model_is_yolo26() -> bool:
+    if yolo_model_meta:
+        return any(meta.get('yolo26') for meta in yolo_model_meta.values())
+    return any(is_yolo26_model(model) for model in yolo_models.values())
+
+
+def _resolve_detection_imgsz(frame, base_imgsz: int) -> int:
+    """1080p 源流下自动提高推理分辨率，缓解 yolo26n 漏检远处行人。"""
+    env_raw = os.getenv('YOLO_DETECT_IMG_SIZE', '').strip()
+    if env_raw:
+        try:
+            return max(32, int(env_raw))
+        except ValueError:
+            pass
+    if _any_loaded_model_is_yolo26():
+        yolo26_imgsz = int(os.getenv('YOLO26_IMG_SIZE', '1280'))
+        if frame is not None and getattr(frame, 'shape', None):
+            frame_h = int(frame.shape[0])
+            if frame_h >= 1080:
+                return max(base_imgsz, yolo26_imgsz)
+            if frame_h >= 720:
+                return max(base_imgsz, min(yolo26_imgsz, 960))
+    return base_imgsz
+
+
+def _summarize_detections(detections: list, limit: int = 5) -> str:
+    if not detections:
+        return '无'
+    parts = []
+    for det in detections[:limit]:
+        name = det.get('class_name', 'unknown')
+        score = float(det.get('confidence', 0.0))
+        parts.append(f'{name}:{score:.2f}')
+    if len(detections) > limit:
+        parts.append(f'...+{len(detections) - limit}')
+    return ', '.join(parts)
+
+
+def _check_ultralytics_for_yolo26(model_path: str, model_id: int) -> None:
+    """YOLO26 需 ultralytics>=8.4.0，旧版本会导致 end2end 后处理异常、漏检严重。"""
+    path_lower = str(model_path or '').lower()
+    if model_id != -3 and 'yolo26' not in path_lower:
+        return
+    try:
+        import ultralytics
+        from packaging.version import Version
+        version = Version(getattr(ultralytics, '__version__', '0.0.0'))
+        if version < Version('8.4.0'):
+            logger.error(
+                '⚠️ YOLO26 模型需要 ultralytics>=8.4.0，当前版本 %s 可能导致大量漏检（仅检出冰箱等大目标）。'
+                '请升级依赖后重启服务：pip install "ultralytics>=8.4.0,<9.0.0"',
+                ultralytics.__version__,
+            )
+        else:
+            logger.info('ultralytics 版本 %s 满足 YOLO26 要求', ultralytics.__version__)
+    except Exception as exc:
+        logger.warning('无法校验 ultralytics 版本（YOLO26）: %s', exc)
+
 # 队列大小：主画面 overlay 小队列+保留最新；告警队列可独立积压
 _legacy_detection_qsize = int(os.getenv('DETECTION_QUEUE_SIZE', '100'))
 OVERLAY_DETECTION_QUEUE_SIZE = int(os.getenv('OVERLAY_DETECTION_QUEUE_SIZE', '5'))
@@ -464,21 +642,18 @@ VIDEO_QUALITY_PROFILE = os.getenv(
 ).strip().lower()
 QUALITY_PROFILE_PRESETS = {
     'low': {
-        'source_fps': 15,
         'target_width': 640,
         'target_height': 360,
-        'ffmpeg_video_bitrate': '1000k',
+        'ffmpeg_video_bitrate': '1500k',
         'yolo_img_size': 416,
     },
     'medium': {
-        'source_fps': 20,
         'target_width': 1280,
         'target_height': 720,
         'ffmpeg_video_bitrate': '2500k',
         'yolo_img_size': 512,
     },
     'high': {
-        'source_fps': 25,
         'target_width': 1280,
         'target_height': 720,
         'ffmpeg_video_bitrate': '3500k',
@@ -503,14 +678,13 @@ MANUAL_QUALITY_CONFIGURED = any(
 )
 if VIDEO_QUALITY_PROFILE in QUALITY_PROFILE_PRESETS and not MANUAL_QUALITY_CONFIGURED:
     selected_profile = QUALITY_PROFILE_PRESETS[VIDEO_QUALITY_PROFILE]
-    SOURCE_FPS = selected_profile['source_fps']
     TARGET_WIDTH = selected_profile['target_width']
     TARGET_HEIGHT = selected_profile['target_height']
     TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
     FFMPEG_VIDEO_BITRATE = selected_profile['ffmpeg_video_bitrate']
     YOLO_IMG_SIZE = selected_profile['yolo_img_size']
     if not FFMPEG_GOP_SIZE_ENV:
-        FFMPEG_GOP_SIZE = max(1, SOURCE_FPS * 2)
+        FFMPEG_GOP_SIZE = max(1, AI_OUTPUT_FPS * 2)
 if not (os.getenv('OVERLAY_YOLO_IMG_SIZE') or '').strip():
     OVERLAY_YOLO_IMG_SIZE = YOLO_IMG_SIZE
 # 自适应画质配置：根据推流稳定性自动升降档
@@ -533,6 +707,7 @@ def _get_effective_quality_profile_name() -> str:
 
 
 def _get_effective_realtime_stream_params():
+    """返回观感推流参数；自动模式的帧率与 AI 检测抽帧间隔解耦。"""
     if not AUTO_QUALITY_ENABLED or MANUAL_QUALITY_CONFIGURED:
         return (
             'manual',
@@ -542,15 +717,14 @@ def _get_effective_realtime_stream_params():
             str(FFMPEG_VIDEO_BITRATE),
             int(FFMPEG_GOP_SIZE),
         )
-
     profile_name = AUTO_QUALITY_LOCK_PROFILE if AUTO_QUALITY_LOCK_PROFILE in QUALITY_PROFILE_PRESETS else _get_effective_quality_profile_name()
     preset = QUALITY_PROFILE_PRESETS.get(profile_name, QUALITY_PROFILE_PRESETS['high'])
-    source_fps = int(preset['source_fps'])
+    output_fps = max(1, int(AI_OUTPUT_FPS))
     target_width = int(preset['target_width'])
     target_height = int(preset['target_height'])
     bitrate = str(preset['ffmpeg_video_bitrate'])
-    gop_size = int(FFMPEG_GOP_SIZE) if FFMPEG_GOP_SIZE_ENV else max(1, source_fps * 2)
-    return profile_name, source_fps, target_width, target_height, bitrate, gop_size
+    gop_size = int(FFMPEG_GOP_SIZE) if FFMPEG_GOP_SIZE_ENV else max(1, output_fps * 2)
+    return profile_name, output_fps, target_width, target_height, bitrate, gop_size
 
 
 def _mark_quality_failure(reason: str):
@@ -601,7 +775,7 @@ def _mark_quality_success():
 INTERPOLATED_DETECTION_MAX_AGE_MS = int(os.getenv('INTERPOLATED_DETECTION_MAX_AGE_MS', '200'))
 INTERPOLATED_DETECTION_MAX_AGE_SEC = max(0.0, INTERPOLATED_DETECTION_MAX_AGE_MS / 1000.0)
 INTERPOLATED_DETECTION_MAX_FRAME_GAP = int(
-    os.getenv('INTERPOLATED_DETECTION_MAX_FRAME_GAP', str(max(2, SOURCE_FPS)))
+    os.getenv('INTERPOLATED_DETECTION_MAX_FRAME_GAP', str(max(2, AI_OUTPUT_FPS)))
 )
 # 主画面 overlay 队列：始终保留最新待检帧
 OVERLAY_KEEP_LATEST = os.getenv('OVERLAY_KEEP_LATEST', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
@@ -613,8 +787,12 @@ ALERT_KEEP_LATEST_THRESHOLD = int(os.getenv('ALERT_KEEP_LATEST_THRESHOLD', str(m
 # 兼容旧配置名
 DETECTION_KEEP_LATEST = OVERLAY_KEEP_LATEST
 DETECTION_KEEP_LATEST_THRESHOLD = OVERLAY_KEEP_LATEST_THRESHOLD
-# 主画面 overlay 最大复用时长（毫秒）；检测迟达时仍显示最近一次检测框
-LATEST_OVERLAY_MAX_AGE_MS = int(os.getenv('LATEST_OVERLAY_MAX_AGE_MS', '60000'))
+# 主画面 overlay 最大复用时长（毫秒）；0=直到下次检测更新/清空，仅设安全上限
+# 主画面叠框追踪（默认关闭：追踪会在推流侧插值框位置，产生“假框自己动”）
+OVERLAY_USE_TRACKING = os.getenv('OVERLAY_USE_TRACKING', 'false').strip().lower() in (
+    '1', 'true', 'yes', 'on',
+)
+LATEST_OVERLAY_MAX_AGE_MS = int(os.getenv('LATEST_OVERLAY_MAX_AGE_MS', '0'))
 LATEST_OVERLAY_MAX_AGE_SEC = max(0.0, LATEST_OVERLAY_MAX_AGE_MS / 1000.0)
 
 FACE_CLASS_KEYWORDS = ('face', 'facial', 'person_face', '人脸')
@@ -629,7 +807,7 @@ def _normalize_gb28181_opencv_input_url(url: Optional[str]) -> Optional[str]:
 
 
 def _detections_to_overlay_entries(detections, timestamp):
-    """将检测结果转为 draw_detections 可用的 overlay 条目。"""
+    """将检测结果转为 draw_detections 可用的 overlay 条目（均为真实检测框）。"""
     entries = []
     for det in detections:
         bbox = det.get('bbox', [])
@@ -639,27 +817,78 @@ def _detections_to_overlay_entries(detections, timestamp):
                 'class_name': det.get('class_name', 'unknown'),
                 'confidence': det.get('confidence', 0.0),
                 'track_id': det.get('track_id', 0),
-                'is_cached': True,
+                'is_cached': False,
                 'first_seen_time': det.get('first_seen_time', timestamp),
                 'duration': det.get('duration', 0.0),
             })
     return entries
 
 
-def _update_device_latest_overlay(device_id: str, detections: list, timestamp: float, frame_number: int):
-    """更新设备最新检测 overlay 缓存，供主画面在检测迟达时叠框。"""
-    if not detections:
-        return
+def _overlay_stale_frame_lag() -> int:
+    """积压队列中超过此帧差的待检帧视为过期，不应用「空结果」清空当前叠框缓存。"""
+    fps = max(1, AI_OUTPUT_FPS)
+    interval = max(1, _runtime_overlay_extract_interval)
+    device_n = max(1, len(overlay_detection_queues) or len(frame_counts) or 1)
+    # 多路 CPU 推理时队列滞后常达数百帧；按路数预留约 2s/路的排队预算
+    per_device_budget = max(interval * 6, fps * 2)
+    return max(interval * 4, fps, per_device_budget * device_n)
+
+
+def _is_stale_overlay_detection_frame(device_id: str, frame_number: int) -> bool:
+    current = frame_counts.get(device_id, frame_number)
+    return frame_number < current - _overlay_stale_frame_lag()
+
+
+def _overlay_effective_max_age_sec() -> float:
+    """overlay 框最大存活时间；LATEST_OVERLAY_MAX_AGE_MS=0 时按 overlay 检测周期设上限。"""
+    if LATEST_OVERLAY_MAX_AGE_MS > 0:
+        return LATEST_OVERLAY_MAX_AGE_SEC
+    interval = max(1, _runtime_overlay_extract_interval)
+    fps = max(1, AI_OUTPUT_FPS)
+    period = interval / fps
+    device_n = max(1, len(overlay_detection_queues) or len(frame_counts) or 1)
+    # 多路轮转 + CPU 推理延迟：TTL 需撑到下一次 overlay 检测完成
+    return max(0.8, period * (device_n + 2) + 0.3)
+
+
+def _update_device_latest_overlay(
+    device_id: str,
+    detections: list,
+    timestamp: float,
+    frame_number: int,
+    *,
+    applied_at: Optional[float] = None,
+) -> bool:
+    """更新设备最新检测 overlay；无目标时清空缓存，避免旧框长期残留。
+
+    返回 True 表示缓存已写入/清空；False 表示因积压过期而跳过（仅空结果会跳过）。
+    """
+    is_stale = _is_stale_overlay_detection_frame(device_id, frame_number)
+    # 推流侧按「检测完成时刻」计算 TTL，避免队列迟延导致刚写入即过期
+    cache_timestamp = applied_at if applied_at is not None else time.time()
+
+    lock = device_latest_overlay_locks.setdefault(device_id, threading.Lock())
+    with lock:
+        if not detections:
+            if is_stale:
+                return False
+            device_latest_overlays.pop(device_id, None)
+            return True
     entries = _detections_to_overlay_entries(detections, timestamp)
     if not entries:
-        return
-    lock = device_latest_overlay_locks.setdefault(device_id, threading.Lock())
+        with lock:
+            if is_stale:
+                return False
+            device_latest_overlays.pop(device_id, None)
+        return True
+    # 有目标时始终接受（即便帧号滞后，也是当前能拿到的最新推理结果）
     with lock:
         device_latest_overlays[device_id] = {
             'detections': entries,
-            'timestamp': timestamp,
+            'timestamp': cache_timestamp,
             'frame_number': frame_number,
         }
+    return True
 
 
 def _apply_latest_overlay_if_needed(
@@ -669,22 +898,49 @@ def _apply_latest_overlay_if_needed(
     frame_number: int,
     tracking_enabled: bool = False,
 ):
-    """检测未完成时，用最近一次真实检测结果在主画面叠框。"""
+    """用最近一次真实 YOLO 检测结果叠框；默认不做追踪插值，避免假框漂移。"""
     lock = device_latest_overlay_locks.get(device_id)
     if not lock:
         return output_frame, False
+
+    overlay_detections = None
     with lock:
         overlay = device_latest_overlays.get(device_id)
-    if not overlay or not overlay.get('detections'):
+    if overlay and overlay.get('detections'):
+        age = current_timestamp - overlay.get('timestamp', 0)
+        max_age = _overlay_effective_max_age_sec()
+        if age <= max_age:
+            overlay_detections = overlay['detections']
+        elif age > max_age:
+            # 过期缓存主动清理，避免推流侧反复判断
+            with lock:
+                if device_latest_overlays.get(device_id) is overlay:
+                    device_latest_overlays.pop(device_id, None)
+
+    # 仅显式开启 OVERLAY_USE_TRACKING 时才在推流侧做追踪插值（会产生非检测帧的“假框”）
+    use_overlay_tracking = OVERLAY_USE_TRACKING
+    if use_overlay_tracking:
+        tracker = trackers.get(device_id)
+        if tracker:
+            tracked = tracker.get_all_tracks(current_time=current_timestamp, frame_number=frame_number)
+            if tracked:
+                overlay_detections = tracked
+
+    if not overlay_detections:
         return output_frame, False
-    age = current_timestamp - overlay.get('timestamp', 0)
-    if LATEST_OVERLAY_MAX_AGE_SEC > 0 and age > LATEST_OVERLAY_MAX_AGE_SEC:
+
+    # 非追踪模式：只绘制真实检测框，过滤追踪器缓存/插值框
+    if not use_overlay_tracking:
+        overlay_detections = [d for d in overlay_detections if not d.get('is_cached')]
+
+    if not overlay_detections:
         return output_frame, False
+
     drawn = draw_detections(
         output_frame.copy(),
-        overlay['detections'],
+        overlay_detections,
         frame_number=frame_number,
-        tracking_enabled=tracking_enabled,
+        tracking_enabled=use_overlay_tracking,
     )
     return drawn, True
 
@@ -805,6 +1061,12 @@ def _run_yolo_on_frame(
 ):
     """对单帧执行全部模型检测，返回 (tracked_detections, detections)。"""
     all_detections = []
+    use_yolo26 = _any_loaded_model_is_yolo26()
+    detect_conf = _get_detect_conf(
+        end2end=_any_loaded_model_is_end2end(),
+        yolo26=use_yolo26,
+    )
+    effective_imgsz = _resolve_detection_imgsz(frame, imgsz)
     for model_id, yolo_model in yolo_models.items():
         if stop_event.is_set():
             break
@@ -814,9 +1076,9 @@ def _run_yolo_on_frame(
             model_dets = run_model_detection(
                 yolo_model,
                 frame,
-                conf=0.25,
-                iou=0.45,
-                imgsz=imgsz,
+                conf=detect_conf,
+                iou=YOLO_DETECT_IOU,
+                imgsz=effective_imgsz,
                 infer_device=infer_device,
                 should_keep=_should_keep_detection,
                 allowed_class_names=allowed_class_names,
@@ -854,7 +1116,7 @@ def _run_yolo_on_frame(
             logger.error(f"❌ 模型 {model_id} 检测异常: {str(e)}", exc_info=True)
 
     tracked_detections = []
-    if use_tracking and task_config and task_config.tracking_enabled:
+    if use_tracking:
         tracker = trackers.get(device_id)
         if tracker:
             tracked_detections = tracker.update(all_detections, frame_number, current_time=timestamp)
@@ -879,7 +1141,7 @@ def _run_yolo_on_frame(
             )
             if supplemented is not all_detections:
                 all_detections = supplemented
-                if use_tracking and task_config and task_config.tracking_enabled:
+                if use_tracking:
                     tracker = trackers.get(device_id)
                     if tracker:
                         tracked_detections = tracker.update(all_detections, frame_number, current_time=timestamp)
@@ -925,7 +1187,7 @@ def _build_detection_payload(device_id: str, frame, frame_number: int, timestamp
 
 
 def _resolve_runtime_extract_interval(task) -> int:
-    """解析有效抽帧间隔：任务 DB 显式配置 > 环境变量 EXTRACT_INTERVAL（默认 25）。"""
+    """解析有效检测间隔：任务 DB > 环境变量 EXTRACT_INTERVAL（默认 12，25fps 下约每秒 2 次）。"""
     env_interval = max(1, int(os.getenv('EXTRACT_INTERVAL', str(EXTRACT_INTERVAL))))
     if not task:
         return env_interval
@@ -937,9 +1199,12 @@ def _resolve_runtime_extract_interval(task) -> int:
 
 def _apply_runtime_sampling_config(task):
     """从任务配置 / 环境变量更新运行时抽帧间隔与运动门控。"""
-    global _runtime_extract_interval, _runtime_alert_extract_interval, motion_gate
+    global _runtime_extract_interval, _runtime_overlay_extract_interval, _runtime_alert_extract_interval, motion_gate
 
     _runtime_extract_interval = _resolve_runtime_extract_interval(task)
+    _runtime_overlay_extract_interval = max(
+        1, int(os.getenv('OVERLAY_EXTRACT_INTERVAL', str(OVERLAY_EXTRACT_INTERVAL)))
+    )
 
     alert_env = os.getenv('ALERT_EXTRACT_INTERVAL', '').strip()
     if alert_env:
@@ -953,11 +1218,12 @@ def _apply_runtime_sampling_config(task):
         cfg = MotionGateConfig.from_task(task, base=base_cfg)
         motion_gate = MotionGate(cfg) if cfg.enabled else None
         logger.info(
-            '检测采样已更新: extract_interval=%s (env=%s, db=%s), alert_interval=%s, motion_gate=%s, preset=%s',
-            _runtime_extract_interval,
+            '检测采样已更新: overlay_interval=%s (约 %.1f 次/秒@25fps), alert_interval=%s, env=%s, db=%s, motion_gate=%s, preset=%s',
+            _runtime_overlay_extract_interval,
+            25.0 / _runtime_overlay_extract_interval,
+            _runtime_alert_extract_interval,
             os.getenv('EXTRACT_INTERVAL', str(EXTRACT_INTERVAL)),
             getattr(task, 'extract_interval', None) if task else None,
-            _runtime_alert_extract_interval,
             cfg.enabled,
             cfg.preset,
         )
@@ -967,14 +1233,15 @@ def _apply_runtime_sampling_config(task):
 
 
 def _feed_stream_detection_queues(device_id: str, frame, frame_number: int, timestamp: float):
-    """缓流器内直接投递 overlay/告警双队列（推流与检测完全分离）。"""
-    interval = max(1, _runtime_extract_interval)
+    """缓流器内投递 overlay/告警双队列（仅 AI 推理采样，与观感推流帧率完全分离）。"""
     alert_interval = max(1, _runtime_alert_extract_interval)
+    overlay_interval = max(1, _runtime_overlay_extract_interval)
     # 首帧立即采样，避免启动后长时间无检测框
-    is_sample = (frame_number == 1) or (frame_number % interval == 0)
+    is_overlay_sample = (frame_number == 1) or (frame_number % overlay_interval == 0)
+    is_alert_sample = (frame_number == 1) or (frame_number % alert_interval == 0)
 
     motion_result = None
-    if is_sample and motion_gate is not None:
+    if (is_overlay_sample or is_alert_sample) and motion_gate is not None:
         try:
             motion_result = motion_gate.on_sample_frame(device_id, frame, frame_number)
             if motion_result.triggered and frame_number % 25 == 0:
@@ -986,7 +1253,7 @@ def _feed_stream_detection_queues(device_id: str, frame, frame_number: int, time
         except Exception as exc:
             logger.warning('设备 %s 运动门控评估失败: %s', device_id, exc)
 
-    if is_sample:
+    if is_overlay_sample:
         _enqueue_keep_latest(
             overlay_detection_queues.get(device_id),
             device_id,
@@ -997,12 +1264,10 @@ def _feed_stream_detection_queues(device_id: str, frame, frame_number: int, time
             queue_label='overlay',
         )
 
-    if task_config and task_config.alert_event_enabled and is_sample:
-        # 告警必须与 overlay 同频采样，禁止全帧率灌入告警队列（多路时会撑爆队列并饿死 overlay）
-        enqueue_alert = (frame_number % alert_interval == 0)
+    if task_config and task_config.alert_event_enabled:
+        enqueue_alert = is_alert_sample
         if (
             not enqueue_alert
-            and is_sample
             and motion_gate is not None
             and motion_result is not None
             and motion_result.triggered
@@ -1392,9 +1657,10 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
     Returns:
         Dict[int, YOLO]: 模型字典 {model_id: YOLO模型实例}
     """
-    global yolo_model_devices, yolo_model_allowed_classes
+    global yolo_model_devices, yolo_model_allowed_classes, yolo_model_meta
     yolo_model_devices.clear()
     yolo_model_allowed_classes.clear()
+    yolo_model_meta.clear()
     try:
         from ultralytics import YOLO
 
@@ -1507,7 +1773,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                     logger.info(f"正在加载ONNX模型: model_id={model_id}, path={model_path}, gpu_id={gpu_id}")
                     onnx_model = ONNXInference(
                         model_path_str,
-                        conf_threshold=0.25,
+                        conf_threshold=_get_detect_conf(),
                         iou_threshold=0.45,
                         device_id=gpu_id,
                         api_class_names=model_api_class_names,
@@ -1532,6 +1798,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                     )
                 else:
                     logger.info(f"正在加载YOLO模型: model_id={model_id}, path={model_path}")
+                    _check_ultralytics_for_yolo26(model_path, model_id)
                     yolo_model = YOLO(model_path_str)
                     infer_device = get_infer_device(model_id)
                     models[model_id] = yolo_model
@@ -1546,8 +1813,43 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                             f"{sorted(yolo_model_allowed_classes[model_id])}"
                         )
                     yolo_model_devices[model_id] = infer_device
+                    yolo26 = is_yolo26_model(
+                        yolo_model, model_path=model_path_str, model_id=model_id,
+                    )
+                    end2end = is_end2end_ultralytics_model(yolo_model) or yolo26
+                    inner = getattr(yolo_model, 'model', None)
+                    raw_end2end = bool(getattr(inner, 'end2end', False)) if inner else False
+                    yaml_end2end = bool(
+                        isinstance(getattr(inner, 'yaml', None), dict)
+                        and inner.yaml.get('end2end')
+                    )
+                    yolo_model_meta[model_id] = {
+                        'yolo26': yolo26,
+                        'end2end': end2end,
+                        'path': model_path_str,
+                    }
+                    try:
+                        import ultralytics as _ultra
+                        ultra_ver = getattr(_ultra, '__version__', 'unknown')
+                    except Exception:
+                        ultra_ver = 'unknown'
+                    warmup_imgsz = int(os.getenv('YOLO_IMG_SIZE', '640'))
+                    try:
+                        warmup_model_detection(
+                            yolo_model,
+                            infer_device=infer_device,
+                            imgsz=warmup_imgsz,
+                            conf=_get_detect_conf(end2end=end2end, yolo26=yolo26),
+                            iou=YOLO_DETECT_IOU,
+                        )
+                        logger.info(f"✅ YOLO模型预热完成: model_id={model_id}")
+                    except Exception as warmup_exc:
+                        logger.warning(f"YOLO模型预热失败 model_id={model_id}: {warmup_exc}")
                     logger.info(
-                        f"✅ YOLO模型加载成功: model_id={model_id}, infer_device={infer_device}"
+                        f"✅ YOLO模型加载成功: model_id={model_id}, infer_device={infer_device}, "
+                        f"yolo26={yolo26}, end2end={end2end} (attr={raw_end2end}, yaml={yaml_end2end}), "
+                        f"ultralytics={ultra_ver}, detect_conf={_get_detect_conf(end2end=end2end, yolo26=yolo26)}, "
+                        f"1080p_imgsz={os.getenv('YOLO26_IMG_SIZE', '1280')}"
                     )
 
             except Exception as e:
@@ -1664,18 +1966,25 @@ def load_task_config():
                     logger.warning(f"设备 {device.id} 未获取到可用输入流地址，跳过该设备")
                     continue
                 # AI RTMP 输出流（国标设备同步时可能仅留空 live 地址，此处含按 device_id 生成的兜底）
-                rtmp_url = resolve_device_ai_rtmp_stream(device)
+                playback_rtmp_url = resolve_device_ai_rtmp_stream(device)
+                rtmp_url = _resolve_ai_rtmp_push_url(device.id, playback_rtmp_url)
                 device_streams[device.id] = {
                     'rtsp_url': rtsp_url,  # 输入流地址
-                    'rtmp_url': rtmp_url,  # AI输出流地址
+                    'rtmp_url': rtmp_url,  # AI FFmpeg 推流地址（本机推 127.0.0.1/ai）
+                    'playback_rtmp_url': playback_rtmp_url,  # 播放地址（外网 IP，供日志对照）
                     'device_name': device.name or device.id,
                     'is_gb28181': bool(device.source and device.source.strip().lower().startswith('gb28181://')),
                     'original_source': device.source,  # 原始源地址（用于GB28181重连时重新解析）
                 }
                 input_type = "RTSP" if rtsp_url and rtsp_url.startswith(
                     'rtsp://') else "RTMP" if rtsp_url and rtsp_url.startswith('rtmp://') else "输入流"
-                logger.info(
-                    f"📹 设备 {device.id} ({device.name or device.id}): {input_type}={rtsp_url}, AI RTMP输出={rtmp_url}")
+                if playback_rtmp_url and playback_rtmp_url != rtmp_url:
+                    logger.info(
+                        f"📹 设备 {device.id} ({device.name or device.id}): {input_type}={rtsp_url}, "
+                        f"AI推流={rtmp_url}, 播放地址={playback_rtmp_url}")
+                else:
+                    logger.info(
+                        f"📹 设备 {device.id} ({device.name or device.id}): {input_type}={rtsp_url}, AI RTMP输出={rtmp_url}")
 
         # 将设备流地址信息存储到task_config中（通过动态属性）
         task_config.device_streams = device_streams
@@ -1691,8 +2000,8 @@ def load_task_config():
             if device_id not in device_latest_overlay_locks:
                 device_latest_overlay_locks[device_id] = threading.Lock()
 
-            # 初始化追踪器（如果启用且尚未存在）
-            if task.tracking_enabled and device_id not in trackers:
+            # 初始化追踪器（叠框/告警共用；OVERLAY_USE_TRACKING 默认开启）
+            if (task.tracking_enabled or OVERLAY_USE_TRACKING) and device_id not in trackers:
                 trackers[device_id] = SimpleTracker(
                     similarity_threshold=task.tracking_similarity_threshold,
                     max_age=task.tracking_max_age,
@@ -1701,8 +2010,22 @@ def load_task_config():
                 logger.info(f"设备 {device_id} 追踪器初始化成功")
 
         logger.info(f"任务配置加载成功: {task.task_name}, 模型IDs: {model_ids}, 关联设备数: {len(device_streams)}")
+        pod_ip = os.getenv('POD_IP', '').strip()
+        logger.info(
+            'AI推流目标解析: POD_IP=%s, SRS_RTMP=%s, SRS_API=%s',
+            pod_ip or '(未设置，将使用 device.ai_rtmp_stream 外网地址)',
+            _srs_rtmp_port(),
+            _srs_api_port(),
+        )
+        for dev_id, info in device_streams.items():
+            logger.info('  设备 %s AI推流 -> %s', dev_id, info.get('rtmp_url'))
+        logger.info(
+            f"   YOLO检测阈值: conf={_get_detect_conf(end2end=_any_loaded_model_is_end2end(), yolo26=_any_loaded_model_is_yolo26())} "
+            f"(env YOLO_DETECT_CONF), iou={YOLO_DETECT_IOU}, imgsz={YOLO_IMG_SIZE}, "
+            f"yolo26_1080p_imgsz={os.getenv('YOLO26_IMG_SIZE', '1280')}"
+        )
 
-        if task.tracking_enabled:
+        if task.tracking_enabled or OVERLAY_USE_TRACKING:
             logger.info(f"已为 {len(trackers)} 个设备初始化追踪器")
 
         return True
@@ -1973,11 +2296,19 @@ def cleanup_alert_images(alert_image_dir: str, max_images: int = 300, keep_ratio
         logger.error(f"清理告警图片失败: {str(e)}", exc_info=True)
 
 
-def cleanup_srs_recordings(srs_record_dir: str = '/data/playbacks', max_recordings: int = 500, keep_ratio: float = 0.1):
+def cleanup_srs_recordings(srs_record_dir: str | None = None, max_recordings: int = 500, keep_ratio: float = 0.1):
     """清理 SRS 录像目录（委托 VIDEO 回放磁盘守护服务）。"""
     try:
-        if srs_record_dir:
-            os.environ.setdefault('SRS_RECORD_DIR', srs_record_dir)
+        if not srs_record_dir:
+            try:
+                from app.services.playback_disk_guard_service import get_srs_record_dir
+                srs_record_dir = get_srs_record_dir()
+            except Exception:
+                from app.services.media_dvr_utils import DEFAULT_SRS_HOST_DATA_ROOT
+                srs_record_dir = os.path.join(
+                    os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), 'playbacks',
+                )
+        os.environ.setdefault('SRS_RECORD_DIR', srs_record_dir)
         from app.services.playback_disk_guard_service import run_playback_disk_guard
         run_playback_disk_guard()
     except Exception as e:
@@ -2179,8 +2510,12 @@ def heartbeat_worker():
 def srs_recording_cleanup_worker():
     """SRS录像清理工作线程"""
     logger.info("🧹 SRS录像清理线程启动")
-    # 获取SRS录像目录路径（可通过环境变量配置，默认为 /data/playbacks）
-    srs_record_dir = os.getenv('SRS_RECORD_DIR', '/data/playbacks')
+    try:
+        from app.services.playback_disk_guard_service import get_srs_record_dir
+        srs_record_dir = get_srs_record_dir()
+    except Exception:
+        from app.services.media_dvr_utils import DEFAULT_SRS_HOST_DATA_ROOT
+        srs_record_dir = os.path.join(os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), 'playbacks')
 
     while not stop_event.is_set():
         try:
@@ -2231,6 +2566,251 @@ def save_tracking_targets_periodically():
     logger.info("💾 追踪目标处理线程停止")
 
 
+def _resolve_ffmpeg_binary() -> str:
+    path = os.getenv('FFMPEG_PATH', '').strip()
+    if path and os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+    return 'ffmpeg'
+
+
+_FFMPEG_CAPS: Optional[Dict[str, bool]] = None
+
+
+def _ffmpeg_supports_input_option(option_flag: str, option_value: str) -> bool:
+    try:
+        result = subprocess.run(
+            [
+                _resolve_ffmpeg_binary(),
+                '-hide_banner',
+                option_flag,
+                option_value,
+                '-f',
+                'lavfi',
+                '-i',
+                'testsrc=duration=0.01:size=16x16:rate=1',
+                '-frames:v',
+                '1',
+                '-f',
+                'null',
+                '-',
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+        err = (result.stderr or b'').decode('utf-8', errors='ignore')
+        return 'Option not found' not in err and 'Unrecognized option' not in err
+    except Exception:
+        return False
+
+
+def _get_ffmpeg_caps() -> Dict[str, bool]:
+    global _FFMPEG_CAPS
+    if _FFMPEG_CAPS is not None:
+        return _FFMPEG_CAPS
+    caps = {
+        'fps_mode': False,
+        'max_muxing_queue_size': False,
+        'thread_queue_size': False,
+        'err_detect': False,
+    }
+    try:
+        result = subprocess.run(
+            [_resolve_ffmpeg_binary(), '-hide_banner', '-h', 'full'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=8,
+        )
+        help_text = result.stdout.decode('utf-8', errors='ignore')
+        caps['fps_mode'] = '-fps_mode' in help_text
+        caps['max_muxing_queue_size'] = '-max_muxing_queue_size' in help_text
+    except Exception as exc:
+        logger.warning('FFmpeg 能力探测失败: %s', exc)
+    caps['thread_queue_size'] = _ffmpeg_supports_input_option('-thread_queue_size', '512')
+    caps['err_detect'] = _ffmpeg_supports_input_option('-err_detect', 'ignore_err')
+    _FFMPEG_CAPS = caps
+    logger.info(
+        'FFmpeg 能力探测: fps_mode=%s, max_muxing_queue_size=%s, thread_queue_size=%s, err_detect=%s',
+        caps['fps_mode'], caps['max_muxing_queue_size'],
+        caps['thread_queue_size'], caps['err_detect'],
+    )
+    return caps
+
+
+def _resolve_realtime_mux_queue_size() -> int:
+    """FFmpeg 推流 mux 队列；与 stream_forward max_muxing_queue_size 策略一致。"""
+    explicit = os.getenv('REALTIME_MAX_MUXING_QUEUE_SIZE', '').strip()
+    if not explicit:
+        explicit = os.getenv('STREAM_FORWARD_MAX_MUXING_QUEUE_SIZE', '').strip()
+    if explicit:
+        try:
+            return max(128, int(explicit))
+        except (ValueError, TypeError):
+            pass
+    stream_count = _expected_realtime_stream_count()
+    if stream_count >= 100:
+        return 2048
+    if stream_count >= 32:
+        return 1536
+    return 1024
+
+
+def _realtime_ffmpeg_mux_output_options() -> List[str]:
+    return ['-avoid_negative_ts', 'make_zero', '-muxdelay', '0', '-muxpreload', '0']
+
+
+def _disable_hwaccel_globally(reason: str) -> None:
+    global _hwaccel_codec, _nvenc_push_verified
+    if _hwaccel_codec == 'h264_nvenc':
+        _hwaccel_codec = 'libx264'
+        _nvenc_push_verified = False
+        logger.warning('本节点 NVENC 不可用 (%s)，后续推流统一使用 libx264', reason)
+
+
+def _verify_nvenc_for_push() -> bool:
+    """首次推流前用与生产一致的 scale+NVENC 参数自检（对齐 stream_forward_service）。"""
+    global _nvenc_push_verified
+    if _nvenc_push_verified is not None:
+        return _nvenc_push_verified
+    if _hwaccel_codec != 'h264_nvenc':
+        _nvenc_push_verified = False
+        return False
+
+    _profile_name, _effective_fps, effective_w, effective_h, effective_bitrate, _effective_gop = _get_effective_realtime_stream_params()
+    target_w, target_h = align_resolution(effective_w, effective_h, 16)
+    gpu_id = get_ffmpeg_gpu_id('nvenc-push-selftest')
+    preset = os.getenv('REALTIME_NVENC_PRESET', os.getenv('STREAM_FORWARD_NVENC_PRESET', 'p3'))
+    test_cmd = [
+        _resolve_ffmpeg_binary(),
+        '-y',
+        '-hide_banner',
+        '-f', 'lavfi',
+        '-i', f'testsrc=duration=1:size={target_w}x{target_h}:rate=1',
+        '-vf', f'scale={target_w}:{target_h}:flags=bilinear',
+        '-c:v', 'h264_nvenc',
+        '-preset', preset,
+        '-tune', 'll',
+        '-gpu', str(gpu_id if gpu_id is not None else 0),
+        '-b:v', effective_bitrate,
+        '-frames:v', '1',
+        '-f', 'null',
+        '-',
+    ]
+    try:
+        test_result = subprocess.run(
+            test_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+        )
+        _nvenc_push_verified = test_result.returncode == 0
+        if not _nvenc_push_verified:
+            err_snip = test_result.stderr.decode('utf-8', errors='ignore').strip()[-400:]
+            logger.warning('NVENC 推流自检失败 (%dx%d preset=%s gpu=%s): %s',
+                           target_w, target_h, preset, gpu_id, err_snip)
+            _disable_hwaccel_globally('NVENC 推流自检未通过')
+        else:
+            logger.info('NVENC 推流自检通过 (%dx%d, preset=%s, gpu=%s)',
+                        target_w, target_h, preset, gpu_id)
+    except Exception as exc:
+        logger.warning('NVENC 推流自检异常: %s', exc)
+        _nvenc_push_verified = False
+        _disable_hwaccel_globally('NVENC 推流自检异常')
+
+    return _nvenc_push_verified
+
+
+def _build_realtime_ffmpeg_push_cmd(
+    device_id: str,
+    stdin_w: int,
+    stdin_h: int,
+    rtmp_url: str,
+    device_codec: str,
+    effective_fps: int,
+    effective_w: int,
+    effective_h: int,
+    effective_bitrate: str,
+    effective_gop: int,
+) -> tuple:
+    """构建 AI 推流 FFmpeg 命令，返回 (cmd, actual_codec, target_w, target_h)。"""
+    caps = _get_ffmpeg_caps()
+    use_hardware = device_codec == 'h264_nvenc'
+    if use_hardware and not _verify_nvenc_for_push():
+        use_hardware = False
+    actual_codec = 'h264_nvenc' if use_hardware else 'libx264'
+
+    if use_hardware:
+        target_w, target_h = align_resolution(effective_w, effective_h, 16)
+    else:
+        target_w, target_h = effective_w, effective_h
+
+    gop_out = max(1, effective_gop)
+    ffmpeg_cmd = [
+        _resolve_ffmpeg_binary(),
+        "-y",
+        "-fflags", "nobuffer+flush_packets+genpts",
+        "-flags", "low_delay",
+        "-f", "rawvideo",
+        "-vcodec", "rawvideo",
+        "-pix_fmt", "rgb24",
+        "-s", f"{stdin_w}x{stdin_h}",
+        "-r", str(effective_fps),
+        "-i", "-",
+        "-vf", f"scale={target_w}:{target_h}:flags=bilinear",
+    ]
+
+    if caps.get('max_muxing_queue_size'):
+        ffmpeg_cmd.extend(['-max_muxing_queue_size', str(_resolve_realtime_mux_queue_size())])
+
+    if use_hardware:
+        ffmpeg_gpu_id = get_ffmpeg_gpu_id(device_id)
+        ffmpeg_cmd.extend([
+            "-c:v", "h264_nvenc",
+            "-b:v", effective_bitrate,
+            "-preset", os.getenv('REALTIME_NVENC_PRESET', os.getenv('STREAM_FORWARD_NVENC_PRESET', 'p3')),
+            "-tune", "ll",
+            "-gpu", str(ffmpeg_gpu_id if ffmpeg_gpu_id is not None else 0),
+            "-rc", "vbr",
+            "-profile:v", "main",
+            "-level", "4.0",
+            "-g", str(gop_out),
+            "-bf", "0",
+            "-pix_fmt", "yuv420p",
+            "-colorspace", "bt709",
+            "-color_primaries", "bt709",
+            "-color_trc", "bt709",
+        ])
+    else:
+        ffmpeg_cmd.extend([
+            "-c:v", "libx264",
+            "-b:v", effective_bitrate,
+            "-preset", FFMPEG_PRESET,
+            "-tune", "zerolatency",
+            "-profile:v", "main",
+            "-g", str(gop_out),
+            "-bf", "0",
+            "-pix_fmt", "yuv420p",
+            "-colorspace", "bt709",
+            "-color_primaries", "bt709",
+            "-color_trc", "bt709",
+        ])
+        if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
+            try:
+                threads_value = int(FFMPEG_THREADS)
+                if threads_value > 0:
+                    ffmpeg_cmd.extend(["-threads", str(threads_value)])
+            except (ValueError, TypeError):
+                pass
+
+    ffmpeg_cmd.extend(_realtime_ffmpeg_mux_output_options())
+    ffmpeg_cmd.extend([
+        "-f", "flv",
+        "-flvflags", "no_duration_filesize",
+        rtmp_url,
+    ])
+    return ffmpeg_cmd, actual_codec, target_w, target_h
+
+
 def check_hardware_acceleration():
     """检测硬件加速是否可用
     
@@ -2249,19 +2829,49 @@ def check_hardware_acceleration():
     # 如果明确设置为nvenc，尝试使用硬件编码
     if FFMPEG_HWACCEL in ['nvenc', 'auto']:
         try:
-            # 检查FFmpeg是否支持h264_nvenc编码器
             result = subprocess.run(
-                ['ffmpeg', '-hide_banner', '-encoders'],
+                [_resolve_ffmpeg_binary(), '-hide_banner', '-encoders'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=5
             )
             output = result.stdout.decode('utf-8', errors='ignore') + result.stderr.decode('utf-8', errors='ignore')
-            
+
             if 'h264_nvenc' in output:
-                use_nvenc = True
-                codec_name = 'h264_nvenc'
-                logger.info("✅ 检测到硬件加速支持，使用 h264_nvenc 编码器")
+                skip_test = os.getenv(
+                    'REALTIME_NVENC_SKIP_TEST',
+                    os.getenv('STREAM_FORWARD_NVENC_SKIP_TEST', 'true'),
+                ).strip().lower() in ('1', 'true', 'yes', 'on')
+                if skip_test:
+                    use_nvenc = True
+                    codec_name = 'h264_nvenc'
+                    logger.info(
+                        '✅ 检测到 h264_nvenc（跳过 lavfi 自检；首次推流前将做生产参数自检，失败自动回退 libx264）'
+                    )
+                else:
+                    try:
+                        test_cmd = [
+                            _resolve_ffmpeg_binary(), '-y', '-f', 'lavfi',
+                            '-i', 'testsrc=duration=1:size=640x360:rate=1',
+                            '-c:v', 'h264_nvenc', '-preset', 'p3', '-b:v', '500k',
+                            '-frames:v', '1', '-f', 'null', '-',
+                        ]
+                        test_result = subprocess.run(
+                            test_cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=10,
+                        )
+                        if test_result.returncode == 0:
+                            use_nvenc = True
+                            codec_name = 'h264_nvenc'
+                            logger.info('✅ 检测到硬件加速支持，使用 h264_nvenc 编码器')
+                        else:
+                            logger.warning('⚠️  h264_nvenc 编码器检测到但测试失败，使用软件编码 libx264')
+                    except Exception as test_e:
+                        logger.warning(
+                            '⚠️  测试 h264_nvenc 编码器时出错: %s，使用软件编码 libx264', test_e,
+                        )
             else:
                 logger.info("⚠️  未检测到 h264_nvenc 编码器，使用软件编码 libx264")
         except Exception as e:
@@ -2283,56 +2893,99 @@ def align_resolution(width: int, height: int, align: int = 16) -> tuple:
 
 # 在启动时检测硬件加速
 _hwaccel_nvenc, _hwaccel_cuvid, _hwaccel_codec = check_hardware_acceleration()
+_nvenc_push_verified: Optional[bool] = None
+
+
+def _srs_api_port() -> int:
+    raw = os.getenv('SRS_API_PORT', '1985').strip() or '1985'
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 1985
+
+
+def _srs_rtmp_port() -> int:
+    raw = os.getenv('SRS_RTMP_PORT', '1935').strip() or '1935'
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 1935
+
+
+def _check_srs_api_ready(host: str, api_port: int, timeout: float = 3.0) -> bool:
+    host = (host or '').strip()
+    if not host:
+        return False
+    try:
+        resp = requests.get(
+            f'http://{host}:{api_port}/api/v1/versions',
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        return data.get('code') == 0 and bool(data.get('data'))
+    except Exception:
+        return False
+
+
+def _normalize_srs_api_host(host: str) -> str:
+    """本机推流时 SRS HTTP API 统一走 loopback（与 stream_forward_service 一致）。"""
+    host = (host or '').strip()
+    if host in ('srs-server', 'srs', 'SRS', 'localhost', '127.0.0.1'):
+        return '127.0.0.1'
+    if os.getenv('POD_IP', '').strip():
+        return '127.0.0.1'
+    return host
+
+
+def _resolve_ai_rtmp_push_url(device_id: str, device_ai_rtmp_stream: Optional[str] = None) -> Optional[str]:
+    """解析 AI 推流 FFmpeg 地址。
+
+    远程分片在节点本机推 SRS，固定走 127.0.0.1（避免外网 IP 回环/on_publish 误判）；
+    播放地址仍由 stream_url_sync_service 写入 device.ai_rtmp_stream（外网 IP）。
+    """
+    pod_ip = os.getenv('POD_IP', '').strip()
+    if pod_ip:
+        rtmp_port = _srs_rtmp_port()
+        return f'rtmp://127.0.0.1:{rtmp_port}/ai/{device_id}'
+
+    rtmp_url = (device_ai_rtmp_stream or '').strip()
+    return rtmp_url or None
 
 
 def check_rtmp_server_connection(rtmp_url: str) -> bool:
-    """检查RTMP服务器是否可用
-
-    Args:
-        rtmp_url: RTMP推流地址，格式如 rtmp://localhost:1935/live/stream
-
-    Returns:
-        bool: RTMP服务器是否可用
-    """
+    """检查 RTMP/SRS 是否可用（优先 SRS API，避免仅 TCP 端口占用误判）。"""
     try:
-        # 从RTMP URL中提取主机和端口
         if not rtmp_url.startswith('rtmp://'):
             return False
 
-        # 解析URL: rtmp://host:port/path -> (host, port)
+        api_port = _srs_api_port()
+        if _check_srs_api_ready('127.0.0.1', api_port):
+            return True
+
         url_part = rtmp_url.replace('rtmp://', '')
-        if '/' in url_part:
-            host_port = url_part.split('/')[0]
-        else:
-            host_port = url_part
+        host_port = url_part.split('/')[0] if '/' in url_part else url_part
 
         if ':' in host_port:
             host, port_str = host_port.split(':', 1)
             try:
                 port = int(port_str)
             except ValueError:
-                port = 1935  # 默认RTMP端口
+                port = 1935
         else:
             host = host_port
-            port = 1935  # 默认RTMP端口
+            port = 1935
 
-        # 重要：realtime_algorithm_service 使用 host 网络模式，必须使用 localhost 访问 SRS
-        # 如果 RTMP URL 中使用的是容器名（如 srs-server 或 srs），需要强制转换为 localhost
-        if host in ['srs-server', 'srs', 'SRS']:
-            logger.debug(
-                f'检测到 SRS 配置使用容器名 {host}，强制转换为 localhost（realtime_algorithm_service 使用 host 网络模式）')
-            host = 'localhost'
+        host = _normalize_srs_api_host(host)
+        if _check_srs_api_ready(host, api_port):
+            return True
 
-        # 尝试连接RTMP服务器端口
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(3)
+        sock.settimeout(2)
         result = sock.connect_ex((host, port))
         sock.close()
-
-        if result == 0:
-            return True
-        else:
-            return False
+        return result == 0
     except Exception as e:
         logger.debug(f"检查RTMP服务器连接时出错: {str(e)}")
         return False
@@ -2376,17 +3029,12 @@ def check_and_stop_existing_stream(stream_url: str):
         else:
             rtmp_host = host_port
 
-        # 重要：realtime_algorithm_service 使用 host 网络模式，必须使用 localhost 访问 SRS
-        # 如果 RTMP URL 中使用的是容器名（如 srs-server 或 srs），需要强制转换为 localhost
-        # 这样可以避免在 host 网络模式下尝试解析容器名导致的连接失败
-        if rtmp_host in ['srs-server', 'srs', 'SRS']:
-            logger.info(
-                f'检测到 SRS 配置使用容器名 {rtmp_host}，强制转换为 localhost（realtime_algorithm_service 使用 host 网络模式）')
-            rtmp_host = 'localhost'
+        rtmp_host = _normalize_srs_api_host(rtmp_host)
+        api_port = _srs_api_port()
 
         # SRS HTTP API 地址（默认端口 1985）
-        srs_api_url = f"http://{rtmp_host}:1985/api/v1/streams/"
-        srs_clients_api_url = f"http://{rtmp_host}:1985/api/v1/clients/"
+        srs_api_url = f"http://{rtmp_host}:{api_port}/api/v1/streams/"
+        srs_clients_api_url = f"http://{rtmp_host}:{api_port}/api/v1/clients/"
 
         logger.info(f"🔍 检查现有流: {stream_path}")
 
@@ -2703,7 +3351,7 @@ def _fixed_rate_push_worker(device_id: str):
     last_push_time = time.perf_counter()
     push_frame_count = 0
     stale_seconds = _output_frame_stale_seconds()
-    
+    flush_every = max(1, int(os.getenv('AI_PUSH_FLUSH_EVERY', os.getenv('VIEW_PUSH_FLUSH_EVERY', '5'))))
     while push_running and not push_running.is_set() and not stop_event.is_set():
         try:
             # 精确帧率控制：计算下一帧应该推送的时间
@@ -2804,7 +3452,8 @@ def _fixed_rate_push_worker(device_id: str):
             # 写入 FFmpeg stdin
             try:
                 pusher_process.stdin.write(raw_bytes)
-                pusher_process.stdin.flush()
+                if push_frame_count % flush_every == 0:
+                    pusher_process.stdin.flush()
                 push_frame_count += 1
                 if push_frame_count % 150 == 0:
                     _mark_quality_success()
@@ -3128,7 +3777,7 @@ def buffer_streamer_worker(device_id: str):
             frame_count = frame_counts[device_id]
             profile_name, effective_fps, effective_w, effective_h, effective_bitrate, effective_gop = _get_effective_realtime_stream_params()
 
-            # 与 stream_forward_service 一致：raw 帧保持摄像头/源流分辨率，由 FFmpeg lanczos 缩放到画质档位
+            # 与 stream_forward_service 一致：raw 帧保持摄像头/源流分辨率，由 FFmpeg bilinear 缩放到画质档位
             stdin_h, stdin_w = frame.shape[:2]
 
             # 初始化推送进程（为该设备）- 只在需要时启动，避免频繁重启
@@ -3177,7 +3826,7 @@ def buffer_streamer_worker(device_id: str):
                         # 保留错误、警告、失败等信息
                         if any(keyword in line_lower for keyword in
                                ['error', 'failed', 'warning', 'cannot', 'unable', 'invalid', 'connection refused',
-                                'connection reset', 'timeout']):
+                                'connection reset', 'timeout', 'input/output error', 'stream busy', 'broken pipe']):
                             error_lines.append(line)
                             # 检测硬件编码器相关错误
                             if any(hw_err in line_lower for hw_err in ['cannot load libcuda', 'libcuda.so', 'h264_nvenc', 'nvenc', 'cuda']):
@@ -3205,6 +3854,7 @@ def buffer_streamer_worker(device_id: str):
                             if current_codec == 'h264_nvenc':
                                 logger.warning(f"🔄 设备 {device_id} 硬件编码器失败，自动切换到软件编码 (libx264)")
                                 device_codec_status[device_id] = 'libx264'
+                                _disable_hwaccel_globally('硬件编码运行失败')
                                 should_retry_with_software = True
                             else:
                                 # 已经使用软件编码，不需要切换
@@ -3235,24 +3885,24 @@ def buffer_streamer_worker(device_id: str):
                         device_pushers.pop(device_id, None)
                         logger.info(f"🔄 设备 {device_id} 将使用软件编码重新启动推送进程...")
 
-                    # 检查RTMP服务器连接状态（仅在首次失败时检查，避免频繁检查）
+                    # 检查RTMP/SRS 状态（仅在首次失败时检查，避免频繁检查）
                     if pusher_retry_count == 0:
-                        if not check_rtmp_server_connection(rtmp_url):
+                        srs_api_ok = _check_srs_api_ready('127.0.0.1', _srs_api_port())
+                        if not srs_api_ok or any('input/output error' in e.lower() for e in error_lines):
                             logger.warning("")
                             logger.warning("=" * 60)
-                            logger.warning("💡 RTMP服务器连接检查失败，可能的原因和解决方案：")
+                            logger.warning("💡 AI 推流失败（FFmpeg 退出码 251 / Input/output error），常见原因：")
                             logger.warning("=" * 60)
-                            logger.warning("1. RTMP服务器（SRS）未运行")
-                            logger.warning("   - 检查SRS服务状态: docker ps | grep srs")
-                            logger.warning("")
-                            logger.warning("2. 启动SRS服务器：")
-                            logger.warning(
-                                "   - 使用Docker Compose: cd /opt/projects/yfeieye/.scripts/docker && docker-compose up -d srs")
-                            logger.warning(
-                                "   - 或使用Docker: docker run -d --name srs-server -p 1935:1935 -p 1985:1985 -p 8080:8080 ossrs/srs:5")
-                            logger.warning("")
-                            logger.warning("3. SRS HTTP回调服务未运行（常见原因）")
-                            logger.warning("   - 请确保VIDEO服务在端口48080上运行")
+                            if not srs_api_ok:
+                                logger.warning("1. SRS 未就绪或 /data 目录异常（DVR/on_publish 失败）")
+                                logger.warning("   - 检查: curl http://127.0.0.1:1985/api/v1/versions")
+                                logger.warning("   - 修复: cd VIDEO && ./fix_srs.sh  （重建 SRS 并创建 ~/easyaiot/data）")
+                            else:
+                                logger.warning("1. SRS on_publish 回调超时或被拒绝（查看 ~/easyaiot/data/srs.log）")
+                            logger.warning("2. 本机推流应使用 127.0.0.1/ai/{device_id}，勿用外网 IP 回环推流")
+                            logger.warning("   - 当前推流地址: %s", rtmp_url)
+                            logger.warning("3. 检查 SRS 服务: docker ps | grep srs")
+                            logger.warning("4. 检查 Gateway/VIDEO 回调: curl -X POST http://127.0.0.1:48080/admin-api/video/camera/callback/on_publish -d '{}'")
                             logger.warning("=" * 60)
                             logger.warning("")
 
@@ -3297,80 +3947,28 @@ def buffer_streamer_worker(device_id: str):
                     with device_codec_locks[device_id]:
                         device_codec = device_codec_status.get(device_id, _hwaccel_codec)
 
-                    use_hardware = device_codec == 'h264_nvenc'
-                    if use_hardware:
-                        target_w, target_h = align_resolution(effective_w, effective_h, 16)
-                        if target_w != effective_w or target_h != effective_h:
-                            logger.debug(
-                                f"设备 {device_id} 编码分辨率对齐: {effective_w}x{effective_h} -> {target_w}x{target_h}"
-                            )
-                    else:
-                        target_w, target_h = effective_w, effective_h
+                    ffmpeg_cmd, actual_codec, target_w, target_h = _build_realtime_ffmpeg_push_cmd(
+                        device_id,
+                        stdin_w,
+                        stdin_h,
+                        rtmp_url,
+                        device_codec,
+                        effective_fps,
+                        effective_w,
+                        effective_h,
+                        effective_bitrate,
+                        effective_gop,
+                    )
+                    if actual_codec != device_codec:
+                        with device_codec_locks[device_id]:
+                            device_codec_status[device_id] = actual_codec
+                        device_codec = actual_codec
 
                     gop_out = max(1, effective_gop)
-
-                    # 与 stream_forward_service/run_deploy.py pusher_worker 中 FFmpeg 命令结构一致
-                    ffmpeg_cmd = [
-                        "ffmpeg",
-                        "-y",
-                        "-fflags", "nobuffer+flush_packets+genpts",
-                        "-flags", "low_delay",
-                        "-f", "rawvideo",
-                        "-vcodec", "rawvideo",
-                        "-pix_fmt", "rgb24",
-                        "-s", f"{stdin_w}x{stdin_h}",
-                        "-r", str(effective_fps),
-                        "-i", "-",
-                        "-vf", f"scale={target_w}:{target_h}:flags=lanczos",
-                    ]
-
-                    if use_hardware:
-                        ffmpeg_gpu_id = get_ffmpeg_gpu_id(device_id)
-                        ffmpeg_cmd.extend([
-                            "-c:v", "h264_nvenc",
-                            "-b:v", effective_bitrate,
-                            "-preset", "p3",
-                            "-tune", "ll",
-                            "-gpu", str(ffmpeg_gpu_id if ffmpeg_gpu_id is not None else 0),
-                            "-rc", "vbr",
-                            "-profile:v", "main",
-                            "-level", "4.0",
-                            "-g", str(gop_out),
-                            "-bf", "0",
-                            "-pix_fmt", "yuv420p",
-                            "-colorspace", "bt709",
-                            "-color_primaries", "bt709",
-                            "-color_trc", "bt709",
-                        ])
-                    else:
-                        ffmpeg_cmd.extend([
-                            "-c:v", "libx264",
-                            "-b:v", effective_bitrate,
-                            "-preset", FFMPEG_PRESET,
-                            "-tune", "zerolatency",
-                            "-profile:v", "main",
-                            "-g", str(gop_out),
-                            "-bf", "0",
-                            "-pix_fmt", "yuv420p",
-                            "-colorspace", "bt709",
-                            "-color_primaries", "bt709",
-                            "-color_trc", "bt709",
-                        ])
-                        if FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
-                            try:
-                                threads_value = int(FFMPEG_THREADS)
-                                if threads_value > 0:
-                                    ffmpeg_cmd.extend(["-threads", str(threads_value)])
-                                else:
-                                    logger.warning(f"   ⚠️  FFMPEG_THREADS 值无效 ({FFMPEG_THREADS})，跳过线程数限制")
-                            except (ValueError, TypeError):
-                                logger.warning(f"   ⚠️  FFMPEG_THREADS 值无效 ({FFMPEG_THREADS})，跳过线程数限制")
-
-                    ffmpeg_cmd.extend([
-                        "-f", "flv",
-                        "-flvflags", "no_duration_filesize",
-                        rtmp_url,
-                    ])
+                    if target_w != effective_w or target_h != effective_h:
+                        logger.debug(
+                            f"设备 {device_id} 编码分辨率对齐: {effective_w}x{effective_h} -> {target_w}x{target_h}"
+                        )
 
                     codec_info = f"硬件编码 ({device_codec})" if device_codec == 'h264_nvenc' else f"软件编码 ({device_codec})"
                     logger.info(f"🚀 启动设备 {device_id} 推送进程")
@@ -3380,6 +3978,10 @@ def buffer_streamer_worker(device_id: str):
                     )
                     logger.info(f"   🎬 编码器: {codec_info}, 比特率: {effective_bitrate}, GOP: {gop_out}")
                     logger.info(f"   🎯 画质档位: {profile_name}")
+                    logger.info(
+                        f"   📦 max_muxing_queue_size={_resolve_realtime_mux_queue_size()}, "
+                        f"opencv_thread_queue_size={_opencv_thread_queue_log_label()}/路"
+                    )
                     if device_codec != 'h264_nvenc' and FFMPEG_THREADS is not None and str(FFMPEG_THREADS).strip():
                         logger.info(f"   🧵 编码线程数: {FFMPEG_THREADS}")
                     logger.debug(f"   FFmpeg命令: {' '.join(ffmpeg_cmd)}")
@@ -3435,7 +4037,7 @@ def buffer_streamer_worker(device_id: str):
                                 if any(keyword in line_lower for keyword in
                                        ['error', 'failed', 'cannot', 'unable', 'invalid', 'connection refused',
                                         'connection reset', 'timeout', 'no such file', 'permission denied', 'splitting',
-                                        'option not found']):
+                                        'option not found', 'input/output error', 'stream busy', 'broken pipe']):
                                     key_errors.append(line)
                                     # 检测硬件编码器相关错误
                                     if any(hw_err in line_lower for hw_err in ['cannot load libcuda', 'libcuda.so', 'h264_nvenc', 'nvenc', 'cuda']):
@@ -3781,8 +4383,8 @@ def overlay_detection_worker(worker_id: int):
                         device_id_from_data,
                         frame_number=frame_number,
                         timestamp=timestamp,
-                        imgsz=YOLO_IMG_SIZE,
-                        use_tracking=False,
+                        imgsz=OVERLAY_YOLO_IMG_SIZE,
+                        use_tracking=OVERLAY_USE_TRACKING,
                     )
                 except Exception as e:
                     consecutive_errors += 1
@@ -3793,17 +4395,23 @@ def overlay_detection_worker(worker_id: int):
                         consecutive_errors = 0
                     continue
 
-                _update_device_latest_overlay(
+                cache_updated = _update_device_latest_overlay(
                     device_id_from_data,
                     detections,
                     timestamp,
                     frame_number,
+                    applied_at=time.time(),
                 )
 
                 if frame_number % 10 == 0:
+                    lag = frame_counts.get(device_id_from_data, frame_number) - frame_number
+                    lag_hint = f", 队列滞后 {lag} 帧" if lag > _overlay_stale_frame_lag() // 2 else ""
+                    stale_hint = '' if cache_updated else ', 积压过期未写缓存'
                     logger.info(
                         f"✅ [Overlay {worker_id}] 检测完成: {frame_id} (帧号: {frame_number}), "
-                        f"更新 overlay 缓存 {len(detections)} 个目标"
+                        f"{'更新' if cache_updated else '跳过'} overlay 缓存 {len(detections)} 个目标 "
+                        f"[{_summarize_detections(detections)}]"
+                        f"{lag_hint}{stale_hint}"
                     )
             else:
                 idle_count += 1
@@ -3873,6 +4481,7 @@ def alert_detection_worker(worker_id: int):
                         fresh_detections,
                         timestamp,
                         frame_number,
+                        applied_at=time.time(),
                     )
 
                 if not detections:
@@ -3933,7 +4542,7 @@ def alert_detection_worker(worker_id: int):
                 if frame_number % 10 == 0:
                     logger.info(
                         f"✅ [Alert {worker_id}] 检测完成: {frame_id} (帧号: {frame_number}), "
-                        f"本帧检出 {len(fresh_detections)} 个目标"
+                        f"本帧检出 {len(fresh_detections)} 个目标 [{_summarize_detections(fresh_detections)}]"
                         + (
                             f"（含缓存轨迹共 {len(detections)} 个）"
                             if len(detections) != len(fresh_detections)
@@ -3982,6 +4591,7 @@ def shutdown_yolo_workers(timeout: float = 8.0):
     yolo_models.clear()
     yolo_model_devices.clear()
     yolo_model_allowed_classes.clear()
+    yolo_model_meta.clear()
 
 
 def cleanup_all_resources():
@@ -4082,11 +4692,11 @@ def main():
     logger.info("🚀 统一的实时算法任务服务启动（优化模式：低CPU占用）")
     logger.info("=" * 60)
     logger.info("📊 优化配置参数:")
-    logger.info(f"   视频分辨率: {TARGET_WIDTH}x{TARGET_HEIGHT} (原1280x720)")
-    logger.info(f"   视频帧率: {SOURCE_FPS}fps (原25fps)")
+    logger.info(f"   视频分辨率: {TARGET_WIDTH}x{TARGET_HEIGHT}")
+    logger.info(f"   观感推流帧率: {AI_OUTPUT_FPS}fps（与 AI 抽帧 EXTRACT_INTERVAL 解耦）")
     logger.info(f"   FFmpeg编码预设: {FFMPEG_PRESET}")
-    logger.info(f"   视频比特率: {FFMPEG_VIDEO_BITRATE} (原1500k)")
-    logger.info(f"   GOP大小: {FFMPEG_GOP_SIZE} (2秒一个关键帧)")
+    logger.info(f"   视频比特率: {FFMPEG_VIDEO_BITRATE}")
+    logger.info(f"   GOP大小: {FFMPEG_GOP_SIZE} (约2秒一个关键帧)")
     logger.info(f"   编码线程数: {FFMPEG_THREADS if FFMPEG_THREADS else '自动'}")
     logger.info(f"   YOLO检测分辨率: {YOLO_IMG_SIZE} (原640)")
     logger.info(f"   Overlay队列大小: {OVERLAY_DETECTION_QUEUE_SIZE}, Worker: {OVERLAY_WORKER_THREADS}, imgsz: {OVERLAY_YOLO_IMG_SIZE}")
@@ -4095,11 +4705,12 @@ def main():
         f"grid={PERSON_TILE_COLUMNS}x{PERSON_TILE_ROWS}, overlap={PERSON_TILE_OVERLAP}, conf={PERSON_TILE_CONF_THRESHOLD}"
     )
     logger.info(f"   告警队列大小: {ALERT_DETECTION_QUEUE_SIZE}, Worker: {ALERT_WORKER_THREADS}, 抽帧间隔: {ALERT_EXTRACT_INTERVAL}")
-    logger.info(f"   检测抽帧间隔(启动默认): overlay={EXTRACT_INTERVAL}, alert={ALERT_EXTRACT_INTERVAL} (任务加载后以 DB 为准)")
+    logger.info(f"   AI检测间隔(仅推理): overlay={OVERLAY_EXTRACT_INTERVAL}, alert={ALERT_EXTRACT_INTERVAL} (告警/任务DB优先; overlay不受DB extract_interval影响)")
+    logger.info(f"   叠框追踪: OVERLAY_USE_TRACKING={OVERLAY_USE_TRACKING}")
     logger.info(f"   运动门控: MOTION_GATE_ENABLED={os.getenv('MOTION_GATE_ENABLED', 'false')}")
     logger.info(f"   Overlay保留最新帧: {OVERLAY_KEEP_LATEST} (阈值: {OVERLAY_KEEP_LATEST_THRESHOLD})")
     logger.info(f"   告警保留最新帧: {ALERT_KEEP_LATEST} (阈值: {ALERT_KEEP_LATEST_THRESHOLD})")
-    logger.info(f"   主画面 overlay 最大复用: {LATEST_OVERLAY_MAX_AGE_SEC:.1f}s")
+    logger.info(f"   主画面 overlay 最大复用: {_overlay_effective_max_age_sec():.2f}s (LATEST_OVERLAY_MAX_AGE_MS={LATEST_OVERLAY_MAX_AGE_MS or 'auto'})")
     logger.info(f"   告警 Hook URL: {ALERT_HOOK_URL}")
     logger.info("=" * 60)
 
@@ -4122,12 +4733,24 @@ def main():
         logger.info("收到停止信号，退出启动流程")
         return
 
-    # 为每个摄像头启动独立的缓流器线程
+    _refresh_opencv_ffmpeg_capture_options()
+    _get_ffmpeg_caps()
+    stagger_sec = _get_realtime_stream_stagger_sec()
+    logger.info(
+        f"   多路推流队列: max_muxing_queue_size={_resolve_realtime_mux_queue_size()}, "
+        f"opencv_thread_queue_size={_opencv_thread_queue_log_label()}/路, "
+        f"预期并发={_expected_realtime_stream_count()} 路, 建连错峰={stagger_sec:.1f}s/路"
+    )
+
+    # 为每个摄像头启动独立的缓流器线程（错峰建连，减轻 NVR 并发冲击）
     buffer_threads = []
     device_count = 0
     if hasattr(task_config, 'device_streams'):
-        device_count = len(task_config.device_streams)
-        for device_id in task_config.device_streams.keys():
+        device_ids_ordered = list(task_config.device_streams.keys())
+        device_count = len(device_ids_ordered)
+        for idx, device_id in enumerate(device_ids_ordered):
+            if idx > 0 and stagger_sec > 0:
+                time.sleep(stagger_sec)
             logger.info(f"💾 启动设备 {device_id} 的缓流器线程...")
             buffer_thread = threading.Thread(target=buffer_streamer_worker, args=(device_id,), daemon=True)
             buffer_thread.start()
@@ -4139,7 +4762,7 @@ def main():
         thread_env='OVERLAY_WORKER_THREADS',
         auto_env='OVERLAY_WORKER_THREADS_AUTO',
         max_env='OVERLAY_WORKER_THREADS_MAX',
-        default_max=8,
+        default_max=12,
         default_fixed=1,
     )
     ALERT_WORKER_THREADS = _resolve_worker_thread_count(

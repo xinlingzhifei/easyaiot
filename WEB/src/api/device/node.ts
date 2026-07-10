@@ -120,8 +120,11 @@ function normalizeNodePageResult(res: unknown): NodePageResult {
   return empty;
 }
 
-export const getNodePage = async (params: Record<string, unknown>): Promise<NodePageResult> => {
-  const res = await commonApi('get', Api.Node + '/page', { params });
+export const getNodePage = async (
+  params: Record<string, unknown>,
+  options?: NodeRequestOptions,
+): Promise<NodePageResult> => {
+  const res = await commonApi('get', Api.Node + '/page', { params }, options);
   return normalizeNodePageResult(res);
 };
 

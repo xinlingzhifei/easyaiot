@@ -267,7 +267,7 @@ class Alert(db.Model):
     event = db.Column(db.String(30), nullable=False)
     region = db.Column(db.String(30), nullable=True)
     information = db.Column(db.Text, nullable=True)
-    time = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.text('NOW()'))
+    time = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.text('NOW()'), index=True)
     # 与 device.id 一致（GB28181 等设备 ID 可达约 50 字符）
     device_id = db.Column(db.String(100), nullable=False)
     device_name = db.Column(db.String(100), nullable=False)
@@ -473,13 +473,15 @@ class SnapImage(db.Model):
             pass
         elif not (display_url or '').startswith('/api/'):
             display_url = build_snap_image_api_url(self.space_id, self.object_name)
+        from app.utils.service_urls import shanghai_isoformat
+
         return {
             'id': self.id,
             'object_name': self.object_name,
             'filename': self.filename,
             'size': self.file_size or 0,
-            'last_modified': utc_isoformat_z(self.captured_at),
-            'captured_at': utc_isoformat_z(self.captured_at),
+            'last_modified': shanghai_isoformat(self.captured_at),
+            'captured_at': shanghai_isoformat(self.captured_at),
             'source': self.source or 'snap',
             'task_id': self.task_id,
             'etag': self.etag or '',
@@ -902,10 +904,11 @@ class AlgorithmTask(db.Model):
     # 模型配置（直接选择模型列表，不再依赖模型服务接口）
     model_ids = db.Column(db.Text, nullable=True, comment='关联的模型ID列表（JSON格式，如[1,2,3]）')
     model_names = db.Column(db.Text, nullable=True, comment='关联的模型名称列表（逗号分隔，冗余字段，用于快速显示）')
+    detect_conf = db.Column(db.Float, default=0.5, nullable=False, comment='YOLO检测置信度阈值（0~1，默认0.5）')
     
     # 实时算法任务配置
-    extract_interval = db.Column(db.Integer, default=25, nullable=True,
-                                 comment='抽帧间隔（每N帧抽一次；NULL 时沿用 EXTRACT_INTERVAL，默认 25）')
+    extract_interval = db.Column(db.Integer, default=12, nullable=True,
+                                 comment='AI检测间隔（每N帧推理一次；12≈25fps下每秒2次；NULL时沿用EXTRACT_INTERVAL，默认12）')
     rtmp_input_url = db.Column(db.String(500), nullable=True, comment='RTMP输入流地址（仅实时算法任务）')
     rtmp_output_url = db.Column(db.String(500), nullable=True, comment='RTMP输出流地址（仅实时算法任务）')
     
@@ -1075,6 +1078,7 @@ class AlgorithmTask(db.Model):
             'device_names': device_names,
             'model_ids': model_ids_list,
             'model_names': self.model_names,
+            'detect_conf': self.detect_conf if self.detect_conf is not None else 0.5,
             'extract_interval': self.extract_interval,
             'rtmp_input_url': self.rtmp_input_url,
             'rtmp_output_url': self.rtmp_output_url,
@@ -1892,9 +1896,12 @@ class Playback(db.Model):
     
     def to_dict(self):
         """转换为字典"""
+        from app.utils.service_urls import resolve_playback_display_url
+        file_path = self.file_path or ''
         return {
             'id': self.id,
-            'file_path': self.file_path,
+            'file_path': file_path,
+            'video_url': resolve_playback_display_url(file_path),
             'event_time': self.event_time.isoformat() if self.event_time else None,
             'device_id': self.device_id,
             'device_name': self.device_name,
@@ -2168,6 +2175,30 @@ def ensure_algorithm_task_post_process_columns(engine):
             log.info('已为 algorithm_task 表添加 %s 列', col)
     except Exception as e:
         log.warning('ensure_algorithm_task_post_process_columns: %s', e)
+
+
+def ensure_algorithm_task_detect_conf_column(engine):
+    """老库 algorithm_task 表补 YOLO 检测置信度列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'detect_conf': 'DOUBLE PRECISION DEFAULT 0.5',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'algorithm_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('algorithm_task')}
+        for col, ddl in columns.items():
+            if col in col_names:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE algorithm_task ADD COLUMN {col} {ddl}'))
+            log.info('已为 algorithm_task 表添加 %s 列', col)
+    except Exception as e:
+        log.warning('ensure_algorithm_task_detect_conf_column: %s', e)
 
 
 def ensure_algorithm_task_alert_class_columns(engine):

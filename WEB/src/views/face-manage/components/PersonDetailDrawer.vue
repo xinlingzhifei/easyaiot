@@ -65,9 +65,15 @@
                     设为封面
                   </Button>
                   <Button size="small" type="link" @click="handleEdit(entry)">编辑</Button>
-                  <a-popconfirm title="确认删除该照片？" @confirm="handleDelete(entry.id)">
-                    <Button size="small" type="link" danger>删除</Button>
-                  </a-popconfirm>
+                  <PopConfirmButton
+                    size="small"
+                    type="link"
+                    danger
+                    title="确认删除该照片？"
+                    @confirm="handleDelete(entry.id)"
+                  >
+                    删除
+                  </PopConfirmButton>
                 </div>
               </div>
             </div>
@@ -98,7 +104,7 @@ import {
 } from '@/api/device/face_library';
 import FaceEntryModal from '@/views/camera/components/FaceLibrary/FaceEntryModal.vue';
 import DEFAULT_FACE_IMAGE from '@/assets/images/video/snap-task.png';
-import { Button } from '@/components/Button'
+import { Button, PopConfirmButton } from '@/components/Button'
 defineOptions({ name: 'PersonDetailDrawer' });
 
 const emit = defineEmits(['success', 'register']);

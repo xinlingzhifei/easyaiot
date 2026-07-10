@@ -437,6 +437,41 @@ def _task_has_active_remote_deployments(task: StreamForwardTask) -> bool:
     return bool(getattr(task, 'node_id', None))
 
 
+def _heartbeat_stale(last_heartbeat, timeout_sec: int) -> bool:
+    if not last_heartbeat:
+        return True
+    return (datetime.utcnow() - last_heartbeat).total_seconds() > timeout_sec
+
+
+def _local_shard_process_alive(workload_id: str) -> bool:
+    with _local_shard_lock:
+        proc = _local_shard_processes.get(workload_id)
+    if proc is None:
+        return False
+    return proc.poll() is None
+
+
+def _stream_forward_deployments_healthy(task: StreamForwardTask) -> bool:
+    """判断 DB 中的分片部署是否仍在运行（本机子进程存活 + 心跳未超时）。"""
+    deployments = _parse_device_deployments(task)
+    if not deployments:
+        return False
+
+    timeout = max(30, int(os.getenv('STREAM_FORWARD_HEARTBEAT_FAILOVER_SECONDS', '90')))
+
+    for dep in deployments:
+        if dep.get('local'):
+            workload_id = str(dep.get('workload_id') or '')
+            if not workload_id or not _local_shard_process_alive(workload_id):
+                return False
+            continue
+        node_id = dep.get('node_id')
+        if node_id and not _is_compute_node_online(int(node_id)):
+            return False
+
+    return not _heartbeat_stale(task.service_last_heartbeat, timeout)
+
+
 def _resolve_video_control_url() -> str:
     from app.utils.node_client import resolve_java_backend_url
     return f'{resolve_java_backend_url()}/admin-api/video'
@@ -455,9 +490,11 @@ def _build_stream_forward_deploy_env(
         'DATABASE_URL', 'GATEWAY_URL', 'JWT_TOKEN', 'JAVA_BACKEND_URL', 'POD_IP', 'HOST_IP', 'VIDEO_ENV',
         'USE_GPU', 'GPU_IDS', 'GPU_POLICY', 'FFMPEG_GPU_POLICY', 'FFMPEG_HWACCEL', 'FFMPEG_THREADS',
         'CUDA_VISIBLE_DEVICES', 'NVIDIA_VISIBLE_DEVICES',
-        'VIEW_SOURCE_FPS', 'VIEW_TARGET_WIDTH', 'VIEW_TARGET_HEIGHT', 'VIEW_FFMPEG_PRESET',
+        'VIEW_OUTPUT_FPS', 'VIEW_SOURCE_FPS', 'VIEW_EXTRACT_INTERVAL',
+        'VIEW_TARGET_WIDTH', 'VIEW_TARGET_HEIGHT', 'VIEW_FFMPEG_PRESET',
         'VIEW_FFMPEG_VIDEO_BITRATE', 'VIEW_FFMPEG_GOP_SIZE', 'VIEW_VIDEO_QUALITY_PROFILE',
-        'VIEW_PUSH_FLUSH_EVERY', 'SOURCE_FPS', 'TARGET_WIDTH', 'TARGET_HEIGHT', 'EXTRACT_INTERVAL',
+        'VIEW_PUSH_FLUSH_EVERY', 'VIEW_AUTO_QUALITY_ENABLED',
+        'SOURCE_FPS', 'TARGET_WIDTH', 'TARGET_HEIGHT',
         'FFMPEG_PRESET', 'FFMPEG_VIDEO_BITRATE', 'FFMPEG_GOP_SIZE', 'VIDEO_QUALITY_PROFILE',
         'AUTO_QUALITY_ENABLED', 'AUTO_QUALITY_LOCK_PROFILE',
         'AI_RTSP_ASYNC_READ', 'AI_RTSP_ASYNC_QUEUE_MAX', 'AI_RTSP_TRANSPORT',
@@ -466,13 +503,23 @@ def _build_stream_forward_deploy_env(
         'STREAM_FORWARD_FFMPEG_NATIVE', 'STREAM_FORWARD_FFMPEG_MUX',
         'STREAM_FORWARD_RELAY_RESTART_DELAY_SEC', 'STREAM_FORWARD_RELAY_RESTART_COOLDOWN_SEC',
         'STREAM_FORWARD_RELAY_MAX_BACKOFF_SEC', 'STREAM_FORWARD_REMOTE_FALLBACK_LOCAL',
-        'STREAM_FORWARD_ENSURE_SRS',
+        'STREAM_FORWARD_ENSURE_SRS', 'STREAM_FORWARD_NVENC_PRESET', 'STREAM_FORWARD_NVENC_SKIP_TEST',
+        'STREAM_FORWARD_VIDEO_COPY', 'STREAM_FORWARD_X264_THREADS',
+        'STREAM_FORWARD_ANALYZEDURATION', 'STREAM_FORWARD_PROBESIZE',
+        'STREAM_FORWARD_RW_TIMEOUT_US', 'STREAM_FORWARD_RECONNECT_DELAY_MAX',
+        'STREAM_FORWARD_THREAD_QUEUE_SIZE', 'STREAM_FORWARD_MAX_MUXING_QUEUE_SIZE',
+        'STREAM_FORWARD_TARGET_STREAMS',
         'STREAM_FORWARD_DEVICES_PER_SHARD', 'STREAM_FORWARD_LOCAL_MAX_SHARDS',
         'SRS_RTMP_PORT', 'SRS_HTTP_PORT', 'SRS_API_PORT',
     ):
         val = os.getenv(key)
         if val is not None and val != '':
             env[key] = val
+
+    # 推流转发子进程不继承 AI 检测抽帧配置，避免误压观看帧率
+    env.pop('EXTRACT_INTERVAL', None)
+    env.setdefault('VIEW_EXTRACT_INTERVAL', '1')
+    env.setdefault('VIEW_OUTPUT_FPS', os.getenv('VIEW_OUTPUT_FPS') or os.getenv('VIEW_SOURCE_FPS') or '25')
 
     srs_ports = _srs_ports_from_tags(node_tags)
     env.setdefault('SRS_RTMP_PORT', str(srs_ports['rtmp']))
@@ -1000,103 +1047,239 @@ def _get_log_path(task_id: int) -> str:
     return log_dir
 
 
-def cleanup_orphaned_processes(task_id: int):
-    """清理本机遗留的 run_deploy.py / FFmpeg 进程（远程任务跳过）"""
+_STREAM_FORWARD_DEPLOY_MARKER = 'stream_forward_service/run_deploy.py'
+
+
+def _is_stream_forward_deploy_cmdline(cmdline) -> bool:
+    return any(_STREAM_FORWARD_DEPLOY_MARKER in str(arg) for arg in (cmdline or []))
+
+
+def _collect_protected_stream_forward_pids(task_id: Optional[int] = None) -> set:
+    """收集仍在管理的推流 worker PID（守护进程、本机分片及其子进程）。"""
+    protected_pids = set()
     try:
         import psutil
+    except ImportError:
+        psutil = None
 
-        protected_pids = set()
-        with _daemons_lock:
-            if task_id in _running_daemons:
-                daemon = _running_daemons[task_id]
-                if daemon._running and daemon._process and daemon._process.poll() is None:
-                    protected_pids.add(daemon._process.pid)
-                    try:
-                        parent_proc = psutil.Process(daemon._process.pid)
-                        for child in parent_proc.children(recursive=True):
-                            protected_pids.add(child.pid)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-
-        target_script = 'run_deploy.py'
-        killed_count = 0
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
+    with _daemons_lock:
+        daemon_items = list(_running_daemons.items())
+    for tid, daemon in daemon_items:
+        if task_id is not None and tid != task_id:
+            continue
+        if not (daemon._running and daemon._process and daemon._process.poll() is None):
+            continue
+        protected_pids.add(daemon._process.pid)
+        if psutil:
             try:
-                cmdline = proc.info.get('cmdline', [])
-                if not cmdline:
+                for child in psutil.Process(daemon._process.pid).children(recursive=True):
+                    protected_pids.add(child.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+    with _local_shard_lock:
+        shard_procs = list(_local_shard_processes.values())
+    for proc in shard_procs:
+        if not proc or proc.poll() is not None:
+            continue
+        protected_pids.add(proc.pid)
+        if psutil:
+            try:
+                for child in psutil.Process(proc.pid).children(recursive=True):
+                    protected_pids.add(child.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+    return protected_pids
+
+
+def _terminate_pid_tree(pid: int, graceful_timeout: float = 5.0) -> bool:
+    """终止进程及其进程组（含 ffmpeg 子进程）。"""
+    if pid <= 0:
+        return False
+    try:
+        if os.name != 'nt':
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        try:
+            import psutil
+            psutil.Process(pid).terminate()
+        except Exception:
+            return False
+
+    deadline = time.time() + graceful_timeout
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+            time.sleep(0.2)
+        except OSError:
+            return True
+
+    try:
+        if os.name != 'nt':
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        else:
+            os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, OSError):
+        pass
+    return True
+
+
+def _process_task_id(proc_info: dict, parent=None) -> Optional[str]:
+    environ = proc_info.get('environ') or {}
+    task_id = environ.get('TASK_ID')
+    if task_id:
+        return str(task_id)
+    if parent is not None:
+        try:
+            parent_env = parent.environ()
+            if parent_env and parent_env.get('TASK_ID'):
+                return str(parent_env['TASK_ID'])
+        except Exception:
+            pass
+    return None
+
+
+def _kill_stream_forward_worker_processes(
+    task_id: Optional[int] = None,
+    protected_pids: Optional[set] = None,
+) -> int:
+    """清理推流转发 run_deploy / ffmpeg 遗留进程（仅限 stream_forward_service）。"""
+    protected = set(protected_pids or ())
+    killed_roots = set()
+    killed_count = 0
+
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+
+    if psutil:
+        deploy_pids = []
+        for proc in psutil.process_iter(['pid', 'cmdline', 'environ']):
+            try:
+                cmdline = proc.info.get('cmdline') or []
+                if not _is_stream_forward_deploy_cmdline(cmdline):
                     continue
-
-                is_target = False
-                cmdline_str = ' '.join(cmdline)
-                script_path_match = any(
-                    str(arg).endswith(target_script) or str(arg).endswith(target_script.replace('.py', ''))
-                    for arg in cmdline
-                )
-
-                if script_path_match:
-                    try:
-                        environ = proc.info.get('environ', {})
-                        if environ and environ.get('TASK_ID') == str(task_id):
-                            is_target = True
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-
-                is_ffmpeg = False
-                if 'ffmpeg' in cmdline_str.lower():
-                    try:
-                        parent = proc.parent()
-                        if parent:
-                            parent_cmdline = parent.cmdline()
-                            if parent_cmdline and any(str(arg).endswith(target_script) for arg in parent_cmdline):
-                                try:
-                                    parent_environ = parent.environ()
-                                    if parent_environ and parent_environ.get('TASK_ID') == str(task_id):
-                                        is_ffmpeg = True
-                                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                    pass
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-
-                if (is_target or is_ffmpeg) and proc.info['pid'] not in protected_pids:
-                    try:
-                        proc.terminate()
-                        time.sleep(0.5)
-                        if proc.is_running():
-                            proc.kill()
-                        killed_count += 1
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
+                pid = proc.info['pid']
+                if pid in protected:
+                    continue
+                proc_task_id = _process_task_id(proc.info)
+                if task_id is not None and proc_task_id != str(task_id):
+                    continue
+                deploy_pids.append(pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
 
-        if killed_count > 0:
-            logger.info(f"🧹 清理了 {killed_count} 个遗留进程 (task_id={task_id})")
+        for pid in deploy_pids:
+            if pid in killed_roots:
+                continue
+            if _terminate_pid_tree(pid):
+                killed_roots.add(pid)
+                killed_count += 1
 
-    except ImportError:
-        try:
-            protected_pids = set()
-            with _daemons_lock:
-                if task_id in _running_daemons:
-                    daemon = _running_daemons[task_id]
-                    if daemon._running and daemon._process and daemon._process.poll() is None:
-                        protected_pids.add(daemon._process.pid)
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                pid = proc.info['pid']
+                if pid in protected or pid in killed_roots:
+                    continue
+                cmdline_str = ' '.join(proc.info.get('cmdline') or [])
+                if 'ffmpeg' not in cmdline_str.lower():
+                    continue
+                parent = proc.parent()
+                if not parent or not _is_stream_forward_deploy_cmdline(parent.cmdline()):
+                    continue
+                parent_task_id = None
+                try:
+                    parent_task_id = parent.environ().get('TASK_ID')
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+                if task_id is not None and parent_task_id != str(task_id):
+                    continue
+                if _terminate_pid_tree(pid):
+                    killed_count += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return killed_count
 
-            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if 'run_deploy.py' in line and f'TASK_ID={task_id}' in line:
-                        parts = line.split()
-                        if len(parts) > 1:
-                            try:
-                                pid = int(parts[1])
-                                if pid not in protected_pids:
-                                    os.killpg(os.getpgid(pid), signal.SIGTERM)
-                            except (ProcessLookupError, OSError, ValueError):
-                                pass
-        except Exception as e:
-            logger.warning(f"清理遗留进程失败: {str(e)}")
+    try:
+        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            return 0
+        for line in result.stdout.split('\n'):
+            if _STREAM_FORWARD_DEPLOY_MARKER not in line:
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[1])
+            except ValueError:
+                continue
+            if pid in protected or pid in killed_roots:
+                continue
+            if _terminate_pid_tree(pid):
+                killed_roots.add(pid)
+                killed_count += 1
     except Exception as e:
-        logger.warning(f"清理遗留进程时出错: {str(e)}")
+        logger.warning('清理推流转发遗留进程失败: %s', e)
+    return killed_count
+
+
+def cleanup_orphaned_processes(task_id: int):
+    """清理本机遗留的 run_deploy.py / FFmpeg 进程（远程任务跳过）"""
+    try:
+        protected_pids = _collect_protected_stream_forward_pids(task_id)
+        killed_count = _kill_stream_forward_worker_processes(task_id, protected_pids)
+        if killed_count > 0:
+            logger.info('🧹 清理了 %d 个推流转发遗留进程 (task_id=%s)', killed_count, task_id)
+    except Exception as e:
+        logger.warning('清理遗留进程时出错: %s', e)
+
+
+def cleanup_all_orphaned_stream_forward_processes() -> int:
+    """清理本机所有推流转发 worker（VIDEO 服务关闭时的兜底 sweep）。"""
+    try:
+        protected_pids = _collect_protected_stream_forward_pids()
+        killed_count = _kill_stream_forward_worker_processes(None, protected_pids)
+        if killed_count > 0:
+            logger.info('🧹 兜底清理了 %d 个推流转发遗留进程', killed_count)
+        return killed_count
+    except Exception as e:
+        logger.warning('兜底清理推流转发遗留进程失败: %s', e)
+        return 0
+
+
+def stop_all_daemons():
+    """停止所有推流转发守护进程与本机分片（VIDEO 服务关闭时调用）。"""
+    with _local_shard_lock:
+        workload_ids = list(_local_shard_processes.keys())
+    for workload_id in workload_ids:
+        _stop_local_shard(workload_id)
+
+    with _daemons_lock:
+        task_ids = list(_running_daemons.keys())
+
+    if task_ids:
+        logger.info('正在停止 %d 个推流转发守护进程...', len(task_ids))
+    for task_id in task_ids:
+        try:
+            with _daemons_lock:
+                daemon = _running_daemons.get(task_id)
+            if not daemon:
+                continue
+            daemon.stop()
+            logger.info('✅ 停止推流转发守护进程成功: task_id=%s', task_id)
+        except Exception as e:
+            logger.error('❌ 停止推流转发守护进程失败: task_id=%s, error=%s', task_id, e)
+        finally:
+            with _daemons_lock:
+                _running_daemons.pop(task_id, None)
+
+    cleanup_all_orphaned_stream_forward_processes()
+    logger.info('✅ 推流转发 worker 已全部停止')
 
 
 def stop_stream_forward_task(task_id: int):
@@ -1294,8 +1477,14 @@ def start_stream_forward_task(task_id: int):
     with task_start_lock:
         if _use_remote_deploy(task):
             if _task_has_active_remote_deployments(task):
-                logger.info('推流转发任务 %s 已有远程部署记录，跳过重复部署', task_id)
-                return
+                if _stream_forward_deployments_healthy(task):
+                    logger.info('推流转发任务 %s 分片仍在运行，跳过重复部署', task_id)
+                    return
+                logger.info(
+                    '推流转发任务 %s 部署记录存在但分片未运行或心跳超时，重新部署',
+                    task_id,
+                )
+                _stop_all_local_shards(task)
             success, message, _ = _deploy_task_on_remote_node(task_id, task)
             if not success:
                 raise RuntimeError(message)
@@ -1362,9 +1551,14 @@ def _auto_start_all_tasks_internal():
                     logger.warning(f"任务 {task.id} ({task.task_name}) 没有关联的摄像头，跳过")
                     continue
                 if _use_remote_deploy(task) and _task_has_active_remote_deployments(task):
-                    logger.info(f"任务 {task.id} 已有远程部署记录，跳过自动启动")
-                    success_count += 1
-                    continue
+                    if _stream_forward_deployments_healthy(task):
+                        logger.info('任务 %s 分片仍在运行，跳过自动启动', task.id)
+                        success_count += 1
+                        continue
+                    logger.info(
+                        '任务 %s 部署记录存在但分片未运行，服务启动时重新部署',
+                        task.id,
+                    )
                 start_stream_forward_task(task.id)
                 success_count += 1
                 logger.info(f"✅ 任务 {task.id} ({task.task_name}) 的服务启动成功")

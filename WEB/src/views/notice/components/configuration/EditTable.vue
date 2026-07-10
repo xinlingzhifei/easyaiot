@@ -1,7 +1,12 @@
-import { Button } from '@/components/Button'
 <template>
   <div class="table-wrapper">
-    <Table :columns="columns" :data-source="dataSource" bordered :pagination="false">
+    <Table
+      :columns="columns"
+      :data-source="dataSource"
+      bordered
+      :pagination="false"
+      :scroll="tableScroll"
+    >
       <template #bodyCell="{ column, record }">
         <template
           v-if="
@@ -30,9 +35,9 @@ import { Button } from '@/components/Button'
           />
         </template>
         <template v-else-if="column.dataIndex === 'operation'">
-          <Button type="text">
+          <Button type="text" danger @click="handleDelete(record.id)">
             <template #icon>
-              <DeleteOutlined @click="handleDelete(record.id)" />
+              <DeleteOutlined />
             </template>
           </Button>
         </template>
@@ -51,6 +56,7 @@ import { Button } from '@/components/Button'
   import { PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue';
   import { PropType, computed } from 'vue';
   import { Table, Input, DatePicker } from 'ant-design-vue';
+  import { Button } from '@/components/Button';
 
   type Emits = {
     (e: 'update:list', data: any[]): void;
@@ -71,6 +77,16 @@ import { Button } from '@/components/Button'
   const dataSource = computed({
     get: () => props.list,
     set: (val) => emit('update:list', val),
+  });
+
+  const tableScroll = computed(() => {
+    const hasFixed = props.columns.some((col) => col.fixed);
+    if (!hasFixed) return undefined;
+    const width = props.columns.reduce(
+      (sum, col) => sum + (Number(col.width) || 120),
+      0,
+    );
+    return { x: width };
   });
 
   const handleDelete = (id: number) => {

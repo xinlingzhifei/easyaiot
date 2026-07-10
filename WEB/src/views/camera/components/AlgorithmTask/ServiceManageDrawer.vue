@@ -178,31 +178,12 @@
     </BasicModal>
     
     <!-- 摄像头选择模态框 -->
-    <BasicModal
+    <CameraStreamSelectModal
       v-model:open="cameraSelectVisible"
-      title="选择摄像头"
-      @ok="handleConfirmCamera"
-      @cancel="cameraSelectVisible = false"
-    >
-      <div v-if="cameraStreams.length === 0" style="text-align: center; padding: 20px;">
-        <Empty description="暂无可用推流地址" />
-      </div>
-      <RadioGroup v-else v-model:value="selectedCameraIndex" style="width: 100%;">
-        <Radio
-          v-for="(stream, index) in cameraStreams"
-          :key="stream.device_id"
-          :value="index"
-          style="display: block; margin-bottom: 12px;"
-        >
-          <div>
-            <div style="font-weight: 500;">{{ stream.device_name }}</div>
-            <div style="font-size: 12px; color: #999; margin-top: 4px;">
-              {{ stream.ai_http_stream || stream.pusher_http_url || stream.http_stream || stream.pusher_rtmp_url || stream.rtmp_stream || '无推流地址' }}
-            </div>
-          </div>
-        </Radio>
-      </RadioGroup>
-    </BasicModal>
+      :streams="cameraStreams"
+      :task-name="taskInfo?.task_name"
+      @confirm="playCameraStream"
+    />
   </BasicDrawer>
 </template>
 
@@ -219,7 +200,7 @@ import {
   VideoCameraOutlined,
   FolderOutlined,
 } from '@ant-design/icons-vue';
-import { Tag, Empty, Spin, RadioGroup, Radio } from 'ant-design-vue';
+import { Tag, Empty, Spin } from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {useMessage} from '@/hooks/web/useMessage';
 import {rewriteStreamHostToPageHost} from '@/views/camera/utils/devicePlay';
@@ -244,6 +225,7 @@ import ServiceLogsModal from './ServiceLogsModal.vue';
 import {useModal} from '@/components/Modal';
 import {BasicModal} from '@/components/Modal';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
+import CameraStreamSelectModal from '../CameraStreamSelectModal/index.vue';
 import {getSnapSpaceByDeviceId, type SnapSpace} from '@/api/device/snap';
 import { Button } from '@/components/Button'
 defineOptions({name: 'ServiceManageDrawer'});
@@ -258,7 +240,6 @@ const [registerPlayerModal, {openModal: openPlayerModal}] = useModal();
 // 摄像头选择和播放相关
 const cameraSelectVisible = ref(false);
 const cameraStreams = ref<CameraStreamInfo[]>([]);
-const selectedCameraIndex = ref<number>(0);
 
 // 抓拍空间相关
 const snapSpacesVisible = ref(false);
@@ -1097,21 +1078,11 @@ const handlePlayStream = async () => {
     } else {
       // 多个摄像头，显示选择对话框
       cameraStreams.value = availableStreams;
-      selectedCameraIndex.value = 0;
       cameraSelectVisible.value = true;
     }
   } catch (error) {
     console.error('获取推流地址失败', error);
     createMessage.error('获取推流地址失败');
-  }
-};
-
-// 确认选择摄像头并播放
-const handleConfirmCamera = () => {
-  if (cameraStreams.value.length > 0 && selectedCameraIndex.value >= 0) {
-    const selectedStream = cameraStreams.value[selectedCameraIndex.value];
-    playCameraStream(selectedStream);
-    cameraSelectVisible.value = false;
   }
 };
 

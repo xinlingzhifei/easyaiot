@@ -508,6 +508,10 @@ def auto_cleanup_all_record_spaces(app=None):
             total_archived = 0
             total_errors = 0
 
+            total_orphan_deleted = 0
+            total_orphan_scanned = 0
+            total_orphan_errors = 0
+
             for space in spaces:
                 info = enrich_record_space_dict({'save_time': space.save_time}, space)
                 save_time_hours = info.get('effective_save_time') or 0
@@ -519,20 +523,28 @@ def auto_cleanup_all_record_spaces(app=None):
                     total_deleted += result['deleted_count']
                     total_archived += result['archived_count']
                     total_errors += result['error_count']
+                    total_orphan_deleted += result.get('orphan_deleted_count', 0)
+                    total_orphan_scanned += result.get('orphan_scanned_count', 0)
+                    total_orphan_errors += result.get('orphan_error_count', 0)
                     logger.info(f"录像空间 {space.space_name} 清理完成: {result}")
                 except Exception as e:
                     logger.error(f"清理录像空间 {space.space_name} 失败: {str(e)}", exc_info=True)
                     total_errors += 1
 
             logger.info(
-                '所有录像空间自动清理完成: 处理=%s, 删除=%s, 归档=%s, 错误=%s',
+                '所有录像空间自动清理完成: 处理=%s, 删除=%s, 归档=%s, 错误=%s, '
+                '孤儿扫描=%s, 孤儿删除=%s, 孤儿错误=%s',
                 total_processed, total_deleted, total_archived, total_errors,
+                total_orphan_scanned, total_orphan_deleted, total_orphan_errors,
             )
             return {
                 'processed_count': total_processed,
                 'deleted_count': total_deleted,
                 'archived_count': total_archived,
                 'error_count': total_errors,
+                'orphan_deleted_count': total_orphan_deleted,
+                'orphan_scanned_count': total_orphan_scanned,
+                'orphan_error_count': total_orphan_errors,
             }
         except Exception as e:
             logger.error(f"自动清理所有录像空间失败: {str(e)}", exc_info=True)

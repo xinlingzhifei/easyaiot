@@ -110,6 +110,7 @@
     messagePrepareUpdate,
     messageTemplateQueryByType,
     messageTemplateGet,
+    messageConfigQuery,
   } from '/@/api/modules/notice';
   import { userGroupQueryByMsgType } from '/@/api/modules/user';
   import { Select, Textarea, FormItemRest } from 'ant-design-vue';
@@ -397,23 +398,41 @@
     }
   }
 
+  function resolveConfigApps(configurationMap, msgType) {
+    const configKey = { 4: 'wxCpApp', 6: 'dingdingApp' };
+    const key = configKey[+msgType];
+    if (!key || !configurationMap) return [];
+    let apps = configurationMap[key];
+    if (!apps && +msgType === 4) {
+      apps = configurationMap.weixinApply;
+    }
+    if (typeof apps === 'string') {
+      try {
+        apps = JSON.parse(apps);
+      } catch {
+        apps = [];
+      }
+    }
+    if (!Array.isArray(apps)) {
+      apps = apps ? [apps] : [];
+    }
+    return apps;
+  }
+
   // 应用
   async function getMessageConfigQuery() {
     try {
-      const { msgType } = getFieldsValue();
-      const ret = await messageConfigQuery({ msgType: +msgType });
-      const configKey = {
-        4: 'wxCpApp',
-        6: 'dingdingApp',
-      };
-      formData.value.agent = ret.data[0]?.configurationMap[configKey[msgType]].map((item) => {
-        item.label = item.appName;
-        item.value = item.agentId;
-        return item;
-      });
-    }catch (error) {
-    console.error(error)
-      console.log(error);
+      const _msgType = resolveMsgType();
+      if (_msgType == null) return;
+      const ret = await messageConfigQuery({ msgType: _msgType });
+      const rows = Array.isArray(ret) ? ret : ret?.data ?? [];
+      const row = rows.find((item) => +item.msgType === _msgType) ?? rows[0];
+      formData.value.agent = resolveConfigApps(row?.configurationMap, _msgType).map((item) => ({
+        label: item.appName,
+        value: item.agentId,
+      }));
+    } catch (error) {
+      console.error(error);
     }
   }
 </script>

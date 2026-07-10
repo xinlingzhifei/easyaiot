@@ -26,7 +26,7 @@
         id, msg_type, msg_name, cp_msg_type, agent_id, content, title, img_url,
                 describe,
                         url, btn_txt, create_time, modified_time, preview_user, user_group_id,
-                        radio_type, web_hook
+                        radio_type, web_hook, record_type, ref_template_id
     </sql>
     <select id="selectByPrimaryKey" parameterType="java.lang.String" resultMap="BaseResultMap">
         select

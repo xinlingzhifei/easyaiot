@@ -41,6 +41,9 @@ source "${SCRIPT_DIR}/deploy_profile.sh"
 # shellcheck source=runtime_image_common.sh
 source "${SCRIPT_DIR}/runtime_image_common.sh"
 
+# shellcheck source=docker_mirror_common.sh
+source "${SCRIPT_DIR}/docker_mirror_common.sh"
+
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
 
@@ -440,6 +443,7 @@ run_on_modules() {
 
     check_docker
     check_docker_compose
+    configure_docker_mirror
 
     if $need_network; then
         create_network
@@ -497,15 +501,36 @@ init_runtime_images_for_install() {
     runtime_images_acquire
 }
 
+# 镜像更新（update 时由 runtime_image_common 统一处理）
+init_runtime_images_for_update() {
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_business_linux.sh"
+    runtime_images_acquire_for_update
+}
+
 init_deploy_profile_for_command() {
     local cmd="$1"
     case "$cmd" in
         install)
             select_deploy_profile_for_install
+            check_docker
+            configure_docker_mirror
             init_runtime_images_for_install
             print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             ;;
-        start|restart|update|verify|status|build|build-base|pull|build-runtime)
+        update)
+            ensure_deploy_profile
+            check_docker
+            configure_docker_mirror
+            init_runtime_images_for_update
+            if runtime_images_should_skip_build; then
+                print_info "镜像已从远程拉取，业务模块将跳过 docker build"
+            else
+                print_info "将进行本地重建更新（各模块 docker build，耗时较长）"
+            fi
+            warn_web_rebuild_if_profile_changed
+            print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
+            ;;
+        start|restart|verify|status|build|build-base|pull|build-runtime)
             ensure_deploy_profile
             warn_web_rebuild_if_profile_changed
             print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
@@ -551,7 +576,7 @@ yFeiEye 业务系统统一管理脚本
   build-base    仅 DEVICE：Maven 编译并提取 Jar（第一阶段）
   clean         清理容器（DEVICE 保留镜像）
   clean-all     完全清理（DEVICE 含镜像；其他模块等同 clean）
-  update        重新构建并重启
+  update        更新镜像并重启（交互可选拉取/本地重建）
   verify        验证服务健康（HTTP 健康检查 / 端口探测）
   profile       显示当前部署形态与服务范围
   help          显示帮助
@@ -687,6 +712,7 @@ main() {
         pull|images-pull)
             init_deploy_profile_for_command pull
             check_docker
+            configure_docker_mirror
             runtime_images_prepare_pull_interactive
             runtime_images_export_for_invoke
             runtime_images_invoke pull || exit 1

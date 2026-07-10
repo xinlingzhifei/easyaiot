@@ -7,7 +7,26 @@ enum Api {
   Alarm = '/video/alert',
 }
 
-const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params = {}, headers = {}, isTransformResponse = true, responseType: ResponseType = 'json') => {
+/** 大屏轮询：放宽超时、关闭 GET 重试（默认 10s×5 次会长时间挂起） */
+const DASHBOARD_POLL_REQUEST_OPTIONS = {
+  errorMessageMode: 'none' as const,
+  timeout: 30 * 1000,
+  retryRequest: { isOpenRetry: false, count: 0, waitTime: 0 },
+};
+
+const commonApi = (
+  method: 'get' | 'post' | 'delete' | 'put',
+  url,
+  params = {},
+  headers = {},
+  isTransformResponse = true,
+  responseType: ResponseType = 'json',
+  requestOptions: {
+    errorMessageMode?: 'none' | 'message' | 'modal';
+    timeout?: number;
+    retryRequest?: { isOpenRetry: boolean; count: number; waitTime: number };
+  } = {},
+) => {
   defHttp.setHeader({'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')});
 
   return defHttp[method](
@@ -23,16 +42,27 @@ const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params = {}, 
     },
     {
       isTransformResponse: isTransformResponse,
+      errorMessageMode: requestOptions.errorMessageMode ?? 'message',
+      ...(requestOptions.timeout ? { timeout: requestOptions.timeout } : {}),
+      ...(requestOptions.retryRequest ? { retryRequest: requestOptions.retryRequest } : {}),
     },
   );
 };
 
 // 告警事件（带请求去重）
-export const queryAlarmList = async (params) => {
+export const queryAlarmList = async (
+  params,
+  options?: { polling?: boolean },
+) => {
   const url = Api.Alarm + '/page';
+  const polling = options?.polling === true;
+  const requestParams = polling ? { ...params, skip_backfill: 1 } : params;
+  const reqOptions = polling
+    ? DASHBOARD_POLL_REQUEST_OPTIONS
+    : { errorMessageMode: 'none' as const };
   return dedupeRequest(
     async () => {
-      const res = await commonApi('get', url, {params}, {}, false);
+      const res = await commonApi('get', url, {params: requestParams}, {}, false, 'json', reqOptions);
       // 后端返回格式: { code: 0, msg/message: "success", data: { alert_list: [], total: 100 } }
       // 当 isTransformResponse: false 时，返回的是整个 Axios 响应对象，需要访问 res.data 获取实际响应
       // 然后访问 res.data.data 获取实际数据
@@ -46,8 +76,8 @@ export const queryAlarmList = async (params) => {
       return res;
     },
     url,
-    params,
-    1000 // 1秒内相同参数的请求会被去重
+    requestParams,
+    polling ? 4500 : 1000,
   );
 };
 
@@ -149,7 +179,7 @@ export const getDashboardStatistics = async () => {
   const url = Api.Alarm + '/statistics';
   return dedupeRequest(
     async () => {
-      const res = await commonApi('get', url, {}, {}, false);
+      const res = await commonApi('get', url, {}, {}, false, 'json', DASHBOARD_POLL_REQUEST_OPTIONS);
       // 后端返回格式: { code: 0, data: { alarm_count, today_alarm_count, ... } }
       if (res && res.data && res.data.data) {
         return res.data.data;
@@ -162,6 +192,6 @@ export const getDashboardStatistics = async () => {
     },
     url,
     undefined, // 统计接口无参数
-    1000 // 1秒内相同请求会被去重
+    4500, // 与大屏 5s 轮询对齐，Sidebar/index 错峰请求可复用
   );
 };

@@ -16,7 +16,7 @@
       >
         <template #description>
           <p class="model-alert-desc">
-            模型文件约 <strong>3.3 GB</strong>，首次需从魔塔 ModelScope 下载并安装至 AI 服务本地。下载一次后即可长期使用。
+            模型文件约 <strong>3.3 GB</strong>，首次需从魔搭 ModelScope 下载并安装至 AI 服务本地。下载一次后即可长期使用。
           </p>
           <Button
             type="primary"

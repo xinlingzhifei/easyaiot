@@ -1,999 +1,321 @@
-# yFeiEye 플랫폼 배포 문서
+# yFeiEye 플랫폼 배포 가이드
 
-## 📋 목차
-
-- [개요](#개요)
-- [환경 요구사항](#환경-요구사항)
-- [빠른 시작](#빠른-시작)
-- [스크립트 사용 설명](#스크립트-사용-설명)
-- [모듈 설명](#모듈-설명)
-- [서비스 포트](#서비스-포트)
-- [자주 묻는 질문](#자주-묻는-질문)
-- [로그 관리](#로그-관리)
-
-## 개요
-
-yFeiEye는 클라우드-엣지 통합 지능형 알고리즘 애플리케이션 플랫폼으로, 통합 설치 스크립트를 사용하여 원클릭 배포를 지원합니다. 이 플랫폼은 Docker 컨테이너화 배포를 지원하며, 모든 서비스 모듈을 빠르게 설치하고 시작할 수 있습니다.
-
-### 플랫폼 아키텍처
-
-yFeiEye 플랫폼은 다음 핵심 모듈로 구성됩니다:
-
-- **기본 서비스** (`.scripts/docker`): Nacos, PostgreSQL, Redis, TDEngine, Kafka, MinIO 등 미들웨어 포함
-- **DEVICE 서비스**: 디바이스 관리 및 게이트웨이 서비스 (Java 기반)
-- **AI 서비스**: 인공지능 처리 서비스 (Python 기반)
-- **VIDEO 서비스**: 비디오 처리 서비스 (Python 기반)
-- **WEB 서비스**: Web 프론트엔드 서비스 (Vue 기반)
-
-## 환경 요구사항
-
-### 시스템 요구사항
-
-- **운영체제**:
-    - Linux (Ubuntu 24.04 권장)
-    - macOS (macOS 10.15+ 권장)
-    - Windows (Windows 10/11 권장, PowerShell 5.1+ 필요)
-- **메모리**: 32GB 권장 (최소 16GB)
-- **디스크**: 200GB 이상의 여유 공간 권장
-- **CPU**: 8코어 권장 (최소 4코어)
-- **그래픽 카드**: NVIDIA GPU 권장 (최소 CPU)
-
-### 소프트웨어 의존성
-
-배포 스크립트를 실행하기 전에 다음 소프트웨어가 설치되어 있는지 확인해야 합니다:
-
-1. **Docker** (필수 버전 v29.0.0+)
-    - 설치 가이드: https://docs.docker.com/get-docker/
-    - 설치 확인: `docker --version`
-    - **참고**: Docker 버전은 v29.0.0 이상이어야 하며, 이보다 낮은 버전은 정상적으로 실행되지 않습니다.
-
-2. **Docker Compose** (필수 버전 v2.35.0+)
-    - 설치 가이드: https://docs.docker.com/compose/install/
-    - 설치 확인: `docker compose version`
-    - **참고**: Docker Compose 버전은 v2.35.0 이상이어야 하며, 이보다 낮은 버전은 정상적으로 실행되지 않습니다.
-
-3. **기타 의존성**:
-    - **Linux/macOS**: `curl` (건강 상태 확인에 사용, 일반적으로 시스템에 기본 탑재)
-    - **Windows**: PowerShell 5.1+ (일반적으로 시스템에 기본 탑재)
-
-### Docker 권한 설정
-
-#### Linux
-
-현재 사용자가 Docker 데몬에 접근할 권한이 있는지 확인하세요:
-
-```bash
-# 방법1: 사용자를 docker 그룹에 추가 (권장)
-sudo usermod -aG docker $USER
-# 그런 다음 다시 로그인하거나 다음 실행
-newgrp docker
-
-# 방법2: sudo를 사용하여 스크립트 실행 (비권장)
-sudo ./install_linux.sh [명령]
-```
-
-Docker 권한 확인:
-
-```bash
-docker ps
-```
-
-#### macOS
-
-macOS는 일반적으로 특별한 권한 설정이 필요하지 않으며, Docker Desktop이 자동으로 권한을 처리합니다.
-
-#### Windows
-
-Windows에서 Docker Desktop은 권한을 자동으로 처리합니다. 필요한 경우 관리자 권한으로 PowerShell을 실행하세요.
-
-## 빠른 시작
-
-### Linux 배포
-
-#### 1. 프로젝트 코드 가져오기
-
-```bash
-# 프로젝트 클론 (아직 없는 경우)
-git clone <repository-url>
-cd yfeieye
-```
-
-#### 2. 스크립트 디렉토리로 이동
-
-```bash
-cd .scripts/docker
-```
-
-#### 3. 스크립트 실행 권한 부여
-
-```bash
-chmod +x install_linux.sh
-```
-
-#### 4. 모든 서비스 일괄 설치
-
-```bash
-./install_linux.sh install
-```
-
-이 명령은 다음을 수행합니다:
-- Docker 및 Docker Compose 환경 확인
-- 통합 네트워크 `yfeieye-network` 생성
-- 의존성 순서에 따라 모든 모듈 설치
-- 모든 서비스 컨테이너 시작
-
-#### 5. 서비스 상태 확인
-
-```bash
-./install_linux.sh verify
-```
-
-모든 서비스가 정상적으로 실행 중이면 서비스 접근 주소가 표시됩니다.
-
-### macOS 배포
-
-#### 1. 프로젝트 코드 가져오기
-
-```bash
-# 프로젝트 클론 (아직 없는 경우)
-git clone <repository-url>
-cd yfeieye
-```
-
-#### 2. 스크립트 디렉토리로 이동
-
-```bash
-cd .scripts/docker
-```
-
-#### 3. 스크립트 실행 권한 부여
-
-```bash
-chmod +x install_mac.sh
-```
-
-#### 4. 모든 서비스 일괄 설치
-
-```bash
-./install_mac.sh install
-```
-
-이 명령은 다음을 수행합니다:
-- Docker 및 Docker Compose 환경 확인
-- 통합 네트워크 `yfeieye-network` 생성
-- 의존성 순서에 따라 모든 모듈 설치
-- 모든 서비스 컨테이너 시작
-
-#### 5. 서비스 상태 확인
-
-```bash
-./install_mac.sh verify
-```
-
-모든 서비스가 정상적으로 실행 중이면 서비스 접근 주소가 표시됩니다.
-
-### Windows 배포
-
-Windows 배포에 대한 자세한 지침(환경 준비, 미들웨어 배포, 서비스 시작 및 문제 해결 포함)은 전용 [Windows 배포 가이드](平台Windows部署文档_ko.md)를 참조하세요.
-
-Windows 배포 가이드는 다음을 포함한 포괄적인 단계별 지침을 제공합니다:
-- 시스템 요구사항 및 환경 설정
-- 미들웨어 설치 및 구성
-- 서비스 시작 절차
-- 비디오 스트리밍 구성
-- 일반적인 문제 및 해결 방법
-- 명령 참조
-
-이 가이드는 Windows 10/11 시스템을 위해 특별히 제작되었으며 로컬 배포 시나리오를 다룹니다.
-
-## 스크립트 사용 설명
-
-### 스크립트 위치
-
-통합 설치 스크립트는 프로젝트 루트 디렉토리의 `.scripts/docker/` 디렉토리에 위치합니다:
-
-- **Linux**: `install_linux.sh`
-- **macOS**: `install_mac.sh`
-- **Windows**: `install_win.ps1`
-
-### 사용 가능한 명령
-
-모든 운영체제에서 동일한 명령을 지원하지만, 스크립트 이름이 다릅니다:
-
-| 명령 | 설명 | Linux 예제 | macOS 예제 | Windows 예제 |
-|------|------|-----------|-----------|-------------|
-| `install` | 모든 서비스 설치 및 시작 (첫 실행) | `./install_linux.sh install` | `./install_mac.sh install` | `.\install_win.ps1 install` |
-| `start` | 모든 서비스 시작 | `./install_linux.sh start` | `./install_mac.sh start` | `.\install_win.ps1 start` |
-| `stop` | 모든 서비스 중지 | `./install_linux.sh stop` | `./install_mac.sh stop` | `.\install_win.ps1 stop` |
-| `restart` | 모든 서비스 재시작 | `./install_linux.sh restart` | `./install_mac.sh restart` | `.\install_win.ps1 restart` |
-| `status` | 모든 서비스 상태 확인 | `./install_linux.sh status` | `./install_mac.sh status` | `.\install_win.ps1 status` |
-| `logs` | 모든 서비스 로그 확인 | `./install_linux.sh logs` | `./install_mac.sh logs` | `.\install_win.ps1 logs` |
-| `build` | 모든 이미지 재빌드 | `./install_linux.sh build` | `./install_mac.sh build` | `.\install_win.ps1 build` |
-| `clean` | 모든 컨테이너 및 이미지 정리 (위험한 작업) | `./install_linux.sh clean` | `./install_mac.sh clean` | `.\install_win.ps1 clean` |
-| `update` | 모든 서비스 업데이트 및 재시작 | `./install_linux.sh update` | `./install_mac.sh update` | `.\install_win.ps1 update` |
-| `verify` | 모든 서비스가 성공적으로 시작되었는지 확인 | `./install_linux.sh verify` | `./install_mac.sh verify` | `.\install_win.ps1 verify` |
-
-### 명령 상세 설명
-
-#### install - 서비스 설치
-
-처음 배포 시 사용하며, 모든 서비스 모듈을 설치하고 시작합니다:
-
-**Linux/macOS**:
-```bash
-./install_linux.sh install    # Linux
-./install_mac.sh install       # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 install
-```
-
-**실행 절차**:
-1. Docker 및 Docker Compose 환경 확인
-2. Docker 네트워크 `yfeieye-network` 생성
-3. 의존성 순서에 따라 각 모듈 설치:
-    - 기본 서비스 (Nacos, PostgreSQL, Redis 등)
-    - DEVICE 서비스
-    - AI 서비스
-    - VIDEO 서비스
-    - WEB 서비스
-4. 설치 결과 통계 표시
-
-#### start - 서비스 시작
-
-설치된 모든 서비스를 시작합니다:
-
-**Linux/macOS**:
-```bash
-./install_linux.sh start    # Linux
-./install_mac.sh start      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 start
-```
-
-#### stop - 서비스 중지
-
-실행 중인 모든 서비스를 중지합니다 (역순으로 중지):
-
-**Linux/macOS**:
-```bash
-./install_linux.sh stop    # Linux
-./install_mac.sh stop      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 stop
-```
-
-#### restart - 서비스 재시작
-
-모든 서비스를 재시작합니다:
-
-**Linux/macOS**:
-```bash
-./install_linux.sh restart    # Linux
-./install_mac.sh restart      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 restart
-```
-
-#### status - 상태 확인
-
-모든 서비스의 실행 상태를 확인합니다:
-
-**Linux/macOS**:
-```bash
-./install_linux.sh status    # Linux
-./install_mac.sh status      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 status
-```
-
-#### logs - 로그 확인
-
-모든 서비스의 로그를 확인합니다 (최근 100줄):
-
-**Linux/macOS**:
-```bash
-./install_linux.sh logs    # Linux
-./install_mac.sh logs      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 logs
-```
-
-#### build - 이미지 빌드
-
-모든 서비스의 Docker 이미지를 재빌드합니다 (`--no-cache` 옵션 사용):
-
-**Linux/macOS**:
-```bash
-./install_linux.sh build    # Linux
-./install_mac.sh build      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 build
-```
-
-**참고**: 빌드 과정은 시간이 오래 걸릴 수 있으니 인내심을 가지고 기다려 주세요.
-
-#### clean - 서비스 정리
-
-**⚠️ 위험한 작업**: 모든 컨테이너, 이미지 및 데이터 볼륨 삭제
-
-**Linux/macOS**:
-```bash
-./install_linux.sh clean    # Linux
-./install_mac.sh clean      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 clean
-```
-
-실행 전 확인을 요청하며, `y` 또는 `Y`를 입력하면 계속 진행하고, 다른 입력은 작업을 취소합니다.
-
-**정리 내용**:
-- 모든 서비스 컨테이너
-- 모든 서비스 이미지
-- 모든 데이터 볼륨
-- Docker 네트워크 `yfeieye-network`
-
-#### update - 서비스 업데이트
-
-최신 이미지를 가져와 모든 서비스를 재시작합니다:
-
-**Linux/macOS**:
-```bash
-./install_linux.sh update    # Linux
-./install_mac.sh update      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 update
-```
-
-**실행 절차**:
-1. 각 모듈의 최신 이미지 가져오기
-2. 새로운 이미지를 사용하도록 모든 서비스 재시작
-
-#### verify - 서비스 확인
-
-모든 서비스가 정상적으로 시작되어 접근 가능한지 확인합니다:
-
-**Linux/macOS**:
-```bash
-./install_linux.sh verify    # Linux
-./install_mac.sh verify      # macOS
-```
-
-**Windows**:
-```powershell
-.\install_win.ps1 verify
-```
-
-**확인 내용**:
-- 서비스 포트 접근 가능 여부 확인
-- 건강 상태 확인 엔드포인트 정상 응답 여부 확인
-- 서비스 접근 주소 표시
-
-**성공 출력 예제**:
-```
-[SUCCESS] 모든 서비스가 정상적으로 실행 중입니다!
-
-서비스 접근 주소:
-  기본 서비스 (Nacos):     http://localhost:8848/nacos
-  기본 서비스 (MinIO):     http://localhost:9000 (API), http://localhost:9001 (Console)
-  Device 서비스 (Gateway):  http://localhost:48080
-  AI 서비스:                http://localhost:5000
-  Video 서비스:             http://localhost:6000
-  Web 프론트엔드:               http://localhost:8888
-```
-
-## 모듈 설명
-
-### 기본 서비스 (`.scripts/docker`)
-
-**설명**: 플랫폼 실행에 필요한 모든 미들웨어 서비스 포함
-
-**포함 서비스**:
-- **Nacos**: 서비스 등록 및 설정 센터
-- **PostgreSQL**: 관계형 데이터베이스
-- **Redis**: 캐시 데이터베이스
-- **TDEngine**: 시계열 데이터베이스
-- **Kafka**: 메시지 큐
-- **MinIO**: 객체 저장 서비스
-
-**배포 방식**:
-- **Linux**: `install_middleware_linux.sh` 스크립트 사용
-- **macOS**: `install_middleware_mac.sh` 스크립트 사용
-- **Windows**: `install_middleware_win.ps1` 스크립트 사용
-
-### DEVICE 서비스
-
-**설명**: 디바이스 관리 및 게이트웨이 서비스로, 디바이스 접속, 제품 관리, 데이터 레이블링, 규칙 엔진 등의 기능 제공
-
-**기술 스택**: Java (Spring Cloud)
-
-**배포 방식**:
-- **Linux**: `install_linux.sh` 스크립트 사용
-- **macOS**: `install_mac.sh` 스크립트 사용
-- **Windows**: `install_win.ps1` 스크립트 사용
-
-**주요 기능**:
-- 디바이스 관리
-- 제품 관리
-- 데이터 레이블링
-- 규칙 엔진
-- 알고리즘 스토어
-- 시스템 관리
-
-### AI 서비스
-
-**설명**: 인공지능 처리 서비스로, 비디오 분석 및 AI 알고리즘 실행 담당
-
-**기술 스택**: Python
-
-**배포 방식**:
-- **Linux**: `install_linux.sh` 스크립트 사용
-- **macOS**: `install_mac.sh` 스크립트 사용
-- **Windows**: `install_win.ps1` 스크립트 사용
-
-**주요 기능**:
-- 비디오 분석
-- AI 알고리즘 실행
-- 모델 추론
-
-### VIDEO 서비스
-
-**설명**: 비디오 처리 서비스로, 비디오 스트림 처리 및 전송 담당
-
-**기술 스택**: Python
-
-**배포 방식**:
-- **Linux**: `install_linux.sh` 스크립트 사용
-- **macOS**: `install_mac.sh` 스크립트 사용
-- **Windows**: `install_win.ps1` 스크립트 사용
-
-**주요 기능**:
-- 비디오 스트림 처리
-- 비디오 전송
-- 스트리밍 서비스
-
-### WEB 서비스
-
-**설명**: Web 프론트엔드 서비스로, 사용자 인터페이스 제공
-
-**기술 스택**: Vue.js
-
-**배포 방식**:
-- **Linux**: `install_linux.sh` 스크립트 사용
-- **macOS**: `install_mac.sh` 스크립트 사용
-- **Windows**: `install_win.ps1` 스크립트 사용
-
-**주요 기능**:
-- 사용자 인터페이스
-- 데이터 시각화
-- 시스템 관리 인터페이스
-
-## 서비스 포트
-
-| 서비스 모듈 | 포트 | 설명 | 접근 주소 |
-|---------|------|------|----------|
-| Nacos | 8848 | 서비스 등록 및 설정 센터 | http://localhost:8848/nacos |
-| MinIO API | 9000 | 객체 저장 API | http://localhost:9000 |
-| MinIO Console | 9001 | 객체 저장 콘솔 | http://localhost:9001 |
-| DEVICE Gateway | 48080 | 디바이스 서비스 게이트웨이 | http://localhost:48080 |
-| AI 서비스 | 5000 | AI 처리 서비스 | http://localhost:5000 |
-| VIDEO 서비스 | 6000 | 비디오 처리 서비스 | http://localhost:6000 |
-| WEB 프론트엔드 | 8888 | Web 프론트엔드 인터페이스 | http://localhost:8888 |
-
-### 건강 상태 확인 엔드포인트
-
-각 서비스의 건강 상태 확인 엔드포인트:
-
-| 서비스 모듈 | 건강 상태 확인 엔드포인트 |
-|---------|-------------|
-| 기본 서비스 (Nacos) | `/nacos/actuator/health` |
-| DEVICE 서비스 | `/actuator/health` |
-| AI 서비스 | `/actuator/health` |
-| VIDEO 서비스 | `/actuator/health` |
-| WEB 서비스 | `/health` |
-
-## 자주 묻는 질문
-
-### 1. Docker 권한 문제
-
-**문제**: 스크립트 실행 시 "Docker 데몬에 접근 권한이 없습니다"라는 메시지 표시
-
-**해결 방법**:
-
-**Linux**:
-```bash
-# 사용자를 docker 그룹에 추가
-sudo usermod -aG docker $USER
-
-# 다시 로그인하거나 실행
-newgrp docker
-
-# 권한 확인
-docker ps
-```
-
-**macOS**:
-macOS는 일반적으로 특별한 설정이 필요하지 않으며, Docker Desktop이 실행 중인지 확인하세요.
-
-**Windows**:
-Windows에서 Docker Desktop은 권한을 자동으로 처리합니다. Docker Desktop이 실행 중인지 확인하세요.
-
-### 2. 포트 점유
-
-**문제**: 서비스 시작 시 포트가 이미 사용 중이라고 표시
-
-**해결 방법**:
-
-**Linux**:
-```bash
-# 포트 점유 상황 확인
-sudo netstat -tulpn | grep <포트 번호>
-# 또는
-sudo lsof -i :<포트 번호>
-
-# 포트를 점유하는 프로세스를 중지하거나 서비스 설정에서 포트 수정
-```
-
-**macOS**:
-```bash
-# 포트 점유 상황 확인
-lsof -i :<포트 번호>
-
-# 포트를 점유하는 프로세스를 중지하거나 서비스 설정에서 포트 수정
-```
-
-**Windows**:
-```powershell
-# 포트 점유 상황 확인
-netstat -ano | findstr :<포트 번호>
-
-# 포트를 점유하는 프로세스를 중지하거나 서비스 설정에서 포트 수정
-```
-
-### 3. 서비스 시작 실패
-
-**문제**: 특정 서비스 모듈 시작 실패
-
-**해결 방법**:
-
-**Linux/macOS**:
-```bash
-# 1. 서비스 로그 확인
-./install_linux.sh logs    # Linux
-./install_mac.sh logs      # macOS
-
-# 2. 특정 모듈의 상세 로그 확인
-cd <모듈 디렉토리>
-docker-compose logs
-
-# 3. Docker 리소스 확인
-docker ps -a
-docker images
-
-# 4. 네트워크 확인
-docker network ls
-docker network inspect yfeieye-network
-```
-
-**Windows**:
-```powershell
-# 1. 서비스 로그 확인
-.\install_win.ps1 logs
-
-# 2. 특정 모듈의 상세 로그 확인
-cd <모듈 디렉토리>
-docker-compose logs
-
-# 3. Docker 리소스 확인
-docker ps -a
-docker images
-
-# 4. 네트워크 확인
-docker network ls
-docker network inspect yfeieye-network
-```
-
-### 4. 이미지 빌드 실패
-
-**문제**: 이미지 빌드 시 실패
-
-**해결 방법**:
-
-**Linux/macOS**:
-```bash
-# 1. Docker 디스크 공간 확인
-docker system df
-
-# 2. 사용하지 않는 리소스 정리
-docker system prune -a
-
-# 3. 네트워크 연결 확인 (기본 이미지 가져오기 필요 시)
-ping registry-1.docker.io
-
-# 4. 실패 모듈의 이미지 개별 빌드
-cd <모듈 디렉토리>
-docker-compose build --no-cache
-```
-
-**Windows**:
-```powershell
-# 1. Docker 디스크 공간 확인
-docker system df
-
-# 2. 사용하지 않는 리소스 정리
-docker system prune -a
-
-# 3. 네트워크 연결 확인 (기본 이미지 가져오기 필요 시)
-Test-NetConnection registry-1.docker.io -Port 443
-
-# 4. 실패 모듈의 이미지 개별 빌드
-cd <모듈 디렉토리>
-docker-compose build --no-cache
-```
-
-### 5. 서비스 접근 불가
-
-**문제**: 서비스가 시작되었지만 브라우저를 통해 접근할 수 없음
-
-**해결 방법**:
-
-**Linux**:
-```bash
-# 1. 서비스가 정상적으로 실행 중인지 확인
-./install_linux.sh verify
-
-# 2. 방화벽 설정 확인
-sudo ufw status
-# 포트를 열어야 하는 경우
-sudo ufw allow <포트 번호>
-
-# 3. 서비스 로그 확인
-./install_linux.sh logs
-
-# 4. 컨테이너 상태 확인
-docker ps
-```
-
-**macOS**:
-```bash
-# 1. 서비스가 정상적으로 실행 중인지 확인
-./install_mac.sh verify
-
-# 2. 방화벽 설정 확인 (시스템 환경설정 > 보안 및 개인정보 보호 > 방화벽)
-
-# 3. 서비스 로그 확인
-./install_mac.sh logs
-
-# 4. 컨테이너 상태 확인
-docker ps
-```
-
-**Windows**:
-```powershell
-# 1. 서비스가 정상적으로 실행 중인지 확인
-.\install_win.ps1 verify
-
-# 2. 방화벽 설정 확인 (Windows 방화벽 설정)
-
-# 3. 서비스 로그 확인
-.\install_win.ps1 logs
-
-# 4. 컨테이너 상태 확인
-docker ps
-```
-
-### 6. 데이터 손실 문제
-
-**문제**: 서비스 정리 후 데이터 손실
-
-**설명**: `clean` 명령은 모든 데이터 볼륨을 삭제하여 데이터 손실을 초래합니다. 이는 예상된 동작입니다.
-
-**예방 조치**:
-- `clean` 실행 전 중요 데이터 백업
-- 프로덕션 환경에서 `clean` 명령 사용 주의
-- 데이터 볼륨 백업 도구 사용 권장
-
-## 로그 관리
-
-### 로그 파일 위치
-
-스크립트 실행 로그는 `.scripts/docker/logs/` 디렉토리에 저장됩니다:
-
-- **Linux**: `install_linux_YYYYMMDD_HHMMSS.log`
-- **macOS**: `install_mac_YYYYMMDD_HHMMSS.log`
-- **Windows**: `install_win_YYYYMMDD_HHMMSS.log`
-
-로그 파일 이름에는 타임스탬프가 포함되어 있어 다른 실행 기록을 쉽게 구분할 수 있습니다.
-
-### 로그 확인
-
-#### 스크립트 실행 로그 확인
-
-**Linux/macOS**:
-```bash
-# 최신 로그 파일 확인
-ls -lt .scripts/docker/logs/ | head -5
-
-# 특정 로그 파일 확인
-tail -f .scripts/docker/logs/install_linux_20240101_120000.log    # Linux
-tail -f .scripts/docker/logs/install_mac_20240101_120000.log      # macOS
-```
-
-**Windows**:
-```powershell
-# 최신 로그 파일 확인
-Get-ChildItem .scripts\docker\logs\ | Sort-Object LastWriteTime -Descending | Select-Object -First 5
-
-# 특정 로그 파일 확인
-Get-Content .scripts\docker\logs\install_win_20240101_120000.log -Wait
-```
-
-#### 서비스 컨테이너 로그 확인
-
-**Linux/macOS**:
-```bash
-# 모든 서비스 로그 확인
-./install_linux.sh logs    # Linux
-./install_mac.sh logs      # macOS
-
-# 특정 서비스의 로그 확인 (해당 모듈 디렉토리로 이동 필요)
-cd DEVICE
-docker-compose logs -f
-```
-
-**Windows**:
-```powershell
-# 모든 서비스 로그 확인
-.\install_win.ps1 logs
-
-# 특정 서비스의 로그 확인 (해당 모듈 디렉토리로 이동 필요)
-cd DEVICE
-docker-compose logs -f
-```
-
-### 로그 내용
-
-스크립트 로그에는 다음이 포함됩니다:
-- 실행 타임스탬프
-- 실행된 명령
-- 각 모듈의 실행 결과
-- 오류 메시지 및 경고
-- 서비스 상태 정보
-
-## 배포 절차 권장사항
-
-### 처음 배포
-
-#### Linux
-
-1. **환경 준비**
-   ```bash
-   # 시스템 요구사항 확인
-   uname -a
-   free -h
-   df -h
-   
-   # Docker 및 Docker Compose 설치
-   # 참고: https://docs.docker.com/get-docker/
-   ```
-
-2. **코드 가져오기**
-   ```bash
-   git clone <repository-url>
-   cd yfeieye
-   ```
-
-3. **설치 실행**
-   ```bash
-   cd .scripts/docker
-   chmod +x install_linux.sh
-   ./install_linux.sh install
-   ```
-
-4. **배포 확인**
-   ```bash
-   ./install_linux.sh verify
-   ```
-
-5. **서비스 접근**
-    - 브라우저에서 각 서비스 주소 접근
-    - 서비스가 정상적으로 실행 중인지 확인
-
-#### macOS
-
-1. **환경 준비**
-   ```bash
-   # 시스템 요구사항 확인
-   uname -a
-   system_profiler SPHardwareDataType | grep Memory
-   df -h
-   
-   # Docker Desktop for Mac 설치
-   # 참고: https://docs.docker.com/desktop/install/mac-install/
-   ```
-
-2. **코드 가져오기**
-   ```bash
-   git clone <repository-url>
-   cd yfeieye
-   ```
-
-3. **설치 실행**
-   ```bash
-   cd .scripts/docker
-   chmod +x install_mac.sh
-   ./install_mac.sh install
-   ```
-
-4. **배포 확인**
-   ```bash
-   ./install_mac.sh verify
-   ```
-
-5. **서비스 접근**
-    - 브라우저에서 각 서비스 주소 접근
-    - 서비스가 정상적으로 실행 중인지 확인
-
-#### Windows
-
-Windows 배포의 경우 전용 [Windows 배포 가이드](平台Windows部署文档_ko.md)를 참조하세요. 이 가이드는 포괄적인 단계별 지침을 제공합니다. 가이드는 Windows 10/11 시스템의 로컬 배포 시나리오를 다루며 다음을 포함합니다:
-
-- 환경 준비 및 시스템 요구사항
-- 미들웨어 설치 및 구성
-- 서비스 시작 절차
-- 비디오 스트리밍 구성
-- 문제 해결 및 일반적인 문제
-
-**참고**: Windows 배포 가이드는 주로 로컬 배포에 중점을 둡니다. Windows에서 Docker 기반 배포의 경우 `install_win.ps1` 스크립트를 사용할 수 있지만, 자세한 지침은 Windows 배포 가이드에서 확인할 수 있습니다.
-
-### 일상적인 운영 관리
-
-#### Linux/macOS
-
-1. **서비스 시작**
-   ```bash
-   ./install_linux.sh start    # Linux
-   ./install_mac.sh start      # macOS
-   ```
-
-2. **서비스 중지**
-   ```bash
-   ./install_linux.sh stop    # Linux
-   ./install_mac.sh stop      # macOS
-   ```
-
-3. **서비스 재시작**
-   ```bash
-   ./install_linux.sh restart    # Linux
-   ./install_mac.sh restart      # macOS
-   ```
-
-4. **상태 확인**
-   ```bash
-   ./install_linux.sh status    # Linux
-   ./install_mac.sh status      # macOS
-   ```
-
-5. **로그 확인**
-   ```bash
-   ./install_linux.sh logs    # Linux
-   ./install_mac.sh logs      # macOS
-   ```
-
-#### Windows
-
-1. **서비스 시작**
-   ```powershell
-   .\install_win.ps1 start
-   ```
-
-2. **서비스 중지**
-   ```powershell
-   .\install_win.ps1 stop
-   ```
-
-3. **서비스 재시작**
-   ```powershell
-   .\install_win.ps1 restart
-   ```
-
-4. **상태 확인**
-   ```powershell
-   .\install_win.ps1 status
-   ```
-
-5. **로그 확인**
-   ```powershell
-   .\install_win.ps1 logs
-   ```
-
-### 업데이트 배포
-
-#### Linux/macOS
-
-1. **최신 코드 가져오기**
-   ```bash
-   git pull
-   ```
-
-2. **서비스 업데이트**
-   ```bash
-   cd .scripts/docker
-   ./install_linux.sh update    # Linux
-   ./install_mac.sh update      # macOS
-   ```
-
-3. **업데이트 확인**
-   ```bash
-   ./install_linux.sh verify    # Linux
-   ./install_mac.sh verify      # macOS
-   ```
-
-#### Windows
-
-1. **최신 코드 가져오기**
-   ```powershell
-   git pull
-   ```
-
-2. **서비스 업데이트**
-   ```powershell
-   cd .scripts\docker
-   .\install_win.ps1 update
-   ```
-
-3. **업데이트 확인**
-   ```powershell
-   .\install_win.ps1 verify
-   ```
-
-## 주의사항
-
-1. **버전 요구사항**: **반드시** Docker v29.0.0+ 및 Docker Compose v2.35.0+를 설치해야 하며, 이보다 낮은 버전은 정상적으로 실행되지 않습니다.
-2. **네트워크 요구사항**: 서버가 Docker Hub 또는 구성된 이미지 저장소에 접근할 수 있는지 확인하세요.
-3. **리소스 요구사항**: 서버에 충분한 CPU, 메모리 및 디스크 공간이 있는지 확인하세요.
-4. **포트 충돌**: 필요한 포트가 다른 서비스에 의해 점유되지 않았는지 확인하세요.
-5. **데이터 백업**: 프로덕션 환경 배포 전 중요 데이터를 백업하세요.
-6. **보안 설정**: 프로덕션 환경에서는 방화벽 및 보안 그룹 규칙을 구성하세요.
-7. **로그 관리**: 정기적으로 오래된 로그 파일을 정리하여 디스크 공간 부족을 방지하세요.
-
-## 기술 지원
-
-문제가 발생하면 다음을 확인하세요:
-
-1. 본 문서의 [자주 묻는 질문](#자주-묻는-질문) 부분 확인
-2. 서비스 로그 확인: `./install_all.sh logs`
-3. Docker 상태 확인: `docker ps -a`
-4. 프로젝트 저장소에 Issue 제출
+> 첫 배포는 [빠른 시작](#빠른-시작)을 참조하세요. 고급 운영, GPU, 데이터베이스 및 문제 해결은 [배포 모범 사례](./部署最佳实践_ko.md)를 참조하세요.
 
 ---
 
-**문서 버전**: 1.0  
-**마지막 업데이트**: 2024-01-01  
-**스크립트 위치**: `.scripts/docker/install_all.sh`
+## 목차
+
+- [개요](#개요)
+- [두 가지 사용 모드](#두-가지-사용-모드)
+- [빠른 시작](#빠른-시작)
+- [배포 프로필](#배포-프로필)
+- [스크립트 명령 참조](#스크립트-명령-참조)
+- [서비스 접속 및 포트](#서비스-접속-및-포트)
+- [FAQ](#faq)
+- [환경 요구사항](#환경-요구사항)
+
+---
+
+## 개요
+
+yFeiEye는 **Docker 컨테이너와 통합 설치 스크립트**를 통해 배포됩니다. 플랫폼은 기본 미들웨어와 DEVICE, AI, VIDEO, WEB, APP 비즈니스 모듈로 구성됩니다.
+
+| 모듈 | 디렉터리 | 설명 |
+|------|------|------|
+| 기본 서비스 | `.scripts/docker` | Nacos, PostgreSQL, Redis, Kafka, MinIO 등 |
+| DEVICE | `DEVICE/` | 장치 관리 및 API 게이트웨이 (Java / Spring Cloud) |
+| AI | `AI/` | 모델 학습 및 추론 (Python) |
+| VIDEO | `VIDEO/` | 비디오 스트리밍, 알림, 녹화 (Python) |
+| WEB | `WEB/` | 관리 콘솔 (Vue 3) |
+| APP | `APP/` | 모바일 H5 (**full** 프로필만) |
+
+**통합 진입 스크립트** (아래 Linux x86 예시):
+
+| OS | 스크립트 |
+|----|--------|
+| Linux x86 | `.scripts/docker/install_linux.sh` |
+| Linux ARM | `.scripts/docker/install_linux_arm.sh` |
+| Kylin | `.scripts/docker/install_linux_kylin.sh` |
+| macOS | `.scripts/docker/install_mac.sh` |
+| Windows | `.scripts/docker/install_win.ps1` |
+
+---
+
+## 두 가지 사용 모드
+
+통합 진입 스크립트는 **대화형 안내**와 **직접 명령** 모드를 지원하며, 기본 기능은 동일합니다:
+
+| | 대화형 | 직접 명령 |
+|---|---|---|
+| **진입** | 인수 없음 / `menu` / `interactive` | `<명령> [인수]` |
+| **사용 사례** | 첫 배포, 현장 운영, 문제 해결 | 개발, 스크립트 운영, CI/CD |
+| **조작** | 메뉴 기반, 숫자 선택 | 하위 명령 직접 실행 |
+| **실행 후** | 현재 메뉴 수준으로 복귀 | 완료 시 종료 |
+
+```bash
+# 대화형
+sudo .scripts/docker/install_linux.sh
+
+# 직접 명령
+sudo .scripts/docker/install_linux.sh install
+.scripts/docker/install_linux.sh status
+```
+
+**선택 가이드:**
+
+- 일상적인 수동 운영, 명령 인수에 익숙하지 않음 → 대화형
+- 작업을 알고 있으며 스크립트 또는 cron 작업에 사용 → 직접 명령 (Cron/CI에서 **인수 없이** 호출하지 마세요 — 입력 대기로 블로킹됩니다)
+
+### 대화형: 메뉴 구조
+
+**루트 메뉴**
+
+```
+  1) Deploy — install, start/stop, update, status, logs
+  2) Analyze — log merge, disk usage, health checks
+  0) Exit
+```
+
+**[Deploy] 하위 메뉴**
+
+| # | 작업 | 동등 명령 |
+|:-:|------|----------|
+| 1 | 첫 설치 및 시작 | `install` |
+| 2 | 모든 서비스 시작 | `start` |
+| 3 | 모든 서비스 중지 | `stop` |
+| 4 | 모든 서비스 재시작 | `restart` |
+| 5 | 실행 상태 보기 | `status` |
+| 6 | 로그 보기 | `logs` |
+| 7 | 상태 검증 | `verify` |
+| 8 | 이미지 업데이트 및 재시작 | `update` |
+| 9 | Docker 환경 확인 | `check` |
+| 10 | 배포 프로필 보기 | `profile` |
+| 11 | 전체 CLI 도움말 | `help` |
+
+**[Analyze] 하위 메뉴**
+
+| # | 작업 | 동등 명령 |
+|:-:|------|----------|
+| 1 | 다중 모듈 로그 병합(소스당 ~500줄) | `analyze-logs` |
+| 2 | 디스크 사용량 분석 | `analyze-disk` |
+| 3 | 상태 + 상태 검증 | `status` + `verify` |
+| 4 | Docker 환경 확인 | `check` |
+
+**일반적인 경로:**
+
+| 시나리오 | 대화형 경로 |
+|----------|-------------|
+| 첫 배포 | 1 → 1 → 7 |
+| 재부팅 후 시작 | 1 → 2 → 7 |
+| 진단 정보 수집 | 2 → 3 → 1 → 2 |
+
+---
+
+## 빠른 시작
+
+### 사전 요건
+
+- OS: **Ubuntu 24.04+** (26.04 권장)
+- Docker + Docker Compose **v2.35+**
+- **≥ 300 GB** 여유 디스크 공간
+
+```bash
+docker --version && docker compose version && docker ps
+```
+
+### 옵션 1: 대화형
+
+```bash
+git clone https://gitee.com/volara/easyaiot.git
+cd easyaiot
+
+sudo .scripts/docker/install_linux.sh
+# 1 Deploy → 1 First install → 7 Health verify
+```
+
+첫 설치 시 프로필을 대화형으로 선택합니다. 완료 후 `http://<server-ip>:8888`을 엽니다.
+
+### 옵션 2: 직접 명령
+
+```bash
+git clone https://gitee.com/volara/easyaiot.git
+cd easyaiot
+
+# 선택: 사전 빌드 이미지를 가져와 설치 시간 단축
+sudo .scripts/docker/install_linux.sh pull
+
+sudo .scripts/docker/install_linux.sh install
+.scripts/docker/install_linux.sh verify
+```
+
+### 설치 소요 시간
+
+| 시나리오 | 예상 시간 |
+|----------|----------|
+| 사전 빌드 이미지 가져옴 | 10–30분 |
+| 로컬 전체 빌드 | 30분~수시간 |
+
+`install` 흐름: 프로필 선택 → 환경 확인 → 네트워크 생성 → 미들웨어 및 모듈 배포 → 상태 대기. [원클릭 및 단계별 배포](./部署最佳实践_ko.md#원클릭-배포) 참조.
+
+---
+
+## 배포 프로필
+
+첫 `install` 시 대화형으로 선택되며 `.scripts/docker/.deploy_profile`에 저장됩니다. 이후 `start` / `stop` / `update`에서 재사용됩니다.
+
+| 옵션 | 이름 | 권장 RAM | 사용 사례 |
+|:------:|------|-----------------|----------|
+| 1 | **mini** | ≥ 4 GB | 엣지 노드, PoC |
+| 2 | **standard** | ≥ 16 GB | 일반 프로덕션 |
+| 3 | **full** (기본값) | ≥ 20 GB | 전체 기능 + APP H5 |
+
+```bash
+.scripts/docker/install_linux.sh profile                              # 현재 프로필 보기
+export EASYAIOT_DEPLOY_PROFILE=full && sudo .../install_linux.sh install  # 비대화형
+```
+
+프로필별 서비스 차이: [배포 프로필 선택](./部署最佳实践_ko.md#배포-프로필-선택).
+
+---
+
+## 스크립트 명령 참조
+
+### 명령
+
+| 명령 | 설명 |
+|------|------|
+| `install` | 첫 설치 및 시작 |
+| `start` / `stop` / `restart` | 수명 주기 제어 |
+| `status` | 실행 상태 보기 |
+| `logs [모듈]` | 로그 보기, 예: `logs VIDEO` |
+| `verify` | 상태 점검 |
+| `check` | Docker 환경 확인 |
+| `update` | 이미지 업데이트 및 재시작 |
+| `pull` | 사전 빌드 이미지 가져오기 |
+| `build` | 로컬에서 이미지 재빌드 |
+| `profile` | 배포 프로필 보기 |
+| `analyze-logs` | 다중 모듈 로그 병합 |
+| `analyze-disk` | 디스크 사용량 분석 |
+| `diagnose` | [Analyze] 하위 메뉴 진입 |
+| `clean` | 컨테이너 및 이미지 제거 ⚠️ (볼륨 포함) |
+| `help` | 도움말 표시 |
+| `menu` | 대화형 안내 열기 |
+
+### 비대화형 로그 수집
+
+```bash
+cd .scripts/docker
+
+./analyze_merge_logs.sh --non-interactive \
+  --modules dev-iot-sink,dev-iot-message,biz-video --lines 500 --save
+
+./analyze_merge_logs.sh --non-interactive --modules DEVICE --save
+./analyze_disk_usage.sh --save --top 15
+```
+
+### 모드 대조
+
+| 작업 | 대화형 | 직접 명령 |
+|------|--------|----------|
+| 첫 설치 | 1 → 1 | `install` |
+| 서비스 시작 | 1 → 2 | `start` |
+| 상태 점검 | 1 → 7 | `verify` |
+| 로그 병합 | 2 → 1 | `analyze-logs` |
+| 디스크 분석 | 2 → 2 | `analyze-disk` |
+
+### 모듈별 배포
+
+```bash
+cd .scripts/docker && ./install_middleware_linux.sh install   # 미들웨어만
+cd .scripts/docker && ./install_business_linux.sh install     # 비즈니스 모듈만
+cd AI && ./install_linux.sh install                           # 단일 모듈
+```
+
+---
+
+## 서비스 접속 및 포트
+
+`verify` 통과 후:
+
+| 서비스 | URL |
+|------|-----|
+| WEB 콘솔 | http://\<server-ip\>:8888 |
+| API Gateway | http://\<server-ip\>:48080 |
+| Nacos | http://\<server-ip\>:8848/nacos |
+| MinIO Console | http://\<server-ip\>:9001 |
+| AI | http://\<server-ip\>:5000 |
+| VIDEO | http://\<server-ip\>:6000 |
+| APP H5 (full) | http://\<server-ip\>:9010 |
+
+| 포트 | 서비스 |
+|------|------|
+| 8888 | WEB |
+| 48080 | Gateway |
+| 8848 | Nacos |
+| 9000/9001 | MinIO |
+| 5000 | AI |
+| 6000 | VIDEO |
+| 9010 | APP (full) |
+
+전체 포트 목록: [환경 요구사항 및 배포 전 점검](./部署最佳实践_ko.md#환경-요구사항).
+
+---
+
+## FAQ
+
+| 증상 | 해결 방법 |
+|------|----------|
+| Docker `permission denied` | `sudo usermod -aG docker $USER && newgrp docker` |
+| Compose 버전이 너무 낮음 | `sudo apt install -y docker-compose-plugin` |
+| 포트 사용 중 | `ss -tlnp \| grep <port>` |
+| 설치 실패 | `tail .scripts/docker/logs/install_linux_*.log` |
+| 서비스는 실행 중이나 접속 불가 | `verify` + 방화벽 확인 |
+| 디스크 공간 부족 | `df -h /`, ≥ 300 GB 확보 |
+
+**진단 정보 수집:**
+
+```bash
+# 대화형: 2 Analyze → 1 Logs + 2 Disk
+# 직접 명령:
+.scripts/docker/install_linux.sh check
+.scripts/docker/install_linux.sh status
+.scripts/docker/install_linux.sh verify
+cd .scripts/docker && ./analyze_merge_logs.sh --non-interactive --modules all --save
+./analyze_disk_usage.sh --save
+```
+
+자세한 내용: [문제 해결](./部署最佳实践_ko.md#문제-해결).
+
+---
+
+## 환경 요구사항
+
+| 항목 | 요구사항 |
+|------|----------|
+| OS | Ubuntu 24.04+ (26.04 권장); macOS, Windows, ARM, Kylin도 지원 |
+| CPU | 최소 4코어, 8코어 이상 권장 |
+| RAM | 프로필에 따라 다름 (full ≥ 20 GB, 32 GB 권장) |
+| 디스크 | 최소 300 GB 여유, 500 GB+ SSD 권장 |
+| GPU | 선택 사항; AI 학습/추론용 NVIDIA GPU (CUDA 12.8) |
+| Docker Compose | v2.35.0+ |
+
+```bash
+# Docker 설치 (Ubuntu)
+curl -fsSL https://get.docker.com | sudo sh
+sudo apt install -y docker-compose-plugin
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+**참고 사항:**
+
+1. 첫 설치 시 `sudo` 사용 (미러 가속 및 RTP 포트 예약)
+2. 프로덕션에서 기본 미들웨어 비밀번호 변경 ([자격 증명](./部署最佳实践_ko.md#기본-자격-증명))
+3. `clean`은 볼륨을 삭제합니다 — 먼저 백업하세요
+4. 프로필 변경 후 WEB 재빌드: `cd WEB && ./install_linux.sh build`
+
+---
+
+**문서 버전**: 3.1  
+**최종 업데이트**: 2026-07-08  
+**스크립트 진입점**: `.scripts/docker/install_linux.sh` (인수 없음 = 대화형; `<명령>` = 직접 실행)

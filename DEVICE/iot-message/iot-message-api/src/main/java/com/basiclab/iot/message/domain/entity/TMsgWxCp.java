@@ -151,4 +151,60 @@ public class TMsgWxCp implements Serializable {
     public void setPreviewUser(String previewUser) {
         this.previewUser = previewUser == null ? null : previewUser.trim();
     }
+
+    public String getUserGroupId() {
+        return userGroupId;
+    }
+
+    public void setUserGroupId(String userGroupId) {
+        this.userGroupId = userGroupId;
+    }
+
+    public String getUserGroupName() {
+        return userGroupName;
+    }
+
+    public void setUserGroupName(String userGroupName) {
+        this.userGroupName = userGroupName;
+    }
+
+    public String getRadioType() {
+        return radioType;
+    }
+
+    public void setRadioType(String radioType) {
+        this.radioType = radioType;
+    }
+
+    public String getWebHook() {
+        return webHook;
+    }
+
+    public void setWebHook(String webHook) {
+        this.webHook = webHook;
+    }
+
+    public Integer getRecordType() {
+        return recordType;
+    }
+
+    public void setRecordType(Integer recordType) {
+        this.recordType = recordType;
+    }
+
+    public String getRefTemplateId() {
+        return refTemplateId;
+    }
+
+    public void setRefTemplateId(String refTemplateId) {
+        this.refTemplateId = refTemplateId;
+    }
+
+    public String getTemplateName() {
+        return templateName;
+    }
+
+    public void setTemplateName(String templateName) {
+        this.templateName = templateName;
+    }
 }

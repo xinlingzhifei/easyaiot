@@ -1,7 +1,7 @@
 """
 SRS 本地回放录像磁盘守护服务。
 
-防止 /data/playbacks（尤其 live 目录）撑满宿主机磁盘：
+防止 ~/easyaiot/data/playbacks（尤其 live 目录）撑满宿主机磁盘：
 1. MinIO 上传成功后删除本地 .flv（默认开启）
 2. 按设备/全局文件数量上限清理
 3. 按文件年龄清理孤儿录像
@@ -49,18 +49,30 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _normalize_config_path(path: str) -> str:
+    if not path:
+        return path
+    return os.path.normpath(os.path.expanduser(os.path.expandvars(path.strip())))
+
+
 def get_srs_record_dir() -> str:
     try:
-        from cluster_storage import get_playbacks_dir
-        return get_playbacks_dir()
+        from cluster_storage import get_playbacks_dir, is_cluster_mode
+        if is_cluster_mode() or (os.getenv('MEDIA_HOST_DATA_ROOT') or '').strip():
+            return get_playbacks_dir()
     except ImportError:
-        media_record = (os.getenv('MEDIA_RECORD_DIR') or '').strip()
-        if media_record:
-            return media_record.rstrip('/\\')
-        host_root = (os.getenv('MEDIA_HOST_DATA_ROOT') or '').strip()
-        if host_root:
-            return os.path.join(host_root.rstrip('/\\'), 'playbacks')
-        return (os.getenv('SRS_RECORD_DIR') or '/data/playbacks').rstrip('/\\')
+        pass
+    media_record = (os.getenv('MEDIA_RECORD_DIR') or '').strip()
+    if media_record:
+        return _normalize_config_path(media_record)
+    srs_record = (os.getenv('SRS_RECORD_DIR') or '').strip()
+    if srs_record:
+        return _normalize_config_path(srs_record)
+    host_root = (os.getenv('MEDIA_HOST_DATA_ROOT') or '').strip()
+    if host_root:
+        return os.path.join(_normalize_config_path(host_root), 'playbacks')
+    from app.services.media_dvr_utils import discover_srs_host_data_root
+    return os.path.join(discover_srs_host_data_root(), 'playbacks')
 
 
 def get_snap_staging_dir() -> str:
@@ -73,6 +85,19 @@ def get_snap_staging_dir() -> str:
             return snap_dir.rstrip('/\\')
         host_root = (os.getenv('MEDIA_HOST_DATA_ROOT') or '/mnt/easyaiot-media').strip()
         return os.path.join(host_root.rstrip('/\\'), 'snaps')
+
+
+def get_camera_screenshot_dir() -> str:
+    """区域检测/设备封面等截图的本地落盘目录（mini 形态，不部署 MinIO）。"""
+    explicit = (os.getenv('MEDIA_CAMERA_SCREENSHOT_DIR') or '').strip()
+    if explicit:
+        return explicit.rstrip('/\\')
+    record_dir = (os.getenv('MEDIA_RECORD_DIR') or get_srs_record_dir()).strip()
+    if record_dir.startswith('/data'):
+        return os.path.join('/data', 'camera-screenshots')
+    snap_root = get_snap_staging_dir()
+    parent = os.path.dirname(snap_root.rstrip('/\\'))
+    return os.path.join(parent, 'camera-screenshots')
 
 
 def _playback_dir_mode() -> int:

@@ -207,45 +207,12 @@
     <DialogPlayer @register="registerPlayerModal" />
     
     <!-- 摄像头选择模态框 -->
-    <BasicModal
+    <CameraStreamSelectModal
       v-model:open="cameraSelectVisible"
-      title="选择摄像头"
-      @ok="handleConfirmCamera"
-      @cancel="cameraSelectVisible = false"
-    >
-      <div v-if="cameraStreams.length === 0" style="text-align: center; padding: 20px;">
-        <Empty description="暂无可用推流地址" />
-      </div>
-      <RadioGroup v-else v-model:value="selectedCameraIndex" style="width: 100%;">
-        <Radio
-          v-for="(stream, index) in cameraStreams"
-          :key="stream.device_id"
-          :value="index"
-          style="display: block; margin-bottom: 12px;"
-        >
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <!-- 封面图 -->
-            <div v-if="stream.cover_image_path" style="width: 80px; height: 60px; flex-shrink: 0;">
-              <img
-                :src="stream.cover_image_path"
-                alt="封面图"
-                style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px;"
-              />
-            </div>
-            <div v-else style="width: 80px; height: 60px; flex-shrink: 0; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px;">
-              无封面
-            </div>
-            <!-- 设备信息 -->
-            <div style="flex: 1;">
-              <div style="font-weight: 500;">{{ stream.device_name }}</div>
-              <div style="font-size: 12px; color: #999; margin-top: 4px;">
-                {{ stream.ai_http_stream || stream.pusher_http_url || stream.http_stream || stream.pusher_rtmp_url || stream.rtmp_stream || '无推流地址' }}
-              </div>
-            </div>
-          </div>
-        </Radio>
-      </RadioGroup>
-    </BasicModal>
+      :streams="cameraStreams"
+      :task-name="currentTask?.task_name"
+      @confirm="playCameraStream"
+    />
   </div>
 </template>
 
@@ -262,7 +229,7 @@ import {
   SwapOutlined,
   CopyOutlined,
 } from '@ant-design/icons-vue';
-import { List, Popconfirm, Spin, Empty, RadioGroup, Radio } from 'ant-design-vue';
+import { List, Popconfirm, Spin } from 'ant-design-vue';
 import { useDrawer } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { BasicTable, TableAction, useTable } from '@/components/Table';
@@ -270,7 +237,6 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { Icon } from '@/components/Icon';
 import { copyText } from '@/utils/copyTextToClipboard';
 import { useModal } from '@/components/Modal';
-import { BasicModal } from '@/components/Modal';
 import {
   listAlgorithmTasks,
   deleteAlgorithmTask,
@@ -287,6 +253,7 @@ import ServiceManageDrawer from './ServiceManageDrawer.vue';
 import DeviceRegionDetectionDrawer from './DeviceRegionDetectionDrawer.vue';
 import SnapSpaceDrawer from './SnapSpaceDrawer.vue';
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue';
+import CameraStreamSelectModal from '../CameraStreamSelectModal/index.vue';
 import { getBasicColumns, getFormConfig } from './Data';
 import AI_TASK_IMAGE from '@/assets/images/video/ai-task.png';
 import SNAP_TASK_IMAGE from '@/assets/images/video/snap-task.png';
@@ -328,7 +295,6 @@ const [registerPlayerModal, { openModal: openPlayerModal }] = useModal();
 // 摄像头选择和播放相关
 const cameraSelectVisible = ref(false);
 const cameraStreams = ref<CameraStreamInfo[]>([]);
-const selectedCameraIndex = ref<number>(0);
 const currentTask = ref<AlgorithmTask | null>(null);
 
 // 分页相关
@@ -889,21 +855,11 @@ const handlePlayStream = async (record: AlgorithmTask) => {
     } else {
       // 多个摄像头，显示选择对话框
       cameraStreams.value = availableStreams;
-      selectedCameraIndex.value = 0;
       cameraSelectVisible.value = true;
     }
   } catch (error) {
     console.error('获取推流地址失败', error);
     createMessage.error('获取推流地址失败');
-  }
-};
-
-// 确认选择摄像头并播放
-const handleConfirmCamera = () => {
-  if (cameraStreams.value.length > 0 && selectedCameraIndex.value >= 0) {
-    const selectedStream = cameraStreams.value[selectedCameraIndex.value];
-    playCameraStream(selectedStream);
-    cameraSelectVisible.value = false;
   }
 };
 

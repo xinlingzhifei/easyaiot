@@ -16,6 +16,15 @@ export const templateFormSchemas = ({ isVariable }) => {
       component: 'Input',
       required: true,
       label: '模板名称',
+      ifShow: ({ values }) => String(values?.msgType ?? '') !== '3',
+    },
+    {
+      field: 'title',
+      component: 'Input',
+      required: true,
+      label: '模板标题',
+      ifShow: ({ values }) => String(values?.msgType ?? '') === '3',
+      helpMessage: '列表中展示的模板标识，同时作为邮件标题',
     },
     {
       field: 'userGroupId',
@@ -146,12 +155,6 @@ export const msgTypeFiled = [
 export const emailSchemas = () => {
   return [
     ...msgTypeFiled,
-    {
-      field: 'title',
-      component: 'Input',
-      required: true,
-      label: '邮件标题',
-    },
     {
       field: 'cc',
       component: 'Select',

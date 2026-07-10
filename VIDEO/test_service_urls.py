@@ -1,12 +1,17 @@
 """service_urls 单元测试。"""
 import os
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from app.utils.service_urls import (
+    SHANGHAI_TZ,
+    epoch_to_shanghai_datetime,
     is_mini_deploy_profile,
     minio_storage_enabled,
+    now_shanghai_naive,
     resolve_alert_hook_url,
+    shanghai_isoformat,
     should_use_gateway_for_video_api,
     is_local_filesystem_path,
     build_alert_image_api_url,
@@ -104,6 +109,26 @@ class TestServiceUrls(unittest.TestCase):
             build_snap_image_api_url(3, 'dev1/a.jpg'),
             '/video/snap/space/3/image/dev1/a.jpg',
         )
+
+    def test_epoch_to_shanghai_datetime(self):
+        ts = datetime(2026, 7, 9, 15, 29, 0, tzinfo=SHANGHAI_TZ).timestamp()
+        aware = epoch_to_shanghai_datetime(ts)
+        self.assertEqual(aware.tzinfo, SHANGHAI_TZ)
+        self.assertEqual(aware.strftime('%Y-%m-%d %H:%M:%S'), '2026-07-09 15:29:00')
+
+    def test_shanghai_isoformat_from_naive_wall_clock(self):
+        naive = datetime(2026, 7, 9, 15, 29, 0)
+        self.assertEqual(shanghai_isoformat(naive), '2026-07-09T15:29:00+08:00')
+
+    def test_now_shanghai_naive_matches_fixed_clock(self):
+        fixed_now = datetime(2026, 7, 9, 15, 29, 0, tzinfo=SHANGHAI_TZ)
+        with patch('app.utils.service_urls.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            self.assertEqual(now_shanghai_naive(), datetime(2026, 7, 9, 15, 29, 0))
+
+    def test_shanghai_isoformat_from_utc_aware(self):
+        utc = datetime(2026, 7, 9, 7, 29, 0, tzinfo=timezone.utc)
+        self.assertEqual(shanghai_isoformat(utc), '2026-07-09T15:29:00+08:00')
 
 
 if __name__ == '__main__':

@@ -90,8 +90,11 @@ const getWrapperHeight = computed(() => {
 })
 
 watchEffect(() => {
-  openRef.value = !!props.open
-  fullScreenRef.value = !!props.defaultFullscreen
+  const merged = unref(getMergeProps) as Record<string, any>
+  if (merged.open !== undefined)
+    openRef.value = !!merged.open
+  if (merged.defaultFullscreen !== undefined)
+    fullScreenRef.value = !!merged.defaultFullscreen
 })
 
 watch(

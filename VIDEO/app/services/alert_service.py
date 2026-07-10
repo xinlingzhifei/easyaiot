@@ -285,6 +285,13 @@ def _get_alert_filter_query(args: dict) -> Query:
     return query
 
 
+def _should_skip_backfill(args: dict) -> bool:
+    val = args.get('skip_backfill')
+    if val is None:
+        return False
+    return str(val).lower() in ('1', 'true', 'yes')
+
+
 def get_alert_list(args: dict) -> dict:
     """获取报警列表（仅返回 image_url 已写入 MinIO 的记录；record_path 可选）
 
@@ -311,7 +318,8 @@ def get_alert_list(args: dict) -> dict:
             page_no = int(args.get('pageNo') or 1)
             page_size = int(args['pageSize'])
             paginate = query.paginate(page=page_no, per_page=page_size, error_out=False)
-            backfill_alert_records_for_list(paginate.items)
+            if not _should_skip_backfill(args):
+                backfill_alert_records_for_list(paginate.items)
             return {
                 'alert_list': [_alert_to_dict(alert) for alert in paginate.items],
                 'total': paginate.total
@@ -321,7 +329,8 @@ def get_alert_list(args: dict) -> dict:
             return {'alert_list': [], 'total': 0}
     else:
         alerts = query.all()
-        backfill_alert_records_for_list(alerts)
+        if not _should_skip_backfill(args):
+            backfill_alert_records_for_list(alerts)
         return {
             'alert_list': [_alert_to_dict(alert) for alert in alerts],
             'total': len(alerts)
@@ -655,7 +664,8 @@ def _record_path_playback_payload(record_path: str, device_id: str) -> dict:
             'source': 'alert_record_path',
         }
     if not minio_storage_enabled() and is_local_filesystem_path(record_path):
-        api_path = f'/video/alert/record?path={quote(record_path, safe="")}'
+        from app.utils.service_urls import build_alert_record_api_url
+        api_path = build_alert_record_api_url(record_path)
         return {
             'video_url': api_path,
             'file_path': record_path,
@@ -697,11 +707,12 @@ def resolve_alert_record_video(
 
     playback = find_playback_for_alert(device_id, alert_time, time_range)
     if playback and (playback.file_path or '').strip():
+        from app.utils.service_urls import resolve_playback_display_url
         file_path = playback.file_path.strip()
         return {
             'playback_id': playback.id,
             'file_path': file_path,
-            'video_url': file_path,
+            'video_url': resolve_playback_display_url(file_path),
             'event_time': playback.event_time.isoformat() if playback.event_time else None,
             'duration': playback.duration,
             'device_id': playback.device_id,

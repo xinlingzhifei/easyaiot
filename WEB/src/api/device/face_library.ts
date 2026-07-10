@@ -382,7 +382,7 @@ export const updateFaceEntry = (entryId: number, formData: FormData) => {
 };
 
 export const deleteFaceEntry = (entryId: number) => {
-  return commonApi('delete', `${FACE_PREFIX}/entries/${entryId}`);
+  return faceMutationApi('delete', `${FACE_PREFIX}/entries/${entryId}`);
 };
 
 export const listFaceMatchRecords = (params?: {

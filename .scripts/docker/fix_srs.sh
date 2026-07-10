@@ -4,7 +4,7 @@
 # SRS 容器重启脚本
 # ============================================
 # 重启 docker-compose 中的 SRS 服务（容器名：srs-server），用于配置变更或异常恢复后快速拉起。
-# 与 compose 约定一致：宿主机 /data 挂载为容器内 /data（录像与 srs.log）；重启前会尝试创建 /data/playbacks。
+# 与 compose 约定一致：宿主机 ~/easyaiot/data 挂载为容器内 /data（录像与 srs.log）。
 # 使用方法（在 .scripts/docker 目录下）：
 #   ./fix_srs.sh
 # ============================================
@@ -22,6 +22,7 @@ cd "$SCRIPT_DIR"
 
 CONTAINER_NAME="${SRS_CONTAINER_NAME:-srs-server}"
 COMPOSE_SERVICE="${SRS_COMPOSE_SERVICE:-SRS}"
+HOST_DATA_DIR="${EASYAIOT_HOST_DATA_DIR:-$HOME/easyaiot/data}"
 
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
@@ -43,19 +44,16 @@ get_compose_cmd() {
     fi
 }
 
-# 与 install_middleware_linux.sh 约定一致：宿主机根目录 /data，避免 bind 后目录缺失或权限异常
+# 与 install_middleware_linux.sh 约定一致：宿主机 ~/easyaiot/data
 ensure_srs_host_data_dir() {
-    # 只设置 /data 与 playbacks 顶层 777，绝不递归整个 /data
-    # （/data 下含本仓库与录像等海量文件，递归 chmod 会严重卡顿；
-    #  SRS 容器入口已设 umask 0000 保证新录像可删，无需递归历史文件）
     if [ "$EUID" -eq 0 ]; then
-        mkdir -p /data/playbacks 2>/dev/null || true
-        chmod 777 /data /data/playbacks 2>/dev/null || true
+        mkdir -p "${HOST_DATA_DIR}/playbacks" 2>/dev/null || true
+        chmod 777 "${HOST_DATA_DIR}" "${HOST_DATA_DIR}/playbacks" 2>/dev/null || true
     elif command -v sudo &>/dev/null; then
-        sudo mkdir -p /data/playbacks 2>/dev/null || true
-        sudo chmod 777 /data /data/playbacks 2>/dev/null || true
+        sudo mkdir -p "${HOST_DATA_DIR}/playbacks" 2>/dev/null || true
+        sudo chmod 777 "${HOST_DATA_DIR}" "${HOST_DATA_DIR}/playbacks" 2>/dev/null || true
     else
-        mkdir -p /data/playbacks 2>/dev/null || true
+        mkdir -p "${HOST_DATA_DIR}/playbacks" 2>/dev/null || true
     fi
 }
 

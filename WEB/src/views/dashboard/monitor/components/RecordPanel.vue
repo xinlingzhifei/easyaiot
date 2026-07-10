@@ -87,13 +87,13 @@ import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
 import { useModal } from '@/components/Modal'
 import { useMessage } from '@/hooks/web/useMessage'
 import { resolveAlertVideoUrl } from '@/utils/alertRecord'
-import { playAlertRecordInModal } from '@/utils/alertRecordPlayback'
+import { playAlertRecordInModal, prepareAlertRecordModalShell } from '@/utils/alertRecordPlayback'
 import { Button } from '@/components/Button'
 const { RangePicker } = DatePicker
 const { createMessage } = useMessage()
 
 // 播放器弹窗
-const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal }] = useModal()
+const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps }] = useModal()
 
 // 防重复提示：记录最近提示的时间和内容
 let lastVideoErrorTime = 0
@@ -190,6 +190,7 @@ const handlePlay = async (record: any) => {
   try {
     if (record.video_url || record.url) {
       const videoUrl = resolveAlertVideoUrl(record.video_url || record.url)
+      prepareAlertRecordModalShell(setPlayerModalProps)
       openPlayerModal(true, {
         id: record.device_id || props.deviceId || 0,
         http_stream: videoUrl,
@@ -205,7 +206,7 @@ const handlePlay = async (record: any) => {
     }
 
     const ok = await playAlertRecordInModal(
-      { openModal: openPlayerModal, closeModal: closePlayerModal },
+      { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps },
       {
         id: record.id,
         device_id: String(deviceId),

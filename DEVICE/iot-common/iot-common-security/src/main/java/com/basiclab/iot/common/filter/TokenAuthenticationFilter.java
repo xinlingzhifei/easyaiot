@@ -13,6 +13,7 @@ import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.common.web.core.util.WebFrameworkUtils;
 import com.basiclab.iot.system.api.oauth2.OAuth2TokenApi;
 import com.basiclab.iot.system.api.oauth2.dto.OAuth2AccessTokenCheckRespDTO;
+import com.basiclab.iot.system.enums.ApiConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -37,11 +38,18 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String OAUTH2_TOKEN_CHECK_URI = ApiConstants.PREFIX + "/oauth2/token/check";
+
     private final SecurityProperties securityProperties;
 
     private final GlobalExceptionHandler globalExceptionHandler;
 
     private final OAuth2TokenApi oauth2TokenApi;
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return OAUTH2_TOKEN_CHECK_URI.equals(request.getRequestURI());
+    }
 
     @Override
     @SuppressWarnings("NullableProblems")

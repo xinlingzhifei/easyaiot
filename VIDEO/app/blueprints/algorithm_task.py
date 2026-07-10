@@ -84,7 +84,7 @@ def create_task():
             task_type=task_type,
             device_ids=data.get('device_ids'),
             model_ids=data.get('model_ids'),  # 模型ID列表
-            extract_interval=data.get('extract_interval', 25),
+            extract_interval=data.get('extract_interval', 12),
             # rtmp_input_url和rtmp_output_url不再从请求中获取，改为从摄像头列表获取
             tracking_enabled=data.get('tracking_enabled', False),
             tracking_similarity_threshold=data.get('tracking_similarity_threshold', 0.2),
@@ -126,6 +126,7 @@ def create_task():
             sam_supplement_config=data.get('sam_supplement_config'),
             motion_gate_enabled=data.get('motion_gate_enabled', False),
             motion_gate_config=data.get('motion_gate_config'),
+            detect_conf=data.get('detect_conf', 0.5),
             post_process_enabled=data.get('post_process_enabled', False),
             post_process_replicas=data.get('post_process_replicas', 1),
         )

@@ -48,7 +48,7 @@
               </div>
               <div class="panel-model-meta">
                 <div class="panel-model-name">{{ modelStatus?.filename || 'sam3.1_multiplex.pt' }}</div>
-                <div class="panel-model-sub">Meta SAM 3.1 · 魔塔 ModelScope · 文本/框选开放词汇分割</div>
+                <div class="panel-model-sub">Meta SAM 3.1 · 魔搭 ModelScope · 文本/框选开放词汇分割</div>
               </div>
               <Tag v-if="!showProgress && modelStatus?.resumable" color="warning">可续传</Tag>
               <Tag v-else-if="!showProgress && modelStatus?.stage !== 'error'" color="blue">待安装</Tag>
@@ -136,7 +136,7 @@
                 <CloudDownloadOutlined class="panel-idle-icon" />
               </div>
               <p class="panel-idle-text">
-                模型约 <strong>3.3 GB</strong>，首次下载预计 <strong>5–30 分钟</strong>，将从魔塔 ModelScope 拉取并写入 AI 服务本地目录。
+                模型约 <strong>3.3 GB</strong>，首次下载预计 <strong>5–30 分钟</strong>，将从魔搭 ModelScope 拉取并写入 AI 服务本地目录。
               </p>
               <p v-if="modelStatus?.path" class="panel-path">目标路径：{{ modelStatus.path }}</p>
             </div>
@@ -204,7 +204,7 @@ const featureItems = [
 ];
 
 const steps = [
-  { key: 'download', title: '下载模型权重', desc: '从魔塔 ModelScope 拉取 facebook/sam3.1' },
+  { key: 'download', title: '下载模型权重', desc: '从魔搭 ModelScope 拉取 facebook/sam3.1' },
   { key: 'install', title: '写入本地路径', desc: 'AI/models/sam3/sam3.1_multiplex.pt' },
   { key: 'ready', title: '引擎就绪', desc: '可启动 SAM 冷启动标注' },
 ];
@@ -224,7 +224,7 @@ const stageText = computed(() => {
   if (props.finished) return '安装完成，可开始 SAM 标注';
   const stage = props.modelStatus?.stage;
   if (stage === 'installing') return '正在写入模型文件';
-  if (stage === 'downloading') return '正在从魔塔下载 SAM 3.1 权重';
+  if (stage === 'downloading') return '正在从魔搭下载 SAM 3.1 权重';
   return '正在准备安装';
 });
 

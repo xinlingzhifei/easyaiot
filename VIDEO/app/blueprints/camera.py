@@ -738,6 +738,20 @@ def get_device_info(device_id):
         return jsonify({'code': 500, 'msg': '服务器内部错误'}), 500
 
 
+@camera_bp.route('/device/<string:device_id>/inference-input', methods=['GET'])
+def get_device_inference_input(device_id):
+    """解析设备推理输入流（RTSP/RTMP/SRS/国标点播）。"""
+    try:
+        data = resolve_device_inference_input(device_id)
+        return jsonify({'code': 0, 'msg': 'success', 'data': data})
+    except ValueError as e:
+        logger.error(f'解析设备推理输入流失败: {str(e)}')
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'解析设备推理输入流失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': '服务器内部错误'}), 500
+
+
 @camera_bp.route('/device/<string:device_id>/ensure-spaces', methods=['POST'])
 def ensure_device_spaces_route(device_id):
     """确保设备已关联抓拍空间与录像空间（缺失则自动创建）"""
@@ -1011,8 +1025,74 @@ def _public_read_policy(bucket_name):
     })
 
 
+def _persist_screenshot_record(
+    camera_id,
+    download_url,
+    unique_filename,
+    timestamp,
+    image_format,
+    width,
+    height,
+):
+    """将截图元数据写入数据库。"""
+    try:
+        image_record = Image(
+            filename=unique_filename,
+            original_filename=f"{camera_id}_{timestamp}.{image_format}",
+            path=download_url,
+            width=width,
+            height=height,
+            device_id=camera_id,
+        )
+        db.session.add(image_record)
+        db.session.commit()
+        logger.info(f"图片信息已存入数据库，ID: {image_record.id}")
+    except Exception as db_error:
+        db.session.rollback()
+        logger.error(f"数据库存储失败: {str(db_error)}")
+
+
+def _upload_screenshot_to_local(camera_id, image_data, image_format="jpg"):
+    """mini 形态：截图落本地磁盘，经 /video/alert/image 对外提供访问。"""
+    from datetime import datetime as _dt
+
+    from app.services.playback_disk_guard_service import get_camera_screenshot_dir
+    from app.utils.service_urls import build_alert_image_api_url
+
+    timestamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+    unique_filename = f"{uuid.uuid4().hex}.{image_format}"
+
+    success, encoded_image = cv2.imencode(f'.{image_format}', image_data)
+    if not success:
+        raise RuntimeError("图像编码失败")
+
+    height, width = image_data.shape[:2]
+    screenshot_root = get_camera_screenshot_dir()
+    device_dir = os.path.join(screenshot_root, str(camera_id))
+    os.makedirs(device_dir, exist_ok=True)
+    local_path = os.path.join(device_dir, unique_filename)
+    with open(local_path, 'wb') as handle:
+        handle.write(encoded_image.tobytes())
+
+    download_url = build_alert_image_api_url(local_path)
+    _persist_screenshot_record(
+        camera_id, download_url, unique_filename, timestamp, image_format, width, height
+    )
+    logger.info(f"截图本地保存成功: {local_path}")
+    return download_url
+
+
 def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
-    """上传摄像头截图到MinIO并存入数据库"""
+    """上传摄像头截图（MinIO 或 mini 本地）并存入数据库。"""
+    from app.utils.service_urls import minio_storage_enabled
+
+    if not minio_storage_enabled():
+        try:
+            return _upload_screenshot_to_local(camera_id, image_data, image_format)
+        except Exception as e:
+            logger.error(f"截图本地保存失败: {str(e)}")
+            return None
+
     try:
         minio_client = get_minio_client()
         bucket_name = "camera-screenshots"
@@ -1052,23 +1132,9 @@ def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
 
         # 使用统一的URL格式
         download_url = f"/api/v1/buckets/{bucket_name}/objects/download?prefix={object_name}"
-
-        # 将图片信息存入数据库
-        try:
-            image_record = Image(
-                filename=unique_filename,
-                original_filename=f"{camera_id}_{timestamp}.{image_format}",
-                path=download_url,
-                width=width,
-                height=height,
-                device_id=camera_id
-            )
-            db.session.add(image_record)
-            db.session.commit()
-            logger.info(f"图片信息已存入数据库，ID: {image_record.id}")
-        except Exception as db_error:
-            db.session.rollback()
-            logger.error(f"数据库存储失败: {str(db_error)}")
+        _persist_screenshot_record(
+            camera_id, download_url, unique_filename, timestamp, image_format, width, height
+        )
         logger.info(f"截图上传成功: {bucket_name}/{object_name}")
         return download_url
     except S3Error as e:
@@ -1284,6 +1350,88 @@ def onvif_status(device_id):
     except Exception as e:
         logger.error(f"获取ONVIF截图状态失败: {str(e)}")
         return jsonify({'code': 500, 'msg': f'获取ONVIF截图状态失败: {str(e)}'}), 500
+
+
+# ------------------------- ONVIF 预置点接口 -------------------------
+@camera_bp.route('/device/<string:device_id>/onvif/presets', methods=['GET'])
+def list_onvif_presets_api(device_id: str):
+    """查询 ONVIF 设备预置点列表"""
+    try:
+        presets = camera_service.list_onvif_presets(device_id)
+        return jsonify({'code': 0, 'msg': 'success', 'data': presets})
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+    except Exception as e:
+        logger.error('查询 ONVIF 预置点失败: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': f'查询预置点失败: {str(e)}'}), 500
+
+
+@camera_bp.route('/device/<string:device_id>/onvif/presets', methods=['POST'])
+def set_onvif_preset_api(device_id: str):
+    """保存当前位置为 ONVIF 预置点
+
+    Body: { "name": "预置点 1", "preset_token": "可选，覆盖已有预置点" }
+    """
+    try:
+        data = request.get_json() or {}
+        name = str(data.get('name') or '').strip()
+        if not name:
+            return jsonify({'code': 400, 'msg': '预置点名称不能为空'}), 400
+        preset_token = data.get('preset_token')
+        if preset_token is not None:
+            preset_token = str(preset_token).strip() or None
+        token = camera_service.set_onvif_preset(device_id, name, preset_token)
+        return jsonify({
+            'code': 0,
+            'msg': '预置点已保存',
+            'data': {'token': token, 'name': name},
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+    except Exception as e:
+        logger.error('保存 ONVIF 预置点失败: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': f'保存预置点失败: {str(e)}'}), 500
+
+
+@camera_bp.route('/device/<string:device_id>/onvif/presets/call', methods=['POST'])
+def call_onvif_preset_api(device_id: str):
+    """调用 ONVIF 预置点
+
+    Body: { "preset_token": "1" }
+    """
+    try:
+        data = request.get_json() or {}
+        preset_token = str(data.get('preset_token') or data.get('token') or '').strip()
+        if not preset_token:
+            return jsonify({'code': 400, 'msg': '缺少 preset_token'}), 400
+        camera_service.call_onvif_preset(device_id, preset_token)
+        return jsonify({'code': 0, 'msg': '预置点已调用'})
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+    except Exception as e:
+        logger.error('调用 ONVIF 预置点失败: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': f'调用预置点失败: {str(e)}'}), 500
+
+
+@camera_bp.route('/device/<string:device_id>/onvif/presets/<string:preset_token>', methods=['DELETE'])
+def delete_onvif_preset_api(device_id: str, preset_token: str):
+    """删除 ONVIF 预置点"""
+    try:
+        camera_service.delete_onvif_preset(device_id, preset_token)
+        return jsonify({'code': 0, 'msg': '预置点已删除'})
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+    except Exception as e:
+        logger.error('删除 ONVIF 预置点失败: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': f'删除预置点失败: {str(e)}'}), 500
 
 
 def grab_frame_for_snapshot(device):

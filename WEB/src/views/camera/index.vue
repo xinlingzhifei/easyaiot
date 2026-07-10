@@ -40,11 +40,12 @@
             ref="nvrDeviceDetailRef"
             :nvr-id="nvrDetailId"
             :title="nvrDetailTitle"
+            :play-button-title="playButtonTitle"
+            v-model:enable-ai="enableAi"
             @back="closeNvrDetail"
             @view="handleNvrChannelView"
             @edit="handleNvrChannelEdit"
             @play="handleCardPlay"
-            @playAI="handleCardPlayAI"
             @delete="handleNvrChannelDelete"
             @set-location="openDeviceLocationDrawer"
           />
@@ -54,6 +55,7 @@
             <BasicTable @register="registerTable">
               <template #toolbar>
                 <div class="device-list-toolbar">
+                  <Checkbox v-model:checked="enableAi">启用 AI</Checkbox>
                   <Button type="primary" preIcon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
                     添加设备
                   </Button>
@@ -108,11 +110,11 @@
                 <DeviceMixedCardList
                   ref="deviceMixedCardListRef"
                   :params="{}"
+                  :play-button-title="playButtonTitle"
                   @view="handleCardView"
                   @edit="handleCardEdit"
                   @delete="handleCardDelete"
                   @play="handleCardPlay"
-                  @playAI="handleCardPlayAI"
                   @open-gb-device="handleOpenGbDevice"
                   @refresh-gb-device="handleRefreshGbDevice"
                   @view-gb-device="handleViewGbDevice"
@@ -126,6 +128,7 @@
                 >
                   <template #header>
                     <div class="device-list-toolbar device-list-toolbar--card">
+                      <Checkbox v-model:checked="enableAi">启用 AI</Checkbox>
                       <Button type="primary" preIcon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
                         添加设备
                       </Button>
@@ -174,9 +177,9 @@
 </template>
 
 <script lang="ts" setup>
-import {nextTick, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
+import {nextTick, onMounted, onUnmounted, reactive, ref, watch, computed} from 'vue';
 import {useRoute} from 'vue-router';
-import {TabPane, Tabs} from 'ant-design-vue';
+import {TabPane, Tabs, Checkbox} from 'ant-design-vue';
 import { SwapOutlined } from '@ant-design/icons-vue';
 import {BasicTable, TableAction, useTable} from '@/components/Table';
 import {useMessage} from '@/hooks/web/useMessage';
@@ -217,7 +220,7 @@ import { isNvrListRow } from './utils/deviceLabel';
 import StreamForward from "./components/StreamForward/index.vue";
 import { formatCameraDeviceLabel } from './utils/deviceLabel';
 import {
-  hasDirectPlayStream,
+  hasPlayableStream,
   openDeviceInDialogPlayer,
   supportsRtspForward,
 } from './utils/devicePlay';
@@ -260,6 +263,13 @@ const state = reactive({
 
 // 视图模式（默认卡片模式）
 const viewMode = ref<'table' | 'card'>('card');
+
+/** 播放时优先 AI 流，无 AI 则回退原始流 */
+const enableAi = ref(true);
+
+const playButtonTitle = computed(() =>
+  enableAi.value ? '播放（优先 AI 流）' : '播放视频流',
+);
 
 function handleToggleViewMode() {
   viewMode.value = viewMode.value === 'card' ? 'table' : 'card';
@@ -742,19 +752,11 @@ const getTableActions = (record) => {
 
   const actions = [];
 
-  if (hasDirectPlayStream(record)) {
+  if (hasPlayableStream(record)) {
     actions.push({
       icon: 'octicon:play-16',
-      tooltip: supportsRtspForward(record) ? '播放视频流' : '播放国标通道',
-      onClick: () => handlePlay(record),
-    });
-  }
-
-  if (hasDirectPlayStream(record, true)) {
-    actions.push({
-      icon: 'hugeicons:ai-video',
-      tooltip: '查看AI流',
-      onClick: () => handlePlayAIStream(record),
+      tooltip: enableAi.value ? '播放（优先 AI 流）' : supportsRtspForward(record) ? '播放视频流' : '播放国标通道',
+      onClick: () => handlePlayStream(record),
     });
   }
 
@@ -797,15 +799,12 @@ const getTableActions = (record) => {
 function handlePlayerSuccess() {
 }
 
-function handlePlay(record: DeviceInfo) {
-  if (!openDeviceInDialogPlayer(openPlayerAddModel, record)) {
-    createMessage.warning('该设备暂无可播放地址');
-  }
-}
-
-function handlePlayAIStream(record: DeviceInfo) {
-  if (!openDeviceInDialogPlayer(openPlayerAddModel, record, { ai: true })) {
-    createMessage.warning('该设备暂无 AI 流地址');
+async function handlePlayStream(record: DeviceInfo) {
+  const ok = await openDeviceInDialogPlayer(openPlayerAddModel, record, { enableAi: enableAi.value });
+  if (!ok) {
+    createMessage.warning(
+      enableAi.value ? '该设备暂无 AI 流或原始流播放地址' : '该设备暂无可播放地址',
+    );
   }
 }
 
@@ -923,11 +922,7 @@ async function handleNvrChannelDelete(record: DeviceInfo) {
 }
 
 const handleCardPlay = (record) => {
-  handlePlay(record);
-};
-
-const handleCardPlayAI = (record) => {
-  handlePlayAIStream(record);
+  handlePlayStream(record);
 };
 
 /** 根据路由 query 切换 Camera 一级 Tab（子 Tab 如 storage 由 StorageSpace 自行同步，不触发整页刷新） */

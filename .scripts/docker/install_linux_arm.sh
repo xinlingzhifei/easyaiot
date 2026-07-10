@@ -4,7 +4,8 @@
 # yFeiEye 统一安装脚本 (ARM架构版本)
 # ============================================
 # 使用方法：
-#   ./install_linux_arm.sh [命令]
+#   ./install_linux_arm.sh              # 无参数：打开两层交互引导（部署 / 分析）
+#   ./install_linux_arm.sh [命令]       # 直接执行命令（适合脚本/automation）
 #
 # 可用命令：
 #   install    - 安装并启动所有服务（首次运行，交互选择部署形态）
@@ -15,10 +16,14 @@
 #   logs       - 查看服务日志
 #   build      - 重新构建所有镜像
 #   clean      - 清理所有容器和镜像
-#   update     - 更新并重启所有服务
+#   update     - 更新镜像并重启所有服务（交互可选拉取/本地重建）
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
 #   profile    - 显示当前部署形态与服务范围
+#   menu       - 打开两层交互引导（同无参数）
+#   diagnose       - 问题分析定位（进入【分析】子菜单）
+#   analyze-logs   - 多模块日志合并分析（各模块约 500 行，带分割线）
+#   analyze-disk   - 项目关键目录磁盘占用分析
 #
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
 #   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra）
@@ -38,6 +43,7 @@ NC='\033[0m' # No Color
 # 脚本所在目录（必须在 cd 之前计算：相对路径调用时，cd 后 dirname 会解析错位，
 # 曾导致日志目录落到项目根 /logs 而非 .scripts/docker/logs）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EASYAIOT_INSTALL_LABEL="${EASYAIOT_INSTALL_LABEL:-yFeiEye 统一安装脚本 (ARM / aarch64)}"
 
 # 项目根目录（从.scripts/docker回到项目根目录）
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -48,6 +54,9 @@ source "${SCRIPT_DIR}/deploy_profile.sh"
 
 # shellcheck source=runtime_image_common.sh
 source "${SCRIPT_DIR}/runtime_image_common.sh"
+
+# shellcheck source=diagnose_tools.sh
+source "${SCRIPT_DIR}/diagnose_tools.sh"
 
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
@@ -742,8 +751,8 @@ install_linux() {
     detect_architecture
     check_docker "$@"
     check_docker_compose
-    prepare_runtime_environment
     configure_docker_mirror
+    prepare_runtime_environment
     create_network
     
     local _skip_build=0
@@ -930,6 +939,7 @@ start_all() {
     detect_architecture
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     prepare_runtime_environment
     create_network
     
@@ -987,6 +997,7 @@ restart_all() {
     detect_architecture
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
     prepare_runtime_environment
     create_network
     
@@ -1094,6 +1105,7 @@ pull_runtime_images() {
 build_runtime_images() {
     detect_architecture
     check_docker "$@"
+    runtime_apply_build_module_arg "${2:-}" || exit 1
     runtime_images_prepare_build_interactive
     runtime_images_export_for_invoke
     runtime_images_invoke build || exit 1
@@ -1137,8 +1149,17 @@ update_all() {
     detect_architecture
     check_docker "$@"
     check_docker_compose
+    configure_docker_mirror
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux_arm.sh"
+    runtime_images_acquire_for_update
     prepare_runtime_environment
     create_network
+
+    if runtime_images_should_skip_build; then
+        print_info "镜像已从远程拉取，业务模块将跳过 docker build"
+    else
+        print_info "将进行本地重建更新（各模块 docker build，耗时较长）"
+    fi
     
     # 基础服务先更新并等就绪，业务模块随后
     if execute_module_command ".scripts/docker" "update"; then
@@ -1284,7 +1305,13 @@ show_help() {
     echo "yFeiEye 统一安装脚本 (ARM架构版本)"
     echo ""
     echo "使用方法:"
+    echo "  ./install_linux_arm.sh                 - 打开交互式引导（推荐新手）"
+    echo "  ./install_linux_arm.sh menu            - 同上"
     echo "  ./install_linux_arm.sh [命令] [模块]"
+    echo ""
+    echo "交互引导两层结构:"
+    echo "  1) 部署 — 安装/启停/更新/状态/日志等"
+    echo "  2) 分析 — 日志合并/磁盘占用/健康检查等"
     echo ""
     echo "可用命令:"
     echo "  install         - 安装并启动所有服务（首次运行）"
@@ -1295,13 +1322,17 @@ show_help() {
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
     echo "  build           - 重新构建所有镜像（各模块本地构建）"
-    echo "  build-runtime   - 构建/推送运行时镜像到远程仓库"
+    echo "  build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
-    echo "  update          - 更新并重启所有服务"
+    echo "  update          - 更新镜像并重启所有服务（交互可选拉取/本地重建）"
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
     echo "  profile         - 显示当前部署形态与服务范围"
+    echo "  menu            - 打开两层交互引导（部署 / 分析）"
+    echo "  diagnose        - 进入【分析】子菜单"
+    echo "  analyze-logs    - 多模块日志合并分析（各模块约 500 行，带分割线）"
+    echo "  analyze-disk    - 项目关键目录磁盘占用分析"
     echo "  help            - 显示此帮助信息"
     echo ""
     echo "模块列表:"
@@ -1322,13 +1353,23 @@ show_help() {
     echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 easyaiot-network（宿主机 IP 变更后使用）"
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
     echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
+    echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP"
     echo ""
 }
 
 # 主函数
 main() {
-    
-    case "${1:-help}" in
+    local cmd="${1:-}"
+
+    if [ -z "$cmd" ] || [ "$cmd" = "menu" ] || [ "$cmd" = "interactive" ]; then
+        if [ "${EASYAIOT_FROM_MENU:-}" != "1" ]; then
+            run_install_root_menu
+            return 0
+        fi
+        cmd="help"
+    fi
+
+    case "$cmd" in
         install)
             install_linux
             ;;
@@ -1351,7 +1392,7 @@ main() {
             build_all
             ;;
         build-runtime|images-build)
-            build_runtime_images
+            build_runtime_images "$@"
             ;;
         pull|images-pull)
             pull_runtime_images
@@ -1371,6 +1412,15 @@ main() {
         profile)
             ensure_deploy_profile
             print_deploy_profile_summary
+            ;;
+        diagnose|diagnose-tools)
+            run_analyze_interactive_menu
+            ;;
+        analyze-logs|analyze-log|merge-logs)
+            invoke_analyze_merge_logs "${@:2}"
+            ;;
+        analyze-disk|analyze-disk-usage|disk-usage)
+            invoke_analyze_disk_usage "${@:2}"
             ;;
         help|--help|-h)
             show_help

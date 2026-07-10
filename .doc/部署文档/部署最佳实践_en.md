@@ -1,531 +1,602 @@
-# yFeiEye Deployment Guide
+# yFeiEye Deployment Best Practices
 
-> This document is generated from project source code analysis and applies to one-click deployment on Linux.
+> This document stays in sync with project scripts and covers production deployment and operations.  
+> For a quick start, see [Platform Deployment Guide](./平台部署文档.md).
 
 ---
 
-## 1. Environment Requirements
+## Table of Contents
 
-### 1.1 Hardware Requirements
+- [Two Usage Modes (Detailed)](#two-usage-modes-detailed)
+- [5-Minute Deployment Flow](#5-minute-deployment-flow)
+- [Deployment Profile Selection](#deployment-profile-selection)
+- [Environment Requirements & Pre-Deployment Checks](#environment-requirements--pre-deployment-checks)
+- [One-Click & Step-by-Step Deployment](#one-click--step-by-step-deployment)
+- [Common Operations](#common-operations)
+- [Pre-Built Images](#pre-built-images)
+- [GPU Configuration](#gpu-configuration)
+- [Special Environments](#special-environments)
+- [Database Notes](#database-notes)
+- [Default Credentials](#default-credentials)
+- [Troubleshooting](#troubleshooting)
+- [Log Locations](#log-locations)
+- [Update & Uninstall](#update--uninstall)
+- [Architecture Reference](#architecture-reference)
+
+---
+
+## Two Usage Modes (Detailed)
+
+Unified entry scripts (`install_linux.sh` / `install_linux_arm.sh` / `install_linux_kylin.sh`) support **two equivalent usage patterns**:
+
+| Mode | Entry | Audience | Characteristics |
+|------|-------|----------|-----------------|
+| **Interactive** | No args / `menu` / `interactive` | On-site ops, manual operations | Menu-driven, step-by-step, returns to current menu after execution |
+| **Direct command** | `<command> [args]` | Dev, SRE, CI/CD | Scriptable, repeatable, exits when done |
+
+```bash
+# Interactive
+sudo .scripts/docker/install_linux.sh
+
+# Direct command
+sudo .scripts/docker/install_linux.sh install
+.scripts/docker/install_linux.sh status
+```
+
+**Selection guide:** Prefer interactive for manual ops; use direct commands for scripted scenarios (Cron / Ansible / CI). **Do not** invoke without args in automation.
+
+### Interactive: Menu Structure
+
+**Root menu**
+
+```
+  1) Deploy — install, start/stop, update, status, logs
+  2) Analyze — logs, disk, status diagnostics
+  0) Exit
+```
+
+**[Deploy] submenu**
+
+| # | Action | Equivalent command |
+|:-:|--------|-------------------|
+| 1 | First install & start | `install` |
+| 2 | Start all services | `start` |
+| 3 | Stop all services | `stop` |
+| 4 | Restart all services | `restart` |
+| 5 | View status | `status` |
+| 6 | View logs | `logs` |
+| 7 | Health verification | `verify` |
+| 8 | Update images & restart | `update` |
+| 9 | Check Docker environment | `check` |
+| 10 | View deploy profile | `profile` |
+| 11 | Full CLI help | `help` |
+
+**[Analyze] submenu** — output suitable for support teams
+
+| # | Action | Equivalent command |
+|:-:|--------|-------------------|
+| 1 | Multi-module log merge | `analyze-logs` |
+| 2 | Disk usage analysis | `analyze-disk` |
+| 3 | Status + health verification | `status` + `verify` |
+| 4 | Docker environment check | `check` |
+
+**Log merge inner menu** (from Analyze → 1): select sources by number (e.g. `24,23,27`), `0` = all for current profile, `b` = back to [Analyze].
+
+### Direct Command: Full Reference
+
+```bash
+cd .scripts/docker   # or use .scripts/docker/install_linux.sh from project root
+
+# Lifecycle
+./install_linux.sh install | start | stop | restart | update | clean
+
+# Observability
+./install_linux.sh status | logs | logs WEB | verify | check | profile
+
+# Build & images
+./install_linux.sh build | pull | build-runtime [module]
+
+# Diagnostics
+./install_linux.sh diagnose          # Enter [Analyze] submenu (still interactive)
+./install_linux.sh analyze-logs      # Log merge
+./install_linux.sh analyze-disk      # Disk report
+
+# Help
+./install_linux.sh help | menu
+```
+
+### Analysis Tools: Advanced Usage
+
+Analysis scripts in `.scripts/docker/` can run standalone:
+
+**Multi-module log merge `analyze_merge_logs.sh`**
+
+```bash
+cd .scripts/docker
+
+# Non-interactive (recommended for runbooks)
+./analyze_merge_logs.sh --non-interactive \
+  --modules dev-iot-sink,dev-iot-message,biz-video --lines 500 --save
+
+# Module aliases
+./analyze_merge_logs.sh --non-interactive --modules DEVICE
+./analyze_merge_logs.sh --non-interactive --modules .scripts/docker
+./analyze_merge_logs.sh --non-interactive --modules all --save
+
+# Common unit IDs: mw-nacos / mw-postgres / dev-iot-gateway / dev-iot-sink / biz-ai / biz-video / biz-web
+./analyze_merge_logs.sh --help
+```
+
+Collection strategy: `docker logs` (last N lines) → host log files if container unavailable → latest rotated file tail.
+
+**Disk usage `analyze_disk_usage.sh`**
+
+```bash
+./analyze_disk_usage.sh                  # Terminal report
+./analyze_disk_usage.sh --save           # Save to logs/disk_usage_*.log
+./analyze_disk_usage.sh --top 20
+```
+
+Key directories: MinIO `record-space` / `alert-images`, local `playbacks`, alert image staging.
+
+### Automation Notes
+
+- Cron / Ansible / CI **must not** invoke without args (blocks on menu)
+- Menu-triggered ops set `EASYAIOT_FROM_MENU=1` to avoid returning to root menu after install
+- Non-interactive profile: `export EASYAIOT_DEPLOY_PROFILE=full`
+
+### Relationship to Per-Module Scripts
+
+Module directories (`DEVICE/`, `AI/`, `VIDEO/` …) have independent `install_linux.sh` for that module only — **no** unified [Analyze] menu.  
+Full platform orchestration + interactive guide + cross-module log/disk analysis → use `.scripts/docker/install_linux.sh` only.
+
+---
+
+## 5-Minute Deployment Flow
+
+```bash
+git clone https://gitee.com/volara/easyaiot.git && cd easyaiot
+
+docker --version && docker compose version
+
+# Option A: Direct command
+sudo .scripts/docker/install_linux.sh pull    # Optional: pre-built images
+sudo .scripts/docker/install_linux.sh install
+.scripts/docker/install_linux.sh verify
+
+# Option B: Interactive
+sudo .scripts/docker/install_linux.sh         # 1 Deploy → 1 Install → 7 Verify
+
+# Access: http://<server-ip>:8888
+```
+
+### Install Duration
+
+| Scenario | Time |
+|----------|------|
+| Pre-built images pulled | 10–30 minutes |
+| Full local build | 30 minutes to several hours |
+
+---
+
+## Deployment Profile Selection
+
+Selected interactively on first `install`, or via `export EASYAIOT_DEPLOY_PROFILE=mini|standard|full`.  
+Saved to `.scripts/docker/.deploy_profile`, reused by `start` / `stop` / `update`.
+
+| Profile | Aliases | Recommended RAM | Use case |
+|---------|---------|-----------------|----------|
+| **mini** | `1` / `4g` | ≥ 4 GB | Edge nodes, PoC |
+| **standard** | `2` / `16g` | ≥ 16 GB | Regular production |
+| **full** | `3` (default) | ≥ 20 GB | Full features + APP H5 |
+
+```bash
+.scripts/docker/install_linux.sh profile
+```
+
+### Services per Profile
+
+**mini**
+
+- Business: `iot-system`, VIDEO, AI, WEB
+- Middleware: PostgreSQL, Redis, SRS
+- Not started: Nacos, Gateway, Kafka, iot-sink, MinIO, Milvus, ZLMediaKit, Node-RED, TDengine, EMQX, and most DEVICE sub-modules
+- API routing: nginx proxies `/admin-api` and `/dev-api` to `iot-system:48099`
+
+**standard**
+
+- Not started: TDengine, EMQX, Node-RED, `iot-device`, `iot-tdengine`
+- All others started
+
+**full**
+
+- All business modules and middleware, including **APP mobile H5** (9010)
+
+Memory analysis:
+
+```bash
+.scripts/docker/analyze_deploy_memory.sh
+.scripts/docker/analyze_deploy_memory.sh --all-profiles
+```
+
+---
+
+## Environment Requirements & Pre-Deployment Checks
+
+### Hardware
 
 | Resource | Minimum | Recommended |
-|------|---------|---------|
-| CPU | 4 cores | 8 cores+ |
-| Memory | 8 GB | 16 GB+ |
-| Disk | 100 GB | 500 GB+ SSD |
-| GPU | None (CPU mode supported) | NVIDIA GPU (CUDA 12.8) |
+|----------|---------|-------------|
+| CPU | 4 cores | 8+ cores |
+| RAM | See profiles (full ≥ 20 GB) | 32 GB+ |
+| Disk | **300 GB** free | 500 GB+ SSD |
+| GPU | None (CPU works) | NVIDIA GPU (CUDA 12.8) |
 
-### 1.2 Software Requirements
+### Software
 
-| Software | Minimum Version | Notes |
-|------|---------|------|
-| Operating System | Ubuntu 20.04 / CentOS 7 | Ubuntu 22.04 LTS recommended |
-| Docker | 20.10+ | Must support `docker compose` v2 |
-| Docker Compose | v2 | Installed automatically with Docker Desktop, or install separately |
-| NVIDIA Driver | 525+ | Required only for GPU scenarios |
-| NVIDIA Container Toolkit | Latest | Required only for GPU scenarios |
+| Software | Requirement |
+|----------|-------------|
+| OS | Ubuntu 24.04+ (26.04 recommended); Kylin, ARM64 also supported |
+| Docker | Installed and daemon accessible |
+| Docker Compose | **v2.35.0+** (`docker compose` plugin) |
+| NVIDIA Driver / Container Toolkit | GPU scenarios only |
 
-### 1.3 Port Requirements
+### Docker Permissions
 
-Ensure the following ports are not in use before deployment:
+```bash
+sudo usermod -aG docker $USER && newgrp docker
+docker ps   # should succeed without permission denied
+```
 
-| Port | Service | Description |
-|------|------|------|
-| 1880 | Node-RED | Rule engine |
-| 1883 | EMQX | MQTT Broker |
-| 1935 | SRS | Streaming media RTMP |
+Use `sudo` on first install for mirror and RTP port setup.
+
+### Pre-Deployment Checks
+
+```bash
+.scripts/docker/detect_system_info.sh
+.scripts/docker/install_linux.sh check
+df -h / && docker system df
+```
+
+### Port Requirements
+
+| Port | Service | Notes |
+|------|---------|-------|
+| 1880 | Node-RED | full/standard |
+| 1883 | EMQX | full |
+| 1935 | SRS | RTMP |
 | 5432 | PostgreSQL | Primary database |
-| 6000 | VIDEO Service | Video processing |
-| 6030 | TDengine | Time-series database |
+| 6000 | VIDEO | Video processing |
+| 6030 | TDengine | full |
 | 6080 | ZLMediaKit | Media server |
 | 6379 | Redis | Cache |
-| 8848 | Nacos | Registry / configuration center |
-| 8888 | WEB Frontend | Management UI |
-| 9000 | MinIO API | Object storage |
-| 9001 | MinIO Console | Object storage console |
+| 8848 | Nacos | Registry/config |
+| 8888 | WEB | Management UI |
+| 9000/9001 | MinIO | Object storage |
+| 9010 | APP | full only |
 | 9092 | Kafka | Message queue |
-| 10180 | GPUStack | GPU management |
-| 10190 | Dify | LLM application platform |
-| 19530 | Milvus | Vector database |
-| 48080 | API Gateway | Backend gateway |
-| 5000 | AI Service | AI inference |
+| 19530 | Milvus | Vector DB |
+| 48080 | Gateway | API gateway |
+| 5000 | AI | AI service |
+| 30000-30500 | ZLM RTP | Script attempts reservation |
+
+```bash
+ss -tlnp | grep -E '8848|5432|6379|9092|5000|6000|8888|48080'
+```
 
 ---
 
-## 2. Quick Deployment (One-Click Install)
+## One-Click & Step-by-Step Deployment
 
-### 2.1 Obtain Source Code
-
-```bash
-git clone https://gitee.com/volara/yfeieye.git
-cd yfeieye
-```
-
-### 2.2 One-Click Install
+### One-Click
 
 ```bash
-# Requires root privileges (for configuring Docker mirror, RTP port reservation, etc.)
 sudo .scripts/docker/install_linux.sh install
-```
-
-This command automatically performs the following steps:
-
-1. **Environment check** — Verifies Docker and Docker Compose are installed
-2. **IP detection** — Automatically detects host IP (used for GB28181/ZLMediaKit media address injection)
-3. **RTP port reservation** — Configures Linux kernel reserved ports 30000-30500 (prevents ephemeral port allocation conflicts)
-4. **Docker mirror configuration** — Automatically configures `docker.m.daocloud.io` for image acceleration ([DaoCloud public image mirror](https://github.com/DaoCloud/public-image-mirror))
-5. **Create Docker network** — Creates unified network `yfeieye-network`
-6. **Deploy middleware** — Starts Nacos, PostgreSQL, Redis, Kafka, MinIO, TDengine, Milvus, SRS, EMQX, ZLMediaKit, GPUStack, Dify, and Node-RED in sequence
-7. **Wait for base services** — Automatically waits for PostgreSQL / Nacos / Redis health checks to pass
-8. **Deploy DEVICE services** — Builds and starts Java microservice cluster (gateway + 8 business services)
-9. **Deploy AI service** — Builds and starts Python AI inference service
-10. **Deploy VIDEO service** — Builds and starts Python video processing service and 6 sub-services
-11. **Deploy WEB frontend** — Builds and starts Vue 3 frontend
-
-### 2.3 Verify Deployment
-
-```bash
-# Verify all services started successfully
 .scripts/docker/install_linux.sh verify
 ```
 
-On success, access URLs for all services are displayed:
+**Automatic `install` flow:**
 
+1. Select profile → save to `.deploy_profile`
+2. Pre-built image detection (skip local build if pulled)
+3. Docker / Compose / container creation checks
+4. Host IP detection (set `HOST_IP=<ip>` to override)
+5. RTP port 30000-30500 reservation (requires root)
+6. Docker mirror configuration (requires root)
+7. Create `easyaiot-network`
+8. Deploy in order: middleware → DEVICE → AI → VIDEO → WEB → APP (full)
+9. Wait for PostgreSQL / Nacos / Redis
+10. Ensure edge Agent when needed
+
+### Step-by-Step
+
+Set profile first:
+
+```bash
+export EASYAIOT_DEPLOY_PROFILE=full
 ```
-服务访问地址:
-  基础服务 (Nacos):     http://localhost:8848/nacos
-  基础服务 (MinIO):     http://localhost:9000 (API), http://localhost:9001 (Console)
-  基础服务 (Milvus):    http://localhost:9091 (Health), localhost:19530 (gRPC)
-  基础服务 (GPUStack):  http://localhost:10180  (用户 admin)
-  Device服务 (Gateway): http://localhost:48080
-  AI服务:               http://localhost:5000
-  Video服务:            http://localhost:6000
-  Web前端:              http://localhost:8888
+
+**Step 1: Middleware**
+
+```bash
+cd .scripts/docker && ./install_middleware_linux.sh install
 ```
 
-### 2.4 Access the System
+| Middleware | Port | Purpose |
+|------------|------|---------|
+| Nacos | 8848 | Registry/config |
+| PostgreSQL | 5432 | Primary DB (6 databases) |
+| Redis | 6379 | Cache |
+| Kafka | 9092 | Message queue |
+| MinIO | 9000/9001 | Object storage |
+| Milvus | 19530/9091 | Vector DB |
+| SRS | 1935 | Streaming |
+| EMQX | 1883 | MQTT (full) |
+| ZLMediaKit | 6080 | Media server |
+| TDengine | 6030 | Time-series DB (full) |
+| Node-RED | 1880 | Rule engine |
 
-Open `http://<server-IP>:8888` in a browser to access the yFeiEye management platform.
+**Steps 2+: Business modules**
 
----
+```bash
+cd DEVICE && ./install_linux.sh install
+cd AI    && ./install_linux.sh install
+cd VIDEO && ./install_linux.sh install
+cd WEB   && ./install_linux.sh install
+cd APP   && ./install_linux.sh install   # full only
+```
 
-## 3. Step-by-Step Deployment (Manual Operations)
-
-For finer-grained control, deploy by module step by step.
-
-### 3.1 Step 1: Deploy Middleware
+**Business modules only**
 
 ```bash
 cd .scripts/docker
-./install_middleware_linux.sh install
+./install_business_linux.sh install
+./install_business_linux.sh update DEVICE WEB
+./install_business_linux.sh verify
 ```
-
-**Middleware inventory:**
-
-| Middleware | Image | Port | Purpose |
-|--------|------|------|------|
-| Nacos | nacos/nacos-server:v2.5.1 | 8848, 9848, 9849 | Service registry and configuration center |
-| PostgreSQL | postgres:18 | 5432 | Primary database (6 business databases) |
-| TDengine | tdengine/tsdb:3.3.8.4 | 6030, 6041, 6060 | Time-series database |
-| Redis | redis:7.4.8 | 6379 | Cache and distributed locks |
-| Kafka | apache/kafka:3.8.0 | 9092, 9093, 9094 | Message queue |
-| MinIO | minio/minio | 9000, 9001 | Object storage |
-| Milvus | milvusdb/milvus:v2.6.0 | 19530, 9091 | Vector database (face recognition) |
-| SRS | ossrs/srs:5 | 1935, 1985 | Streaming media server |
-| EMQX | emqx/emqx:5.8.7 | 1883, 8083, 18083 | MQTT Broker |
-| ZLMediaKit | zlmediakit/zlmediakit:master | 6080, 5540, 10935 | Media server |
-| GPUStack | gpustack/gpustack:v2.1.2 | 10180 | GPU resource management |
-| Dify | dify-api / dify-web / ... | 10190 | LLM application platform |
-| Node-RED | nodered/node-red:latest | 1880 | Rule engine |
-
-Wait for middleware to become ready:
-
-```bash
-# Check PostgreSQL
-docker exec postgres-server pg_isready -U postgres
-
-# Check Nacos
-curl -s http://localhost:8848/nacos/actuator/health
-
-# Check Redis
-docker exec redis-server redis-cli -a basiclab@iot975248395 ping
-```
-
-### 3.2 Step 2: Deploy DEVICE Services
-
-```bash
-cd DEVICE
-./install_linux.sh install
-```
-
-**DEVICE service inventory:**
-
-| Service | Port | Description |
-|------|------|------|
-| iot-gateway | 48080 | API gateway (Spring Cloud Gateway) |
-| iot-system | 48099 | System management |
-| iot-infra | 48066 | Infrastructure |
-| iot-device | 48055 | Device management |
-| iot-dataset | 48077 | Dataset management |
-| iot-message | 48033 | Message push |
-| iot-file | 48022 | File service |
-| iot-sink | 48011 | Protocol adapter (MQTT/TCP/HTTP/EMQX) |
-| iot-gb28181 | 5060 | GB28181 video surveillance protocol |
-
-**Build approach:**
-- Two-stage build: `Dockerfile.base` (Maven dependency cache) → per-module `Dockerfile`
-- Java 21 + Spring Boot 2.7.18
-- Build cache directory: `.build-cache/device/m2/repository`
-
-### 3.3 Step 3: Deploy AI Service
-
-```bash
-cd AI
-./install_linux.sh install
-```
-
-**AI service overview:**
-- Port: 5000
-- Framework: Flask + PyTorch 2.9+ (CUDA 12.8)
-- Features: Model training, inference, deployment, OCR, speech, LLM
-- GPU support: Automatically detects GPU and enables NVIDIA Container Runtime
-- Build cache: `.build-cache/ai/pip-cache`, `.build-cache/ai/pip-wheels`
-- Base image: `pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel`
-
-### 3.4 Step 4: Deploy VIDEO Service
-
-```bash
-cd VIDEO
-./install_linux.sh install
-```
-
-**VIDEO service overview:**
-- Port: 6000
-- Framework: Flask + OpenCV + FFmpeg
-- Features: Video stream processing, real-time/snapshot algorithm analysis, recording, alerts, face recognition
-- Sub-services: 6 independent microservices (real-time algorithm, snapshot algorithm, frame extraction, sorting, push stream, stream forwarding)
-- Message queue: Kafka (alert events)
-- Vector database: Milvus (face recognition)
-
-### 3.5 Step 5: Deploy WEB Frontend
-
-```bash
-cd WEB
-./install_linux.sh install
-```
-
-**WEB frontend overview:**
-- Port: 8888
-- Framework: Vue 3.4 + TypeScript + Vite
-- UI library: Ant Design Vue 4.0
-- Build: Node.js 18+ / 20+, pnpm 11.3+
 
 ---
 
-## 4. Single-Module Management
+## Common Operations
 
-Each module supports the following commands:
+### Unified Script
 
 ```bash
-./install_linux.sh install    # Install and start (first run)
-./install_linux.sh start      # Start
-./install_linux.sh stop       # Stop
-./install_linux.sh restart    # Restart
-./install_linux.sh status     # View status
-./install_linux.sh logs       # View logs
-./install_linux.sh build      # Rebuild images
-./install_linux.sh clean      # Clean up containers and images
-./install_linux.sh update     # Update and restart
+./install_linux.sh install | start | stop | restart | status
+./install_linux.sh logs | logs WEB | verify | check | profile
+./install_linux.sh build | pull | update | clean
+./install_linux.sh diagnose | analyze-logs | analyze-disk | help
 ```
 
-**Middleware management:**
+### Per-Module Scripts
+
+Each module (`DEVICE` / `AI` / `VIDEO` / `WEB` / `APP`):
+
+```bash
+./install_linux.sh install | start | stop | restart | status | logs | build | clean | update
+```
+
+Middleware:
 
 ```bash
 cd .scripts/docker
-./install_middleware_linux.sh install    # Install all middleware
-./install_middleware_linux.sh start      # Start
-./install_middleware_linux.sh stop       # Stop
-./install_middleware_linux.sh status     # Status
-./install_middleware_linux.sh logs       # Logs
+./install_middleware_linux.sh install | start | stop | restart | status | logs | build | clean | update
 ```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `EASYAIOT_DEPLOY_PROFILE` | `mini` / `standard` / `full` |
+| `HOST_IP` | Force host IP |
+| `PARALLEL_MODULES=true` | Parallel start/update for business modules |
+| `PARALLEL_BUILD=true` | Parallel build (default serial to avoid OOM) |
+| `FORCE_NETWORK_RECREATE=true` | Recreate network after IP change |
+| `EASYAIOT_RUNTIME_REGISTRY` | Pre-built image registry |
 
 ---
 
-## 5. GPU Configuration
+## Pre-Built Images
 
-### 5.1 Install NVIDIA Driver
+Config: `.scripts/docker/runtime_registry.conf`
 
 ```bash
-# Check GPU availability
+.scripts/docker/install_linux.sh pull                    # Interactive pull
+.scripts/docker/install_linux.sh build-runtime           # Build & push (CI/release)
+.scripts/docker/install_linux.sh build-runtime DEVICE    # Single module
+```
+
+After pull, `install` / `update` detects `.runtime_images_pulled` and starts containers directly.
+
+---
+
+## GPU Configuration
+
+```bash
 nvidia-smi
-
-# Install NVIDIA Container Toolkit
-# Reference: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-
-# Verify Docker GPU support
-docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
 ```
 
-### 5.2 Automatic GPU Detection
+Auto-detection: GPU present → `runtime: nvidia`; no GPU → CPU mode.
 
-The install script automatically detects GPU:
-- GPU detected → Automatically enables `runtime: nvidia`, sets `NVIDIA_VISIBLE_DEVICES=all`
-- No GPU detected → Runs in CPU mode
+Multi-GPU: `export CUDA_VISIBLE_DEVICES=0,1`
 
-### 5.3 Multi-GPU Configuration
+---
 
-The AI service supports multi-GPU parallel inference, controlled via environment variables:
+## Special Environments
 
 ```bash
-# Use GPU 0 and 1
-export CUDA_VISIBLE_DEVICES=0,1
+# Kylin OS
+sudo .scripts/docker/install_linux_kylin.sh install
+
+# ARM64
+sudo .scripts/docker/install_linux_arm.sh install
 ```
 
 ---
 
-## 6. Domestic Platform Adaptation
+## Database Notes
 
-### 6.1 Kylin Operating System
+### PostgreSQL (6 databases, scripts in `.scripts/postgresql/`)
 
-```bash
-.scripts/docker/install_linux_kylin.sh install
-```
+| Database | Purpose |
+|----------|---------|
+| ruoyi-vue-pro20 | System management |
+| iot-ai20 | AI service |
+| iot-device10 | Device management |
+| iot-gb2818110 | Video surveillance |
+| iot-message10 | Messaging |
+| iot-video10 | Video processing |
 
-### 6.2 ARM64 Architecture
+### TDengine
 
-```bash
-# Middleware
-.scripts/docker/install_linux_arm.sh install
+SQL in `.scripts/tdengine/tdengine_super_tables.sql`; auto-initialized under full profile.
 
-# AI service (ARM Dockerfile)
-cd AI
-./install_linux.sh install  # Script automatically selects ARM Dockerfile
-```
-
----
-
-## 7. Database Overview
-
-### 7.1 PostgreSQL Business Databases
-
-PostgreSQL automatically creates the following 6 business databases on startup:
-
-| Database | SQL File | Purpose |
-|------|---------|------|
-| ruoyi-vue-pro20 | ruoyi-vue-pro10.sql | System management primary database |
-| iot-ai20 | iot-ai10.sql | AI service database |
-| iot-device10 | iot-device10.sql | Device management database |
-| iot-gb2818110 | iot-gb2818110.sql | Video surveillance database |
-| iot-message10 | iot-message10.sql | Message push database |
-| iot-video10 | iot-video10.sql | Video processing database |
-
-Initialization scripts are located in `.scripts/postgresql/` and are executed automatically via `docker-entrypoint-initdb.d` on Docker startup.
-
-### 7.2 TDengine Time-Series Database
-
-TDengine automatically initializes super tables on startup. SQL files are located at `.scripts/tdengine/tdengine_super_tables.sql`.
-
-### 7.3 Database Backup
+### Backup
 
 ```bash
-# Back up all databases
 .scripts/postgresql/backup_databases.sh
 ```
 
 ---
 
-## 8. Middleware Default Credentials
+## Default Credentials
 
-| Middleware | Username | Password | Console URL |
-|--------|--------|------|-----------|
-| Nacos | nacos | nacos | http://<IP>:8848/nacos |
+| Middleware | Username | Password | Console |
+|------------|----------|----------|---------|
+| Nacos | nacos | nacos | :8848/nacos |
 | PostgreSQL | postgres | iot45722414822 | — |
 | Redis | — | basiclab@iot975248395 | — |
-| MinIO | minioadmin | basiclab@iot975248395 | http://<IP>:9001 |
-| EMQX | admin | basiclab@iot6874125784 | http://<IP>:18083 |
-| GPUStack | admin | basiclab@iotp4JWmQSvzdh0z4mF | http://<IP>:10180 |
-| Milvus | — | — | http://<IP>:9091 |
+| MinIO | minioadmin | basiclab@iot975248395 | :9001 |
+| EMQX | admin | basiclab@iot6874125784 | :18083 |
+| Milvus | — | — | :9091 |
 
-> ⚠️ **Security notice**: Change all default passwords in production environments.
+> **Change all default passwords in production.**
 
 ---
 
-## 9. Troubleshooting
+## Troubleshooting
 
-### 9.1 Service Startup Failures
+### Recommended Flow
+
+**Interactive:**
+
+```
+No args → 2 Analyze → 4 Docker check → 3 Status+health → 1 Logs → 2 Disk
+```
+
+**Direct command:**
 
 ```bash
-# View logs for a specific service
-docker logs -f postgres-server
-docker logs -f nacos-server
-docker logs -f ai-service
-docker logs -f video-service
+.scripts/docker/install_linux.sh check
+.scripts/docker/install_linux.sh status
+.scripts/docker/install_linux.sh verify
 
-# View status of all services
+cd .scripts/docker
+./analyze_disk_usage.sh --save
+./analyze_merge_logs.sh --non-interactive --modules dev-iot-sink,biz-video,mw-nacos --lines 500 --save
+```
+
+### Common Issues
+
+**Service start failures**
+
+```bash
 docker ps -a
+docker logs -f postgres-server
+.scripts/docker/install_linux.sh logs
 ```
 
-### 9.2 Network Issues
+**Network (host IP changed)**
 
 ```bash
-# Check Docker network
-docker network ls | grep yfeieye
-docker network inspect yfeieye-network
-
-# Recreate network (after host IP changes)
-docker network rm yfeieye-network
-docker network create yfeieye-network
-docker compose restart
+export FORCE_NETWORK_RECREATE=true
+.scripts/docker/install_linux.sh restart
 ```
 
-### 9.3 PostgreSQL Connection Issues
+**PostgreSQL / Redis**
 
 ```bash
-# Automatic fix
 .scripts/docker/fix_postgresql.sh
-
-# Manual check
-docker exec postgres-server pg_isready -U postgres
-docker exec postgres-server psql -U postgres -c "SELECT 1;"
-```
-
-### 9.4 Redis Connection Issues
-
-```bash
-# Automatic fix
 .scripts/docker/fix_redis.sh
-
-# Manual check
-docker exec redis-server redis-cli -a basiclab@iot975248395 ping
 ```
 
-### 9.5 Docker Service Issues
+**Docker system**
 
 ```bash
-# Diagnose Docker systemd issues
 sudo .scripts/docker/diagnose_docker_systemd.sh diagnose
-
-# Fix systemd timeout
-sudo .scripts/docker/diagnose_docker_systemd.sh fix-all
-
-# Check disk space
-df -h
-docker system df
-
-# Clean up Docker artifacts
 .scripts/docker/cleanup_docker_space.sh
 ```
 
-### 9.6 Kafka Consumer Group Issues
+**Kafka consumer group**
 
 ```bash
-# Fix Kafka consumer group
-cd VIDEO
-python fix_kafka_consumer_group.py
+cd VIDEO && ./fix_kafka_consumer_group.sh
 ```
 
-### 9.7 Port Conflicts
+**WEB after profile change**
 
 ```bash
-# Check port usage
-ss -tlnp | grep -E "8848|5432|6379|9092|5000|6000|8888"
-
-# If conflicts exist, modify port mappings in the corresponding docker-compose.yml
+cd WEB && ./install_linux.sh build
 ```
 
 ---
 
-## 10. Log File Locations
+## Log Locations
 
 | Location | Description |
-|------|------|
-| `.scripts/docker/logs/` | Install script logs |
-| `DEVICE/logs/` | DEVICE service logs |
-| `AI/data/logs/` | AI service logs |
-| `VIDEO/data/logs/` | VIDEO service logs |
-| `docker logs <container-name>` | Container live logs |
+|----------|-------------|
+| `.scripts/docker/logs/` | Install script logs; `merged_logs_*`, `disk_usage_*` reports |
+| `.scripts/docker/standalone-logs/` | Nacos and other middleware on-disk logs |
+| `.build-cache/device/logs/` | DEVICE microservice Spring logs |
+| `~/easyaiot/data/srs.log` | SRS streaming |
+| `WEB/logs/runtime.log` | WEB runtime log |
+| `docker logs <container>` | Container stdout (common for AI/VIDEO) |
+
+| Need | Interactive | Direct command |
+|------|-------------|----------------|
+| Last 500 lines, multi-service | Analyze → 1 | `analyze-logs` or `analyze_merge_logs.sh --modules ...` |
+| Single module, live tail | Deploy → 6 | `logs VIDEO` or `docker compose logs -f` |
+| Install failure | — | `tail .scripts/docker/logs/install_linux_*.log` |
 
 ---
 
-## 11. Updates and Upgrades
-
-### 11.1 Update Source Code
+## Update & Uninstall
 
 ```bash
-cd yfeieye
 git pull origin main
-```
-
-### 11.2 Update and Restart All Services
-
-```bash
 sudo .scripts/docker/install_linux.sh update
+.scripts/docker/install_linux.sh verify
 ```
 
-### 11.3 Update a Single Module
+Single module: `cd AI && ./install_linux.sh update`
+
+Uninstall:
 
 ```bash
-# Example: update AI service only
-cd AI
-./install_linux.sh update
-```
-
-### 11.4 Rebuild Images
-
-```bash
-# Rebuild all images
-sudo .scripts/docker/install_linux.sh build
-
-# Rebuild a single module
-cd DEVICE
-./install_linux.sh build
+sudo .scripts/docker/install_linux.sh clean   # ⚠️ Removes containers, images, volumes
 ```
 
 ---
 
-## 12. Uninstall
-
-```bash
-# Stop and remove all containers, images, and networks
-sudo .scripts/docker/install_linux.sh clean
-
-# Manually clean data volumes (optional)
-rm -rf .scripts/docker/db_data
-rm -rf .scripts/docker/redis_data
-rm -rf .scripts/docker/minio_data
-rm -rf .scripts/docker/mq_data
-rm -rf .scripts/docker/taos_data
-rm -rf .scripts/docker/milvus_data
-rm -rf .scripts/docker/gpustack_data
-```
-
----
-
-## 13. Architecture Reference
+## Architecture Reference
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    WEB Frontend (:8888)                          │
-│              Vue 3 + Ant Design Vue + Vite                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                 API Gateway (:48080)                              │
-│              Spring Cloud Gateway + Nacos                        │
 ├───────────┬───────────┬───────────┬───────────┬─────────────────┤
 │ iot-system│ iot-infra │ iot-device│ iot-dataset│  iot-message   │
 │ iot-file  │ iot-sink  │ iot-gb28181                        │
-│           │           │           │           │                  │
-│    Java 21 + Spring Boot 2.7 + MyBatis-Plus                     │
 ├───────────┴───────────┴───────────┴───────────┴─────────────────┤
-│  AI Service (:5000)      │  VIDEO Service (:6000) │  TASK (C++)  │
-│  Flask + PyTorch + YOLO  │  Flask + OpenCV + FFmpeg│  ONNX Runtime│
-│  Train/Infer/Deploy/OCR/LLM│ Stream/Alert/Record/Face│ Edge inference│
-├──────────────────────────┴───────────────────────┴──────────────┤
-│                     Middleware Layer                               │
+│  AI (:5000)              │  VIDEO (:6000)    │  APP H5 (:9010) │
+├──────────────────────────┴───────────────────┴─────────────────┤
 │  Nacos │ PostgreSQL │ Redis │ Kafka │ MinIO │ TDengine          │
-│  Milvus │ SRS │ EMQX │ ZLMediaKit │ GPUStack │ Dify │ Node-RED  │
+│  Milvus │ SRS │ EMQX │ ZLMediaKit │ Node-RED                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-*Document generated: 2026-05-31 | Project: https://gitee.com/volara/yfeieye*
+*Doc version: 3.1 | 2026-07-08 | Script entry: `.scripts/docker/install_linux.sh` (no args=interactive; `<command>`=direct)*

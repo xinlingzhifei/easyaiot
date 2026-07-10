@@ -89,6 +89,8 @@ declare global {
     VITE_TIANDITU_KEY: string
     /** 部署形态：mini | standard | full */
     VITE_GLOB_DEPLOY_PROFILE?: string
+    /** 数据集批量上传最大并发数 */
+    VITE_UPLOAD_MAX_CONCURRENCY?: string
   }
 
   declare function parseInt(s: string | number, radix?: number): number

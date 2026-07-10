@@ -5,6 +5,7 @@ spring:
     discovery:
       client:
         simple:
+          enabled: true
           instances:
             system-server:
               - uri: http://127.0.0.1:48099
@@ -15,3 +16,6 @@ spring:
           # 双保险：Simple Discovery 未生效时避免回退到 system-server:80 导致超时
           system-server:
             url: http://127.0.0.1:48099
+          default:
+            connectTimeout: 5000
+            readTimeout: 10000

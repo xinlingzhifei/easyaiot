@@ -24,7 +24,7 @@
 ├── photo2.png
 └── subdir__img3.jpg</pre>
             <Icon icon="ant-design:folder-open-outlined" class="upload-area-icon" />
-            <p>拖拽文件夹到此处或点击选择文件夹（将自动压缩为 ZIP 后整体上传，服务端解压并批量入库；同名图片自动覆盖，支持断点续传）</p>
+            <p>拖拽文件夹到此处或点击选择文件夹（并行逐张上传，同名图片自动覆盖，支持断点续传，单文件最大 200GB）</p>
             <input
               ref="folderInputRef"
               type="file"
@@ -43,7 +43,7 @@
               v-if="uploading && tabActive === 'image'"
               class="upload-progress-wrap"
               :percent="uploadPercent"
-              :detail="uploadCurrentFile >= 1 ? '正在上传压缩包（支持断点续传）' : '正在压缩图片（支持断点续传）'"
+              :detail="`正在上传 ${uploadCurrentFile}/${uploadTotalFiles} 张图片（支持断点续传）`"
               :loading="cancelling"
               cancel-text="取消上传"
               confirm-title="确定取消上传吗？已上传的分片将被删除。"

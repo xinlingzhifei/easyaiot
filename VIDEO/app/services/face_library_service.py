@@ -318,9 +318,14 @@ def add_entry(
 
     image = decode_image_bytes(image_bytes)
     service = get_face_recognition_service()
-    crop_info = service.extract_and_crop_largest_face(image)
+    try:
+        crop_info = service.extract_and_crop_largest_face(image)
+    except FileNotFoundError as exc:
+        raise ValueError(
+            '人脸特征模型 face_rec.onnx 未安装，请在人脸库页面下载安装后再录入'
+        ) from exc
     if not crop_info:
-        raise ValueError('图片中未检测到人脸')
+        raise ValueError('图片中未检测到人脸，请上传正面清晰的人脸照片')
 
     _, crop = cv2.imencode('.jpg', crop_info['crop'])
     crop_bytes = crop.tobytes()
@@ -360,6 +365,7 @@ def add_entry(
         person_name=person_name,
         image=crop_info['crop'],
         person_code=person_code,
+        embedding=crop_info.get('embedding'),
     )
     entry.milvus_id = inserted.get('milvus_id')
 
@@ -439,9 +445,14 @@ def update_entry(entry_id: int, image_bytes: Optional[bytes] = None, **kwargs) -
     if image_bytes:
         service = get_face_recognition_service()
         image = decode_image_bytes(image_bytes)
-        crop_info = service.extract_and_crop_largest_face(image)
+        try:
+            crop_info = service.extract_and_crop_largest_face(image)
+        except FileNotFoundError as exc:
+            raise ValueError(
+                '人脸特征模型 face_rec.onnx 未安装，请在人脸库页面下载安装后再录入'
+            ) from exc
         if not crop_info:
-            raise ValueError('图片中未检测到人脸')
+            raise ValueError('图片中未检测到人脸，请上传正面清晰的人脸照片')
         _, crop = cv2.imencode('.jpg', crop_info['crop'])
         crop_bytes = crop.tobytes()
         _delete_minio_object(entry.image_path)
@@ -460,6 +471,7 @@ def update_entry(entry_id: int, image_bytes: Optional[bytes] = None, **kwargs) -
             person_name=entry.person_name,
             image=crop_info['crop'],
             person_code=entry.person_code,
+            embedding=crop_info.get('embedding'),
         )
         entry.milvus_id = inserted.get('milvus_id')
 

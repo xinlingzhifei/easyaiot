@@ -912,13 +912,18 @@ def list_space_images(space_id):
         end_time = request.args.get('endTime')
 
         from datetime import datetime
-        from models import parse_shanghai_naive_to_utc_naive
+        from app.utils.service_urls import normalize_to_shanghai_naive
 
         def _parse_dt(value):
             if not value:
                 return None
-            text = str(value).strip().replace(' ', 'T', 1) if ' ' in str(value) and 'T' not in str(value) else str(value).strip()
-            return parse_shanghai_naive_to_utc_naive(datetime.fromisoformat(text))
+            text = str(value).strip()
+            if ' ' in text and 'T' not in text:
+                text = text.replace(' ', 'T', 1)
+            parsed = datetime.fromisoformat(text.replace('Z', '+00:00'))
+            if parsed.tzinfo is not None:
+                return normalize_to_shanghai_naive(parsed)
+            return parsed
 
         start_dt = _parse_dt(start_time)
         end_dt = _parse_dt(end_time)

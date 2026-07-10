@@ -4,6 +4,7 @@ import com.basiclab.iot.message.domain.entity.TPreviewUser;
 import com.basiclab.iot.message.domain.model.vo.TPreviewUserExcelVo;
 import com.basiclab.iot.message.mapper.TPreviewUserMapper;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -36,6 +37,9 @@ public class PreviewUserDataHandler {
                     errorList.add("第【"+errorLine+"】行消息类型输入错误，请在【阿里云短信、腾讯云短信、邮件、企业微信、http、钉钉】任选输入");
                 }
                 String previewUser = tPreviewUserExcelVo.getPreviewUser();
+                if (StringUtils.startsWith(previewUser, "（示例）")) {
+                    continue;
+                }
                 int count = tPreviewUserMapper.getUserCount(msgType,previewUser);
                 if(count > 0) {
                     int errorLine = i+1;

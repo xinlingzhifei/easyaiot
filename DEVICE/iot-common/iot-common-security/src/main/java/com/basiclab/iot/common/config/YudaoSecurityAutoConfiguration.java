@@ -10,6 +10,7 @@ import com.basiclab.iot.common.service.SecurityFrameworkServiceImpl;
 import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.api.oauth2.OAuth2TokenApi;
 import com.basiclab.iot.system.api.permission.PermissionApi;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.MethodInvokingFactoryBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
@@ -22,6 +23,8 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
 import javax.annotation.Resource;
+
+import static com.basiclab.iot.common.utils.RpcApiBeanUtils.resolveLocalApi;
 
 /**
  * Spring Security 自动配置类，主要用于相关组件的配置
@@ -80,13 +83,14 @@ public class YudaoSecurityAutoConfiguration {
      */
     @Bean
     public TokenAuthenticationFilter authenticationTokenFilter(GlobalExceptionHandler globalExceptionHandler,
-                                                               OAuth2TokenApi oauth2TokenApi) {
-        return new TokenAuthenticationFilter(securityProperties, globalExceptionHandler, oauth2TokenApi);
+                                                               ObjectProvider<OAuth2TokenApi> oauth2TokenApiProvider) {
+        return new TokenAuthenticationFilter(securityProperties, globalExceptionHandler,
+                resolveLocalApi(oauth2TokenApiProvider));
     }
 
     @Bean("ss") // 使用 Spring Security 的缩写，方便使用
-    public SecurityFrameworkService securityFrameworkService(PermissionApi permissionApi) {
-        return new SecurityFrameworkServiceImpl(permissionApi);
+    public SecurityFrameworkService securityFrameworkService(ObjectProvider<PermissionApi> permissionApiProvider) {
+        return new SecurityFrameworkServiceImpl(resolveLocalApi(permissionApiProvider));
     }
 
     /**

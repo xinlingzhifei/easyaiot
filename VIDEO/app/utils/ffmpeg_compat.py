@@ -7,6 +7,7 @@ from typing import List, Optional
 # FFmpeg 8+：-stimeout/-rw_timeout 已移除，统一为 -timeout（单位仍为微秒）
 _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG: Optional[str] = None
 _FFMPEG_SUPPORTS_RW_TIMEOUT: Optional[bool] = None
+_RTSP_DEMUXER_HELP: Optional[str] = None
 
 
 def ffmpeg_option_missing(stderr: bytes, option: str = "") -> bool:
@@ -18,22 +19,37 @@ def ffmpeg_option_missing(stderr: bytes, option: str = "") -> bool:
     return False
 
 
+def _rtsp_demuxer_help_text() -> str:
+    """读取 ffmpeg RTSP demuxer 帮助，用于判断各版本支持的超时参数。"""
+    global _RTSP_DEMUXER_HELP
+    if _RTSP_DEMUXER_HELP is not None:
+        return _RTSP_DEMUXER_HELP
+    try:
+        probe = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "demuxer=rtsp"],
+            capture_output=True,
+            timeout=5,
+        )
+        _RTSP_DEMUXER_HELP = (probe.stdout or b"").decode(errors="replace")
+    except Exception:
+        _RTSP_DEMUXER_HELP = ""
+    return _RTSP_DEMUXER_HELP
+
+
+def _rtsp_demuxer_has_option(option: str) -> bool:
+    name = option.lstrip("-")
+    text = _rtsp_demuxer_help_text()
+    return f"-{name}" in text
+
+
 def ffmpeg_rtsp_open_timeout_flag() -> str:
     """返回当前 ffmpeg 支持的 RTSP 连接超时参数名。"""
     global _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
     if _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG is not None:
         return _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
-    try:
-        probe = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-stimeout", "1"],
-            capture_output=True,
-            timeout=5,
-        )
-        if ffmpeg_option_missing(probe.stderr, "stimeout"):
-            _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-timeout"
-        else:
-            _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-stimeout"
-    except Exception:
+    if _rtsp_demuxer_has_option("stimeout"):
+        _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-stimeout"
+    else:
         _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-timeout"
     return _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
 
@@ -43,8 +59,11 @@ def ffmpeg_supports_rw_timeout() -> bool:
     global _FFMPEG_SUPPORTS_RW_TIMEOUT
     if _FFMPEG_SUPPORTS_RW_TIMEOUT is not None:
         return _FFMPEG_SUPPORTS_RW_TIMEOUT
+    if _rtsp_demuxer_has_option("rw_timeout"):
+        _FFMPEG_SUPPORTS_RW_TIMEOUT = True
+        return _FFMPEG_SUPPORTS_RW_TIMEOUT
+    # 帮助文本不可用时，回退到运行时探测（lavfi 轻量输入）
     try:
-        # 必须带 -i，否则部分版本会把未知选项当作 trailing option 静默忽略，导致误判为支持
         probe = subprocess.run(
             [
                 "ffmpeg",
@@ -54,7 +73,7 @@ def ffmpeg_supports_rw_timeout() -> bool:
                 "-f",
                 "lavfi",
                 "-i",
-                "testsrc=duration=0.01:size=16x16:rate=1",
+                "nullsrc=s=1x1:d=0.01",
                 "-frames:v",
                 "1",
                 "-f",
@@ -62,7 +81,7 @@ def ffmpeg_supports_rw_timeout() -> bool:
                 "-",
             ],
             capture_output=True,
-            timeout=10,
+            timeout=8,
         )
         _FFMPEG_SUPPORTS_RW_TIMEOUT = not ffmpeg_option_missing(probe.stderr, "rw_timeout")
     except Exception:

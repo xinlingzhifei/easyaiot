@@ -61,6 +61,7 @@
 
   const formatSubLabel = (val) => {
     let subLabel = '请输入';
+    let helpMessage: string | undefined;
     let rules: any = {};
     switch (val) {
       case 1:
@@ -74,6 +75,8 @@
         break;
       case 4:
         subLabel = '请输入企业微信成员 UserID';
+        helpMessage =
+          '非手机号。请在企微管理后台 → 通讯录 → 成员详情中查看 UserID（部分企业 UserID 与手机号相同）';
         rules = { validator: (_rule, val) => validator(val, 'text', subLabel) };
         break;
       case 5:
@@ -99,16 +102,18 @@
     return {
       rules,
       subLabel,
+      helpMessage,
     };
   };
 
   const msgTypeChange = (val, _option) => {
     clearValidate();
-    const { subLabel, rules } = formatSubLabel(val);
+    const { subLabel, rules, helpMessage } = formatSubLabel(val);
     updateSchema({
       field: 'previewUser',
       subLabel,
       labelWidth: 'auto',
+      helpMessage: helpMessage || '',
       rules: [_.cloneDeep(rules)],
     });
   };
@@ -149,6 +154,7 @@
     updateSchema({
       field: 'previewUser',
       subLabel: '',
+      helpMessage: '',
       rules: [
         {
           required: true,

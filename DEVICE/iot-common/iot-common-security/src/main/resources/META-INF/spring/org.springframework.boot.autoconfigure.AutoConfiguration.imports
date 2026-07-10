@@ -1,4 +1,5 @@
 com.basiclab.iot.common.config.YudaoSecurityRpcAutoConfiguration
+com.basiclab.iot.common.config.YudaoSecurityFeignClientsAutoConfiguration
 com.basiclab.iot.common.config.YudaoSecurityAutoConfiguration
 com.basiclab.iot.common.config.YudaoWebSecurityConfigurerAdapter
 com.basiclab.iot.common.config.YudaoOperateLogConfiguration

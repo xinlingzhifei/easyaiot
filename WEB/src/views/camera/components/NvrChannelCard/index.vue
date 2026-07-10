@@ -35,20 +35,12 @@
         </div>
         <div class="btns" @click.stop>
           <div
-            v-if="hasDirectPlayStream(item)"
+            v-if="hasPlayableStream(item)"
             class="btn"
-            title="播放视频流"
+            :title="playButtonTitle"
             @click="emit('play', item)"
           >
             <Icon icon="octicon:play-16" :size="15" color="#3B82F6" />
-          </div>
-          <div
-            v-if="hasDirectPlayStream(item, true)"
-            class="btn"
-            title="查看AI流"
-            @click="emit('playAI', item)"
-          >
-            <Icon icon="hugeicons:ai-video" :size="15" color="#3B82F6" />
           </div>
           <div class="btn" title="详情" @click="emit('view', item)">
             <Icon icon="ant-design:eye-filled" :size="15" color="#3B82F6" />
@@ -84,7 +76,7 @@ import { Popconfirm } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import type { DeviceInfo } from '@/api/device/camera';
 import { formatCameraDeviceLabel } from '@/views/camera/utils/deviceLabel';
-import { hasDirectPlayStream } from '@/views/camera/utils/devicePlay';
+import { hasPlayableStream } from '@/views/camera/utils/devicePlay';
 import { copyText } from '@/utils/copyTextToClipboard';
 import { useMessage } from '@/hooks/web/useMessage';
 import HAIKANG_IMAGE from '@/assets/images/video/haikang.png';
@@ -98,6 +90,7 @@ const props = defineProps<{
     rtsp_url?: string;
     rtsp_direct?: string;
   };
+  playButtonTitle?: string;
 }>();
 
 const { createMessage } = useMessage();
@@ -107,9 +100,10 @@ const emit = defineEmits<{
   edit: [device: DeviceInfo];
   setLocation: [device: DeviceInfo];
   play: [device: DeviceInfo];
-  playAI: [device: DeviceInfo];
   delete: [device: DeviceInfo];
 }>();
+
+const playButtonTitle = computed(() => props.playButtonTitle ?? '播放视频流');
 
 const online = computed(() => props.item.online ?? props.item.channel_online);
 

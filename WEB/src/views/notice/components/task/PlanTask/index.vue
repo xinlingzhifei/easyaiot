@@ -1,4 +1,3 @@
-import { Button } from '@/components/Button'
 <template>
   <div>
     <BasicTable @register="registerTable">
@@ -50,6 +49,7 @@ import { Button } from '@/components/Button'
 </template>
 <script lang="ts" setup name="PlanTask">
   import { onMounted } from 'vue';
+  import { Button } from '@/components/Button';
   import { BasicTable, useTable, TableAction } from '/@/components/Table';
   import { getColumns, getFormConfig } from './Data.tsx';
   import { useMessage } from '/@/hooks/web/useMessage';
