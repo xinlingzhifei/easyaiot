@@ -5,12 +5,25 @@ import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
 public interface SupervisionAlertReviewItemMapper extends BaseMapperX<SupervisionAlertReviewItemDO> {
+
+    @Select("""
+            SELECT *
+            FROM system_supervision_alert_review_item
+            WHERE tenant_id = #{tenantId}
+              AND id = #{reviewItemId}
+              AND deleted = 0
+            FOR UPDATE
+            """)
+    SupervisionAlertReviewItemDO selectByIdForUpdate(@Param("tenantId") Long tenantId,
+                                                     @Param("reviewItemId") Long reviewItemId);
 
     default int updateReviewStatusIfCurrent(Long reviewItemId,
                                             String expectedReviewStatus,

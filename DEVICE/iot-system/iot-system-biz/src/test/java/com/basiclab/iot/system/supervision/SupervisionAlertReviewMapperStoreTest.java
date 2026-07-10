@@ -41,6 +41,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SupervisionAlertReviewMapperStoreTest {
 
     @Test
+    void appendClueLocksReviewItemRowBeforeMergingConcurrentSourceIds() {
+        AtomicInteger lockedReads = new AtomicInteger();
+        AtomicInteger unlockedReads = new AtomicInteger();
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 10, 8, 0);
+        SupervisionAlertReviewItemMapper reviewItemMapper = mapper(
+                SupervisionAlertReviewItemMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectByIdForUpdate".equals(method.getName())) {
+                        lockedReads.incrementAndGet();
+                        return reviewItem(101L, SupervisionAlertReviewService.STATUS_PENDING_REVIEW, null, null);
+                    }
+                    if ("selectById".equals(method.getName())) {
+                        unlockedReads.incrementAndGet();
+                        return reviewItem(101L, SupervisionAlertReviewService.STATUS_PENDING_REVIEW, null, null);
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(
+                reviewItemMapper,
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class)
+        );
+
+        store.appendClue(
+                101L,
+                "alert-row-lock",
+                alertTime.plusSeconds(10),
+                List.of(),
+                Map.of(),
+                "not_required",
+                alertTime,
+                null
+        );
+
+        assertEquals(1, lockedReads.get());
+        assertEquals(0, unlockedReads.get());
+    }
+
+    @Test
     void createBindsTenantIdFromCurrentTenantContext() {
         AtomicReference<SupervisionAlertReviewItemDO> insertedItem = new AtomicReference<>();
         SupervisionAlertReviewItemMapper reviewItemMapper = mapper(SupervisionAlertReviewItemMapper.class, (proxy, method, args) -> {

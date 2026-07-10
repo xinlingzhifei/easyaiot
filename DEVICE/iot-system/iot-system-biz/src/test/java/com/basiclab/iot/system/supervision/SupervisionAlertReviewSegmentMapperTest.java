@@ -7,6 +7,7 @@ import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSegmentDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewSegmentMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.InvocationHandler;
@@ -18,6 +19,21 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionAlertReviewSegmentMapperTest {
+
+    @Test
+    void transactionLockHashesTenantNamespaceAndCameraInsidePostgresTransaction() throws Exception {
+        Select select = SupervisionAlertReviewSegmentMapper.class
+                .getMethod("acquireTransactionLock", Long.class, String.class, String.class)
+                .getAnnotation(Select.class);
+
+        assertTrue(select != null);
+        String sql = String.join(" ", select.value());
+        assertTrue(sql.contains("pg_advisory_xact_lock"));
+        assertTrue(sql.contains("hashtextextended"));
+        assertTrue(sql.contains("tenantId"));
+        assertTrue(sql.contains("namespace"));
+        assertTrue(sql.contains("lockKey"));
+    }
 
     @Test
     void selectByReviewItemIdIgnoresSoftDeletedRowsToMatchPartialUniqueIndex() {

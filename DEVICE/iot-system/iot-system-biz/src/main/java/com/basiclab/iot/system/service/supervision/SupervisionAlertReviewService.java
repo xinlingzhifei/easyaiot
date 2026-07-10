@@ -1355,6 +1355,20 @@ public interface SupervisionAlertReviewService {
 
     interface ReviewItemStore {
 
+        default void acquireReviewSegmentTransactionLocks(String cameraId,
+                                                           String sourceSystem,
+                                                           List<String> identityKeys) {
+            // In-memory/test stores have no cross-process transaction to lock.
+        }
+
+        default Optional<ReviewItemAggregate> findLatestOpenReviewSegment(String cameraId) {
+            return Optional.empty();
+        }
+
+        default Optional<ReviewSegmentView> findPersistedReviewSegment(Long reviewItemId) {
+            return Optional.empty();
+        }
+
         Optional<ReviewItemAggregate> findMergeCandidate(String sourceSystem,
                                                          String cameraId,
                                                          String zoneCode,

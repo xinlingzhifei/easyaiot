@@ -8,11 +8,14 @@ import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.Re
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchCandidate;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -37,6 +40,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private static final String REVIEW_SOURCE_SYSTEM = "alert_review";
     private static final int DEFAULT_MERGE_WINDOW_SECONDS = 300;
+    private static final int MAX_SEGMENT_CONFLICT_ATTEMPTS = 3;
     private static final int DEFAULT_CASE_CANDIDATE_WINDOW_SECONDS = 600;
     private static final int DEFAULT_EXPORT_JOB_EXPIRES_DAYS = 7;
     private static final int DEFAULT_EXPORT_WORKER_LIMIT = 20;
@@ -208,20 +212,31 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ReviewItemAggregate ingestClue(AlertClueCommand command) {
         Objects.requireNonNull(command, "command");
         requireText(command.sourceSystem(), "sourceSystem");
         requireText(command.sourceAlertId(), "sourceAlertId");
         LocalDateTime alertTime = Objects.requireNonNull(command.alertTime(), "alertTime");
         String cameraId = normalizeCameraId(command);
+        List<String> identityKeys = ingestIdentityKeys(command);
+        List<String> transactionIdentityKeys = new ArrayList<>(identityKeys);
+        transactionIdentityKeys.add(command.sourceSystem() + ":alert:" + command.sourceAlertId());
         synchronized (reviewSegmentIngestLock(cameraId)) {
-            return ingestClueLocked(command, alertTime, cameraId);
+            reviewItemStore.acquireReviewSegmentTransactionLocks(
+                    cameraId,
+                    command.sourceSystem(),
+                    List.copyOf(new LinkedHashSet<>(transactionIdentityKeys))
+            );
+            return ingestClueLocked(command, alertTime, cameraId, identityKeys);
         }
     }
 
-    private ReviewItemAggregate ingestClueLocked(AlertClueCommand command, LocalDateTime alertTime, String cameraId) {
+    private ReviewItemAggregate ingestClueLocked(AlertClueCommand command,
+                                                 LocalDateTime alertTime,
+                                                 String cameraId,
+                                                 List<String> identityKeys) {
         String ruleCode = resolveRuleCode(command);
-        List<String> identityKeys = ingestIdentityKeys(command);
         Optional<ReviewItemAggregate> existingIdentity = findExistingIngestIdentity(command, identityKeys);
         if (existingIdentity.isPresent()) {
             return withEventProjection(existingIdentity.get());
@@ -231,63 +246,166 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         LocalDateTime windowStart = alertTime.minusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
         LocalDateTime windowEnd = alertTime.plusSeconds(DEFAULT_MERGE_WINDOW_SECONDS);
 
-        try {
-            return reviewItemStore.findMergeCandidate(
-                            command.sourceSystem(),
-                            cameraId,
-                            command.zoneCode(),
-                            ruleCode,
-                            windowStart,
-                            windowEnd
-                    )
-                    .filter(SupervisionAlertReviewServiceImpl::canMergeReviewSegment)
-                    .map(candidate -> {
-                        String recordEvidenceStatus = mergeRecordEvidenceStatus(
-                                candidate.recordEvidenceStatus(),
-                                evidenceResult.recordEvidenceStatus()
-                        );
-                        return reviewItemStore.appendClue(candidate.id(),
-                                command.sourceAlertId(),
-                                alertTime,
-                                evidenceResult.evidenceItems(),
-                                withReviewWindow(
-                                        mergeReviewData(candidate.reviewData(), reviewData),
-                                        min(candidate.firstAlertTime(), alertTime),
-                                        max(candidate.lastAlertTime(), alertTime)
-                                ),
-                                recordEvidenceStatus,
-                                evidenceResult.recordEvidenceCheckedAt() == null
-                                        ? candidate.recordEvidenceCheckedAt()
-                                        : evidenceResult.recordEvidenceCheckedAt(),
-                                hasText(evidenceResult.recordEvidenceMessage())
-                                        ? evidenceResult.recordEvidenceMessage()
-                                        : candidate.recordEvidenceMessage());
-                    })
-                    .orElseGet(() -> reviewItemStore.create(new ReviewItemDraft(
-                            command.sourceSystem(),
+        RuntimeException lastConflict = null;
+        for (int attempt = 1; attempt <= MAX_SEGMENT_CONFLICT_ATTEMPTS; attempt++) {
+            Optional<ReviewItemAggregate> retryIdentity = findExistingIngestIdentity(command, identityKeys);
+            if (retryIdentity.isPresent()) {
+                return withEventProjection(retryIdentity.get());
+            }
+            try {
+                Optional<ReviewItemAggregate> candidate = reviewItemStore.findMergeCandidate(
+                                command.sourceSystem(),
+                                cameraId,
+                                command.zoneCode(),
+                                ruleCode,
+                                windowStart,
+                                windowEnd
+                        )
+                        .filter(SupervisionAlertReviewServiceImpl::canMergeReviewSegment);
+                if (candidate.isPresent()) {
+                    ReviewItemAggregate current = candidate.get();
+                    String recordEvidenceStatus = mergeRecordEvidenceStatus(
+                            current.recordEvidenceStatus(),
+                            evidenceResult.recordEvidenceStatus()
+                    );
+                    return reviewItemStore.appendClue(current.id(),
                             command.sourceAlertId(),
-                            ruleCode,
-                            command.sourceAlertType(),
                             alertTime,
-                            command.deviceId(),
-                            cameraId,
-                            command.zoneCode(),
-                            command.objectLabel(),
-                            command.sourcePayloadHash(),
-                            reviewData,
-                            evidenceResult.recordEvidenceStatus(),
-                            evidenceResult.recordEvidenceCheckedAt(),
-                            evidenceResult.recordEvidenceMessage()
-                    ), evidenceResult.evidenceItems()));
-        } catch (DuplicateKeyException ex) {
-            return findExistingIngestIdentity(command, identityKeys)
-                    .map(this::withEventProjection)
-                    .orElseThrow(() -> ex);
+                            evidenceResult.evidenceItems(),
+                            withReviewWindow(
+                                    mergeReviewData(current.reviewData(), reviewData),
+                                    min(current.firstAlertTime(), alertTime),
+                                    max(current.lastAlertTime(), alertTime)
+                            ),
+                            recordEvidenceStatus,
+                            evidenceResult.recordEvidenceCheckedAt() == null
+                                    ? current.recordEvidenceCheckedAt()
+                                    : evidenceResult.recordEvidenceCheckedAt(),
+                            hasText(evidenceResult.recordEvidenceMessage())
+                                    ? evidenceResult.recordEvidenceMessage()
+                                    : current.recordEvidenceMessage());
+                }
+
+                endPreviousOpenSegmentBeforeSplit(cameraId, alertTime);
+                return reviewItemStore.create(new ReviewItemDraft(
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        ruleCode,
+                        command.sourceAlertType(),
+                        alertTime,
+                        command.deviceId(),
+                        cameraId,
+                        command.zoneCode(),
+                        command.objectLabel(),
+                        command.sourcePayloadHash(),
+                        reviewData,
+                        evidenceResult.recordEvidenceStatus(),
+                        evidenceResult.recordEvidenceCheckedAt(),
+                        evidenceResult.recordEvidenceMessage()
+                ), evidenceResult.evidenceItems());
+            } catch (RuntimeException ex) {
+                if (!isRetriableReviewSegmentConflict(ex)) {
+                    throw ex;
+                }
+                Optional<ReviewItemAggregate> concurrentWinner = findExistingIngestIdentity(command, identityKeys);
+                if (concurrentWinner.isPresent()) {
+                    return withEventProjection(concurrentWinner.get());
+                }
+                lastConflict = ex;
+                if (attempt == MAX_SEGMENT_CONFLICT_ATTEMPTS) {
+                    throw ex;
+                }
+            }
         }
+        throw lastConflict == null
+                ? new IllegalStateException("review segment ingest retry exhausted")
+                : lastConflict;
     }
 
     private Object reviewSegmentIngestLock(String cameraId) {
         return reviewSegmentIngestLocks.computeIfAbsent(firstText(cameraId, "__missing_camera__"), key -> new Object());
+    }
+
+    private void endPreviousOpenSegmentBeforeSplit(String cameraId, LocalDateTime newSegmentStart) {
+        Optional<ReviewItemAggregate> openSegment = reviewItemStore.findLatestOpenReviewSegment(cameraId)
+                .or(() -> reviewItemStore.listWorkbench(null).stream()
+                        .filter(item -> Objects.equals(cameraId, item.cameraId()))
+                        .filter(SupervisionAlertReviewServiceImpl::canMergeReviewSegment)
+                        .max(Comparator.comparing(
+                                item -> firstNonNull(item.lastAlertTime(), item.firstAlertTime()),
+                                Comparator.nullsFirst(Comparator.naturalOrder())
+                        )));
+        if (openSegment.isEmpty()) {
+            return;
+        }
+
+        ReviewItemAggregate item = openSegment.get();
+        Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
+        Map<String, Object> segment = new LinkedHashMap<>(toStringObjectMap(reviewData.get("reviewSegment")));
+        LocalDateTime segmentStart = toLocalDateTime(firstText(
+                segment.get("startTime"),
+                item.firstAlertTime() == null ? null : item.firstAlertTime().toString()
+        ));
+        if (segmentStart != null && newSegmentStart.isBefore(segmentStart)) {
+            throw new IllegalStateException("out-of-order clue overlaps open review segment for camera " + cameraId);
+        }
+        LocalDateTime lastSeen = firstNonNull(
+                item.lastAlertTime(),
+                toLocalDateTime(segment.get("endTime")),
+                segmentStart
+        );
+        LocalDateTime cutoff = lastSeen == null
+                ? newSegmentStart
+                : min(newSegmentStart, lastSeen.plusSeconds(DEFAULT_MERGE_WINDOW_SECONDS));
+        if (segmentStart != null && cutoff.isBefore(segmentStart)) {
+            throw new IllegalStateException("review segment cutoff is before segment start for camera " + cameraId);
+        }
+
+        List<Map<String, Object>> events = new ArrayList<>(toMapList(segment.get("events")));
+        events.add(Map.of(
+                "event", "ended",
+                "happenedAt", cutoff.toString(),
+                "reason", "merge_window_cutoff"
+        ));
+        segment.put("status", "ended");
+        segment.put("endTime", cutoff.toString());
+        segment.put("events", List.copyOf(events));
+        reviewData.put("reviewSegment", immutableNonNullMap(segment));
+
+        Map<String, Object> lifecycle = new LinkedHashMap<>(toStringObjectMap(reviewData.get("lifecycle")));
+        lifecycle.put("state", "ended");
+        lifecycle.put("lastSeenAt", cutoff.toString());
+        lifecycle.put("endedAt", cutoff.toString());
+        lifecycle.put("cutoffWindowSeconds", DEFAULT_MERGE_WINDOW_SECONDS);
+        reviewData.put("lifecycle", immutableNonNullMap(lifecycle));
+        reviewItemStore.updateReviewLifecycle(
+                item.id(),
+                immutableNonNullMap(reviewData),
+                item.firstAlertTime(),
+                item.lastAlertTime(),
+                List.of(),
+                item.recordEvidenceStatus(),
+                item.recordEvidenceCheckedAt(),
+                item.recordEvidenceMessage()
+        );
+    }
+
+    private static boolean isRetriableReviewSegmentConflict(RuntimeException exception) {
+        if (exception instanceof DuplicateKeyException) {
+            return true;
+        }
+        if (!(exception instanceof DataIntegrityViolationException)) {
+            return false;
+        }
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof SQLException sqlException
+                    && "23P01".equalsIgnoreCase(sqlException.getSQLState())) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     @Override
@@ -389,15 +507,27 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     @Override
     public ReviewSegmentView getReviewSegment(Long reviewItemId) {
         requirePositive(reviewItemId, "reviewItemId");
+        Optional<ReviewSegmentView> persistedSegment = reviewItemStore.findPersistedReviewSegment(reviewItemId);
+        if (persistedSegment.isPresent()) {
+            return persistedSegment.get();
+        }
         ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
         return toReviewSegmentView(item);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ReviewItemAggregate updateReviewLifecycle(ReviewLifecycleCommand command) {
         Objects.requireNonNull(command, "command");
         requirePositive(command.reviewItemId(), "reviewItemId");
+        ReviewItemAggregate initialItem = reviewItemStore.findById(command.reviewItemId())
+                .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        reviewItemStore.acquireReviewSegmentTransactionLocks(
+                initialItem.cameraId(),
+                initialItem.sourceSystem(),
+                List.of()
+        );
         ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
         LocalDateTime happenedAt = command.happenedAt() == null ? LocalDateTime.now() : command.happenedAt();
@@ -3925,11 +4055,16 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 ? severity
                 : reviewSegmentSeverity(item.sourceAlertType()));
         String status = firstText(segment.get("status"), "active");
-        segment.put("status", Set.of("active", "detection", "alert", "ended").contains(status)
+        String normalizedStatus = Set.of("active", "detection", "alert", "ended").contains(status)
                 ? status
-                : "active");
+                : "active";
+        segment.put("status", normalizedStatus);
         segment.put("startTime", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
-        segment.put("endTime", item.lastAlertTime() == null ? null : item.lastAlertTime().toString());
+        LocalDateTime endedAt = "ended".equals(normalizedStatus)
+                ? toLocalDateTime(segment.get("endTime"))
+                : null;
+        LocalDateTime normalizedEndTime = endedAt == null ? item.lastAlertTime() : endedAt;
+        segment.put("endTime", normalizedEndTime == null ? null : normalizedEndTime.toString());
         segment.put("objectIds", objectIds.isEmpty()
                 ? toStringList(segment.get("objectIds"), null)
                 : objectIds);
@@ -6095,10 +6230,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             event.put("confidence", command.confidence());
         }
         Map<String, Object> segment = new LinkedHashMap<>();
+        String severity = reviewSegmentSeverity(command.sourceAlertType());
         segment.put("segmentId", buildReviewSegmentId(normalizeCameraId(command), command.alertTime()));
         segment.put("cameraId", normalizeCameraId(command));
-        segment.put("severity", reviewSegmentSeverity(command.sourceAlertType()));
-        segment.put("status", "active");
+        segment.put("severity", severity);
+        segment.put("status", "alert".equals(severity) ? "alert" : "active");
         segment.put("startTime", command.alertTime() == null ? null : command.alertTime().toString());
         segment.put("endTime", command.alertTime() == null ? null : command.alertTime().toString());
         segment.put("objectIds", objectIds);

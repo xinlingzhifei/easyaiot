@@ -56,9 +56,11 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleView;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeLockAcquisition;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuntimeOutboxMessage;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSegmentView;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusView;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.dao.DuplicateKeyException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -86,6 +88,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     private static final String CSV_SEPARATOR = ",";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+    private static final TypeReference<List<Map<String, Object>>> MAP_LIST_TYPE = new TypeReference<>() {
     };
 
     private final SupervisionAlertReviewItemMapper reviewItemMapper;
@@ -140,6 +144,65 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
+    public void acquireReviewSegmentTransactionLocks(String cameraId,
+                                                     String sourceSystem,
+                                                     List<String> identityKeys) {
+        Long tenantId = reviewSegmentTenantId(TenantContextHolder.getTenantId());
+        reviewSegmentMapper.acquireTransactionLock(tenantId, "review-segment-camera", cameraId);
+        if (identityKeys == null || identityKeys.isEmpty()) {
+            return;
+        }
+        identityKeys.stream()
+                .filter(SupervisionAlertReviewMapperStore::hasText)
+                .distinct()
+                .sorted()
+                .forEach(identityKey -> reviewSegmentMapper.acquireTransactionLock(
+                        tenantId,
+                        "review-ingest-identity",
+                        toText(sourceSystem, "unknown-source") + ":" + identityKey
+                ));
+    }
+
+    @Override
+    public Optional<ReviewItemAggregate> findLatestOpenReviewSegment(String cameraId) {
+        SupervisionAlertReviewSegmentDO segmentDO = reviewSegmentMapper.selectLatestOpen(
+                reviewSegmentTenantId(TenantContextHolder.getTenantId()),
+                cameraId
+        );
+        if (segmentDO == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(reviewItemMapper.selectById(segmentDO.getReviewItemId()))
+                .map(this::toAggregate);
+    }
+
+    @Override
+    public Optional<ReviewSegmentView> findPersistedReviewSegment(Long reviewItemId) {
+        SupervisionAlertReviewSegmentDO segmentDO = reviewSegmentMapper.selectByReviewItemId(reviewItemId);
+        if (segmentDO == null) {
+            return Optional.empty();
+        }
+        Map<String, Object> metadata = readJson(segmentDO.getSegmentMetadata());
+        LocalDateTime viewEndTime = segmentDO.getEndTime() == null
+                ? toLocalDateTime(metadata.get("endTime"), null)
+                : segmentDO.getEndTime();
+        return Optional.of(new ReviewSegmentView(
+                segmentDO.getReviewItemId(),
+                segmentDO.getSegmentNo(),
+                segmentDO.getCameraId(),
+                segmentDO.getSeverity(),
+                segmentDO.getSegmentStatus(),
+                segmentDO.getStartTime(),
+                viewEndTime,
+                splitCsv(segmentDO.getObjectIds()),
+                splitCsv(segmentDO.getZoneCodes()),
+                splitCsv(segmentDO.getSourceAlertIds()),
+                readJsonList(segmentDO.getSegmentEvents()),
+                metadata
+        ));
+    }
+
+    @Override
     public Optional<ReviewItemAggregate> findMergeCandidate(String sourceSystem,
                                                             String cameraId,
                                                             String zoneCode,
@@ -174,7 +237,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NESTED, rollbackFor = Exception.class)
     public ReviewItemAggregate create(ReviewItemDraft draft, List<ReviewEvidenceItem> evidenceItems) {
         Objects.requireNonNull(draft, "draft");
         SupervisionAlertReviewItemDO itemDO = new SupervisionAlertReviewItemDO()
@@ -205,7 +268,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NESTED, rollbackFor = Exception.class)
     public ReviewItemAggregate appendClue(Long reviewItemId,
                                           String sourceAlertId,
                                           LocalDateTime alertTime,
@@ -214,7 +277,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                           String recordEvidenceStatus,
                                           LocalDateTime recordEvidenceCheckedAt,
                                           String recordEvidenceMessage) {
-        SupervisionAlertReviewItemDO itemDO = requireItem(reviewItemId);
+        SupervisionAlertReviewItemDO itemDO = requireItemForUpdate(reviewItemId);
         List<String> sourceAlertIds = new ArrayList<>(splitSourceAlertIds(itemDO.getSourceAlertIds()));
         if (!sourceAlertIds.contains(sourceAlertId)) {
             sourceAlertIds.add(sourceAlertId);
@@ -269,7 +332,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                                      String recordEvidenceStatus,
                                                      LocalDateTime recordEvidenceCheckedAt,
                                                      String recordEvidenceMessage) {
-        SupervisionAlertReviewItemDO itemDO = requireItem(reviewItemId);
+        SupervisionAlertReviewItemDO itemDO = requireItemForUpdate(reviewItemId);
         itemDO.setReviewData(writeJson(reviewData))
                 .setFirstAlertTime(firstAlertTime)
                 .setLastAlertTime(lastAlertTime)
@@ -1281,6 +1344,17 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         return itemDO;
     }
 
+    private SupervisionAlertReviewItemDO requireItemForUpdate(Long reviewItemId) {
+        SupervisionAlertReviewItemDO itemDO = reviewItemMapper.selectByIdForUpdate(
+                reviewSegmentTenantId(TenantContextHolder.getTenantId()),
+                reviewItemId
+        );
+        if (itemDO == null) {
+            throw new IllegalArgumentException("reviewItemId not found: " + reviewItemId);
+        }
+        return itemDO;
+    }
+
     private ReviewItemAggregate resolveConcurrentReviewStatusMiss(Long reviewItemId, String targetStatus) {
         SupervisionAlertReviewItemDO current = requireItem(reviewItemId);
         if (Objects.equals(targetStatus, current.getReviewStatus())) {
@@ -1835,6 +1909,17 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             return OBJECT_MAPPER.readValue(value, MAP_TYPE);
         } catch (JsonProcessingException ex) {
             return Map.of();
+        }
+    }
+
+    private static List<Map<String, Object>> readJsonList(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        try {
+            return List.copyOf(OBJECT_MAPPER.readValue(value, MAP_LIST_TYPE));
+        } catch (JsonProcessingException ex) {
+            return List.of();
         }
     }
 

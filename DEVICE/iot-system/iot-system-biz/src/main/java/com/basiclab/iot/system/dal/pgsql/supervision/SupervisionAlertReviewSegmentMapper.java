@@ -4,6 +4,8 @@ import com.basiclab.iot.common.core.mapper.BaseMapperX;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSegmentDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -11,6 +13,18 @@ import java.util.Objects;
 
 @Mapper
 public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<SupervisionAlertReviewSegmentDO> {
+
+    @Select("""
+            SELECT pg_advisory_xact_lock(
+                hashtextextended(
+                    CONCAT(CAST(#{tenantId} AS text), ':', #{namespace}, ':', #{lockKey}),
+                    0
+                )
+            )
+            """)
+    void acquireTransactionLock(@Param("tenantId") Long tenantId,
+                                @Param("namespace") String namespace,
+                                @Param("lockKey") String lockKey);
 
     default SupervisionAlertReviewSegmentDO selectByReviewItemId(Long reviewItemId) {
         return selectOne(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
@@ -30,6 +44,17 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
                 .filter(segment -> Objects.equals(tenantId, segment.getTenantId()))
                 .filter(segment -> overlaps(startTime, endTime, segment.getStartTime(), segment.getEndTime()))
                 .toList();
+    }
+
+    default SupervisionAlertReviewSegmentDO selectLatestOpen(Long tenantId, String cameraId) {
+        return selectOne(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
+                .eq(SupervisionAlertReviewSegmentDO::getTenantId, tenantId)
+                .eq(SupervisionAlertReviewSegmentDO::getCameraId, cameraId)
+                .ne(SupervisionAlertReviewSegmentDO::getSegmentStatus, "ended")
+                .isNull(SupervisionAlertReviewSegmentDO::getEndTime)
+                .eq(SupervisionAlertReviewSegmentDO::getDeleted, false)
+                .orderByDesc(SupervisionAlertReviewSegmentDO::getStartTime)
+                .last("LIMIT 1"));
     }
 
     private static boolean overlaps(LocalDateTime startTime,

@@ -113,7 +113,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionEventService.Alert
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionRuleSeeds;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -136,6 +139,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionAlertReviewServiceTest {
+
+    @Test
+    void reviewSegmentMutationsDeclareOneTransactionBoundary() throws Exception {
+        Transactional ingestTransaction = SupervisionAlertReviewServiceImpl.class
+                .getMethod("ingestClue", AlertClueCommand.class)
+                .getAnnotation(Transactional.class);
+        Transactional lifecycleTransaction = SupervisionAlertReviewServiceImpl.class
+                .getMethod("updateReviewLifecycle", ReviewLifecycleCommand.class)
+                .getAnnotation(Transactional.class);
+
+        assertTrue(ingestTransaction != null, "ingest must keep identity, candidate, item and segment writes atomic");
+        assertTrue(lifecycleTransaction != null, "segment lifecycle changes must use the same camera transaction lock");
+    }
 
     @Test
     void ingestCluesMergesNearbyAlertSnapshotsAndRecordsIntoOneReviewItem() {
@@ -203,7 +219,7 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(first.get().id(), second.get().id());
         assertEquals(1, itemStore.listWorkbench(null).size());
         ReviewSegmentView segment = service.getReviewSegment(first.get().id());
-        assertEquals("active", segment.status());
+        assertEquals("alert", segment.status());
         assertEquals(firstTime, segment.startTime());
         assertEquals(firstTime.plusSeconds(30), segment.endTime());
         assertEquals(List.of("alert-race-001", "alert-race-002"), segment.sourceAlertIds());
@@ -338,6 +354,24 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void ingestRechecksIdentityAfterPostgresSegmentExclusionConflict() {
+        SegmentConflictWinnerStore itemStore = new SegmentConflictWinnerStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 10, 9, 0);
+
+        ReviewItemAggregate recovered = service.ingestClue(newClue(
+                "alert-23p01-recheck",
+                alertTime,
+                "23p01.jpg",
+                "23p01.mp4"
+        ));
+
+        assertEquals(1, itemStore.createAttempts());
+        assertEquals(List.of("alert-23p01-recheck"), recovered.sourceAlertIds());
+        assertEquals(1, itemStore.listWorkbench(null).size());
+    }
+
+    @Test
     void ingestSplitsOutsideMergeWindowAndRecordsAggregationPolicy() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
@@ -364,6 +398,70 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("new_item_when_gap_exceeds_merge_window_or_existing_not_pending",
                 splitAggregation.get("splitPolicy"));
         assertEquals("video|camera-01", splitAggregation.get("aggregationKey"));
+    }
+
+    @Test
+    void detectionOutsideMergeWindowEndsPreviousOpenSegmentAtCutoffBeforeSplit() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime firstTime = LocalDateTime.of(2026, 7, 10, 9, 20);
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-window-close-a",
+                firstTime,
+                "window-close-a.jpg",
+                null
+        ));
+
+        ReviewItemAggregate detection = service.ingestClue(new AlertClueCommand(
+                "video",
+                "detection-window-close-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "motion_detection",
+                firstTime.plusSeconds(360),
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                3,
+                "window-close-b.jpg",
+                null,
+                "hash-window-close-b",
+                List.of("person"),
+                List.of("zone-a"),
+                List.of("obj-window-close-b"),
+                0.73D,
+                List.of(2D, 3D, 9D, 19D),
+                "corr-window-close"
+        ));
+
+        ReviewSegmentView ended = service.getReviewSegment(first.id());
+        ReviewSegmentView split = service.getReviewSegment(detection.id());
+        assertNotEquals(first.id(), detection.id());
+        assertEquals("ended", ended.status());
+        assertEquals(firstTime.plusSeconds(300), ended.endTime());
+        assertFalse(ended.endTime().isAfter(split.startTime()));
+        assertEquals("detection", split.severity());
+    }
+
+    @Test
+    void alertClueStartsAlertSegmentWithoutWaitingForLifecycleCallback() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 10, 9, 30);
+
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-immediate-escalation",
+                alertTime,
+                "immediate-escalation.jpg",
+                null
+        ));
+
+        ReviewSegmentView segment = service.getReviewSegment(item.id());
+        assertEquals("alert", segment.status());
+        assertEquals("alert", segment.severity());
     }
 
     @Test
@@ -5476,6 +5574,14 @@ class SupervisionAlertReviewServiceTest {
                 "corr-truncate"
         ));
 
+        service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9801L,
+                true,
+                3,
+                true
+        ));
+
         ReviewSegmentView endedSegment = service.getReviewSegment(ended.id());
         ReviewSegmentView detectionSegment = service.getReviewSegment(detection.id());
 
@@ -5519,7 +5625,7 @@ class SupervisionAlertReviewServiceTest {
         ReviewSegmentView segment = service.getReviewSegment(item.id());
 
         assertTrue(invalidEnd.getMessage().contains("before review segment start"));
-        assertEquals("active", segment.status());
+        assertEquals("alert", segment.status());
         assertEquals(alertTime, segment.startTime());
         assertEquals(alertTime, segment.endTime());
     }
@@ -5628,7 +5734,7 @@ class SupervisionAlertReviewServiceTest {
 
         assertTrue(overlap.getMessage().contains("overlapping review segment"));
         assertEquals(alertTime.plusSeconds(30), oldSegment.endTime());
-        assertEquals("active", newSegment.status());
+        assertEquals("alert", newSegment.status());
         assertEquals(alertTime.plusSeconds(90), newSegment.startTime());
     }
 
@@ -6211,6 +6317,25 @@ class SupervisionAlertReviewServiceTest {
             synchronized (this) {
                 return super.create(draft, evidenceItems);
             }
+        }
+    }
+
+    private static final class SegmentConflictWinnerStore extends InMemoryReviewItemStore {
+
+        private int createAttempts;
+
+        @Override
+        public ReviewItemAggregate create(ReviewItemDraft draft, List<ReviewEvidenceItem> evidenceItems) {
+            createAttempts++;
+            super.create(draft, evidenceItems);
+            throw new DataIntegrityViolationException(
+                    "concurrent review segment overlap",
+                    new SQLException("exclusion constraint conflict", "23P01")
+            );
+        }
+
+        int createAttempts() {
+            return createAttempts;
         }
     }
 
