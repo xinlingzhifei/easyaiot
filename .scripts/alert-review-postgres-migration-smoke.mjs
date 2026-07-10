@@ -661,9 +661,11 @@ VALUES (3003, 3003, 'video', 'video:alert:a-race', 'a-race', false);
 export function buildConcurrentReviewStatusBootstrapSql() {
   return `
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, review_item_no, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, version, deleted
+  id, tenant_id, review_item_no, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code,
+  first_alert_time, last_alert_time, version, deleted
 )
-VALUES (8001, 5005, 'fixture-review-status-8001', 'video', 'review-status-race', 'pending_review', 'camera-review-status-race-01', 'zone-a', 'rule-a', '2026-07-05 13:00', 0, false);
+VALUES (8001, 5005, 'fixture-review-status-8001', 'video', 'review-status-race', 'pending_review', 'camera-review-status-race-01', 'zone-a', 'rule-a',
+  '2026-07-05 13:00', '2026-07-05 13:00', 0, false);
 `;
 }
 
@@ -681,11 +683,14 @@ WHERE id = 8001
 export function buildConcurrentReviewSegmentBootstrapSql() {
   return `
 INSERT INTO system_supervision_alert_review_item(
-  id, tenant_id, review_item_no, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code, last_alert_time, deleted
+  id, tenant_id, review_item_no, source_system, source_alert_ids, review_status, camera_id, zone_code, rule_code,
+  first_alert_time, last_alert_time, deleted
 )
 VALUES
-  (7001, 4004, 'fixture-review-segment-7001', 'video', 'a-segment-race-1', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false),
-  (7002, 4004, 'fixture-review-segment-7002', 'video', 'a-segment-race-2', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a', '2026-07-05 12:00', false);
+  (7001, 4004, 'fixture-review-segment-7001', 'video', 'a-segment-race-1', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a',
+   '2026-07-05 12:00', '2026-07-05 12:00', false),
+  (7002, 4004, 'fixture-review-segment-7002', 'video', 'a-segment-race-2', 'pending_review', 'camera-segment-race-01', 'zone-a', 'rule-a',
+   '2026-07-05 12:00', '2026-07-05 12:00', false);
 `;
 }
 

@@ -126,7 +126,20 @@ function assertReviewItemFixtureNumbers(sql, label) {
   )];
   assert.ok(inserts.length > 0, `${label} must contain a review item fixture`);
   for (const insert of inserts) {
-    assert.match(insert[1], /\breview_item_no\b/, `${label} review item fixtures must set review_item_no`);
+    for (const requiredColumn of [
+      'review_item_no',
+      'source_system',
+      'rule_code',
+      'first_alert_time',
+      'last_alert_time',
+      'source_alert_ids',
+    ]) {
+      assert.match(
+        insert[1],
+        new RegExp(`\\b${requiredColumn}\\b`),
+        `${label} review item fixtures must set ${requiredColumn}`,
+      );
+    }
   }
 }
 
