@@ -33,6 +33,8 @@ class SupervisionAlertReviewSegmentMapperTest {
         assertTrue(sql.contains("tenantId"));
         assertTrue(sql.contains("namespace"));
         assertTrue(sql.contains("lockKey"));
+        assertTrue(sql.contains("CAST(#{namespace} AS text)"));
+        assertTrue(sql.contains("CAST(#{lockKey} AS text)"));
     }
 
     @Test

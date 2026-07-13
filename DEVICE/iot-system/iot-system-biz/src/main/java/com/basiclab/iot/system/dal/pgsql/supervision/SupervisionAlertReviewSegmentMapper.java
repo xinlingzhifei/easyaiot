@@ -17,7 +17,13 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
     @Select("""
             SELECT pg_advisory_xact_lock(
                 hashtextextended(
-                    CONCAT(CAST(#{tenantId} AS text), ':', #{namespace}, ':', #{lockKey}),
+                    CONCAT(
+                        CAST(#{tenantId} AS text),
+                        ':',
+                        CAST(#{namespace} AS text),
+                        ':',
+                        CAST(#{lockKey} AS text)
+                    ),
                     0
                 )
             )
