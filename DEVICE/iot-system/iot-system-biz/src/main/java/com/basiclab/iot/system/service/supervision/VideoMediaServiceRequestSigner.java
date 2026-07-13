@@ -148,11 +148,12 @@ public class VideoMediaServiceRequestSigner implements ReviewPlaybackUrlSigner {
     @Override
     public String signPlaybackUrl(String rawUrl, String cameraId) {
         URI target = ensureSeekablePlaybackTarget(rawUrl);
-        String path = normalize(target.getPath());
+        URI videoTarget = canonicalVideoPlaybackTarget(target);
+        String path = normalize(videoTarget.getPath());
         if (!path.startsWith("/video/record/") && !"/video/alert/record".equals(path)) {
             throw new IllegalArgumentException("playback URL must target a VIDEO record endpoint");
         }
-        HttpHeaders headers = sign(HttpMethod.GET, target, "playback", cameraId, "");
+        HttpHeaders headers = sign(HttpMethod.GET, videoTarget, "playback", cameraId, "");
         Map<String, String> ticket = new LinkedHashMap<>();
         ticket.put("yf_ticket", "v1");
         ticket.put("yf_service_id", headers.getFirst("X-YFeiEye-Service-Id"));
@@ -172,6 +173,17 @@ public class VideoMediaServiceRequestSigner implements ReviewPlaybackUrlSigner {
             result.append(urlEncode(key)).append('=').append(urlEncode(value));
         });
         return result.toString();
+    }
+
+    private static URI canonicalVideoPlaybackTarget(URI target) {
+        String rawPath = normalize(target.getRawPath());
+        int videoPathIndex = rawPath.indexOf("/video/");
+        if (videoPathIndex < 0) {
+            throw new IllegalArgumentException("playback URL must target a VIDEO record endpoint");
+        }
+        String videoPath = rawPath.substring(videoPathIndex);
+        String rawQuery = normalize(target.getRawQuery());
+        return URI.create(videoPath + (rawQuery.isEmpty() ? "" : "?" + rawQuery));
     }
 
     private static URI ensureSeekablePlaybackTarget(String rawUrl) {

@@ -785,6 +785,15 @@ public class SupervisionAlertReviewController {
         ))));
     }
 
+    @GetMapping("/items/{reviewItemId}/case")
+    @PreAuthorize("@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot')")
+    @Operation(summary = "Get current review case for alert review item")
+    public CommonResult<CaseRespVO> findReviewCaseByItem(@PathVariable("reviewItemId") Long reviewItemId) {
+        return success(supervisionAlertReviewService.findReviewCaseByItem(reviewItemId)
+                .map(CaseRespVO::from)
+                .orElse(null));
+    }
+
     @PostMapping("/cases/{reviewCaseId}/items/{reviewItemId}")
     @Operation(summary = "Add alert review item to case")
     public CommonResult<CaseRespVO> addToReviewCase(@PathVariable("reviewCaseId") Long reviewCaseId,

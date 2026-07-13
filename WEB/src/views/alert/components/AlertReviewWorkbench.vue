@@ -48,6 +48,7 @@ import {
   evaluateAlertReviewSemanticTrigger,
   generateAlertReviewOperationsReport,
   getAlertReviewCaseTimeline,
+  getAlertReviewItemCase,
   getAlertReviewDetailStream,
   getAlertReviewEvidenceAudit,
   getAlertReviewRecordCoverage,
@@ -609,11 +610,30 @@ async function openItem(item: AlertReviewItem) {
   rulePreview.value = null
   ruleReplay.value = null
   reviewSegment.value = null
+  await loadItemCase(item)
   await loadTimeline()
   await loadDetailStream(item)
   await loadReviewSegment(item)
   await loadRecordCoverage(item)
   await loadCaseCandidates(item)
+}
+
+async function loadItemCase(item: AlertReviewItem) {
+  activeCase.value = null
+  caseTimeline.value = []
+  evidenceAudit.value = []
+  if (!item.inReviewCase)
+    return
+  try {
+    const reviewCase = await getAlertReviewItemCase(item.id)
+    if (!reviewCase)
+      return
+    applyActiveCase(reviewCase)
+    await loadCaseTimeline()
+  }
+  catch (error: any) {
+    createMessage.error(error?.message || '加载复盘组失败')
+  }
 }
 
 async function loadTimeline() {
@@ -1196,7 +1216,7 @@ async function openEvidence(evidence: AlertReviewEvidence) {
     return
   emit('viewVideo', {
     id: evidence.sourceAlertId,
-    device_id: selectedItem.value?.deviceId || selectedItem.value?.cameraId,
+    device_id: selectedItem.value?.cameraId || selectedItem.value?.deviceId,
     time: evidence.happenedAt,
     record_path: prepared.recordPath,
   })
@@ -1215,7 +1235,7 @@ async function openListPlayback(item: AlertReviewItem) {
       return
     emit('viewVideo', {
       id: evidence.sourceAlertId,
-      device_id: item.deviceId || item.cameraId,
+      device_id: item.cameraId || item.deviceId,
       time: seekTime,
       seek_time: seekTime,
       record_path: prepared.recordPath,

@@ -110,29 +110,45 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
             return uri;
         }
         try {
+            URI source = URI.create(uri);
             URI publicHost = URI.create(publicPlayHost);
             if (!hasText(publicHost.getScheme()) || !hasText(publicHost.getHost())) {
                 return uri;
             }
-            if (uri.startsWith("/video/") || uri.startsWith("/api/")) {
-                return publicHost.resolve(uri).toString();
-            }
-            URI source = URI.create(uri);
-            if (source.getHost() == null) {
+            if (source.getHost() == null && !uri.startsWith("/video/") && !uri.startsWith("/api/")) {
                 return uri;
             }
-            return new URI(
+            String targetPath = publicTargetPath(publicHost, source);
+            StringBuilder target = new StringBuilder(new URI(
                     publicHost.getScheme(),
                     source.getUserInfo(),
                     publicHost.getHost(),
                     publicHost.getPort(),
-                    source.getPath(),
-                    source.getQuery(),
-                    source.getFragment()
-            ).toString();
+                    targetPath,
+                    null,
+                    null
+            ).toASCIIString());
+            if (source.getRawQuery() != null) {
+                target.append('?').append(source.getRawQuery());
+            }
+            if (source.getRawFragment() != null) {
+                target.append('#').append(source.getRawFragment());
+            }
+            return target.toString();
         } catch (Exception ignored) {
             return uri;
         }
+    }
+
+    private static String publicTargetPath(URI publicHost, URI source) {
+        String sourcePath = source.getPath();
+        String basePath = publicHost.getPath();
+        if (hasText(basePath)
+                && !"/".equals(basePath)
+                && ("/video".equals(sourcePath) || sourcePath.startsWith("/video/"))) {
+            return basePath.replaceAll("/+$", "") + sourcePath;
+        }
+        return sourcePath;
     }
 
     private static String firstText(Object... values) {

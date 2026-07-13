@@ -505,11 +505,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                 Long operatorUserId,
                                                 List<String> allowedCameraIds) {
         List<ReviewEvidenceItem> timeline = getTimeline(reviewItemId);
-        enforceItemMediaReadScope(
+        enforceItemEvidenceMediaReadScope(
                 reviewCaseId,
                 reviewItemId,
                 operatorUserId,
-                "timeline",
                 allowedCameraIds,
                 "timeline media read",
                 timeline.stream()
@@ -573,11 +572,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                               Long operatorUserId,
                                                               List<String> allowedCameraIds) {
         List<ReviewDetailStreamItem> stream = getReviewDetailStream(reviewItemId);
-        enforceItemMediaReadScope(
+        enforceItemEvidenceMediaReadScope(
                 reviewCaseId,
                 reviewItemId,
                 operatorUserId,
-                "detail_stream",
                 allowedCameraIds,
                 "detail stream media read",
                 stream.stream()
@@ -1143,6 +1141,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     @Override
+    public Optional<ReviewCaseView> findReviewCaseByItem(Long reviewItemId) {
+        requirePositive(reviewItemId, "reviewItemId");
+        if (reviewItemStore.findById(reviewItemId).isEmpty()) {
+            return Optional.empty();
+        }
+        return reviewItemStore.findCaseByReviewItemId(reviewItemId);
+    }
+
+    @Override
     public ReviewCaseView addToReviewCase(Long reviewCaseId, Long reviewItemId) {
         requirePositive(reviewCaseId, "reviewCaseId");
         requirePositive(reviewItemId, "reviewItemId");
@@ -1255,12 +1262,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                               Long operatorUserId,
                                                               List<String> allowedCameraIds) {
         List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(reviewCaseId);
-        enforceMediaAccessScope(
+        enforceCaseEvidenceMediaReadScope(
                 reviewCaseId,
                 timeline,
                 loadReviewItems(reviewItemIdsFromTimeline(timeline)),
                 operatorUserId,
-                "case_timeline",
                 allowedCameraIds,
                 "case timeline media read"
         );
@@ -4079,6 +4085,32 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
     }
 
+    private void enforceItemEvidenceMediaReadScope(Long reviewCaseId,
+                                                   Long reviewItemId,
+                                                   Long operatorUserId,
+                                                   List<String> allowedCameraIds,
+                                                   String reason,
+                                                   List<MediaAccessRef> mediaRefs) {
+        List<MediaAccessRef> recordRefs = mediaRefsByType(mediaRefs, MATERIAL_RECORD);
+        if (!recordRefs.isEmpty()) {
+            enforceItemMediaReadScope(reviewCaseId, reviewItemId, operatorUserId, "playback",
+                    allowedCameraIds, reason, recordRefs);
+        }
+        List<MediaAccessRef> snapshotRefs = mediaRefsByType(mediaRefs, MATERIAL_SNAPSHOT);
+        if (!snapshotRefs.isEmpty()) {
+            enforceItemMediaReadScope(reviewCaseId, reviewItemId, operatorUserId, "snapshot",
+                    allowedCameraIds, reason, snapshotRefs);
+        }
+    }
+
+    private static List<MediaAccessRef> mediaRefsByType(List<MediaAccessRef> mediaRefs, String materialType) {
+        return (mediaRefs == null ? List.<MediaAccessRef>of() : mediaRefs).stream()
+                .filter(Objects::nonNull)
+                .filter(ref -> materialType.equals(ref.materialType()))
+                .filter(ref -> hasText(ref.materialUri()))
+                .toList();
+    }
+
     private void auditAndEnforceMediaAccess(Long reviewCaseId,
                                             ReviewItemAggregate item,
                                             Long operatorUserId,
@@ -4159,6 +4191,33 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     item.materialUri()
             );
         }
+    }
+
+    private void enforceCaseEvidenceMediaReadScope(Long reviewCaseId,
+                                                   List<ReviewCaseTimelineItem> timeline,
+                                                   List<ReviewItemAggregate> reviewItems,
+                                                   Long operatorUserId,
+                                                   List<String> allowedCameraIds,
+                                                   String reason) {
+        List<ReviewCaseTimelineItem> recordItems = caseTimelineItemsByType(timeline, MATERIAL_RECORD);
+        if (!recordItems.isEmpty()) {
+            enforceMediaAccessScope(reviewCaseId, recordItems, reviewItems, operatorUserId, "playback",
+                    allowedCameraIds, reason);
+        }
+        List<ReviewCaseTimelineItem> snapshotItems = caseTimelineItemsByType(timeline, MATERIAL_SNAPSHOT);
+        if (!snapshotItems.isEmpty()) {
+            enforceMediaAccessScope(reviewCaseId, snapshotItems, reviewItems, operatorUserId, "snapshot",
+                    allowedCameraIds, reason);
+        }
+    }
+
+    private static List<ReviewCaseTimelineItem> caseTimelineItemsByType(List<ReviewCaseTimelineItem> timeline,
+                                                                        String materialType) {
+        return (timeline == null ? List.<ReviewCaseTimelineItem>of() : timeline).stream()
+                .filter(Objects::nonNull)
+                .filter(item -> materialType.equals(item.materialType()))
+                .filter(item -> hasText(item.materialUri()))
+                .toList();
     }
 
     private void auditAndEnforceCaseLevelMediaAccess(Long reviewCaseId,

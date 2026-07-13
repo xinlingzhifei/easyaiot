@@ -1546,6 +1546,9 @@ export function scanVideoIntegrationConfigGate(files) {
   if (!content.includes('YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-}')) {
     blockers.push({ path, group: releaseGroupFor(path), reason: 'video_integration_hmac_secret_wiring_missing' });
   }
+  if (!content.includes('YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:-}')) {
+    blockers.push({ path, group: releaseGroupFor(path), reason: 'video_integration_public_play_host_wiring_missing' });
+  }
   return { ok: blockers.length === 0, blockers };
 }
 

@@ -91,6 +91,24 @@ class VideoMediaServiceRequestSignerTest {
     }
 
     @Test
+    void signsPublicProxyPlaybackUrlAgainstTheVideoRouteSeenAfterNginxRewrite() {
+        VideoMediaServiceRequestSigner signer = new VideoMediaServiceRequestSigner(
+                "secret-1", "iot-system", () -> "42", () -> "7",
+                () -> 1_720_580_000L, () -> "nonce-1", (action, cameraId) -> true
+        );
+
+        String signed = signer.signPlaybackUrl(
+                "https://eye.yfeiai.com/yfeieye/dev-api/video/alert/record?path=%2Fdata%2Fclip.flv",
+                "camera-01"
+        );
+
+        assertTrue(signed.startsWith(
+                "https://eye.yfeiai.com/yfeieye/dev-api/video/alert/record?path=%2Fdata%2Fclip.flv&playback_format=mp4&yf_ticket=v1"));
+        assertTrue(signed.contains(
+                "yf_signature=sha256%3Dda4dd47bceb69b2ed9bbb8e5398a49dfc660bf497a5280ae02500f4c3be1e251"));
+    }
+
+    @Test
     void refusesToLeakPlaybackTicketToNonVideoEndpoint() {
         VideoMediaServiceRequestSigner signer = new VideoMediaServiceRequestSigner(
                 "secret-1", "iot-system", () -> "42", () -> "7",

@@ -277,9 +277,23 @@ public class HttpVideoEvidenceExportProvider implements VideoEvidenceExportProvi
         String configuredPath = Optional.ofNullable(configured.getPath()).orElse("").replaceAll("/+$", "");
         String candidatePath = Optional.ofNullable(candidate.getPath()).orElse("");
         String normalizedPath = URI.create(candidatePath).normalize().getPath();
-        if (!Objects.equals(candidatePath, normalizedPath)
-                || !candidatePath.startsWith(configuredPath + "/")
-                || !candidatePath.endsWith("/download")) {
+        if (!Objects.equals(candidatePath, normalizedPath)) {
+            throw new SecurityException("VIDEO export download URL path is not trusted");
+        }
+        String internalPath = candidatePath;
+        if (publicOrigin) {
+            String publicBasePath = Optional.ofNullable(URI.create(publicPlayHost).getPath())
+                    .orElse("")
+                    .replaceAll("/+$", "");
+            if (hasText(publicBasePath) && !"/".equals(publicBasePath)
+                    && candidatePath.startsWith(publicBasePath + "/")) {
+                internalPath = candidatePath.substring(publicBasePath.length());
+            }
+        }
+        String normalizedInternalPath = URI.create(internalPath).normalize().getPath();
+        if (!Objects.equals(internalPath, normalizedInternalPath)
+                || !internalPath.startsWith(configuredPath + "/")
+                || !internalPath.endsWith("/download")) {
             throw new SecurityException("VIDEO export download URL path is not trusted");
         }
         try {
@@ -288,7 +302,7 @@ public class HttpVideoEvidenceExportProvider implements VideoEvidenceExportProvi
                     null,
                     configured.getHost(),
                     configured.getPort(),
-                    candidate.getPath(),
+                    internalPath,
                     candidate.getQuery(),
                     null
             );
@@ -632,29 +646,45 @@ public class HttpVideoEvidenceExportProvider implements VideoEvidenceExportProvi
             return uri;
         }
         try {
+            URI source = URI.create(uri);
             URI publicHost = URI.create(publicPlayHost);
             if (!hasText(publicHost.getScheme()) || !hasText(publicHost.getHost())) {
                 return uri;
             }
-            if (uri.startsWith("/")) {
-                return publicHost.resolve(uri).toString();
-            }
-            URI source = URI.create(uri);
-            if (source.getHost() == null) {
+            if (source.getHost() == null && !uri.startsWith("/")) {
                 return uri;
             }
-            return new URI(
+            String targetPath = publicTargetPath(publicHost, source);
+            StringBuilder target = new StringBuilder(new URI(
                     publicHost.getScheme(),
                     source.getUserInfo(),
                     publicHost.getHost(),
                     publicHost.getPort(),
-                    source.getPath(),
-                    source.getQuery(),
-                    source.getFragment()
-            ).toString();
+                    targetPath,
+                    null,
+                    null
+            ).toASCIIString());
+            if (source.getRawQuery() != null) {
+                target.append('?').append(source.getRawQuery());
+            }
+            if (source.getRawFragment() != null) {
+                target.append('#').append(source.getRawFragment());
+            }
+            return target.toString();
         } catch (Exception ignored) {
             return uri;
         }
+    }
+
+    private static String publicTargetPath(URI publicHost, URI source) {
+        String sourcePath = source.getPath();
+        String basePath = publicHost.getPath();
+        if (hasText(basePath)
+                && !"/".equals(basePath)
+                && ("/video".equals(sourcePath) || sourcePath.startsWith("/video/"))) {
+            return basePath.replaceAll("/+$", "") + sourcePath;
+        }
+        return sourcePath;
     }
 
     private static String firstText(Object... values) {

@@ -590,6 +590,13 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
+    public Optional<ReviewCaseView> findCaseByReviewItemId(Long reviewItemId) {
+        return reviewCaseItemMapper.selectByReviewItemId(reviewItemId).stream()
+                .findFirst()
+                .map(caseItem -> toCaseView(requireCase(caseItem.getReviewCaseId())));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public ReviewCaseView addCaseItem(Long reviewCaseId, Long reviewItemId) {
         SupervisionAlertReviewCaseDO caseDO = requireCaseForUpdate(reviewCaseId);

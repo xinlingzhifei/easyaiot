@@ -1374,6 +1374,7 @@ YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL=\${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:-ht
 YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=\${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://video:6000/video/record/availability}
 YFEIEYE_VIDEO_RECORD_BASE_URL=\${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://video:6000/video/record}
 YFEIEYE_VIDEO_RECORD_EXPORT_URL=\${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://video:6000/video/record/export}
+YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=\${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:-}
 YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=\${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-}
 YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}
 YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}
@@ -1386,6 +1387,18 @@ const videoIntegrationConfigScan = scanVideoIntegrationConfigGate([{
   content: completeVideoIntegrationConfig,
 }]);
 assert.equal(videoIntegrationConfigScan.ok, true);
+
+const missingPublicVideoPlayHostScan = scanVideoIntegrationConfigGate([{
+  path: 'DEVICE/docker-compose.yml',
+  content: completeVideoIntegrationConfig.replace(
+    'YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=\${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:-}\n',
+    '',
+  ),
+}]);
+assert.equal(missingPublicVideoPlayHostScan.ok, false);
+assert.deepEqual(missingPublicVideoPlayHostScan.blockers.map((blocker) => blocker.reason), [
+  'video_integration_public_play_host_wiring_missing',
+]);
 
 const divergentAlertImageMountScan = scanVideoIntegrationConfigGate([{
   path: 'DEVICE/docker-compose.yml',

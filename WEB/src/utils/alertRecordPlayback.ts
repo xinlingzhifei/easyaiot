@@ -19,6 +19,20 @@ export type AlertRecordPlayInput = AlertRecordLike & {
   url?: string | null;
 };
 
+type AuthorizedPlaybackResolution = {
+  claimed: boolean;
+  url: string | null;
+};
+
+const AUTHORIZED_PLAYBACK_TICKET_FIELDS = [
+  'yf_service_id',
+  'yf_user_id',
+  'yf_tenant_id',
+  'yf_camera_id',
+  'yf_timestamp',
+  'yf_nonce',
+] as const;
+
 /** 每次播放递增，避免 useModal 在快速连续 openModal 时合并/跳过回调 */
 let playbackSeq = 0;
 
@@ -75,6 +89,65 @@ function resolvePlaybackSeekContext(record: AlertRecordPlayInput) {
   };
 }
 
+function isAllowedPlaybackPath(url: URL, apiUrl: URL): boolean {
+  const apiPrefix = apiUrl.pathname.replace(/\/+$/, '');
+  const paths = [url.pathname];
+  if (apiPrefix && apiPrefix !== '/' && url.pathname.startsWith(`${apiPrefix}/`)) {
+    paths.push(url.pathname.slice(apiPrefix.length));
+  }
+  return paths.some(
+    (path) => path === '/video/alert/record' || path.startsWith('/video/record/'),
+  );
+}
+
+function resolveAuthorizedPlaybackUrl(record: AlertRecordPlayInput): AuthorizedPlaybackResolution {
+  const raw = record.record_path?.trim();
+  if (!raw || typeof window === 'undefined') {
+    return { claimed: false, url: null };
+  }
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { claimed: false, url: null };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { claimed: false, url: null };
+  }
+
+  const claimed = ['yf_ticket', 'yf_action', 'yf_signature'].some((key) =>
+    url.searchParams.has(key),
+  );
+  if (!claimed) {
+    return { claimed: false, url: null };
+  }
+
+  let apiUrl: URL;
+  try {
+    apiUrl = new URL(import.meta.env.VITE_GLOB_API_URL || '/', window.location.origin);
+  } catch {
+    return { claimed: true, url: null };
+  }
+  const trustedOrigins = new Set([window.location.origin, apiUrl.origin]);
+  const expectedCameraId = String(record.device_id ?? '').trim();
+  const signature = url.searchParams.get('yf_signature') || '';
+  const trusted =
+    !url.username &&
+    !url.password &&
+    !url.hash &&
+    trustedOrigins.has(url.origin) &&
+    isAllowedPlaybackPath(url, apiUrl) &&
+    url.searchParams.get('playback_format') === 'mp4' &&
+    url.searchParams.get('yf_ticket') === 'v1' &&
+    url.searchParams.get('yf_action') === 'playback' &&
+    AUTHORIZED_PLAYBACK_TICKET_FIELDS.every((key) => Boolean(url.searchParams.get(key))) &&
+    /^\d+$/.test(url.searchParams.get('yf_timestamp') || '') &&
+    /^sha256=[a-f\d]{64}$/i.test(signature) &&
+    (!expectedCameraId || url.searchParams.get('yf_camera_id') === expectedCameraId);
+  return { claimed: true, url: trusted ? raw : null };
+}
+
 /**
  * 在大屏/告警等场景打开告警录像：先弹出加载态，再解析地址并播放。
  * mini / standard / full 共用，兼容 MinIO 直链与按设备+时间查询。
@@ -86,6 +159,24 @@ export async function playAlertRecordInModal(
   const { openModal, closeModal } = modal;
   const seq = ++playbackSeq;
   const seekContext = resolvePlaybackSeekContext(record);
+
+  const authorizedPlayback = resolveAuthorizedPlaybackUrl(record);
+  if (authorizedPlayback.claimed) {
+    if (!authorizedPlayback.url) {
+      return false;
+    }
+    openModal(
+      true,
+      buildModalPayload(
+        record.device_id ?? 0,
+        authorizedPlayback.url,
+        seq,
+        false,
+        seekContext,
+      ),
+    );
+    return true;
+  }
 
   const directRaw = record.video_url || record.url;
   if (directRaw) {

@@ -2417,7 +2417,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
                 .anyMatch(item -> "case_audit".equals(item.materialType())
                         && "media_access_denied".equals(item.materialUri())
-                        && item.actionNote().contains("action=timeline")
+                        && item.actionNote().contains("action=playback")
                         && item.actionNote().contains("camera_not_allowed")));
     }
 
@@ -2457,7 +2457,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
                 .anyMatch(item -> "case_audit".equals(item.materialType())
                         && "media_access_denied".equals(item.materialUri())
-                        && item.actionNote().contains("action=detail_stream")
+                        && item.actionNote().contains("action=playback")
                         && item.actionNote().contains("camera_not_allowed")));
     }
 
@@ -2537,8 +2537,46 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
                 .anyMatch(item -> "case_audit".equals(item.materialType())
                         && "media_access_denied".equals(item.materialUri())
-                        && item.actionNote().contains("action=case_timeline")
+                        && item.actionNote().contains("action=playback")
                         && item.actionNote().contains("camera_not_allowed")));
+    }
+
+    @Test
+    void mediaReadEndpointsUseConfiguredPlaybackAndSnapshotActions() {
+        List<String> requestedActions = new ArrayList<>();
+        ReviewCameraPermissionResolver failClosedResolver = request -> {
+            requestedActions.add(request.actionType());
+            return List.of("playback", "snapshot").contains(request.actionType())
+                    ? List.of("camera-01")
+                    : List.of();
+        };
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                failClosedResolver
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-media-read-actions",
+                LocalDateTime.of(2026, 7, 13, 15, 10),
+                "media-read-actions.jpg",
+                "media-read-actions.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "media read actions",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        service.getTimeline(item.id(), reviewCase.id(), 1L, List.of("camera-01"));
+        service.getReviewDetailStream(item.id(), reviewCase.id(), 1L, List.of("camera-01"));
+        service.getReviewCaseTimeline(reviewCase.id(), 1L, List.of("camera-01"));
+
+        assertTrue(requestedActions.contains("playback"));
+        assertTrue(requestedActions.contains("snapshot"));
+        assertFalse(requestedActions.contains("timeline"));
+        assertFalse(requestedActions.contains("detail_stream"));
+        assertFalse(requestedActions.contains("case_timeline"));
     }
 
     @Test
@@ -2676,7 +2714,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
                 .anyMatch(item -> "case_audit".equals(item.materialType())
                         && "media_access_denied".equals(item.materialUri())
-                        && item.actionNote().contains("action=timeline")
+                        && item.actionNote().contains("action=playback")
                         && item.actionNote().contains("camera_not_allowed")));
     }
 

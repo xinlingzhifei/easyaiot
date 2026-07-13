@@ -144,12 +144,16 @@ function setInputValue(selector: string, value: string) {
   input.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-function clickReviewRow() {
+function clickReviewRowByNo(reviewItemNo: string) {
   const row = Array.from(document.querySelectorAll<HTMLTableRowElement>('tbody tr'))
-    .find(candidate => candidate.textContent?.includes('RV-20260702-001'))
+    .find(candidate => candidate.textContent?.includes(reviewItemNo))
   if (!row)
-    throw new Error('missing review item row')
+    throw new Error(`missing review item row ${reviewItemNo}`)
   row.click()
+}
+
+function clickReviewRow() {
+  clickReviewRowByNo('RV-20260702-001')
 }
 
 function assertApiCalled(name: string) {
@@ -320,6 +324,20 @@ async function runE2E() {
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-review-segment"]'), 'review segment')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-record-coverage"]'), 'record coverage')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-candidate"]'), 'topology candidate')
+
+  clickReviewRowByNo('RV-20260702-003')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-panel"]'), 'existing review case panel')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-timeline-seek"]'), 'existing case timeline seek button')
+  await waitFor(
+    () => (window.__alertReviewE2EApiCalls || []).some(
+      call => call.name === 'getAlertReviewItemCase' && call.payload === 103,
+    ),
+    'existing review item case lookup',
+  )
+
+  clickReviewRow()
+  await waitFor(() => !document.querySelector('[data-testid="alert-review-case-panel"]'), 'non-case review item clears active case')
+  await waitFor(() => !!document.querySelector('[data-testid="alert-review-detail-stream"]'), 'restored first review detail stream')
   await waitFor(() => text().includes('RV-20260702-002'), 'topology candidate id')
   await waitFor(() => text().includes('topology area yard-east'), 'topology candidate area reason')
   await waitFor(() => text().includes('adjacent cam-east-gate -> cam-yard-east'), 'topology candidate adjacency reason')

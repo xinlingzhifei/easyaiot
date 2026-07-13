@@ -104,6 +104,8 @@ public interface SupervisionAlertReviewService {
 
     ReviewCaseView createReviewCase(ReviewCaseCommand command);
 
+    Optional<ReviewCaseView> findReviewCaseByItem(Long reviewItemId);
+
     ReviewCaseView addToReviewCase(Long reviewCaseId, Long reviewItemId);
 
     ReviewCaseView assignReviewCaseOwner(ReviewCaseOwnerCommand command);
@@ -1774,6 +1776,10 @@ public interface SupervisionAlertReviewService {
                                           LocalDateTime convertedAt);
 
         ReviewCaseView createCase(ReviewCaseDraft draft, List<Long> reviewItemIds);
+
+        default Optional<ReviewCaseView> findCaseByReviewItemId(Long reviewItemId) {
+            return Optional.empty();
+        }
 
         ReviewCaseView addCaseItem(Long reviewCaseId, Long reviewItemId);
 

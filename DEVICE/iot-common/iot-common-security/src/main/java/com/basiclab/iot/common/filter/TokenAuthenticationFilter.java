@@ -37,11 +37,18 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String TOKEN_CHECK_RPC_PATH = OAuth2TokenApi.PREFIX + "/check";
+
     private final SecurityProperties securityProperties;
 
     private final GlobalExceptionHandler globalExceptionHandler;
 
     private final OAuth2TokenApi oauth2TokenApi;
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return (request.getContextPath() + TOKEN_CHECK_RPC_PATH).equals(request.getRequestURI());
+    }
 
     @Override
     @SuppressWarnings("NullableProblems")

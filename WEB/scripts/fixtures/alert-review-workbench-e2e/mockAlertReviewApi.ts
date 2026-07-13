@@ -115,6 +115,17 @@ const topologyCandidate = {
   },
 }
 
+const existingCaseReviewItem = {
+  ...reviewItem,
+  id: 103,
+  reviewItemNo: 'RV-20260702-003',
+  sourceAlertIds: ['frigate-event-4'],
+  reviewStatus: 'converted',
+  eventId: 7003,
+  convertedAt: '2026-07-02T08:04:00',
+  inReviewCase: true,
+}
+
 const summary = {
   total: 1,
   pendingReview: 1,
@@ -319,7 +330,7 @@ function record(name: string, payload?: unknown) {
 
 export async function listAlertReviewItems(payload?: unknown) {
   record('listAlertReviewItems', payload)
-  return [currentReviewItem]
+  return [currentReviewItem, existingCaseReviewItem]
 }
 
 export async function getAlertReviewSummary(payload?: unknown) {
@@ -474,6 +485,11 @@ export async function suggestAlertReviewCaseCandidates(reviewItemId: number) {
 export async function createAlertReviewCase(payload: unknown) {
   record('createAlertReviewCase', payload)
   return reviewCase
+}
+
+export async function getAlertReviewItemCase(reviewItemId: number) {
+  record('getAlertReviewItemCase', reviewItemId)
+  return reviewItemId === existingCaseReviewItem.id ? reviewCase : null
 }
 
 export async function getAlertReviewCaseTimeline(reviewCaseId: number) {

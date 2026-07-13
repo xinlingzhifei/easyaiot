@@ -2,6 +2,8 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.core.context.TenantContextHolder;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseItemDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
@@ -25,6 +27,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEventMapper;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewMapperStore;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemAggregate;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
@@ -49,6 +52,55 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionAlertReviewMapperStoreTest {
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void findsCurrentReviewCaseByItemAndReturnsEmptyWhenNoMembershipExists() throws Exception {
+        SupervisionAlertReviewCaseItemDO membership = new SupervisionAlertReviewCaseItemDO()
+                .setId(7001L)
+                .setReviewCaseId(501L)
+                .setReviewItemId(101L)
+                .setSortOrder(1);
+        SupervisionAlertReviewCaseItemMapper caseItemMapper = mapper(
+                SupervisionAlertReviewCaseItemMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectByReviewItemId".equals(method.getName())) {
+                        return Long.valueOf(101L).equals(args[0]) ? List.of(membership) : List.of();
+                    }
+                    if ("selectByCaseId".equals(method.getName())) {
+                        return List.of(membership);
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewCaseMapper caseMapper = mapper(
+                SupervisionAlertReviewCaseMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())) {
+                        return new SupervisionAlertReviewCaseDO()
+                                .setId(501L)
+                                .setCaseNo("RC-501")
+                                .setTitle("existing case")
+                                .setStatus("open")
+                                .setPrimaryReviewItemId(101L)
+                                .setCameraIds("camera-01")
+                                .setOwnerUserId(9001L)
+                                .setVersion(3);
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(caseMapper, caseItemMapper);
+        java.lang.reflect.Method lookup = SupervisionAlertReviewMapperStore.class
+                .getMethod("findCaseByReviewItemId", Long.class);
+
+        Optional<ReviewCaseView> found = (Optional<ReviewCaseView>) lookup.invoke(store, 101L);
+        Optional<ReviewCaseView> missing = (Optional<ReviewCaseView>) lookup.invoke(store, 999L);
+
+        assertEquals(501L, found.orElseThrow().id());
+        assertEquals(List.of(101L), found.orElseThrow().reviewItemIds());
+        assertTrue(missing.isEmpty());
+    }
 
     @Test
     void evidenceDownloadAuditPersistsActualArchiveHashAndKeepsLogicalPackageHash() {
@@ -996,6 +1048,28 @@ class SupervisionAlertReviewMapperStoreTest {
                 noopMapper(SupervisionAlertReviewCaseItemMapper.class),
                 auditMapper,
                 exportMapper,
+                noopMapper(SupervisionAlertReviewSemanticIndexMapper.class),
+                noopMapper(SupervisionAlertReviewUserStatusMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
+                noopMapper(SupervisionAlertReviewReportAckMapper.class),
+                noopMapper(SupervisionEventMapper.class)
+        );
+    }
+
+    private static SupervisionAlertReviewMapperStore newStore(SupervisionAlertReviewCaseMapper caseMapper,
+                                                              SupervisionAlertReviewCaseItemMapper caseItemMapper) {
+        return new SupervisionAlertReviewMapperStore(
+                noopMapper(SupervisionAlertReviewItemMapper.class),
+                noopMapper(SupervisionAlertReviewEvidenceMapper.class),
+                noopMapper(SupervisionAlertReviewIngestIdentityMapper.class),
+                noopMapper(SupervisionAlertReviewRuleMapper.class),
+                caseMapper,
+                caseItemMapper,
+                noopMapper(SupervisionAlertReviewCaseAuditMapper.class),
+                noopMapper(SupervisionAlertReviewExportJobMapper.class),
                 noopMapper(SupervisionAlertReviewSemanticIndexMapper.class),
                 noopMapper(SupervisionAlertReviewUserStatusMapper.class),
                 noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),

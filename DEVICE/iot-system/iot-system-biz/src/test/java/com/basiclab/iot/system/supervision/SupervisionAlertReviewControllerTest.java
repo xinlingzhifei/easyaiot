@@ -62,6 +62,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -142,6 +143,27 @@ class SupervisionAlertReviewControllerTest {
 
         assertEquals(recordStart, response.getRecordStartTime());
         assertEquals(10, responsePlaybackOffsetSeconds(response));
+    }
+
+    @Test
+    void reviewItemCaseEndpointReturnsCurrentCaseAndKeepsEmptyResultNullable() throws Exception {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SupervisionAlertReviewController(reviewService.proxy()))
+                .build();
+
+        mockMvc.perform(get("/system/supervision/alert-review/items/101/case"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.id").value(501))
+                .andExpect(jsonPath("$.data.reviewItemIds[0]").value(101));
+        assertEquals(101L, reviewService.command("findReviewCaseByItem"));
+
+        mockMvc.perform(get("/system/supervision/alert-review/items/999/case"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").doesNotExist());
+        assertEquals(999L, reviewService.command("findReviewCaseByItem"));
     }
 
     @Test
@@ -684,6 +706,11 @@ class SupervisionAlertReviewControllerTest {
 
     @Test
     void mediaEndpointsDeclareSeededPermissions() throws Exception {
+        assertPreAuthorizeExpression(
+                "findReviewCaseByItem",
+                new Class<?>[]{Long.class},
+                "@ss.hasAnyPermissions('system:supervision-alert-review:media:playback','system:supervision-alert-review:media:snapshot')"
+        );
         assertPreAuthorize(
                 "getRecordCoverage",
                 new Class<?>[]{Long.class, Long.class, Long.class, List.class},
@@ -813,6 +840,9 @@ class SupervisionAlertReviewControllerTest {
             Object command = args == null || args.length == 0 ? null : args[0];
             commands.put(method.getName(), command);
             return switch (method.getName()) {
+                case "findReviewCaseByItem" -> Long.valueOf(101L).equals(command)
+                        ? Optional.of(caseView(501L, "open", List.of(101L), 2001L, "existing"))
+                        : Optional.empty();
                 case "assignReviewCaseOwner" -> caseView(10L, "open", List.of(101L, 102L), 2001L, "handoff");
                 case "closeReviewCase" -> caseView(10L, "closed", List.of(101L, 102L), 2001L, "resolved");
                 case "mergeReviewCases" -> new ReviewCaseMergeResult(

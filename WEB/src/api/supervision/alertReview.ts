@@ -870,6 +870,10 @@ export function createAlertReviewCase(data: AlertReviewCaseCreate) {
   return defHttp.post<AlertReviewCase>({ url: Api.Cases, data })
 }
 
+export function getAlertReviewItemCase(reviewItemId: number) {
+  return defHttp.get<AlertReviewCase | null>({ url: `${Api.Items}/${reviewItemId}/case` })
+}
+
 export function addAlertReviewItemToCase(reviewCaseId: number, reviewItemId: number) {
   return defHttp.post<AlertReviewCase>({ url: `${Api.Cases}/${reviewCaseId}/items/${reviewItemId}` })
 }

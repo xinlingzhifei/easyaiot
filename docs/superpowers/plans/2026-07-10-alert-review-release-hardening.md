@@ -105,6 +105,8 @@ Expected: scripts reject aliased/local/mock/file URLs, require all four explicit
 
 - [ ] **Step 3: Run real VIDEO smoke only with explicit release parameters**
 
+Keep the release origins split: set DEVICE `YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=https://eye.yfeiai.com/yfeieye/dev-api`, keep DEVICE query/coverage/base/export URLs on the private VIDEO endpoint, and keep VIDEO `MEDIA_HTTP_PLAY_HOST=https://eye.yfeiai.com` for `/live`, `/ai`, and `/rtp` stream URLs.
+
 ```powershell
 node .scripts/alert-review-video-live-smoke.mjs `
   --alert-record-query-url="$env:YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL" `
@@ -238,4 +240,3 @@ If PG1, LiveVideo, LivePlayer, or deployed role smoke cannot run, record the exa
 - [ ] **Step 3: Do not claim release complete until all P0 real-environment gates are green**
 
 The local code/test/package result can be reported as complete only for the verified subset. Release readiness remains blocked while any required real VIDEO, PostgreSQL, object storage, permission-role, or player seek evidence is missing.
-

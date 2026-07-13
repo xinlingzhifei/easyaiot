@@ -283,24 +283,40 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
             if (publicHost.getHost() == null) {
                 return uri;
             }
-            if (uri.startsWith("/video/") || uri.startsWith("/api/")) {
-                return publicHost.resolve(uri).toString();
-            }
-            if (source.getHost() == null) {
+            if (source.getHost() == null && !uri.startsWith("/video/") && !uri.startsWith("/api/")) {
                 return uri;
             }
-            return new URI(
+            String targetPath = publicTargetPath(publicHost, source);
+            StringBuilder target = new StringBuilder(new URI(
                     publicHost.getScheme(),
                     source.getUserInfo(),
                     publicHost.getHost(),
                     publicHost.getPort(),
-                    source.getPath(),
-                    source.getQuery(),
-                    source.getFragment()
-            ).toString();
+                    targetPath,
+                    null,
+                    null
+            ).toASCIIString());
+            if (source.getRawQuery() != null) {
+                target.append('?').append(source.getRawQuery());
+            }
+            if (source.getRawFragment() != null) {
+                target.append('#').append(source.getRawFragment());
+            }
+            return target.toString();
         } catch (Exception ignored) {
             return uri;
         }
+    }
+
+    private static String publicTargetPath(URI publicHost, URI source) {
+        String sourcePath = source.getPath();
+        String basePath = publicHost.getPath();
+        if (hasText(basePath)
+                && !"/".equals(basePath)
+                && ("/video".equals(sourcePath) || sourcePath.startsWith("/video/"))) {
+            return basePath.replaceAll("/+$", "") + sourcePath;
+        }
+        return sourcePath;
     }
 
     private static Map<?, ?> responseData(Map<?, ?> response) {

@@ -58,6 +58,7 @@ class HttpVideoResolverTest {
         assertTrue(applicationYaml.contains("record-coverage-query-url: ${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:}"));
         assertTrue(applicationYaml.contains("record-base-url: ${YFEIEYE_VIDEO_RECORD_BASE_URL:}"));
         assertTrue(applicationYaml.contains("record-export-url: ${YFEIEYE_VIDEO_RECORD_EXPORT_URL:}"));
+        assertTrue(applicationYaml.contains("public-play-host: ${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:${MEDIA_HTTP_PLAY_HOST:}}"));
         assertTrue(applicationYaml.contains("record-export-connect-timeout-ms: ${YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS:5000}"));
         assertTrue(applicationYaml.contains("record-export-read-timeout-ms: ${YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS:30000}"));
         assertTrue(applicationYaml.contains("record-export-poll-timeout-ms: ${YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS:300000}"));
@@ -80,6 +81,7 @@ class HttpVideoResolverTest {
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://host.docker.internal:6000/video/record/availability}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_BASE_URL=${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://host.docker.internal:6000/video/record}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_EXPORT_URL=${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://host.docker.internal:6000/video/record/export}"));
+        assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:-}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS:-5000}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS:-30000}"));
         assertTrue(dockerCompose.contains("YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS:-300000}"));
@@ -169,7 +171,7 @@ class HttpVideoResolverTest {
                           "code": 200,
                           "msg": "success",
                           "data": {
-                            "video_url": "/video/alert/record?path=%2Fdata%2Fplaybacks%2Fclip.flv",
+                            "video_url": "http://host.docker.internal:6000/video/alert/record?path=%2Fdata%2Fplaybacks%2Fclip.flv",
                             "file_path": "/data/playbacks/clip.flv",
                             "event_time": "2026-06-30T10:14:30",
                             "source": "alert_record_path"
@@ -179,7 +181,7 @@ class HttpVideoResolverTest {
         HttpAlertRecordEvidenceResolver resolver = new HttpAlertRecordEvidenceResolver(
                 restTemplate,
                 "http://video.local/video/alert/record/query",
-                "https://eye.yfeiai.com",
+                "https://eye.yfeiai.com/yfeieye/dev-api",
                 testSigner()
         );
 
@@ -191,7 +193,7 @@ class HttpVideoResolverTest {
         ));
 
         assertTrue(result.isPresent());
-        assertEquals("https://eye.yfeiai.com/video/alert/record?path=%2Fdata%2Fplaybacks%2Fclip.flv",
+        assertEquals("https://eye.yfeiai.com/yfeieye/dev-api/video/alert/record?path=%2Fdata%2Fplaybacks%2Fclip.flv",
                 result.get().recordUri());
         assertEquals("alert_record_path", result.get().message());
         assertEquals(LocalDateTime.of(2026, 6, 30, 10, 14, 30), result.get().recordStartTime());
@@ -408,7 +410,7 @@ class HttpVideoResolverTest {
         HttpVideoRecordCoverageResolver resolver = new HttpVideoRecordCoverageResolver(
                 restTemplate,
                 "http://video.local/video/record/availability",
-                "https://eye.yfeiai.com",
+                "https://eye.yfeiai.com/yfeieye/dev-api",
                 testSigner()
         );
 
@@ -422,9 +424,9 @@ class HttpVideoResolverTest {
         assertEquals(2, segments.size());
         assertEquals("available", segments.get(0).status());
         assertEquals(2, segments.get(0).objects());
-        assertEquals("https://eye.yfeiai.com/video/record/space/7/video/live/device-01/clip.mp4",
+        assertEquals("https://eye.yfeiai.com/yfeieye/dev-api/video/record/space/7/video/live/device-01/clip.mp4",
                 segments.get(0).recordUri());
-        assertEquals("https://eye.yfeiai.com/video/record/export", segments.get(0).metadata().get("exportUrl"));
+        assertEquals("https://eye.yfeiai.com/yfeieye/dev-api/video/record/export", segments.get(0).metadata().get("exportUrl"));
         assertEquals("missing", segments.get(1).status());
         assertEquals("coverage_gap", segments.get(1).metadata().get("source"));
         server.verify();
@@ -694,7 +696,7 @@ class HttpVideoResolverTest {
         HttpVideoEvidenceExportProvider provider = new HttpVideoEvidenceExportProvider(
                 restTemplate,
                 "http://video.local/video/record/export",
-                "https://eye.yfeiai.com",
+                "https://eye.yfeiai.com/yfeieye/dev-api",
                 testSigner()
         );
 
@@ -712,8 +714,8 @@ class HttpVideoResolverTest {
 
         assertTrue(result.isPresent());
         assertEquals("exp-001", result.get().exportId());
-        assertEquals("https://eye.yfeiai.com/video/record/export/exp-001/download", result.get().exportUri());
-        assertEquals("https://eye.yfeiai.com/video/record/export/exp-001/manifest", result.get().manifestUri());
+        assertEquals("https://eye.yfeiai.com/yfeieye/dev-api/video/record/export/exp-001/download", result.get().exportUri());
+        assertEquals("https://eye.yfeiai.com/yfeieye/dev-api/video/record/export/exp-001/manifest", result.get().manifestUri());
         assertEquals("sha256:1111111111111111111111111111111111111111111111111111111111111111",
                 result.get().fileHash());
         assertEquals("sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -986,6 +988,36 @@ class HttpVideoResolverTest {
         assertTrue(Files.exists(temporaryFile));
         artifact.close();
         assertFalse(Files.exists(temporaryFile));
+        server.verify();
+    }
+
+    @Test
+    void videoEvidenceExportProviderDownloadsPackageFromPrefixedPublicUrl() throws Exception {
+        byte[] packageBytes = "prefixed-public-video-bytes".getBytes(StandardCharsets.UTF_8);
+        String expectedHash = "sha256:" + java.util.HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(packageBytes));
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertEquals(
+                        "http://video.local/video/record/export/exp-prefixed/download?yf_ticket=v1",
+                        request.getURI().toString()))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(packageBytes, MediaType.valueOf("video/mp4")));
+        HttpVideoEvidenceExportProvider provider = new HttpVideoEvidenceExportProvider(
+                restTemplate,
+                "http://video.local/video/record/export",
+                "https://eye.yfeiai.com/yfeieye/dev-api",
+                testSigner()
+        );
+
+        ReviewEvidenceDownloadArtifact artifact = provider.download(new ReviewEvidenceVideoDownloadRequest(
+                "https://eye.yfeiai.com/yfeieye/dev-api/video/record/export/exp-prefixed/download?yf_ticket=v1",
+                "camera-01",
+                expectedHash
+        )).orElseThrow();
+
+        assertArrayEquals(packageBytes, Files.readAllBytes(artifact.temporaryFile()));
+        artifact.close();
         server.verify();
     }
 
