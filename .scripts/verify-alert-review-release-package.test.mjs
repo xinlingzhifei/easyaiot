@@ -2728,7 +2728,7 @@ assert.deepEqual(missingLiveVideoRootConcatOrderCoverageGateScan.blockers.map((b
   'live_video_media_evidence_gate_missing',
 ]);
 
-const completeProdSmokeTraceabilityCommand = '- Production smoke with real VIDEO URLs:\n  `node .scripts/alert-review-production-smoke.mjs --device-base-url=... --token=... --operator-user-id=... --device-alert-time=... --device-playback-allowed-camera-ids=... --device-playback-denied-camera-ids=... --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-device-id=... --video-alert-time=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --step-timeout-ms=900000 --player-workbench-url=... --player-review-row-text=... --player-expected-seek-time=... --player-expected-record-path-contains=... --player-expected-offset-seconds=... --player-coverage-expected-seek-time=... --player-coverage-expected-record-path-contains=... --player-coverage-expected-offset-seconds=0 --player-case-timeline-expected-seek-time=... --player-case-timeline-expected-record-path-contains=... --player-case-timeline-expected-offset-seconds=0 --evidence-output-file=artifacts/production-smoke.json`';
+const completeProdSmokeTraceabilityCommand = '- Production smoke with real VIDEO URLs:\n  `node .scripts/alert-review-production-smoke.mjs --device-base-url=... --token=... --tenant-id=... --operator-user-id=... --device-alert-time=... --device-playback-allowed-camera-ids=... --device-playback-denied-camera-ids=... --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-device-id=... --video-alert-time=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --step-timeout-ms=900000 --player-workbench-url=... --player-review-row-text=... --player-expected-seek-time=... --player-expected-record-path-contains=... --player-expected-offset-seconds=... --player-coverage-expected-seek-time=... --player-coverage-expected-record-path-contains=... --player-coverage-expected-offset-seconds=0 --player-case-timeline-expected-seek-time=... --player-case-timeline-expected-record-path-contains=... --player-case-timeline-expected-offset-seconds=0 --evidence-output-file=artifacts/production-smoke.json`';
 
 const missingProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([
   {
@@ -2770,6 +2770,17 @@ assert.equal(missingProdSmokeRealDevicePlayerTraceabilityGateScan.ok, false);
 assert.deepEqual(missingProdSmokeRealDevicePlayerTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
   'fr38_prod_smoke_device_base_command_missing',
   'fr38_prod_smoke_detail_player_offset_command_missing',
+]);
+
+const missingProdSmokeTenantTraceabilityGateScan = scanReleaseTraceabilityGate([
+  {
+    path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+    content: completeProdSmokeTraceabilityCommand.replace('--tenant-id=... ', ''),
+  },
+]);
+assert.equal(missingProdSmokeTenantTraceabilityGateScan.ok, false);
+assert.deepEqual(missingProdSmokeTenantTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
+  'fr38_prod_smoke_tenant_command_missing',
 ]);
 
 const completeProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([

@@ -2195,6 +2195,7 @@ export function scanReleaseTraceabilityGate(files) {
   const checks = [
     ['--device-base-url=', 'fr38_prod_smoke_device_base_command_missing'],
     ['--token=', 'fr38_prod_smoke_token_command_missing'],
+    ['--tenant-id=', 'fr38_prod_smoke_tenant_command_missing'],
     ['--operator-user-id=', 'fr38_prod_smoke_operator_command_missing'],
     ['--device-alert-time=', 'fr38_prod_smoke_device_alert_time_command_missing'],
     ['--device-playback-allowed-camera-ids=', 'fr38_prod_smoke_playback_allow_command_missing'],
