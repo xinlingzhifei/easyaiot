@@ -166,6 +166,26 @@
                   @blur="handleRegionNameChange"
                 />
               </a-form-item>
+              <a-form-item label="惯性帧数">
+                <a-input-number
+                  v-model:value="selectedRegion.inertiaFrames"
+                  data-testid="device-region-inertia-frames"
+                  :min="0"
+                  :precision="0"
+                  style="width: 100%"
+                />
+                <div class="rule-explanation">目标连续离开区域达到该帧数后才结束命中，用于抑制边界抖动。</div>
+              </a-form-item>
+              <a-form-item label="徘徊秒数">
+                <a-input-number
+                  v-model:value="selectedRegion.loiteringSeconds"
+                  data-testid="device-region-loitering-seconds"
+                  :min="0"
+                  :precision="0"
+                  style="width: 100%"
+                />
+                <div class="rule-explanation">目标在区域内累计停留达到该秒数后，规则回放会标记为徘徊命中。</div>
+              </a-form-item>
             </a-form>
           </div>
         </div>
@@ -181,6 +201,7 @@ import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
 import {
   captureDeviceSnapshot,
+  loadProtectedSnapshotObjectUrl,
   getDeviceRegions,
   createDeviceRegion,
   updateDeviceRegion,
@@ -520,14 +541,29 @@ const buildImageUrl = (src: string): string => {
 };
 
 // 加载图片
-const loadImage = (src: string) => {
+const protectedSnapshotObjectUrl = ref<string>();
+
+const loadImage = async (src: string) => {
   if (!src) {
     console.error('图片路径为空');
     createMessage.error('图片路径为空');
     return;
   }
 
-  const fullUrl = buildImageUrl(src);
+  let fullUrl = buildImageUrl(src);
+  if (src.startsWith('/video/camera/') || src.startsWith('/video/snap/')) {
+    try {
+      if (protectedSnapshotObjectUrl.value) {
+        window.URL.revokeObjectURL(protectedSnapshotObjectUrl.value);
+      }
+      protectedSnapshotObjectUrl.value = await loadProtectedSnapshotObjectUrl(src);
+      fullUrl = protectedSnapshotObjectUrl.value;
+    } catch (error) {
+      console.error('受保护抓拍加载失败:', error);
+      createMessage.error('抓拍图片权限校验失败或图片已失效');
+      return;
+    }
+  }
   console.log('加载图片，原始路径:', src, '完整URL:', fullUrl);
 
   imageLoaded.value = false;
@@ -968,6 +1004,8 @@ const handleMouseUp = () => {
           is_enabled: true,
           sort_order: regions.value.length,
           model_ids: [], // 新创建的区域默认不关联模型
+          inertiaFrames: 3,
+          loiteringSeconds: 20,
         };
 
         regions.value.push(newRegion);
@@ -1007,6 +1045,8 @@ const finishPolygon = () => {
       is_enabled: true,
       sort_order: regions.value.length,
       model_ids: [], // 新创建的区域默认不关联模型
+      inertiaFrames: 3,
+      loiteringSeconds: 20,
     };
 
     regions.value.push(newRegion);
@@ -1174,6 +1214,8 @@ const handleSave = async () => {
           is_enabled: region.is_enabled,
           sort_order: region.sort_order,
           model_ids: region.model_ids || [],
+          inertiaFrames: region.inertiaFrames,
+          loiteringSeconds: region.loiteringSeconds,
         });
         // 更新前端区域的ID（确保使用服务器返回的最新ID）
         if (updateResponse.code === 0 && updateResponse.data) {
@@ -1199,6 +1241,8 @@ const handleSave = async () => {
           is_enabled: region.is_enabled,
           sort_order: region.sort_order,
           model_ids: region.model_ids || [],
+          inertiaFrames: region.inertiaFrames,
+          loiteringSeconds: region.loiteringSeconds,
         });
         // 更新前端区域的ID（使用服务器返回的新ID）
         if (createResponse.code === 0 && createResponse.data) {
@@ -1490,6 +1534,9 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', resizeCanvas);
   window.removeEventListener('keydown', handleKeyDown);
+  if (protectedSnapshotObjectUrl.value) {
+    window.URL.revokeObjectURL(protectedSnapshotObjectUrl.value);
+  }
 });
 </script>
 
@@ -2039,6 +2086,13 @@ onUnmounted(() => {
                 border-color: @primary-color;
                 box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.1);
               }
+            }
+
+            .rule-explanation {
+              margin-top: 6px;
+              color: @text-secondary;
+              font-size: 12px;
+              line-height: 18px;
             }
           }
         }

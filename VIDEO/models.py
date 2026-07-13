@@ -227,6 +227,7 @@ class DeviceTrackPoint(db.Model):
 
 class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
     filename = db.Column(db.String(255), nullable=False)
     original_filename = db.Column(db.String(255), nullable=False)
     path = db.Column(db.String(500), nullable=False)
@@ -234,6 +235,10 @@ class Image(db.Model):
     height = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     device_id = db.Column(db.String(100), db.ForeignKey('device.id'))  # 添加设备ID外键
+
+    __table_args__ = (
+        db.CheckConstraint('tenant_id > 0', name='ck_image_tenant_positive'),
+    )
 
 class Nvr(db.Model):
     __tablename__ = 'nvr'
@@ -263,6 +268,7 @@ class Nvr(db.Model):
 
 class Alert(db.Model):
     id = db.Column(db.Integer, autoincrement=True, primary_key=True, nullable=False)
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
     object = db.Column(db.String(30), nullable=False)
     event = db.Column(db.String(30), nullable=False)
     region = db.Column(db.String(30), nullable=True)
@@ -286,20 +292,25 @@ class Alert(db.Model):
     business_tags = db.Column(db.Text, nullable=True, comment='业务标签（JSON数组，库匹配告警携带匹配库标签）')
     correlation_id = db.Column(db.String(36), nullable=True, index=True, comment='关联事件ID（同一帧算法告警/人脸/车牌）')
 
+    __table_args__ = (
+        db.CheckConstraint('tenant_id > 0', name='ck_alert_tenant_positive'),
+    )
+
 
 class SnapSpace(db.Model):
     """抓拍空间表"""
     __tablename__ = 'snap_space'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
     space_name = db.Column(db.String(255), nullable=False, comment='空间名称')
-    space_code = db.Column(db.String(255), nullable=False, unique=True, comment='空间编号（唯一标识）')
+    space_code = db.Column(db.String(255), nullable=False, comment='租户内唯一空间编号')
     bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket名称')
     save_mode = db.Column(db.SmallInteger, default=0, nullable=False, comment='文件保存模式[0:标准存储,1:归档存储]')
     save_time = db.Column(db.Integer, default=1, nullable=False, comment='文件保存时长[0:永久保存,>=1(单位:小时)]')
     save_time_custom = db.Column(db.Boolean, default=False, nullable=False, comment='是否自定义保存时间（False 时跟随目录默认值）')
     description = db.Column(db.String(500), nullable=True, comment='空间描述')
-    device_id = db.Column(db.String(100), db.ForeignKey('device.id', ondelete='SET NULL'), nullable=True, unique=True, comment='关联的设备ID（一对一关系）')
+    device_id = db.Column(db.String(100), db.ForeignKey('device.id', ondelete='SET NULL'), nullable=True, comment='租户内关联的设备ID（一对一关系）')
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
@@ -308,12 +319,24 @@ class SnapSpace(db.Model):
     # 关联的设备
     device = db.relationship('Device', backref='snap_space', uselist=False)
     snap_images = db.relationship('SnapImage', backref='snap_space', lazy=True, cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.CheckConstraint(
+            'tenant_id > 0', name='ck_snap_space_tenant_positive'),
+        db.UniqueConstraint(
+            'tenant_id', 'space_code', name='uq_snap_space_tenant_space_code'),
+        db.UniqueConstraint(
+            'tenant_id', 'device_id', name='uq_snap_space_tenant_device'),
+        db.UniqueConstraint(
+            'tenant_id', 'id', name='uq_snap_space_tenant_id'),
+    )
     
     def to_dict(self):
         """转换为字典"""
         from app.services.space_save_time_service import enrich_snap_space_dict
         return enrich_snap_space_dict({
             'id': self.id,
+            'tenant_id': self.tenant_id,
             'space_name': self.space_name,
             'space_code': self.space_code,
             'bucket_name': self.bucket_name,
@@ -333,26 +356,39 @@ class RecordSpace(db.Model):
     __tablename__ = 'record_space'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
     space_name = db.Column(db.String(255), nullable=False, comment='空间名称')
-    space_code = db.Column(db.String(255), nullable=False, unique=True, comment='空间编号（唯一标识）')
+    space_code = db.Column(db.String(255), nullable=False, comment='租户内唯一空间编号')
     bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket名称')
     save_mode = db.Column(db.SmallInteger, default=0, nullable=False, comment='文件保存模式[0:标准存储,1:归档存储]')
     save_time = db.Column(db.Integer, default=1, nullable=False, comment='文件保存时长[0:永久保存,>=1(单位:小时)]')
     save_time_custom = db.Column(db.Boolean, default=False, nullable=False, comment='是否自定义保存时间（False 时跟随目录默认值）')
     description = db.Column(db.String(500), nullable=True, comment='空间描述')
-    device_id = db.Column(db.String(100), db.ForeignKey('device.id', ondelete='SET NULL'), nullable=True, unique=True, comment='关联的设备ID（一对一关系）')
+    device_id = db.Column(db.String(100), db.ForeignKey('device.id', ondelete='SET NULL'), nullable=True, comment='租户内关联的设备ID（一对一关系）')
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
     # 关联的设备
     device = db.relationship('Device', backref='record_space', uselist=False)
     record_files = db.relationship('RecordFile', backref='record_space', lazy=True, cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.CheckConstraint(
+            'tenant_id > 0', name='ck_record_space_tenant_positive'),
+        db.UniqueConstraint(
+            'tenant_id', 'space_code', name='uq_record_space_tenant_space_code'),
+        db.UniqueConstraint(
+            'tenant_id', 'device_id', name='uq_record_space_tenant_device'),
+        db.UniqueConstraint(
+            'tenant_id', 'id', name='uq_record_space_tenant_id'),
+    )
     
     def to_dict(self):
         """转换为字典"""
         from app.services.space_save_time_service import enrich_record_space_dict
         return enrich_record_space_dict({
             'id': self.id,
+            'tenant_id': self.tenant_id,
             'space_name': self.space_name,
             'space_code': self.space_code,
             'bucket_name': self.bucket_name,
@@ -388,7 +424,8 @@ class RecordFile(db.Model):
     __tablename__ = 'record_file'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    space_id = db.Column(db.Integer, db.ForeignKey('record_space.id', ondelete='CASCADE'), nullable=False, index=True)
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
+    space_id = db.Column(db.Integer, nullable=False, index=True)
     device_id = db.Column(db.String(100), nullable=False, index=True, comment='设备ID')
     object_name = db.Column(db.String(500), nullable=False, comment='MinIO 对象路径')
     bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket')
@@ -405,23 +442,40 @@ class RecordFile(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
 
     __table_args__ = (
-        db.UniqueConstraint('bucket_name', 'object_name', name='uq_record_file_bucket_object'),
-        db.Index('ix_record_file_space_event_time', 'space_id', 'event_time'),
+        db.CheckConstraint(
+            'tenant_id > 0', name='ck_record_file_tenant_positive'),
+        db.ForeignKeyConstraint(
+            ('tenant_id', 'space_id'),
+            ('record_space.tenant_id', 'record_space.id'),
+            name='fk_record_file_tenant_space',
+            ondelete='CASCADE',
+        ),
+        db.UniqueConstraint(
+            'tenant_id', 'bucket_name', 'object_name',
+            name='uq_record_file_tenant_bucket_object'),
+        db.CheckConstraint(
+            "object_name LIKE 'tenants/' || tenant_id || '/%' "
+            "OR (tenant_id = 1 AND object_name NOT LIKE 'tenants/%')",
+            name='ck_record_file_object_tenant_scope'),
+        db.Index(
+            'ix_record_file_tenant_space_event_time',
+            'tenant_id', 'space_id', 'event_time'),
     )
 
     def to_list_item(self):
         from app.utils.service_urls import (
-            is_local_filesystem_path,
-            minio_storage_enabled,
             build_record_video_api_url,
         )
-        display_url = self.url
-        if not minio_storage_enabled() and is_local_filesystem_path(display_url or ''):
-            display_url = build_record_video_api_url(self.space_id, self.object_name)
-        elif not minio_storage_enabled() and not (display_url or '').startswith(('/api/', '/video/')):
-            display_url = build_record_video_api_url(self.space_id, self.object_name)
+        display_url = build_record_video_api_url(
+            self.space_id, self.object_name)
+        thumbnail_url = (
+            self.thumbnail_url
+            if (self.thumbnail_url or '').startswith('/video/')
+            else None
+        )
         return {
             'id': self.id,
+            'tenant_id': self.tenant_id,
             'object_name': self.object_name,
             'filename': self.filename,
             'size': self.file_size or 0,
@@ -430,7 +484,7 @@ class RecordFile(db.Model):
             'content_type': self.content_type or 'video/mp4',
             'url': display_url,
             'duration': self.duration,
-            'thumbnail_url': self.thumbnail_url,
+            'thumbnail_url': thumbnail_url,
         }
 
 
@@ -439,7 +493,8 @@ class SnapImage(db.Model):
     __tablename__ = 'snap_image'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    space_id = db.Column(db.Integer, db.ForeignKey('snap_space.id', ondelete='CASCADE'), nullable=False, index=True)
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
+    space_id = db.Column(db.Integer, nullable=False, index=True)
     device_id = db.Column(db.String(100), nullable=False, index=True, comment='设备ID')
     object_name = db.Column(db.String(500), nullable=False, comment='MinIO 对象路径')
     bucket_name = db.Column(db.String(255), nullable=False, comment='MinIO bucket')
@@ -454,27 +509,35 @@ class SnapImage(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
 
     __table_args__ = (
-        db.UniqueConstraint('bucket_name', 'object_name', name='uq_snap_image_bucket_object'),
-        db.Index('ix_snap_image_space_captured_at', 'space_id', 'captured_at'),
+        db.CheckConstraint(
+            'tenant_id > 0', name='ck_snap_image_tenant_positive'),
+        db.ForeignKeyConstraint(
+            ('tenant_id', 'space_id'),
+            ('snap_space.tenant_id', 'snap_space.id'),
+            name='fk_snap_image_tenant_space',
+            ondelete='CASCADE',
+        ),
+        db.UniqueConstraint(
+            'tenant_id', 'bucket_name', 'object_name',
+            name='uq_snap_image_tenant_bucket_object'),
+        db.CheckConstraint(
+            "object_name LIKE 'tenants/' || tenant_id || '/%' "
+            "OR (tenant_id = 1 AND object_name NOT LIKE 'tenants/%')",
+            name='ck_snap_image_object_tenant_scope'),
+        db.Index(
+            'ix_snap_image_tenant_space_captured_at',
+            'tenant_id', 'space_id', 'captured_at'),
     )
 
     def to_list_item(self):
         from app.utils.service_urls import (
-            is_local_filesystem_path,
-            minio_storage_enabled,
             build_snap_image_api_url,
         )
-        display_url = self.url
-        if minio_storage_enabled():
-            pass
-        elif is_local_filesystem_path(display_url or ''):
-            display_url = build_snap_image_api_url(self.space_id, self.object_name)
-        elif (display_url or '').startswith('/video/'):
-            pass
-        elif not (display_url or '').startswith('/api/'):
-            display_url = build_snap_image_api_url(self.space_id, self.object_name)
+        display_url = build_snap_image_api_url(
+            self.space_id, self.object_name)
         return {
             'id': self.id,
+            'tenant_id': self.tenant_id,
             'object_name': self.object_name,
             'filename': self.filename,
             'size': self.file_size or 0,
@@ -1898,6 +1961,7 @@ class Playback(db.Model):
     __tablename__ = 'playback'
     
     id = db.Column(db.Integer(), primary_key=True, nullable=False)  # 主键
+    tenant_id = db.Column(db.BigInteger, nullable=False, index=True, comment='所属租户ID')
     # MinIO 下载 API 等完整路径可能较长
     file_path = db.Column(db.String(500), nullable=False)  # 文件路径
     event_time = db.Column(db.DateTime(timezone=True), nullable=False)  # 录制发生时间
@@ -1909,11 +1973,16 @@ class Playback(db.Model):
     # 使用带时区的本地时间（Asia/Shanghai，UTC+8）
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone(timedelta(hours=8))))  # 创建时间
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone(timedelta(hours=8))), onupdate=lambda: datetime.now(timezone(timedelta(hours=8))))  # 更新时间
+
+    __table_args__ = (
+        db.CheckConstraint('tenant_id > 0', name='ck_playback_tenant_positive'),
+    )
     
     def to_dict(self):
         """转换为字典"""
         return {
             'id': self.id,
+            'tenant_id': self.tenant_id,
             'file_path': self.file_path,
             'event_time': self.event_time.isoformat() if self.event_time else None,
             'device_id': self.device_id,

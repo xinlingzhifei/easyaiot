@@ -55,6 +55,7 @@ from app.utils.gb28181_source import (
     resolve_gb28181_source,
 )
 from app.services.camera_service import gb28181_device_stream_urls, resolve_device_ai_rtmp_stream
+from app.services.media_authorization_service import post_alert_ingest
 from app.utils.alert_images_paths import resolve_alert_images_root
 from app.utils.decode.stream_adapter import is_async_stream, open_device_stream, stream_mode_label
 from app.utils.onnx_inference import ONNXInference
@@ -1775,12 +1776,7 @@ def send_alert_event_async(alert_data: Dict):
                     alert_data['plate_detection_enabled'] = bool(
                         getattr(task_config, 'plate_detection_enabled', False)
                     )
-                response = requests.post(
-                    ALERT_HOOK_URL,
-                    json=alert_data,
-                    timeout=5,
-                    headers={'Content-Type': 'application/json'}
-                )
+                response = post_alert_ingest(ALERT_HOOK_URL, alert_data, timeout=5)
                 hook_result = {}
                 try:
                     body = response.json()

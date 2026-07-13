@@ -502,7 +502,7 @@ export default {
     applyNativeSeek() {
       const video = this.$refs.nativeVideo;
       const offset = Number(this.seekOffsetSeconds);
-      if (!video || !Number.isFinite(offset) || offset <= 0) return;
+      if (!video || !Number.isFinite(offset) || offset < 0) return;
 
       const apply = () => {
         video.currentTime = offset;

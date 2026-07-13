@@ -25,12 +25,14 @@ import {
   type AlertReviewReconciliationResult,
   type AlertReviewRuleGeometryEvaluation,
   type AlertReviewRuleReplayResult,
+  type AlertReviewRuleSuggestionStatus,
   type AlertReviewRuleSuggestionPreview,
   type AlertReviewRuntimeHealth,
   type AlertReviewRuntimePatrolResult,
   type AlertReviewSegment,
   type AlertReviewSemanticHit,
   type AlertReviewSemanticIndexEvaluation,
+  type AlertReviewSemanticTriggerResult,
   type AlertReviewSummary,
   addAlertReviewItemToCase,
   acknowledgeAlertReviewOperationsReport,
@@ -43,12 +45,14 @@ import {
   createAlertReviewEvidenceExportJob,
   evaluateAlertReviewRuleGeometry,
   evaluateAlertReviewSemanticIndex,
+  evaluateAlertReviewSemanticTrigger,
   generateAlertReviewOperationsReport,
   getAlertReviewCaseTimeline,
   getAlertReviewDetailStream,
   getAlertReviewEvidenceAudit,
   getAlertReviewRecordCoverage,
   getAlertReviewRuntimeHealth,
+  getAlertReviewSemanticTrigger,
   getAlertReviewSegment,
   getAlertReviewSummary,
   getAlertReviewTimeline,
@@ -68,6 +72,7 @@ import {
   runAlertReviewRuntimePatrol,
   saveAlertReviewRule,
   semanticSearchAlertReview,
+  confirmAlertReviewSemanticTrigger,
   suggestAlertReviewCaseCandidates,
   splitAlertReviewCase,
   summarizeAlertReviewCase,
@@ -89,9 +94,14 @@ const { hasPermission } = usePermission()
 const RULE_SUGGESTION_UPDATE_PERMISSION = 'system:supervision-alert-review:rule-suggestion:update'
 const RULE_SUGGESTION_REVERT_PERMISSION = 'system:supervision-alert-review:rule-suggestion:revert'
 const RULE_REPLAY_PERMISSION = 'system:supervision-alert-review:rules:replay'
+const SEMANTIC_TRIGGER_EVALUATE_PERMISSION = 'system:supervision-alert-review:semantic-trigger:evaluate'
+const SEMANTIC_TRIGGER_CONFIRM_PERMISSION = 'system:supervision-alert-review:semantic-trigger:confirm'
+const SEMANTIC_TRIGGER_EVALUATION_STORAGE_KEY = 'yfeieye.alert-review.semantic-trigger-evaluation-id'
 const canUpdateRuleSuggestion = computed(() => hasPermission(RULE_SUGGESTION_UPDATE_PERMISSION))
 const canRevertRuleSuggestion = computed(() => hasPermission(RULE_SUGGESTION_REVERT_PERMISSION))
 const canReplayRule = computed(() => hasPermission(RULE_REPLAY_PERMISSION))
+const canEvaluateSemanticTrigger = computed(() => hasPermission(SEMANTIC_TRIGGER_EVALUATE_PERMISSION))
+const canConfirmSemanticTrigger = computed(() => hasPermission(SEMANTIC_TRIGGER_CONFIRM_PERMISSION))
 
 const statusOptions = [
   { value: 'pending_review', label: '待复核' },
@@ -127,6 +137,8 @@ const caseLifecycleLoading = ref(false)
 const recordRetryLoading = ref(false)
 const userStatusLoading = ref(false)
 const semanticLoading = ref(false)
+const semanticTriggerLoading = ref(false)
+const semanticTriggerDecisionLoading = ref(false)
 const rulePreviewLoading = ref(false)
 const ruleReplayLoading = ref(false)
 const aiSummaryLoading = ref(false)
@@ -144,6 +156,14 @@ const evidenceAudit = ref<AlertReviewEvidenceAuditEntry[]>([])
 const caseCandidates = ref<AlertReviewItem[]>([])
 const semanticQuery = ref('')
 const semanticHits = ref<AlertReviewSemanticHit[]>([])
+const semanticTriggerResult = ref<AlertReviewSemanticTriggerResult | null>(null)
+const semanticTriggerForm = reactive({
+  triggerName: '',
+  data: '',
+  threshold: 0.5,
+  actions: ['notification'] as string[],
+  notes: '',
+})
 const rulePreview = ref<AlertReviewRuleSuggestionPreview | null>(null)
 const ruleReplay = ref<AlertReviewRuleReplayResult | null>(null)
 const aiSummary = ref<AlertReviewAiSummary | null>(null)
@@ -284,6 +304,7 @@ const unifiedTimeline = computed<UnifiedTimelineEntry[]>(() => {
 onMounted(() => {
   loadItems()
   loadOpsHealth()
+  restoreSemanticTriggerPreview()
 })
 
 async function loadItems() {
@@ -512,6 +533,74 @@ async function searchReviewItems() {
   }
 }
 
+async function evaluateSemanticTriggerPreview() {
+  const triggerName = semanticTriggerForm.triggerName.trim()
+  const data = semanticTriggerForm.data.trim()
+  if (!triggerName || !data) {
+    createMessage.warn('请填写触发器名称和语义条件')
+    return
+  }
+  semanticTriggerLoading.value = true
+  try {
+    semanticTriggerResult.value = await evaluateAlertReviewSemanticTrigger({
+      ...currentReviewQuery(),
+      triggerName,
+      triggerType: 'description',
+      data,
+      threshold: semanticTriggerForm.threshold,
+      actions: semanticTriggerForm.actions.length ? [...semanticTriggerForm.actions] : ['notification'],
+      cameraId: selectedItem.value?.cameraId || filters.cameraId || undefined,
+    })
+    sessionStorage.setItem(
+      SEMANTIC_TRIGGER_EVALUATION_STORAGE_KEY,
+      semanticTriggerResult.value.evaluationId,
+    )
+    createMessage.success('语义触发评估已保存，等待人工确认')
+  }
+  catch (error: any) {
+    createMessage.error(error?.message || '语义触发评估失败')
+  }
+  finally {
+    semanticTriggerLoading.value = false
+  }
+}
+
+async function restoreSemanticTriggerPreview() {
+  const evaluationId = sessionStorage.getItem(SEMANTIC_TRIGGER_EVALUATION_STORAGE_KEY)
+  if (!evaluationId)
+    return
+  if (!/^sem-[0-9a-f-]{36}$/.test(evaluationId)) {
+    sessionStorage.removeItem(SEMANTIC_TRIGGER_EVALUATION_STORAGE_KEY)
+    return
+  }
+  try {
+    semanticTriggerResult.value = await getAlertReviewSemanticTrigger(evaluationId)
+  }
+  catch {
+    sessionStorage.removeItem(SEMANTIC_TRIGGER_EVALUATION_STORAGE_KEY)
+  }
+}
+
+async function confirmSemanticTriggerPreview(confirmationStatus: 'confirmed' | 'rejected') {
+  const evaluation = semanticTriggerResult.value
+  if (!evaluation || evaluation.humanConfirmationStatus !== 'pending')
+    return
+  semanticTriggerDecisionLoading.value = true
+  try {
+    semanticTriggerResult.value = await confirmAlertReviewSemanticTrigger(evaluation.evaluationId, {
+      confirmationStatus,
+      notes: semanticTriggerForm.notes.trim() || undefined,
+    })
+    createMessage.success(confirmationStatus === 'confirmed' ? '动作预览已确认' : '动作预览已驳回')
+  }
+  catch (error: any) {
+    createMessage.error(error?.message || '语义触发确认失败')
+  }
+  finally {
+    semanticTriggerDecisionLoading.value = false
+  }
+}
+
 async function openItem(item: AlertReviewItem) {
   selectedItem.value = item
   detailStream.value = []
@@ -618,13 +707,17 @@ function markFalsePositive(item: AlertReviewItem) {
   })
 }
 
-async function updateRuleSuggestion(item: AlertReviewItem, status: string) {
+async function updateRuleSuggestion(item: AlertReviewItem, status: AlertReviewRuleSuggestionStatus['status']) {
   if (!canUpdateRuleSuggestion.value) {
-    createMessage.error('rule suggestion approval permission required')
+    createMessage.error('缺少规则建议治理权限')
     return
   }
-  if ((status === 'accepted' || status === 'applied') && !ruleSuggestionSampleReady(item)) {
-    createMessage.error('rule suggestion minimum sample requirement not met')
+  if ((status === 'shadow_evaluated' || status === 'accepted' || status === 'applied') && !ruleSuggestionSampleReady(item)) {
+    createMessage.error('样本数不足，不能进入影子评估、审批或应用阶段')
+    return
+  }
+  if ((status === 'accepted' || status === 'applied') && !ruleSuggestionHasShadowEvidence(item)) {
+    createMessage.error('缺少影子评估与规则回放报告，不能审批或应用')
     return
   }
   try {
@@ -632,7 +725,15 @@ async function updateRuleSuggestion(item: AlertReviewItem, status: string) {
       status,
       note: `manual_${status}`,
     }))
-    createMessage.success('规则建议状态已更新')
+    const successMessages: Record<AlertReviewRuleSuggestionStatus['status'], string> = {
+      pending: '规则建议已恢复待评估',
+      shadow_evaluated: '影子评估完成，等待审批',
+      accepted: '规则建议审批通过，尚未应用到线上规则',
+      rejected: '规则建议已拒绝，未修改线上规则',
+      applied: '规则建议已应用到线上规则',
+      reverted: '规则建议已回滚',
+    }
+    createMessage.success(successMessages[status])
   }
   catch (error: any) {
     createMessage.error(error?.message || '规则建议状态更新失败')
@@ -749,6 +850,11 @@ function currentCaseOperatorUserId() {
   return filters.reviewerUserId || undefined
 }
 
+function caseOperationId(action: string, reviewCase: AlertReviewCase, discriminator?: number) {
+  const suffix = discriminator === undefined ? '' : `:${discriminator}`
+  return `workbench:${action}:${reviewCase.id}:v${reviewCase.version ?? 0}${suffix}`
+}
+
 async function createCaseFromItem(item: AlertReviewItem) {
   try {
     applyActiveCase(await createAlertReviewCase({
@@ -794,6 +900,8 @@ async function assignActiveCaseOwner() {
       ownerUserId,
       operatorUserId: currentCaseOperatorUserId(),
       notes: 'workbench_owner_handoff',
+      expectedVersion: activeCase.value.version,
+      operationId: caseOperationId('owner', activeCase.value, ownerUserId),
     }))
     createMessage.success('case owner updated')
   }
@@ -813,6 +921,8 @@ async function closeActiveCase() {
     applyActiveCase(await closeAlertReviewCase(activeCase.value.id, {
       operatorUserId: currentCaseOperatorUserId(),
       notes: 'workbench_close_case',
+      expectedVersion: activeCase.value.version,
+      operationId: caseOperationId('close', activeCase.value),
     }))
     createMessage.success('case closed')
   }
@@ -838,6 +948,8 @@ async function mergeActiveCase() {
       sourceReviewCaseId,
       operatorUserId: currentCaseOperatorUserId(),
       notes: 'workbench_merge_case',
+      targetExpectedVersion: activeCase.value.version,
+      operationId: caseOperationId('merge', activeCase.value, sourceReviewCaseId),
     })
     applyActiveCase(result.targetCase)
     caseLifecycleForm.sourceReviewCaseId = undefined
@@ -864,6 +976,8 @@ async function splitSelectedItemFromCase() {
       ownerUserId,
       operatorUserId: currentCaseOperatorUserId(),
       notes: 'workbench_split_case',
+      sourceExpectedVersion: activeCase.value.version,
+      operationId: caseOperationId('split', activeCase.value, selectedItem.value.id),
     })
     applyActiveCase(result.newCase)
     caseTimeline.value = []
@@ -935,7 +1049,7 @@ async function exportCaseEvidence() {
   try {
     evidenceExportJob.value = await createAlertReviewEvidenceExportJob(activeCase.value.id, {
       operatorUserId: filters.reviewerUserId || undefined,
-      format: 'manifest',
+      format: 'mp4',
       reason: 'review_case_export',
     })
     evidenceExport.value = evidenceExportJob.value.exportPackage
@@ -1411,12 +1525,50 @@ function ruleSuggestionSampleReady(item: AlertReviewItem) {
   return (currentSampleCount ?? 0) >= minimumSampleCount
 }
 
-function canAcceptRuleSuggestion(item: AlertReviewItem) {
+function ruleSuggestionHasShadowEvidence(item: AlertReviewItem) {
+  const suggestion = item.ruleSuggestion || {}
+  const shadowEvaluation = suggestion.shadowEvaluation
+  const replayReport = suggestion.replayReport
+  return shadowEvaluation !== null
+    && typeof shadowEvaluation === 'object'
+    && Object.keys(shadowEvaluation).length > 0
+    && replayReport !== null
+    && typeof replayReport === 'object'
+    && Object.keys(replayReport).length > 0
+}
+
+function canShadowEvaluateRuleSuggestion(item: AlertReviewItem) {
   return item.ruleSuggestionStatus === 'pending' && canUpdateRuleSuggestion.value && ruleSuggestionSampleReady(item)
 }
 
+function canRejectRuleSuggestion(item: AlertReviewItem) {
+  return (item.ruleSuggestionStatus === 'pending' || item.ruleSuggestionStatus === 'shadow_evaluated')
+    && canUpdateRuleSuggestion.value
+}
+
+function canAcceptRuleSuggestion(item: AlertReviewItem) {
+  return item.ruleSuggestionStatus === 'shadow_evaluated'
+    && canUpdateRuleSuggestion.value
+    && ruleSuggestionSampleReady(item)
+    && ruleSuggestionHasShadowEvidence(item)
+}
+
 function canApplyRuleSuggestion(item: AlertReviewItem) {
-  return item.ruleSuggestionStatus === 'accepted' && canUpdateRuleSuggestion.value && ruleSuggestionSampleReady(item)
+  return item.ruleSuggestionStatus === 'accepted'
+    && canUpdateRuleSuggestion.value
+    && ruleSuggestionSampleReady(item)
+    && ruleSuggestionHasShadowEvidence(item)
+}
+
+function ruleSuggestionStatusText(status?: AlertReviewItem['ruleSuggestionStatus']) {
+  return {
+    pending: '待影子评估',
+    shadow_evaluated: '影子评估完成',
+    accepted: '已审批，待应用',
+    rejected: '已拒绝',
+    applied: '已应用',
+    reverted: '已回滚',
+  }[status || 'pending']
 }
 
 function compactValueList(value: unknown) {
@@ -1726,6 +1878,123 @@ defineExpose({
       </div>
     </div>
 
+    <section class="semantic-trigger-panel" data-testid="alert-review-semantic-trigger-panel">
+      <div class="semantic-trigger-heading">
+        <div>
+          <strong>语义触发器</strong>
+          <p>评估只生成命中解释和动作预览，确认前不会执行任何动作。</p>
+        </div>
+        <span v-if="semanticTriggerResult" class="status-pill">
+          {{ semanticTriggerResult.humanConfirmationStatus }}
+        </span>
+      </div>
+      <div class="semantic-trigger-form">
+        <input
+          v-model.trim="semanticTriggerForm.triggerName"
+          data-testid="alert-review-semantic-trigger-name"
+          class="review-input"
+          placeholder="触发器名称"
+        >
+        <input
+          v-model.trim="semanticTriggerForm.data"
+          data-testid="alert-review-semantic-trigger-data"
+          class="review-input semantic-trigger-data"
+          placeholder="语义条件，例如：未戴安全帽进入门厅"
+        >
+        <input
+          v-model.number="semanticTriggerForm.threshold"
+          class="review-input semantic-trigger-threshold"
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          aria-label="语义阈值"
+        >
+        <label class="semantic-trigger-action-option">
+          <input v-model="semanticTriggerForm.actions" type="checkbox" value="notification">
+          通知
+        </label>
+        <label class="semantic-trigger-action-option">
+          <input v-model="semanticTriggerForm.actions" type="checkbox" value="sub_label">
+          子标签
+        </label>
+        <Button
+          v-if="canEvaluateSemanticTrigger"
+          data-testid="alert-review-semantic-trigger-evaluate"
+          size="small"
+          type="primary"
+          :loading="semanticTriggerLoading"
+          @click="evaluateSemanticTriggerPreview"
+        >
+          生成预览
+        </Button>
+      </div>
+
+      <template v-if="semanticTriggerResult">
+        <div class="semantic-trigger-result-meta">
+          <span>evaluationId {{ semanticTriggerResult.evaluationId }}</span>
+          <span>input {{ semanticTriggerResult.inputVersion }}</span>
+          <span>index v{{ semanticTriggerResult.latestIndexVersion }}</span>
+          <span>命中 {{ semanticTriggerResult.matchedReviewItemIds.length }} 条</span>
+          <span v-if="semanticTriggerResult.confirmedBy">确认人 {{ semanticTriggerResult.confirmedBy }}</span>
+          <span v-if="semanticTriggerResult.confirmedAt">确认时间 {{ semanticTriggerResult.confirmedAt }}</span>
+        </div>
+        <div class="semantic-trigger-result-grid">
+          <div>
+            <strong>命中解释</strong>
+            <div
+              v-for="(explanation, index) in semanticTriggerResult.hitExplanations"
+              :key="`semantic-hit-${index}`"
+              class="semantic-trigger-result-row"
+            >
+              #{{ explanation.reviewItemId || '-' }} / {{ explanation.cameraId || '-' }} /
+              hit index v{{ explanation.indexVersion ?? '-' }} /
+              score {{ explanation.score ?? '-' }} /
+              {{ Array.isArray(explanation.matchedTerms) ? explanation.matchedTerms.join(', ') : '-' }}
+            </div>
+          </div>
+          <div>
+            <strong>动作预览</strong>
+            <div
+              v-for="(preview, index) in semanticTriggerResult.actionPreviews"
+              :key="`semantic-action-${index}`"
+              class="semantic-trigger-result-row"
+            >
+              {{ preview.action || '-' }} → review item #{{ preview.reviewItemId || '-' }}
+            </div>
+          </div>
+        </div>
+        <div class="semantic-trigger-confirmation">
+          <input
+            v-model.trim="semanticTriggerForm.notes"
+            data-testid="alert-review-semantic-trigger-notes"
+            class="review-input semantic-trigger-data"
+            placeholder="审批备注（可选）"
+          >
+          <span>确认只记录审批状态，不会执行动作</span>
+          <Button
+            v-if="semanticTriggerResult.humanConfirmationStatus === 'pending' && canConfirmSemanticTrigger"
+            data-testid="alert-review-semantic-trigger-confirm"
+            size="small"
+            type="primary"
+            :loading="semanticTriggerDecisionLoading"
+            @click="confirmSemanticTriggerPreview('confirmed')"
+          >
+            确认预览
+          </Button>
+          <Button
+            v-if="semanticTriggerResult.humanConfirmationStatus === 'pending' && canConfirmSemanticTrigger"
+            data-testid="alert-review-semantic-trigger-reject"
+            size="small"
+            :loading="semanticTriggerDecisionLoading"
+            @click="confirmSemanticTriggerPreview('rejected')"
+          >
+            驳回预览
+          </Button>
+        </div>
+      </template>
+    </section>
+
     <div class="summary-strip">
       <span>total {{ summary.total }}</span>
       <span>pending {{ summary.pendingReview }}</span>
@@ -1867,7 +2136,7 @@ defineExpose({
                     {{ item.eventReviewStatus }}
                   </span>
                   <span v-if="item.ruleSuggestionStatus" class="event-status-pill">
-                    {{ item.ruleSuggestionStatus }}
+                    {{ ruleSuggestionStatusText(item.ruleSuggestionStatus) }}
                   </span>
                   <span v-if="ruleSuggestionSafetyRows(item).length" class="rule-suggestion-safety">
                     <span
@@ -1910,12 +2179,28 @@ defineExpose({
                     误报
                   </Button>
                   <Button
+                    v-if="canShadowEvaluateRuleSuggestion(item)"
+                    size="small"
+                    type="link"
+                    @click="updateRuleSuggestion(item, 'shadow_evaluated')"
+                  >
+                    影子评估
+                  </Button>
+                  <Button
                     v-if="canAcceptRuleSuggestion(item)"
                     size="small"
                     type="link"
                     @click="updateRuleSuggestion(item, 'accepted')"
                   >
-                    accept
+                    审批通过
+                  </Button>
+                  <Button
+                    v-if="canRejectRuleSuggestion(item)"
+                    size="small"
+                    type="link"
+                    @click="updateRuleSuggestion(item, 'rejected')"
+                  >
+                    拒绝建议
                   </Button>
                   <Button
                     v-if="canApplyRuleSuggestion(item)"
@@ -1923,7 +2208,7 @@ defineExpose({
                     type="link"
                     @click="updateRuleSuggestion(item, 'applied')"
                   >
-                    applied
+                    应用规则
                   </Button>
                   <Button
                     v-if="item.ruleSuggestionStatus"
@@ -1935,7 +2220,7 @@ defineExpose({
                     预览
                   </Button>
                   <Button
-                    v-if="item.ruleSuggestionStatus && item.ruleSuggestionStatus !== 'reverted' && canRevertRuleSuggestion"
+                    v-if="item.ruleSuggestionStatus === 'applied' && canRevertRuleSuggestion"
                     size="small"
                     type="link"
                     @click="revertRuleSuggestion(item)"
@@ -1949,7 +2234,7 @@ defineExpose({
                     :loading="ruleReplayLoading && selectedItem?.id === item.id"
                     @click="replayRuleForItem(item)"
                   >
-                    Replay
+                    回放分析
                   </Button>
                   <Button size="small" type="link" data-testid="alert-review-create-case" @click="createCaseFromItem(item)">
                     新建复盘
@@ -2540,6 +2825,81 @@ defineExpose({
   border-radius: 6px;
   background: #fbfcfe;
   cursor: pointer;
+}
+
+.semantic-trigger-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #dfe5ee;
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.semantic-trigger-heading,
+.semantic-trigger-form,
+.semantic-trigger-confirmation,
+.semantic-trigger-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.semantic-trigger-heading {
+  justify-content: space-between;
+
+  p {
+    margin: 2px 0 0;
+    color: #7b8494;
+    font-size: 12px;
+  }
+}
+
+.semantic-trigger-form,
+.semantic-trigger-confirmation {
+  flex-wrap: wrap;
+}
+
+.semantic-trigger-data {
+  flex: 1;
+}
+
+.semantic-trigger-threshold {
+  width: 90px;
+  min-width: 90px;
+}
+
+.semantic-trigger-action-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #5f6570;
+  font-size: 12px;
+}
+
+.semantic-trigger-result-meta {
+  flex-wrap: wrap;
+  color: #5f6570;
+  font-size: 12px;
+}
+
+.semantic-trigger-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.semantic-trigger-result-row {
+  margin-top: 5px;
+  color: #5f6570;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.semantic-trigger-confirmation > span {
+  color: #8a5a00;
+  font-size: 12px;
 }
 
 .review-layout {

@@ -42,6 +42,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseTimelineItem;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportPackage;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceItem;
@@ -51,6 +52,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewOperationsReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleStore;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewRuleView;
@@ -67,6 +69,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -589,25 +592,26 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ReviewCaseView addCaseItem(Long reviewCaseId, Long reviewItemId) {
-        SupervisionAlertReviewCaseDO caseDO = requireCase(reviewCaseId);
+        SupervisionAlertReviewCaseDO caseDO = requireCaseForUpdate(reviewCaseId);
         ensureCaseOpen(caseDO);
         requireItem(reviewItemId);
-        if (reviewCaseItemMapper.selectExisting(reviewCaseId, reviewItemId) == null) {
-            int nextSortOrder = reviewCaseItemMapper.selectByCaseId(reviewCaseId).size() + 1;
-            reviewCaseItemMapper.insert(new SupervisionAlertReviewCaseItemDO()
-                    .setReviewCaseId(reviewCaseId)
-                    .setReviewItemId(reviewItemId)
-                    .setSortOrder(nextSortOrder)
-                    .setAddedAt(LocalDateTime.now())
-                    .setVersion(0));
-            insertCaseAudit(reviewCaseId, reviewItemId, "add_item", null, null);
+        if (reviewCaseItemMapper.selectExisting(reviewCaseId, reviewItemId) != null) {
+            return toCaseView(caseDO);
         }
+        int nextSortOrder = reviewCaseItemMapper.selectByCaseId(reviewCaseId).size() + 1;
+        reviewCaseItemMapper.insert(new SupervisionAlertReviewCaseItemDO()
+                .setReviewCaseId(reviewCaseId)
+                .setReviewItemId(reviewItemId)
+                .setSortOrder(nextSortOrder)
+                .setAddedAt(LocalDateTime.now())
+                .setVersion(0));
+        insertCaseAudit(reviewCaseId, reviewItemId, "add_item", null, null);
         List<Long> reviewItemIds = reviewCaseItemMapper.selectByCaseId(reviewCaseId)
                 .stream()
                 .map(SupervisionAlertReviewCaseItemDO::getReviewItemId)
                 .toList();
         fillCaseSummary(caseDO, requireItems(reviewItemIds));
-        reviewCaseMapper.updateById(caseDO);
+        updateCaseIfCurrent(caseDO, caseDO.getVersion());
         return toCaseView(caseDO);
     }
 
@@ -617,14 +621,43 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                           Long ownerUserId,
                                           String notes,
                                           Long operatorUserId) {
-        SupervisionAlertReviewCaseDO caseDO = requireCase(reviewCaseId);
+        return updateCaseOwner(reviewCaseId, ownerUserId, notes, operatorUserId, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewCaseView updateCaseOwner(Long reviewCaseId,
+                                          Long ownerUserId,
+                                          String notes,
+                                          Long operatorUserId,
+                                          Integer expectedVersion,
+                                          String operationId) {
+        String normalizedOperationId = normalizeCaseOperationId(
+                operationId, "assign_owner", reviewCaseId, ownerUserId, notes);
+        SupervisionAlertReviewCaseDO caseDO = requireCaseForUpdate(reviewCaseId);
+        if (hasCaseOperationAudit(reviewCaseId, "assign_owner", normalizedOperationId)) {
+            return toCaseView(caseDO);
+        }
         ensureCaseOpen(caseDO);
+        assertExpectedCaseVersion(caseDO, expectedVersion);
+        Integer previousVersion = caseDO.getVersion();
         caseDO.setOwnerUserId(ownerUserId);
         if (hasText(notes)) {
             caseDO.setNotes(notes);
         }
-        reviewCaseMapper.updateById(caseDO);
-        insertCaseAudit(reviewCaseId, null, "assign_owner", caseOwnerAuditNote(ownerUserId, notes), operatorUserId);
+        updateCaseIfCurrent(caseDO, previousVersion);
+        Map<String, Object> ownerMetadata = new LinkedHashMap<>();
+        ownerMetadata.put("ownerUserId", ownerUserId);
+        insertCaseAudit(
+                reviewCaseId,
+                null,
+                "assign_owner",
+                caseOwnerAuditNote(ownerUserId, notes),
+                operatorUserId,
+                LocalDateTime.now(),
+                caseOperationMetadata(normalizedOperationId, expectedVersion, previousVersion,
+                        caseDO.getVersion(), ownerMetadata)
+        );
         return toCaseView(caseDO);
     }
 
@@ -634,15 +667,42 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                     String notes,
                                     Long operatorUserId,
                                     LocalDateTime closedAt) {
-        SupervisionAlertReviewCaseDO caseDO = requireCase(reviewCaseId);
-        if (!SupervisionAlertReviewService.REVIEW_CASE_CLOSED.equals(caseDO.getStatus())) {
-            caseDO.setStatus(SupervisionAlertReviewService.REVIEW_CASE_CLOSED);
-            if (hasText(notes)) {
-                caseDO.setNotes(notes);
-            }
-            reviewCaseMapper.updateById(caseDO);
-            insertCaseAudit(reviewCaseId, null, "close_case", caseNotesAuditNote(notes), operatorUserId);
+        return closeCase(reviewCaseId, notes, operatorUserId, closedAt, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewCaseView closeCase(Long reviewCaseId,
+                                    String notes,
+                                    Long operatorUserId,
+                                    LocalDateTime closedAt,
+                                    Integer expectedVersion,
+                                    String operationId) {
+        String normalizedOperationId = normalizeCaseOperationId(
+                operationId, "close_case", reviewCaseId, notes);
+        SupervisionAlertReviewCaseDO caseDO = requireCaseForUpdate(reviewCaseId);
+        if (hasCaseOperationAudit(reviewCaseId, "close_case", normalizedOperationId)
+                || SupervisionAlertReviewService.REVIEW_CASE_CLOSED.equals(caseDO.getStatus())) {
+            return toCaseView(caseDO);
         }
+        ensureCaseOpen(caseDO);
+        assertExpectedCaseVersion(caseDO, expectedVersion);
+        Integer previousVersion = caseDO.getVersion();
+        caseDO.setStatus(SupervisionAlertReviewService.REVIEW_CASE_CLOSED);
+        if (hasText(notes)) {
+            caseDO.setNotes(notes);
+        }
+        updateCaseIfCurrent(caseDO, previousVersion);
+        insertCaseAudit(
+                reviewCaseId,
+                null,
+                "close_case",
+                caseNotesAuditNote(notes),
+                operatorUserId,
+                closedAt,
+                caseOperationMetadata(normalizedOperationId, expectedVersion, previousVersion,
+                        caseDO.getVersion(), Map.of("status", caseDO.getStatus()))
+        );
         return toCaseView(caseDO);
     }
 
@@ -652,13 +712,37 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                             Long sourceReviewCaseId,
                                             Long operatorUserId,
                                             String notes) {
+        return mergeCases(targetReviewCaseId, sourceReviewCaseId, operatorUserId, notes,
+                null, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewCaseMergeResult mergeCases(Long targetReviewCaseId,
+                                            Long sourceReviewCaseId,
+                                            Long operatorUserId,
+                                            String notes,
+                                            Integer targetExpectedVersion,
+                                            Integer sourceExpectedVersion,
+                                            String operationId) {
         if (Objects.equals(targetReviewCaseId, sourceReviewCaseId)) {
             throw new IllegalArgumentException("sourceReviewCaseId must differ from targetReviewCaseId");
         }
-        SupervisionAlertReviewCaseDO targetCaseDO = requireCase(targetReviewCaseId);
-        SupervisionAlertReviewCaseDO sourceCaseDO = requireCase(sourceReviewCaseId);
+        String normalizedOperationId = normalizeCaseOperationId(
+                operationId, "merge_case", targetReviewCaseId, sourceReviewCaseId, notes);
+        Map<Long, SupervisionAlertReviewCaseDO> lockedCases = lockCases(targetReviewCaseId, sourceReviewCaseId);
+        SupervisionAlertReviewCaseDO targetCaseDO = lockedCases.get(targetReviewCaseId);
+        SupervisionAlertReviewCaseDO sourceCaseDO = lockedCases.get(sourceReviewCaseId);
+        if (hasCaseOperationAudit(targetReviewCaseId, "merge_case", normalizedOperationId)
+                && hasCaseOperationAudit(sourceReviewCaseId, "merge_case", normalizedOperationId)) {
+            return new ReviewCaseMergeResult(toCaseView(targetCaseDO), toCaseView(sourceCaseDO));
+        }
         ensureCaseOpen(targetCaseDO);
         ensureCaseOpen(sourceCaseDO);
+        assertExpectedCaseVersion(targetCaseDO, targetExpectedVersion);
+        assertExpectedCaseVersion(sourceCaseDO, sourceExpectedVersion);
+        Integer targetPreviousVersion = targetCaseDO.getVersion();
+        Integer sourcePreviousVersion = sourceCaseDO.getVersion();
         List<SupervisionAlertReviewCaseItemDO> targetCaseItems = reviewCaseItemMapper.selectByCaseId(targetReviewCaseId);
         List<SupervisionAlertReviewCaseItemDO> sourceCaseItems = reviewCaseItemMapper.selectByCaseId(sourceReviewCaseId);
         if (sourceCaseItems.isEmpty()) {
@@ -691,10 +775,38 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         if (hasText(notes)) {
             sourceCaseDO.setNotes(notes);
         }
-        reviewCaseMapper.updateById(targetCaseDO);
-        reviewCaseMapper.updateById(sourceCaseDO);
-        insertCaseAudit(targetReviewCaseId, null, "merge_case", caseRelatedAuditNote("sourceReviewCaseId", sourceReviewCaseId, null, notes), operatorUserId);
-        insertCaseAudit(sourceReviewCaseId, null, "merge_case", caseRelatedAuditNote("targetReviewCaseId", targetReviewCaseId, null, notes), operatorUserId);
+        updateCaseIfCurrent(targetCaseDO, targetPreviousVersion);
+        updateCaseIfCurrent(sourceCaseDO, sourcePreviousVersion);
+        Map<String, Object> targetMetadata = new LinkedHashMap<>();
+        targetMetadata.put("role", "target");
+        targetMetadata.put("sourceReviewCaseId", sourceReviewCaseId);
+        targetMetadata.put("sourceVersionBefore", sourcePreviousVersion);
+        targetMetadata.put("sourceVersionAfter", sourceCaseDO.getVersion());
+        insertCaseAudit(
+                targetReviewCaseId,
+                null,
+                "merge_case",
+                caseRelatedAuditNote("sourceReviewCaseId", sourceReviewCaseId, null, notes),
+                operatorUserId,
+                LocalDateTime.now(),
+                caseOperationMetadata(normalizedOperationId, targetExpectedVersion, targetPreviousVersion,
+                        targetCaseDO.getVersion(), targetMetadata)
+        );
+        Map<String, Object> sourceMetadata = new LinkedHashMap<>();
+        sourceMetadata.put("role", "source");
+        sourceMetadata.put("targetReviewCaseId", targetReviewCaseId);
+        sourceMetadata.put("targetVersionBefore", targetPreviousVersion);
+        sourceMetadata.put("targetVersionAfter", targetCaseDO.getVersion());
+        insertCaseAudit(
+                sourceReviewCaseId,
+                null,
+                "merge_case",
+                caseRelatedAuditNote("targetReviewCaseId", targetReviewCaseId, null, notes),
+                operatorUserId,
+                LocalDateTime.now(),
+                caseOperationMetadata(normalizedOperationId, sourceExpectedVersion, sourcePreviousVersion,
+                        sourceCaseDO.getVersion(), sourceMetadata)
+        );
         return new ReviewCaseMergeResult(toCaseView(targetCaseDO), toCaseView(sourceCaseDO));
     }
 
@@ -704,15 +816,38 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                            ReviewCaseDraft draft,
                                            List<Long> reviewItemIds,
                                            Long operatorUserId) {
+        return splitCase(sourceReviewCaseId, draft, reviewItemIds, operatorUserId, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewCaseSplitResult splitCase(Long sourceReviewCaseId,
+                                           ReviewCaseDraft draft,
+                                           List<Long> reviewItemIds,
+                                           Long operatorUserId,
+                                           Integer sourceExpectedVersion,
+                                           String operationId) {
         Objects.requireNonNull(draft, "draft");
-        SupervisionAlertReviewCaseDO sourceCaseDO = requireCase(sourceReviewCaseId);
+        List<Long> normalizedReviewItemIds = reviewItemIds == null
+                ? List.of()
+                : reviewItemIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
+        String normalizedOperationId = normalizeCaseOperationId(
+                operationId, "split_case", sourceReviewCaseId, normalizedReviewItemIds,
+                draft.title(), draft.ownerUserId(), draft.notes());
+        SupervisionAlertReviewCaseDO sourceCaseDO = requireCaseForUpdate(sourceReviewCaseId);
+        Optional<Long> duplicateNewCaseId = splitResultCaseId(sourceReviewCaseId, normalizedOperationId);
+        if (duplicateNewCaseId.isPresent()) {
+            return new ReviewCaseSplitResult(toCaseView(sourceCaseDO), toCaseView(requireCase(duplicateNewCaseId.get())));
+        }
         ensureCaseOpen(sourceCaseDO);
+        assertExpectedCaseVersion(sourceCaseDO, sourceExpectedVersion);
+        Integer sourcePreviousVersion = sourceCaseDO.getVersion();
         List<SupervisionAlertReviewCaseItemDO> sourceCaseItems = reviewCaseItemMapper.selectByCaseId(sourceReviewCaseId);
         LinkedHashSet<Long> sourceReviewItemIds = new LinkedHashSet<>();
         for (SupervisionAlertReviewCaseItemDO sourceCaseItem : sourceCaseItems) {
             sourceReviewItemIds.add(sourceCaseItem.getReviewItemId());
         }
-        LinkedHashSet<Long> splitReviewItemIds = new LinkedHashSet<>(reviewItemIds == null ? List.of() : reviewItemIds);
+        LinkedHashSet<Long> splitReviewItemIds = new LinkedHashSet<>(normalizedReviewItemIds);
         if (splitReviewItemIds.isEmpty()) {
             throw new IllegalArgumentException("reviewItemIds must not be empty");
         }
@@ -735,9 +870,34 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             sourceCaseDO.setPrimaryReviewItemId(remainingReviewItemIds.get(0));
         }
         fillCaseSummary(sourceCaseDO, requireItems(remainingReviewItemIds));
-        reviewCaseMapper.updateById(sourceCaseDO);
-        insertCaseAudit(sourceReviewCaseId, null, "split_case", caseRelatedAuditNote("newReviewCaseId", newCase.id(), splitReviewItemIds, draft.notes()), operatorUserId);
-        insertCaseAudit(newCase.id(), null, "split_case", caseRelatedAuditNote("sourceReviewCaseId", sourceReviewCaseId, splitReviewItemIds, draft.notes()), operatorUserId);
+        updateCaseIfCurrent(sourceCaseDO, sourcePreviousVersion);
+        Map<String, Object> sourceMetadata = new LinkedHashMap<>();
+        sourceMetadata.put("role", "source");
+        sourceMetadata.put("newReviewCaseId", newCase.id());
+        sourceMetadata.put("reviewItemIds", List.copyOf(splitReviewItemIds));
+        insertCaseAudit(
+                sourceReviewCaseId,
+                null,
+                "split_case",
+                caseRelatedAuditNote("newReviewCaseId", newCase.id(), splitReviewItemIds, draft.notes()),
+                operatorUserId,
+                LocalDateTime.now(),
+                caseOperationMetadata(normalizedOperationId, sourceExpectedVersion, sourcePreviousVersion,
+                        sourceCaseDO.getVersion(), sourceMetadata)
+        );
+        Map<String, Object> newCaseMetadata = new LinkedHashMap<>();
+        newCaseMetadata.put("role", "new_case");
+        newCaseMetadata.put("sourceReviewCaseId", sourceReviewCaseId);
+        newCaseMetadata.put("reviewItemIds", List.copyOf(splitReviewItemIds));
+        insertCaseAudit(
+                newCase.id(),
+                null,
+                "split_case",
+                caseRelatedAuditNote("sourceReviewCaseId", sourceReviewCaseId, splitReviewItemIds, draft.notes()),
+                operatorUserId,
+                LocalDateTime.now(),
+                caseOperationMetadata(normalizedOperationId, null, null, newCase.version(), newCaseMetadata)
+        );
         return new ReviewCaseSplitResult(toCaseView(sourceCaseDO), toCaseView(requireCase(newCase.id())));
     }
 
@@ -826,6 +986,87 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
+    public List<ReviewCaseTimelineItem> listEvidenceAuditRecords(ReviewEvidenceAuditQuery query) {
+        Objects.requireNonNull(query, "query");
+        Long tenantId = requireEvidenceAuditTenantId();
+        return reviewCaseAuditMapper.selectEvidenceAuditLookup(
+                        tenantId,
+                        query.eventId(),
+                        query.reviewCaseId(),
+                        query.reviewItemId(),
+                        query.exportJobNo()
+                )
+                .stream()
+                .map(auditDO -> new ReviewCaseTimelineItem(
+                        auditDO.getReviewCaseId(),
+                        auditDO.getReviewItemId(),
+                        null,
+                        null,
+                        "case_audit",
+                        auditDO.getActionType(),
+                        auditDO.getHappenedAt(),
+                        auditDO.getActionNote()
+                ))
+                .toList();
+    }
+
+    @Override
+    public void recordSemanticTriggerEvaluation(Long reviewItemId,
+                                                String actionNote,
+                                                Long operatorUserId,
+                                                LocalDateTime happenedAt,
+                                                Map<String, Object> metadata) {
+        Long tenantId = requireSemanticTriggerTenantId();
+        if (reviewItemId != null) {
+            requireItem(reviewItemId);
+        }
+        SupervisionAlertReviewCaseAuditDO auditDO = new SupervisionAlertReviewCaseAuditDO();
+        auditDO.setReviewCaseId(null);
+        auditDO.setReviewItemId(reviewItemId);
+        auditDO.setActionType("semantic_trigger_evaluated");
+        auditDO.setActionNote(actionNote);
+        auditDO.setMetadata(writeJson(metadata));
+        auditDO.setOperatorUserId(operatorUserId);
+        auditDO.setHappenedAt(happenedAt == null ? LocalDateTime.now() : happenedAt);
+        auditDO.setVersion(0);
+        reviewCaseAuditMapper.insert(auditDO);
+    }
+
+    @Override
+    public boolean recordSemanticTriggerDecision(String evaluationId,
+                                                  String actionType,
+                                                  String actionNote,
+                                                  Long operatorUserId,
+                                                  LocalDateTime happenedAt,
+                                                  Map<String, Object> metadata) {
+        Long tenantId = requireSemanticTriggerTenantId();
+        return reviewCaseAuditMapper.insertSemanticTriggerDecision(
+                tenantId,
+                evaluationId,
+                actionType,
+                actionNote,
+                writeJson(metadata),
+                operatorUserId,
+                happenedAt == null ? LocalDateTime.now() : happenedAt
+        ) == 1;
+    }
+
+    @Override
+    public List<ReviewSemanticTriggerAuditRecord> listSemanticTriggerAudits(String evaluationId) {
+        Long tenantId = requireSemanticTriggerTenantId();
+        return reviewCaseAuditMapper.selectSemanticTriggerAudits(tenantId, evaluationId)
+                .stream()
+                .map(auditDO -> new ReviewSemanticTriggerAuditRecord(
+                        auditDO.getReviewItemId(),
+                        auditDO.getActionType(),
+                        auditDO.getOperatorUserId(),
+                        auditDO.getHappenedAt(),
+                        readJson(auditDO.getMetadata())
+                ))
+                .toList();
+    }
+
+    @Override
     public ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
                                                        String document,
                                                        String embeddingKey,
@@ -835,6 +1076,22 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                                        Integer retryCount,
                                                        String lastError,
                                                        LocalDateTime indexedAt) {
+        return upsertSemanticIndex(item, document, embeddingKey, embeddingModel, embeddingVectorHash,
+                indexStatus, retryCount, lastError, indexedAt, null, null);
+    }
+
+    @Override
+    public ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
+                                                       String document,
+                                                       String embeddingKey,
+                                                       String embeddingModel,
+                                                       String embeddingVectorHash,
+                                                       String indexStatus,
+                                                       Integer retryCount,
+                                                       String lastError,
+                                                       LocalDateTime indexedAt,
+                                                       String indexGenerationId,
+                                                       LocalDateTime nextRetryAt) {
         Objects.requireNonNull(item, "item");
         SupervisionAlertReviewSemanticIndexDO indexDO = reviewSemanticIndexMapper.selectByReviewItemId(item.id());
         if (indexDO == null) {
@@ -853,6 +1110,13 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .setRetryCount(retryCount == null ? 0 : retryCount)
                 .setLastError(lastError)
                 .setIndexedAt(indexedAt)
+                .setIndexGenerationId(hasText(indexGenerationId)
+                        ? indexGenerationId
+                        : indexDO.getIndexGenerationId())
+                .setClaimToken(null)
+                .setClaimedAt(null)
+                .setClaimExpiresAt(null)
+                .setNextRetryAt(nextRetryAt)
                 .setVersion((indexDO.getVersion() == null ? 0 : indexDO.getVersion()) + 1);
         if (indexDO.getId() == null) {
             reviewSemanticIndexMapper.insert(indexDO);
@@ -860,6 +1124,76 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             reviewSemanticIndexMapper.updateById(indexDO);
         }
         return toSemanticIndexEntry(indexDO);
+    }
+
+    @Override
+    public List<ReviewSemanticIndexEntry> claimSemanticIndex(List<Long> reviewItemIds,
+                                                             Integer limit,
+                                                             String claimToken,
+                                                             LocalDateTime claimedAt,
+                                                             LocalDateTime claimExpiresAt) {
+        if (reviewItemIds == null || reviewItemIds.isEmpty()) {
+            return List.of();
+        }
+        int normalizedLimit = limit == null || limit <= 0 ? 20 : Math.min(limit, 100);
+        String normalizedToken = hasText(claimToken) ? claimToken : UUID.randomUUID().toString();
+        LocalDateTime normalizedClaimedAt = claimedAt == null ? LocalDateTime.now() : claimedAt;
+        LocalDateTime normalizedClaimExpiresAt = claimExpiresAt == null
+                ? normalizedClaimedAt.plusMinutes(5)
+                : claimExpiresAt;
+        int claimed = reviewSemanticIndexMapper.claimProcessable(
+                reviewItemIds,
+                normalizedLimit,
+                normalizedToken,
+                normalizedClaimedAt,
+                normalizedClaimExpiresAt
+        );
+        if (claimed <= 0) {
+            return List.of();
+        }
+        return reviewSemanticIndexMapper.selectClaimed(normalizedToken, normalizedLimit).stream()
+                .map(this::toSemanticIndexEntry)
+                .toList();
+    }
+
+    @Override
+    public ReviewSemanticIndexEntry completeSemanticIndexClaim(ReviewItemAggregate item,
+                                                               String document,
+                                                               String embeddingKey,
+                                                               String embeddingModel,
+                                                               String embeddingVectorHash,
+                                                               String indexStatus,
+                                                               Integer retryCount,
+                                                               String lastError,
+                                                               LocalDateTime indexedAt,
+                                                               String indexGenerationId,
+                                                               LocalDateTime nextRetryAt,
+                                                               String claimToken) {
+        Objects.requireNonNull(item, "item");
+        SupervisionAlertReviewSemanticIndexDO desired = new SupervisionAlertReviewSemanticIndexDO()
+                .setReviewItemId(item.id())
+                .setCameraId(item.cameraId())
+                .setFirstAlertTime(item.firstAlertTime())
+                .setLastAlertTime(item.lastAlertTime())
+                .setIndexStatus(indexStatus)
+                .setDocument(document)
+                .setEmbeddingKey(embeddingKey)
+                .setEmbeddingModel(embeddingModel)
+                .setEmbeddingVectorHash(embeddingVectorHash)
+                .setRetryCount(retryCount == null ? 0 : retryCount)
+                .setLastError(lastError)
+                .setIndexedAt(indexedAt)
+                .setIndexGenerationId(indexGenerationId)
+                .setNextRetryAt(nextRetryAt);
+        int completed = reviewSemanticIndexMapper.completeClaim(desired, claimToken);
+        if (completed != 1) {
+            throw new IllegalStateException("semantic_index_claim_conflict: " + item.id());
+        }
+        SupervisionAlertReviewSemanticIndexDO persisted = reviewSemanticIndexMapper.selectByReviewItemId(item.id());
+        if (persisted == null) {
+            throw new IllegalStateException("semantic index not found: " + item.id());
+        }
+        return toSemanticIndexEntry(persisted);
     }
 
     @Override
@@ -884,10 +1218,16 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                                    LocalDateTime createdAt) {
         Objects.requireNonNull(exportPackage, "exportPackage");
         requireCase(exportPackage.reviewCaseId());
+        String requestKey = toText(exportPackage.manifest().get("requestKey"), exportPackage.packageNo());
+        SupervisionAlertReviewExportJobDO existing = reviewExportJobMapper.selectActiveByRequestKey(requestKey);
+        if (existing != null) {
+            return toExportJob(existing);
+        }
         String jobNo = "REJ-" + UUID.randomUUID();
         SupervisionAlertReviewExportJobDO jobDO = new SupervisionAlertReviewExportJobDO()
                 .setJobNo(jobNo)
-                .setStatus(SupervisionAlertReviewService.EXPORT_JOB_READY)
+                .setRequestKey(requestKey)
+                .setStatus(SupervisionAlertReviewService.EXPORT_JOB_PENDING)
                 .setPackageNo(exportPackage.packageNo())
                 .setReviewCaseId(exportPackage.reviewCaseId())
                 .setReviewItemIds(joinLongCsv(exportPackage.reviewItemIds()))
@@ -900,7 +1240,14 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .setBoundEventIds(joinLongCsv(boundEventIds))
                 .setGeneratedAt(createdAt)
                 .setVersion(0);
-        reviewExportJobMapper.insert(jobDO);
+        int inserted = reviewExportJobMapper.insertIfAbsent(jobDO);
+        if (inserted == 0) {
+            SupervisionAlertReviewExportJobDO duplicate = reviewExportJobMapper.selectActiveByRequestKey(requestKey);
+            if (duplicate != null) {
+                return toExportJob(duplicate);
+            }
+            throw new IllegalStateException("export job insert conflicted without an active request: " + requestKey);
+        }
         insertCaseAudit(
                 exportPackage.reviewCaseId(),
                 null,
@@ -910,40 +1257,16 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         );
         return new ReviewEvidenceExportJob(
                 jobNo,
-                SupervisionAlertReviewService.EXPORT_JOB_READY,
+                SupervisionAlertReviewService.EXPORT_JOB_PENDING,
                 exportPackage,
                 fileHash,
                 expiresAt,
                 operatorUserId,
                 reason,
                 boundEventIds == null ? List.of() : List.copyOf(boundEventIds),
-                createdAt
+                createdAt,
+                0
         );
-    }
-
-    @Override
-    public ReviewEvidenceExportJob updateExportJob(ReviewEvidenceExportJob job) {
-        Objects.requireNonNull(job, "job");
-        Objects.requireNonNull(job.exportPackage(), "exportPackage");
-        SupervisionAlertReviewExportJobDO jobDO = reviewExportJobMapper.selectByJobNo(job.jobNo());
-        if (jobDO == null) {
-            throw new IllegalArgumentException("export job not found: " + job.jobNo());
-        }
-        jobDO.setStatus(job.status())
-                .setPackageNo(job.exportPackage().packageNo())
-                .setReviewCaseId(job.exportPackage().reviewCaseId())
-                .setReviewItemIds(joinLongCsv(job.exportPackage().reviewItemIds()))
-                .setEvidenceUris(joinCsv(job.exportPackage().evidenceUris()))
-                .setManifest(writeJson(job.exportPackage().manifest()))
-                .setFileHash(job.fileHash())
-                .setExpiresAt(job.expiresAt())
-                .setOperatorUserId(job.operatorUserId())
-                .setExportReason(job.reason())
-                .setBoundEventIds(joinLongCsv(job.boundEventIds()))
-                .setGeneratedAt(job.exportPackage().generatedAt())
-                .setVersion((jobDO.getVersion() == null ? 0 : jobDO.getVersion()) + 1);
-        reviewExportJobMapper.updateById(jobDO);
-        return toExportJob(jobDO);
     }
 
     @Override
@@ -956,11 +1279,90 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     }
 
     @Override
+    public List<ReviewEvidenceExportJob> listEvidenceAuditExportJobs(ReviewEvidenceAuditQuery query) {
+        Objects.requireNonNull(query, "query");
+        Long tenantId = requireEvidenceAuditTenantId();
+        return reviewExportJobMapper.selectEvidenceAuditLookup(
+                        tenantId,
+                        query.eventId(),
+                        query.reviewCaseId(),
+                        query.reviewItemId(),
+                        query.exportJobNo()
+                )
+                .stream()
+                .map(this::toExportJob)
+                .toList();
+    }
+
+    @Override
     public List<ReviewEvidenceExportJob> listAllExportJobs() {
         return reviewExportJobMapper.selectAll()
                 .stream()
                 .map(this::toExportJob)
                 .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<ReviewEvidenceExportJob> claimProcessableExportJobs(Integer limit,
+                                                                    String claimToken,
+                                                                    Long claimedBy,
+                                                                    LocalDateTime claimedAt,
+                                                                    LocalDateTime reclaimBefore) {
+        int normalizedLimit = limit == null || limit <= 0 ? 20 : Math.min(limit, 100);
+        int claimedCount = reviewExportJobMapper.claimProcessable(
+                normalizedLimit,
+                claimToken,
+                claimedBy,
+                claimedAt,
+                reclaimBefore
+        );
+        if (claimedCount <= 0) {
+            return List.of();
+        }
+        return reviewExportJobMapper.selectClaimed(claimToken, normalizedLimit).stream()
+                .map(this::toExportJob)
+                .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewEvidenceExportJob completeExportJobClaim(ReviewEvidenceExportJob job, String claimToken) {
+        Objects.requireNonNull(job, "job");
+        Objects.requireNonNull(job.exportPackage(), "exportPackage");
+        if (job.version() == null) {
+            throw new IllegalStateException("export_job_claim_conflict: missing version for " + job.jobNo());
+        }
+        SupervisionAlertReviewExportJobDO current = reviewExportJobMapper.selectByJobNo(job.jobNo());
+        if (current == null) {
+            throw new IllegalArgumentException("export job not found: " + job.jobNo());
+        }
+        Map<String, Object> worker = toStringObjectMap(job.exportPackage().manifest().get("worker"));
+        SupervisionAlertReviewExportJobDO desired = new SupervisionAlertReviewExportJobDO()
+                .setId(current.getId())
+                .setJobNo(current.getJobNo())
+                .setRequestKey(current.getRequestKey())
+                .setStatus(job.status())
+                .setPackageNo(job.exportPackage().packageNo())
+                .setReviewCaseId(job.exportPackage().reviewCaseId())
+                .setReviewItemIds(joinLongCsv(job.exportPackage().reviewItemIds()))
+                .setEvidenceUris(joinCsv(job.exportPackage().evidenceUris()))
+                .setManifest(writeJson(job.exportPackage().manifest()))
+                .setFileHash(job.fileHash())
+                .setExpiresAt(job.expiresAt())
+                .setOperatorUserId(job.operatorUserId())
+                .setExportReason(job.reason())
+                .setBoundEventIds(joinLongCsv(job.boundEventIds()))
+                .setGeneratedAt(job.exportPackage().generatedAt())
+                .setNextRetryAt(toLocalDateTime(worker.get("nextRetryAt"), null))
+                .setLastError(toText(worker.get("lastError"), null))
+                .setVersion(job.version());
+        int updated = reviewExportJobMapper.completeClaim(desired, claimToken, job.version());
+        if (updated != 1) {
+            throw new IllegalStateException("export_job_claim_conflict: " + job.jobNo());
+        }
+        desired.setVersion(job.version() + 1);
+        return toExportJob(desired);
     }
 
     @Override
@@ -976,25 +1378,46 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     public ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
                                                            Long operatorUserId,
                                                            String reason,
-                                                           LocalDateTime happenedAt) {
+                                                           LocalDateTime happenedAt,
+                                                           String downloadFileHash,
+                                                           Map<String, Object> downloadMetadata) {
         SupervisionAlertReviewExportJobDO jobDO = reviewExportJobMapper.selectByJobNo(jobNo);
         if (jobDO == null) {
             throw new IllegalArgumentException("export job not found: " + jobNo);
         }
-        String note = exportDownloadAuditNote(jobNo, jobDO.getFileHash(), operatorUserId, reason);
-        insertCaseAudit(jobDO.getReviewCaseId(), null, "export_downloaded", note, operatorUserId);
+        if (!hasText(downloadFileHash)) {
+            throw new IllegalArgumentException("downloadFileHash is required from downloaded bytes");
+        }
+        String auditedFileHash = downloadFileHash;
+        Map<String, Object> metadata = new LinkedHashMap<>(downloadMetadata == null ? Map.of() : downloadMetadata);
+        metadata.put("status", jobDO.getStatus());
+        metadata.put("downloadFileHash", auditedFileHash);
+        metadata.put("logicalPackageHash", jobDO.getFileHash());
+        metadata.put("hashSource", "downloaded_bytes");
+        String note = exportDownloadAuditNote(jobNo, auditedFileHash, operatorUserId, reason)
+                + "; downloadFileHash=" + auditedFileHash
+                + "; logicalPackageHash=" + jobDO.getFileHash();
+        insertCaseAudit(
+                jobDO.getReviewCaseId(),
+                null,
+                "export_downloaded",
+                note,
+                operatorUserId,
+                happenedAt,
+                metadata
+        );
         return new ReviewEvidenceAuditEntry(
                 jobDO.getReviewCaseId(),
                 null,
                 "export_downloaded",
                 jobNo,
-                jobDO.getFileHash(),
+                auditedFileHash,
                 operatorUserId,
                 reason,
                 splitCsv(jobDO.getEvidenceUris()),
                 splitLongCsv(jobDO.getBoundEventIds()),
                 happenedAt == null ? LocalDateTime.now() : happenedAt,
-                Map.of("status", jobDO.getStatus())
+                Map.copyOf(metadata)
         );
     }
 
@@ -1503,6 +1926,22 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         return tenantId == null ? 0L : tenantId;
     }
 
+    private static Long requireEvidenceAuditTenantId() {
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            throw new SecurityException("tenant context is required for evidence audit lookup");
+        }
+        return tenantId;
+    }
+
+    private static Long requireSemanticTriggerTenantId() {
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            throw new SecurityException("tenant context is required for semantic trigger audit");
+        }
+        return tenantId;
+    }
+
     private static Set<String> ingestIdentityLookupKeys(String sourceSystem,
                                                         String sourceAlertId,
                                                         List<String> identityKeys,
@@ -1651,6 +2090,11 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 indexDO.getRetryCount(),
                 indexDO.getLastError(),
                 indexDO.getIndexedAt(),
+                indexDO.getIndexGenerationId(),
+                indexDO.getClaimToken(),
+                indexDO.getClaimedAt(),
+                indexDO.getClaimExpiresAt(),
+                indexDO.getNextRetryAt(),
                 indexDO.getVersion()
         );
     }
@@ -1675,7 +2119,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 jobDO.getOperatorUserId(),
                 jobDO.getExportReason(),
                 splitLongCsv(jobDO.getBoundEventIds()),
-                jobDO.getGeneratedAt()
+                jobDO.getGeneratedAt(),
+                jobDO.getVersion()
         );
     }
 
@@ -1698,6 +2143,124 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
         }
         return caseDO;
+    }
+
+    private SupervisionAlertReviewCaseDO requireCaseForUpdate(Long reviewCaseId) {
+        SupervisionAlertReviewCaseDO caseDO = reviewCaseMapper.selectByIdForUpdate(
+                reviewSegmentTenantId(TenantContextHolder.getTenantId()),
+                reviewCaseId
+        );
+        if (caseDO == null) {
+            throw new IllegalArgumentException("reviewCaseId not found: " + reviewCaseId);
+        }
+        return caseDO;
+    }
+
+    private Map<Long, SupervisionAlertReviewCaseDO> lockCases(Long... reviewCaseIds) {
+        Map<Long, SupervisionAlertReviewCaseDO> locked = new LinkedHashMap<>();
+        Arrays.stream(reviewCaseIds)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .forEach(reviewCaseId -> locked.put(reviewCaseId, requireCaseForUpdate(reviewCaseId)));
+        return locked;
+    }
+
+    private void updateCaseIfCurrent(SupervisionAlertReviewCaseDO caseDO, Integer expectedVersion) {
+        Integer nextCaseVersion = nextVersion(expectedVersion);
+        caseDO.setVersion(nextCaseVersion);
+        int updated = reviewCaseMapper.updateIfVersion(
+                reviewSegmentTenantId(TenantContextHolder.getTenantId()),
+                caseDO,
+                expectedVersion
+        );
+        if (updated == 0) {
+            throw caseVersionConflict(caseDO.getId(), expectedVersion, null);
+        }
+    }
+
+    private static void assertExpectedCaseVersion(SupervisionAlertReviewCaseDO caseDO, Integer expectedVersion) {
+        if (expectedVersion != null && !Objects.equals(expectedVersion, caseDO.getVersion())) {
+            throw caseVersionConflict(caseDO.getId(), expectedVersion, caseDO.getVersion());
+        }
+    }
+
+    private static IllegalStateException caseVersionConflict(Long reviewCaseId,
+                                                             Integer expectedVersion,
+                                                             Integer actualVersion) {
+        return new IllegalStateException("case_version_conflict: reviewCaseId=" + reviewCaseId
+                + ", expectedVersion=" + expectedVersion
+                + ", actualVersion=" + actualVersion);
+    }
+
+    private boolean hasCaseOperationAudit(Long reviewCaseId, String actionType, String operationId) {
+        return caseOperationAudits(actionType, operationId).stream()
+                .anyMatch(audit -> Objects.equals(reviewCaseId, audit.getReviewCaseId()));
+    }
+
+    private List<SupervisionAlertReviewCaseAuditDO> caseOperationAudits(String actionType, String operationId) {
+        return reviewCaseAuditMapper.selectByOperationId(
+                reviewSegmentTenantId(TenantContextHolder.getTenantId()),
+                actionType,
+                operationId
+        );
+    }
+
+    private Optional<Long> splitResultCaseId(Long sourceReviewCaseId, String operationId) {
+        return caseOperationAudits("split_case", operationId).stream()
+                .filter(audit -> Objects.equals(sourceReviewCaseId, audit.getReviewCaseId()))
+                .map(SupervisionAlertReviewCaseAuditDO::getMetadata)
+                .map(SupervisionAlertReviewMapperStore::readJson)
+                .map(metadata -> toLongValue(metadata.get("newReviewCaseId")))
+                .filter(Objects::nonNull)
+                .findFirst();
+    }
+
+    private static String normalizeCaseOperationId(String operationId, Object... fallbackParts) {
+        if (hasText(operationId)) {
+            String normalized = operationId.trim();
+            if (normalized.length() > 128 || !normalized.matches("[A-Za-z0-9._:-]+")) {
+                throw new IllegalArgumentException(
+                        "operationId must contain 1-128 letters, digits, dot, underscore, colon, or hyphen");
+            }
+            return normalized;
+        }
+        List<String> canonicalParts = Arrays.stream(fallbackParts)
+                .map(String::valueOf)
+                .toList();
+        UUID deterministicId = UUID.nameUUIDFromBytes(
+                String.join("|", canonicalParts).getBytes(StandardCharsets.UTF_8));
+        return "auto:" + deterministicId;
+    }
+
+    private static Map<String, Object> caseOperationMetadata(String operationId,
+                                                             Integer requestedVersion,
+                                                             Integer versionBefore,
+                                                             Integer versionAfter,
+                                                             Map<String, Object> details) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("operationId", operationId);
+        metadata.put("requestedVersion", requestedVersion);
+        metadata.put("versionBefore", versionBefore);
+        metadata.put("versionAfter", versionAfter);
+        if (details != null) {
+            metadata.putAll(details);
+        }
+        return metadata;
+    }
+
+    private static Long toLongValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private List<SupervisionAlertReviewItemDO> requireItems(List<Long> reviewItemIds) {
@@ -1818,7 +2381,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 caseDO.getStartTime(),
                 caseDO.getEndTime(),
                 caseDO.getOwnerUserId(),
-                caseDO.getNotes()
+                caseDO.getNotes(),
+                caseDO.getVersion()
         );
     }
 

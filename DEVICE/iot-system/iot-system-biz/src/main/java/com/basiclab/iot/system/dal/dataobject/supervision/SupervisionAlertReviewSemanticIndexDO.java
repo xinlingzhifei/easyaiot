@@ -25,6 +25,11 @@ public class SupervisionAlertReviewSemanticIndexDO extends BaseDO {
     private Integer retryCount;
     private String lastError;
     private LocalDateTime indexedAt;
+    private String indexGenerationId;
+    private String claimToken;
+    private LocalDateTime claimedAt;
+    private LocalDateTime claimExpiresAt;
+    private LocalDateTime nextRetryAt;
     private Integer version;
 
 }

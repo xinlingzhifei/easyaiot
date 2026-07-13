@@ -13,6 +13,7 @@ export const REQUIRED_CHECKPOINTS = [
   'evidence_export_ready',
   'video_export_confirmed',
   'manifest_verified',
+  'evidence_download_bytes_verified',
   'evidence_download_audited',
 ];
 
@@ -20,6 +21,7 @@ export function parseArgs(args, env = process.env) {
   const parsed = {
     deviceBaseUrl: env.YFEIEYE_DEVICE_BASE_URL || '',
     token: env.YFEIEYE_DEVICE_AUTH_TOKEN || '',
+    tenantId: numberOrNaN(env.YFEIEYE_DEVICE_TENANT_ID),
     operatorUserId: numberOrNaN(env.YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID),
     alertTime: env.YFEIEYE_DEVICE_SMOKE_ALERT_TIME || '',
     profile: env.YFEIEYE_DEVICE_SMOKE_PROFILE || 'release',
@@ -46,6 +48,8 @@ export function parseArgs(args, env = process.env) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
       parsed.token = arg.slice('--token='.length);
+    } else if (arg.startsWith('--tenant-id=')) {
+      parsed.tenantId = numberOrNaN(arg.slice('--tenant-id='.length));
     } else if (arg.startsWith('--operator-user-id=')) {
       parsed.operatorUserId = numberOrNaN(arg.slice('--operator-user-id='.length));
     } else if (arg.startsWith('--alert-time=')) {
@@ -96,6 +100,9 @@ export function requiredOptionErrors(options) {
   }
   if (!hasText(options.token)) {
     errors.push('missing --token or YFEIEYE_DEVICE_AUTH_TOKEN');
+  }
+  if (!Number.isFinite(options.tenantId) || options.tenantId <= 0) {
+    errors.push('missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID');
   }
   if (!Number.isFinite(options.operatorUserId) || options.operatorUserId <= 0) {
     errors.push('missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID');
@@ -157,6 +164,7 @@ export async function runSmoke(options, dependencies = {}) {
   const payload = await fetchJson(fetchImpl, buildSmokeUrl(options), {
     timeoutMs: options.timeoutMs,
     token: options.token,
+    tenantId: options.tenantId,
     body: buildSmokeBody(options),
   });
   const result = validateSmokeResult(responseData(payload));
@@ -263,6 +271,7 @@ async function fetchJson(fetchImpl, url, options) {
   try {
     const headers = {
       authorization: `Bearer ${options.token}`,
+      'tenant-id': String(options.tenantId),
     };
     const init = {
       method: options.method || 'POST',
@@ -337,6 +346,7 @@ async function runPlaybackUrlSmoke(options, result, fetchImpl) {
     method: 'GET',
     timeoutMs: options.timeoutMs,
     token: options.token,
+    tenantId: options.tenantId,
     label: 'DEVICE playback URL allow smoke',
   });
   const granted = validatePlaybackAccess(responseData(grantedPayload), 'granted');
@@ -350,6 +360,7 @@ async function runPlaybackUrlSmoke(options, result, fetchImpl) {
     method: 'GET',
     timeoutMs: options.timeoutMs,
     token: options.token,
+    tenantId: options.tenantId,
     label: 'DEVICE playback URL deny smoke',
   });
   const denied = validatePlaybackAccess(responseData(deniedPayload), 'denied');
@@ -458,6 +469,7 @@ function printHelp() {
   console.log(`Usage: node .scripts/alert-review-device-integration-smoke.mjs \\
   --device-base-url=http://DEVICE/admin-api \\
   --token=JWT_TOKEN \\
+  --tenant-id=TENANT_ID \\
   --operator-user-id=9200 \\
   --alert-time="2026-07-05T10:00:00" [--profile=release] \\
   --device-id=REAL_DEVICE_ID --camera-id=REAL_CAMERA_ID --zone-code=REAL_ZONE \\

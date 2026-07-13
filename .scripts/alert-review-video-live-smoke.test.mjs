@@ -30,6 +30,7 @@ const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
 ];
 
 const parsed = parseArgs([
+  '--token=token-1',
   '--alert-record-query-url=http://video.local/video/record/availability',
   '--record-coverage-query-url=http://video.local/video/record/availability',
   '--record-base-url=http://video.local/video/record',
@@ -44,6 +45,7 @@ const parsed = parseArgs([
 ]);
 
 const releaseParsed = parseArgs([
+  '--token=token-1',
   '--alert-record-query-url=https://video.release.example/video/record/availability',
   '--record-coverage-query-url=https://video.release.example/video/record/coverage',
   '--record-base-url=https://video.release.example/video/record',
@@ -57,6 +59,7 @@ const releaseParsed = parseArgs([
   '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
 ]);
 assert.equal(parsed.alertRecordQueryUrl, 'http://video.local/video/record/availability');
+assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.recordCoverageQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.recordBaseUrl, 'http://video.local/video/record');
 assert.equal(parsed.recordExportUrl, 'http://video.local/video/record/export');
@@ -92,6 +95,7 @@ const parsedWithVerifier = parseArgs([
 assert.equal(parsedWithVerifier.manifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 
 const fromEnv = parseArgs([], {
+  YFEIEYE_VIDEO_SMOKE_TOKEN: 'env-token',
   YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL: 'http://env/video/record/availability',
   YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL: 'http://env/video/record/availability',
   YFEIEYE_VIDEO_RECORD_BASE_URL: 'http://env/video/record',
@@ -102,6 +106,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT: '.scripts/record-export-manifest-verifier.mjs',
 });
 assert.equal(fromEnv.deviceId, 'env-device');
+assert.equal(fromEnv.token, 'env-token');
 assert.equal(fromEnv.cameraId, 'env-device');
 assert.equal(fromEnv.timeRangeSeconds, 300);
 assert.equal(fromEnv.recordDriftRetentionHours, 72);
@@ -113,6 +118,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
   'missing --record-base-url or YFEIEYE_VIDEO_RECORD_BASE_URL',
   'missing --record-export-url or YFEIEYE_VIDEO_RECORD_EXPORT_URL',
+  'missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN',
   'missing --device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID',
   'missing --alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
   'missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
@@ -120,6 +126,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--token=token-1',
   '--alert-record-query-url=https://video.release.example/video/record/availability',
   '--record-base-url=https://video.release.example/video/record',
   '--record-export-url=https://video.release.example/video/record/export',
@@ -132,6 +139,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--token=token-1',
   '--alert-record-query-url=https://video.release.example/video/record/availability',
   '--record-coverage-query-url=https://video.release.example/video/record/availability',
   '--record-base-url=https://video.release.example/video/record',
@@ -145,6 +153,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
+  '--token=token-1',
   '--alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
   '--record-coverage-query-url=http://video.mock/video/record/availability',
   '--record-base-url=file:///tmp/video/record',
@@ -361,6 +370,7 @@ assert.equal(smoke.storageDrift.summary.record_count, 3);
 assert.equal(smoke.coverage.segment.retainMode, 'motion');
 assert.equal(smoke.coverage.segment.coverageSource, 'detection');
 assert.equal(calls.length, 8);
+assert.equal(calls.every(({ init }) => new Headers(init.headers).get('authorization') === 'Bearer token-1'), true);
 const cliSummary = summarizeCliResult(smoke);
 assert.deepEqual(cliSummary.coverageSummary, {
   status: 'available',

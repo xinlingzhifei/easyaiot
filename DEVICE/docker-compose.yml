@@ -47,10 +47,27 @@ services:
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL=jdbc:postgresql://PostgresSQL:5432/ruoyi-vue-pro20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&createDatabaseIfNotExist=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified # PostgreSQL数据库地址（使用Docker服务名）
       - SPRING_REDIS_HOST=Redis # Redis地址（使用Docker服务名）
       - IOT_CAPTCHA_ENABLE=${IOT_CAPTCHA_ENABLE:-true} # 默认开启验证码；本地可通过环境变量覆盖
-      - YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL=${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:-http://host.docker.internal:6000/video/record/availability} # 线索复核录像自动补证查询地址；未配置时降级为缺录像/待手动补证
+      - YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL=${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:-http://host.docker.internal:6000/video/alert/record/query} # 线索复核录像自动补证查询地址；未配置时降级为缺录像/待手动补证
       - YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://host.docker.internal:6000/video/record/availability} # 线索复核录像覆盖度查询地址；未配置时返回缺录像覆盖
       - YFEIEYE_VIDEO_RECORD_BASE_URL=${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://host.docker.internal:6000/video/record} # VIDEO录像基础地址；用于录像空间发现和覆盖度兜底
       - YFEIEYE_VIDEO_RECORD_EXPORT_URL=${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://host.docker.internal:6000/video/record/export} # 线索复核证据录像导出地址；未配置时导出任务保留待补证状态
+      - YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS:-5000}
+      - YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS:-30000}
+      - YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS:-300000}
+      - YFEIEYE_VIDEO_RECORD_EXPORT_DOWNLOAD_MAX_BYTES=${YFEIEYE_VIDEO_RECORD_EXPORT_DOWNLOAD_MAX_BYTES:-536870912}
+      - YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS=${YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS:-24}
+      - YFEIEYE_MEDIA_SERVICE_ID=${YFEIEYE_MEDIA_SERVICE_ID:-iot-system}
+      - YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-} # DEVICE->VIDEO HMAC；生产必须配置且与 VIDEO 一致
+      - YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS=${YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS:-coverage,export,download,playback,manifest_verify}
+      - YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS=${YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS:-} # 后台无用户上下文时显式摄像头范围；空值 fail-closed
+      - YFEIEYE_REVIEW_CAMERA_PERMISSION_USERS_1=${YFEIEYE_REVIEW_CAMERA_PERMISSION_USERS_1:-}
+      - YFEIEYE_EVIDENCE_MANIFEST_ACTIVE_KEY_ID=${YFEIEYE_EVIDENCE_MANIFEST_ACTIVE_KEY_ID:-}
+      - YFEIEYE_EVIDENCE_MANIFEST_HMAC_KEYS=${YFEIEYE_EVIDENCE_MANIFEST_HMAC_KEYS:-} # keyId=base64(>=32 bytes), comma-separated; production required
+      - YFEIEYE_EVIDENCE_MANIFEST_SIGNATURE_VERSION=${YFEIEYE_EVIDENCE_MANIFEST_SIGNATURE_VERSION:-hmac-sha256-v1}
+      - YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}
+      - YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}
+      - YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE=${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:-YFEIEYE_REVIEW_RUNTIME_ALERT}
+      - YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE=${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:-YFEIEYE_REVIEW_OPERATIONS_REPORT}
       # SkyWalking配置（如需要，请取消注释并配置）
       # - JAVA_TOOL_OPTIONS=-javaagent:/data/skywalking/skywalking-agent/skywalking-agent.jar
       # - SW_AGENT_NAME=iot-system
@@ -363,8 +380,8 @@ services:
       - SPRING_KAFKA_IOT_CONSUMER_BOOTSTRAP_SERVERS=Kafka:9092 # Kafka消费者地址（使用Docker服务名，用于自定义iot配置）
       - MINIO_URL=http://MinIO:9000 # Minio地址（使用Docker服务名）
       - MINIO_DOWNLOAD_URL=http://MinIO:9001 # Minio下载地址（使用Docker服务名）
-      - MINIO_ACCESS_KEY=minioadmin # Minio访问密钥
-      - MINIO_SECRET_KEY=basiclab@iot975248395 # Minio秘密密钥
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required} # Minio访问密钥
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required} # Minio秘密密钥
       # SkyWalking配置（如需要，请取消注释并配置）
       # - JAVA_TOOL_OPTIONS=-javaagent:/data/skywalking/skywalking-agent/skywalking-agent.jar
       # - SW_AGENT_NAME=iot-sink

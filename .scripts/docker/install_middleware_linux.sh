@@ -2017,6 +2017,9 @@ create_all_storage_directories() {
         exit 1
     fi
     
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || exit 1
+
     # 定义所有需要创建的存储目录及其权限设置
     # 格式: "目录路径:UID:GID:权限"
     local storage_dirs=(
@@ -2025,16 +2028,14 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/db_data/log:999:999:777"        # PostgreSQL 日志
         "${SCRIPT_DIR}/taos_data/data:::"              # TDengine 数据（使用默认权限）
         "${SCRIPT_DIR}/taos_data/log:::"               # TDengine 日志（使用默认权限）
-        "${SCRIPT_DIR}/redis_data/data:999:999:777"   # Redis 数据
-        "${SCRIPT_DIR}/redis_data/logs:999:999:777"    # Redis 日志
-        "${SCRIPT_DIR}/mq_data/data:1000:1000:777"    # Kafka 数据（uid=1000, gid=1000）
-        "${SCRIPT_DIR}/minio_data/data:::"             # MinIO 数据（使用默认权限）
-        "${SCRIPT_DIR}/minio_data/config:::"           # MinIO 配置（使用默认权限）
+        "${middleware_data_root}/redis_data/data:999:999:777"   # Redis 数据
+        "${middleware_data_root}/redis_data/logs:999:999:777"    # Redis 日志
+        "${middleware_data_root}/mq_data/data:1000:1000:777"    # Kafka 数据（uid=1000, gid=1000）
+        "${middleware_data_root}/minio_data/data:::"             # MinIO 数据（使用默认权限）
+        "${middleware_data_root}/minio_data/config:::"           # MinIO 配置（使用默认权限）
         "${SCRIPT_DIR}/milvus_data:::"                 # Milvus 数据（使用默认权限）
         "${SCRIPT_DIR}/milvus_config:::"               # Milvus 嵌入式 etcd 配置
-        "${SCRIPT_DIR}/srs_data/conf:::"               # SRS 配置（使用默认权限）
-        "${SCRIPT_DIR}/srs_data/data:::"              # SRS 数据（使用默认权限）
-        "${SCRIPT_DIR}/srs_data/playbacks:::"          # SRS 回放（使用默认权限）
+        "${middleware_data_root}/srs_data/conf:::"     # SRS 配置（跨 release 持久化）
         "${SCRIPT_DIR}/nodered_data/data:1000:1000:777" # NodeRED 数据
         "${SCRIPT_DIR}/../zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
@@ -3145,6 +3146,50 @@ ensure_host_data_directory_before_srs() {
     fi
 }
 
+# 从 .env.docker 安全读取单值，不执行文件内容。
+read_middleware_env_value() {
+    local key="$1"
+    [ -f "${SCRIPT_DIR}/.env.docker" ] || return 0
+    sed -n "s/^[[:space:]]*${key}=//p" "${SCRIPT_DIR}/.env.docker" \
+        | tail -n 1 | tr -d '\r'
+}
+
+resolve_middleware_data_root() {
+    local data_root="${YFEIEYE_DOCKER_DATA_ROOT:-}"
+    if [ -z "$data_root" ]; then
+        data_root=$(read_middleware_env_value YFEIEYE_DOCKER_DATA_ROOT)
+    fi
+    data_root="${data_root#\"}"
+    data_root="${data_root%\"}"
+    data_root="${data_root#\'}"
+    data_root="${data_root%\'}"
+    data_root="${data_root:-/opt/yfeieye-source/shared/docker}"
+    if [[ "$data_root" != /* ]] || [[ "$data_root" == *$'\n'* ]]; then
+        print_error "YFEIEYE_DOCKER_DATA_ROOT 必须是绝对路径"
+        return 1
+    fi
+    printf '%s' "${data_root%/}"
+}
+
+# 读取 mini 形态的 VIDEO 回调主机。优先使用已导出的变量，其次读取
+# .env.docker；只接受主机/IP 字符，避免把任意 URL 注入 SRS 配置。
+resolve_video_callback_host() {
+    local callback_host="${VIDEO_CALLBACK_HOST:-}"
+    if [ -z "$callback_host" ]; then
+        callback_host=$(read_middleware_env_value VIDEO_CALLBACK_HOST)
+        callback_host="${callback_host#\"}"
+        callback_host="${callback_host%\"}"
+        callback_host="${callback_host#\'}"
+        callback_host="${callback_host%\'}"
+    fi
+    callback_host="${callback_host:-localhost}"
+    if [[ ! "$callback_host" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+        print_error "VIDEO_CALLBACK_HOST 只能是主机名或 IP 地址"
+        return 1
+    fi
+    printf '%s' "$callback_host"
+}
+
 # 按部署形态写入 SRS http_hooks（SRS 使用 host 网络）
 _apply_srs_http_hooks() {
     local srs_config_file="$1"
@@ -3153,8 +3198,10 @@ _apply_srs_http_hooks() {
 
     if is_mini_deploy_profile; then
         local video_port="${FLASK_RUN_PORT:-6000}"
-        on_publish_url="http://localhost:${video_port}/video/camera/callback/on_publish"
-        on_dvr_url="http://localhost:${video_port}/video/camera/callback/on_dvr"
+        local video_callback_host
+        video_callback_host=$(resolve_video_callback_host) || return 1
+        on_publish_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_publish"
+        on_dvr_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_dvr"
         print_info "mini 形态：SRS Hook 直连 VIDEO 服务 ${on_publish_url}（无 Gateway）"
     else
         on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
@@ -3172,7 +3219,9 @@ prepare_srs_config() {
     ensure_host_data_directory_before_srs
 
     local srs_config_source="${SCRIPT_DIR}/../srs/conf"
-    local srs_config_target="${SCRIPT_DIR}/srs_data/conf"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local srs_config_target="${middleware_data_root}/srs_data/conf"
     local srs_config_file="${srs_config_target}/docker.conf"
     
     print_info "准备 SRS 配置文件..."
@@ -3223,8 +3272,10 @@ prepare_srs_config() {
     local on_publish_url on_dvr_url
     if is_mini_deploy_profile; then
         local video_port="${FLASK_RUN_PORT:-6000}"
-        on_publish_url="http://localhost:${video_port}/video/camera/callback/on_publish"
-        on_dvr_url="http://localhost:${video_port}/video/camera/callback/on_dvr"
+        local video_callback_host
+        video_callback_host=$(resolve_video_callback_host) || return 1
+        on_publish_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_publish"
+        on_dvr_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_dvr"
     else
         on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
         on_dvr_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr"

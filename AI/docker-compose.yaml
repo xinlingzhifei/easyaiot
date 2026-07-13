@@ -75,8 +75,7 @@ services:
       - POD_IP=${POD_IP:-}
       # MinIO对象存储配置（使用localhost，因为使用host网络模式）
       - MINIO_ENDPOINT=${AI_DOCKER_MINIO_ENDPOINT:-localhost:9000}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-basiclab@iot975248395}
+      # MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required in .env.docker.
       - MINIO_SECURE=${MINIO_SECURE:-false}
       # Redis配置（使用localhost，因为使用host网络模式）
       - REDIS_HOST=${REDIS_HOST:-localhost}

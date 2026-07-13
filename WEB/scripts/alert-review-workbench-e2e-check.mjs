@@ -15,6 +15,11 @@ const mode = parseMode(process.argv.slice(2))
 const browserHarnessFiles = [
   'scripts/fixtures/alert-review-workbench-e2e/index.html',
   'scripts/fixtures/alert-review-workbench-e2e/main.ts',
+  'scripts/fixtures/alert-review-workbench-e2e/BasicModalProbeStub.ts',
+  'scripts/fixtures/alert-review-workbench-e2e/modalHarness.ts',
+  'scripts/fixtures/alert-review-workbench-e2e/playerDependencyStubs.ts',
+  'scripts/fixtures/alert-review-workbench-e2e/PlayerLeafStub.ts',
+  'scripts/fixtures/alert-review-workbench-e2e/antDesignVuePlayerStub.ts',
 ]
 
 const workbenchSource = readFileSync(workbenchPath, 'utf8')
@@ -143,6 +148,10 @@ const requiredTestIds = [
   'alert-review-case-split',
   'alert-review-ai-summary-action',
   'alert-review-export-action',
+  'alert-review-semantic-trigger-panel',
+  'alert-review-semantic-trigger-evaluate',
+  'alert-review-semantic-trigger-confirm',
+  'alert-review-semantic-trigger-reject',
 ]
 
 for (const testId of requiredTestIds) {
@@ -173,6 +182,10 @@ const requiredApiFunctions = [
   'closeAlertReviewCase',
   'mergeAlertReviewCases',
   'splitAlertReviewCase',
+  'queryAlertReviewEvidenceAudit',
+  'evaluateAlertReviewSemanticTrigger',
+  'confirmAlertReviewSemanticTrigger',
+  'getAlertReviewSemanticTrigger',
 ]
 
 for (const fn of requiredApiFunctions) {
@@ -202,11 +215,65 @@ const requiredApiRoutes = [
   '/close',
   '/merge',
   '/split',
+  '/semantic-triggers/evaluate',
+  '/semantic-triggers/${evaluationId}/confirmation',
+  '/semantic-triggers/${evaluationId}',
 ]
 
 for (const route of requiredApiRoutes) {
   if (!apiSource.includes(route)) {
     failures.push(`missing API route ${route}`)
+  }
+}
+
+const requiredAuditLookupApiSnippets = [
+  'export interface AlertReviewEvidenceAuditQuery',
+  'eventId?: number',
+  'reviewCaseId?: number',
+  'reviewItemId?: number',
+  'exportJobNo?: string',
+  'function queryAlertReviewEvidenceAudit',
+  "url: '/system/supervision/alert-review/evidence-audit'",
+  'params: query',
+]
+
+for (const snippet of requiredAuditLookupApiSnippets) {
+  if (!apiSource.includes(snippet)) {
+    failures.push(`missing evidence audit lookup API contract ${snippet}`)
+  }
+}
+
+const requiredSemanticTriggerSnippets = [
+  'export interface AlertReviewSemanticTriggerResult',
+  "humanConfirmationStatus: 'pending' | 'confirmed' | 'rejected' | string",
+  'evaluationId: string',
+  'inputVersion: string',
+  'latestIndexVersion: number',
+  'hitExplanations: Record<string, any>[]',
+  'actionPreviews: Record<string, any>[]',
+  'confirmedBy?: number',
+  'confirmedAt?: string',
+  "SEMANTIC_TRIGGER_EVALUATE_PERMISSION = 'system:supervision-alert-review:semantic-trigger:evaluate'",
+  "SEMANTIC_TRIGGER_CONFIRM_PERMISSION = 'system:supervision-alert-review:semantic-trigger:confirm'",
+  'canEvaluateSemanticTrigger',
+  'canConfirmSemanticTrigger',
+  'semanticTriggerResult',
+  'semanticTriggerResult.inputVersion',
+  'semanticTriggerResult.latestIndexVersion',
+  'explanation.indexVersion',
+  'SEMANTIC_TRIGGER_EVALUATION_STORAGE_KEY',
+  'restoreSemanticTriggerPreview',
+  'evaluateSemanticTriggerPreview',
+  "confirmSemanticTriggerPreview('confirmed')",
+  "confirmSemanticTriggerPreview('rejected')",
+  '命中解释',
+  '动作预览',
+  '确认只记录审批状态，不会执行动作',
+]
+
+for (const snippet of requiredSemanticTriggerSnippets) {
+  if (!apiSource.includes(snippet) && !workbenchSource.includes(snippet)) {
+    failures.push(`missing semantic trigger confirmation contract ${snippet}`)
   }
 }
 
@@ -220,17 +287,38 @@ const requiredRuleGovernancePermissionSnippets = [
   'canRevertRuleSuggestion',
   'canReplayRule',
   'ruleSuggestionSampleReady',
+  'ruleSuggestionHasShadowEvidence',
+  'canShadowEvaluateRuleSuggestion',
+  'canRejectRuleSuggestion',
   'canAcceptRuleSuggestion',
   'canApplyRuleSuggestion',
+  'v-if="canShadowEvaluateRuleSuggestion(item)"',
+  "@click=\"updateRuleSuggestion(item, 'shadow_evaluated')\"",
+  "@click=\"updateRuleSuggestion(item, 'rejected')\"",
   'v-if="canAcceptRuleSuggestion(item)"',
   'v-if="canApplyRuleSuggestion(item)"',
-  "v-if=\"item.ruleSuggestionStatus && item.ruleSuggestionStatus !== 'reverted' && canRevertRuleSuggestion\"",
+  "v-if=\"item.ruleSuggestionStatus === 'applied' && canRevertRuleSuggestion\"",
   'v-if="item.ruleSuggestionStatus && canReplayRule"',
+  '影子评估',
+  '拒绝建议',
+  '审批通过',
+  '应用规则',
+  '回放分析',
 ]
 
 for (const snippet of requiredRuleGovernancePermissionSnippets) {
   if (!workbenchSource.includes(snippet)) {
     failures.push(`missing rule governance permission contract ${snippet}`)
+  }
+}
+
+const requiredRuleGovernanceApiSnippets = [
+  "status: 'pending' | 'shadow_evaluated' | 'accepted' | 'rejected' | 'applied' | 'reverted'",
+]
+
+for (const snippet of requiredRuleGovernanceApiSnippets) {
+  if (!apiSource.includes(snippet)) {
+    failures.push(`missing rule governance API contract ${snippet}`)
   }
 }
 
@@ -336,8 +424,28 @@ async function runBrowserE2E(failures) {
           replacement: toVitePath(resolve(harnessRoot, 'permissionStub.ts')),
         },
         {
+          find: '@/components/Modal/src/BasicModal.vue',
+          replacement: toVitePath(resolve(harnessRoot, 'BasicModalProbeStub.ts')),
+        },
+        {
+          find: /^@\/components\/Modal$/,
+          replacement: toVitePath(resolve(harnessRoot, 'modalHarness.ts')),
+        },
+        {
+          find: /^@\/(?:api\/device\/(?:camera|gb28181|calculate)|views\/camera\/utils\/(?:streamTicket|devicePlay|deviceLabel|livePlayer)|utils\/copyTextToClipboard)$/,
+          replacement: toVitePath(resolve(harnessRoot, 'playerDependencyStubs.ts')),
+        },
+        {
+          find: /^@\/components\/(?:VideoPlayer\/(?:rtcPlayer|EasyPlayer)|Player\/module\/ptz)\.vue$/,
+          replacement: toVitePath(resolve(harnessRoot, 'PlayerLeafStub.ts')),
+        },
+        {
           find: /^@ant-design\/icons-vue$/,
           replacement: toVitePath(resolve(harnessRoot, 'antDesignIconsStub.ts')),
+        },
+        {
+          find: /^ant-design-vue$/,
+          replacement: toVitePath(resolve(harnessRoot, 'antDesignVuePlayerStub.ts')),
         },
         {
           find: /^@ant-design\/icons-vue\/es\/icons\/.+$/,
@@ -462,10 +570,12 @@ async function runBrowserPage(browserPath, userDataDir, url) {
     const target = await createBrowserTarget(debugPort, url)
     cdp = await CdpClient.connect(target.webSocketDebuggerUrl)
     await cdp.send('Runtime.enable')
+    await cdp.send('Log.enable')
     return await pollBrowserResult(cdp)
   }
   catch (error) {
-    throw new Error(`${error instanceof Error ? error.message : String(error)}${stderr ? `\n${stderr}` : ''}`)
+    const browserEvents = cdp?.events?.slice(-20) || []
+    throw new Error(`${error instanceof Error ? error.message : String(error)}${browserEvents.length ? `\n${JSON.stringify(browserEvents)}` : ''}${stderr ? `\n${stderr}` : ''}`)
   }
   finally {
     await withTimeout(cdp?.send('Browser.close').catch(() => undefined) || Promise.resolve(), 1000)
@@ -512,7 +622,8 @@ async function createBrowserTarget(debugPort, url) {
 
 async function pollBrowserResult(cdp) {
   const startedAt = Date.now()
-  while (Date.now() - startedAt < 30000) {
+  let lastResult
+  while (Date.now() - startedAt < 90000) {
     const response = await cdp.send('Runtime.evaluate', {
       expression: `(() => {
         const el = document.querySelector('#alert-review-e2e-result');
@@ -532,11 +643,12 @@ async function pollBrowserResult(cdp) {
       returnByValue: true,
     })
     const result = response.result?.value
+    lastResult = result
     if (result?.status === 'passed' || result?.status === 'failed')
       return result
     await wait(100)
   }
-  throw new Error('timed out waiting for browser E2E result')
+  throw new Error(`timed out waiting for browser E2E result: ${JSON.stringify(lastResult)}`)
 }
 
 function formatBrowserResult(result) {
@@ -550,10 +662,14 @@ class CdpClient {
     this.ws = ws
     this.id = 0
     this.pending = new Map()
+    this.events = []
     this.ws.addEventListener('message', event => {
       const message = JSON.parse(event.data)
-      if (!message.id)
+      if (!message.id) {
+        if (message.method === 'Runtime.exceptionThrown' || message.method === 'Log.entryAdded')
+          this.events.push(message)
         return
+      }
       const pending = this.pending.get(message.id)
       if (!pending)
         return

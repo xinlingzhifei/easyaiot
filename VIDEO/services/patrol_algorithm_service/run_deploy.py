@@ -38,6 +38,7 @@ load_video_env(override=True)
 import app.utils.nvidia_lib_path  # noqa: F401
 
 from models import Device, PatrolSession, AlgorithmTask
+from app.services.media_authorization_service import post_alert_ingest
 from app.utils.gb28181_source import resolve_gb28181_source
 from app.utils.decode.stream_adapter import is_async_stream, open_device_stream, stream_mode_label
 from app.utils.onnx_inference import ONNXInference
@@ -445,7 +446,7 @@ def _send_alert(device_id: str, device_name: str, frame: np.ndarray, detections:
         'image_path': image_path,
     }
     try:
-        requests.post(ALERT_HOOK_URL, json=alert_data, timeout=5)
+        post_alert_ingest(ALERT_HOOK_URL, alert_data, timeout=5)
         logger.info('设备 %s 巡检告警: %s', device_id, counts)
     except Exception as exc:
         logger.warning('发送告警失败 device=%s: %s', device_id, exc)

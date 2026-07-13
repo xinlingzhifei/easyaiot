@@ -139,13 +139,28 @@ yfeieye:
     record-coverage-query-url: ${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:}
     record-base-url: ${YFEIEYE_VIDEO_RECORD_BASE_URL:}
     record-export-url: ${YFEIEYE_VIDEO_RECORD_EXPORT_URL:}
+    record-export-connect-timeout-ms: ${YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS:5000}
+    record-export-read-timeout-ms: ${YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS:30000}
+    record-export-poll-timeout-ms: ${YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS:300000}
+    record-export-download-max-bytes: ${YFEIEYE_VIDEO_RECORD_EXPORT_DOWNLOAD_MAX_BYTES:536870912}
+    record-drift-retention-hours: ${YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS:24}
     public-play-host: ${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:${MEDIA_HTTP_PLAY_HOST:}}
+    media-service-id: ${YFEIEYE_MEDIA_SERVICE_ID:iot-system}
+    media-service-hmac-secret: ${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:}
+    media-service-allowed-actions: ${YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS:coverage,export,download,playback,manifest_verify}
+    media-service-allowed-camera-ids: ${YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS:}
   review-intelligence:
     semantic-search-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SEMANTIC_SEARCH_URL:}
     summary-url: ${YFEIEYE_REVIEW_INTELLIGENCE_SUMMARY_URL:}
   review:
+    evidence-manifest:
+      active-key-id: ${YFEIEYE_EVIDENCE_MANIFEST_ACTIVE_KEY_ID:}
+      hmac-keys: ${YFEIEYE_EVIDENCE_MANIFEST_HMAC_KEYS:}
+      signature-version: ${YFEIEYE_EVIDENCE_MANIFEST_SIGNATURE_VERSION:hmac-sha256-v1}
     camera-permission:
       fail-closed: ${YFEIEYE_REVIEW_CAMERA_PERMISSION_FAIL_CLOSED:true}
+      users:
+        1: ${YFEIEYE_REVIEW_CAMERA_PERMISSION_USERS_1:}
       action-permissions:
         playback:
           - system:supervision-alert-review:media:playback
@@ -159,6 +174,8 @@ yfeieye:
           - system:supervision-alert-review:media:download
         manifest_verify:
           - system:supervision-alert-review:media:manifest
+        record_manage:
+          - system:supervision-alert-review:media:manage
     runtime-outbox:
       notify:
         enabled: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:false}

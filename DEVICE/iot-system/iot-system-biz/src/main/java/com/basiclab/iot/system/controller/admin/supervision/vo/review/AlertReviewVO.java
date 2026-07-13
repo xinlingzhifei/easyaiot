@@ -31,6 +31,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticHit;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEvaluation;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticReindexJob;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewToEventResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusView;
@@ -42,6 +43,8 @@ import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.DecimalMax;
+import javax.validation.constraints.DecimalMin;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -496,6 +499,8 @@ public final class AlertReviewVO {
         private Long ownerUserId;
         private Long operatorUserId;
         private String notes;
+        private Integer expectedVersion;
+        private String operationId;
 
     }
 
@@ -505,6 +510,8 @@ public final class AlertReviewVO {
 
         private Long operatorUserId;
         private String notes;
+        private Integer expectedVersion;
+        private String operationId;
 
     }
 
@@ -515,6 +522,9 @@ public final class AlertReviewVO {
         private Long sourceReviewCaseId;
         private Long operatorUserId;
         private String notes;
+        private Integer targetExpectedVersion;
+        private Integer sourceExpectedVersion;
+        private String operationId;
 
     }
 
@@ -527,6 +537,8 @@ public final class AlertReviewVO {
         private Long ownerUserId;
         private Long operatorUserId;
         private String notes;
+        private Integer sourceExpectedVersion;
+        private String operationId;
 
     }
 
@@ -545,6 +557,7 @@ public final class AlertReviewVO {
         private LocalDateTime endTime;
         private Long ownerUserId;
         private String notes;
+        private Integer version;
 
         public static CaseRespVO from(ReviewCaseView view) {
             CaseRespVO respVO = new CaseRespVO();
@@ -559,6 +572,7 @@ public final class AlertReviewVO {
             respVO.setEndTime(view.endTime());
             respVO.setOwnerUserId(view.ownerUserId());
             respVO.setNotes(view.notes());
+            respVO.setVersion(view.version());
             return respVO;
         }
 
@@ -987,6 +1001,90 @@ public final class AlertReviewVO {
             respVO.setLatestIndexVersion(evaluation.latestIndexVersion());
             respVO.setEvaluatedAt(evaluation.evaluatedAt());
             respVO.setOperatorUserId(evaluation.operatorUserId());
+            return respVO;
+        }
+
+    }
+
+    @Schema(description = "Alert review semantic trigger evaluation request")
+    @Data
+    public static class SemanticTriggerEvaluationReqVO {
+
+        @NotBlank(message = "triggerName must not be blank")
+        private String triggerName;
+        private String cameraId;
+        private String triggerType;
+        @NotBlank(message = "data must not be blank")
+        private String data;
+        @DecimalMin(value = "0.0", message = "threshold must be at least 0")
+        @DecimalMax(value = "1.0", message = "threshold must not exceed 1")
+        private Double threshold;
+        private List<String> actions;
+        private String reviewStatus;
+        private String zoneCode;
+        private String objectLabel;
+        private String recordEvidenceStatus;
+        private Boolean converted;
+        private Boolean inReviewCase;
+        private Long reviewerUserId;
+        private LocalDateTime beginTime;
+        private LocalDateTime endTime;
+        private Long operatorUserId;
+
+    }
+
+    @Schema(description = "Alert review semantic trigger confirmation request")
+    @Data
+    public static class SemanticTriggerConfirmationReqVO {
+
+        @NotBlank(message = "confirmationStatus must not be blank")
+        private String confirmationStatus;
+        private String notes;
+        private Long operatorUserId;
+
+    }
+
+    @Schema(description = "Alert review semantic trigger evaluation and confirmation response")
+    @Data
+    public static class SemanticTriggerRespVO {
+
+        private String triggerName;
+        private String triggerType;
+        private String data;
+        private List<Long> matchedReviewItemIds;
+        private List<Map<String, Object>> actionPayloads;
+        private LocalDateTime evaluatedAt;
+        private String inputVersion;
+        private String inputHash;
+        private String indexGenerationId;
+        private Integer latestIndexVersion;
+        private List<Map<String, Object>> hitExplanations;
+        private List<Map<String, Object>> actionPreviews;
+        private String humanConfirmationStatus;
+        private String evaluationId;
+        private Long confirmedBy;
+        private LocalDateTime confirmedAt;
+        private Boolean duplicate;
+
+        public static SemanticTriggerRespVO from(ReviewSemanticTriggerResult result) {
+            SemanticTriggerRespVO respVO = new SemanticTriggerRespVO();
+            respVO.setTriggerName(result.triggerName());
+            respVO.setTriggerType(result.triggerType());
+            respVO.setData(result.data());
+            respVO.setMatchedReviewItemIds(result.matchedReviewItemIds());
+            respVO.setActionPayloads(result.actionPayloads());
+            respVO.setEvaluatedAt(result.evaluatedAt());
+            respVO.setInputVersion(result.inputVersion());
+            respVO.setInputHash(result.inputHash());
+            respVO.setIndexGenerationId(result.indexGenerationId());
+            respVO.setLatestIndexVersion(result.latestIndexVersion());
+            respVO.setHitExplanations(result.hitExplanations());
+            respVO.setActionPreviews(result.actionPreviews());
+            respVO.setHumanConfirmationStatus(result.humanConfirmationStatus());
+            respVO.setEvaluationId(result.evaluationId());
+            respVO.setConfirmedBy(result.confirmedBy());
+            respVO.setConfirmedAt(result.confirmedAt());
+            respVO.setDuplicate(result.duplicate());
             return respVO;
         }
 

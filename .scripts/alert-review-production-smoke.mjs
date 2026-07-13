@@ -15,6 +15,7 @@ export function parseArgs(args, env = process.env) {
   const parsed = {
     deviceBaseUrl: env.YFEIEYE_DEVICE_BASE_URL || '',
     token: env.YFEIEYE_DEVICE_AUTH_TOKEN || '',
+    tenantId: numberOrNaN(env.YFEIEYE_DEVICE_TENANT_ID || env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID),
     operatorUserId: numberOrNaN(env.YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID),
     deviceAlertTime: env.YFEIEYE_DEVICE_SMOKE_ALERT_TIME || '',
     deviceProfile: env.YFEIEYE_DEVICE_SMOKE_PROFILE || 'release',
@@ -72,6 +73,8 @@ export function parseArgs(args, env = process.env) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
       parsed.token = arg.slice('--token='.length);
+    } else if (arg.startsWith('--tenant-id=')) {
+      parsed.tenantId = numberOrNaN(arg.slice('--tenant-id='.length));
     } else if (arg.startsWith('--operator-user-id=')) {
       parsed.operatorUserId = numberOrNaN(arg.slice('--operator-user-id='.length));
     } else if (arg.startsWith('--device-alert-time=')) {
@@ -168,6 +171,7 @@ export function requiredOptionErrors(options) {
   const errors = [];
   requireText(errors, options.deviceBaseUrl, 'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL');
   requireText(errors, options.token, 'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN');
+  requirePositiveNumber(errors, options.tenantId, 'missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID');
   requirePositiveNumber(errors, options.operatorUserId, 'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID');
   requireText(errors, options.deviceAlertTime, 'missing --device-alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME');
   requireList(errors, options.devicePlaybackAllowedCameraIds, 'missing --device-playback-allowed-camera-ids or YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS');
@@ -230,6 +234,7 @@ export function buildSmokeSteps(options, runtime = {}) {
         `${scriptDir}/alert-review-device-integration-smoke.mjs`,
         `--device-base-url=${options.deviceBaseUrl}`,
         `--token=${options.token}`,
+        `--tenant-id=${options.tenantId}`,
         `--operator-user-id=${options.operatorUserId}`,
         `--alert-time=${options.deviceAlertTime}`,
         `--profile=${options.deviceProfile}`,
@@ -253,6 +258,7 @@ export function buildSmokeSteps(options, runtime = {}) {
       timeoutMs: options.stepTimeoutMs,
       args: compact([
         `${scriptDir}/alert-review-video-live-smoke.mjs`,
+        `--token=${options.token}`,
         `--alert-record-query-url=${options.videoAlertRecordQueryUrl}`,
         `--record-coverage-query-url=${options.videoRecordCoverageQueryUrl}`,
         `--record-base-url=${options.videoRecordBaseUrl}`,
@@ -282,6 +288,10 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
   return {
     name,
     command: nodePath,
+    env: {
+      YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: options.token,
+      YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID: String(options.tenantId),
+    },
     allowLocalEndpoints: options.allowLocalEndpoints === true,
     timeoutMs: options.stepTimeoutMs,
     args: compact([
@@ -442,6 +452,7 @@ function liveDeviceEvidenceError(stepName, summary) {
     'review_case_created',
     'evidence_export_ready',
     'manifest_verified',
+    'evidence_download_bytes_verified',
     'evidence_download_audited',
     'playback_url_granted',
     'playback_url_denied',
@@ -598,7 +609,11 @@ function livePlayerEvidenceError(stepName, player, allowLocalEndpoints) {
   if (!hasText(player.expectedRecordPathContains) || !pathText.includes(player.expectedRecordPathContains)) {
     return `production smoke step ${stepName} did not prove expected record path`;
   }
-  if (!allowLocalEndpoints && hasLocalOrMockMediaEvidence(player.recordPath, player.currentUrl)) {
+  if (!allowLocalEndpoints && hasLocalOrMockMediaEvidence(
+    player.recordPath,
+    player.currentUrl,
+    player.nativeCurrentSrc,
+  )) {
     return `production smoke step ${stepName} used local/mock player media evidence`;
   }
   if (Number(player.playbackOffsetSeconds) !== Number(player.expectedOffsetSeconds)) {
@@ -606,6 +621,23 @@ function livePlayerEvidenceError(stepName, player, allowLocalEndpoints) {
   }
   if (!Number.isFinite(player.nativeCurrentTime)) {
     return `production smoke step ${stepName} missing native currentTime evidence`;
+  }
+  if (Math.abs(Number(player.nativeCurrentTime) - Number(player.expectedOffsetSeconds)) > 1.5) {
+    return `production smoke step ${stepName} native currentTime missed expected offset`;
+  }
+  if (player.nativeErrorPresent !== false) {
+    return `production smoke step ${stepName} native video reported a media error`;
+  }
+  if (!hasText(player.nativeCurrentSrc)
+      || !player.nativeCurrentSrc.includes(player.expectedRecordPathContains)) {
+    return `production smoke step ${stepName} missing native currentSrc evidence`;
+  }
+  if (!Number.isFinite(player.nativeReadyState) || player.nativeReadyState < 1
+      || !Number.isFinite(player.nativeDuration) || player.nativeDuration <= 0) {
+    return `production smoke step ${stepName} native video did not decode metadata`;
+  }
+  if (player.nativePlayingObserved !== true || player.nativePaused !== false) {
+    return `production smoke step ${stepName} native video did not enter playing state`;
   }
   return null;
 }
@@ -654,6 +686,7 @@ function defaultRunCommand(step) {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     timeout: step.timeoutMs,
+    env: { ...process.env, ...(step.env || {}) },
   });
   const timedOut = result.error?.code === 'ETIMEDOUT';
   const normalized = timedOut
@@ -983,6 +1016,17 @@ function buildPlayerSmokeSummary(payload) {
   copySanitizedUrlIfPresent(player, payload, 'currentUrl');
   copyNumberIfPresent(player, payload, 'playbackOffsetSeconds');
   copyNumberIfPresent(player, payload, 'nativeCurrentTime');
+  copySanitizedUrlIfPresent(player, payload, 'nativeCurrentSrc');
+  copyNumberIfPresent(player, payload, 'nativeReadyState');
+  copyBooleanIfPresent(player, payload, 'nativePaused');
+  copyNumberIfPresent(player, payload, 'nativeDuration');
+  copyBooleanIfPresent(player, payload, 'nativePlayingObserved');
+  if (Object.prototype.hasOwnProperty.call(payload, 'nativeError')) {
+    player.nativeErrorPresent = payload.nativeError !== null && payload.nativeError !== undefined;
+    if (Number.isFinite(Number(payload.nativeError?.code))) {
+      player.nativeErrorCode = Number(payload.nativeError.code);
+    }
+  }
   return Object.keys(player).length ? player : null;
 }
 
@@ -1173,10 +1217,10 @@ function looksLocalOrMockEndpoint(value) {
 
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-production-smoke.mjs \\
-  --device-base-url=http://DEVICE/admin-api --token=JWT_TOKEN \\
+  --device-base-url=http://DEVICE/admin-api --token=JWT_TOKEN --tenant-id=TENANT_ID \\
   --operator-user-id=9200 --device-alert-time="2026-07-05T10:00:00" \\
   --device-playback-allowed-camera-ids=camera-01 --device-playback-denied-camera-ids=camera-02 \\
-  --video-alert-record-query-url=http://VIDEO/video/record/availability \\
+  --video-alert-record-query-url=http://VIDEO/video/alert/record/query \\
   --video-record-coverage-query-url=http://VIDEO/video/record/availability \\
   --video-record-base-url=http://VIDEO/video/record \\
   --video-record-export-url=http://VIDEO/video/record/export \\

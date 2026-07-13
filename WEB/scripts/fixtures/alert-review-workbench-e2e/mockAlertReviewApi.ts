@@ -18,6 +18,7 @@ export type AlertReviewRuleGeometryEvaluation = any
 export type AlertReviewRuleReplayResult = any
 export type AlertReviewRuleSuggestionPreview = any
 export type AlertReviewSemanticHit = any
+export type AlertReviewSemanticTriggerResult = any
 export type AlertReviewSegment = any
 export type AlertReviewSummary = any
 
@@ -175,7 +176,7 @@ const timeline = [
     reviewItemId: 101,
     sourceAlertId: 'frigate-event-1',
     materialType: 'record',
-    materialUri: 'mock://record/east-gate-080000.mp4',
+    materialUri: '/video/record/east-gate-080000.mp4',
     happenedAt: '2026-07-02T08:00:00',
   },
 ]
@@ -194,7 +195,7 @@ const detailStream = [
     bbox: [0.12, 0.18, 0.42, 0.74],
     path: [{ x: 0.2, y: 0.4, t: '2026-07-02T08:00:02' }],
     materialType: 'record',
-    materialUri: 'mock://record/east-gate-080000.mp4',
+    materialUri: '/video/record/east-gate-080000.mp4',
     metadata: { confidence: 0.92 },
   },
 ]
@@ -224,7 +225,7 @@ const coverage = [
     startTime: '2026-07-02T07:59:45',
     endTime: '2026-07-02T08:01:00',
     motion: 1,
-    recordUri: 'mock://record/east-gate-075945.mp4',
+    recordUri: '/video/record/east-gate-075945.mp4',
     objects: 1,
     metadata: { source: 'video-storage' },
   },
@@ -250,6 +251,7 @@ const reviewCase = {
   endTime: '2026-07-02T08:02:30',
   ownerUserId: 9001,
   notes: 'correlationId=corr-east-gate-001',
+  version: 0,
 }
 
 const caseTimeline = [
@@ -259,8 +261,8 @@ const caseTimeline = [
     cameraId: 'cam-east-gate',
     sourceAlertId: 'frigate-event-1',
     materialType: 'record',
-    materialUri: 'mock://record/east-gate-080000.mp4',
-    happenedAt: '2026-07-02T08:00:00',
+    materialUri: '/video/record/east-gate-080000.mp4',
+    happenedAt: '2026-07-02T08:00:10',
     actionNote: 'primary evidence',
   },
 ]
@@ -273,7 +275,7 @@ const evidenceExportJob = {
     format: 'manifest',
     reviewCaseId: 501,
     reviewItemIds: [101],
-    evidenceUris: ['mock://record/east-gate-080000.mp4', 'mock://snapshot/east-gate-080000.jpg'],
+    evidenceUris: ['/video/record/east-gate-080000.mp4', 'mock://snapshot/east-gate-080000.jpg'],
     timeline: caseTimeline,
     manifest: {
       checksum: 'sha256:manifest-hash',
@@ -370,6 +372,58 @@ export async function reconcileAlertReviewRuntime(payload?: unknown) {
 export async function semanticSearchAlertReview(payload?: unknown) {
   record('semanticSearchAlertReview', payload)
   return [{ item: reviewItem, score: 0.99, matchedTerms: ['person'], snippet: 'person in gate-zone' }]
+}
+
+let semanticTriggerResult: any = {
+  triggerName: 'helmet-doorway',
+  triggerType: 'description',
+  data: 'helmet doorway',
+  matchedReviewItemIds: [101],
+  actionPayloads: [{ action: 'notification', reviewItemId: 101 }],
+  evaluatedAt: '2026-07-02T08:07:05',
+  inputVersion: 'semantic-trigger-input-v1',
+  latestIndexVersion: 1,
+  hitExplanations: [{
+    reviewItemId: 101,
+    cameraId: 'cam-east-gate',
+    score: 0.99,
+    matchedTerms: ['helmet'],
+    indexVersion: 1,
+    indexStatus: 'indexed',
+    indexedAt: '2026-07-02T08:06:00',
+    embeddingModel: 'yfeieye-review-local-v1',
+    embeddingVectorHash: `sha256:${'a'.repeat(64)}`,
+  }],
+  actionPreviews: [{ action: 'notification', reviewItemId: 101, previewOnly: true, requiresHumanConfirmation: true }],
+  humanConfirmationStatus: 'pending',
+  evaluationId: 'sem-123e4567-e89b-42d3-a456-426614174000',
+}
+
+export async function evaluateAlertReviewSemanticTrigger(payload?: unknown) {
+  record('evaluateAlertReviewSemanticTrigger', payload)
+  semanticTriggerResult = {
+    ...semanticTriggerResult,
+    humanConfirmationStatus: 'pending',
+    confirmedBy: undefined,
+    confirmedAt: undefined,
+  }
+  return semanticTriggerResult
+}
+
+export async function getAlertReviewSemanticTrigger(evaluationId: string) {
+  record('getAlertReviewSemanticTrigger', evaluationId)
+  return semanticTriggerResult
+}
+
+export async function confirmAlertReviewSemanticTrigger(evaluationId: string, payload?: any) {
+  record('confirmAlertReviewSemanticTrigger', { evaluationId, payload })
+  semanticTriggerResult = {
+    ...semanticTriggerResult,
+    humanConfirmationStatus: payload?.confirmationStatus || 'confirmed',
+    confirmedBy: 9001,
+    confirmedAt: '2026-07-02T08:08:00',
+  }
+  return semanticTriggerResult
 }
 
 export async function evaluateAlertReviewSemanticIndex(payload?: unknown) {
@@ -547,7 +601,7 @@ export async function runAlertReviewIntegrationSmoke(payload?: unknown) {
     exportJobNo: 'EXP-20260702-001',
     manifestValid: true,
     videoExportRequested: true,
-    checkpoints: ['ingest_review_item', 'record_coverage_synced', 'review_case_created', 'evidence_export_ready', 'manifest_verified', 'evidence_download_audited'],
+    checkpoints: ['ingest_review_item', 'record_coverage_synced', 'review_case_created', 'evidence_export_ready', 'manifest_verified', 'evidence_download_bytes_verified', 'evidence_download_audited'],
     executedAt: '2026-07-02T08:08:30',
     profile: 'device-video-web',
   }
@@ -607,26 +661,26 @@ export async function addAlertReviewItemToCase(reviewCaseId: number, reviewItemI
 
 export async function assignAlertReviewCaseOwner(reviewCaseId: number, payload: any) {
   record('assignAlertReviewCaseOwner', { reviewCaseId, payload })
-  return { ...reviewCase, ownerUserId: payload?.ownerUserId ?? reviewCase.ownerUserId }
+  return { ...reviewCase, ownerUserId: payload?.ownerUserId ?? reviewCase.ownerUserId, version: 1 }
 }
 
 export async function closeAlertReviewCase(reviewCaseId: number, payload?: unknown) {
   record('closeAlertReviewCase', { reviewCaseId, payload })
-  return { ...reviewCase, status: 'closed' }
+  return { ...reviewCase, status: 'closed', version: 1 }
 }
 
 export async function mergeAlertReviewCases(targetReviewCaseId: number, payload: any) {
   record('mergeAlertReviewCases', { targetReviewCaseId, payload })
   return {
-    targetCase: { ...reviewCase, id: targetReviewCaseId, reviewItemIds: [101, 102] },
-    sourceCase: { ...reviewCase, id: payload?.sourceReviewCaseId ?? 502, status: 'merged' },
+    targetCase: { ...reviewCase, id: targetReviewCaseId, reviewItemIds: [101, 102], version: 1 },
+    sourceCase: { ...reviewCase, id: payload?.sourceReviewCaseId ?? 502, status: 'merged', version: 1 },
   }
 }
 
 export async function splitAlertReviewCase(sourceReviewCaseId: number, payload: any) {
   record('splitAlertReviewCase', { sourceReviewCaseId, payload })
   return {
-    sourceCase: { ...reviewCase, id: sourceReviewCaseId, reviewItemIds: [] },
+    sourceCase: { ...reviewCase, id: sourceReviewCaseId, reviewItemIds: [], version: 1 },
     newCase: {
       ...reviewCase,
       id: 503,
@@ -634,6 +688,7 @@ export async function splitAlertReviewCase(sourceReviewCaseId: number, payload: 
       title: payload?.title || 'split follow-up',
       reviewItemIds: payload?.reviewItemIds || [101],
       ownerUserId: payload?.ownerUserId ?? reviewCase.ownerUserId,
+      version: 0,
     },
   }
 }
@@ -660,7 +715,25 @@ export async function retryAlertReviewRecordEvidence(reviewItemId: number) {
 
 export async function updateAlertReviewRuleSuggestionStatus(reviewItemId: number, payload: unknown) {
   record('updateAlertReviewRuleSuggestionStatus', { reviewItemId, payload })
-  return updateReviewItem({ ruleSuggestionStatus: 'accepted' })
+  const status = String((payload as { status?: unknown } | undefined)?.status || 'pending')
+  const currentSuggestion = (currentReviewItem.ruleSuggestion || {}) as Record<string, unknown>
+  const shadowEvidence = status === 'shadow_evaluated'
+    ? {
+        shadowEvaluation: {
+          evaluatedReviewItemCount: 3,
+          estimatedSuppressedCount: 2,
+        },
+        replayReport: {
+          decision: 'review_before_apply',
+          evaluatedCount: 3,
+          falsePositiveReduction: 2,
+        },
+      }
+    : {}
+  return updateReviewItem({
+    ruleSuggestionStatus: status,
+    ruleSuggestion: { ...currentSuggestion, ...shadowEvidence },
+  })
 }
 
 export async function previewAlertReviewRuleSuggestion(reviewItemId: number) {

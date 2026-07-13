@@ -14,6 +14,7 @@ public class SupervisionAlertReviewExportJobDO extends BaseDO {
 
     private Long id;
     private String jobNo;
+    private String requestKey;
     private String status;
     private String packageNo;
     private Long reviewCaseId;
@@ -26,6 +27,11 @@ public class SupervisionAlertReviewExportJobDO extends BaseDO {
     private String exportReason;
     private String boundEventIds;
     private LocalDateTime generatedAt;
+    private String claimToken;
+    private Long claimedBy;
+    private LocalDateTime claimedAt;
+    private LocalDateTime nextRetryAt;
+    private String lastError;
     private Integer version;
 
 }

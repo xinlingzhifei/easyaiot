@@ -284,12 +284,12 @@ services:
     container_name: minio-server
     restart: always
     ports:
-      - "0.0.0.0:9000:9000"
-      - "0.0.0.0:9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       - TZ=Asia/Shanghai
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=basiclab@iot975248395
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
     command: server /data --console-address ":9001"
     volumes:
       - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/minio_data/data:/data:rw"
@@ -341,10 +341,10 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - "./srs_data/conf:/usr/local/srs/conf:rw"
-      - "./srs_data/conf:/opt/srs/trunk/conf:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/srs_data/conf:/usr/local/srs/conf:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/srs_data/conf:/opt/srs/trunk/conf:rw"
       # 宿主机数据目录映射为容器内录像与日志目录
-      - "~/easyaiot/data:/data:rw"
+      - "/data:/data:rw"
       - "./srs-entrypoint.sh:/usr/local/bin/srs-entrypoint.sh:ro"
       - "./srs-healthcheck.sh:/usr/local/bin/srs-healthcheck.sh:ro"
     entrypoint: ["/bin/bash", "/usr/local/bin/srs-entrypoint.sh"]

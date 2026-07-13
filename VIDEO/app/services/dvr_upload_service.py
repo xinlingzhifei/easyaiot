@@ -4,10 +4,10 @@ DVR 段上传流水线：MinIO 上传、Playback 写入、本地文件清理。
 """
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
-from urllib.parse import quote
 
 import cv2
 from minio.error import S3Error
@@ -22,14 +22,87 @@ from app.services.media_dvr_utils import (
     wait_dvr_file_stable,
 )
 from app.services.media_kafka_service import publish_dvr_dlq
-from app.utils.minio_bucket_policy import ensure_bucket_public_read_write_policy
-from app.utils.service_urls import ensure_shanghai_aware, epoch_to_shanghai_datetime, minio_storage_enabled
+from app.services.record_cache_flush_event_service import (
+    record_cache_flush_failure,
+    resolve_record_cache_flush_failure,
+)
+from app.utils.minio_bucket_policy import ensure_bucket_private
+from app.utils.service_urls import (
+    build_record_video_api_url,
+    ensure_shanghai_aware,
+    epoch_to_shanghai_datetime,
+    minio_storage_enabled,
+)
 from models import Device, Playback, db
 
 logger = logging.getLogger(__name__)
 
+_TENANT_ID_PATTERN = re.compile(r'^[1-9][0-9]*$')
+
+
+def _tenant_value(value) -> str:
+    tenant_id = str(value or '').strip()
+    if tenant_id and not _TENANT_ID_PATTERN.fullmatch(tenant_id):
+        raise ValueError('DVR tenant id must be a positive integer')
+    return tenant_id
+
+
+def _resolve_dvr_tenant_id(event: Dict[str, Any], device=None, record_space=None) -> str:
+    """Resolve a tenant without falling back to an unscoped system tenant."""
+    candidates = (
+        (event or {}).get('tenant_id'),
+        (event or {}).get('tenantId'),
+        getattr(device, 'tenant_id', None),
+        getattr(device, 'tenantId', None),
+        getattr(record_space, 'tenant_id', None),
+        getattr(record_space, 'tenantId', None),
+        os.environ.get('YFEIEYE_DVR_TENANT_ID'),
+    )
+    for candidate in candidates:
+        tenant_id = _tenant_value(candidate)
+        if tenant_id:
+            return tenant_id
+    raise ValueError('DVR tenant id is required')
+
+
+def _build_dvr_object_name(tenant_id: str, device_id: str, date_dir: str,
+                           filename: str) -> str:
+    tenant_id = _tenant_value(tenant_id)
+    if not tenant_id:
+        raise ValueError('DVR tenant id is required')
+    return f'tenants/{tenant_id}/{device_id}/{date_dir}/{filename}'
+
+
+def _protected_record_url(space_id, object_name: str) -> str:
+    return build_record_video_api_url(space_id, object_name)
+
 
 def process_dvr_event(event: Dict[str, Any]) -> bool:
+    """Process one DVR event and journal unresolved cache-to-storage failures."""
+    try:
+        success = _process_dvr_event_impl(event)
+    except Exception as exc:
+        _persist_cache_flush_failure_safely(event, f'{type(exc).__name__}: {exc}')
+        raise
+    if success:
+        try:
+            resolve_record_cache_flush_failure(event)
+        except Exception:
+            logger.exception('failed to resolve persisted DVR cache flush event')
+    else:
+        _persist_cache_flush_failure_safely(
+            event, 'dvr_cache_flush_worker_returned_false')
+    return success
+
+
+def _persist_cache_flush_failure_safely(event: Dict[str, Any], error: str):
+    try:
+        record_cache_flush_failure(event, error)
+    except Exception:
+        logger.exception('failed to persist DVR cache flush failure event')
+
+
+def _process_dvr_event_impl(event: Dict[str, Any]) -> bool:
     """处理单条 DVR Kafka 事件或 Hook 同步任务。成功返回 True。"""
     stream = event.get('stream', '') or ''
     file_path = event.get('file_path', '') or ''
@@ -56,13 +129,26 @@ def process_dvr_event(event: Dict[str, Any]) -> bool:
         get_record_space_by_device_id,
     )
 
-    record_space = get_record_space_by_device_id(device_id)
+    try:
+        tenant_id = _resolve_dvr_tenant_id(event, device=device)
+    except ValueError as exc:
+        logger.error('DVR tenant resolution failed device_id=%s error=%s', device_id, exc)
+        return False
+
+    record_space = get_record_space_by_device_id(device_id, tenant_id=tenant_id)
     if not record_space:
         try:
-            record_space = create_record_space_for_device(device_id, device.name)
+            record_space = create_record_space_for_device(
+                device_id, device.name, tenant_id=tenant_id)
         except Exception as e:
             logger.error('创建设备录像空间失败 device_id=%s error=%s', device_id, e, exc_info=True)
             return False
+
+    event.setdefault('space_id', getattr(record_space, 'id', None))
+    if str(getattr(record_space, 'tenant_id', '') or '') != tenant_id:
+        logger.error('DVR space tenant mismatch device_id=%s', device_id)
+        return False
+    event['tenant_id'] = tenant_id
 
     absolute_file_path = resolve_playback_absolute_path(file_path, cwd)
     file_size = wait_dvr_file_stable(absolute_file_path)
@@ -103,18 +189,37 @@ def process_dvr_event(event: Dict[str, Any]) -> bool:
 
     filename = os.path.basename(absolute_file_path)
     file_ext = os.path.splitext(filename)[1].lower()
-    object_name = f'{device_id}/{date_dir}/{filename}'
+    legacy_object_name = f'{device_id}/{date_dir}/{filename}'
+    object_name = _build_dvr_object_name(
+        tenant_id, device_id, date_dir, filename)
 
     from models import RecordFile
-    existing_rf = RecordFile.query.filter_by(device_id=device_id, object_name=object_name).first()
+    existing_rf = RecordFile.query.filter_by(
+        tenant_id=int(tenant_id),
+        space_id=record_space.id,
+        device_id=device_id,
+        object_name=object_name,
+    ).first()
     if existing_rf:
+        file_path_url = _protected_record_url(record_space.id, object_name)
+        if (existing_rf.url or '').strip() != file_path_url:
+            existing_rf.url = file_path_url
+            db.session.commit()
         if minio_storage_enabled():
             _cleanup_local_file(absolute_file_path, device_id)
         duration = int(existing_rf.duration or 0) or int(ffprobe_video_duration_seconds(absolute_file_path))
-        file_path_url = (existing_rf.url or '').strip() or absolute_file_path
-        _patch_alert_record(device_id, record_time, duration, file_path_url)
+        _patch_alert_record(
+            tenant_id, device_id, record_time, duration, file_path_url)
         logger.debug('DVR 已存在元数据，仍回写告警 record_path object=%s', object_name)
         return True
+    legacy_rf = None
+    if tenant_id == '1':
+        legacy_rf = RecordFile.query.filter_by(
+            tenant_id=1,
+            space_id=record_space.id,
+            device_id=device_id,
+            object_name=legacy_object_name,
+        ).first()
 
     if not minio_storage_enabled():
         content_type_map = {
@@ -125,10 +230,13 @@ def process_dvr_event(event: Dict[str, Any]) -> bool:
         local_bucket_name = record_space.bucket_name
         file_path_url = absolute_file_path
         duration = int(ffprobe_video_duration_seconds(absolute_file_path))
-        _upsert_playback(device, device_id, file_path_url, object_name, record_time, file_size, duration, None)
+        _upsert_playback(
+            tenant_id, device, device_id, file_path_url, object_name,
+            record_time, file_size, duration, None)
         _upsert_record_metadata(record_space, device_id, object_name, local_bucket_name, filename,
                                 file_size, local_content_type, file_path_url, None, duration, record_time)
-        _patch_alert_record(device_id, record_time, duration, file_path_url)
+        _patch_alert_record(
+            tenant_id, device_id, record_time, duration, file_path_url)
         logger.info('mini 形态 DVR 保留本地路径 device_id=%s path=%s size=%s', device_id, absolute_file_path, file_size)
         return True
 
@@ -146,7 +254,7 @@ def process_dvr_event(event: Dict[str, Any]) -> bool:
         except Exception as e:
             logger.error('创建 MinIO bucket 失败 bucket=%s error=%s', bucket_name, e, exc_info=True)
             return False
-    ensure_bucket_public_read_write_policy(minio_client, bucket_name)
+    ensure_bucket_private(minio_client, bucket_name)
 
     try:
         minio_client.fput_object(bucket_name, object_name, absolute_file_path, content_type=content_type)
@@ -155,25 +263,37 @@ def process_dvr_event(event: Dict[str, Any]) -> bool:
         publish_dvr_dlq(event, str(e))
         return False
 
-    file_path_url = f'/api/v1/buckets/{bucket_name}/objects/download?prefix={quote(object_name, safe="")}'
-    thumbnail_path = _upload_thumbnail(minio_client, bucket_name, device_id, date_dir, filename, absolute_file_path)
+    file_path_url = _protected_record_url(record_space.id, object_name)
+    if legacy_rf is not None:
+        logger.info(
+            'tenant-1 legacy DVR metadata remains read-only object=%s',
+            legacy_object_name,
+        )
+    thumbnail_path = _upload_thumbnail(
+        minio_client, bucket_name, tenant_id, device_id, date_dir, filename,
+        absolute_file_path)
     duration = int(ffprobe_video_duration_seconds(absolute_file_path))
-    _upsert_playback(device, device_id, file_path_url, object_name, record_time, file_size, duration, thumbnail_path)
+    _upsert_playback(
+        tenant_id, device, device_id, file_path_url, object_name,
+        record_time, file_size, duration, thumbnail_path)
     _upsert_record_metadata(record_space, device_id, object_name, bucket_name, filename,
                             file_size, content_type, file_path_url, thumbnail_path, duration, record_time)
-    _patch_alert_record(device_id, record_time, duration, file_path_url)
+    _patch_alert_record(
+        tenant_id, device_id, record_time, duration, file_path_url)
     _cleanup_local_file(absolute_file_path, device_id)
     logger.info('DVR 上传完成 device_id=%s object=%s size=%s', device_id, object_name, file_size)
     return True
 
 
-def _upload_thumbnail(minio_client, bucket_name, device_id, date_dir, filename, absolute_file_path) -> Optional[str]:
+def _upload_thumbnail(minio_client, bucket_name, tenant_id, device_id, date_dir,
+                      filename, absolute_file_path) -> Optional[str]:
     try:
         frame = extract_thumbnail_from_video(absolute_file_path, output_path=None, frame_position=0.1)
         if frame is None:
             return None
         thumbnail_filename = os.path.splitext(filename)[0] + '.jpg'
-        thumbnail_object_name = f'{device_id}/{date_dir}/{thumbnail_filename}'
+        thumbnail_object_name = _build_dvr_object_name(
+            tenant_id, device_id, date_dir, thumbnail_filename)
         success, encoded_image = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if not success:
             return None
@@ -184,7 +304,8 @@ def _upload_thumbnail(minio_client, bucket_name, device_id, date_dir, filename, 
             minio_client.fput_object(
                 bucket_name, thumbnail_object_name, tmp_thumbnail_path, content_type='image/jpeg',
             )
-            return f'/api/v1/buckets/{bucket_name}/objects/download?prefix={quote(thumbnail_object_name, safe="")}'
+            # No protected thumbnail route exists yet, so do not expose a URL.
+            return None
         finally:
             try:
                 os.remove(tmp_thumbnail_path)
@@ -195,13 +316,23 @@ def _upload_thumbnail(minio_client, bucket_name, device_id, date_dir, filename, 
     return None
 
 
-def _upsert_playback(device, device_id, file_path_url, object_name, record_time, file_size, duration, thumbnail_path):
+def _upsert_playback(tenant_id, device, device_id, file_path_url, object_name,
+                     record_time, file_size, duration, thumbnail_path):
     try:
         shanghai_tz = timezone(timedelta(hours=8))
         record_time = ensure_shanghai_aware(record_time)
-        existing = Playback.query.filter_by(file_path=file_path_url, device_id=device_id).first()
+        tenant_id = int(tenant_id)
+        existing = Playback.query.filter_by(
+            tenant_id=tenant_id,
+            file_path=file_path_url,
+            device_id=device_id,
+        ).first()
         if not existing:
-            existing = Playback.query.filter_by(file_path=object_name, device_id=device_id).first()
+            existing = Playback.query.filter_by(
+                tenant_id=tenant_id,
+                file_path=object_name,
+                device_id=device_id,
+            ).first()
         if existing:
             existing.file_path = file_path_url
             existing.thumbnail_path = thumbnail_path
@@ -213,6 +344,7 @@ def _upsert_playback(device, device_id, file_path_url, object_name, record_time,
         else:
             current_time = datetime.now(shanghai_tz)
             playback = Playback(
+                tenant_id=tenant_id,
                 file_path=file_path_url,
                 event_time=record_time,
                 device_id=device_id,
@@ -254,13 +386,15 @@ def _upsert_record_metadata(record_space, device_id, object_name, bucket_name, f
         db.session.rollback()
 
 
-def _patch_alert_record(device_id, record_time, duration, file_path_url):
+def _patch_alert_record(tenant_id, device_id, record_time, duration,
+                        file_path_url):
     try:
         from app.services.alert_service import patch_alerts_record
 
         record_time = ensure_shanghai_aware(record_time)
         event_time_str = record_time.strftime('%Y-%m-%d %H:%M:%S')
         patch_alerts_record({
+            'tenant_id': int(tenant_id),
             'event_time': event_time_str,
             'duration': duration if duration > 0 else 1,
             'device_id': device_id,

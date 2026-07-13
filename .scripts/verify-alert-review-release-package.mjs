@@ -8,7 +8,11 @@ import { VISIBLE_COPY_MOJIBAKE_PATTERNS } from './alert-review-visible-copy-scan
 export const FR_RELEASE_PATH_RULES = [
   {
     group: 'FR release gate tooling',
-    match: /^\.scripts\/(verify-alert-review-release-package|record-export-manifest-verifier|apply-alert-review-migrations|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-device-integration-smoke|alert-review-production-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke)(\.test)?\.mjs$/,
+    match: /^\.scripts\/(verify-alert-review-release-package|record-export-manifest-verifier|configure-nginx-stream-secret|apply-alert-review-migrations|alert-review-postgres-migration-smoke|alert-review-video-live-smoke|alert-review-device-integration-smoke|alert-review-production-smoke|alert-review-visible-copy-scan|alert-review-player-live-smoke|alert-review-segment-data-reconcile)(\.test)?\.mjs$/,
+  },
+  {
+    group: 'FR production media deployment',
+    match: /^\.scripts\/docker\/(docker-compose\.yml|env\.example|install_middleware_linux\.sh|upload_minio_data\.sh)$/,
   },
   {
     group: 'DEVICE review backend',
@@ -18,12 +22,12 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint)\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim)\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(AlertReviewDataSchemaValidatorTest|ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|MediaPermissionCheckControllerTest|NotifyReviewRuntimeOutboxPublisherTest|SupervisionAlertReview|SupervisionSchemaSqlTest|VideoMediaServiceRequestSignerTest)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(AlertReviewDataSchemaValidatorTest|ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|MediaPermissionCheckControllerTest|NotifyReviewRuntimeOutboxPublisherTest|ReviewEvidenceManifestSignerTest|SupervisionAlertReview|SupervisionSchemaSqlTest|VideoMediaServiceRequestSignerTest)/,
   },
   {
     group: 'DEVICE video integration config',
@@ -32,12 +36,16 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'VIDEO record evidence package',
     match:
-      /^VIDEO\/(app\/blueprints\/(camera|record)\.py|app\/services\/(media_authorization_service|record_(export|export_manifest_verifier|video).*)\.py|test_(media_authorization|record_(availability|export))\.py|docker-compose\.yaml|env\.example)$/,
+      /^VIDEO\/(\.gitignore|apply_migrations\.py|bootstrap_schema\.py|enforce_private_media_buckets\.py|prepare_database\.py|schema_lock\.py|run\.py|models\.py|migrations\/(V20260711__device_detection_region_rule_fields|V20260712__record_snapshot_tenant_scope|V20260713__alert_image_playback_tenant_scope)\.sql|app\/blueprints\/(alert|camera|device_detection_region|playback|record|snap)\.py|app\/services\/(alert_service|algorithm_task_daemon|algorithm_task_launcher_service|auto_frame_extraction_service|device_detection_region_service|dvr_upload_service|library_matching_service|local_media_path_service|media_authorization_service|media_janitor_service|media_kafka_service|media_resource_guard|playback_disk_guard_service|post_process_launcher_service|record_cache_flush_event_service|seekable_playback_service|snap_(image|space|task|upload)_service|space_(file_metadata|folder_tree|group_save_time)_service|storage_service|stream_forward_launcher_service|record_(export|export_manifest_verifier|space|video).*)\.py|app\/utils\/(face_model_paths|minio_bucket_policy|patrol_snap_upload|plate_model_paths|video_env)\.py|services\/(patrol_algorithm_service|realtime_algorithm_service|snapshot_algorithm_service)\/run_deploy\.py|test_(alert_hook_direct_persist|alert_media_serialization|alert_notification|alert_tenant_scope|apply_migrations|archive_atomicity|device_detection_region_persistence|local_media_path_security|media_authorization|minio_bucket_policy|playback_media_authorization|record_(availability|export)|record_export_minio_smoke|record_space_tenant_listing|seekable_playback|snap_media_authorization|stream_forward|subprocess_environment|tenant_media_(maintenance|persistence)|tenant_migration_postgres)\.py|tests\/(test_gb28181_sync_service|test_realtime_algorithm_context|test_stream_url_sync_service)\.py|docker-compose\.yaml|env\.example)$/,
+  },
+  {
+    group: 'Protected media raw proxy package',
+    match: /^(AI\/(app\/blueprints\/minio_proxy|tests\/test_minio_proxy)\.py|AI\/docker-compose\.yaml|APP\/(conf\/nginx\.conf|docker-compose\.yaml)|WEB\/(conf\/nginx(?:\.mini)?\.conf|docker-compose\.yaml|install_linux\.sh))$/,
   },
   {
     group: 'WEB alert review workbench package',
     match:
-      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/(patrol|device_detection_region))\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/(alertRecord|alertRecordPlayback|withInstall)\.ts|src\/views\/(alert\/(index\.vue|components\/AlertReviewWorkbench\.vue)|camera\/components\/DeviceRegionDrawer\/index\.vue))/,
+      /^WEB\/(package\.json|scripts\/(alert-review-workbench-e2e-check(\.test)?|alert-review-playback-contract\.test)\.mjs|scripts\/fixtures\/alert-review-workbench-e2e\/|src\/api\/(supervision\/alertReview|device\/(patrol|device_detection_region|snap))\.ts|src\/components\/(VideoPlayer\/DialogPlayer\.vue|Player\/module\/jessibuca\.vue)|src\/utils\/(alertRecord|alertRecordPlayback|withInstall)\.ts|src\/views\/(alert\/(index\.vue|components\/AlertReviewWorkbench\.vue)|camera\/components\/(DeviceRegionDrawer\/index\.vue|SnapSpace\/SnapSpaceImageGallery\.vue)))/,
   },
   {
     group: 'FR documentation package',
@@ -52,10 +60,12 @@ const MOJIBAKE_PATTERNS = [
   { pattern: '\u9363\u3125\u5534\u95ae\u3129\u654a\u7487', reason: 'encoding_mojibake' },
 ];
 
-const TRACKED_RELEASE_PATHS = [
+export const TRACKED_RELEASE_PATHS = [
   '.scripts/verify-alert-review-release-package.mjs',
   '.scripts/verify-alert-review-release-package.test.mjs',
   '.scripts/record-export-manifest-verifier.mjs',
+  '.scripts/configure-nginx-stream-secret.mjs',
+  '.scripts/configure-nginx-stream-secret.test.mjs',
   '.scripts/apply-alert-review-migrations.mjs',
   '.scripts/apply-alert-review-migrations.test.mjs',
   '.scripts/alert-review-postgres-migration-smoke.mjs',
@@ -70,6 +80,17 @@ const TRACKED_RELEASE_PATHS = [
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
   '.scripts/alert-review-player-live-smoke.test.mjs',
+  '.scripts/alert-review-segment-data-reconcile.mjs',
+  '.scripts/alert-review-segment-data-reconcile.test.mjs',
+  '.scripts/docker/docker-compose.yml',
+  '.scripts/docker/env.example',
+  '.scripts/docker/install_middleware_linux.sh',
+  '.scripts/docker/upload_minio_data.sh',
+  'AI/app/blueprints/minio_proxy.py',
+  'AI/tests/test_minio_proxy.py',
+  'AI/docker-compose.yaml',
+  'APP/conf/nginx.conf',
+  'APP/docker-compose.yaml',
   'DEVICE/docker-compose.yml',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java',
@@ -96,26 +117,106 @@ const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
+  'VIDEO/.gitignore',
+  'VIDEO/apply_migrations.py',
+  'VIDEO/bootstrap_schema.py',
+  'VIDEO/enforce_private_media_buckets.py',
+  'VIDEO/prepare_database.py',
+  'VIDEO/schema_lock.py',
+  'VIDEO/run.py',
+  'VIDEO/models.py',
+  'VIDEO/app/blueprints/alert.py',
+  'VIDEO/app/blueprints/playback.py',
   'VIDEO/app/blueprints/record.py',
+  'VIDEO/app/blueprints/snap.py',
   'VIDEO/app/blueprints/camera.py',
+  'VIDEO/app/blueprints/device_detection_region.py',
+  'VIDEO/app/services/device_detection_region_service.py',
+  'VIDEO/app/services/alert_service.py',
+  'VIDEO/app/services/algorithm_task_daemon.py',
+  'VIDEO/app/services/algorithm_task_launcher_service.py',
+  'VIDEO/app/services/auto_frame_extraction_service.py',
+  'VIDEO/app/services/dvr_upload_service.py',
+  'VIDEO/app/services/library_matching_service.py',
+  'VIDEO/app/services/local_media_path_service.py',
   'VIDEO/app/services/media_authorization_service.py',
+  'VIDEO/app/services/media_janitor_service.py',
+  'VIDEO/app/services/media_kafka_service.py',
+  'VIDEO/app/services/media_resource_guard.py',
+  'VIDEO/app/services/playback_disk_guard_service.py',
+  'VIDEO/app/services/post_process_launcher_service.py',
+  'VIDEO/app/services/record_cache_flush_event_service.py',
   'VIDEO/app/services/record_export_manifest_verifier.py',
   'VIDEO/app/services/record_export_service.py',
+  'VIDEO/app/services/record_space_service.py',
   'VIDEO/app/services/record_video_service.py',
+  'VIDEO/app/services/seekable_playback_service.py',
+  'VIDEO/app/services/snap_image_service.py',
+  'VIDEO/app/services/snap_space_service.py',
+  'VIDEO/app/services/snap_task_service.py',
+  'VIDEO/app/services/snap_upload_service.py',
+  'VIDEO/app/services/space_file_metadata_service.py',
+  'VIDEO/app/services/space_folder_tree_service.py',
+  'VIDEO/app/services/space_group_save_time_service.py',
+  'VIDEO/app/services/stream_forward_launcher_service.py',
+  'VIDEO/app/services/storage_service.py',
+  'VIDEO/app/utils/face_model_paths.py',
+  'VIDEO/app/utils/minio_bucket_policy.py',
+  'VIDEO/app/utils/patrol_snap_upload.py',
+  'VIDEO/app/utils/plate_model_paths.py',
+  'VIDEO/app/utils/video_env.py',
+  'VIDEO/services/patrol_algorithm_service/run_deploy.py',
+  'VIDEO/services/realtime_algorithm_service/run_deploy.py',
+  'VIDEO/services/snapshot_algorithm_service/run_deploy.py',
+  'VIDEO/migrations/V20260711__device_detection_region_rule_fields.sql',
+  'VIDEO/migrations/V20260712__record_snapshot_tenant_scope.sql',
+  'VIDEO/migrations/V20260713__alert_image_playback_tenant_scope.sql',
   'VIDEO/docker-compose.yaml',
+  'VIDEO/test_apply_migrations.py',
+  'VIDEO/test_archive_atomicity.py',
+  'VIDEO/test_alert_hook_direct_persist.py',
+  'VIDEO/test_alert_media_serialization.py',
+  'VIDEO/test_alert_notification.py',
+  'VIDEO/test_alert_tenant_scope.py',
+  'VIDEO/test_device_detection_region_persistence.py',
+  'VIDEO/test_local_media_path_security.py',
   'VIDEO/test_record_availability.py',
   'VIDEO/test_record_export.py',
+  'VIDEO/test_record_export_minio_smoke.py',
+  'VIDEO/test_record_space_tenant_listing.py',
   'VIDEO/test_media_authorization.py',
+  'VIDEO/test_minio_bucket_policy.py',
+  'VIDEO/test_playback_media_authorization.py',
+  'VIDEO/test_seekable_playback.py',
+  'VIDEO/test_snap_media_authorization.py',
+  'VIDEO/test_stream_forward.py',
+  'VIDEO/test_subprocess_environment.py',
+  'VIDEO/test_tenant_media_maintenance.py',
+  'VIDEO/test_tenant_media_persistence.py',
+  'VIDEO/test_tenant_migration_postgres.py',
+  'VIDEO/tests/test_gb28181_sync_service.py',
+  'VIDEO/tests/test_realtime_algorithm_context.py',
+  'VIDEO/tests/test_stream_url_sync_service.py',
   'VIDEO/env.example',
   'WEB/package.json',
+  'WEB/conf/nginx.conf',
+  'WEB/conf/nginx.mini.conf',
+  'WEB/docker-compose.yaml',
+  'WEB/install_linux.sh',
   'WEB/scripts/alert-review-workbench-e2e-check.mjs',
   'WEB/scripts/alert-review-workbench-e2e-check.test.mjs',
   'WEB/scripts/alert-review-playback-contract.test.mjs',
   'WEB/scripts/fixtures/alert-review-workbench-e2e',
   'WEB/src/api/device/patrol.ts',
   'WEB/src/api/device/device_detection_region.ts',
+  'WEB/src/api/device/snap.ts',
   'WEB/src/api/supervision/alertReview.ts',
   'WEB/src/components/VideoPlayer/DialogPlayer.vue',
   'WEB/src/components/Player/module/jessibuca.vue',
@@ -125,6 +226,7 @@ const TRACKED_RELEASE_PATHS = [
   'WEB/src/views/alert/components/AlertReviewWorkbench.vue',
   'WEB/src/views/alert/index.vue',
   'WEB/src/views/camera/components/DeviceRegionDrawer/index.vue',
+  'WEB/src/views/camera/components/SnapSpace/SnapSpaceImageGallery.vue',
   'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
   'docs/superpowers/plans/2026-06-30-alert-review-phase-2.md',
   'docs/superpowers/plans/2026-07-01-alert-review-fr13-fr16.md',
@@ -281,6 +383,8 @@ export function scanWebTypecheckGate(files) {
 export function scanMediaPermissionGate(files) {
   const migrationPath = 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql';
   const migration = files.find((file) => normalizePath(file.path || '') === migrationPath);
+  const managementMigrationPath = 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql';
+  const managementMigration = files.find((file) => normalizePath(file.path || '') === managementMigrationPath);
   const appConfigPath = 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml';
   const appConfig = files.find((file) => normalizePath(file.path || '') === appConfigPath);
   const blockers = [];
@@ -291,7 +395,6 @@ export function scanMediaPermissionGate(files) {
       ['system:supervision-alert-review:media:export', 'media_permission_export_seed_missing'],
       ['system:supervision-alert-review:media:download', 'media_permission_download_seed_missing'],
       ['system:supervision-alert-review:media:manifest', 'media_permission_manifest_seed_missing'],
-      ['system:supervision-alert-review:media:manage', 'media_permission_manage_seed_missing'],
     ];
     const migrationContent = String(migration.content ?? '');
     for (const [permission, reason] of permissionReasons) {
@@ -303,6 +406,14 @@ export function scanMediaPermissionGate(files) {
         });
       }
     }
+  }
+  if (managementMigration
+      && !String(managementMigration.content ?? '').includes('system:supervision-alert-review:media:manage')) {
+    blockers.push({
+      path: managementMigrationPath,
+      group: releaseGroupFor(managementMigrationPath),
+      reason: 'media_permission_manage_seed_missing',
+    });
   }
   if (appConfig) {
     const configContent = String(appConfig.content ?? '');
@@ -330,12 +441,354 @@ export function scanMediaPermissionGate(files) {
   };
 }
 
+const RAW_MINIO_PROTECTED_BUCKETS = [
+  'record-space',
+  'snap-space',
+  'camera-screenshots',
+  'alert-images',
+  'record-archive',
+  'snap-archive',
+  'review-evidence',
+];
+
+const RAW_MINIO_NGINX_PATHS = [
+  'APP/conf/nginx.conf',
+  'WEB/conf/nginx.conf',
+  'WEB/conf/nginx.mini.conf',
+];
+
+const STREAM_TICKET_COMPOSE_PATHS = [
+  'APP/docker-compose.yaml',
+  'WEB/docker-compose.yaml',
+];
+
+const STREAM_TICKET_INSTALL_PATHS = [
+  'WEB/install_linux.sh',
+];
+
+export function scanRawMinioProxyGate(files) {
+  const blockers = [];
+  const proxyPath = 'AI/app/blueprints/minio_proxy.py';
+  const proxy = files.find((file) => normalizePath(file.path || '') === proxyPath);
+  if (proxy) {
+    const content = String(proxy.content ?? '');
+    const guard = 'normalized_bucket in _PROTECTED_MEDIA_BUCKETS';
+    const guardIndex = content.indexOf(guard);
+    const downloadIndex = guardIndex === -1
+      ? -1
+      : content.indexOf('_download_from_minio(', guardIndex + guard.length);
+    const completeDenylist = content.includes('_PROTECTED_MEDIA_BUCKETS')
+      && RAW_MINIO_PROTECTED_BUCKETS.every(
+        (bucket) => content.includes(`'${bucket}'`) || content.includes(`"${bucket}"`),
+      )
+      && guardIndex !== -1
+      && downloadIndex > guardIndex
+      && content.includes('protected_media_bucket')
+      && /\b403\b/.test(content);
+    if (!completeDenylist) {
+      blockers.push({
+        path: proxyPath,
+        group: releaseGroupFor(proxyPath),
+        reason: 'raw_minio_protected_bucket_denylist_missing',
+      });
+    }
+  }
+
+  for (const path of RAW_MINIO_NGINX_PATHS) {
+    const nginx = files.find((file) => normalizePath(file.path || '') === path);
+    if (!nginx) {
+      continue;
+    }
+    const content = String(nginx.content ?? '');
+    const bucketLocation = extractNginxBucketLocation(content);
+    if (!bucketLocation) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'raw_minio_nginx_bucket_proxy_missing',
+      });
+      continue;
+    }
+    const directives = bucketLocation.replace(/#.*$/gm, '');
+    if (/\ballow\s+all\s*;/.test(directives)) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'raw_minio_nginx_bucket_allow_all',
+      });
+    }
+
+    const nginxDirectives = content.replace(/#.*$/gm, '');
+    if (/\bset\s+\$stream_secret\s+"[^"]+"\s*;/.test(nginxDirectives)) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'stream_ticket_hardcoded_secret',
+      });
+    }
+    if (!/\binclude\s+[^;]*yfeieye-stream-secret[^;]*;/.test(nginxDirectives)) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'stream_ticket_external_secret_missing',
+      });
+    }
+    const secureLinkCount = (nginxDirectives.match(
+      /\bsecure_link\s+\$arg_st\s*,\s*\$arg_e\s*;/g,
+    ) || []).length;
+    const secureLinkMd5Count = (nginxDirectives.match(
+      /\bsecure_link_md5\s+"\$arg_e\$uri\s+\$stream_secret"\s*;/g,
+    ) || []).length;
+    const deniedCount = (nginxDirectives.match(
+      /if\s*\(\s*\$secure_link\s*=\s*""\s*\)\s*\{\s*return\s+403\s*;\s*\}/g,
+    ) || []).length;
+    const expiredCount = (nginxDirectives.match(
+      /if\s*\(\s*\$secure_link\s*=\s*"0"\s*\)\s*\{\s*return\s+410\s*;\s*\}/g,
+    ) || []).length;
+    if (secureLinkCount < 2 || secureLinkMd5Count < 2 || deniedCount < 2 || expiredCount < 2) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'stream_ticket_enforcement_missing',
+      });
+    }
+  }
+
+  for (const path of STREAM_TICKET_COMPOSE_PATHS) {
+    const compose = files.find((file) => normalizePath(file.path || '') === path);
+    if (!compose) continue;
+    const content = String(compose.content ?? '').replace(/#.*$/gm, '');
+    if (!/YFEIEYE_NGINX_SECRET_DIR[^\n]*:\/etc\/nginx\/yfeieye-secrets:ro/.test(content)) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'stream_ticket_secret_mount_missing',
+      });
+    }
+  }
+
+  for (const path of STREAM_TICKET_INSTALL_PATHS) {
+    const installer = files.find((file) => normalizePath(file.path || '') === path);
+    if (!installer) continue;
+    const content = String(installer.content ?? '').replace(/#.*$/gm, '');
+    if (!containsAll(content, [
+      'configure-nginx-stream-secret.mjs',
+      '--env-file=',
+      '--skip-nginx-check',
+    ])) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'stream_ticket_secret_install_hook_missing',
+      });
+    }
+  }
+
+  return { ok: blockers.length === 0, blockers };
+}
+
+function extractNginxBucketLocation(content) {
+  const match = /location\s+(?:\^~\s+)?\/api\/v1\/buckets\/?\s*\{/.exec(content);
+  if (!match) {
+    return null;
+  }
+  const start = match.index + match[0].lastIndexOf('{');
+  let depth = 0;
+  for (let index = start; index < content.length; index += 1) {
+    if (content[index] === '{') {
+      depth += 1;
+    } else if (content[index] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(start, index + 1);
+      }
+    }
+  }
+  return null;
+}
+
 export function scanVideoIntegrationConfigGate(files) {
   const path = 'DEVICE/docker-compose.yml';
   const compose = files.find((file) => normalizePath(file.path || '') === path);
-  if (!compose) return { ok: true, blockers: [] };
-  const content = String(compose.content ?? '');
   const blockers = [];
+  const videoComposePath = 'VIDEO/docker-compose.yaml';
+  const videoCompose = files.find((file) => normalizePath(file.path || '') === videoComposePath);
+  const videoMigrationRunnerPath = 'VIDEO/apply_migrations.py';
+  const videoMigrationRunner = files.find((file) => normalizePath(file.path || '') === videoMigrationRunnerPath);
+  const videoSchemaBootstrapPath = 'VIDEO/bootstrap_schema.py';
+  const videoSchemaBootstrap = files.find((file) => normalizePath(file.path || '') === videoSchemaBootstrapPath);
+  const videoSchemaCoordinatorPath = 'VIDEO/prepare_database.py';
+  const videoSchemaCoordinator = files.find((file) => normalizePath(file.path || '') === videoSchemaCoordinatorPath);
+  const videoSchemaLockPath = 'VIDEO/schema_lock.py';
+  const videoSchemaLock = files.find((file) => normalizePath(file.path || '') === videoSchemaLockPath);
+  if (videoSchemaBootstrap && !containsAll(String(videoSchemaBootstrap.content ?? ''), [
+    'fresh-install baseline',
+    'db.create_all()',
+    'SQLALCHEMY_DATABASE_URI',
+    'DATABASE_URL is required',
+  ])) {
+    blockers.push({
+      path: videoSchemaBootstrapPath,
+      group: releaseGroupFor(videoSchemaBootstrapPath),
+      reason: 'video_fresh_install_schema_bootstrap_incomplete',
+    });
+  }
+  if (videoSchemaCoordinator && !containsAll(String(videoSchemaCoordinator.content ?? ''), [
+    'production_schema_lock',
+    'bootstrap_schema(database_url)',
+    'apply_migrations(database_url, plan, acquire_lock=False)',
+  ])) {
+    blockers.push({
+      path: videoSchemaCoordinatorPath,
+      group: releaseGroupFor(videoSchemaCoordinatorPath),
+      reason: 'video_schema_coordinator_incomplete',
+    });
+  }
+  if (videoSchemaLock && !containsAll(String(videoSchemaLock.content ?? ''), [
+    'pg_try_advisory_lock',
+    'SET statement_timeout',
+    'SET lock_timeout',
+    'TimeoutError',
+    'pg_advisory_unlock',
+  ])) {
+    blockers.push({
+      path: videoSchemaLockPath,
+      group: releaseGroupFor(videoSchemaLockPath),
+      reason: 'video_schema_lock_not_bounded',
+    });
+  }
+  const videoEnvExamplePath = 'VIDEO/env.example';
+  const videoEnvExample = files.find((file) => normalizePath(file.path || '') === videoEnvExamplePath);
+  if (videoEnvExample && !containsAll(String(videoEnvExample.content ?? ''), [
+    'YFEIEYE_MEDIA_AUTHORIZATION_URL',
+    'YFEIEYE_MEDIA_SERVICE_HMAC_KEYS',
+    'YFEIEYE_MEDIA_SERVICE_POLICIES',
+    'YFEIEYE_MEDIA_SERVICE_HMAC_SECRET',
+    'YFEIEYE_MEDIA_SERVICE_IDS',
+    'YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS',
+    'YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS',
+    'YFEIEYE_MEDIA_ACCESS_AUDIT_DIR',
+    'YFEIEYE_RECORD_EXPORT_HMAC_KEYS',
+    'YFEIEYE_RECORD_EXPORT_ACTIVE_KEY_ID',
+    'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE=minio',
+    'YFEIEYE_RECORD_EXPORT_S3_ENDPOINT',
+    'YFEIEYE_RECORD_EXPORT_S3_ACCESS_KEY',
+    'YFEIEYE_RECORD_EXPORT_S3_SECRET_KEY',
+    'YFEIEYE_SEEKABLE_PLAYBACK_CACHE_DIR',
+    'YFEIEYE_SEEKABLE_PLAYBACK_CACHE_TTL_SECONDS',
+    'YFEIEYE_SEEKABLE_PLAYBACK_CACHE_MAX_BYTES',
+    'YFEIEYE_SEEKABLE_PLAYBACK_LOCK_STALE_SECONDS',
+    'YFEIEYE_SEEKABLE_PLAYBACK_LOCK_HEARTBEAT_SECONDS',
+    'YFEIEYE_SEEKABLE_PLAYBACK_READ_LEASE_STALE_SECONDS',
+    'YFEIEYE_SEEKABLE_PLAYBACK_MAX_OUTPUT_BYTES',
+    'YFEIEYE_RECORD_CACHE_EVENT_RETENTION_HOURS',
+    'YFEIEYE_RECORD_CACHE_EVENT_MAX_FILES',
+    'YFEIEYE_RECORD_DRIFT_LOOKBACK_HOURS',
+    'YFEIEYE_FFMPEG_MAX_CONCURRENT',
+    'YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS',
+    'YFEIEYE_FFMPEG_THREADS',
+    'YFEIEYE_FFMPEG_FILTER_THREADS',
+    'YFEIEYE_FFMPEG_TIMEOUT_BASE_SECONDS',
+    'YFEIEYE_FFMPEG_TIMEOUT_PER_MEDIA_SECOND',
+    'YFEIEYE_FFMPEG_TIMEOUT_MAX_SECONDS',
+    'YFEIEYE_MEDIA_DISK_MIN_FREE_BYTES',
+    'YFEIEYE_RECORD_EXPORT_STORE_MAX_BYTES',
+    'YFEIEYE_RECORD_EXPORT_TEMP_DIR',
+    'YFEIEYE_RECORD_EXPORT_TEMP_MAX_BYTES',
+    'YFEIEYE_RECORD_EXPORT_ORPHAN_TTL_SECONDS',
+    'YFEIEYE_VIDEO_SCHEMA_LOCK_WAIT_SECONDS',
+    'YFEIEYE_VIDEO_SCHEMA_STATEMENT_TIMEOUT_MS',
+    'YFEIEYE_VIDEO_SCHEMA_DB_LOCK_TIMEOUT_MS',
+  ])) {
+    blockers.push({
+      path: videoEnvExamplePath,
+      group: releaseGroupFor(videoEnvExamplePath),
+      reason: 'video_production_security_env_contract_missing',
+    });
+  }
+  if (videoMigrationRunner && !containsAll(String(videoMigrationRunner.content ?? ''), [
+    'MIGRATION_FILES',
+    'V20260711__device_detection_region_rule_fields.sql',
+    'V20260712__record_snapshot_tenant_scope.sql',
+    'yfeieye_video_schema_history',
+    'acquire_schema_lock',
+    'checksum mismatch for migration',
+    'strip_outer_transaction',
+    'verify_only',
+    'YFEIEYE_VIDEO_LEGACY_TENANT_ID',
+  ])) {
+    blockers.push({
+      path: videoMigrationRunnerPath,
+      group: releaseGroupFor(videoMigrationRunnerPath),
+      reason: 'video_production_migration_runner_incomplete',
+    });
+  }
+  if (videoCompose) {
+    const videoComposeContent = String(videoCompose.content ?? '');
+    if (!videoComposeContent.includes(
+      'YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}',
+    )) {
+      blockers.push({
+        path: videoComposePath,
+        group: releaseGroupFor(videoComposePath),
+        reason: 'video_integration_playback_ticket_window_missing',
+      });
+    }
+    if (!containsAll(videoComposeContent, [
+      'python /app/prepare_database.py',
+      'python /app/apply_migrations.py --verify-only',
+      'exec python /app/run.py',
+    ])) {
+      blockers.push({
+        path: videoComposePath,
+        group: releaseGroupFor(videoComposePath),
+        reason: 'video_production_migration_entrypoint_missing',
+      });
+    }
+    if (!containsAll(videoComposeContent, [
+      'YFEIEYE_FFMPEG_MAX_CONCURRENT=${YFEIEYE_FFMPEG_MAX_CONCURRENT:-1}',
+      'YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS=${YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS:-30}',
+      'YFEIEYE_FFMPEG_THREADS=${YFEIEYE_FFMPEG_THREADS:-1}',
+      'YFEIEYE_FFMPEG_FILTER_THREADS=${YFEIEYE_FFMPEG_FILTER_THREADS:-1}',
+      'YFEIEYE_FFMPEG_TIMEOUT_BASE_SECONDS=${YFEIEYE_FFMPEG_TIMEOUT_BASE_SECONDS:-30}',
+      'YFEIEYE_FFMPEG_TIMEOUT_PER_MEDIA_SECOND=${YFEIEYE_FFMPEG_TIMEOUT_PER_MEDIA_SECOND:-4}',
+      'YFEIEYE_FFMPEG_TIMEOUT_MAX_SECONDS=${YFEIEYE_FFMPEG_TIMEOUT_MAX_SECONDS:-600}',
+      'YFEIEYE_MEDIA_DISK_MIN_FREE_BYTES=${YFEIEYE_MEDIA_DISK_MIN_FREE_BYTES:-2147483648}',
+      'YFEIEYE_RECORD_EXPORT_STORE_MAX_BYTES=${YFEIEYE_RECORD_EXPORT_STORE_MAX_BYTES:-2147483648}',
+      'YFEIEYE_RECORD_EXPORT_TEMP_DIR=/data/yfeieye-record-exports/tmp',
+      'YFEIEYE_RECORD_EXPORT_TEMP_MAX_BYTES=${YFEIEYE_RECORD_EXPORT_TEMP_MAX_BYTES:-1073741824}',
+      'YFEIEYE_RECORD_EXPORT_ORPHAN_TTL_SECONDS=${YFEIEYE_RECORD_EXPORT_ORPHAN_TTL_SECONDS:-3600}',
+      'YFEIEYE_SEEKABLE_PLAYBACK_MAX_OUTPUT_BYTES=${YFEIEYE_SEEKABLE_PLAYBACK_MAX_OUTPUT_BYTES:-1073741824}',
+    ])) {
+      blockers.push({
+        path: videoComposePath,
+        group: releaseGroupFor(videoComposePath),
+        reason: 'video_resource_control_compose_wiring_missing',
+      });
+    }
+    if (/YFEIEYE_RECORD_EXPORT_(?:HMAC_KEYS|ACTIVE_KEY_ID)=\$\{[^}]*:-\}/.test(videoComposeContent)
+        || /YFEIEYE_MEDIA_SERVICE_(?:HMAC_KEYS|POLICIES)=\$\{[^}]*:-\}/.test(videoComposeContent)) {
+      blockers.push({
+        path: videoComposePath,
+        group: releaseGroupFor(videoComposePath),
+        reason: 'video_production_secret_env_file_overridden',
+      });
+    }
+  }
+  if (!compose) return { ok: blockers.length === 0, blockers };
+  const content = String(compose.content ?? '');
+  if (!containsAll(content, [
+    'YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}',
+    'YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}',
+    'YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE=${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:-YFEIEYE_REVIEW_RUNTIME_ALERT}',
+    'YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE=${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:-YFEIEYE_REVIEW_OPERATIONS_REPORT}',
+  ])) {
+    blockers.push({
+      path,
+      group: releaseGroupFor(path),
+      reason: 'runtime_outbox_notify_compose_wiring_missing',
+    });
+  }
   const defaults = new Map();
   for (const name of [
     'YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL',
@@ -405,6 +858,28 @@ export function scanLiveVideoEvidenceGate(files) {
       path: '.scripts/alert-review-video-live-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
       reason: 'live_video_coverage_url_runtime_alias_guard_missing',
+    });
+  }
+  if (liveVideo && liveVideo.content.includes('parseArgs') && !containsAll(liveVideo.content, [
+    'token: env.YFEIEYE_VIDEO_SMOKE_TOKEN',
+    "arg.startsWith('--token=')",
+    '!options.allowLocalEndpoints && !hasText(options.token)',
+    'missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_release_token_required_missing',
+    });
+  }
+  if (liveVideo && liveVideo.content.includes('runSmoke') && !containsAll(liveVideo.content, [
+    'withBearerAuthorization',
+    'const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token)',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_bearer_wrapper_missing',
     });
   }
   if (liveVideo && liveVideo.content.includes('selectPlayableSegment') && !containsAll(liveVideo.content, [
@@ -590,6 +1065,25 @@ export function scanLiveVideoEvidenceGate(files) {
     });
   }
   const productionSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-production-smoke.mjs');
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand')
+      && !productionSmoke.content.includes('--token=${options.token}')) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_live_video_token_wiring_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
+    'maskSensitiveArg',
+    "value.startsWith('--token=')",
+    "return '--token=***'",
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_token_log_mask_missing',
+    });
+  }
   if (productionSmoke && !containsAll(productionSmoke.content, [
     'payload.manifestSignature',
     'summary.manifestSignature',
@@ -1113,12 +1607,14 @@ function runCli() {
   const textResult = scanTextQuality(releaseTextFiles);
   const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
   const mediaPermissionResult = scanMediaPermissionGate(releaseTextFiles);
+  const rawMinioProxyResult = scanRawMinioProxyGate(releaseTextFiles);
   const videoIntegrationConfigResult = scanVideoIntegrationConfigGate(releaseTextFiles);
   const liveVideoEvidenceResult = scanLiveVideoEvidenceGate(releaseTextFiles);
   const traceabilityResult = scanReleaseTraceabilityGate(releaseTextFiles);
   result.blockers.push(...textResult.blockers);
   result.blockers.push(...webTypecheckResult.blockers);
   result.blockers.push(...mediaPermissionResult.blockers);
+  result.blockers.push(...rawMinioProxyResult.blockers);
   result.blockers.push(...videoIntegrationConfigResult.blockers);
   result.blockers.push(...liveVideoEvidenceResult.blockers);
   result.blockers.push(...traceabilityResult.blockers);

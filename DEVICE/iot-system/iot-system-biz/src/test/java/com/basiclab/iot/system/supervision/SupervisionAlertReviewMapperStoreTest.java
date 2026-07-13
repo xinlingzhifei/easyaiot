@@ -2,6 +2,8 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.core.context.TenantContextHolder;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSegmentDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseAuditMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseItemMapper;
@@ -21,6 +23,7 @@ import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewUserS
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionEventMapper;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewMapperStore;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +42,215 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionAlertReviewMapperStoreTest {
+
+    @Test
+    void evidenceDownloadAuditPersistsActualArchiveHashAndKeepsLogicalPackageHash() {
+        String logicalPackageHash = "sha256:" + "1".repeat(64);
+        String archiveHash = "sha256:" + "2".repeat(64);
+        AtomicReference<SupervisionAlertReviewCaseAuditDO> insertedAudit = new AtomicReference<>();
+        SupervisionAlertReviewExportJobMapper exportMapper = mapper(
+                SupervisionAlertReviewExportJobMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectByJobNo".equals(method.getName())) {
+                        return new SupervisionAlertReviewExportJobDO()
+                                .setJobNo("REJ-archive")
+                                .setReviewCaseId(3001L)
+                                .setStatus(SupervisionAlertReviewService.EXPORT_JOB_READY)
+                                .setEvidenceUris("camera-01.mp4,camera-02.mp4")
+                                .setBoundEventIds("7001")
+                                .setFileHash(logicalPackageHash);
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewCaseAuditMapper auditMapper = mapper(
+                SupervisionAlertReviewCaseAuditMapper.class,
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        insertedAudit.set((SupervisionAlertReviewCaseAuditDO) args[0]);
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(auditMapper, exportMapper);
+
+        SupervisionAlertReviewService.ReviewEvidenceAuditEntry audit = store.recordEvidenceDownload(
+                "REJ-archive",
+                9001L,
+                "regulator download",
+                LocalDateTime.of(2026, 7, 11, 17, 0),
+                archiveHash,
+                Map.of("contentType", "application/zip", "contentLength", 4096L)
+        );
+
+        assertEquals(archiveHash, audit.fileHash());
+        assertEquals(archiveHash, audit.metadata().get("downloadFileHash"));
+        assertEquals(logicalPackageHash, audit.metadata().get("logicalPackageHash"));
+        assertTrue(insertedAudit.get().getActionNote().contains("fileHash=" + archiveHash));
+        assertTrue(insertedAudit.get().getMetadata().contains("\"downloadFileHash\":\"" + archiveHash + "\""));
+        assertTrue(insertedAudit.get().getMetadata().contains("\"logicalPackageHash\":\"" + logicalPackageHash + "\""));
+    }
+
+    @Test
+    void evidenceDownloadAuditRejectsMissingRealByteHashWithoutWritingAudit() {
+        AtomicInteger auditInsertCount = new AtomicInteger();
+        SupervisionAlertReviewExportJobMapper exportMapper = mapper(
+                SupervisionAlertReviewExportJobMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectByJobNo".equals(method.getName())) {
+                        return new SupervisionAlertReviewExportJobDO()
+                                .setJobNo("REJ-audit-only")
+                                .setReviewCaseId(3002L)
+                                .setStatus(SupervisionAlertReviewService.EXPORT_JOB_READY)
+                                .setFileHash("sha256:" + "1".repeat(64));
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewCaseAuditMapper auditMapper = mapper(
+                SupervisionAlertReviewCaseAuditMapper.class,
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        auditInsertCount.incrementAndGet();
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(auditMapper, exportMapper);
+
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> store.recordEvidenceDownload(
+                        "REJ-audit-only",
+                        9001L,
+                        "audit-only request",
+                        LocalDateTime.of(2026, 7, 11, 17, 10),
+                        null,
+                        Map.of()
+                ));
+
+        assertTrue(rejected.getMessage().contains("downloadFileHash"));
+        assertEquals(0, auditInsertCount.get());
+    }
+
+    @Test
+    void semanticTriggerAuditUsesCurrentTenantAndToleratesMalformedLegacyMetadata() {
+        AtomicReference<Object[]> lookupArgs = new AtomicReference<>();
+        AtomicReference<Object[]> insertArgs = new AtomicReference<>();
+        SupervisionAlertReviewCaseAuditMapper auditMapper = mapper(
+                SupervisionAlertReviewCaseAuditMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectSemanticTriggerAudits".equals(method.getName())) {
+                        lookupArgs.set(args);
+                        return List.of(
+                                new SupervisionAlertReviewCaseAuditDO()
+                                        .setReviewItemId(1001L)
+                                        .setActionType("semantic_trigger_evaluated")
+                                        .setMetadata("not-json")
+                                        .setOperatorUserId(9001L)
+                                        .setHappenedAt(LocalDateTime.of(2026, 7, 11, 10, 0)),
+                                new SupervisionAlertReviewCaseAuditDO()
+                                        .setReviewItemId(1001L)
+                                        .setActionType("semantic_trigger_evaluated")
+                                        .setMetadata("{\"schemaVersion\":\"semantic-trigger-evaluation-v1\",\"evaluationId\":\"sem-123e4567-e89b-42d3-a456-426614174000\",\"legacyNullable\":null}")
+                                        .setOperatorUserId(9001L)
+                                        .setHappenedAt(LocalDateTime.of(2026, 7, 11, 10, 1))
+                        );
+                    }
+                    if ("insertSemanticTriggerDecision".equals(method.getName())) {
+                        insertArgs.set(args);
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(
+                auditMapper,
+                noopMapper(SupervisionAlertReviewExportJobMapper.class)
+        );
+        String evaluationId = "sem-123e4567-e89b-42d3-a456-426614174000";
+
+        try {
+            TenantContextHolder.setTenantId(42L);
+            List<SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord> audits =
+                    store.listSemanticTriggerAudits(evaluationId);
+            assertEquals(2, audits.size());
+            assertTrue(audits.get(0).metadata().isEmpty());
+            assertEquals(evaluationId, audits.get(1).metadata().get("evaluationId"));
+            assertTrue(audits.get(1).metadata().containsKey("legacyNullable"));
+            assertTrue(store.recordSemanticTriggerDecision(
+                    evaluationId,
+                    "semantic_trigger_confirmed",
+                    "confirmed",
+                    9100L,
+                    LocalDateTime.of(2026, 7, 11, 10, 2),
+                    Map.of("evaluationId", evaluationId)
+            ));
+        } finally {
+            TenantContextHolder.clear();
+        }
+
+        assertEquals(List.of(42L, evaluationId), List.of(lookupArgs.get()));
+        assertEquals(42L, insertArgs.get()[0]);
+        assertEquals(evaluationId, insertArgs.get()[1]);
+        assertEquals("semantic_trigger_confirmed", insertArgs.get()[2]);
+        assertEquals(9100L, insertArgs.get()[5]);
+    }
+
+    @Test
+    void evidenceAuditLookupPassesAllKeysAndCurrentTenantToBoundedMapperQueries() {
+        AtomicReference<Object[]> exportArgs = new AtomicReference<>();
+        AtomicReference<Object[]> auditArgs = new AtomicReference<>();
+        SupervisionAlertReviewExportJobMapper exportMapper = mapper(
+                SupervisionAlertReviewExportJobMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectEvidenceAuditLookup".equals(method.getName())) {
+                        exportArgs.set(args);
+                        return List.of();
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewCaseAuditMapper auditMapper = mapper(
+                SupervisionAlertReviewCaseAuditMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectEvidenceAuditLookup".equals(method.getName())) {
+                        auditArgs.set(args);
+                        return List.of();
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(auditMapper, exportMapper);
+        ReviewEvidenceAuditQuery query = new ReviewEvidenceAuditQuery(7001L, 3001L, 1001L, "REJ-7001");
+
+        try {
+            TenantContextHolder.setTenantId(42L);
+            store.listEvidenceAuditExportJobs(query);
+            store.listEvidenceAuditRecords(query);
+        } finally {
+            TenantContextHolder.clear();
+        }
+
+        assertEquals(List.of(42L, 7001L, 3001L, 1001L, "REJ-7001"), List.of(exportArgs.get()));
+        assertEquals(List.of(42L, 7001L, 3001L, 1001L, "REJ-7001"), List.of(auditArgs.get()));
+    }
+
+    @Test
+    void evidenceAuditLookupFailsClosedWithoutTenantContext() {
+        SupervisionAlertReviewMapperStore store = newStore(
+                noopMapper(SupervisionAlertReviewCaseAuditMapper.class),
+                noopMapper(SupervisionAlertReviewExportJobMapper.class)
+        );
+
+        SecurityException error = assertThrows(
+                SecurityException.class,
+                () -> store.listEvidenceAuditRecords(new ReviewEvidenceAuditQuery(7001L, null, null, null))
+        );
+
+        assertEquals("tenant context is required for evidence audit lookup", error.getMessage());
+    }
 
     @Test
     void appendClueLocksReviewItemRowBeforeMergingConcurrentSourceIds() {
@@ -587,6 +799,28 @@ class SupervisionAlertReviewMapperStoreTest {
                 noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),
                 noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
                 reviewSegmentMapper,
+                noopMapper(SupervisionAlertReviewReportAckMapper.class),
+                noopMapper(SupervisionEventMapper.class)
+        );
+    }
+
+    private static SupervisionAlertReviewMapperStore newStore(SupervisionAlertReviewCaseAuditMapper auditMapper,
+                                                              SupervisionAlertReviewExportJobMapper exportMapper) {
+        return new SupervisionAlertReviewMapperStore(
+                noopMapper(SupervisionAlertReviewItemMapper.class),
+                noopMapper(SupervisionAlertReviewEvidenceMapper.class),
+                noopMapper(SupervisionAlertReviewIngestIdentityMapper.class),
+                noopMapper(SupervisionAlertReviewRuleMapper.class),
+                noopMapper(SupervisionAlertReviewCaseMapper.class),
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class),
+                auditMapper,
+                exportMapper,
+                noopMapper(SupervisionAlertReviewSemanticIndexMapper.class),
+                noopMapper(SupervisionAlertReviewUserStatusMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
                 noopMapper(SupervisionAlertReviewReportAckMapper.class),
                 noopMapper(SupervisionEventMapper.class)
         );

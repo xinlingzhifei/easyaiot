@@ -23,6 +23,7 @@ declare global {
 }
 
 const imageUrl = '/scripts/fixtures/alert-review-workbench-e2e/region-snapshot.svg'
+const protectedImageUrl = '/video/camera/cam-east-gate/snapshot-image/tenants/1/cameras/cam-east-gate/region-snapshot.jpg'
 
 let regions: DeviceDetectionRegion[] = [{
   id: 801,
@@ -43,8 +44,8 @@ let regions: DeviceDetectionRegion[] = [{
   sort_order: 1,
   model_ids: [7],
   minStaySeconds: 15,
-  inertiaFrames: 3,
-  loiteringSeconds: 20,
+  inertiaFrames: 1,
+  loiteringSeconds: 5,
 }]
 
 function record(name: string, payload?: unknown) {
@@ -80,9 +81,6 @@ export async function updateDeviceRegion(regionId: number, data: Partial<DeviceD
           device_id: region.device_id,
           image_id: region.image_id,
           image_path: region.image_path,
-          minStaySeconds: region.minStaySeconds,
-          inertiaFrames: region.inertiaFrames,
-          loiteringSeconds: region.loiteringSeconds,
           points: data.points || region.points,
           model_ids: data.model_ids || region.model_ids || [],
         }
@@ -137,10 +135,15 @@ export async function captureDeviceSnapshot(deviceId: string) {
       msg: 'ok',
       data: {
         image_id: 9001,
-        image_url: imageUrl,
+        image_url: protectedImageUrl,
         width: 1,
         height: 1,
       },
     },
   }
+}
+
+export async function loadProtectedSnapshotObjectUrl(url: string) {
+  record('loadProtectedSnapshotObjectUrl', url)
+  return imageUrl
 }

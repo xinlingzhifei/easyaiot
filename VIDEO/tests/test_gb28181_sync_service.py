@@ -4,6 +4,8 @@ import types
 import unittest
 from pathlib import Path
 
+import app.services as app_services
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -61,6 +63,19 @@ def fake_gb28181_device_stream_urls(_device_id):
     )
 
 
+_missing = object()
+_previous_modules = {
+    name: sys.modules.get(name)
+    for name in (
+        "models",
+        "app.services.camera_service",
+        "app.services.gb28181_sync_service",
+    )
+}
+_previous_service_attributes = {
+    name: getattr(app_services, name, _missing)
+    for name in ('camera_service', 'gb28181_sync_service')
+}
 sys.modules["models"] = types.SimpleNamespace(Device=FakeDeviceModel, db=FakeDb())
 sys.modules["app.services.camera_service"] = types.SimpleNamespace(
     get_or_create_default_directory=lambda: types.SimpleNamespace(id=1),
@@ -69,6 +84,19 @@ sys.modules["app.services.camera_service"] = types.SimpleNamespace(
 )
 sys.modules.pop("app.services.gb28181_sync_service", None)
 gb28181_sync_service = importlib.import_module("app.services.gb28181_sync_service")
+for _module_name, _previous_module in _previous_modules.items():
+    if _previous_module is None:
+        sys.modules.pop(_module_name, None)
+    else:
+        sys.modules[_module_name] = _previous_module
+for _attribute_name, _previous_attribute in _previous_service_attributes.items():
+    if _previous_attribute is _missing:
+        try:
+            delattr(app_services, _attribute_name)
+        except AttributeError:
+            pass
+    else:
+        setattr(app_services, _attribute_name, _previous_attribute)
 
 
 class Gb28181SyncServiceTest(unittest.TestCase):

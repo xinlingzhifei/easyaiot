@@ -1,20 +1,23 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
+import * as releasePackageVerifier from './verify-alert-review-release-package.mjs';
+
+const {
   evaluateStatus,
   releaseEntriesForTrackedPaths,
   scanLiveVideoEvidenceGate,
   scanMediaPermissionGate,
+  scanRawMinioProxyGate,
   scanReleaseTraceabilityGate,
   scanVideoIntegrationConfigGate,
   scanWebTypecheckGate,
   scanTextQuality,
-} from './verify-alert-review-release-package.mjs';
+} = releasePackageVerifier;
 
 const clean = evaluateStatus(`
  M README.md
@@ -47,16 +50,121 @@ assert.deepEqual(stagedWorkbench.blockers, []);
 const untrackedGate = evaluateStatus(`
 ?? .scripts/verify-alert-review-release-package.mjs
 ?? .scripts/alert-review-visible-copy-scan.mjs
+?? .scripts/configure-nginx-stream-secret.mjs
 `);
 assert.equal(untrackedGate.ok, false);
 assert.equal(untrackedGate.blockers[0].group, 'FR release gate tooling');
 assert.equal(untrackedGate.blockers[1].group, 'FR release gate tooling');
+assert.equal(untrackedGate.blockers[2].group, 'FR release gate tooling');
+assert.equal(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(
+    '.scripts/configure-nginx-stream-secret.test.mjs',
+  ),
+  true,
+);
+
+const productionMediaDeploymentArtifacts = [
+  '.scripts/docker/docker-compose.yml',
+  '.scripts/docker/env.example',
+  '.scripts/docker/install_middleware_linux.sh',
+  '.scripts/docker/upload_minio_data.sh',
+  'AI/docker-compose.yaml',
+  'VIDEO/test_minio_bucket_policy.py',
+];
+const untrackedProductionMediaDeployment = evaluateStatus(
+  productionMediaDeploymentArtifacts.map((path) => `?? ${path}`).join('\n'),
+);
+assert.equal(untrackedProductionMediaDeployment.ok, false);
+assert.deepEqual(
+  untrackedProductionMediaDeployment.blockers.map((entry) => entry.group),
+  [
+    'FR production media deployment',
+    'FR production media deployment',
+    'FR production media deployment',
+    'FR production media deployment',
+    'Protected media raw proxy package',
+    'VIDEO record evidence package',
+  ],
+);
+for (const path of productionMediaDeploymentArtifacts) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
+assert.equal(
+  evaluateStatus('?? WEB/install_linux.sh').blockers[0]?.group,
+  'Protected media raw proxy package',
+);
+assert.equal(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS.includes('WEB/install_linux.sh'),
+  true,
+);
+
+const untrackedSegmentDataReconcile = evaluateStatus(`
+?? .scripts/alert-review-segment-data-reconcile.mjs
+`);
+assert.equal(untrackedSegmentDataReconcile.ok, false);
+assert.equal(untrackedSegmentDataReconcile.blockers[0].reason, 'untracked');
+assert.equal(untrackedSegmentDataReconcile.blockers[0].group, 'FR release gate tooling');
+
+const unstagedSegmentDataReconcileTest = evaluateStatus(`
+ M .scripts/alert-review-segment-data-reconcile.test.mjs
+`);
+assert.equal(unstagedSegmentDataReconcileTest.ok, false);
+assert.equal(unstagedSegmentDataReconcileTest.blockers[0].reason, 'unstaged');
+assert.equal(unstagedSegmentDataReconcileTest.blockers[0].group, 'FR release gate tooling');
+
+assert.deepEqual(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS?.filter((path) => path.includes('alert-review-segment-data-reconcile')),
+  [
+    '.scripts/alert-review-segment-data-reconcile.mjs',
+    '.scripts/alert-review-segment-data-reconcile.test.mjs',
+  ],
+);
 
 const untrackedBaselineMigration = evaluateStatus(`
 ?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql
 `);
 assert.equal(untrackedBaselineMigration.ok, false);
 assert.equal(untrackedBaselineMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const untrackedVideoTenantMigration = evaluateStatus(`
+?? VIDEO/migrations/V20260712__record_snapshot_tenant_scope.sql
+`);
+assert.equal(untrackedVideoTenantMigration.ok, false);
+assert.equal(untrackedVideoTenantMigration.blockers[0].group, 'VIDEO record evidence package');
+assert.ok(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(
+    'VIDEO/migrations/V20260712__record_snapshot_tenant_scope.sql',
+  ),
+);
+
+const videoP0TenantArtifacts = [
+  'VIDEO/migrations/V20260713__alert_image_playback_tenant_scope.sql',
+  'VIDEO/app/blueprints/playback.py',
+  'VIDEO/app/services/alert_service.py',
+  'VIDEO/app/services/library_matching_service.py',
+  'VIDEO/test_alert_media_serialization.py',
+  'VIDEO/test_alert_tenant_scope.py',
+  'VIDEO/test_playback_media_authorization.py',
+];
+const untrackedVideoP0TenantArtifacts = evaluateStatus(
+  videoP0TenantArtifacts.map((path) => `?? ${path}`).join('\n'),
+);
+assert.equal(untrackedVideoP0TenantArtifacts.ok, false);
+assert.deepEqual(
+  untrackedVideoP0TenantArtifacts.blockers.map((entry) => entry.group),
+  videoP0TenantArtifacts.map(() => 'VIDEO record evidence package'),
+);
+for (const path of videoP0TenantArtifacts) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
 
 const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'README.md',
@@ -94,13 +202,16 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryDO.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/pgsql/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryMapper.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryStore.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryMapperStore.java',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/NotifyReviewRuntimeOutboxPublisherTest.java',
 ]);
-assert.equal(trackedReleaseEntries.length, 39);
+assert.equal(trackedReleaseEntries.length, 42);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -196,6 +307,21 @@ assert.deepEqual(
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
+      'DEVICE schema and migration',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql',
+      'DEVICE schema and migration',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
+      'DEVICE schema and migration',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
       'DEVICE schema and migration',
     ],
     [
@@ -310,6 +436,87 @@ const untrackedDeletedSmallintMigration = evaluateStatus(`
 assert.equal(untrackedDeletedSmallintMigration.ok, false);
 assert.equal(untrackedDeletedSmallintMigration.blockers[0].group, 'DEVICE schema and migration');
 
+const untrackedSchedulerActivationMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql
+`);
+assert.equal(untrackedSchedulerActivationMigration.ok, false);
+assert.equal(untrackedSchedulerActivationMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const untrackedExportQueueMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql
+`);
+assert.equal(untrackedExportQueueMigration.ok, false);
+assert.equal(untrackedExportQueueMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const untrackedMediaManageMigration = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql
+`);
+assert.equal(untrackedMediaManageMigration.ok, false);
+assert.equal(untrackedMediaManageMigration.blockers[0].group, 'DEVICE schema and migration');
+
+const semanticTriggerConfirmationMigrationPath =
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql';
+const untrackedSemanticTriggerConfirmationMigration = evaluateStatus(`
+?? ${semanticTriggerConfirmationMigrationPath}
+`);
+assert.equal(untrackedSemanticTriggerConfirmationMigration.ok, false);
+assert.equal(
+  untrackedSemanticTriggerConfirmationMigration.blockers[0].group,
+  'DEVICE schema and migration',
+);
+assert.ok(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS?.includes(semanticTriggerConfirmationMigrationPath),
+  'semantic trigger confirmation migration must be included in the release package',
+);
+
+const semanticIndexClaimMigrationPath =
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql';
+const untrackedSemanticIndexClaimMigration = evaluateStatus(`
+?? ${semanticIndexClaimMigrationPath}
+`);
+assert.equal(untrackedSemanticIndexClaimMigration.ok, false);
+assert.equal(
+  untrackedSemanticIndexClaimMigration.blockers[0].group,
+  'DEVICE schema and migration',
+);
+assert.ok(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS?.includes(semanticIndexClaimMigrationPath),
+  'semantic index claim migration must be included in the release package',
+);
+
+const untrackedVideoRuntimeArtifacts = evaluateStatus(`
+ M VIDEO/.gitignore
+?? VIDEO/apply_migrations.py
+?? VIDEO/bootstrap_schema.py
+?? VIDEO/prepare_database.py
+?? VIDEO/schema_lock.py
+?? VIDEO/run.py
+?? VIDEO/models.py
+?? VIDEO/app/blueprints/alert.py
+?? VIDEO/app/blueprints/device_detection_region.py
+?? VIDEO/app/services/device_detection_region_service.py
+?? VIDEO/app/services/dvr_upload_service.py
+?? VIDEO/app/services/media_kafka_service.py
+?? VIDEO/app/services/record_cache_flush_event_service.py
+?? VIDEO/app/services/seekable_playback_service.py
+?? VIDEO/migrations/V20260711__device_detection_region_rule_fields.sql
+?? VIDEO/test_apply_migrations.py
+?? VIDEO/test_device_detection_region_persistence.py
+?? VIDEO/test_record_export_minio_smoke.py
+?? VIDEO/test_seekable_playback.py
+`);
+assert.equal(untrackedVideoRuntimeArtifacts.ok, false);
+assert.deepEqual(
+  untrackedVideoRuntimeArtifacts.blockers.map((entry) => entry.group),
+  Array(19).fill('VIDEO record evidence package'),
+);
+
+const untrackedManifestSignerTest = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/ReviewEvidenceManifestSignerTest.java
+`);
+assert.equal(untrackedManifestSignerTest.ok, false);
+assert.equal(untrackedManifestSignerTest.blockers[0].group, 'DEVICE review regression tests');
+
 const untrackedWorkbenchRunner = evaluateStatus(`
 ?? WEB/scripts/alert-review-workbench-e2e-check.test.mjs
 ?? WEB/scripts/alert-review-playback-contract.test.mjs
@@ -340,6 +547,240 @@ assert.deepEqual(
     'WEB alert review workbench package',
   ],
 );
+
+const newlyHardenedMediaArtifacts = [
+  'VIDEO/app/services/local_media_path_service.py',
+  'VIDEO/enforce_private_media_buckets.py',
+  'VIDEO/app/services/media_janitor_service.py',
+  'VIDEO/app/services/media_resource_guard.py',
+  'VIDEO/app/services/playback_disk_guard_service.py',
+  'VIDEO/app/utils/minio_bucket_policy.py',
+  'VIDEO/test_local_media_path_security.py',
+  'VIDEO/test_minio_bucket_policy.py',
+  'VIDEO/test_tenant_media_maintenance.py',
+  'WEB/src/api/device/snap.ts',
+  'WEB/src/views/camera/components/SnapSpace/SnapSpaceImageGallery.vue',
+];
+const untrackedHardenedMediaArtifacts = evaluateStatus(
+  newlyHardenedMediaArtifacts.map((path) => `?? ${path}`).join('\n'),
+);
+assert.equal(untrackedHardenedMediaArtifacts.ok, false);
+assert.deepEqual(
+  untrackedHardenedMediaArtifacts.blockers.map((entry) => entry.group),
+  [
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'WEB alert review workbench package',
+    'WEB alert review workbench package',
+  ],
+);
+for (const path of newlyHardenedMediaArtifacts) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
+
+const videoRuntimeHardeningArtifacts = [
+  'VIDEO/app/services/algorithm_task_daemon.py',
+  'VIDEO/app/services/post_process_launcher_service.py',
+  'VIDEO/app/services/stream_forward_launcher_service.py',
+  'VIDEO/app/utils/face_model_paths.py',
+  'VIDEO/app/utils/plate_model_paths.py',
+  'VIDEO/app/utils/video_env.py',
+  'VIDEO/test_subprocess_environment.py',
+  'VIDEO/tests/test_realtime_algorithm_context.py',
+];
+const untrackedVideoRuntimeHardening = evaluateStatus(
+  videoRuntimeHardeningArtifacts.map((path) => `?? ${path}`).join('\n'),
+);
+assert.equal(untrackedVideoRuntimeHardening.ok, false);
+assert.deepEqual(
+  untrackedVideoRuntimeHardening.blockers.map((entry) => entry.group),
+  videoRuntimeHardeningArtifacts.map(() => 'VIDEO record evidence package'),
+);
+for (const path of videoRuntimeHardeningArtifacts) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
+
+const protectedMediaProxyArtifacts = [
+  'AI/app/blueprints/minio_proxy.py',
+  'AI/tests/test_minio_proxy.py',
+  'APP/conf/nginx.conf',
+  'WEB/conf/nginx.conf',
+  'WEB/conf/nginx.mini.conf',
+  'VIDEO/app/services/space_folder_tree_service.py',
+  'VIDEO/app/services/space_group_save_time_service.py',
+  'VIDEO/test_archive_atomicity.py',
+  'VIDEO/test_record_space_tenant_listing.py',
+  'VIDEO/test_snap_media_authorization.py',
+];
+const untrackedProtectedMediaProxyArtifacts = evaluateStatus(
+  protectedMediaProxyArtifacts.map((path) => `?? ${path}`).join('\n'),
+);
+assert.equal(untrackedProtectedMediaProxyArtifacts.ok, false);
+assert.deepEqual(
+  untrackedProtectedMediaProxyArtifacts.blockers.map((entry) => entry.group),
+  [
+    'Protected media raw proxy package',
+    'Protected media raw proxy package',
+    'Protected media raw proxy package',
+    'Protected media raw proxy package',
+    'Protected media raw proxy package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+    'VIDEO record evidence package',
+  ],
+);
+for (const path of protectedMediaProxyArtifacts) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
+
+const protectedMediaBuckets = [
+  'record-space',
+  'snap-space',
+  'camera-screenshots',
+  'alert-images',
+  'record-archive',
+  'snap-archive',
+  'review-evidence',
+];
+const completeRawMinioProxyContent = `
+_PROTECTED_MEDIA_BUCKETS = frozenset({
+${protectedMediaBuckets.map((bucket) => `    '${bucket}',`).join('\n')}
+})
+def download_bucket_object(bucket_name):
+    normalized_bucket = bucket_name.strip().lower()
+    if normalized_bucket in _PROTECTED_MEDIA_BUCKETS:
+        return jsonify({'reason': 'protected_media_bucket'}), 403
+    return _download_from_minio(normalized_bucket, object_name, temp_path)
+`;
+const nginxBucketProxyContent = `
+set $stream_secret "";
+include /etc/nginx/yfeieye-secrets/yfeieye-stream-secret*.conf;
+location ^~ /api/v1/buckets {
+    proxy_pass http://ai-host:5000;
+}
+location ~ ^/(ai|live)/ {
+    secure_link $arg_st,$arg_e;
+    secure_link_md5 "$arg_e$uri $stream_secret";
+    if ($secure_link = "") { return 403; }
+    if ($secure_link = "0") { return 410; }
+}
+location ^~ /rtp/ {
+    secure_link $arg_st,$arg_e;
+    secure_link_md5 "$arg_e$uri $stream_secret";
+    if ($secure_link = "") { return 403; }
+    if ($secure_link = "0") { return 410; }
+}
+`;
+const completeRawMinioProxyGateScan = scanRawMinioProxyGate([
+  { path: 'AI/app/blueprints/minio_proxy.py', content: completeRawMinioProxyContent },
+  { path: 'APP/conf/nginx.conf', content: nginxBucketProxyContent },
+  { path: 'WEB/conf/nginx.conf', content: nginxBucketProxyContent },
+  { path: 'WEB/conf/nginx.mini.conf', content: nginxBucketProxyContent },
+  {
+    path: 'WEB/install_linux.sh',
+    content: 'node ../.scripts/configure-nginx-stream-secret.mjs --env-file=../VIDEO/.env.docker --skip-nginx-check',
+  },
+]);
+assert.equal(completeRawMinioProxyGateScan.ok, true);
+
+const missingStreamSecretInstallHookScan = scanRawMinioProxyGate([{
+  path: 'WEB/install_linux.sh',
+  content: 'docker compose up -d',
+}]);
+assert.equal(missingStreamSecretInstallHookScan.ok, false);
+assert.deepEqual(
+  missingStreamSecretInstallHookScan.blockers.map((blocker) => blocker.reason),
+  ['stream_ticket_secret_install_hook_missing'],
+);
+
+const webInstallerSource = readFileSync('WEB/install_linux.sh', 'utf8');
+const webUpdateFunction = webInstallerSource.match(/update_service\(\) \{[\s\S]*?\n\}/)?.[0] || '';
+assert.match(
+  webUpdateFunction,
+  /ensure_nginx_conf_for_profile/,
+  'WEB update must generate and validate the stream-ticket secret before Compose starts',
+);
+
+const incompleteRawMinioDenylistScan = scanRawMinioProxyGate([{
+  path: 'AI/app/blueprints/minio_proxy.py',
+  content: completeRawMinioProxyContent.replace("    'review-evidence',\n", ''),
+}]);
+assert.equal(incompleteRawMinioDenylistScan.ok, false);
+assert.deepEqual(incompleteRawMinioDenylistScan.blockers.map((blocker) => blocker.reason), [
+  'raw_minio_protected_bucket_denylist_missing',
+]);
+
+const publicNginxBucketProxyScan = scanRawMinioProxyGate([
+  { path: 'APP/conf/nginx.conf', content: nginxBucketProxyContent.replace('{', '{\n    allow all;') },
+  { path: 'WEB/conf/nginx.conf', content: nginxBucketProxyContent.replace('{', '{\n    allow all;') },
+  { path: 'WEB/conf/nginx.mini.conf', content: nginxBucketProxyContent.replace('{', '{\n    allow all;') },
+]);
+assert.equal(publicNginxBucketProxyScan.ok, false);
+assert.deepEqual(publicNginxBucketProxyScan.blockers.map((blocker) => blocker.reason), [
+  'raw_minio_nginx_bucket_allow_all',
+  'raw_minio_nginx_bucket_allow_all',
+  'raw_minio_nginx_bucket_allow_all',
+]);
+
+const insecureStreamTicketNginxContent = `
+location ^~ /api/v1/buckets {
+    proxy_pass http://ai-host:5000;
+}
+set $stream_secret "hardcoded-secret";
+location ~ ^/(ai|live)/ {
+    secure_link $arg_st,$arg_e;
+    secure_link_md5 "$arg_e$uri $stream_secret";
+    # if ($secure_link = "") { return 403; }
+    # if ($secure_link = "0") { return 410; }
+}
+location ^~ /rtp/ {
+    secure_link $arg_st,$arg_e;
+    secure_link_md5 "$arg_e$uri $stream_secret";
+}
+`;
+const insecureStreamTicketScan = scanRawMinioProxyGate([
+  { path: 'APP/conf/nginx.conf', content: insecureStreamTicketNginxContent },
+]);
+assert.equal(insecureStreamTicketScan.ok, false);
+assert.deepEqual(insecureStreamTicketScan.blockers.map((blocker) => blocker.reason), [
+  'stream_ticket_hardcoded_secret',
+  'stream_ticket_external_secret_missing',
+  'stream_ticket_enforcement_missing',
+]);
+
+const missingStreamSecretMountScan = scanRawMinioProxyGate([
+  { path: 'APP/conf/nginx.conf', content: nginxBucketProxyContent },
+  { path: 'WEB/conf/nginx.conf', content: nginxBucketProxyContent },
+  { path: 'WEB/conf/nginx.mini.conf', content: nginxBucketProxyContent },
+  { path: 'APP/docker-compose.yaml', content: 'volumes:\n  - ./conf/nginx.conf:/etc/nginx/nginx.conf:ro\n' },
+  { path: 'WEB/docker-compose.yaml', content: 'volumes:\n  - ./conf/nginx.conf:/etc/nginx/nginx.conf:ro\n' },
+]);
+assert.equal(missingStreamSecretMountScan.ok, false);
+assert.deepEqual(missingStreamSecretMountScan.blockers.map((blocker) => blocker.reason), [
+  'stream_ticket_secret_mount_missing',
+  'stream_ticket_secret_mount_missing',
+]);
 
 const mojibakeScan = scanTextQuality([
   {
@@ -421,8 +862,8 @@ const completeMediaPermissionSeedContent = [
   'system:supervision-alert-review:media:export',
   'system:supervision-alert-review:media:download',
   'system:supervision-alert-review:media:manifest',
-  'system:supervision-alert-review:media:manage',
 ].join('; ');
+const completeMediaManagePermissionSeedContent = 'system:supervision-alert-review:media:manage';
 const completeMediaPermissionConfigContent = [
   'camera-permission:',
   'action-permissions:',
@@ -445,6 +886,10 @@ const mediaPermissionGateScan = scanMediaPermissionGate([
     content: completeMediaPermissionSeedContent,
   },
   {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+    content: completeMediaManagePermissionSeedContent,
+  },
+  {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
     content: completeMediaPermissionConfigContent,
   },
@@ -455,6 +900,10 @@ const missingSnapshotMediaPermissionGateScan = scanMediaPermissionGate([
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
     content: completeMediaPermissionSeedContent.replace('system:supervision-alert-review:media:snapshot; ', ''),
+  },
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+    content: completeMediaManagePermissionSeedContent,
   },
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
@@ -469,7 +918,11 @@ assert.deepEqual(missingSnapshotMediaPermissionGateScan.blockers.map((blocker) =
 const missingManageMediaPermissionGateScan = scanMediaPermissionGate([
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
-    content: completeMediaPermissionSeedContent.replace('system:supervision-alert-review:media:manage', ''),
+    content: completeMediaPermissionSeedContent,
+  },
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+    content: '',
   },
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
@@ -485,6 +938,10 @@ const missingSnapshotMediaPermissionConfigGateScan = scanMediaPermissionGate([
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260706__alert_review_media_permissions.sql',
     content: completeMediaPermissionSeedContent,
+  },
+  {
+    path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+    content: completeMediaManagePermissionSeedContent,
   },
   {
     path: 'DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml',
@@ -504,12 +961,116 @@ YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=\${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_U
 YFEIEYE_VIDEO_RECORD_BASE_URL=\${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://video:6000/video/record}
 YFEIEYE_VIDEO_RECORD_EXPORT_URL=\${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://video:6000/video/record/export}
 YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=\${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-}
+YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}
+YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}
+YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE=\${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:-YFEIEYE_REVIEW_RUNTIME_ALERT}
+YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE=\${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:-YFEIEYE_REVIEW_OPERATIONS_REPORT}
 `;
 const videoIntegrationConfigScan = scanVideoIntegrationConfigGate([{
   path: 'DEVICE/docker-compose.yml',
   content: completeVideoIntegrationConfig,
 }]);
 assert.equal(videoIntegrationConfigScan.ok, true);
+
+const completeVideoResourceControlConfig = [
+  'YFEIEYE_FFMPEG_MAX_CONCURRENT=${YFEIEYE_FFMPEG_MAX_CONCURRENT:-1}',
+  'YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS=${YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS:-30}',
+  'YFEIEYE_FFMPEG_THREADS=${YFEIEYE_FFMPEG_THREADS:-1}',
+  'YFEIEYE_FFMPEG_FILTER_THREADS=${YFEIEYE_FFMPEG_FILTER_THREADS:-1}',
+  'YFEIEYE_FFMPEG_TIMEOUT_BASE_SECONDS=${YFEIEYE_FFMPEG_TIMEOUT_BASE_SECONDS:-30}',
+  'YFEIEYE_FFMPEG_TIMEOUT_PER_MEDIA_SECOND=${YFEIEYE_FFMPEG_TIMEOUT_PER_MEDIA_SECOND:-4}',
+  'YFEIEYE_FFMPEG_TIMEOUT_MAX_SECONDS=${YFEIEYE_FFMPEG_TIMEOUT_MAX_SECONDS:-600}',
+  'YFEIEYE_MEDIA_DISK_MIN_FREE_BYTES=${YFEIEYE_MEDIA_DISK_MIN_FREE_BYTES:-2147483648}',
+  'YFEIEYE_RECORD_EXPORT_STORE_MAX_BYTES=${YFEIEYE_RECORD_EXPORT_STORE_MAX_BYTES:-2147483648}',
+  'YFEIEYE_RECORD_EXPORT_TEMP_DIR=/data/yfeieye-record-exports/tmp',
+  'YFEIEYE_RECORD_EXPORT_TEMP_MAX_BYTES=${YFEIEYE_RECORD_EXPORT_TEMP_MAX_BYTES:-1073741824}',
+  'YFEIEYE_RECORD_EXPORT_ORPHAN_TTL_SECONDS=${YFEIEYE_RECORD_EXPORT_ORPHAN_TTL_SECONDS:-3600}',
+  'YFEIEYE_SEEKABLE_PLAYBACK_MAX_OUTPUT_BYTES=${YFEIEYE_SEEKABLE_PLAYBACK_MAX_OUTPUT_BYTES:-1073741824}',
+].join('; ');
+
+const missingVideoResourceControlScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/docker-compose.yaml',
+  content: [
+    'python /app/prepare_database.py',
+    'python /app/apply_migrations.py --verify-only',
+    'exec python /app/run.py',
+    'YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}',
+  ].join('; '),
+}]);
+assert.equal(missingVideoResourceControlScan.ok, false);
+assert.deepEqual(missingVideoResourceControlScan.blockers.map((blocker) => blocker.reason), [
+  'video_resource_control_compose_wiring_missing',
+]);
+
+const missingPlaybackTicketWindowScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/docker-compose.yaml',
+  content: [
+    'python /app/prepare_database.py',
+    'python /app/apply_migrations.py --verify-only',
+    'exec python /app/run.py',
+    'YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-}',
+    completeVideoResourceControlConfig,
+  ].join('; '),
+}]);
+assert.equal(missingPlaybackTicketWindowScan.ok, false);
+assert.deepEqual(missingPlaybackTicketWindowScan.blockers.map((blocker) => blocker.reason), [
+  'video_integration_playback_ticket_window_missing',
+]);
+
+const missingVideoMigrationEntrypointScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/docker-compose.yaml',
+  content: [
+    'YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}',
+    completeVideoResourceControlConfig,
+  ].join('; '),
+}]);
+assert.equal(missingVideoMigrationEntrypointScan.ok, false);
+assert.deepEqual(missingVideoMigrationEntrypointScan.blockers.map((blocker) => blocker.reason), [
+  'video_production_migration_entrypoint_missing',
+]);
+
+const incompleteVideoMigrationRunnerScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/apply_migrations.py',
+  content: 'MIGRATION_FILES = []',
+}]);
+assert.equal(incompleteVideoMigrationRunnerScan.ok, false);
+assert.deepEqual(incompleteVideoMigrationRunnerScan.blockers.map((blocker) => blocker.reason), [
+  'video_production_migration_runner_incomplete',
+]);
+
+const unboundedVideoSchemaLockScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/schema_lock.py',
+  content: 'SELECT pg_advisory_lock(1)',
+}]);
+assert.equal(unboundedVideoSchemaLockScan.ok, false);
+assert.deepEqual(unboundedVideoSchemaLockScan.blockers.map((blocker) => blocker.reason), [
+  'video_schema_lock_not_bounded',
+]);
+
+const insecureVideoSecretOverrideScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/docker-compose.yaml',
+  content: [
+    'python /app/prepare_database.py',
+    'python /app/apply_migrations.py --verify-only',
+    'exec python /app/run.py',
+    'YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}',
+    'YFEIEYE_RECORD_EXPORT_HMAC_KEYS=${YFEIEYE_RECORD_EXPORT_HMAC_KEYS:-}',
+    completeVideoResourceControlConfig,
+  ].join('; '),
+}]);
+assert.equal(insecureVideoSecretOverrideScan.ok, false);
+assert.deepEqual(insecureVideoSecretOverrideScan.blockers.map((blocker) => blocker.reason), [
+  'video_production_secret_env_file_overridden',
+]);
+
+const incompleteVideoSecurityEnvContractScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/env.example',
+  content: 'YFEIEYE_MEDIA_AUTHORIZATION_URL=http://device',
+}]);
+assert.equal(incompleteVideoSecurityEnvContractScan.ok, false);
+assert.deepEqual(incompleteVideoSecurityEnvContractScan.blockers.map((blocker) => blocker.reason), [
+  'video_production_security_env_contract_missing',
+]);
 
 const aliasedVideoIntegrationConfigScan = scanVideoIntegrationConfigGate([{
   path: 'DEVICE/docker-compose.yml',
@@ -527,6 +1088,8 @@ assert.deepEqual(aliasedVideoIntegrationConfigScan.blockers.map((blocker) => blo
 const completeLiveVideoSmokeContent = 'requiredOptionErrors; sameReleaseEndpoint; record coverage URL must not equal alert record query URL; selectPlayableSegment; describeNonPlayableSegments; non_exportable_reason; nonExportableReason; exportable=false; record coverage query returned no playable/exportable record segment; validateCoverageClassification; STANDARD_COVERAGE_CLASSIFICATIONS; continuous; motion; alert; detection; normalizeCoverageClassification; normalized === \'all\'; normalized === \'record\'; normalized === \'recording\'; return \'continuous\'; coverageSummary; retainMode; coverageSource; record coverage query missing retain mode or source classification evidence; record coverage query returned non-standard retain mode or source classification; validateStorageDriftReport; REQUIRED_STORAGE_DRIFT_REASON_KEYS; storageDriftReasonKeys; standardReasonKeys; missing standard reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; validateManifestStorageLifecycle; validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); spawnSync(process.execPath; timeout: timeoutMs; ETIMEDOUT; timed out after; result.status !== 0; verifier failed with exit; missing --manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); assertReleaseMediaEvidence(options, "export package storage reference", objectKey); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;';
 const completeRecordVideoServiceContent = '_normalize_gap_reason; _normalize_gap_reason_token; isalnum; normalized.strip(\'_\'); \'file_expired\': \'retention_expired\'; \'retention_expired\': \'retention\'; \'video_url_not_configured\': \'configuration\'; \'record_space_not_found\': \'configuration\'; \'file_missing\': \'filesystem\'; \'probe_failed\': \'probe\'; \'permission_denied\': \'permission\'; \'disk_full\': \'storage\'; \'cache_flush_failed\': \'cache\';';
 const completeProductionSmokeContent = 'requiredOptionErrors; liveVideoEvidenceError; liveDeviceEvidenceError; livePlayerEvidenceError; buildSmokeSteps; W4:visible-copy; alert-review-visible-copy-scan.mjs; visible-copy files for replacement characters; playerSmokeStep; --assert-native-current-time; Number.isFinite(player.nativeCurrentTime); missing native currentTime evidence; W2:typecheck; --pm-on-fail=ignore; pnpm_version_guard; typecheckRetry; REQUIRED_STORAGE_DRIFT_REASON_KEYS; payload.coverageSummary; summary.coverageSummary = buildCoverageSummary(payload.coverageSummary); buildCoverageSummary(payload.coverageSummary); copyTextIfPresent(coverage, source, \'retainMode\'); copyTextIfPresent(coverage, source, \'coverageSource\'); summary.coverageSummary?.retainMode; summary.coverageSummary?.coverageSource; missing coverage retain/source evidence; payload.storageDriftSummary; summary.storageDriftSummary = buildStorageDriftSummary(payload.storageDriftSummary); copyBooleanIfPresent(storageDriftSummary, source, \'healthy\'); copyNumberIfPresent(storageDriftSummary, source, \'recordCount\'); copyNumberIfPresent(storageDriftSummary, source, \'issueCount\'); issueReasons; standardReasonKeys; summary.storageDriftSummary?.standardReasonKeys; missing standard storage drift reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; payload.exportResult; buildExportResultSummary(payload.exportResult); copyTextIfPresent(exportResult, source, \'exportId\'); copySanitizedUrlIfPresent(exportResult, source, \'downloadUrl\'); copySanitizedUrlIfPresent(exportResult, source, \'manifestUrl\'); payload.manifestSignature; summary.manifestSignature = buildManifestSignatureSummary(payload.manifestSignature); copyTextIfPresent(manifestSignature, source, \'algorithm\'); copyTextIfPresent(manifestSignature, source, \'keyId\'); copyTextIfPresent(manifestSignature, source, \'signatureVersion\'); payload.manifestStorageLifecycle; buildManifestStorageLifecycleSummary(payload.manifestStorageLifecycle); copyTextIfPresent(manifestStorageLifecycle, source, \'storageType\'); copyTextIfPresent(manifestStorageLifecycle, source, \'status\'); copyTextIfPresent(manifestStorageLifecycle, source, \'expiresAt\'); copyTextIfPresent(manifestStorageLifecycle, source, \'exportPackageObjectKey\'); summary.manifestStorageLifecycle?.status; missing persisted manifest storage lifecycle evidence; payload.manifestVerification; buildManifestVerificationSummary(payload.manifestVerification); copyBooleanIfPresent(manifestVerification, source, \'valid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureValid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureKeyAvailable\'); copyTextIfPresent(manifestVerification, source, \'keyId\'); copyTextIfPresent(manifestVerification, source, \'signatureVersion\'); violations; summary.manifestVerification?.valid; summary.manifestVerification.signatureValid; summary.manifestVerification.signatureKeyAvailable; missing valid manifest verifier evidence; missing HMAC manifest verifier signature evidence; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs}; childSmokeSummary; buildPlaybackAccessSummary(payload.playback); copyTextIfPresent(playback, source, \'grantedDecision\'); copyTextIfPresent(playback, source, \'deniedDecision\'); deniedReasons; copySanitizedUrlIfPresent(player, payload, \'recordPath\'); stripUrlSecrets; evidence_download_audited; auditChain; firstAuditScalar; firstAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence; liveDevicePlaybackEvidenceError; summary.playback; grantedDecision; deniedDecision; camera_not_allowed; missing playback URL allow/deny decision evidence; missing playback URL deny reason evidence; liveDeviceRuleEvidenceError; summary.ruleEvidence; buildRuleEvidenceSummary(payload); copyTextIfPresent(ruleEvidence, source, \'ruleCode\'); copyTextIfPresent(ruleEvidence, source, \'cameraId\'); copyTextIfPresent(ruleEvidence, source, \'zoneCode\'); copyTextIfPresent(ruleEvidence, source, \'objectLabel\'); copyNumberIfPresent(ruleEvidence, source, \'inertiaFrames\'); copyNumberIfPresent(ruleEvidence, source, \'loiteringSeconds\'); inertiaFrames; loiteringSeconds; missing rule inertia/loitering evidence; missing rule inertiaFrames=3 evidence; missing rule loiteringSeconds=20 evidence;';
+const completeLiveVideoTokenContent = `${completeLiveVideoSmokeContent} parseArgs; token: env.YFEIEYE_VIDEO_SMOKE_TOKEN; arg.startsWith('--token='); !options.allowLocalEndpoints && !hasText(options.token); missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN; runSmoke; withBearerAuthorization; const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token);`;
+const completeProductionSmokeTokenContent = `${completeProductionSmokeContent} formatStepCommand; --token=\${options.token}; maskSensitiveArg; value.startsWith('--token='); return '--token=***';`;
 const productionSmokeTimeoutEvidenceContent = 'stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs};';
 
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
@@ -544,6 +1107,86 @@ const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   },
 ]);
 assert.equal(liveVideoEvidenceGateScan.ok, true);
+
+const liveVideoTokenGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoTokenContent,
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeTokenContent,
+  },
+]);
+assert.equal(liveVideoTokenGateScan.ok, true);
+
+const missingLiveVideoReleaseTokenGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoTokenContent
+      .replace('!options.allowLocalEndpoints && !hasText(options.token); ', '')
+      .replace('missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN; ', ''),
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeTokenContent,
+  },
+]);
+assert.equal(missingLiveVideoReleaseTokenGateScan.ok, false);
+assert.deepEqual(missingLiveVideoReleaseTokenGateScan.blockers.map((blocker) => blocker.reason), [
+  'live_video_release_token_required_missing',
+]);
+
+const missingLiveVideoBearerWrapperGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoTokenContent.replace(
+      'const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token);',
+      '',
+    ),
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeTokenContent,
+  },
+]);
+assert.equal(missingLiveVideoBearerWrapperGateScan.ok, false);
+assert.deepEqual(missingLiveVideoBearerWrapperGateScan.blockers.map((blocker) => blocker.reason), [
+  'live_video_bearer_wrapper_missing',
+]);
+
+const missingProductionSmokeLiveVideoTokenGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoTokenContent,
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeTokenContent.replace('--token=${options.token}; ', ''),
+  },
+]);
+assert.equal(missingProductionSmokeLiveVideoTokenGateScan.ok, false);
+assert.deepEqual(missingProductionSmokeLiveVideoTokenGateScan.blockers.map((blocker) => blocker.reason), [
+  'production_smoke_live_video_token_wiring_missing',
+]);
+
+const missingProductionSmokeTokenMaskGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-video-live-smoke.mjs',
+    content: completeLiveVideoTokenContent,
+  },
+  {
+    path: '.scripts/alert-review-production-smoke.mjs',
+    content: completeProductionSmokeTokenContent
+      .replace('maskSensitiveArg; ', '')
+      .replace("value.startsWith('--token='); ", '')
+      .replace("return '--token=***'; ", ''),
+  },
+]);
+assert.equal(missingProductionSmokeTokenMaskGateScan.ok, false);
+assert.deepEqual(missingProductionSmokeTokenMaskGateScan.blockers.map((blocker) => blocker.reason), [
+  'production_smoke_token_log_mask_missing',
+]);
 
 const missingVideoRecordGapReasonCatalogScan = scanLiveVideoEvidenceGate([
   {

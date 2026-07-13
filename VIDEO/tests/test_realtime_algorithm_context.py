@@ -71,6 +71,24 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertIn("active_task_ids", source)
         self.assertIn("starting_task_ids", source)
 
+    def test_algorithm_processes_receive_narrowed_alert_ingest_credentials(self):
+        source = (
+            VIDEO_ROOT / "app" / "services" / "algorithm_task_launcher_service.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("build_alert_ingest_process_env", source)
+        self.assertIn("env.update(build_alert_ingest_process_env())", source)
+
+    def test_local_algorithm_process_does_not_inherit_full_service_keyring(self):
+        source = (
+            VIDEO_ROOT / "app" / "services" / "algorithm_task_daemon.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("build_alert_ingest_process_env", source)
+        self.assertIn("'YFEIEYE_MEDIA_SERVICE_HMAC_KEYS'", source)
+        self.assertIn("env.pop(key, None)", source)
+        self.assertIn("env.update(build_alert_ingest_process_env())", source)
+
 
 if __name__ == "__main__":
     unittest.main()

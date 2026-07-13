@@ -43,6 +43,13 @@ def _env_float(name: str, default: float) -> float:
     raw = os.getenv(name)
     if raw is None or not str(raw).strip():
         return default
+
+
+def _required_dvr_tenant_id() -> int:
+    value = str(os.getenv('YFEIEYE_DVR_TENANT_ID', '')).strip()
+    if not value.isdigit() or int(value) <= 0:
+        raise ValueError('YFEIEYE_DVR_TENANT_ID must be a positive tenant id')
+    return int(value)
     try:
         return float(str(raw).strip())
     except ValueError:
@@ -310,14 +317,15 @@ def _list_live_device_ids() -> List[str]:
     ]
 
 
-def _resolve_device_playback_max_age_map() -> Dict[str, int]:
+def _resolve_device_playback_max_age_map(tenant_id: int) -> Dict[str, int]:
     """返回 device_id -> 保留小时数；0 表示永久（跳过年龄清理）。"""
     try:
         from models import RecordSpace
         from app.services.space_save_time_service import enrich_record_space_dict, DEFAULT_SAVE_TIME
 
         result: Dict[str, int] = {}
-        for space in RecordSpace.query.filter(RecordSpace.device_id.isnot(None)).all():
+        for space in RecordSpace.query.filter_by(tenant_id=int(tenant_id)).filter(
+                RecordSpace.device_id.isnot(None)).all():
             info = enrich_record_space_dict({'save_time': space.save_time}, space)
             hours = info.get('effective_save_time')
             if hours is None:
@@ -335,7 +343,8 @@ def cleanup_all_devices_expired_recordings() -> Dict[str, object]:
         return {'skipped': 1}
 
     default_hours = _env_int('PLAYBACK_MAX_AGE_HOURS', 1)
-    device_hours = _resolve_device_playback_max_age_map()
+    tenant_id = _required_dvr_tenant_id()
+    device_hours = _resolve_device_playback_max_age_map(tenant_id)
     device_ids = _list_live_device_ids()
 
     total_deleted = 0
@@ -352,6 +361,7 @@ def cleanup_all_devices_expired_recordings() -> Dict[str, object]:
         total_freed += result.get('freed_bytes', 0)
 
     return {
+        'tenant_id': tenant_id,
         'devices_checked': len(device_ids),
         'deleted': total_deleted,
         'freed_bytes': total_freed,

@@ -266,7 +266,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.vodMode = isVodPlaybackUrl(streamUrl);
   await nextTick();
   state.currentUrl = streamUrl;
-  state.playerEngine = shouldUseNativeSeekPlayback(streamUrl, state.seekOffsetSeconds) ? 'native' : '';
+  state.playerEngine = shouldUseNativeSeekPlayback(streamUrl, state.seekOffsetSeconds, state.seekTime) ? 'native' : '';
   state.videoCodec = '';
   state.iframeUrl = streamUrl ? '<iframe src="' + streamUrl + '"></iframe>' : '';
   state.playSources = streamUrl
@@ -289,19 +289,20 @@ const handleChange = (value: string) => {
   }
   state.currentUrl = value;
   state.mediaType = value;
-  state.playerEngine = shouldUseNativeSeekPlayback(value, state.seekOffsetSeconds) ? 'native' : '';
+  state.playerEngine = shouldUseNativeSeekPlayback(value, state.seekOffsetSeconds, state.seekTime) ? 'native' : '';
   state.videoCodec = '';
   state.vodMode = isVodPlaybackUrl(value);
   state.iframeUrl = value ? '<iframe src="' + value + '"></iframe>' : '';
   if (value) playerKey.value += 1;
 };
 
-function shouldUseNativeSeekPlayback(url: string, seekOffsetSeconds: number): boolean {
-  if (!url || seekOffsetSeconds <= 0) {
+function shouldUseNativeSeekPlayback(url: string, seekOffsetSeconds: number, seekTime: string): boolean {
+  if (!url || !seekTime || seekOffsetSeconds < 0) {
     return false;
   }
   const normalized = safeDecode(url).toLowerCase();
-  return /\.mp4(?:[?#]|$)/.test(normalized);
+  return /\.mp4(?:[?#]|$)/.test(normalized)
+    || /[?&]playback_format=mp4(?:[&#]|$)/.test(normalized);
 }
 
 function safeDecode(value: string): string {

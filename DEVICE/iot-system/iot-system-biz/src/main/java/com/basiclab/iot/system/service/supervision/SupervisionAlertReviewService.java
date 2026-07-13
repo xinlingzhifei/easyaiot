@@ -1,5 +1,9 @@
 package com.basiclab.iot.system.service.supervision;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +38,7 @@ public interface SupervisionAlertReviewService {
     String REVIEW_CASE_CLOSED = "closed";
     String REVIEW_CASE_MERGED = "merged";
     String RULE_SUGGESTION_PENDING = "pending";
+    String RULE_SUGGESTION_SHADOW_EVALUATED = "shadow_evaluated";
     String RULE_SUGGESTION_ACCEPTED = "accepted";
     String RULE_SUGGESTION_REJECTED = "rejected";
     String RULE_SUGGESTION_APPLIED = "applied";
@@ -44,6 +49,7 @@ public interface SupervisionAlertReviewService {
     String EXPORT_JOB_FAILED = "failed";
     String EXPORT_JOB_EXPIRED = "expired";
     String SEMANTIC_INDEX_PENDING = "pending";
+    String SEMANTIC_INDEX_PROCESSING = "processing";
     String SEMANTIC_INDEX_INDEXED = "indexed";
     String SEMANTIC_INDEX_FAILED = "failed";
 
@@ -140,6 +146,10 @@ public interface SupervisionAlertReviewService {
 
     ReviewSemanticTriggerResult evaluateSemanticTrigger(ReviewSemanticTriggerCommand command);
 
+    ReviewSemanticTriggerResult getSemanticTrigger(String evaluationId);
+
+    ReviewSemanticTriggerResult confirmSemanticTrigger(ReviewSemanticTriggerConfirmationCommand command);
+
     ReviewAiSummary summarizeReviewCase(Long reviewCaseId, Long operatorUserId);
 
     ReviewAiSummaryConfirmation confirmReviewCaseAiSummary(ReviewAiSummaryConfirmationCommand command);
@@ -170,12 +180,16 @@ public interface SupervisionAlertReviewService {
 
     List<ReviewEvidenceAuditEntry> getReviewItemEvidenceAuditTrail(Long reviewItemId);
 
+    List<ReviewEvidenceAuditEntry> queryEvidenceAuditTrail(ReviewEvidenceAuditQuery query);
+
     ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo, Long operatorUserId, String reason);
 
     ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
                                                     Long operatorUserId,
                                                     String reason,
                                                     List<String> allowedCameraIds);
+
+    ReviewEvidenceDownloadArtifact downloadEvidencePackage(ReviewEvidenceDownloadCommand command);
 
     ReviewMediaAccessAuditEntry auditMediaAccess(ReviewMediaAccessCommand command);
 
@@ -475,18 +489,42 @@ public interface SupervisionAlertReviewService {
     record ReviewCaseOwnerCommand(Long reviewCaseId,
                                   Long ownerUserId,
                                   Long operatorUserId,
-                                  String notes) {
+                                  String notes,
+                                  Integer expectedVersion,
+                                  String operationId) {
+        public ReviewCaseOwnerCommand(Long reviewCaseId,
+                                      Long ownerUserId,
+                                      Long operatorUserId,
+                                      String notes) {
+            this(reviewCaseId, ownerUserId, operatorUserId, notes, null, null);
+        }
     }
 
     record ReviewCaseOperationCommand(Long reviewCaseId,
                                       Long operatorUserId,
-                                      String notes) {
+                                      String notes,
+                                      Integer expectedVersion,
+                                      String operationId) {
+        public ReviewCaseOperationCommand(Long reviewCaseId,
+                                          Long operatorUserId,
+                                          String notes) {
+            this(reviewCaseId, operatorUserId, notes, null, null);
+        }
     }
 
     record ReviewCaseMergeCommand(Long targetReviewCaseId,
                                   Long sourceReviewCaseId,
                                   Long operatorUserId,
-                                  String notes) {
+                                  String notes,
+                                  Integer targetExpectedVersion,
+                                  Integer sourceExpectedVersion,
+                                  String operationId) {
+        public ReviewCaseMergeCommand(Long targetReviewCaseId,
+                                      Long sourceReviewCaseId,
+                                      Long operatorUserId,
+                                      String notes) {
+            this(targetReviewCaseId, sourceReviewCaseId, operatorUserId, notes, null, null, null);
+        }
     }
 
     record ReviewCaseSplitCommand(Long sourceReviewCaseId,
@@ -494,7 +532,17 @@ public interface SupervisionAlertReviewService {
                                   String title,
                                   Long ownerUserId,
                                   Long operatorUserId,
-                                  String notes) {
+                                  String notes,
+                                  Integer sourceExpectedVersion,
+                                  String operationId) {
+        public ReviewCaseSplitCommand(Long sourceReviewCaseId,
+                                      List<Long> reviewItemIds,
+                                      String title,
+                                      Long ownerUserId,
+                                      Long operatorUserId,
+                                      String notes) {
+            this(sourceReviewCaseId, reviewItemIds, title, ownerUserId, operatorUserId, notes, null, null);
+        }
     }
 
     record ReviewCaseMergeResult(ReviewCaseView targetCase,
@@ -524,7 +572,23 @@ public interface SupervisionAlertReviewService {
                           LocalDateTime startTime,
                           LocalDateTime endTime,
                           Long ownerUserId,
-                          String notes) {
+                          String notes,
+                          Integer version) {
+        public ReviewCaseView(Long id,
+                              String caseNo,
+                              String title,
+                              String status,
+                              Long primaryReviewItemId,
+                              List<Long> reviewItemIds,
+                              List<String> cameraIds,
+                              LocalDateTime startTime,
+                              LocalDateTime endTime,
+                              Long ownerUserId,
+                              String notes) {
+            this(id, caseNo, title, status, primaryReviewItemId, reviewItemIds, cameraIds,
+                    startTime, endTime, ownerUserId, notes, null);
+        }
+
         public ReviewCaseView(Long id,
                               String caseNo,
                               String title,
@@ -534,7 +598,8 @@ public interface SupervisionAlertReviewService {
                               List<String> cameraIds,
                               LocalDateTime startTime,
                               LocalDateTime endTime) {
-            this(id, caseNo, title, status, primaryReviewItemId, reviewItemIds, cameraIds, startTime, endTime, null, null);
+            this(id, caseNo, title, status, primaryReviewItemId, reviewItemIds, cameraIds,
+                    startTime, endTime, null, null, null);
         }
     }
 
@@ -670,7 +735,9 @@ public interface SupervisionAlertReviewService {
         ReviewRuntimeOutboxDeliveryResult publish(ReviewRuntimeOutboxMessage message);
 
         static ReviewRuntimeOutboxPublisher noop() {
-            return message -> ReviewRuntimeOutboxDeliveryResult.delivered();
+            return message -> ReviewRuntimeOutboxDeliveryResult.failed(
+                    "runtime_outbox_sink_not_configured"
+            );
         }
     }
 
@@ -734,6 +801,11 @@ public interface SupervisionAlertReviewService {
                                     Integer retryCount,
                                     String lastError,
                                     LocalDateTime indexedAt,
+                                    String indexGenerationId,
+                                    String claimToken,
+                                    LocalDateTime claimedAt,
+                                    LocalDateTime claimExpiresAt,
+                                    LocalDateTime nextRetryAt,
                                     Integer indexVersion) {
     }
 
@@ -789,7 +861,23 @@ public interface SupervisionAlertReviewService {
                                         String data,
                                         Double threshold,
                                         List<String> actions,
-                                        ReviewQuery filters) {
+                                        ReviewQuery filters,
+                                        Long operatorUserId) {
+        public ReviewSemanticTriggerCommand(String triggerName,
+                                            String cameraId,
+                                            String triggerType,
+                                            String data,
+                                            Double threshold,
+                                            List<String> actions,
+                                            ReviewQuery filters) {
+            this(triggerName, cameraId, triggerType, data, threshold, actions, filters, null);
+        }
+    }
+
+    record ReviewSemanticTriggerConfirmationCommand(String evaluationId,
+                                                    String confirmationStatus,
+                                                    String notes,
+                                                    Long operatorUserId) {
     }
 
     record ReviewSemanticTriggerResult(String triggerName,
@@ -798,9 +886,17 @@ public interface SupervisionAlertReviewService {
                                        List<Long> matchedReviewItemIds,
                                        List<Map<String, Object>> actionPayloads,
                                        LocalDateTime evaluatedAt,
+                                       String inputVersion,
+                                       String inputHash,
+                                       String indexGenerationId,
+                                       Integer latestIndexVersion,
                                        List<Map<String, Object>> hitExplanations,
                                        List<Map<String, Object>> actionPreviews,
-                                       String humanConfirmationStatus) {
+                                       String humanConfirmationStatus,
+                                       String evaluationId,
+                                       Long confirmedBy,
+                                       LocalDateTime confirmedAt,
+                                       boolean duplicate) {
         public ReviewSemanticTriggerResult(String triggerName,
                                            String triggerType,
                                            String data,
@@ -808,7 +904,40 @@ public interface SupervisionAlertReviewService {
                                            List<Map<String, Object>> actionPayloads,
                                            LocalDateTime evaluatedAt) {
             this(triggerName, triggerType, data, matchedReviewItemIds, actionPayloads, evaluatedAt,
-                    List.of(), List.of(), "pending");
+                    "semantic-trigger-input-v1", null, null, 0, List.of(), List.of(), "pending",
+                    null, null, null, false);
+        }
+
+        public ReviewSemanticTriggerResult(String triggerName,
+                                           String triggerType,
+                                           String data,
+                                           List<Long> matchedReviewItemIds,
+                                           List<Map<String, Object>> actionPayloads,
+                                           LocalDateTime evaluatedAt,
+                                           String inputVersion,
+                                           Integer latestIndexVersion,
+                                           List<Map<String, Object>> hitExplanations,
+                                           List<Map<String, Object>> actionPreviews,
+                                           String humanConfirmationStatus,
+                                           String evaluationId,
+                                           Long confirmedBy,
+                                           LocalDateTime confirmedAt,
+                                           boolean duplicate) {
+            this(triggerName, triggerType, data, matchedReviewItemIds, actionPayloads, evaluatedAt,
+                    inputVersion, null, null, latestIndexVersion, hitExplanations, actionPreviews,
+                    humanConfirmationStatus, evaluationId, confirmedBy, confirmedAt, duplicate);
+        }
+    }
+
+    record ReviewSemanticTriggerAuditRecord(Long reviewItemId,
+                                            String actionType,
+                                            Long operatorUserId,
+                                            LocalDateTime happenedAt,
+                                            Map<String, Object> metadata) {
+        public ReviewSemanticTriggerAuditRecord {
+            metadata = metadata == null
+                    ? Map.of()
+                    : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(metadata));
         }
     }
 
@@ -968,7 +1097,20 @@ public interface SupervisionAlertReviewService {
                                    Long operatorUserId,
                                    String reason,
                                    List<Long> boundEventIds,
-                                   LocalDateTime createdAt) {
+                                   LocalDateTime createdAt,
+                                   Integer version) {
+        public ReviewEvidenceExportJob(String jobNo,
+                                       String status,
+                                       ReviewEvidenceExportPackage exportPackage,
+                                       String fileHash,
+                                       LocalDateTime expiresAt,
+                                       Long operatorUserId,
+                                       String reason,
+                                       List<Long> boundEventIds,
+                                       LocalDateTime createdAt) {
+            this(jobNo, status, exportPackage, fileHash, expiresAt, operatorUserId, reason,
+                    boundEventIds, createdAt, null);
+        }
     }
 
     record ReviewEvidenceExportWorkerCommand(Integer maxJobs,
@@ -986,6 +1128,44 @@ public interface SupervisionAlertReviewService {
                                          List<String> deferredJobNos,
                                          LocalDateTime processedAt,
                                          Long operatorUserId) {
+    }
+
+    record ReviewEvidenceDownloadCommand(String jobNo,
+                                         Long operatorUserId,
+                                         List<String> allowedCameraIds,
+                                         String reason) {
+        public ReviewEvidenceDownloadCommand {
+            allowedCameraIds = allowedCameraIds == null ? null : List.copyOf(allowedCameraIds);
+        }
+    }
+
+    record ReviewEvidenceVideoDownloadRequest(String exportUri,
+                                              String cameraId,
+                                              String expectedFileHash) {
+    }
+
+    record ReviewEvidenceDownloadArtifact(String jobNo,
+                                          String fileName,
+                                          String contentType,
+                                          Path temporaryFile,
+                                          long contentLength,
+                                          String fileHash,
+                                          ReviewEvidenceAuditEntry auditEntry) implements AutoCloseable {
+        public ReviewEvidenceDownloadArtifact {
+            temporaryFile = Objects.requireNonNull(temporaryFile, "temporaryFile");
+            if (contentLength < 0L) {
+                throw new IllegalArgumentException("contentLength must not be negative");
+            }
+        }
+
+        public InputStream openStream() throws IOException {
+            return Files.newInputStream(temporaryFile);
+        }
+
+        @Override
+        public void close() throws IOException {
+            Files.deleteIfExists(temporaryFile);
+        }
     }
 
     record ReviewManifestVerification(String jobNo,
@@ -1028,6 +1208,21 @@ public interface SupervisionAlertReviewService {
                                     List<Long> boundEventIds,
                                     LocalDateTime happenedAt,
                                     Map<String, Object> metadata) {
+    }
+
+    record ReviewEvidenceAuditQuery(Long eventId,
+                                    Long reviewCaseId,
+                                    Long reviewItemId,
+                                    String exportJobNo) {
+
+        public ReviewEvidenceAuditQuery {
+            exportJobNo = exportJobNo == null || exportJobNo.isBlank() ? null : exportJobNo.trim();
+        }
+
+        public boolean hasCriteria() {
+            return eventId != null || reviewCaseId != null || reviewItemId != null || exportJobNo != null;
+        }
+
     }
 
     record ReviewMediaAccessCommand(Long reviewCaseId,
@@ -1123,6 +1318,14 @@ public interface SupervisionAlertReviewService {
         }
     }
 
+    record ReviewEvidenceVideoSegmentRequest(Long reviewItemId,
+                                             String sourceAlertId,
+                                             String recordUri,
+                                             LocalDateTime clipStartTime,
+                                             LocalDateTime clipEndTime,
+                                             Integer stitchOrder) {
+    }
+
     record ReviewEvidenceVideoExportRequest(Long reviewCaseId,
                                             Long reviewItemId,
                                             String deviceId,
@@ -1131,13 +1334,79 @@ public interface SupervisionAlertReviewService {
                                             LocalDateTime startTime,
                                             LocalDateTime endTime,
                                             String recordUri,
-                                            String format) {
+                                            String format,
+                                            List<ReviewEvidenceVideoSegmentRequest> recordSegments,
+                                            LocalDateTime expiresAt) {
+        public ReviewEvidenceVideoExportRequest(Long reviewCaseId,
+                                                Long reviewItemId,
+                                                String deviceId,
+                                                String cameraId,
+                                                String sourceAlertId,
+                                                LocalDateTime startTime,
+                                                LocalDateTime endTime,
+                                                String recordUri,
+                                                String format,
+                                                List<ReviewEvidenceVideoSegmentRequest> recordSegments) {
+            this(reviewCaseId, reviewItemId, deviceId, cameraId, sourceAlertId, startTime, endTime,
+                    recordUri, format, recordSegments, null);
+        }
+
+        public ReviewEvidenceVideoExportRequest(Long reviewCaseId,
+                                                Long reviewItemId,
+                                                String deviceId,
+                                                String cameraId,
+                                                String sourceAlertId,
+                                                LocalDateTime startTime,
+                                                LocalDateTime endTime,
+                                                String recordUri,
+                                                String format) {
+            this(
+                    reviewCaseId,
+                    reviewItemId,
+                    deviceId,
+                    cameraId,
+                    sourceAlertId,
+                    startTime,
+                    endTime,
+                    recordUri,
+                    format,
+                    recordUri == null || recordUri.isBlank()
+                            ? List.of()
+                            : List.of(new ReviewEvidenceVideoSegmentRequest(
+                                    reviewItemId,
+                                    sourceAlertId,
+                                    recordUri,
+                                    startTime,
+                                    endTime,
+                                    0
+                            )),
+                    null
+            );
+        }
+
+        public ReviewEvidenceVideoExportRequest {
+            recordSegments = recordSegments == null ? List.of() : List.copyOf(recordSegments);
+        }
     }
 
     record ReviewEvidenceVideoExportResult(String exportId,
                                             String exportUri,
                                             String status,
-                                            String message) {
+                                            String message,
+                                            String manifestUri,
+                                            String fileHash,
+                                            List<Map<String, Object>> recordSegments,
+                                            String ffmpegCommandHash) {
+        public ReviewEvidenceVideoExportResult(String exportId,
+                                               String exportUri,
+                                               String status,
+                                               String message) {
+            this(exportId, exportUri, status, message, null, null, List.of(), null);
+        }
+
+        public ReviewEvidenceVideoExportResult {
+            recordSegments = recordSegments == null ? List.of() : List.copyOf(recordSegments);
+        }
     }
 
     record ReviewIntegrationSmokeCommand(Long operatorUserId,
@@ -1466,20 +1735,57 @@ public interface SupervisionAlertReviewService {
                                        String notes,
                                        Long operatorUserId);
 
+        default ReviewCaseView updateCaseOwner(Long reviewCaseId,
+                                               Long ownerUserId,
+                                               String notes,
+                                               Long operatorUserId,
+                                               Integer expectedVersion,
+                                               String operationId) {
+            return updateCaseOwner(reviewCaseId, ownerUserId, notes, operatorUserId);
+        }
+
         ReviewCaseView closeCase(Long reviewCaseId,
                                  String notes,
                                  Long operatorUserId,
                                  LocalDateTime closedAt);
+
+        default ReviewCaseView closeCase(Long reviewCaseId,
+                                         String notes,
+                                         Long operatorUserId,
+                                         LocalDateTime closedAt,
+                                         Integer expectedVersion,
+                                         String operationId) {
+            return closeCase(reviewCaseId, notes, operatorUserId, closedAt);
+        }
 
         ReviewCaseMergeResult mergeCases(Long targetReviewCaseId,
                                          Long sourceReviewCaseId,
                                          Long operatorUserId,
                                          String notes);
 
+        default ReviewCaseMergeResult mergeCases(Long targetReviewCaseId,
+                                                  Long sourceReviewCaseId,
+                                                  Long operatorUserId,
+                                                  String notes,
+                                                  Integer targetExpectedVersion,
+                                                  Integer sourceExpectedVersion,
+                                                  String operationId) {
+            return mergeCases(targetReviewCaseId, sourceReviewCaseId, operatorUserId, notes);
+        }
+
         ReviewCaseSplitResult splitCase(Long sourceReviewCaseId,
                                        ReviewCaseDraft draft,
                                        List<Long> reviewItemIds,
                                        Long operatorUserId);
+
+        default ReviewCaseSplitResult splitCase(Long sourceReviewCaseId,
+                                                ReviewCaseDraft draft,
+                                                List<Long> reviewItemIds,
+                                                Long operatorUserId,
+                                                Integer sourceExpectedVersion,
+                                                String operationId) {
+            return splitCase(sourceReviewCaseId, draft, reviewItemIds, operatorUserId);
+        }
 
         List<ReviewCaseTimelineItem> listCaseTimeline(Long reviewCaseId);
 
@@ -1493,6 +1799,45 @@ public interface SupervisionAlertReviewService {
                                                      String lastError,
                                                      LocalDateTime indexedAt);
 
+        default ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
+                                                             String document,
+                                                             String embeddingKey,
+                                                             String embeddingModel,
+                                                             String embeddingVectorHash,
+                                                             String indexStatus,
+                                                             Integer retryCount,
+                                                             String lastError,
+                                                             LocalDateTime indexedAt,
+                                                             String indexGenerationId,
+                                                             LocalDateTime nextRetryAt) {
+            return upsertSemanticIndex(item, document, embeddingKey, embeddingModel, embeddingVectorHash,
+                    indexStatus, retryCount, lastError, indexedAt);
+        }
+
+        default List<ReviewSemanticIndexEntry> claimSemanticIndex(List<Long> reviewItemIds,
+                                                                  Integer limit,
+                                                                  String claimToken,
+                                                                  LocalDateTime claimedAt,
+                                                                  LocalDateTime claimExpiresAt) {
+            return List.of();
+        }
+
+        default ReviewSemanticIndexEntry completeSemanticIndexClaim(ReviewItemAggregate item,
+                                                                    String document,
+                                                                    String embeddingKey,
+                                                                    String embeddingModel,
+                                                                    String embeddingVectorHash,
+                                                                    String indexStatus,
+                                                                    Integer retryCount,
+                                                                    String lastError,
+                                                                    LocalDateTime indexedAt,
+                                                                    String indexGenerationId,
+                                                                    LocalDateTime nextRetryAt,
+                                                                    String claimToken) {
+            return upsertSemanticIndex(item, document, embeddingKey, embeddingModel, embeddingVectorHash,
+                    indexStatus, retryCount, lastError, indexedAt, indexGenerationId, nextRetryAt);
+        }
+
         List<ReviewSemanticIndexEntry> listSemanticIndex(ReviewQuery query);
 
         ReviewEvidenceExportJob createExportJob(ReviewEvidenceExportPackage exportPackage,
@@ -1503,13 +1848,26 @@ public interface SupervisionAlertReviewService {
                                                 LocalDateTime expiresAt,
                                                 LocalDateTime createdAt);
 
-        ReviewEvidenceExportJob updateExportJob(ReviewEvidenceExportJob job);
-
         List<ReviewEvidenceExportJob> listExportJobs(Long reviewCaseId);
+
+        default List<ReviewEvidenceExportJob> listEvidenceAuditExportJobs(ReviewEvidenceAuditQuery query) {
+            return List.of();
+        }
 
         default List<ReviewEvidenceExportJob> listAllExportJobs() {
             return List.of();
         }
+
+        default List<ReviewEvidenceExportJob> claimProcessableExportJobs(Integer limit,
+                                                                         String claimToken,
+                                                                         Long claimedBy,
+                                                                         LocalDateTime claimedAt,
+                                                                         LocalDateTime reclaimBefore) {
+            return List.of();
+        }
+
+        ReviewEvidenceExportJob completeExportJobClaim(ReviewEvidenceExportJob job,
+                                                       String claimToken);
 
         default ReviewRuntimeLockAcquisition acquireRuntimePatrolLock(String lockName,
                                                                       LocalDateTime expiresAt,
@@ -1596,10 +1954,19 @@ public interface SupervisionAlertReviewService {
                     .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
         }
 
+        default ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
+                                                                Long operatorUserId,
+                                                                String reason,
+                                                                LocalDateTime happenedAt) {
+            return recordEvidenceDownload(jobNo, operatorUserId, reason, happenedAt, null, Map.of());
+        }
+
         ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
                                                         Long operatorUserId,
                                                         String reason,
-                                                        LocalDateTime happenedAt);
+                                                        LocalDateTime happenedAt,
+                                                        String downloadFileHash,
+                                                        Map<String, Object> downloadMetadata);
 
         Optional<ReviewEvidenceExportJob> findExportJobByNo(String jobNo);
 
@@ -1631,6 +1998,44 @@ public interface SupervisionAlertReviewService {
         }
 
         default List<ReviewCaseTimelineItem> listMediaAccessAuditsByReviewItem(Long reviewItemId) {
+            return List.of();
+        }
+
+        default List<ReviewCaseTimelineItem> listEvidenceAuditRecords(ReviewEvidenceAuditQuery query) {
+            return List.of();
+        }
+
+        default void recordSemanticTriggerEvaluation(Long reviewItemId,
+                                                     String actionNote,
+                                                     Long operatorUserId,
+                                                     LocalDateTime happenedAt,
+                                                     Map<String, Object> metadata) {
+            recordMediaAccessAudit(null, reviewItemId, "semantic_trigger_evaluated", actionNote,
+                    operatorUserId, happenedAt, metadata);
+        }
+
+        default boolean recordSemanticTriggerDecision(String evaluationId,
+                                                       String actionType,
+                                                       String actionNote,
+                                                       Long operatorUserId,
+                                                       LocalDateTime happenedAt,
+                                                       Map<String, Object> metadata) {
+            List<ReviewSemanticTriggerAuditRecord> audits = listSemanticTriggerAudits(evaluationId);
+            if (audits.stream().anyMatch(audit -> audit.actionType().startsWith("semantic_trigger_")
+                    && !"semantic_trigger_evaluated".equals(audit.actionType()))) {
+                return false;
+            }
+            Long reviewItemId = audits.stream()
+                    .filter(audit -> "semantic_trigger_evaluated".equals(audit.actionType()))
+                    .map(ReviewSemanticTriggerAuditRecord::reviewItemId)
+                    .findFirst()
+                    .orElse(null);
+            recordMediaAccessAudit(null, reviewItemId, actionType, actionNote,
+                    operatorUserId, happenedAt, metadata);
+            return true;
+        }
+
+        default List<ReviewSemanticTriggerAuditRecord> listSemanticTriggerAudits(String evaluationId) {
             return List.of();
         }
 
@@ -1686,6 +2091,10 @@ public interface SupervisionAlertReviewService {
     interface VideoEvidenceExportProvider {
 
         Optional<ReviewEvidenceVideoExportResult> export(ReviewEvidenceVideoExportRequest request);
+
+        default Optional<ReviewEvidenceDownloadArtifact> download(ReviewEvidenceVideoDownloadRequest request) {
+            return Optional.empty();
+        }
 
         static VideoEvidenceExportProvider unavailable() {
             return request -> Optional.empty();

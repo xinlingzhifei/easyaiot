@@ -18,6 +18,7 @@ const STANDARD_COVERAGE_CLASSIFICATIONS = ['continuous', 'motion', 'alert', 'det
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
+    token: env.YFEIEYE_VIDEO_SMOKE_TOKEN || '',
     alertRecordQueryUrl: env.YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL || '',
     recordCoverageQueryUrl: env.YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL || '',
     recordBaseUrl: env.YFEIEYE_VIDEO_RECORD_BASE_URL || '',
@@ -44,6 +45,8 @@ export function parseArgs(args, env = process.env) {
       parsed.help = true;
     } else if (arg === '--allow-local-endpoints') {
       parsed.allowLocalEndpoints = true;
+    } else if (arg.startsWith('--token=')) {
+      parsed.token = arg.slice('--token='.length);
     } else if (arg.startsWith('--alert-record-query-url=')) {
       parsed.alertRecordQueryUrl = arg.slice('--alert-record-query-url='.length);
     } else if (arg.startsWith('--record-coverage-query-url=')) {
@@ -118,6 +121,9 @@ export function requiredOptionErrors(options) {
   }
   if (!hasText(options.recordExportUrl)) {
     errors.push('missing --record-export-url or YFEIEYE_VIDEO_RECORD_EXPORT_URL');
+  }
+  if (!options.allowLocalEndpoints && !hasText(options.token)) {
+    errors.push('missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN');
   }
   if (!hasText(options.deviceId)) {
     errors.push('missing --device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID');
@@ -298,10 +304,11 @@ export async function runSmoke(options, dependencies = {}) {
   if (errors.length) {
     throw new Error(errors.join('\n'));
   }
-  const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
-  if (typeof fetchImpl !== 'function') {
+  const rawFetchImpl = dependencies.fetchImpl || globalThis.fetch;
+  if (typeof rawFetchImpl !== 'function') {
     throw new Error('global fetch is unavailable; use Node.js 18+ or provide fetchImpl');
   }
+  const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token);
 
   const checkpoints = [];
   const alertRecord = await fetchJson(fetchImpl, buildAvailabilityUrl(options.alertRecordQueryUrl, options), {
@@ -377,6 +384,17 @@ export async function runSmoke(options, dependencies = {}) {
     manifestSignature: manifestEvidence.signature,
     manifestStorageLifecycle: manifestEvidence.storageLifecycle,
     ...(manifestEvidence.verification ? { manifestVerification: manifestEvidence.verification } : {}),
+  };
+}
+
+function withBearerAuthorization(fetchImpl, token) {
+  if (!hasText(token)) {
+    return fetchImpl;
+  }
+  return (url, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    headers.set('authorization', `Bearer ${token}`);
+    return fetchImpl(url, { ...init, headers });
   };
 }
 
@@ -1180,7 +1198,8 @@ function summarizePayload(payload) {
 
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-video-live-smoke.mjs \\
-  --alert-record-query-url=http://VIDEO/video/record/availability \\
+  --token=JWT_TOKEN \\
+  --alert-record-query-url=http://VIDEO/video/alert/record/query \\
   --record-coverage-query-url=http://VIDEO/video/record/availability \\
   --record-base-url=http://VIDEO/video/record \\
   --record-export-url=http://VIDEO/video/record/export \\

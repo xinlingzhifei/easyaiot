@@ -19,6 +19,7 @@ assert.ok(REQUIRED_CHECKPOINTS.includes('review_rule_saved'));
 const parsed = parseArgs([
   '--device-base-url=http://device.local/api',
   '--token=token-1',
+  '--tenant-id=42',
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
   '--profile=device-video-web',
@@ -37,6 +38,7 @@ const parsed = parseArgs([
 ], {});
 assert.equal(parsed.deviceBaseUrl, 'http://device.local/api');
 assert.equal(parsed.token, 'token-1');
+assert.equal(parsed.tenantId, 42);
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.alertTime, '2026-07-05T10:00:00');
 assert.equal(parsed.profile, 'device-video-web');
@@ -57,6 +59,7 @@ assert.equal(parsed.playbackReason, 'release-smoke-playback');
 const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_BASE_URL: 'https://release-device.local/admin-api',
   YFEIEYE_DEVICE_AUTH_TOKEN: 'env-token',
+  YFEIEYE_DEVICE_TENANT_ID: '84',
   YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID: '9200',
   YFEIEYE_DEVICE_SMOKE_ALERT_TIME: '2026-07-05T11:00:00',
   YFEIEYE_DEVICE_SMOKE_DEVICE_ID: 'device-env-01',
@@ -69,6 +72,7 @@ const fromEnv = parseArgs([], {
 });
 assert.equal(fromEnv.deviceBaseUrl, 'https://release-device.local/admin-api');
 assert.equal(fromEnv.token, 'env-token');
+assert.equal(fromEnv.tenantId, 84);
 assert.equal(fromEnv.operatorUserId, 9200);
 assert.equal(fromEnv.profile, 'release');
 assert.equal(fromEnv.includeVideoExport, true);
@@ -85,6 +89,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {
 })), [
   'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL',
   'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN',
+  'missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID',
   'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID',
   'missing --alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME',
 ]);
@@ -149,6 +154,7 @@ assert.throws(
 assert.deepEqual(requiredOptionErrors(parseArgs([
   '--device-base-url=http://device.local/api',
   '--token=token-1',
+  '--tenant-id=42',
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
   '--profile=device-video-web',
@@ -175,6 +181,7 @@ const smoke = await runSmoke(parsed, {
       assert.equal(String(url), 'http://device.local/api/system/supervision/alert-review/integration-smoke');
       assert.equal(init.method, 'POST');
       assert.equal(init.headers.authorization, 'Bearer token-1');
+      assert.equal(init.headers['tenant-id'], '42');
       assert.equal(init.headers['content-type'], 'application/json');
       assert.deepEqual(JSON.parse(init.body), buildSmokeBody(parsed));
       return jsonResponse({ code: 0, data: validPayload });
@@ -182,6 +189,7 @@ const smoke = await runSmoke(parsed, {
     const requestUrl = new URL(String(url));
     assert.equal(init.method, 'GET');
     assert.equal(init.headers.authorization, 'Bearer token-1');
+    assert.equal(init.headers['tenant-id'], '42');
     assert.equal(requestUrl.pathname, '/api/system/supervision/alert-review/items/1001/playback-url');
     assert.equal(requestUrl.searchParams.get('reviewCaseId'), '2001');
     assert.equal(requestUrl.searchParams.get('materialUri'), 'playback-url.mp4');
@@ -226,6 +234,7 @@ await assert.rejects(
   () => runSmoke(parseArgs([
     '--device-base-url=http://device.local/api',
     '--token=token-1',
+    '--tenant-id=42',
     '--operator-user-id=9001',
     '--alert-time=2026-07-05T10:00:00',
     '--playback-allowed-camera-ids=camera-01',
@@ -236,6 +245,19 @@ await assert.rejects(
 await assert.rejects(
   () => runSmoke(parseArgs([], {}), { fetchImpl: async () => jsonResponse({}) }),
   /missing --device-base-url/,
+);
+
+await assert.rejects(
+  () => runSmoke(parsed, {
+    fetchImpl: async () => jsonResponse({
+      code: 0,
+      data: {
+        ...validPayload,
+        checkpoints: REQUIRED_CHECKPOINTS.filter((checkpoint) => checkpoint !== 'evidence_download_bytes_verified'),
+      },
+    }),
+  }),
+  /missing smoke checkpoint: evidence_download_bytes_verified/,
 );
 
 await assert.rejects(

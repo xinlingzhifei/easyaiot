@@ -126,7 +126,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Table, Input, Select, DatePicker, Tag, Empty } from 'ant-design-vue';
 import type { TableColumnsType } from 'ant-design-vue';
 import { BasicModal } from '@/components/Modal';
@@ -135,6 +135,7 @@ import dayjs from 'dayjs';
 import { useMessage } from '@/hooks/web/useMessage';
 import {
   getSnapImageList,
+  loadSnapImageObjectUrl,
   deleteSnapImages,
   type SnapImage,
   type SnapImageSource,
@@ -155,6 +156,8 @@ const props = defineProps<{
 
 const { createMessage } = useMessage();
 const { RangePicker } = DatePicker;
+const snapImageObjectUrls = ref<Record<string, string>>({});
+let imageLoadGeneration = 0;
 
 const columns: TableColumnsType<SnapImage> = [
   { title: '缩略图', key: 'thumbnail', width: 88, align: 'center' },
@@ -253,13 +256,44 @@ function pageSizeChange(_current: number, size: number) {
   loadImageList();
 }
 
-function getImageUrl(record: Record<string, any>) {
+function getProtectedImageSource(record: Record<string, any>) {
   const item = record as SnapImage;
   if (item.url) return resolveAlertImageDisplayUrl(item.url);
   if (!props.spaceId) return '';
   return resolveAlertImageDisplayUrl(
     `/video/snap/space/${props.spaceId}/image/${item.object_name}`,
   );
+}
+
+function getImageUrl(record: Record<string, any>) {
+  const item = record as SnapImage;
+  return snapImageObjectUrls.value[item.object_name] || '';
+}
+
+function releaseSnapImageObjectUrls(urls = snapImageObjectUrls.value) {
+  Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+  if (urls === snapImageObjectUrls.value) snapImageObjectUrls.value = {};
+}
+
+async function replaceSnapImageObjectUrls(items: SnapImage[], generation: number) {
+  const loaded = await Promise.all(items.map(async (item) => {
+    const source = getProtectedImageSource(item);
+    if (!source) return null;
+    try {
+      return [item.object_name, await loadSnapImageObjectUrl(source)] as const;
+    } catch (error) {
+      console.error('加载受保护抓拍失败', item.object_name, error);
+      return null;
+    }
+  }));
+  const nextUrls = Object.fromEntries(loaded.filter((entry): entry is readonly [string, string] => entry !== null));
+  if (generation !== imageLoadGeneration) {
+    releaseSnapImageObjectUrls(nextUrls);
+    return;
+  }
+  const previousUrls = snapImageObjectUrls.value;
+  snapImageObjectUrls.value = nextUrls;
+  releaseSnapImageObjectUrls(previousUrls);
 }
 
 function formatSize(bytes: number) {
@@ -281,10 +315,13 @@ function openPreview(item: Record<string, any>) {
 
 async function loadImageList() {
   if (!props.spaceId) {
+    imageLoadGeneration += 1;
+    releaseSnapImageObjectUrls();
     imageList.value = [];
     total.value = 0;
     return;
   }
+  const generation = ++imageLoadGeneration;
   loading.value = true;
   try {
     const timeRange = buildTimeRange();
@@ -295,21 +332,26 @@ async function loadImageList() {
       source: sourceFilter.value || undefined,
       ...timeRange,
     });
+    if (generation !== imageLoadGeneration) return;
     if (response?.code === 0 && Array.isArray(response.data)) {
       imageList.value = response.data;
       total.value = response.total ?? 0;
+      await replaceSnapImageObjectUrls(response.data, generation);
     } else {
+      releaseSnapImageObjectUrls();
       createMessage.error(response?.msg || '加载图片列表失败');
       imageList.value = [];
       total.value = 0;
     }
   } catch (error) {
+    if (generation !== imageLoadGeneration) return;
+    releaseSnapImageObjectUrls();
     console.error('加载图片列表失败', error);
     createMessage.error('加载图片列表失败');
     imageList.value = [];
     total.value = 0;
   } finally {
-    loading.value = false;
+    if (generation === imageLoadGeneration) loading.value = false;
   }
 }
 
@@ -460,6 +502,11 @@ watch(
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => {
+  imageLoadGeneration += 1;
+  releaseSnapImageObjectUrls();
+});
 
 defineExpose({ refresh: handleRefresh, setDateFilter, applyFilters });
 </script>

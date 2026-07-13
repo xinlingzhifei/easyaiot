@@ -57,6 +57,9 @@ import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertRevie
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SemanticIndexEvaluationRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SemanticIndexRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SemanticReindexJobRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SemanticTriggerConfirmationReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SemanticTriggerEvaluationReqVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SemanticTriggerRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.SummaryRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.ToEventRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.UserStatusReqVO;
@@ -65,7 +68,10 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.AlertClueCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewAiSummaryConfirmationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceDownloadArtifact;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceDownloadCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseMergeCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseOperationCommand;
@@ -89,12 +95,19 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEvaluationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticReindexCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticSearchCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RuleSuggestionOperationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewUserStatusCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -104,8 +117,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import javax.validation.Valid;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -360,6 +376,61 @@ public class SupervisionAlertReviewController {
                 .toList());
     }
 
+    @PostMapping("/semantic-triggers/evaluate")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:semantic-trigger:evaluate')")
+    @Operation(summary = "Evaluate semantic trigger and persist preview for human confirmation")
+    public CommonResult<SemanticTriggerRespVO> evaluateSemanticTrigger(
+            @Valid @RequestBody SemanticTriggerEvaluationReqVO reqVO) {
+        return success(SemanticTriggerRespVO.from(supervisionAlertReviewService.evaluateSemanticTrigger(
+                new ReviewSemanticTriggerCommand(
+                        reqVO.getTriggerName(),
+                        reqVO.getCameraId(),
+                        reqVO.getTriggerType(),
+                        reqVO.getData(),
+                        reqVO.getThreshold(),
+                        reqVO.getActions(),
+                        new ReviewQuery(
+                                reqVO.getReviewStatus(),
+                                reqVO.getCameraId(),
+                                reqVO.getZoneCode(),
+                                reqVO.getObjectLabel(),
+                                reqVO.getRecordEvidenceStatus(),
+                                reqVO.getConverted(),
+                                reqVO.getInReviewCase(),
+                                reqVO.getReviewerUserId(),
+                                reqVO.getBeginTime(),
+                                reqVO.getEndTime()
+                        ),
+                        requiredLoginOperatorUserId()
+                )
+        )));
+    }
+
+    @GetMapping("/semantic-triggers/{evaluationId}")
+    @PreAuthorize("@ss.hasAnyPermissions('system:supervision-alert-review:semantic-trigger:evaluate','system:supervision-alert-review:semantic-trigger:confirm')")
+    @Operation(summary = "Get a persisted semantic trigger preview")
+    public CommonResult<SemanticTriggerRespVO> getSemanticTrigger(
+            @PathVariable("evaluationId") String evaluationId) {
+        return success(SemanticTriggerRespVO.from(
+                supervisionAlertReviewService.getSemanticTrigger(evaluationId)));
+    }
+
+    @PostMapping("/semantic-triggers/{evaluationId}/confirmation")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:semantic-trigger:confirm')")
+    @Operation(summary = "Confirm or reject a persisted semantic trigger preview")
+    public CommonResult<SemanticTriggerRespVO> confirmSemanticTrigger(
+            @PathVariable("evaluationId") String evaluationId,
+            @Valid @RequestBody SemanticTriggerConfirmationReqVO reqVO) {
+        return success(SemanticTriggerRespVO.from(supervisionAlertReviewService.confirmSemanticTrigger(
+                new ReviewSemanticTriggerConfirmationCommand(
+                        evaluationId,
+                        reqVO.getConfirmationStatus(),
+                        reqVO.getNotes(),
+                        requiredLoginOperatorUserId()
+                )
+        )));
+    }
+
     @PostMapping("/semantic-index/reindex")
     @Operation(summary = "Reindex alert review semantic documents")
     public CommonResult<List<SemanticIndexRespVO>> reindexSemanticIndex(
@@ -534,6 +605,7 @@ public class SupervisionAlertReviewController {
     }
 
     @GetMapping("/items/{reviewItemId}/detail-stream")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:playback')")
     @Operation(summary = "Get alert review object lifecycle detail stream")
     public CommonResult<List<DetailStreamRespVO>> getDetailStream(
             @PathVariable("reviewItemId") Long reviewItemId,
@@ -728,7 +800,9 @@ public class SupervisionAlertReviewController {
                 reviewCaseId,
                 reqVO.getOwnerUserId(),
                 currentOperatorUserId(reqVO.getOperatorUserId()),
-                reqVO.getNotes()
+                reqVO.getNotes(),
+                reqVO.getExpectedVersion(),
+                reqVO.getOperationId()
         ))));
     }
 
@@ -740,7 +814,9 @@ public class SupervisionAlertReviewController {
         return success(CaseRespVO.from(supervisionAlertReviewService.closeReviewCase(new ReviewCaseOperationCommand(
                 reviewCaseId,
                 currentOperatorUserId(body.getOperatorUserId()),
-                body.getNotes()
+                body.getNotes(),
+                body.getExpectedVersion(),
+                body.getOperationId()
         ))));
     }
 
@@ -752,7 +828,10 @@ public class SupervisionAlertReviewController {
                 targetReviewCaseId,
                 reqVO.getSourceReviewCaseId(),
                 currentOperatorUserId(reqVO.getOperatorUserId()),
-                reqVO.getNotes()
+                reqVO.getNotes(),
+                reqVO.getTargetExpectedVersion(),
+                reqVO.getSourceExpectedVersion(),
+                reqVO.getOperationId()
         ))));
     }
 
@@ -766,7 +845,9 @@ public class SupervisionAlertReviewController {
                 reqVO.getTitle(),
                 reqVO.getOwnerUserId(),
                 currentOperatorUserId(reqVO.getOperatorUserId()),
-                reqVO.getNotes()
+                reqVO.getNotes(),
+                reqVO.getSourceExpectedVersion(),
+                reqVO.getOperationId()
         ))));
     }
 
@@ -819,14 +900,15 @@ public class SupervisionAlertReviewController {
     public CommonResult<EvidenceExportRespVO> exportReviewEvidence(@PathVariable("reviewCaseId") Long reviewCaseId,
                                                                    @RequestBody(required = false) EvidenceExportReqVO reqVO) {
         EvidenceExportReqVO body = reqVO == null ? new EvidenceExportReqVO() : reqVO;
+        Long operatorUserId = currentOperatorUserId(body.getOperatorUserId());
         return success(EvidenceExportRespVO.from(supervisionAlertReviewService.exportReviewEvidence(
                 new ReviewEvidenceExportCommand(
                         reviewCaseId,
                         body.getReviewItemIds(),
-                        currentOperatorUserId(body.getOperatorUserId()),
+                        operatorUserId,
                         body.getFormat(),
                         body.getReason(),
-                        body.getApproverUserId(),
+                        body.getApproverUserId() == null ? null : operatorUserId,
                         body.getApprovalNote(),
                         body.getAllowedCameraIds()
                 )
@@ -840,14 +922,15 @@ public class SupervisionAlertReviewController {
             @PathVariable("reviewCaseId") Long reviewCaseId,
             @RequestBody(required = false) EvidenceExportReqVO reqVO) {
         EvidenceExportReqVO body = reqVO == null ? new EvidenceExportReqVO() : reqVO;
+        Long operatorUserId = currentOperatorUserId(body.getOperatorUserId());
         return success(EvidenceExportJobRespVO.from(supervisionAlertReviewService.createReviewEvidenceExportJob(
                 new ReviewEvidenceExportCommand(
                         reviewCaseId,
                         body.getReviewItemIds(),
-                        currentOperatorUserId(body.getOperatorUserId()),
+                        operatorUserId,
                         body.getFormat(),
                         body.getReason(),
-                        body.getApproverUserId(),
+                        body.getApproverUserId() == null ? null : operatorUserId,
                         body.getApprovalNote(),
                         body.getAllowedCameraIds()
                 )
@@ -894,6 +977,25 @@ public class SupervisionAlertReviewController {
                         body.getReason()
                 )
         )));
+    }
+
+    @GetMapping("/evidence-audit")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:manifest')")
+    @Operation(summary = "Query alert review evidence audit trail by linked identifiers")
+    public CommonResult<List<EvidenceAuditRespVO>> queryEvidenceAuditTrail(
+            @RequestParam(value = "eventId", required = false) Long eventId,
+            @RequestParam(value = "reviewCaseId", required = false) Long reviewCaseId,
+            @RequestParam(value = "reviewItemId", required = false) Long reviewItemId,
+            @RequestParam(value = "exportJobNo", required = false) String exportJobNo) {
+        return success(supervisionAlertReviewService.queryEvidenceAuditTrail(new ReviewEvidenceAuditQuery(
+                        eventId,
+                        reviewCaseId,
+                        reviewItemId,
+                        exportJobNo
+                ))
+                .stream()
+                .map(EvidenceAuditRespVO::from)
+                .toList());
     }
 
     @GetMapping("/cases/{reviewCaseId}/evidence-audit")
@@ -965,21 +1067,72 @@ public class SupervisionAlertReviewController {
     @PostMapping("/evidence-export-jobs/{jobNo}/downloads")
     @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:download')")
     @Operation(summary = "Record alert review evidence export download")
-    public CommonResult<EvidenceAuditRespVO> recordEvidenceDownload(
+    public ResponseEntity<CommonResult<EvidenceAuditRespVO>> recordEvidenceDownload(
             @PathVariable("jobNo") String jobNo,
             @RequestBody(required = false) EvidenceDownloadAuditReqVO reqVO) {
         EvidenceDownloadAuditReqVO body = reqVO == null ? new EvidenceDownloadAuditReqVO() : reqVO;
-        return success(EvidenceAuditRespVO.from(supervisionAlertReviewService.recordEvidenceDownload(
+        supervisionAlertReviewService.recordEvidenceDownload(
                 jobNo,
                 currentOperatorUserId(body.getOperatorUserId()),
                 body.getReason(),
                 body.getAllowedCameraIds()
-        )));
+        );
+        return ResponseEntity.status(HttpStatus.GONE).body(CommonResult.error(
+                HttpStatus.GONE.value(),
+                "audit-only download endpoint is disabled; use GET /download"
+        ));
+    }
+
+    @GetMapping("/evidence-export-jobs/{jobNo}/download")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:download')")
+    @Operation(summary = "Download verified alert review VIDEO evidence package")
+    public ResponseEntity<StreamingResponseBody> downloadEvidenceExportPackage(
+            @PathVariable("jobNo") String jobNo,
+            @RequestParam(value = "operatorUserId", required = false) Long operatorUserId,
+            @RequestParam(value = "allowedCameraIds", required = false) List<String> allowedCameraIds,
+            @RequestParam(value = "reason", required = false) String reason) {
+        ReviewEvidenceDownloadArtifact artifact = supervisionAlertReviewService.downloadEvidencePackage(
+                new ReviewEvidenceDownloadCommand(
+                        jobNo,
+                        currentOperatorUserId(operatorUserId),
+                        allowedCameraIds,
+                        reason
+                )
+        );
+        MediaType contentType;
+        try {
+            contentType = MediaType.parseMediaType(artifact.contentType());
+        } catch (RuntimeException ignored) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        StreamingResponseBody responseBody = output -> {
+            try (artifact; InputStream input = artifact.openStream()) {
+                input.transferTo(output);
+                output.flush();
+            }
+        };
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .contentLength(artifact.contentLength())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(artifact.fileName(), StandardCharsets.UTF_8)
+                        .build()
+                        .toString())
+                .header("X-Content-SHA256", artifact.fileHash())
+                .body(responseBody);
     }
 
     private static Long currentOperatorUserId(Long requestedOperatorUserId) {
         Long loginUserId = getLoginUserId();
         return loginUserId == null ? requestedOperatorUserId : loginUserId;
+    }
+
+    private static Long requiredLoginOperatorUserId() {
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            throw new SecurityException("login user is required for semantic trigger approval");
+        }
+        return loginUserId;
     }
 
     @GetMapping("/items/{reviewItemId}/case-candidates")

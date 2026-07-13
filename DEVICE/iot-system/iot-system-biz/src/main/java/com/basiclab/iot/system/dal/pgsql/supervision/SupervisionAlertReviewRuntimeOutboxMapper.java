@@ -35,6 +35,18 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
                 WHERE (
                     outbox_status = 'pending'
                     OR (
+                        outbox_status = 'failed'
+                        AND COALESCE(retry_count, 0) < 10
+                        AND (
+                            published_at IS NULL
+                            OR published_at <= #{claimedAt,jdbcType=TIMESTAMP}
+                                - (INTERVAL '1 second' * LEAST(
+                                    3600,
+                                    30 * POWER(2, LEAST(COALESCE(retry_count, 0), 7))
+                                ))
+                        )
+                    )
+                    OR (
                         outbox_status = 'processing'
                         AND #{reclaimBefore,jdbcType=TIMESTAMP} IS NOT NULL
                         AND (
@@ -43,7 +55,7 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
                         )
                     )
                 )
-                  AND deleted = FALSE
+                  AND deleted = 0
                 ORDER BY created_at ASC, id ASC
                 LIMIT #{limit,jdbcType=INTEGER}
                 FOR UPDATE SKIP LOCKED

@@ -41,6 +41,7 @@ const parsed = parseArgs([
   '--video-record-drift-retention-hours=24',
   '--video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
   '--player-workbench-url=https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag',
+  '--tenant-id=42',
   '--player-review-row-text=RV-20260705-001',
   '--player-action-testid=alert-review-detail-seek',
   '--player-expected-seek-time=2026-07-05T10:00:30',
@@ -74,6 +75,7 @@ assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.videoRecordDriftRetentionHours, 24);
 assert.equal(parsed.videoManifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 assert.equal(parsed.playerWorkbenchUrl, 'https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag');
+assert.equal(parsed.tenantId, 42);
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(parsed.playerCaseTimelineExpectedOffsetSeconds, 0);
@@ -109,6 +111,7 @@ const localEndpointsAllowed = parseArgs([
   '--video-alert-time=2026-07-05 10:00:00',
   '--video-record-drift-retention-hours=24',
   '--player-workbench-url=http://127.0.0.1:5173/yfeieye/alert/review',
+  '--tenant-id=42',
   '--player-review-row-text=RV-20260705-001',
   '--player-expected-seek-time=2026-07-05T10:00:30',
   '--player-expected-record-path-contains=device-01',
@@ -153,6 +156,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS: '72',
   YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT: '.scripts/record-export-manifest-verifier.mjs',
   YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://web.env/review',
+  YFEIEYE_DEVICE_TENANT_ID: '84',
   YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT: 'RV-ENV',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME: '2026-07-05T11:00:10',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS: 'env-device',
@@ -173,6 +177,7 @@ assert.equal(fromEnv.videoDeviceId, 'env-device');
 assert.equal(fromEnv.videoRecordDriftRetentionHours, 72);
 assert.equal(fromEnv.videoManifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 assert.equal(fromEnv.playerExpectedOffsetSeconds, 10);
+assert.equal(fromEnv.tenantId, 84);
 assert.equal(fromEnv.playerCoverageExpectedOffsetSeconds, 0);
 assert.equal(fromEnv.playerCaseTimelineExpectedOffsetSeconds, 0);
 assert.equal(fromEnv.evidenceOutputFile, 'artifacts/env-smoke.json');
@@ -180,6 +185,7 @@ assert.equal(fromEnv.evidenceOutputFile, 'artifacts/env-smoke.json');
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL',
   'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN',
+  'missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID',
   'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID',
   'missing --device-alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME',
   'missing --device-playback-allowed-camera-ids or YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS',
@@ -222,6 +228,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--video-record-drift-retention-hours=24',
   '--video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
   '--player-workbench-url=http://localhost:5173/mock-workbench',
+  '--tenant-id=42',
   '--player-review-row-text=RV-20260705-001',
   '--player-expected-seek-time=2026-07-05T10:00:30',
   '--player-expected-record-path-contains=device-01',
@@ -263,8 +270,8 @@ assert.deepEqual(steps[2].args.slice(0, 5), [
   '.scripts/alert-review-device-integration-smoke.mjs',
   '--device-base-url=https://device.release.example/api',
   '--token=token-1',
+  '--tenant-id=42',
   '--operator-user-id=9001',
-  '--alert-time=2026-07-05T10:00:00',
 ]);
 assert.ok(steps[2].args.includes('--playback-allowed-camera-ids=camera-01'));
 assert.ok(steps[2].args.includes('--device-id=device-01'));
@@ -277,6 +284,7 @@ assert.ok(steps[2].args.includes('--playback-review-case-id=2001'));
 assert.ok(steps[2].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[2].args.includes('--timeout-ms=900000'));
 assert.ok(steps[3].args.includes('--record-export-url=https://video.release.example/video/record/export'));
+assert.ok(steps[3].args.includes('--token=token-1'));
 assert.ok(steps[3].args.includes('--camera-id=camera-01'));
 assert.ok(steps[3].args.includes('--record-drift-retention-hours=24'));
 assert.ok(steps[3].args.includes('--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs'));
@@ -285,17 +293,21 @@ assert.ok(steps[4].args.includes('--action-testid=alert-review-detail-seek'));
 assert.ok(steps[4].args.includes('--expected-offset-seconds=30'));
 assert.ok(steps[4].args.includes('--timeout-ms=900000'));
 assert.ok(steps[4].args.includes('--assert-native-current-time'));
+assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN, 'token-1');
+assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID, '42');
 assert.ok(steps[5].args.includes('--action-testid=alert-review-coverage-seek'));
 assert.ok(steps[5].args.includes('--expected-offset-seconds=0'));
 assert.ok(steps[5].args.includes('--timeout-ms=900000'));
 assert.ok(steps[5].args.includes('--assert-native-current-time'));
+assert.equal(steps[5].env.YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN, 'token-1');
 assert.ok(steps[6].args.includes('--action-testid=alert-review-case-timeline-seek'));
 assert.ok(steps[6].args.includes('--expected-offset-seconds=0'));
 assert.ok(steps[6].args.includes('--timeout-ms=900000'));
 assert.ok(steps[6].args.includes('--assert-native-current-time'));
+assert.equal(steps[6].env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID, '42');
 assert.equal(
   formatStepCommand(steps[2]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --device-id=device-01 --camera-id=camera-01 --zone-code=production-smoke --allowed-camera-ids=camera-01 --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --tenant-id=42 --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --device-id=device-01 --camera-id=camera-01 --zone-code=production-smoke --allowed-camera-ids=camera-01 --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
 );
 
 const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smoke.mjs', '--help'], {
@@ -410,6 +422,23 @@ await assert.rejects(
   /production smoke step LivePlayer:detail missing native currentTime evidence/,
 );
 
+await assert.rejects(
+  () => runProductionSmoke(parsed, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: () => {},
+    runCommand: async (step) => {
+      const stdout = summaryStdoutForStep(step.name);
+      if (step.name !== 'LivePlayer:detail') return { status: 0, stdout };
+      const player = JSON.parse(stdout);
+      player.nativePlayingObserved = false;
+      player.nativePaused = true;
+      return { status: 0, stdout: JSON.stringify(player) };
+    },
+  }),
+  /production smoke step LivePlayer:detail native video did not enter playing state/,
+);
+
 const evidenceWrites = [];
 const smokeWithEvidence = await runProductionSmoke({
   ...parsed,
@@ -500,6 +529,7 @@ const smokeWithEvidence = await runProductionSmoke({
     "review_case_created",
     "evidence_export_ready",
     "manifest_verified",
+    "evidence_download_bytes_verified",
     "evidence_download_audited",
     "playback_url_granted",
     "playback_url_denied"
@@ -586,7 +616,13 @@ const smokeWithEvidence = await runProductionSmoke({
   "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4",
   "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=coverage-secret",
   "playbackOffsetSeconds": 0,
-  "nativeCurrentTime": 0.15
+  "nativeCurrentTime": 0.15,
+  "nativeCurrentSrc": "https://media.example.test/records/device-01/20260705-100000.mp4?token=coverage-native-secret",
+  "nativeReadyState": 4,
+  "nativePaused": false,
+  "nativeDuration": 120,
+  "nativeError": null,
+  "nativePlayingObserved": true
 }
 `
           : step.name === 'LivePlayer:case-timeline'
@@ -598,7 +634,13 @@ const smokeWithEvidence = await runProductionSmoke({
   "recordPath": "https://media.example.test/records/device-01/20260705-100000.mp4",
   "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=case-secret",
   "playbackOffsetSeconds": 0,
-  "nativeCurrentTime": 0
+  "nativeCurrentTime": 0,
+  "nativeCurrentSrc": "https://media.example.test/records/device-01/20260705-100000.mp4?token=case-native-secret",
+  "nativeReadyState": 4,
+  "nativePaused": false,
+  "nativeDuration": 120,
+  "nativeError": null,
+  "nativePlayingObserved": true
 }
 `
             : `alert review player live smoke passed
@@ -611,6 +653,12 @@ const smokeWithEvidence = await runProductionSmoke({
     "currentUrl": "https://media.example.test/records/device-01/20260705-100000.mp4?token=wrapped-media-secret&signature=abc#playback",
     "playbackOffsetSeconds": 30,
     "nativeCurrentTime": 30.25,
+    "nativeCurrentSrc": "https://media.example.test/records/device-01/20260705-100000.mp4?token=detail-native-secret",
+    "nativeReadyState": 4,
+    "nativePaused": false,
+    "nativeDuration": 120,
+    "nativeError": null,
+    "nativePlayingObserved": true,
     "debugToken": "wrapped-debug-secret"
   }
 }
@@ -652,6 +700,7 @@ assert.deepEqual(evidenceReport.steps[2].summary, {
     'review_case_created',
     'evidence_export_ready',
     'manifest_verified',
+    'evidence_download_bytes_verified',
     'evidence_download_audited',
     'playback_url_granted',
     'playback_url_denied',
@@ -762,6 +811,12 @@ assert.deepEqual(evidenceReport.steps[4].summary.player, {
   currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   playbackOffsetSeconds: 30,
   nativeCurrentTime: 30.25,
+  nativeCurrentSrc: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+  nativeReadyState: 4,
+  nativePaused: false,
+  nativeDuration: 120,
+  nativePlayingObserved: true,
+  nativeErrorPresent: false,
 });
 assert.deepEqual(evidenceReport.steps[5].summary.player, {
   entry: 'coverage',
@@ -779,6 +834,12 @@ assert.deepEqual(evidenceReport.steps[5].summary.player, {
   currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   playbackOffsetSeconds: 0,
   nativeCurrentTime: 0.15,
+  nativeCurrentSrc: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+  nativeReadyState: 4,
+  nativePaused: false,
+  nativeDuration: 120,
+  nativePlayingObserved: true,
+  nativeErrorPresent: false,
 });
 assert.deepEqual(evidenceReport.steps[6].summary.player, {
   entry: 'case-timeline',
@@ -796,6 +857,12 @@ assert.deepEqual(evidenceReport.steps[6].summary.player, {
   currentUrl: 'https://media.example.test/records/device-01/20260705-100000.mp4',
   playbackOffsetSeconds: 0,
   nativeCurrentTime: 0,
+  nativeCurrentSrc: 'https://media.example.test/records/device-01/20260705-100000.mp4',
+  nativeReadyState: 4,
+  nativePaused: false,
+  nativeDuration: 120,
+  nativePlayingObserved: true,
+  nativeErrorPresent: false,
 });
 assert.equal(evidenceReport.steps[3].stdout, undefined);
 assert.equal(evidenceReport.steps[4].stdout, undefined);
@@ -851,6 +918,7 @@ await assert.rejects(
               'review_case_created',
               'evidence_export_ready',
               'manifest_verified',
+              'evidence_download_bytes_verified',
               'evidence_download_audited',
               'playback_url_granted',
               'playback_url_denied',
@@ -886,6 +954,7 @@ await assert.rejects(
               'review_case_created',
               'evidence_export_ready',
               'manifest_verified',
+              'evidence_download_bytes_verified',
               'evidence_download_audited',
               'playback_url_granted',
               'playback_url_denied',
@@ -926,6 +995,7 @@ await assert.rejects(
               'review_case_created',
               'evidence_export_ready',
               'manifest_verified',
+              'evidence_download_bytes_verified',
               'evidence_download_audited',
               'playback_url_granted',
               'playback_url_denied',
@@ -1331,6 +1401,7 @@ function summaryStdoutForStep(name, options = {}) {
         'review_case_created',
         'evidence_export_ready',
         'manifest_verified',
+        'evidence_download_bytes_verified',
         'evidence_download_audited',
         'playback_url_granted',
         'playback_url_denied',
@@ -1396,6 +1467,12 @@ function summaryStdoutForStep(name, options = {}) {
       recordPath: playerRecordPath,
       playbackOffsetSeconds: 0,
       nativeCurrentTime: 0.15,
+      nativeCurrentSrc: playerRecordPath,
+      nativeReadyState: 4,
+      nativePaused: false,
+      nativeDuration: 120,
+      nativeError: null,
+      nativePlayingObserved: true,
     });
   }
   if (name === 'LivePlayer:detail') {
@@ -1406,6 +1483,12 @@ function summaryStdoutForStep(name, options = {}) {
       recordPath: playerRecordPath,
       playbackOffsetSeconds: 30,
       nativeCurrentTime: 30.25,
+      nativeCurrentSrc: playerRecordPath,
+      nativeReadyState: 4,
+      nativePaused: false,
+      nativeDuration: 120,
+      nativeError: null,
+      nativePlayingObserved: true,
     });
   }
   return '';

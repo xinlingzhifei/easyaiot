@@ -8,6 +8,8 @@ import sys
 
 _HMAC_SECRET_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_SECRET'
 _HMAC_KEYS_ENV = 'YFEIEYE_RECORD_EXPORT_HMAC_KEYS'
+_HMAC_KEY_ID_ENV = 'YFEIEYE_RECORD_EXPORT_KEY_ID'
+_ALLOW_SHA256_FALLBACK_ENV = 'YFEIEYE_RECORD_EXPORT_ALLOW_SHA256_FALLBACK'
 
 
 def verify_manifest_file(path: str) -> dict:
@@ -21,9 +23,33 @@ def verify_manifest(manifest: dict, base_dir: str = '') -> dict:
     expected_hash = _expected_manifest_hash(manifest)
     actual_hash = str(manifest.get('manifestHash') or '').strip()
     signature = manifest.get('signature') if isinstance(manifest.get('signature'), dict) else {}
-    signature_key = _signature_key(signature)
+    signature_key_error = None
+    try:
+        signature_key = _signature_key(signature)
+    except RuntimeError as exc:
+        signature_key_error = str(exc)
+        signature_key = {
+            'available': False,
+            'secret': '',
+            'source': 'invalid-keyring',
+        }
     expected_signature = _expected_manifest_signature(manifest, expected_hash, signature_key.get('secret'))
     actual_signature = str(signature.get('value') or '').strip()
+    algorithm = _text(signature.get('algorithm')).lower()
+    required_signature_fields = (
+        'algorithm', 'algorithmVersion', 'signatureVersion', 'keyId',
+        'signer', 'signedAt', 'value',
+    )
+    missing_signature_metadata = [
+        field for field in required_signature_fields
+        if not _text(signature.get(field))
+    ]
+    algorithm_allowed = (
+        algorithm == 'hmac-sha256'
+        or (algorithm == 'sha256' and _sha256_fallback_allowed())
+    )
+    signature_matches = bool(actual_signature) and hmac.compare_digest(
+        actual_signature, expected_signature)
     file_checks = _verify_files(manifest.get('files'), base_dir)
     record_segment_checks = _verify_record_segments(manifest.get('recordSegments'), base_dir)
     violations = []
@@ -33,10 +59,18 @@ def verify_manifest(manifest: dict, base_dir: str = '') -> dict:
         violations.append('manifest_hash_mismatch')
     if not signature:
         violations.append('missing_signature')
-    elif actual_signature != expected_signature:
+    elif missing_signature_metadata:
+        violations.append('missing_signature_metadata')
+    if algorithm not in ('hmac-sha256', 'sha256'):
+        violations.append('unsupported_signature_algorithm')
+    elif not algorithm_allowed:
+        violations.append('signature_algorithm_not_allowed')
+    if signature and not signature_matches:
         violations.append('signature_mismatch')
-    if signature.get('algorithm') == 'hmac-sha256' and not signature_key.get('available'):
+    if algorithm == 'hmac-sha256' and not signature_key.get('available'):
         violations.append('missing_hmac_key')
+    if signature_key_error:
+        violations.append('malformed_hmac_keyring')
     if not manifest.get('packageChecksum'):
         violations.append('missing_package_checksum')
     if any(not check['valid'] for check in file_checks):
@@ -49,7 +83,9 @@ def verify_manifest(manifest: dict, base_dir: str = '') -> dict:
         'manifestSchema': manifest.get('schema'),
         'canonicalHash': expected_hash,
         'actualManifestHash': actual_hash or None,
-        'signatureValid': bool(signature) and actual_signature == expected_signature,
+        'signatureValid': bool(signature) and not missing_signature_metadata
+                          and algorithm_allowed and signature_matches
+                          and (algorithm != 'hmac-sha256' or signature_key.get('available')),
         'expectedSignature': expected_signature,
         'actualSignature': actual_signature or None,
         'signer': signature.get('signer'),
@@ -73,20 +109,23 @@ def main(argv=None) -> int:
 
 
 def _expected_manifest_hash(manifest: dict) -> str:
-    hashable = dict(manifest or {})
-    hashable.pop('manifestHash', None)
-    hashable.pop('signature', None)
-    return _sha256_text(_canonical_json(hashable))
+    return _sha256_text(_canonical_json(
+        _canonical_manifest_signed_payload(manifest)))
+
+
+def _canonical_manifest_signed_payload(manifest: dict) -> dict:
+    payload = dict(manifest or {})
+    payload.pop('manifestHash', None)
+    signature = payload.get('signature')
+    if isinstance(signature, dict):
+        signature = dict(signature)
+        signature.pop('value', None)
+        payload['signature'] = signature
+    return payload
 
 
 def _expected_manifest_signature(manifest: dict, manifest_hash: str, secret=None) -> str:
-    approval = manifest.get('approval') if isinstance(manifest.get('approval'), dict) else {}
-    payload = [
-        manifest.get('packageChecksum'),
-        manifest_hash,
-        manifest.get('generatedBy'),
-        approval.get('approvedBy'),
-    ]
+    payload = _canonical_manifest_signed_payload(manifest)
     signature = manifest.get('signature') if isinstance(manifest.get('signature'), dict) else {}
     if signature.get('algorithm') == 'hmac-sha256':
         signing_secret = _text(secret)
@@ -114,10 +153,12 @@ def _signature_key(signature: dict) -> dict:
             'source': 'keyring',
         }
     legacy_secret = _text(os.environ.get(_HMAC_SECRET_ENV))
+    configured_key_id = _text(os.environ.get(_HMAC_KEY_ID_ENV)) or 'local-hmac'
+    available = bool(legacy_secret) and key_id == configured_key_id
     return {
-        'available': bool(legacy_secret),
-        'secret': legacy_secret,
-        'source': 'legacy-env' if legacy_secret else 'none',
+        'available': available,
+        'secret': legacy_secret if available else '',
+        'source': 'legacy-env' if available else 'none',
     }
 
 
@@ -127,20 +168,43 @@ def _hmac_keyring_config() -> tuple:
         return {}, ''
     try:
         parsed = json.loads(raw)
-    except (TypeError, ValueError):
-        return {}, ''
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError('record export HMAC keyring is malformed') from exc
     if not isinstance(parsed, dict):
-        return {}, ''
+        raise RuntimeError('record export HMAC keyring must be a JSON object')
     configured_active_key_id = _text(parsed.get('activeKeyId') or parsed.get('active_key_id'))
-    raw_keys = parsed.get('keys') if isinstance(parsed.get('keys'), dict) else parsed
     reserved = {'activeKeyId', 'active_key_id', 'keys'}
+    if 'keys' in parsed:
+        if not isinstance(parsed.get('keys'), dict):
+            raise RuntimeError('record export HMAC keyring keys must be an object')
+        raw_keys = parsed['keys']
+    else:
+        raw_keys = {
+            key: value for key, value in parsed.items() if key not in reserved}
+    if not raw_keys:
+        raise RuntimeError('record export HMAC keyring must contain at least one key')
     keyring = {}
     for raw_key_id, raw_secret in raw_keys.items():
         key_id = _text(raw_key_id)
         secret = _text(raw_secret)
-        if key_id and key_id not in reserved and secret:
-            keyring[key_id] = secret
+        if not key_id or key_id in reserved or not secret:
+            raise RuntimeError('record export HMAC keyring contains an invalid key')
+        keyring[key_id] = secret
     return keyring, configured_active_key_id
+
+
+def _sha256_fallback_allowed() -> bool:
+    profile = _text(
+        os.environ.get('VIDEO_ENV')
+        or os.environ.get('FLASK_ENV')
+        or os.environ.get('APP_ENV')
+        or os.environ.get('EASYAIOT_DEPLOY_PROFILE')
+    ).lower()
+    return (
+        profile in ('dev', 'development', 'test', 'testing', 'local')
+        and _text(os.environ.get(_ALLOW_SHA256_FALLBACK_ENV)).lower()
+        in ('1', 'true', 'yes', 'on')
+    )
 
 
 def _verify_files(files, base_dir: str) -> list:

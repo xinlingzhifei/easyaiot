@@ -78,4 +78,21 @@ public interface SupervisionAlertReviewItemMapper extends BaseMapperX<Supervisio
                 .orderByDesc(SupervisionAlertReviewItemDO::getLastAlertTime));
     }
 
+    default List<String> selectExistingCameraIds(Long tenantId, List<String> requestedCameraIds) {
+        if (tenantId == null || requestedCameraIds == null || requestedCameraIds.isEmpty()) {
+            return List.of();
+        }
+        return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewItemDO>()
+                .select(SupervisionAlertReviewItemDO::getCameraId)
+                .eq(SupervisionAlertReviewItemDO::getTenantId, tenantId)
+                .in(SupervisionAlertReviewItemDO::getCameraId, requestedCameraIds)
+                .groupBy(SupervisionAlertReviewItemDO::getCameraId))
+                .stream()
+                .map(SupervisionAlertReviewItemDO::getCameraId)
+                .filter(cameraId -> cameraId != null && !cameraId.trim().isEmpty())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
 }

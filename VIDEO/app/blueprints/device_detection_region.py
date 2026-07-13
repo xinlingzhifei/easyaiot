@@ -13,9 +13,26 @@ from app.services.device_detection_region_service import (
     delete_device_region, update_device_cover_image
 )
 from app.blueprints.camera import upload_screenshot_to_minio, grab_frame_for_snapshot
+from app.services.media_authorization_service import (
+    authorization_error,
+    authorize_media_request,
+)
 
 device_detection_region_bp = Blueprint('device_detection_region', __name__)
 logger = logging.getLogger(__name__)
+
+
+def _authorize_snapshot(device_id: str):
+    decision = authorize_media_request(
+        request,
+        action='snapshot',
+        camera_id=device_id,
+        resource=request.path,
+    )
+    if decision.allowed:
+        return decision, None
+    payload, status = authorization_error(decision)
+    return decision, (jsonify(payload), status)
 
 
 def _get_alias_value(data, snake_name, camel_name, default):
@@ -212,6 +229,9 @@ def update_cover_image(device_id):
     优先复用设备最近一张截图（通常是前端刚抓拍的那张）作为封面，避免对国标设备
     重复点播+抓帧（耗时长，会导致前端 10s 超时）；仅当设备无历史截图时才现抓一帧。
     """
+    authorization, denied = _authorize_snapshot(device_id)
+    if denied:
+        return denied
     try:
         device = Device.query.get(device_id)
         if not device:
@@ -230,7 +250,8 @@ def update_cover_image(device_id):
                 # 返回 HTTP 200 + code:500：前端 isTransformResponse=false，会读取 msg 显示具体原因，
                 # 避免全局拦截器把 HTTP 500 统一提示为"服务器错误,请联系管理员!"
                 return jsonify({'code': 500, 'msg': capture_err})
-            image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
+            image_url = upload_screenshot_to_minio(
+                device_id, frame, 'jpg', authorization.tenant_id)
             if not image_url:
                 return jsonify({'code': 500, 'msg': '图片上传失败'})
             image_record = Image.query.filter_by(device_id=device_id).order_by(Image.created_at.desc()).first()
@@ -257,6 +278,9 @@ def update_cover_image(device_id):
 @device_detection_region_bp.route('/device/<string:device_id>/snapshot', methods=['POST'])
 def capture_device_snapshot(device_id):
     """抓拍设备截图（用于区域检测绘制）"""
+    authorization, denied = _authorize_snapshot(device_id)
+    if denied:
+        return denied
     try:
         device = Device.query.get(device_id)
         if not device:
@@ -273,7 +297,8 @@ def capture_device_snapshot(device_id):
             return jsonify({'code': 500, 'msg': capture_err})
 
         # 上传到MinIO并存入数据库
-        image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
+        image_url = upload_screenshot_to_minio(
+            device_id, frame, 'jpg', authorization.tenant_id)
 
         if not image_url:
             return jsonify({'code': 500, 'msg': '图片上传失败'})

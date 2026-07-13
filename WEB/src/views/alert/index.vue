@@ -390,7 +390,12 @@ const handleViewVideo = async (record) => {
         id: record['id'],
         device_id: record['device_id'],
         time: record['time'],
+        seek_time: record['seek_time'],
+        record_start_time: record['record_start_time'],
+        playback_offset_seconds: record['playback_offset_seconds'],
         record_path: record['record_path'],
+        video_url: record['video_url'],
+        url: record['url'],
       },
     );
     if (ok) {

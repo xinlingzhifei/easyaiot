@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createCipheriv } from 'node:crypto';
 import net from 'node:net';
 import os from 'node:os';
 import { resolve } from 'node:path';
@@ -7,6 +8,10 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_AUTH_STORAGE_PREFIX = 'IOT_ADMIN__PRODUCTION__2.1.0-SNAPSHOT__';
+const AUTH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTH_CACHE_KEY = '_11111000001111@';
+const AUTH_CACHE_IV = '@11111000001111_';
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -20,6 +25,9 @@ export function parseArgs(args, env = process.env) {
     timeoutMs: Number(env.YFEIEYE_REVIEW_PLAYER_SMOKE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
     localStoragePairs: parsePairs(env.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE || '', '='),
     cookiePairs: parseCookiePairs(env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES || ''),
+    accessToken: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN || '',
+    tenantId: numberOrNull(env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID),
+    authStoragePrefix: env.YFEIEYE_REVIEW_PLAYER_SMOKE_STORAGE_PREFIX || DEFAULT_AUTH_STORAGE_PREFIX,
     chromePath: env.CHROME_PATH || '',
     assertNativeCurrentTime: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ASSERT_NATIVE_CURRENT_TIME === 'true',
     allowLocalEndpoints: parseBoolean(env.YFEIEYE_REVIEW_PLAYER_SMOKE_ALLOW_LOCAL_ENDPOINTS, false),
@@ -91,7 +99,50 @@ export function requiredOptionErrors(options) {
   if (!options.allowLocalEndpoints && looksLocalOrMockEndpoint(options.workbenchUrl)) {
     errors.push('player live smoke workbench URL must not use a local/mock URL without --allow-local-endpoints');
   }
+  if (hasText(options.accessToken) && (!Number.isInteger(options.tenantId) || options.tenantId <= 0)) {
+    errors.push('player live smoke access token requires a positive YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID');
+  }
+  if (!hasText(options.accessToken) && Number.isInteger(options.tenantId) && options.tenantId > 0) {
+    errors.push('player live smoke tenant id requires YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN');
+  }
   return errors;
+}
+
+export function buildProductionAuthStoragePairs(options, nowMs = Date.now()) {
+  if (!hasText(options?.accessToken)) {
+    return [];
+  }
+  if (!Number.isInteger(options.tenantId) || options.tenantId <= 0) {
+    throw new Error('player live smoke access token requires a positive tenant id');
+  }
+  const prefix = hasText(options.authStoragePrefix)
+    ? String(options.authStoragePrefix).trim().toUpperCase()
+    : DEFAULT_AUTH_STORAGE_PREFIX;
+  const expiresAt = nowMs + AUTH_CACHE_TTL_MS;
+  const memoryCache = {
+    ACCESS_TOKEN__: { value: options.accessToken, alive: AUTH_CACHE_TTL_MS, time: expiresAt },
+    TENANT_ID__: { value: options.tenantId, alive: AUTH_CACHE_TTL_MS, time: expiresAt },
+  };
+  const persisted = JSON.stringify({ value: memoryCache, time: nowMs, expire: expiresAt });
+  return [
+    { key: 'jwt_token', value: options.accessToken },
+    {
+      key: `${prefix}COMMON__LOCAL__KEY__`,
+      value: encryptAuthCache(persisted),
+    },
+  ];
+}
+
+function encryptAuthCache(plainText) {
+  const input = Buffer.from(plainText, 'utf8');
+  const paddingLength = 16 - (input.length % 16);
+  const padded = Buffer.concat([input, Buffer.alloc(paddingLength, paddingLength)]);
+  const cipher = createCipheriv(
+    'aes-128-ctr',
+    Buffer.from(AUTH_CACHE_KEY, 'utf8'),
+    Buffer.from(AUTH_CACHE_IV, 'utf8'),
+  );
+  return Buffer.concat([cipher.update(padded), cipher.final()]).toString('base64');
 }
 
 export function assertSmokeResult(result, options) {
@@ -124,6 +175,18 @@ export function assertSmokeResult(result, options) {
     }
     if (Math.abs(nativeCurrentTime - Number(options.expectedOffsetSeconds)) > 1.5) {
       throw new Error(`expected native video currentTime near ${options.expectedOffsetSeconds}, got ${String(result.nativeCurrentTime)}`);
+    }
+    if (result.nativeError) {
+      throw new Error(`native video failed to load: ${JSON.stringify(result.nativeError)}`);
+    }
+    if (!hasText(result.nativeCurrentSrc)) {
+      throw new Error('native video currentSrc is empty');
+    }
+    if (Number(result.nativeReadyState) < 1 || !Number.isFinite(Number(result.nativeDuration)) || Number(result.nativeDuration) <= 0) {
+      throw new Error(`native video metadata was not decoded: readyState=${String(result.nativeReadyState)}, duration=${String(result.nativeDuration)}`);
+    }
+    if (!result.nativePlayingObserved || result.nativePaused !== false) {
+      throw new Error(`native video did not enter playing state: observed=${String(result.nativePlayingObserved)}, paused=${String(result.nativePaused)}`);
     }
   }
 }
@@ -192,10 +255,14 @@ async function seedCookies(cdp, options) {
 }
 
 async function seedStorage(cdp, options) {
-  if (!options.localStoragePairs.length) {
+  const storagePairs = [
+    ...options.localStoragePairs,
+    ...buildProductionAuthStoragePairs(options),
+  ];
+  if (!storagePairs.length) {
     return;
   }
-  const expression = options.localStoragePairs
+  const expression = storagePairs
     .map(pair => `localStorage.setItem(${JSON.stringify(pair.key)}, ${JSON.stringify(pair.value)});`)
     .join('\n');
   await cdp.send('Runtime.evaluate', { expression, returnByValue: true });
@@ -226,6 +293,10 @@ function buildClickAndInspectExpression(options) {
     const findRow = () => Array.from(document.querySelectorAll('tbody tr, [data-row-key], .ant-table-row, .ant-list-item, .review-item-row'))
       .find((el) => textIncludes(el, ${JSON.stringify(options.reviewRowText)}));
     const findAction = () => document.querySelector(${JSON.stringify(`[data-testid="${options.actionTestId}"]`)});
+    let nativePlayingObserved = false;
+    document.addEventListener('playing', (event) => {
+      if (event.target instanceof HTMLVideoElement) nativePlayingObserved = true;
+    }, true);
     const inspect = () => {
       const stage = document.querySelector('[data-testid="alert-review-dialog-player-stage"]');
       const video = stage?.querySelector('video');
@@ -237,6 +308,12 @@ function buildClickAndInspectExpression(options) {
         currentUrl: stage?.dataset.currentUrl || '',
         playbackOffsetSeconds: Number(stage?.dataset.playbackOffsetSeconds || 'NaN'),
         nativeCurrentTime: video ? Number(video.currentTime || 0) : null,
+        nativeCurrentSrc: video?.currentSrc || '',
+        nativeReadyState: video ? Number(video.readyState) : null,
+        nativePaused: video ? Boolean(video.paused) : null,
+        nativeDuration: video && Number.isFinite(video.duration) ? Number(video.duration) : null,
+        nativeError: video?.error ? { code: video.error.code, message: video.error.message || '' } : null,
+        nativePlayingObserved,
       };
     };
     let clickedRow = false;
@@ -263,7 +340,9 @@ function buildClickAndInspectExpression(options) {
       }
       while (Date.now() - started < ${Number(options.timeoutMs)}) {
         const result = inspect();
-        if (result.seekTime || result.currentUrl || result.recordPath) {
+        const hasPlaybackTarget = result.seekTime || result.currentUrl || result.recordPath;
+        const nativePlaybackReady = ${options.assertNativeCurrentTime ? 'Boolean(result.nativeCurrentSrc) && result.nativeReadyState >= 1 && !result.nativeError && result.nativePlayingObserved && result.nativePaused === false' : 'true'};
+        if (hasPlaybackTarget && nativePlaybackReady) {
           resolve(result);
           return;
         }
@@ -490,7 +569,9 @@ function printHelp() {
 Runs a real FR-13/FR-36 browser smoke against a deployed workbench page.
 No mock API/server is started. Localhost/mock/file endpoints are rejected unless
 --allow-local-endpoints is supplied for co-located real-service smoke. Use
---cookie and --local-storage for auth state.`);
+--cookie and --local-storage for custom auth state. For production authentication,
+set YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN and YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID;
+the token is injected through the frontend's encrypted persistent cache.`);
 }
 
 async function runCli() {

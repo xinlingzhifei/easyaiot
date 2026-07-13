@@ -4,6 +4,9 @@
 @email reese
 """
 import io
+import base64
+import hashlib
+import json
 import logging
 import os
 import shutil
@@ -13,7 +16,7 @@ from typing import Dict, List, Optional, Any
 
 from flask import current_app
 from minio.error import S3Error
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 
 from models import db, RecordSpace, RecordFile, Alert
 from app.services.alert_service import _alert_to_dict
@@ -23,7 +26,13 @@ from app.services.space_file_metadata_service import (
     delete_record_files_metadata,
     sync_record_files_from_minio,
     extract_prefix_from_url,
+    require_mutable_tenant_object,
 )
+from app.services.local_media_path_service import (
+    LocalMediaPathError,
+    resolve_allowed_local_media_file,
+)
+from app.utils.minio_bucket_policy import ensure_bucket_private
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +48,71 @@ STANDARD_RECORD_GAP_REASON_KEYS = [
 ]
 
 
+def _space_tenant_id(space, tenant_id=None) -> int:
+    try:
+        owner_tenant_id = int(getattr(space, 'tenant_id', None))
+    except (TypeError, ValueError) as exc:
+        raise ValueError('record space tenant owner is missing') from exc
+    if owner_tenant_id <= 0:
+        raise ValueError('record space tenant owner is invalid')
+    if tenant_id is not None:
+        try:
+            requested_tenant_id = int(tenant_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('record tenant scope is invalid') from exc
+        if requested_tenant_id != owner_tenant_id:
+            raise ValueError('record tenant does not match space owner')
+    return owner_tenant_id
+
+
+def _upload_verified_archive(minio_client, bucket_name: str,
+                             object_name: str, zip_buffer: io.BytesIO) -> int:
+    archive_size = zip_buffer.tell()
+    if archive_size <= 0:
+        raise RuntimeError('record archive is empty')
+    archive_hash = hashlib.sha256(zip_buffer.getbuffer()).hexdigest()
+    zip_buffer.seek(0)
+    try:
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            zip_buffer,
+            length=archive_size,
+            content_type='application/zip',
+            metadata={'sha256': archive_hash},
+        )
+        archive_stat = minio_client.stat_object(bucket_name, object_name)
+        if int(getattr(archive_stat, 'size', -1)) != archive_size:
+            raise RuntimeError('record archive size verification failed')
+        metadata = {
+            str(key).lower(): str(value).strip().lower()
+            for key, value in (getattr(archive_stat, 'metadata', {}) or {}).items()
+        }
+        persisted_hash = metadata.get('x-amz-meta-sha256') or metadata.get('sha256')
+        if persisted_hash != archive_hash:
+            raise RuntimeError('record archive hash verification failed')
+        archive_response = minio_client.get_object(bucket_name, object_name)
+        readback_hash = hashlib.sha256()
+        try:
+            while True:
+                chunk = archive_response.read(1024 * 1024)
+                if not chunk:
+                    break
+                readback_hash.update(chunk)
+        finally:
+            archive_response.close()
+            archive_response.release_conn()
+        if readback_hash.hexdigest() != archive_hash:
+            raise RuntimeError('record archive content verification failed')
+    except Exception:
+        try:
+            minio_client.remove_object(bucket_name, object_name)
+        except Exception:
+            pass
+        raise
+    return archive_size
+
+
 def list_record_videos(
     space_id: int,
     device_id: Optional[str] = None,
@@ -47,11 +121,14 @@ def list_record_videos(
     search: Optional[str] = None,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
+    tenant_id=None,
 ) -> Dict:
     """获取监控录像列表（数据库分页）"""
     try:
         record_space = RecordSpace.query.get_or_404(space_id)
-        query = RecordFile.query.filter_by(space_id=space_id)
+        tenant_id = _space_tenant_id(record_space, tenant_id)
+        query = RecordFile.query.filter_by(
+            tenant_id=tenant_id, space_id=space_id)
 
         effective_device_id = device_id or record_space.device_id
         if effective_device_id:
@@ -78,11 +155,18 @@ def list_record_videos(
         raise RuntimeError(f"获取监控录像列表失败: {str(e)}")
 
 
-def delete_record_videos(space_id: int, object_names: List[str]) -> Dict:
+def delete_record_videos(space_id: int, object_names: List[str], tenant_id=None) -> Dict:
     """批量删除监控录像（MinIO/本地 + 数据库）"""
     try:
         record_space = RecordSpace.query.get_or_404(space_id)
+        tenant_id = _space_tenant_id(record_space, tenant_id)
         bucket_name = record_space.bucket_name
+        for object_name in object_names:
+            require_mutable_tenant_object(
+                tenant_id,
+                object_name,
+                camera_id=record_space.device_id,
+            )
 
         deleted_count = 0
         failed_count = 0
@@ -91,18 +175,11 @@ def delete_record_videos(space_id: int, object_names: List[str]) -> Dict:
         if not minio_storage_enabled():
             for object_name in object_names:
                 record = RecordFile.query.filter_by(
+                    tenant_id=tenant_id,
                     space_id=space_id,
                     object_name=object_name,
                 ).first()
-                local_path = (record.url if record and record.url else '').strip()
-                if local_path.startswith('/video/'):
-                    local_path = ''
-                if not local_path:
-                    from app.services.media_dvr_utils import resolve_playback_absolute_path
-                    from app.services.playback_disk_guard_service import get_srs_record_dir
-                    local_path = resolve_playback_absolute_path(
-                        os.path.join(get_srs_record_dir(), object_name.replace('/', os.sep)),
-                    )
+                local_path = _resolve_local_record_file(record, object_name)
                 try:
                     if local_path and os.path.isfile(local_path):
                         os.remove(local_path)
@@ -133,7 +210,12 @@ def delete_record_videos(space_id: int, object_names: List[str]) -> Dict:
                     logger.warning(f"删除监控录像失败: {bucket_name}/{object_name}, error={str(e)}")
 
         success_objects = [n for n in object_names if n not in failed_objects]
-        delete_record_files_metadata(bucket_name, success_objects)
+        delete_record_files_metadata(
+            bucket_name,
+            success_objects,
+            tenant_id=tenant_id,
+            space_id=space_id,
+        )
 
         return {
             'deleted_count': deleted_count,
@@ -145,31 +227,23 @@ def delete_record_videos(space_id: int, object_names: List[str]) -> Dict:
         raise RuntimeError(f"批量删除监控录像失败: {str(e)}")
 
 
-def get_record_video(space_id: int, object_name: str):
+def get_record_video(space_id: int, object_name: str, tenant_id=None):
     """获取监控录像内容"""
     import mimetypes
     import os
 
     try:
         record_space = RecordSpace.query.get_or_404(space_id)
+        tenant_id = _space_tenant_id(record_space, tenant_id)
         bucket_name = record_space.bucket_name
 
         if not minio_storage_enabled():
             record = RecordFile.query.filter_by(
+                tenant_id=tenant_id,
                 space_id=space_id,
                 object_name=object_name,
             ).first()
-            local_path = (record.url if record and record.url else '').strip()
-            if local_path.startswith('/video/'):
-                local_path = ''
-            if not local_path or not os.path.isfile(local_path):
-                from app.services.media_dvr_utils import resolve_playback_absolute_path
-                from app.services.playback_disk_guard_service import get_srs_record_dir
-                local_path = resolve_playback_absolute_path(
-                    os.path.join(get_srs_record_dir(), object_name.replace('/', os.sep)),
-                )
-            if not os.path.isfile(local_path):
-                raise ValueError(f"录像不存在: {object_name}")
+            local_path = _resolve_local_record_file(record, object_name)
             with open(local_path, 'rb') as handle:
                 content = handle.read()
             filename = object_name.split('/')[-1]
@@ -201,12 +275,86 @@ def get_record_video(space_id: int, object_name: str):
         raise RuntimeError(f"获取监控录像失败: {str(e)}")
 
 
+def materialize_record_video(space_id: int, object_name: str, destination: str,
+                             max_bytes: Optional[int] = None,
+                             tenant_id=None) -> Dict:
+    """Stream one verified record object to a local file without whole-file buffering."""
+    import mimetypes
+
+    record_space = RecordSpace.query.get_or_404(space_id)
+    tenant_id = _space_tenant_id(record_space, tenant_id)
+    record = RecordFile.query.filter_by(
+        tenant_id=tenant_id,
+        space_id=space_id,
+        device_id=record_space.device_id,
+        object_name=object_name,
+    ).first()
+    if record is None:
+        raise ValueError(f"recording metadata not found: {object_name}")
+    limit = int(max_bytes) if max_bytes else None
+    os.makedirs(os.path.dirname(os.path.abspath(destination)), exist_ok=True)
+    source = None
+    content_type = 'application/octet-stream'
+    try:
+        if not minio_storage_enabled():
+            local_path = _resolve_local_record_file(record, object_name)
+            size = os.path.getsize(local_path)
+            if limit and size > limit:
+                raise ValueError('recording exceeds configured export input size limit')
+            source = open(local_path, 'rb')
+            content_type = mimetypes.guess_type(object_name)[0] or 'application/octet-stream'
+        else:
+            client = get_minio_client()
+            stat = client.stat_object(record_space.bucket_name, object_name)
+            size = int(getattr(stat, 'size', 0) or 0)
+            if limit and size > limit:
+                raise ValueError('recording exceeds configured export input size limit')
+            source = client.get_object(record_space.bucket_name, object_name)
+            content_type = stat.content_type or 'application/octet-stream'
+
+        written = 0
+        with open(destination, 'xb') as output:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if limit and written > limit:
+                    raise ValueError('recording exceeds configured export input size limit')
+                output.write(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        if written <= 0:
+            raise ValueError(f"recording is empty: {object_name}")
+        return {
+            'path': destination,
+            'content_type': content_type,
+            'filename': object_name.split('/')[-1],
+            'size_bytes': written,
+        }
+    except Exception:
+        try:
+            os.remove(destination)
+        except FileNotFoundError:
+            pass
+        raise
+    finally:
+        if source is not None:
+            close = getattr(source, 'close', None)
+            if callable(close):
+                close()
+            release = getattr(source, 'release_conn', None)
+            if callable(release):
+                release()
+
+
 def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict:
     """根据保存时长（小时）清理旧的监控录像"""
     try:
         from app.services.space_save_time_service import save_time_to_timedelta
 
         record_space = RecordSpace.query.get_or_404(space_id)
+        tenant_id = _space_tenant_id(record_space)
         bucket_name = record_space.bucket_name
         save_mode = record_space.save_mode
 
@@ -215,6 +363,7 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
             return {'processed_count': 0, 'deleted_count': 0, 'archived_count': 0, 'error_count': 0}
         cutoff_time = datetime.utcnow() - delta
         query = RecordFile.query.filter(
+            RecordFile.tenant_id == tenant_id,
             RecordFile.space_id == space_id,
             RecordFile.event_time < cutoff_time,
         )
@@ -232,6 +381,8 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
         archive_bucket_name = current_app.config.get('MINIO_ARCHIVE_BUCKET', 'record-archive')
         if save_mode == 1 and not minio_client.bucket_exists(archive_bucket_name):
             minio_client.make_bucket(archive_bucket_name)
+        if save_mode == 1:
+            ensure_bucket_private(minio_client, archive_bucket_name)
 
         processed_count = deleted_count = archived_count = error_count = 0
 
@@ -253,7 +404,12 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
                 except Exception as e:
                     error_count += 1
                     logger.error(f"删除录像失败: {record.object_name}, error={e}")
-            delete_record_files_metadata(bucket_name, object_names)
+            delete_record_files_metadata(
+                bucket_name,
+                object_names,
+                tenant_id=tenant_id,
+                space_id=space_id,
+            )
         else:
             device_groups: Dict[str, list] = {}
             for record in records:
@@ -262,7 +418,7 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
             for device_id, record_list in device_groups.items():
                 try:
                     zip_buffer = io.BytesIO()
-                    removed_names = []
+                    archived_records = []
                     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                         for record in record_list:
                             try:
@@ -271,26 +427,39 @@ def cleanup_old_videos_by_save_time(space_id: int, save_time_hours: int) -> Dict
                                 data.close()
                                 data.release_conn()
                                 zip_file.writestr(record.filename, file_content)
-                                minio_client.remove_object(bucket_name, record.object_name)
-                                removed_names.append(record.object_name)
-                                deleted_count += 1
+                                archived_records.append(record)
                             except Exception as e:
                                 error_count += 1
                                 logger.error(f"处理录像失败: {record.object_name}, error={e}")
 
                     if zip_buffer.tell() > 0:
-                        zip_buffer.seek(0)
-                        archive_object_name = f"{device_id}/{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
-                        minio_client.put_object(
-                            archive_bucket_name,
-                            archive_object_name,
-                            zip_buffer,
-                            length=zip_buffer.tell(),
-                            content_type='application/zip',
+                        archive_object_name = (
+                            f"tenants/{tenant_id}/{device_id}/archives/"
+                            f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.zip"
                         )
+                        _upload_verified_archive(
+                            minio_client, archive_bucket_name,
+                            archive_object_name, zip_buffer)
                         archived_count += 1
-                        processed_count += len(removed_names)
-                        delete_record_files_metadata(bucket_name, removed_names)
+                        deleted_names = []
+                        for record in archived_records:
+                            try:
+                                minio_client.remove_object(
+                                    bucket_name, record.object_name)
+                                deleted_names.append(record.object_name)
+                                deleted_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                logger.error(
+                                    f"删除已归档录像失败: {record.object_name}, error={e}")
+                        if deleted_names:
+                            delete_record_files_metadata(
+                                bucket_name,
+                                deleted_names,
+                                tenant_id=tenant_id,
+                                space_id=space_id,
+                            )
+                            processed_count += len(deleted_names)
                 except Exception as e:
                     error_count += len(record_list)
                     logger.error(f"归档设备录像失败: device_id={device_id}, error={e}", exc_info=True)
@@ -320,10 +489,27 @@ def inspect_recording_storage_drift(
     disk_probe: Optional[dict] = None,
     cache_flush_events: Optional[List[dict]] = None,
     free_ratio_threshold: float = 0.05,
+    cursor: Optional[str] = None,
+    limit: int = 200,
+    tenant_id=None,
 ) -> Dict[str, Any]:
     """Inspect DB/disk recording drift without deleting evidence metadata."""
     now = _normalize_availability_time(now or datetime.utcnow())
-    resolved_records = list(records) if records is not None else _query_records_for_drift(space_id, device_id)
+    page_limit = _normalize_drift_limit(limit)
+    next_cursor = None
+    has_more = False
+    if records is not None:
+        resolved_records = list(records)[:page_limit]
+    else:
+        resolved_records, next_cursor, has_more = _query_records_for_drift(
+            space_id=space_id,
+            device_id=device_id,
+            tenant_id=tenant_id,
+            cursor=cursor,
+            limit=page_limit,
+            now=now,
+            retention_hours=retention_hours,
+        )
     issues: List[dict] = []
     checked_records = []
     retention_cutoff = None
@@ -334,18 +520,36 @@ def inspect_recording_storage_drift(
             retention_cutoff = None
 
     for record in resolved_records:
+        if tenant_id is not None and str(
+                _record_text(record, 'tenant_id', 'tenantId')) != str(tenant_id):
+            continue
         if device_id and _record_text(record, 'device_id', 'deviceId') != device_id:
             continue
         record_info = _record_drift_info(record, space_id)
+        storage_probe = _record_storage_probe(record_info)
+        record_info['storage_probe'] = storage_probe
         checked_records.append(record_info)
-        if not _record_storage_exists(record_info):
+        if not storage_probe.get('exists'):
+            reason = storage_probe.get('reason') or 'probe_failed'
+            issue_policy = {
+                'file_missing': (
+                    'filesystem', 'error', False, 'delete_db_metadata_after_review'),
+                'permission_denied': (
+                    'permission', 'error', False, 'repair_storage_credentials_or_policy'),
+                'service_unavailable': (
+                    'service', 'error', True, 'retry_storage_probe_after_service_recovery'),
+                'probe_failed': (
+                    'probe', 'error', True, 'inspect_storage_probe_configuration'),
+            }
+            category, severity, retryable, suggested_action = issue_policy.get(
+                reason, issue_policy['probe_failed'])
             issues.append(_recording_storage_issue(
-                'file_missing',
-                'filesystem',
+                reason,
+                category,
                 record_info,
-                severity='error',
-                retryable=False,
-                suggested_action='delete_db_metadata_after_review',
+                severity=severity,
+                retryable=retryable,
+                suggested_action=suggested_action,
             ))
         event_time = _normalize_availability_time(getattr(record, 'event_time', None))
         if retention_cutoff and event_time and event_time < retention_cutoff:
@@ -395,6 +599,12 @@ def inspect_recording_storage_drift(
         'records': checked_records,
         'issues': issues,
         'disk': disk_status,
+        'pagination': {
+            'cursor': cursor,
+            'next_cursor': next_cursor,
+            'has_more': has_more,
+            'limit': page_limit,
+        },
         'summary': {
             'record_count': len(checked_records),
             'issue_count': len(issues),
@@ -402,16 +612,98 @@ def inspect_recording_storage_drift(
             'standard_reason_keys': list(STANDARD_RECORD_GAP_REASON_KEYS),
             'healthy': len(issues) == 0,
         },
-    }
+}
 
 
-def _query_records_for_drift(space_id: Optional[int], device_id: Optional[str]) -> List[Any]:
+def _query_records_for_drift(
+    space_id: Optional[int],
+    device_id: Optional[str],
+    tenant_id=None,
+    cursor: Optional[str] = None,
+    limit: int = 200,
+    now: Optional[datetime] = None,
+    retention_hours: Optional[int] = None,
+):
+    page_limit = _normalize_drift_limit(limit)
     query = RecordFile.query
+    if tenant_id is not None:
+        query = query.filter(RecordFile.tenant_id == int(tenant_id))
     if space_id is not None:
         query = query.filter(RecordFile.space_id == space_id)
     if device_id:
         query = query.filter(RecordFile.device_id == device_id)
-    return query.order_by(RecordFile.event_time.asc()).all()
+    now = _normalize_availability_time(now or datetime.utcnow())
+    lookback_hours = _configured_drift_lookback_hours(retention_hours)
+    if lookback_hours:
+        query = query.join(RecordSpace, and_(
+            RecordSpace.tenant_id == RecordFile.tenant_id,
+            RecordSpace.id == RecordFile.space_id,
+        )).filter(or_(
+            RecordFile.event_time >= now - timedelta(hours=lookback_hours),
+            RecordSpace.save_time == 0,
+        ))
+    cursor_value = _decode_drift_cursor(cursor)
+    if cursor_value:
+        cursor_time, cursor_id = cursor_value
+        query = query.filter(or_(
+            RecordFile.event_time > cursor_time,
+            and_(RecordFile.event_time == cursor_time, RecordFile.id > cursor_id),
+        ))
+    rows = query.order_by(RecordFile.event_time.asc(), RecordFile.id.asc()).limit(
+        page_limit + 1).all()
+    has_more = len(rows) > page_limit
+    records = rows[:page_limit]
+    next_cursor = _encode_drift_cursor(records[-1]) if has_more and records else None
+    return records, next_cursor, has_more
+
+
+def _normalize_drift_limit(value) -> int:
+    try:
+        return max(1, min(int(value), 500))
+    except (TypeError, ValueError):
+        return 200
+
+
+def _configured_drift_lookback_hours(retention_hours) -> int:
+    try:
+        configured = max(1, min(int(os.environ.get(
+            'YFEIEYE_RECORD_DRIFT_LOOKBACK_HOURS', '720')), 24 * 365))
+    except (TypeError, ValueError):
+        configured = 720
+    try:
+        retention = max(0, int(retention_hours)) if retention_hours is not None else 0
+    except (TypeError, ValueError):
+        retention = 0
+    return max(configured, retention)
+
+
+def _encode_drift_cursor(record) -> str:
+    event_time = _normalize_availability_time(getattr(record, 'event_time', None))
+    record_id = getattr(record, 'id', None)
+    if event_time is None or record_id is None:
+        raise ValueError('recording drift cursor fields are missing')
+    payload = json.dumps({
+        'eventTime': event_time.isoformat(),
+        'id': int(record_id),
+    }, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    return base64.urlsafe_b64encode(payload).decode('ascii').rstrip('=')
+
+
+def _decode_drift_cursor(cursor):
+    cursor = str(cursor or '').strip()
+    if not cursor:
+        return None
+    try:
+        padding = '=' * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(cursor + padding).decode('utf-8'))
+        event_time = datetime.fromisoformat(str(payload['eventTime']).replace('Z', '+00:00'))
+        event_time = _normalize_availability_time(event_time)
+        record_id = int(payload['id'])
+    except (KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError('invalid recording drift cursor') from exc
+    if event_time is None or record_id < 0:
+        raise ValueError('invalid recording drift cursor')
+    return event_time, record_id
 
 
 def _record_drift_info(record, fallback_space_id=None) -> dict:
@@ -429,42 +721,102 @@ def _record_drift_info(record, fallback_space_id=None) -> dict:
     }
 
 
-def _record_storage_exists(record_info: dict) -> bool:
+def _record_storage_probe(record_info: dict) -> dict:
     if minio_storage_enabled():
         bucket_name = record_info.get('bucket_name')
         object_name = record_info.get('object_name')
         if bucket_name and object_name:
             try:
                 get_minio_client().stat_object(bucket_name, object_name)
-                return True
-            except Exception:
-                return False
+                return {'exists': True, 'backend': 'minio'}
+            except S3Error as exc:
+                code = str(getattr(exc, 'code', '') or '').strip()
+                if code in {'NoSuchKey', 'NoSuchObject', 'NoSuchBucket', 'NotFound'}:
+                    reason = 'file_missing'
+                elif code in {'AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'}:
+                    reason = 'permission_denied'
+                elif code.startswith('5') or code in {
+                        'InternalError', 'ServiceUnavailable', 'SlowDown', 'RequestTimeout'}:
+                    reason = 'service_unavailable'
+                else:
+                    reason = 'probe_failed'
+                return {
+                    'exists': False,
+                    'backend': 'minio',
+                    'reason': reason,
+                    'error_code': code or type(exc).__name__,
+                }
+            except (TimeoutError, ConnectionError) as exc:
+                return {
+                    'exists': False,
+                    'backend': 'minio',
+                    'reason': 'service_unavailable',
+                    'error_code': type(exc).__name__,
+                }
+            except Exception as exc:
+                return {
+                    'exists': False,
+                    'backend': 'minio',
+                    'reason': 'probe_failed',
+                    'error_code': type(exc).__name__,
+                }
 
     local_path = record_info.get('local_path')
     if local_path:
-        return os.path.isfile(local_path)
+        return {
+            'exists': os.path.isfile(local_path),
+            'backend': 'filesystem',
+            'reason': None if os.path.isfile(local_path) else 'file_missing',
+        }
 
-    return False
+    if minio_storage_enabled():
+        return {
+            'exists': False,
+            'backend': 'minio',
+            'reason': 'probe_failed',
+            'error_code': 'storage_metadata_missing',
+        }
+
+    return {
+        'exists': False,
+        'backend': 'filesystem',
+        'reason': 'file_missing',
+    }
+
+
+def _record_storage_exists(record_info: dict) -> bool:
+    return bool(_record_storage_probe(record_info).get('exists'))
 
 
 def _record_local_path(record) -> str:
-    url = _record_text(record, 'url')
-    if url.startswith('file://'):
-        return url[7:]
-    if url and os.path.isabs(url) and not url.startswith(('/video/', '/api/')):
-        return url
-    object_name = _record_text(record, 'object_name', 'objectName')
-    if not object_name:
-        return ''
     try:
+        return _resolve_local_record_file(
+            record,
+            _record_text(record, 'object_name', 'objectName'),
+        )
+    except (LocalMediaPathError, ValueError):
+        return ''
+
+
+def _resolve_local_record_file(record, object_name: str) -> str:
+    url = _record_text(record, 'url') if record is not None else ''
+    if url.lower().startswith('file:'):
+        raise ValueError('record metadata file URI is not allowed')
+    if url and not url.startswith(('/video/', '/api/')):
+        candidate = url
+    else:
+        if not object_name:
+            raise ValueError('record object name is required')
         from app.services.media_dvr_utils import resolve_playback_absolute_path
         from app.services.playback_disk_guard_service import get_srs_record_dir
 
-        return resolve_playback_absolute_path(
+        candidate = resolve_playback_absolute_path(
             os.path.join(get_srs_record_dir(), object_name.replace('/', os.sep)),
         )
-    except Exception:
-        return ''
+    try:
+        return resolve_allowed_local_media_file(candidate)
+    except LocalMediaPathError as exc:
+        raise ValueError(f'record local media path denied: {exc.reason}') from exc
 
 
 def _recording_storage_issue(reason: str, category: str, record_info: dict, **extra) -> dict:
@@ -650,13 +1002,15 @@ def _build_session_groups(segments: List[dict], gap_sec: int = SESSION_MERGE_GAP
     return groups
 
 
-def find_segment_for_alert(device_id: str, alert_id: int) -> Optional[dict]:
+def find_segment_for_alert(device_id: str, alert_id: int,
+                           tenant_id=None) -> Optional[dict]:
     """根据告警 ID 定位所属录像片段及空间。"""
     alert = Alert.query.get(alert_id)
     if not alert or alert.device_id != device_id:
         return None
 
-    space = RecordSpace.query.filter_by(device_id=device_id).first()
+    space = RecordSpace.query.filter_by(
+        tenant_id=int(tenant_id), device_id=device_id).first()
     if not space:
         return None
 
@@ -669,6 +1023,7 @@ def find_segment_for_alert(device_id: str, alert_id: int) -> Optional[dict]:
 
     records = (
         RecordFile.query.filter(
+            RecordFile.tenant_id == int(tenant_id),
             RecordFile.space_id == space.id,
             RecordFile.device_id == device_id,
             RecordFile.event_time >= day_start,
@@ -726,6 +1081,7 @@ def query_recording_availability(
     camera_id: Optional[str] = None,
     alert_time=None,
     time_range=None,
+    tenant_id=None,
 ) -> Dict[str, Any]:
     """Return recording coverage for an incident window."""
     effective_device_id = (device_id or camera_id or '').strip()
@@ -733,7 +1089,12 @@ def query_recording_availability(
         raise ValueError('device_id 参数不能为空')
 
     window_start, window_end = _resolve_availability_window(begin_time, end_time, alert_time, time_range)
-    space = RecordSpace.query.filter_by(device_id=effective_device_id).first()
+    try:
+        tenant_id = int(tenant_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('record tenant scope is required') from exc
+    space = RecordSpace.query.filter_by(
+        tenant_id=tenant_id, device_id=effective_device_id).first()
     if not space:
         return build_recording_availability(
             records=[],
@@ -749,6 +1110,7 @@ def query_recording_availability(
     lookback_seconds = max(3600, int((window_end - window_start).total_seconds()) + 300)
     records = (
         RecordFile.query.filter(
+            RecordFile.tenant_id == tenant_id,
             RecordFile.space_id == space.id,
             RecordFile.device_id == effective_device_id,
             RecordFile.event_time >= window_start - timedelta(seconds=lookback_seconds),
@@ -1154,15 +1516,20 @@ def _segment_seconds(segment: dict) -> int:
     return int((end - start).total_seconds())
 
 
-def list_record_video_dates(space_id: int, device_id: Optional[str] = None) -> List[dict]:
+def list_record_video_dates(space_id: int, device_id: Optional[str] = None,
+                            tenant_id=None) -> List[dict]:
     """列出有录像的日期及片段数量。"""
     record_space = RecordSpace.query.get_or_404(space_id)
+    tenant_id = _space_tenant_id(record_space, tenant_id)
     effective_device_id = device_id or record_space.device_id
 
     query = db.session.query(
         func.date(RecordFile.event_time).label('record_date'),
         func.count(RecordFile.id).label('segment_count'),
-    ).filter(RecordFile.space_id == space_id)
+    ).filter(
+        RecordFile.tenant_id == tenant_id,
+        RecordFile.space_id == space_id,
+    )
 
     if effective_device_id:
         query = query.filter(RecordFile.device_id == effective_device_id)
@@ -1185,13 +1552,16 @@ def list_record_videos_day_detail(
     space_id: int,
     date_str: str,
     device_id: Optional[str] = None,
+    tenant_id=None,
 ) -> Dict[str, Any]:
     """获取指定日期的全部录像片段、时间轴覆盖及告警关联。"""
     record_space = RecordSpace.query.get_or_404(space_id)
+    tenant_id = _space_tenant_id(record_space, tenant_id)
     effective_device_id = device_id or record_space.device_id
     day_start, day_end = _parse_day_range(date_str)
 
     query = RecordFile.query.filter(
+        RecordFile.tenant_id == tenant_id,
         RecordFile.space_id == space_id,
         RecordFile.event_time >= day_start,
         RecordFile.event_time <= day_end,

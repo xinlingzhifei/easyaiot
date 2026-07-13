@@ -5,6 +5,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordCoverageSegment;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -31,22 +33,26 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
     private final String recordCoverageQueryUrl;
     private final String recordBaseUrl;
     private final String publicPlayHost;
+    private final VideoMediaServiceRequestSigner mediaRequestSigner;
 
     @Autowired
     public HttpVideoRecordCoverageResolver(RestTemplate restTemplate,
                                            @Value("${yfeieye.video.record-coverage-query-url:}") String recordCoverageQueryUrl,
                                            @Value("${yfeieye.video.record-base-url:}") String recordBaseUrl,
-                                           @Value("${yfeieye.video.public-play-host:${MEDIA_HTTP_PLAY_HOST:}}") String publicPlayHost) {
+                                           @Value("${yfeieye.video.public-play-host:${MEDIA_HTTP_PLAY_HOST:}}") String publicPlayHost,
+                                           VideoMediaServiceRequestSigner mediaRequestSigner) {
         this.restTemplate = restTemplate;
         this.recordCoverageQueryUrl = recordCoverageQueryUrl;
         this.recordBaseUrl = recordBaseUrl;
         this.publicPlayHost = publicPlayHost;
+        this.mediaRequestSigner = mediaRequestSigner;
     }
 
     public HttpVideoRecordCoverageResolver(RestTemplate restTemplate,
                                            String recordCoverageQueryUrl,
-                                           String publicPlayHost) {
-        this(restTemplate, recordCoverageQueryUrl, "", publicPlayHost);
+                                           String publicPlayHost,
+                                           VideoMediaServiceRequestSigner mediaRequestSigner) {
+        this(restTemplate, recordCoverageQueryUrl, "", publicPlayHost, mediaRequestSigner);
     }
 
     @Override
@@ -74,8 +80,9 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
                 .queryParam("after", request.beginTime().format(QUERY_TIME_FORMATTER))
                 .queryParam("before", request.endTime().format(QUERY_TIME_FORMATTER))
                 .build()
+                .encode()
                 .toUriString();
-        Map<?, ?> response = restTemplate.getForObject(url, Map.class);
+        Map<?, ?> response = signedGet(url, request.cameraId());
         Map<?, ?> data = responseData(response);
         Object rows = firstPresent(data, "segments", "records", "items", "recordings");
         if (rows instanceof List<?> list) {
@@ -109,7 +116,8 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
             return List.of();
         }
         String baseUrl = stripTrailingSlash(baseUrlValue);
-        Long spaceId = resolveRecordSpaceId(baseUrl, deviceId);
+        String cameraId = hasText(request.cameraId()) ? request.cameraId() : deviceId;
+        Long spaceId = resolveRecordSpaceId(baseUrl, deviceId, cameraId);
         if (spaceId == null) {
             return List.of();
         }
@@ -119,7 +127,7 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
                 .queryParam("device_id", deviceId)
                 .build()
                 .toUriString();
-        Map<?, ?> response = restTemplate.getForObject(url, Map.class);
+        Map<?, ?> response = signedGet(url, cameraId);
         Map<?, ?> data = responseData(response);
         Object rows = firstPresent(data, "segments", "records", "items", "recordings");
         if (rows instanceof List<?> list) {
@@ -132,14 +140,26 @@ public class HttpVideoRecordCoverageResolver implements RecordCoverageResolver {
         return List.of();
     }
 
-    private Long resolveRecordSpaceId(String baseUrl, String deviceId) {
+    private Long resolveRecordSpaceId(String baseUrl, String deviceId, String cameraId) {
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
                 .pathSegment("space", "device", deviceId)
                 .build()
                 .toUriString();
-        Map<?, ?> response = restTemplate.getForObject(url, Map.class);
+        Map<?, ?> response = signedGet(url, cameraId);
         Map<?, ?> data = responseData(response);
         return parseLong(firstPresent(data, "id", "space_id", "spaceId", "record_space_id", "recordSpaceId"));
+    }
+
+    private Map<?, ?> signedGet(String url, String cameraId) {
+        URI requestUri = URI.create(url);
+        HttpEntity<Void> entity = new HttpEntity<>(mediaRequestSigner.sign(
+                HttpMethod.GET,
+                requestUri,
+                "coverage",
+                cameraId,
+                ""
+        ));
+        return restTemplate.exchange(requestUri, HttpMethod.GET, entity, Map.class).getBody();
     }
 
     private List<RecordCoverageSegment> toSegments(List<?> list, LocalDate date) {

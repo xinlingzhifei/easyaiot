@@ -4,7 +4,10 @@ import com.basiclab.iot.common.core.mapper.BaseMapperX;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -22,5 +25,82 @@ public interface SupervisionAlertReviewSemanticIndexMapper extends BaseMapperX<S
         return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewSemanticIndexDO>()
                 .in(SupervisionAlertReviewSemanticIndexDO::getReviewItemId, reviewItemIds));
     }
+
+    @Update("""
+            <script>
+            UPDATE system_supervision_alert_review_semantic_index
+            SET index_status = 'processing',
+                claim_token = #{claimToken,jdbcType=VARCHAR},
+                claimed_at = #{claimedAt,jdbcType=TIMESTAMP},
+                claim_expires_at = #{claimExpiresAt,jdbcType=TIMESTAMP},
+                update_time = CURRENT_TIMESTAMP
+            WHERE id IN (
+                SELECT id
+                FROM system_supervision_alert_review_semantic_index
+                WHERE deleted = 0
+                  AND review_item_id IN
+                  <foreach collection="reviewItemIds" item="reviewItemId" open="(" separator="," close=")">
+                    #{reviewItemId,jdbcType=BIGINT}
+                  </foreach>
+                  AND (
+                    index_status = 'pending'
+                    OR (
+                      index_status = 'failed'
+                      AND (next_retry_at IS NULL OR next_retry_at &lt;= #{claimedAt,jdbcType=TIMESTAMP})
+                    )
+                    OR (
+                      index_status = 'processing'
+                      AND (claim_expires_at IS NULL OR claim_expires_at &lt;= #{claimedAt,jdbcType=TIMESTAMP})
+                    )
+                  )
+                ORDER BY update_time ASC, id ASC
+                LIMIT #{limit,jdbcType=INTEGER}
+                FOR UPDATE SKIP LOCKED
+            )
+            </script>
+            """)
+    int claimProcessable(@Param("reviewItemIds") List<Long> reviewItemIds,
+                         @Param("limit") Integer limit,
+                         @Param("claimToken") String claimToken,
+                         @Param("claimedAt") LocalDateTime claimedAt,
+                         @Param("claimExpiresAt") LocalDateTime claimExpiresAt);
+
+    default List<SupervisionAlertReviewSemanticIndexDO> selectClaimed(String claimToken, Integer limit) {
+        int normalizedLimit = limit == null || limit <= 0 ? 20 : Math.min(limit, 100);
+        return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewSemanticIndexDO>()
+                .eq(SupervisionAlertReviewSemanticIndexDO::getIndexStatus, "processing")
+                .eq(SupervisionAlertReviewSemanticIndexDO::getClaimToken, claimToken)
+                .orderByAsc(SupervisionAlertReviewSemanticIndexDO::getClaimedAt)
+                .orderByAsc(SupervisionAlertReviewSemanticIndexDO::getId)
+                .last("LIMIT " + normalizedLimit));
+    }
+
+    @Update("""
+            UPDATE system_supervision_alert_review_semantic_index
+            SET camera_id = #{index.cameraId,jdbcType=VARCHAR},
+                first_alert_time = #{index.firstAlertTime,jdbcType=TIMESTAMP},
+                last_alert_time = #{index.lastAlertTime,jdbcType=TIMESTAMP},
+                index_status = #{index.indexStatus,jdbcType=VARCHAR},
+                document = #{index.document,jdbcType=LONGVARCHAR},
+                embedding_key = #{index.embeddingKey,jdbcType=VARCHAR},
+                embedding_model = #{index.embeddingModel,jdbcType=VARCHAR},
+                embedding_vector_hash = #{index.embeddingVectorHash,jdbcType=VARCHAR},
+                retry_count = #{index.retryCount,jdbcType=INTEGER},
+                last_error = #{index.lastError,jdbcType=LONGVARCHAR},
+                indexed_at = #{index.indexedAt,jdbcType=TIMESTAMP},
+                index_generation_id = #{index.indexGenerationId,jdbcType=VARCHAR},
+                next_retry_at = #{index.nextRetryAt,jdbcType=TIMESTAMP},
+                claim_token = NULL,
+                claimed_at = NULL,
+                claim_expires_at = NULL,
+                version = version + 1,
+                update_time = CURRENT_TIMESTAMP
+            WHERE review_item_id = #{index.reviewItemId,jdbcType=BIGINT}
+              AND index_status = 'processing'
+              AND claim_token = #{claimToken,jdbcType=VARCHAR}
+              AND deleted = 0
+            """)
+    int completeClaim(@Param("index") SupervisionAlertReviewSemanticIndexDO index,
+                      @Param("claimToken") String claimToken);
 
 }

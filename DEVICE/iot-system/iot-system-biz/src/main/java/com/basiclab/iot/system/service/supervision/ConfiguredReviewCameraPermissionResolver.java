@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.service.supervision;
 
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewItemMapper;
 import com.basiclab.iot.system.service.permission.PermissionService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionResolver;
@@ -8,9 +9,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @ConfigurationProperties(prefix = "yfeieye.review.camera-permission")
@@ -20,35 +23,60 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
     private Map<Long, List<String>> tenants = new LinkedHashMap<>();
     private Map<String, List<String>> actionPermissions = new LinkedHashMap<>();
     private List<String> defaultAllowedCameraIds = List.of();
+    // Retained for configuration compatibility. Persisted fallback scope is always fail-closed.
     private boolean failClosed = true;
     private PermissionService permissionService;
+    private SupervisionAlertReviewItemMapper reviewItemMapper;
 
     @Override
     public List<String> resolveAllowedCameraIds(ReviewCameraPermissionRequest request) {
-        if (request == null) {
-            return null;
+        if (request == null || request.operatorUserId() == null || request.tenantId() == null) {
+            return List.of();
         }
         if (!hasRequiredActionPermission(request)) {
             return List.of();
         }
-        if (request.operatorUserId() != null && users.containsKey(request.operatorUserId())) {
-            return normalizeValues(users.get(request.operatorUserId()));
+        return resolveExplicitUserCameraIds(request);
+    }
+
+    private List<String> resolveExplicitUserCameraIds(ReviewCameraPermissionRequest request) {
+        if (reviewItemMapper == null) {
+            return List.of();
         }
-        if (request.tenantId() != null && tenants.containsKey(request.tenantId())) {
-            return normalizeValues(tenants.get(request.tenantId()));
+        List<String> grantedCameraIds = normalizeValues(users.get(request.operatorUserId()));
+        if (grantedCameraIds == null || grantedCameraIds.isEmpty()) {
+            return List.of();
         }
-        List<String> normalizedDefaultAllowedCameraIds = normalizeValues(defaultAllowedCameraIds);
-        if (normalizedDefaultAllowedCameraIds != null && !normalizedDefaultAllowedCameraIds.isEmpty()) {
-            return normalizedDefaultAllowedCameraIds;
+        List<String> requestedCameraIds = normalizeValues(request.requestedCameraIds());
+        List<String> candidateCameraIds;
+        if (requestedCameraIds == null || requestedCameraIds.isEmpty()) {
+            candidateCameraIds = grantedCameraIds;
+        } else {
+            Set<String> grantedCameraScope = new LinkedHashSet<>(grantedCameraIds);
+            candidateCameraIds = requestedCameraIds.stream()
+                    .filter(grantedCameraScope::contains)
+                    .toList();
         }
-        return failClosed && request.operatorUserId() != null ? List.of() : null;
+        if (candidateCameraIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> persistedCameraIds = normalizeValues(
+                reviewItemMapper.selectExistingCameraIds(request.tenantId(), candidateCameraIds)
+        );
+        if (persistedCameraIds == null || persistedCameraIds.isEmpty()) {
+            return List.of();
+        }
+        Set<String> persistedCameraScope = new LinkedHashSet<>(persistedCameraIds);
+        return candidateCameraIds.stream()
+                .filter(persistedCameraScope::contains)
+                .toList();
     }
 
     private boolean hasRequiredActionPermission(ReviewCameraPermissionRequest request) {
         List<String> permissions = actionPermissions.get(normalizeActionType(request.actionType()));
         List<String> normalizedPermissions = normalizeValues(permissions);
         if (normalizedPermissions == null || normalizedPermissions.isEmpty()) {
-            return true;
+            return false;
         }
         if (permissionService == null || request.operatorUserId() == null) {
             return false;
@@ -125,5 +153,10 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
     @Autowired(required = false)
     public void setPermissionService(PermissionService permissionService) {
         this.permissionService = permissionService;
+    }
+
+    @Autowired(required = false)
+    public void setReviewItemMapper(SupervisionAlertReviewItemMapper reviewItemMapper) {
+        this.reviewItemMapper = reviewItemMapper;
     }
 }

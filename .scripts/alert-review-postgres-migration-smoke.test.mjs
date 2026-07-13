@@ -81,6 +81,11 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
 ]);
 
 assert.equal(
@@ -94,7 +99,10 @@ assert.match(legacyBooleanDeletedFixtureSql, /ALTER COLUMN deleted TYPE BOOLEAN/
 assert.match(legacyBooleanDeletedFixtureSql, /WHERE deleted = FALSE/);
 assert.match(legacyBooleanDeletedFixtureSql, /'pending', TRUE/);
 
-const platformCompatibilityMigrationSql = readFileSync(MIGRATION_FILES.at(-1), 'utf8');
+const platformCompatibilityMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('deleted_smallint')),
+  'utf8',
+);
 for (const tableName of tenantScopedBaseDoTables) {
   assert.match(platformCompatibilityMigrationSql, new RegExp(`'${tableName}'`));
 }
@@ -111,6 +119,73 @@ assert.match(schedulerJobMigrationSql, /'daily'/);
 const schedulerJobNames = [...schedulerJobMigrationSql.matchAll(/\('([^']+)', 'supervisionAlertReview/g)]
   .map((match) => match[1]);
 assert.ok(schedulerJobNames.every((name) => name.length <= 32), 'infra_job.name seeds must fit VARCHAR(32)');
+
+const schedulerActivationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('scheduler_activation')),
+  'utf8',
+);
+assert.match(schedulerActivationSql, /UPDATE infra_job/);
+assert.match(schedulerActivationSql, /SET status = 1/);
+assert.match(schedulerActivationSql, /supervisionAlertReviewRuntimePatrolJob/);
+assert.match(schedulerActivationSql, /supervisionAlertReviewRuntimeOutboxJob/);
+assert.match(schedulerActivationSql, /supervisionAlertReviewEventReconcileJob/);
+assert.match(schedulerActivationSql, /supervisionAlertReviewEvidenceExportWorkerJob/);
+assert.match(schedulerActivationSql, /supervisionAlertReviewSemanticIndexJob/);
+assert.match(schedulerActivationSql, /supervisionAlertReviewOperationsReportJob/);
+
+const exportQueueMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('export_queue')),
+  'utf8',
+);
+assert.match(exportQueueMigrationSql, /request_key VARCHAR\(128\)/);
+assert.match(exportQueueMigrationSql, /claim_token VARCHAR\(128\)/);
+assert.match(exportQueueMigrationSql, /next_retry_at TIMESTAMP/);
+assert.match(exportQueueMigrationSql, /uk_supervision_alert_review_export_request/);
+assert.match(exportQueueMigrationSql, /idx_supervision_alert_review_export_claim/);
+
+const mediaManageMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('media_manage_permission')),
+  'utf8',
+);
+assert.match(mediaManageMigrationSql, /system_menu/);
+assert.match(mediaManageMigrationSql, /system:supervision-alert-review:media:manage/);
+assert.doesNotMatch(
+  readFileSync(MIGRATION_FILES.find((file) => file.includes('media_permissions')), 'utf8'),
+  /system:supervision-alert-review:media:manage/,
+);
+
+const semanticTriggerConfirmationMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('semantic_trigger_confirmation')),
+  'utf8',
+);
+assert.match(semanticTriggerConfirmationMigrationSql, /uk_alert_review_semantic_trigger_evaluation/);
+assert.match(semanticTriggerConfirmationMigrationSql, /uk_alert_review_semantic_trigger_terminal/);
+assert.match(semanticTriggerConfirmationMigrationSql, /'语义触发评估'/);
+assert.match(semanticTriggerConfirmationMigrationSql, /'语义触发确认'/);
+assert.doesNotMatch(semanticTriggerConfirmationMigrationSql, /璇|纭/);
+assert.match(semanticTriggerConfirmationMigrationSql, /tenant_id/);
+assert.match(semanticTriggerConfirmationMigrationSql, /semantic_trigger_evaluated/);
+assert.match(semanticTriggerConfirmationMigrationSql, /semantic_trigger_confirmed/);
+assert.match(semanticTriggerConfirmationMigrationSql, /semantic_trigger_rejected/);
+assert.match(semanticTriggerConfirmationMigrationSql, /semantic-trigger-evaluation-v1/);
+assert.match(
+  semanticTriggerConfirmationMigrationSql,
+  /system:supervision-alert-review:semantic-trigger:evaluate/,
+);
+assert.match(
+  semanticTriggerConfirmationMigrationSql,
+  /system:supervision-alert-review:semantic-trigger:confirm/,
+);
+
+const semanticIndexClaimMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('semantic_index_claim')),
+  'utf8',
+);
+assert.match(semanticIndexClaimMigrationSql, /index_generation_id VARCHAR\(128\)/);
+assert.match(semanticIndexClaimMigrationSql, /claim_token VARCHAR\(128\)/);
+assert.match(semanticIndexClaimMigrationSql, /claim_expires_at TIMESTAMP/);
+assert.match(semanticIndexClaimMigrationSql, /next_retry_at TIMESTAMP/);
+assert.match(semanticIndexClaimMigrationSql, /idx_alert_review_semantic_claim/);
 
 const reportAckMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('report_ack')), 'utf8');
 assert.match(reportAckMigrationSql, /system_supervision_alert_review_report_ack/);
@@ -224,7 +299,15 @@ assert.match(assertionSql, /reviewDataVersion/);
 assert.match(assertionSql, /reviewSegment/);
 assert.match(assertionSql, /system:supervision-alert-review:media:playback/);
 assert.match(assertionSql, /expected review media permission seeds to be present/);
-assert.match(assertionSql, /expected paused alert review scheduler job seeds to be present/);
+assert.match(assertionSql, /system:supervision-alert-review:media:manage/);
+assert.match(assertionSql, /<> 6/);
+assert.match(assertionSql, /system:supervision-alert-review:semantic-trigger:evaluate/);
+assert.match(assertionSql, /system:supervision-alert-review:semantic-trigger:confirm/);
+assert.match(assertionSql, /uk_alert_review_semantic_trigger_evaluation/);
+assert.match(assertionSql, /uk_alert_review_semantic_trigger_terminal/);
+assert.match(assertionSql, /expected semantic trigger permission seeds to be present/);
+assert.match(assertionSql, /expected semantic trigger confirmation indexes to be tenant scoped/);
+assert.match(assertionSql, /expected active alert review scheduler jobs to be present/);
 assert.match(assertionSql, /supervisionAlertReviewEventReconcileJob/);
 assert.match(assertionSql, /supervisionAlertReviewEvidenceExportWorkerJob/);
 assert.match(assertionSql, /supervisionAlertReviewOperationsReportJob/);

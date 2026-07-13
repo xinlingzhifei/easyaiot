@@ -50,11 +50,15 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportPackage;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportWorkerCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportWorkerRun;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceDownloadArtifact;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceDownloadCommand;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoDownloadRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditEntry;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewDetailStreamItem;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewIntegrationSmokeResult;
@@ -105,6 +109,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResult;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider;
 import com.basiclab.iot.system.service.supervision.ReviewAiSummaryRedactionPolicy;
+import com.basiclab.iot.system.service.supervision.ReviewEvidenceManifestSigner;
+import com.basiclab.iot.system.service.supervision.ReviewRecordStorageDriftResolver.RecordStorageDriftReport;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewAiSummaryRequest;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewServiceImpl;
@@ -116,7 +122,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayInputStream;
 import java.sql.SQLException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -130,10 +141,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -1508,7 +1523,7 @@ class SupervisionAlertReviewServiceTest {
         ));
         service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
                 item.id(),
-                9005L,
+                9003L,
                 List.of(
                         new RecordCoverageSegment("missing", alertTime.minusMinutes(5), alertTime.minusMinutes(3),
                                 0, null, 0, Map.of("gapReason", "file_missing", "source", "record_file")),
@@ -1552,6 +1567,50 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(fileMissingOutbox.recommendedActions().contains("review_missing_record_file"));
         assertEquals(patrol.metadata().get("historyRunId"), fileMissingOutbox.runId());
         assertEquals("pending", fileMissingOutbox.status());
+    }
+
+    @Test
+    void scheduledRuntimePatrolConsumesLiveVideoStorageDriftWithoutListProjectionSideEffects() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewServiceImpl service = (SupervisionAlertReviewServiceImpl) newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        service.ingestClue(newClue(
+                "alert-live-video-drift-runtime",
+                LocalDateTime.of(2026, 7, 2, 11, 30),
+                "live-drift.jpg",
+                "live-drift.flv"
+        ));
+        service.setRecordStorageDriftResolver(request -> new RecordStorageDriftReport(
+                request.deviceId(),
+                request.cameraId(),
+                9L,
+                false,
+                12,
+                3,
+                Map.of("file_missing", 2, "cache_flush_failed", 1),
+                List.of("file_missing", "retention_expired", "disk_full", "cache_flush_failed"),
+                "file_missing",
+                LocalDateTime.of(2026, 7, 2, 11, 31)
+        ));
+
+        ReviewRuntimePatrolResult patrol = service.runRuntimePatrol(new ReviewRuntimePatrolCommand(
+                new ReviewQuery(null, null, null, null),
+                9008L,
+                false,
+                1,
+                true
+        ));
+
+        assertEquals(2, patrol.healthReport().recordGapReasons().get("file_missing"));
+        assertEquals(1, patrol.healthReport().recordGapReasons().get("cache_flush_failed"));
+        assertTrue(patrol.alerts().contains("record_storage_drift:file_missing"));
+        assertTrue(patrol.alerts().contains("record_storage_drift:cache_flush_failed"));
+        assertTrue(patrol.notifications().contains("review_runtime_alert:record_storage_drift:file_missing"));
+        assertTrue(itemStore.runtimeOutbox().stream()
+                .anyMatch(entry -> "record_storage_drift:cache_flush_failed".equals(entry.alert())));
     }
 
     @Test
@@ -1619,11 +1678,12 @@ class SupervisionAlertReviewServiceTest {
     @Test
     void runtimePatrolAndOutboxJobsCloseScheduledAlertDispatchLoop() throws Exception {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
-        SupervisionAlertReviewService service = newService(
+        SupervisionAlertReviewServiceImpl service = (SupervisionAlertReviewServiceImpl) newService(
                 itemStore,
                 new InMemoryRuleStore(),
                 unusedEventService()
         );
+        service.setRuntimeOutboxPublisher(message -> ReviewRuntimeOutboxDeliveryResult.delivered());
         LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 11, 20);
         ReviewItemAggregate item = service.ingestClue(newClue(
                 "alert-runtime-job-loop",
@@ -2080,11 +2140,13 @@ class SupervisionAlertReviewServiceTest {
 
     @Test
     void playbackUrlPreparationEnforcesCameraScopeAndAuditsAllowDeny() {
-        SupervisionAlertReviewService service = newService(
+        SupervisionAlertReviewServiceImpl service = (SupervisionAlertReviewServiceImpl) newService(
                 new InMemoryReviewItemStore(),
                 new InMemoryRuleStore(),
                 unusedEventService()
         );
+        service.setReviewPlaybackUrlSigner((rawUrl, cameraId) ->
+                rawUrl + "?playback_format=mp4&camera=" + cameraId);
         LocalDateTime baseTime = LocalDateTime.of(2026, 7, 7, 10, 20);
         ReviewItemAggregate item = service.ingestClue(newClue(
                 "alert-playback-url",
@@ -2116,7 +2178,7 @@ class SupervisionAlertReviewServiceTest {
         ));
 
         assertEquals("granted", allowed.decision());
-        assertEquals("playback-url.mp4", allowed.playbackUrl());
+        assertEquals("playback-url.mp4?playback_format=mp4&camera=camera-01", allowed.playbackUrl());
         assertEquals(List.of(), allowed.deniedReasons());
         assertEquals("denied", denied.decision());
         assertNull(denied.playbackUrl());
@@ -2182,11 +2244,20 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void evidenceDownloadRejectsUnauthorizedCameraMediaAndAuditsDenial() {
+    void evidenceDownloadRejectsUnauthorizedCameraMediaAndAuditsDenial() throws Exception {
+        CapturingVideoEvidenceExportProvider videoExportProvider = singleCameraDownloadableProvider(
+                "camera-02",
+                "camera-02-protected-video".getBytes(StandardCharsets.UTF_8)
+        );
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
                 new InMemoryRuleStore(),
-                unusedEventService()
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
         );
         LocalDateTime baseTime = LocalDateTime.of(2026, 7, 2, 11, 20);
         ReviewItemAggregate gate = service.ingestClue(new AlertClueCommand(
@@ -2213,17 +2284,14 @@ class SupervisionAlertReviewServiceTest {
                 reviewCase.id(),
                 List.of(gate.id()),
                 9003L,
-                "manifest",
+                "mp4",
                 "prepare restricted download"
         ));
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9003L));
 
         SecurityException denied = assertThrows(SecurityException.class,
-                () -> service.recordEvidenceDownload(
-                        job.jobNo(),
-                        9003L,
-                        "restricted download",
-                        List.of("camera-01")
-                ));
+                () -> service.downloadEvidencePackage(new ReviewEvidenceDownloadCommand(
+                        job.jobNo(), 9003L, List.of("camera-01"), "restricted download")));
 
         assertTrue(denied.getMessage().contains("camera_not_allowed"));
         assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
@@ -2666,6 +2734,7 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(1, failed.retryCount());
         assertEquals("embedding provider timeout", failed.lastError());
 
+        itemStore.makeSemanticRetryDue(second.id());
         ReviewSemanticWorkerRun retryRun = service.processSemanticIndexQueue(new ReviewSemanticWorkerCommand(
                 new ReviewQuery(null, "camera-01", null, null),
                 10,
@@ -2699,6 +2768,99 @@ class SupervisionAlertReviewServiceTest {
                 9101L
         )).staleReviewItemIds().isEmpty());
         assertTrue(third.id() != null);
+    }
+
+    @Test
+    void concurrentSemanticWorkersClaimEachReviewItemAtMostOnce() throws Exception {
+        BlockingSemanticIndexStore itemStore = new BlockingSemanticIndexStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        service.ingestClue(newClue(
+                "alert-semantic-worker-claim",
+                LocalDateTime.of(2026, 7, 13, 8, 0),
+                "semantic-worker-claim.jpg",
+                "semantic-worker-claim.mp4"
+        ));
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9201L
+        ));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicReference<ReviewSemanticWorkerRun> first = new AtomicReference<>();
+        AtomicReference<ReviewSemanticWorkerRun> second = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread firstWorker = new Thread(
+                () -> processSemanticWorkerAfterStart(service, ready, start, first, failure),
+                "semantic-worker-claim-1"
+        );
+        Thread secondWorker = new Thread(
+                () -> processSemanticWorkerAfterStart(service, ready, start, second, failure),
+                "semantic-worker-claim-2"
+        );
+
+        firstWorker.start();
+        secondWorker.start();
+        assertTrue(ready.await(2, TimeUnit.SECONDS));
+        start.countDown();
+        firstWorker.join(3000);
+        secondWorker.join(3000);
+
+        assertNull(failure.get());
+        assertFalse(firstWorker.isAlive());
+        assertFalse(secondWorker.isAlive());
+        assertEquals(1, itemStore.indexedUpsertAttempts());
+        assertEquals(1, first.get().processedCount() + second.get().processedCount());
+    }
+
+    @Test
+    void semanticIndexFailureSchedulesRetryAndSkipsWorkerBeforeNextRetryAt() {
+        FailingSemanticIndexStore itemStore = new FailingSemanticIndexStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-semantic-worker-backoff",
+                LocalDateTime.of(2026, 7, 13, 8, 10),
+                "semantic-worker-backoff.jpg",
+                "semantic-worker-backoff.mp4"
+        ));
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                9202L
+        ));
+        itemStore.failNextIndexedUpsertFor(item.id(), "embedding provider timeout");
+
+        ReviewSemanticWorkerRun failedRun = service.processSemanticIndexQueue(new ReviewSemanticWorkerCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                10,
+                9202L
+        ));
+        ReviewSemanticIndexEntry failed = itemStore.listSemanticIndex(
+                        new ReviewQuery(null, "camera-01", null, null)).get(0);
+        LocalDateTime nextRetryAt = (LocalDateTime) recordTraceValue(failed, "nextRetryAt");
+        ReviewSemanticWorkerRun prematureRetry = service.processSemanticIndexQueue(new ReviewSemanticWorkerCommand(
+                new ReviewQuery(null, "camera-01", null, null),
+                10,
+                9202L
+        ));
+
+        assertEquals(1, failedRun.failedCount());
+        assertNotNull(nextRetryAt);
+        assertTrue(nextRetryAt.isAfter(failedRun.processedAt()));
+        assertEquals(0, prematureRetry.scannedCount());
+        assertEquals(0, prematureRetry.processedCount());
+        assertEquals(0, prematureRetry.failedCount());
+        ReviewSemanticIndexEntry stillFailed = itemStore.listSemanticIndex(
+                        new ReviewQuery(null, "camera-01", null, null)).get(0);
+        assertEquals("failed", stillFailed.indexStatus());
+        assertEquals(1, stillFailed.retryCount());
+        assertEquals(nextRetryAt, recordTraceValue(stillFailed, "nextRetryAt"));
     }
 
     @Test
@@ -2795,7 +2957,7 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void lowSampleRuleSuggestionCannotBeAcceptedBeforeMoreReviewSamples() {
+    void lowSampleRuleSuggestionCannotBeShadowEvaluatedBeforeMoreReviewSamples() {
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
@@ -2817,7 +2979,7 @@ class SupervisionAlertReviewServiceTest {
                 service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                         item.id(),
                         9002L,
-                        "accepted",
+                        "shadow_evaluated",
                         "sample is too small"
                 )));
         assertTrue(rejected.getMessage().contains("minimum sample"));
@@ -2858,6 +3020,22 @@ class SupervisionAlertReviewServiceTest {
         );
         service.markFalsePositive(new ReviewOperationCommand(second.id(), 9006L, "zone_too_wide"));
         service.markFalsePositive(new ReviewOperationCommand(third.id(), 9007L, "zone_too_wide"));
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                item.id(),
+                9004L,
+                "accepted",
+                "approval must not skip shadow evaluation"
+        )));
+        ReviewItemAggregate shadowEvaluated = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                item.id(),
+                9004L,
+                "shadow_evaluated",
+                "independent shadow evaluation completed"
+        ));
+        assertEquals("shadow_evaluated", shadowEvaluated.ruleSuggestionStatus());
+        assertTrue(shadowEvaluated.ruleSuggestion().get("shadowEvaluation") instanceof Map<?, ?>);
+        assertTrue(shadowEvaluated.ruleSuggestion().get("replayReport") instanceof Map<?, ?>);
+        assertEquals(List.of(), ruleStore.listAll());
         ReviewItemAggregate accepted = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                 item.id(),
                 9004L,
@@ -2903,10 +3081,58 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void ruleSuggestionSafeApplyRequiresApprovalAndStoresShadowEvaluation() {
+    void ruleSuggestionCanBeRejectedBeforeApprovalWithoutChangingLiveRule() {
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
+                ruleStore,
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 1, 8, 40);
+        ReviewItemAggregate pendingCandidate = service.ingestClue(
+                newClue("alert-reject-pending", baseTime, "reject-pending.jpg", "reject-pending.mp4")
+        );
+        ReviewItemAggregate shadowCandidate = service.ingestClue(
+                newClue("alert-reject-shadow", baseTime.plusMinutes(10), "reject-shadow.jpg", "reject-shadow.mp4")
+        );
+        ReviewItemAggregate sample = service.ingestClue(
+                newClue("alert-reject-sample", baseTime.plusMinutes(20), "reject-sample.jpg", "reject-sample.mp4")
+        );
+        service.markFalsePositive(new ReviewOperationCommand(pendingCandidate.id(), 9011L, "zone too wide"));
+        service.markFalsePositive(new ReviewOperationCommand(shadowCandidate.id(), 9012L, "zone too wide"));
+        service.markFalsePositive(new ReviewOperationCommand(sample.id(), 9013L, "zone too wide"));
+
+        ReviewItemAggregate rejectedFromPending = service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(pendingCandidate.id(), 9014L, "rejected", "not suitable for governance")
+        );
+        assertEquals("rejected", rejectedFromPending.ruleSuggestionStatus());
+        assertEquals(List.of(), ruleStore.listAll());
+
+        ReviewItemAggregate shadowEvaluated = service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(shadowCandidate.id(), 9014L, "shadow_evaluated", "shadow evidence ready")
+        );
+        assertEquals("shadow_evaluated", shadowEvaluated.ruleSuggestionStatus());
+        ReviewItemAggregate rejectedFromShadow = service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(shadowCandidate.id(), 9014L, "rejected", "shadow risk too high")
+        );
+        assertEquals("rejected", rejectedFromShadow.ruleSuggestionStatus());
+        assertEquals(List.of(), ruleStore.listAll());
+
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(shadowCandidate.id(), 9014L, "accepted", "rejected is terminal")
+        ));
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(shadowCandidate.id(), 9014L, "applied", "rejected cannot apply")
+        ));
+        assertEquals(List.of(), ruleStore.listAll());
+    }
+
+    @Test
+    void ruleSuggestionSafeApplyRequiresApprovalAndStoresShadowEvaluation() {
+        InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
                 ruleStore,
                 unusedEventService()
         );
@@ -2925,6 +3151,49 @@ class SupervisionAlertReviewServiceTest {
                 "unsafe direct apply"
         )));
 
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                first.id(),
+                9003L,
+                "accepted",
+                "unsafe approval without shadow evaluation"
+        )));
+
+        ReviewItemAggregate shadowEvaluated = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                first.id(),
+                9003L,
+                "shadow_evaluated",
+                "independent shadow evaluation completed"
+        ));
+        assertEquals("shadow_evaluated", shadowEvaluated.ruleSuggestionStatus());
+        assertEquals(List.of(), ruleStore.listAll());
+        Map<?, ?> shadowReplayReport = (Map<?, ?>) shadowEvaluated.ruleSuggestion().get("replayReport");
+
+        Map<String, Object> missingReplayEvidence = new LinkedHashMap<>(shadowEvaluated.ruleSuggestion());
+        missingReplayEvidence.remove("replayReport");
+        itemStore.updateRuleSuggestionStatus(
+                first.id(),
+                9003L,
+                "shadow_evaluated",
+                Map.copyOf(missingReplayEvidence),
+                LocalDateTime.now()
+        );
+        IllegalStateException missingReplayRejected = assertThrows(IllegalStateException.class, () ->
+                service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                        first.id(),
+                        9003L,
+                        "accepted",
+                        "approval cannot create missing replay evidence"
+                )));
+        assertTrue(missingReplayRejected.getMessage().contains("shadowEvaluation and replayReport"));
+        assertEquals(List.of(), ruleStore.listAll());
+        itemStore.updateRuleSuggestionStatus(
+                first.id(),
+                9003L,
+                "shadow_evaluated",
+                shadowEvaluated.ruleSuggestion(),
+                LocalDateTime.now()
+        );
+
         ReviewItemAggregate accepted = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                 first.id(),
                 9003L,
@@ -2932,8 +3201,10 @@ class SupervisionAlertReviewServiceTest {
                 "supervisor approved"
         ));
         assertEquals("accepted", accepted.ruleSuggestionStatus());
+        assertEquals(List.of(), ruleStore.listAll());
         assertTrue(accepted.ruleSuggestion().get("shadowEvaluation") != null);
         Map<?, ?> acceptedReplayReport = (Map<?, ?>) accepted.ruleSuggestion().get("replayReport");
+        assertEquals(shadowReplayReport, acceptedReplayReport);
         assertEquals("review_before_apply", acceptedReplayReport.get("decision"));
         assertEquals(3, acceptedReplayReport.get("evaluatedCount"));
         assertEquals(3, acceptedReplayReport.get("falsePositiveReduction"));
@@ -2952,6 +3223,45 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(3, falseNegativeEstimate.get("possibleMissedCount"));
         assertEquals("review_required", falseNegativeEstimate.get("riskLevel"));
 
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(first.id(), 9003L, "rejected", "approved suggestion cannot be rejected")
+        ));
+        assertEquals(List.of(), ruleStore.listAll());
+
+        assertThrows(IllegalStateException.class, () -> service.revertRuleSuggestion(new RuleSuggestionOperationCommand(
+                first.id(),
+                9003L,
+                "reverted",
+                "cannot rollback before application"
+        )));
+        assertEquals(List.of(), ruleStore.listAll());
+
+        Map<String, Object> missingShadowEvidence = new LinkedHashMap<>(accepted.ruleSuggestion());
+        missingShadowEvidence.remove("shadowEvaluation");
+        itemStore.updateRuleSuggestionStatus(
+                first.id(),
+                9003L,
+                "accepted",
+                Map.copyOf(missingShadowEvidence),
+                LocalDateTime.now()
+        );
+        IllegalStateException missingShadowRejected = assertThrows(IllegalStateException.class, () ->
+                service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
+                        first.id(),
+                        9003L,
+                        "applied",
+                        "application cannot recreate missing shadow evidence"
+                )));
+        assertTrue(missingShadowRejected.getMessage().contains("shadowEvaluation and replayReport"));
+        assertEquals(List.of(), ruleStore.listAll());
+        itemStore.updateRuleSuggestionStatus(
+                first.id(),
+                9003L,
+                "accepted",
+                accepted.ruleSuggestion(),
+                LocalDateTime.now()
+        );
+
         ReviewItemAggregate applied = service.updateRuleSuggestionStatus(new RuleSuggestionOperationCommand(
                 first.id(),
                 9003L,
@@ -2967,6 +3277,10 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("supervisor approved", applied.ruleSuggestion().get("approvalNote"));
         assertEquals(acceptedReplayReport, applied.ruleSuggestion().get("replayReport"));
         assertTrue(String.valueOf(applied.ruleSuggestion().get("configVersion")).startsWith("rule-"));
+        assertThrows(IllegalStateException.class, () -> service.updateRuleSuggestionStatus(
+                new RuleSuggestionOperationCommand(first.id(), 9003L, "rejected", "applied suggestion cannot be rejected")
+        ));
+        assertEquals(1, ruleStore.listAll().size());
     }
 
     @Test
@@ -3323,7 +3637,7 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void ruleSuggestionCanBePreviewedAndRolledBackWithoutChangingRulesSilently() {
+    void ruleSuggestionCanBePreviewedButCannotRollbackBeforeApplication() {
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
@@ -3339,18 +3653,18 @@ class SupervisionAlertReviewServiceTest {
         service.markFalsePositive(new ReviewOperationCommand(item.id(), 9001L, "zone too wide"));
 
         RuleSuggestionPreview preview = service.previewRuleSuggestion(item.id());
-        ReviewItemAggregate reverted = service.revertRuleSuggestion(new RuleSuggestionOperationCommand(
-                item.id(),
-                9002L,
-                "reverted",
-                "rollback after supervisor check"
-        ));
+        IllegalStateException rejectedRollback = assertThrows(IllegalStateException.class, () ->
+                service.revertRuleSuggestion(new RuleSuggestionOperationCommand(
+                        item.id(),
+                        9002L,
+                        "reverted",
+                        "rollback before application"
+                )));
 
         assertEquals(item.id(), preview.reviewItemId());
         assertEquals("suppress_label_zone", preview.proposedRule().get("action"));
         assertTrue(preview.diff().stream().anyMatch(line -> line.contains("zone-a")));
-        assertEquals("reverted", reverted.ruleSuggestionStatus());
-        assertEquals("reverted", reverted.ruleSuggestion().get("lifecycleStatus"));
+        assertTrue(rejectedRollback.getMessage().contains("applied"));
         assertEquals(List.of(), ruleStore.listAll());
     }
 
@@ -3541,8 +3855,9 @@ class SupervisionAlertReviewServiceTest {
 
     @Test
     void semanticTriggerMatchesIndexedItemsAndReturnsActions() {
+        InMemoryReviewItemStore store = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
-                new InMemoryReviewItemStore(),
+                store,
                 new InMemoryRuleStore(),
                 unusedEventService()
         );
@@ -3567,7 +3882,8 @@ class SupervisionAlertReviewServiceTest {
                 List.of(0.1D, 0.2D, 0.3D, 0.4D),
                 "corr-trigger"
         ));
-        service.reindexSemanticIndex(new ReviewQuery(null, "camera-01", null, null));
+        ReviewSemanticIndexEntry semanticIndex = service.reindexSemanticIndex(
+                new ReviewQuery(null, "camera-01", null, null)).get(0);
 
         ReviewSemanticTriggerResult result = service.evaluateSemanticTrigger(new ReviewSemanticTriggerCommand(
                 "helmet-doorway",
@@ -3598,6 +3914,17 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("person", explanation.get("objectLabel"));
         assertEquals("doorway", explanation.get("zoneCode"));
         assertTrue(String.valueOf(explanation.get("snippet")).contains("helmet"));
+        assertEquals(semanticIndex.indexVersion(), explanation.get("indexVersion"));
+        assertEquals(semanticIndex.indexStatus(), explanation.get("indexStatus"));
+        assertEquals(semanticIndex.indexedAt().toString(), explanation.get("indexedAt"));
+        assertEquals(semanticIndex.embeddingModel(), explanation.get("embeddingModel"));
+        assertEquals(semanticIndex.embeddingVectorHash(), explanation.get("embeddingVectorHash"));
+        assertEquals("semantic-trigger-input-v1", semanticTriggerTraceValue(result, "inputVersion"));
+        assertEquals(semanticIndex.indexVersion(), semanticTriggerTraceValue(result, "latestIndexVersion"));
+        Map<String, Object> persistedEvaluation = store.semanticTriggerAudits
+                .get(result.evaluationId()).get(0).metadata();
+        assertEquals("semantic-trigger-input-v1", persistedEvaluation.get("inputVersion"));
+        assertEquals(semanticIndex.indexVersion(), persistedEvaluation.get("latestIndexVersion"));
         assertEquals(result.actionPayloads().size(), result.actionPreviews().size());
         assertTrue(result.actionPreviews().stream()
                 .anyMatch(preview -> Objects.equals("sub_label", preview.get("action"))
@@ -3608,6 +3935,396 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(result.actionPayloads().stream()
                 .allMatch(action -> Boolean.TRUE.equals(action.get("requiresHumanConfirmation"))
                         && Objects.equals("pending", action.get("humanConfirmationStatus"))));
+    }
+
+    @Test
+    void semanticTriggerInputHashIsCanonicalAndChangesWithCandidateWindow() {
+        InMemoryReviewItemStore store = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                store,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 13, 9, 0);
+        service.ingestClue(newClue(
+                "alert-semantic-input-hash-1",
+                baseTime,
+                "semantic-input-hash-1.jpg",
+                "semantic-input-hash-1.mp4"
+        ));
+        ReviewSemanticTriggerCommand command = new ReviewSemanticTriggerCommand(
+                "canonical-person-trigger",
+                "camera-01",
+                "description",
+                "person camera-01",
+                0.1D,
+                List.of("notification", "attribute"),
+                new ReviewQuery(null, "camera-01", null, "person", null,
+                        null, null, null, baseTime.minusMinutes(5), baseTime.plusMinutes(30)),
+                9301L
+        );
+
+        ReviewSemanticTriggerResult first = service.evaluateSemanticTrigger(command);
+        ReviewSemanticTriggerResult equivalent = service.evaluateSemanticTrigger(command);
+        String firstHash = (String) recordTraceValue(first, "inputHash");
+        String equivalentHash = (String) recordTraceValue(equivalent, "inputHash");
+        service.ingestClue(newClue(
+                "alert-semantic-input-hash-2",
+                baseTime.plusMinutes(10),
+                "semantic-input-hash-2.jpg",
+                "semantic-input-hash-2.mp4"
+        ));
+        ReviewSemanticTriggerResult expandedWindow = service.evaluateSemanticTrigger(command);
+        String expandedHash = (String) recordTraceValue(expandedWindow, "inputHash");
+
+        assertNotNull(firstHash);
+        assertTrue(firstHash.matches("sha256:[0-9a-f]{64}"));
+        assertEquals(firstHash, equivalentHash);
+        assertNotEquals(firstHash, expandedHash);
+        assertEquals(firstHash, store.semanticTriggerAudits.get(first.evaluationId()).get(0)
+                .metadata().get("inputHash"));
+    }
+
+    @Test
+    void semanticTriggerIndexGenerationRoundTripsWithoutMixingGenerations() {
+        InMemoryReviewItemStore store = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                store,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        service.ingestClue(newClue(
+                "alert-semantic-generation",
+                LocalDateTime.of(2026, 7, 13, 9, 30),
+                "semantic-generation.jpg",
+                "semantic-generation.mp4"
+        ));
+        ReviewSemanticIndexEntry indexed = service.reindexSemanticIndex(
+                new ReviewQuery(null, "camera-01", null, null)).get(0);
+        String generationId = (String) recordTraceValue(indexed, "indexGenerationId");
+
+        ReviewSemanticTriggerResult evaluated = service.evaluateSemanticTrigger(
+                new ReviewSemanticTriggerCommand(
+                        "generation-person-trigger",
+                        "camera-01",
+                        "description",
+                        "person camera-01",
+                        0.1D,
+                        List.of("notification"),
+                        new ReviewQuery(null, "camera-01", null, null),
+                        9302L
+                ));
+        ReviewSemanticTriggerResult restored = service.getSemanticTrigger(evaluated.evaluationId());
+        ReviewSemanticTriggerResult confirmed = service.confirmSemanticTrigger(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                        evaluated.evaluationId(),
+                        "confirmed",
+                        "generation verified",
+                        9303L
+                ));
+        Map<String, Object> persistedEvaluation = store.semanticTriggerAudits
+                .get(evaluated.evaluationId()).get(0).metadata();
+        Map<String, Object> persistedDecision = store.semanticTriggerAudits
+                .get(evaluated.evaluationId()).get(1).metadata();
+
+        assertNotNull(generationId);
+        assertEquals(generationId, recordTraceValue(evaluated, "indexGenerationId"));
+        assertEquals(generationId, evaluated.hitExplanations().get(0).get("indexGenerationId"));
+        assertTrue(evaluated.hitExplanations().stream()
+                .allMatch(hit -> generationId.equals(hit.get("indexGenerationId"))));
+        assertEquals(generationId, persistedEvaluation.get("indexGenerationId"));
+        assertEquals(generationId, persistedDecision.get("indexGenerationId"));
+        assertEquals(generationId, recordTraceValue(restored, "indexGenerationId"));
+        assertEquals(generationId, recordTraceValue(confirmed, "indexGenerationId"));
+        assertEquals(recordTraceValue(evaluated, "inputHash"), recordTraceValue(restored, "inputHash"));
+        assertEquals(recordTraceValue(evaluated, "inputHash"), recordTraceValue(confirmed, "inputHash"));
+    }
+
+    @Test
+    void semanticTriggerConfirmationRestoresPersistedPreviewAndIsIdempotentWithoutExecutingActions() {
+        InMemoryReviewItemStore store = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                store,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-semantic-confirm",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 7, 11, 10, 10),
+                "device-01",
+                "camera-01",
+                "doorway",
+                "person",
+                15,
+                "semantic-confirm.jpg",
+                "semantic-confirm.mp4",
+                null,
+                List.of("person", "helmet"),
+                List.of("doorway"),
+                List.of("obj-semantic-confirm"),
+                0.91D,
+                List.of(0.1D, 0.2D, 0.3D, 0.4D),
+                "corr-semantic-confirm"
+        ));
+        ReviewSemanticIndexEntry semanticIndex = service.reindexSemanticIndex(
+                new ReviewQuery(null, "camera-01", null, null)).get(0);
+
+        ReviewSemanticTriggerResult evaluated = service.evaluateSemanticTrigger(new ReviewSemanticTriggerCommand(
+                "helmet-doorway",
+                "camera-01",
+                "description",
+                "helmet doorway",
+                0.5D,
+                List.of("notification", "sub_label"),
+                new ReviewQuery(null, "camera-01", null, null),
+                9001L
+        ));
+
+        assertTrue(evaluated.evaluationId().matches(
+                "sem-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
+        assertEquals("pending", evaluated.humanConfirmationStatus());
+        assertEquals(List.of(item.id()), evaluated.matchedReviewItemIds());
+        assertEquals(2, evaluated.actionPreviews().size());
+        assertNull(evaluated.confirmedBy());
+        assertNull(evaluated.confirmedAt());
+        assertFalse(evaluated.duplicate());
+
+        ReviewSemanticTriggerResult restored = service.getSemanticTrigger(evaluated.evaluationId());
+
+        ReviewSemanticTriggerResult confirmed = service.confirmSemanticTrigger(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                        evaluated.evaluationId(),
+                        "confirmed",
+                        "operator approved preview only",
+                        9100L
+                ));
+        ReviewSemanticTriggerResult duplicate = service.confirmSemanticTrigger(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                        evaluated.evaluationId(),
+                        "confirmed",
+                        "client tried to replace persisted note",
+                        9999L
+                ));
+        List<SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord> persistedAudits =
+                store.semanticTriggerAudits.get(evaluated.evaluationId());
+        Map<String, Object> terminalAudit = persistedAudits.get(persistedAudits.size() - 1).metadata();
+
+        assertEquals(evaluated.matchedReviewItemIds(), confirmed.matchedReviewItemIds());
+        assertEquals(evaluated.hitExplanations(), confirmed.hitExplanations());
+        assertEquals(evaluated.actionPreviews(), confirmed.actionPreviews());
+        assertEquals("semantic-trigger-input-v1", semanticTriggerTraceValue(evaluated, "inputVersion"));
+        assertEquals(semanticIndex.indexVersion(), semanticTriggerTraceValue(evaluated, "latestIndexVersion"));
+        assertEquals(semanticTriggerTraceValue(evaluated, "inputVersion"),
+                semanticTriggerTraceValue(restored, "inputVersion"));
+        assertEquals(semanticTriggerTraceValue(evaluated, "latestIndexVersion"),
+                semanticTriggerTraceValue(restored, "latestIndexVersion"));
+        assertEquals(semanticTriggerTraceValue(evaluated, "inputVersion"),
+                semanticTriggerTraceValue(confirmed, "inputVersion"));
+        assertEquals(semanticTriggerTraceValue(evaluated, "latestIndexVersion"),
+                semanticTriggerTraceValue(confirmed, "latestIndexVersion"));
+        assertEquals(semanticTriggerTraceValue(confirmed, "inputVersion"),
+                semanticTriggerTraceValue(duplicate, "inputVersion"));
+        assertEquals(semanticTriggerTraceValue(confirmed, "latestIndexVersion"),
+                semanticTriggerTraceValue(duplicate, "latestIndexVersion"));
+        assertEquals("semantic-trigger-input-v1", terminalAudit.get("inputVersion"));
+        assertEquals(semanticIndex.indexVersion(), terminalAudit.get("latestIndexVersion"));
+        assertEquals("confirmed", confirmed.humanConfirmationStatus());
+        assertEquals(9100L, confirmed.confirmedBy());
+        assertNotNull(confirmed.confirmedAt());
+        assertFalse(confirmed.duplicate());
+        assertTrue(duplicate.duplicate());
+        assertEquals(9100L, duplicate.confirmedBy());
+        assertEquals(confirmed.confirmedAt(), duplicate.confirmedAt());
+        assertEquals(item.reviewData(), store.findById(item.id()).orElseThrow().reviewData(),
+                "confirmation records approval only and must not execute the previewed action");
+
+        IllegalStateException conflictingDecision = assertThrows(IllegalStateException.class,
+                () -> service.confirmSemanticTrigger(
+                        new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                                evaluated.evaluationId(),
+                                "rejected",
+                                "cannot overwrite terminal decision",
+                                9200L
+                        )));
+        assertTrue(conflictingDecision.getMessage().contains("semantic_trigger_already_decided"));
+
+        ReviewSemanticTriggerResult secondEvaluation = service.evaluateSemanticTrigger(
+                new ReviewSemanticTriggerCommand(
+                        "helmet-doorway-reject",
+                        "camera-01",
+                        "description",
+                        "helmet doorway",
+                        0.5D,
+                        List.of("notification"),
+                        new ReviewQuery(null, "camera-01", null, null),
+                        9001L
+                ));
+        ReviewSemanticTriggerResult rejected = service.confirmSemanticTrigger(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                        secondEvaluation.evaluationId(),
+                        "rejected",
+                        "preview would create noise",
+                        9300L
+                ));
+        ReviewSemanticTriggerResult duplicateRejection = service.confirmSemanticTrigger(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                        secondEvaluation.evaluationId(),
+                        "rejected",
+                        "duplicate",
+                        9400L
+                ));
+        assertEquals("rejected", rejected.humanConfirmationStatus());
+        assertEquals(9300L, rejected.confirmedBy());
+        assertFalse(rejected.duplicate());
+        assertTrue(duplicateRejection.duplicate());
+        assertEquals(9300L, duplicateRejection.confirmedBy());
+    }
+
+    @Test
+    void semanticTriggerConfirmationRejectsUnknownEvaluationAndInvalidDecision() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.confirmSemanticTrigger(
+                        new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                                "guessable-id", "confirmed", null, 9100L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.confirmSemanticTrigger(
+                        new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                                "sem-123e4567-e89b-42d3-a456-426614174000", "executed", null, 9100L)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.confirmSemanticTrigger(
+                        new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                                "sem-123e4567-e89b-42d3-a456-426614174000", "confirmed", null, 9100L)));
+    }
+
+    @Test
+    void semanticTriggerAppliesNormalizedThresholdAndRejectsUnknownActions() {
+        InMemoryReviewItemStore store = new InMemoryReviewItemStore();
+        ReviewIntelligenceProvider provider = new StubReviewIntelligenceProvider(
+                request -> Optional.of(request.candidates().stream()
+                        .findFirst()
+                        .map(candidate -> List.of(new ReviewSemanticHit(
+                                candidate.item(),
+                                0.2D,
+                                List.of("helmet"),
+                                "helmet detected"
+                        )))
+                        .orElse(List.of())),
+                request -> Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                store,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                provider
+        );
+        service.ingestClue(newClue(
+                "alert-semantic-threshold",
+                LocalDateTime.of(2026, 7, 11, 11, 0),
+                "semantic-threshold.jpg",
+                "semantic-threshold.mp4"
+        ));
+
+        ReviewSemanticTriggerResult belowThreshold = service.evaluateSemanticTrigger(
+                new ReviewSemanticTriggerCommand(
+                        "strict-threshold",
+                        "camera-01",
+                        "description",
+                        "helmet",
+                        0.95D,
+                        List.of("notification"),
+                        new ReviewQuery(null, "camera-01", null, null),
+                        9001L
+                ));
+        ReviewSemanticTriggerResult aboveThreshold = service.evaluateSemanticTrigger(
+                new ReviewSemanticTriggerCommand(
+                        "relaxed-threshold",
+                        "camera-01",
+                        "description",
+                        "helmet",
+                        0.1D,
+                        List.of("notification"),
+                        new ReviewQuery(null, "camera-01", null, null),
+                        9001L
+                ));
+
+        assertTrue(belowThreshold.matchedReviewItemIds().isEmpty());
+        assertTrue(belowThreshold.actionPreviews().isEmpty());
+        assertEquals(1, aboveThreshold.matchedReviewItemIds().size());
+        assertEquals(0, semanticTriggerTraceValue(aboveThreshold, "latestIndexVersion"));
+        assertEquals(0, aboveThreshold.hitExplanations().get(0).get("indexVersion"));
+        assertEquals("live_fallback", aboveThreshold.hitExplanations().get(0).get("indexStatus"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.evaluateSemanticTrigger(new ReviewSemanticTriggerCommand(
+                        "unknown-action",
+                        "camera-01",
+                        "description",
+                        "helmet",
+                        0.1D,
+                        List.of("execute_arbitrary_plugin"),
+                        new ReviewQuery(null, "camera-01", null, null),
+                        9001L
+                )));
+    }
+
+    @Test
+    void semanticTriggerCanBeRestoredAfterRefreshAndIgnoresCorruptTerminalAudit() {
+        InMemoryReviewItemStore store = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                store,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        service.ingestClue(newClue(
+                "alert-semantic-restore",
+                LocalDateTime.of(2026, 7, 11, 11, 30),
+                "semantic-restore.jpg",
+                "semantic-restore.mp4"
+        ));
+        service.reindexSemanticIndex(new ReviewQuery(null, "camera-01", null, null));
+        ReviewSemanticTriggerResult evaluated = service.evaluateSemanticTrigger(
+                new ReviewSemanticTriggerCommand(
+                        "restore-after-refresh",
+                        "camera-01",
+                        "description",
+                        "person camera",
+                        0.1D,
+                        List.of("notification"),
+                        new ReviewQuery(null, "camera-01", null, null),
+                        9001L
+                ));
+        store.semanticTriggerAudits.get(evaluated.evaluationId()).add(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord(
+                        evaluated.matchedReviewItemIds().stream().findFirst().orElse(null),
+                        "semantic_trigger_confirmed",
+                        6666L,
+                        LocalDateTime.of(2026, 7, 11, 11, 31),
+                        Map.of()
+                ));
+
+        ReviewSemanticTriggerResult restored = service.getSemanticTrigger(evaluated.evaluationId());
+        ReviewSemanticTriggerResult confirmed = service.confirmSemanticTrigger(
+                new SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand(
+                        evaluated.evaluationId(),
+                        "confirmed",
+                        "valid approval",
+                        9100L
+                ));
+
+        assertEquals("pending", restored.humanConfirmationStatus());
+        assertEquals(evaluated.actionPreviews(), restored.actionPreviews());
+        assertEquals("confirmed", confirmed.humanConfirmationStatus());
+        assertEquals(9100L, confirmed.confirmedBy());
+        assertFalse(confirmed.duplicate());
     }
 
     @Test
@@ -3810,13 +4527,14 @@ class SupervisionAlertReviewServiceTest {
     @Test
     void operationsReportJobGeneratesScheduledShiftAndDailyReports() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
-        SupervisionAlertReviewService service = newService(
+        SupervisionAlertReviewServiceImpl service = (SupervisionAlertReviewServiceImpl) newService(
                 itemStore,
                 new InMemoryRuleStore(),
                 unusedEventService(),
                 request -> Optional.empty(),
                 noEventProjectionStore()
         );
+        service.setRuntimeOutboxPublisher(message -> ReviewRuntimeOutboxDeliveryResult.delivered());
         LocalDateTime alertTime = LocalDateTime.of(2026, 7, 1, 9, 30);
         service.ingestClue(newClue("alert-report-job", alertTime, "report-job.jpg", null));
 
@@ -3914,7 +4632,7 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void evidenceExportCreatesReadyJobWithIntegrityAuditAndEventBinding() {
+    void evidenceExportCreatesPendingJobWithIntegrityAuditAndEventBinding() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
                 itemStore,
@@ -3955,7 +4673,7 @@ class SupervisionAlertReviewServiceTest {
                 "approved by duty supervisor"
         ));
 
-        assertEquals("ready", job.status());
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_PENDING, job.status());
         assertEquals(reviewCase.id(), job.exportPackage().reviewCaseId());
         assertEquals(List.of(item.id()), job.exportPackage().reviewItemIds());
         assertEquals(9003L, job.operatorUserId());
@@ -3974,7 +4692,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(((List<?>) manifest.get("files")).stream()
                 .anyMatch(file -> "export-job.mp4".equals(((Map<?, ?>) file).get("uri"))
                         && String.valueOf(((Map<?, ?>) file).get("hash")).startsWith("sha256:")));
-        assertEquals(9005L, ((Map<?, ?>) manifest.get("approval")).get("approvedBy"));
+        assertEquals(9003L, ((Map<?, ?>) manifest.get("approval")).get("approvedBy"));
         assertEquals("approved by duty supervisor", ((Map<?, ?>) manifest.get("approval")).get("approvalNote"));
         assertTrue(String.valueOf(((Map<?, ?>) manifest.get("immutableAudit")).get("headHash"))
                 .startsWith("sha256:"));
@@ -3982,6 +4700,417 @@ class SupervisionAlertReviewServiceTest {
                 .anyMatch(timeline -> "case_audit".equals(timeline.materialType())
                         && "export_evidence_job".equals(timeline.materialUri())
                         && timeline.actionNote().contains(job.jobNo())));
+    }
+
+    @Test
+    void evidenceExportJobCreationPersistsPendingDraftWithoutCallingVideo() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "must-not-run-during-create",
+                        "https://eye.yfeiai.com/exports/must-not-run-during-create.mp4",
+                        "ready",
+                        "unexpected synchronous export"
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-draft",
+                LocalDateTime.of(2026, 7, 10, 9, 0),
+                "export-draft.jpg",
+                "export-draft.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "pending export draft",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewEvidenceExportJob created = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9200L,
+                "mp4",
+                "double-click safe export"
+        ));
+
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_PENDING, created.status());
+        assertTrue(videoExportProvider.requests().isEmpty());
+        assertEquals(List.of(), created.exportPackage().manifest().get("videoExports"));
+    }
+
+    @Test
+    void evidenceExportJobCreationIsIdempotentForRepeatedRequest() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-idempotent",
+                LocalDateTime.of(2026, 7, 10, 9, 10),
+                "export-idempotent.jpg",
+                "export-idempotent.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "idempotent export",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportCommand command = new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9201L,
+                "mp4",
+                "same double click"
+        );
+
+        ReviewEvidenceExportJob first = service.createReviewEvidenceExportJob(command);
+        ReviewEvidenceExportJob duplicate = service.createReviewEvidenceExportJob(command);
+
+        assertEquals(first.jobNo(), duplicate.jobNo());
+        assertEquals(1, itemStore.listExportJobs(reviewCase.id()).size());
+        assertEquals(first.exportPackage().manifest().get("requestKey"),
+                duplicate.exportPackage().manifest().get("requestKey"));
+    }
+
+    @Test
+    void evidenceExportRejectsReviewItemsOutsideTheRequestedCase() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 10, 9, 15);
+        ReviewItemAggregate caseItem = service.ingestClue(newClue(
+                "alert-export-case-member",
+                alertTime,
+                "case-member.jpg",
+                "case-member.mp4"
+        ));
+        ReviewItemAggregate externalItem = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-export-case-external",
+                SupervisionRuleSeeds.RULE_ABNORMAL_GATHERING,
+                "abnormal_gathering",
+                alertTime.plusMinutes(1),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                3,
+                "case-external.jpg",
+                "case-external.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "case membership export",
+                caseItem.id(),
+                List.of(caseItem.id())
+        ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                        reviewCase.id(),
+                        List.of(caseItem.id(), externalItem.id()),
+                        9201L,
+                        "manifest",
+                        "must stay inside case"
+                )));
+
+        assertTrue(error.getMessage().contains("review_item_not_in_case"));
+        assertTrue(itemStore.listExportJobs(reviewCase.id()).isEmpty());
+    }
+
+    @Test
+    void evidenceExportBindsApproverToAuthenticatedOperator() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-approver",
+                LocalDateTime.of(2026, 7, 10, 9, 16),
+                "approver.jpg",
+                "approver.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "approver binding",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9202L,
+                "manifest",
+                "approval must be authenticated",
+                9999L,
+                "spoofed approver"
+        ));
+
+        assertEquals(9202L, ((Map<?, ?>) job.exportPackage().manifest().get("approval")).get("approvedBy"));
+    }
+
+    @Test
+    void evidenceExportRejectsUnsupportedFormatBeforeCallingVideo() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-format",
+                LocalDateTime.of(2026, 7, 10, 9, 17),
+                "format.jpg",
+                "format.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "format allowlist",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.exportReviewEvidence(new ReviewEvidenceExportCommand(
+                        reviewCase.id(),
+                        List.of(item.id()),
+                        9203L,
+                        "../../executable",
+                        "invalid format"
+                )));
+
+        assertTrue(error.getMessage().contains("unsupported_export_format"));
+        assertTrue(videoExportProvider.requests().isEmpty());
+    }
+
+    @Test
+    void evidenceExportRejectsUnauthorizedCaseLevelMediaWithoutReviewItemId() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of("camera-01")
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-case-media",
+                LocalDateTime.of(2026, 7, 10, 9, 18),
+                "case-media.jpg",
+                "case-media.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "case level media permission",
+                item.id(),
+                List.of(item.id())
+        ));
+        itemStore.addCaseLevelEvidence(
+                reviewCase.id(),
+                "camera-02",
+                "record",
+                "forbidden-case-media.mp4",
+                LocalDateTime.of(2026, 7, 10, 9, 19)
+        );
+
+        SecurityException error = assertThrows(SecurityException.class,
+                () -> service.exportReviewEvidence(new ReviewEvidenceExportCommand(
+                        reviewCase.id(),
+                        List.of(item.id()),
+                        9204L,
+                        "manifest",
+                        "case-level media must be scoped",
+                        null,
+                        null,
+                        List.of("camera-01", "camera-02")
+                )));
+
+        assertTrue(error.getMessage().contains("camera_not_allowed"));
+        assertTrue(service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .anyMatch(row -> "media_access_denied".equals(row.materialUri())
+                        && row.actionNote().contains("forbidden-case-media.mp4")));
+    }
+
+    @Test
+    void evidenceExportWorkerAggregatesOrderedCaseCameraRecordSegmentsIntoOneVideoRequest() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "video-export-stitched",
+                        "https://eye.yfeiai.com/exports/video-export-stitched.mp4",
+                        "ready",
+                        "two segments stitched",
+                        "https://eye.yfeiai.com/exports/video-export-stitched/manifest",
+                        validSha256('d'),
+                        List.of(
+                                Map.of(
+                                        "originalRecordUri", "segment-a.mp4",
+                                        "sourceHash", validSha256('e'),
+                                        "ffmpegCommandHash", validSha256('f'),
+                                        "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                        "stitchOrder", 0
+                                ),
+                                Map.of(
+                                        "originalRecordUri", "segment-b.mp4",
+                                        "sourceHash", validSha256('1'),
+                                        "ffmpegCommandHash", validSha256('2'),
+                                        "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                        "stitchOrder", 1
+                                )
+                        ),
+                        validSha256('3')
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime firstAlertTime = LocalDateTime.of(2026, 7, 10, 9, 20);
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-export-segment-a",
+                firstAlertTime,
+                "segment-a.jpg",
+                "segment-a.mp4"
+        ));
+        ReviewItemAggregate second = service.ingestClue(newClue(
+                "alert-export-segment-b",
+                firstAlertTime.plusHours(2),
+                "segment-b.jpg",
+                "segment-b.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "stitched camera timeline",
+                first.id(),
+                List.of(first.id(), second.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(first.id(), second.id()),
+                9202L,
+                "mp4",
+                "ordered case export"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9203L)
+        );
+
+        assertEquals(1, run.processedCount());
+        assertEquals(1, videoExportProvider.requests().size());
+        ReviewEvidenceVideoExportRequest request = videoExportProvider.requests().get(0);
+        assertEquals("camera-01", request.cameraId());
+        assertEquals(job.expiresAt(), request.expiresAt());
+        assertEquals(List.of("segment-a.mp4", "segment-b.mp4"), request.recordSegments().stream()
+                .map(segment -> segment.recordUri())
+                .toList());
+        assertEquals(List.of(0, 1), request.recordSegments().stream()
+                .map(segment -> segment.stitchOrder())
+                .toList());
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_READY,
+                itemStore.findExportJobByNo(job.jobNo()).orElseThrow().status());
+    }
+
+    @Test
+    void evidenceExportWorkerClaimsOnlyOneJobBeforeEachLongRunningExport() {
+        CountingExportClaimStore itemStore = new CountingExportClaimStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-small-claim",
+                LocalDateTime.of(2026, 7, 10, 9, 30),
+                "small-claim.jpg",
+                "small-claim.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "small export claims",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(), List.of(item.id()), 9210L, "manifest", "first claim"
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(), List.of(item.id()), 9210L, "manifest", "second claim"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9211L)
+        );
+
+        assertEquals(2, run.processedCount());
+        assertTrue(itemStore.claimLimits().size() >= 2);
+        assertTrue(itemStore.claimLimits().stream().allMatch(limit -> limit == 1),
+                String.valueOf(itemStore.claimLimits()));
+    }
+
+    @Test
+    void staleExportClaimConflictDoesNotSecondCompleteOrAbortLaterJobs() {
+        ConflictingExportCompletionStore itemStore = new ConflictingExportCompletionStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-cas-conflict",
+                LocalDateTime.of(2026, 7, 10, 9, 31),
+                "cas-conflict.jpg",
+                "cas-conflict.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "stale claim conflict",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob stale = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(), List.of(item.id()), 9212L, "manifest", "stale claim"
+        ));
+        ReviewEvidenceExportJob later = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(), List.of(item.id()), 9212L, "manifest", "later claim"
+        ));
+        itemStore.conflictOn(stale.jobNo());
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9213L)
+        );
+
+        assertEquals(1, run.processedCount());
+        assertEquals(0, run.failedCount());
+        assertTrue(run.deferredJobNos().contains(stale.jobNo()), String.valueOf(run.deferredJobNos()));
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_READY,
+                itemStore.findExportJobByNo(later.jobNo()).orElseThrow().status());
+        assertEquals(1, itemStore.completionAttempts(stale.jobNo()));
     }
 
     @Test
@@ -4034,6 +5163,121 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidenceExportCleanupDoesNotExpireAnActivelyRunningClaim() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-active-claim",
+                LocalDateTime.of(2026, 7, 10, 10, 0),
+                "active-claim.jpg",
+                "active-claim.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "active export claim",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9204L,
+                "manifest",
+                "active claim must survive cleanup"
+        ));
+        Map<String, Object> manifest = new LinkedHashMap<>(job.exportPackage().manifest());
+        manifest.put("worker", Map.of(
+                "status", "running",
+                "attemptCount", 1,
+                "processedAt", LocalDateTime.now().toString()
+        ));
+        ReviewEvidenceExportPackage runningPackage = new ReviewEvidenceExportPackage(
+                job.exportPackage().packageNo(),
+                job.exportPackage().format(),
+                job.exportPackage().reviewCaseId(),
+                job.exportPackage().reviewItemIds(),
+                job.exportPackage().evidenceUris(),
+                job.exportPackage().timeline(),
+                Map.copyOf(manifest),
+                job.exportPackage().generatedAt()
+        );
+        itemStore.replaceExportJobForTest(new ReviewEvidenceExportJob(
+                job.jobNo(),
+                SupervisionAlertReviewService.EXPORT_JOB_RUNNING,
+                runningPackage,
+                job.fileHash(),
+                LocalDateTime.now().minusMinutes(1),
+                job.operatorUserId(),
+                job.reason(),
+                job.boundEventIds(),
+                job.createdAt()
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9205L)
+        );
+
+        assertEquals(0, run.scannedCount());
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_RUNNING,
+                itemStore.findExportJobByNo(job.jobNo()).orElseThrow().status());
+    }
+
+    @Test
+    void failedEvidenceExportUsesPersistentBackoffBeforeRetryingVideo() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-backoff",
+                LocalDateTime.of(2026, 7, 10, 10, 10),
+                "export-backoff.jpg",
+                "export-backoff.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "failed export backoff",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9206L,
+                "mp4",
+                "retry with backoff"
+        ));
+
+        ReviewEvidenceExportWorkerRun failed = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9207L)
+        );
+        ReviewEvidenceExportWorkerRun deferred = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9208L)
+        );
+
+        ReviewEvidenceExportJob stored = itemStore.findExportJobByNo(job.jobNo()).orElseThrow();
+        Map<?, ?> worker = (Map<?, ?>) stored.exportPackage().manifest().get("worker");
+        assertEquals(1, failed.failedCount());
+        assertEquals(0, deferred.scannedCount());
+        assertEquals(1, deferred.deferredCount());
+        assertEquals(1, videoExportProvider.requests().size());
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_FAILED, stored.status());
+        assertTrue(LocalDateTime.parse(String.valueOf(worker.get("nextRetryAt"))).isAfter(LocalDateTime.now()));
+    }
+
+    @Test
     void evidenceExportDownloadExpiresAndWorkerCleansExpiredJobs() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
@@ -4062,7 +5306,8 @@ class SupervisionAlertReviewServiceTest {
         itemStore.replaceExportJobStatus(job.jobNo(), SupervisionAlertReviewService.EXPORT_JOB_FAILED);
 
         IllegalStateException failed = assertThrows(IllegalStateException.class,
-                () -> service.recordEvidenceDownload(job.jobNo(), 9103L, "download failed job"));
+                () -> service.downloadEvidencePackage(new ReviewEvidenceDownloadCommand(
+                        job.jobNo(), 9103L, null, "download failed job")));
         assertTrue(failed.getMessage().contains("not ready"));
 
         ReviewEvidenceExportJob expired = new ReviewEvidenceExportJob(
@@ -4076,10 +5321,11 @@ class SupervisionAlertReviewServiceTest {
                 job.boundEventIds(),
                 job.createdAt()
         );
-        itemStore.updateExportJob(expired);
+        itemStore.replaceExportJobForTest(expired);
 
         IllegalStateException expiredDownload = assertThrows(IllegalStateException.class,
-                () -> service.recordEvidenceDownload(job.jobNo(), 9104L, "download expired job"));
+                () -> service.downloadEvidencePackage(new ReviewEvidenceDownloadCommand(
+                        job.jobNo(), 9104L, null, "download expired job")));
         assertTrue(expiredDownload.getMessage().contains("expired"));
 
         ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
@@ -4098,8 +5344,215 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void evidenceAuditTrailListsHashesExporterDownloadsAndBoundEvents() {
+    void evidenceDownloadPackagesEveryCameraArtifactAndProvenanceIntoVerifiedZip() throws Exception {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        Map<String, byte[]> artifactBytes = Map.of(
+                "camera-01", "camera-one-real-video".getBytes(StandardCharsets.UTF_8),
+                "camera-02", "camera-two-real-video".getBytes(StandardCharsets.UTF_8)
+        );
+        Map<String, String> artifactHashes = Map.of(
+                "camera-01", sha256Bytes(artifactBytes.get("camera-01")),
+                "camera-02", sha256Bytes(artifactBytes.get("camera-02"))
+        );
+        List<ReviewEvidenceVideoDownloadRequest> downloadRequests = new ArrayList<>();
+        VideoEvidenceExportProvider videoExportProvider = new VideoEvidenceExportProvider() {
+            @Override
+            public Optional<ReviewEvidenceVideoExportResult> export(ReviewEvidenceVideoExportRequest request) {
+                List<Map<String, Object>> segments = request.recordSegments().stream()
+                        .map(segment -> Map.<String, Object>of(
+                                "cameraId", request.cameraId(),
+                                "originalRecordUri", segment.recordUri(),
+                                "sourceHash", validSha256(request.cameraId().endsWith("01") ? '1' : '2'),
+                                "ffmpegCommandHash", validSha256(request.cameraId().endsWith("01") ? '3' : '4'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", segment.stitchOrder()
+                        ))
+                        .toList();
+                return Optional.of(new ReviewEvidenceVideoExportResult(
+                        "export-" + request.cameraId(),
+                        "https://eye.yfeiai.com/video/record/export/export-" + request.cameraId() + "/download",
+                        "ready",
+                        "camera artifact ready",
+                        "https://eye.yfeiai.com/video/record/export/export-" + request.cameraId() + "/manifest",
+                        artifactHashes.get(request.cameraId()),
+                        segments,
+                        validSha256(request.cameraId().endsWith("01") ? '5' : '6')
+                ));
+            }
+
+            @Override
+            public Optional<ReviewEvidenceDownloadArtifact> download(ReviewEvidenceVideoDownloadRequest request) {
+                downloadRequests.add(request);
+                byte[] bytes = artifactBytes.get(request.cameraId());
+                return Optional.of(temporaryArtifact(
+                        null,
+                        request.cameraId() + ".mp4",
+                        "video/mp4",
+                        bytes,
+                        artifactHashes.get(request.cameraId())
+                ));
+            }
+        };
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 11, 13, 0);
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-package-camera-01", baseTime, "camera-01.jpg", "camera-01.mp4"));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-package-camera-02",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                baseTime.plusMinutes(2),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                15,
+                "camera-02.jpg",
+                "camera-02.mp4",
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "cross-camera evidence package", first.id(), List.of(first.id())));
+        service.addToReviewCase(reviewCase.id(), second.id());
+        ReviewEvidenceExportJob queued = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(), List.of(first.id(), second.id()), 9500L, "mp4", "regulator package"));
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(1, 9500L));
+        ReviewEvidenceExportJob ready = itemStore.findExportJobByNo(queued.jobNo()).orElseThrow();
+
+        ReviewEvidenceDownloadArtifact artifact = service.downloadEvidencePackage(new ReviewEvidenceDownloadCommand(
+                queued.jobNo(), 9501L, List.of("camera-01", "camera-02"), "download full case"));
+        byte[] packageBytes = Files.readAllBytes(artifact.temporaryFile());
+        Map<String, byte[]> zipEntries = unzipEntries(packageBytes);
+
+        assertEquals("application/zip", artifact.contentType());
+        assertTrue(artifact.fileName().endsWith(".zip"));
+        assertEquals(packageBytes.length, artifact.contentLength());
+        assertEquals(sha256Bytes(packageBytes), artifact.fileHash());
+        assertEquals(artifact.fileHash(), artifact.auditEntry().fileHash());
+        assertEquals(artifact.fileHash(), artifact.auditEntry().metadata().get("downloadFileHash"));
+        assertEquals(ready.fileHash(), artifact.auditEntry().metadata().get("logicalPackageHash"));
+        assertArrayEquals(artifactBytes.get("camera-01"), zipEntries.get("artifacts/000-camera-01.mp4"));
+        assertArrayEquals(artifactBytes.get("camera-02"), zipEntries.get("artifacts/001-camera-02.mp4"));
+        String manifest = new String(zipEntries.get("manifest.json"), StandardCharsets.UTF_8);
+        String audit = new String(zipEntries.get("audit.json"), StandardCharsets.UTF_8);
+        String metadata = new String(zipEntries.get("metadata.json"), StandardCharsets.UTF_8);
+        assertTrue(manifest.contains("videoExports"));
+        assertTrue(manifest.contains("sourceHash"));
+        assertTrue(manifest.contains("ffmpegCommandHash"));
+        assertTrue(manifest.contains("clipParameters"));
+        assertTrue(manifest.contains("stitchOrder"));
+        assertTrue(audit.contains("export_created"));
+        assertTrue(metadata.contains("packageHash"));
+        assertTrue(metadata.contains(artifactHashes.get("camera-01")));
+        assertTrue(metadata.contains(artifactHashes.get("camera-02")));
+        assertEquals(List.of("camera-01", "camera-02"), downloadRequests.stream()
+                .map(ReviewEvidenceVideoDownloadRequest::cameraId)
+                .toList());
+        assertTrue(service.getEvidenceAuditTrail(reviewCase.id()).stream()
+                .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
+                        && artifact.fileHash().equals(entry.fileHash())
+                        && artifact.fileHash().equals(entry.metadata().get("downloadFileHash"))));
+        artifact.close();
+        assertFalse(Files.exists(artifact.temporaryFile()));
+    }
+
+    @Test
+    void evidenceDownloadAcceptsUppercaseExpectedHashAndPersistsRealByteHash() throws Exception {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        byte[] videoBytes = "real-video-package-bytes".getBytes(StandardCharsets.UTF_8);
+        String realHash = sha256Bytes(videoBytes);
+        String providerHash = "sha256:" + realHash.substring("sha256:".length())
+                .toUpperCase(java.util.Locale.ROOT);
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "real-export-001",
+                        "https://eye.yfeiai.com/video/record/export/real-export-001/download",
+                        "ready",
+                        "real VIDEO package",
+                        "https://eye.yfeiai.com/video/record/export/real-export-001/manifest",
+                        providerHash,
+                        List.of(Map.of(
+                                "cameraId", "camera-01",
+                                "originalRecordUri", "download-real.mp4",
+                                "sourceHash", validSha256('a'),
+                                "ffmpegCommandHash", validSha256('b'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", 0
+                        )),
+                        validSha256('c')
+                )),
+                Optional.of(temporaryArtifact(
+                        "REJ-pending",
+                        "real-export-001.mp4",
+                        "video/mp4",
+                        videoBytes,
+                        realHash
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-download-real",
+                LocalDateTime.of(2026, 7, 11, 9, 0),
+                "download-real.jpg",
+                "download-real.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "real VIDEO download",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewEvidenceExportJob queued = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(), List.of(item.id()), 9300L, "mp4", "download real package"
+        ));
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(1, 9300L));
+        ReviewEvidenceExportJob ready = itemStore.findExportJobByNo(queued.jobNo()).orElseThrow();
+
+        ReviewEvidenceDownloadArtifact artifact = service.downloadEvidencePackage(new ReviewEvidenceDownloadCommand(
+                ready.jobNo(), 9301L, List.of("camera-01"), "operator download"
+        ));
+
+        assertEquals(providerHash, ready.fileHash());
+        assertEquals(realHash, artifact.fileHash());
+        assertArrayEquals(videoBytes, Files.readAllBytes(artifact.temporaryFile()));
+        assertEquals(1, videoExportProvider.downloadRequests().size());
+        ReviewEvidenceVideoDownloadRequest request = videoExportProvider.downloadRequests().get(0);
+        assertEquals("camera-01", request.cameraId());
+        assertEquals(providerHash, request.expectedFileHash());
+        assertTrue(service.getEvidenceAuditTrail(reviewCase.id()).stream()
+                .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
+                        && realHash.equals(entry.fileHash())
+                        && providerHash.equals(entry.metadata().get("logicalPackageHash"))
+                        && Objects.equals(9301L, entry.operatorUserId())));
+        artifact.close();
+        assertFalse(Files.exists(artifact.temporaryFile()));
+    }
+
+    @Test
+    void evidenceAuditTrailListsHashesExporterDownloadsAndBoundEvents() throws Exception {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = singleCameraDownloadableProvider(
+                "camera-01",
+                "audit-chain-real-video".getBytes(StandardCharsets.UTF_8)
+        );
         SupervisionAlertReviewService service = newService(
                 itemStore,
                 new InMemoryRuleStore(),
@@ -4114,7 +5567,10 @@ class SupervisionAlertReviewServiceTest {
                         false
                 ),
                 noRecordEvidenceResolver(),
-                noEventProjectionStore()
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
         );
         ReviewItemAggregate item = service.ingestClue(newClue(
                 "alert-audit-chain",
@@ -4128,15 +5584,21 @@ class SupervisionAlertReviewServiceTest {
                 item.id(),
                 List.of(item.id())
         ));
-        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+        ReviewEvidenceExportJob queuedJob = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
                 reviewCase.id(),
                 List.of(item.id()),
                 9003L,
-                "manifest",
+                "mp4",
                 "regulator package"
         ));
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9003L));
+        ReviewEvidenceExportJob job = itemStore.findExportJobByNo(queuedJob.jobNo()).orElseThrow();
 
-        service.recordEvidenceDownload(job.jobNo(), 9004L, "case handoff download");
+        try (ReviewEvidenceDownloadArtifact ignored = service.downloadEvidencePackage(
+                new ReviewEvidenceDownloadCommand(
+                        job.jobNo(), 9004L, List.of("camera-01"), "case handoff download"))) {
+            assertTrue(ignored.contentLength() > 0);
+        }
         List<ReviewEvidenceAuditEntry> auditTrail = service.getEvidenceAuditTrail(reviewCase.id());
 
         ReviewEvidenceAuditEntry createdAudit = auditTrail.stream()
@@ -4171,6 +5633,93 @@ class SupervisionAlertReviewServiceTest {
                 .startsWith("sha256:")));
         assertEquals("GENESIS", auditTrail.get(0).metadata().get("previousHash"));
         assertEquals(auditTrail.get(0).metadata().get("entryHash"), auditTrail.get(1).metadata().get("previousHash"));
+    }
+
+    @Test
+    void unifiedEvidenceAuditLookupFindsPersistedMediaExportAndDownloadByEventOrJobAndIntersectsKeys() throws Exception {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = singleCameraDownloadableProvider(
+                "camera-01",
+                "reverse-lookup-real-video".getBytes(StandardCharsets.UTF_8)
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                command -> new AlertToEventResult(
+                        7510L,
+                        command.sourceSystem(),
+                        command.sourceAlertId(),
+                        command.ruleCode(),
+                        "supervision_order",
+                        SupervisionEventLevelEnum.L2,
+                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                        false
+                ),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-audit-reverse-lookup",
+                LocalDateTime.of(2026, 7, 11, 10, 30),
+                "audit-reverse.jpg",
+                "audit-reverse.mp4"
+        ));
+        service.convertToEvent(new ReviewToEventCommand(item.id(), 9010L));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "reverse lookup case",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.auditMediaAccess(new ReviewMediaAccessCommand(
+                reviewCase.id(),
+                item.id(),
+                9011L,
+                "camera-01",
+                "audit-reverse.mp4",
+                "playback",
+                List.of("camera-01"),
+                "reverse lookup playback"
+        ));
+        ReviewEvidenceExportJob queuedJob = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9012L,
+                "mp4",
+                "reverse lookup export"
+        ));
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9012L));
+        ReviewEvidenceExportJob job = itemStore.findExportJobByNo(queuedJob.jobNo()).orElseThrow();
+        try (ReviewEvidenceDownloadArtifact ignored = service.downloadEvidencePackage(
+                new ReviewEvidenceDownloadCommand(
+                        job.jobNo(), 9013L, List.of("camera-01"), "reverse lookup download"))) {
+            assertTrue(ignored.contentLength() > 0);
+        }
+
+        List<ReviewEvidenceAuditEntry> byEvent = service.queryEvidenceAuditTrail(
+                new ReviewEvidenceAuditQuery(7510L, null, null, null)
+        );
+        List<ReviewEvidenceAuditEntry> byJob = service.queryEvidenceAuditTrail(
+                new ReviewEvidenceAuditQuery(null, null, null, job.jobNo())
+        );
+        List<ReviewEvidenceAuditEntry> intersectedMiss = service.queryEvidenceAuditTrail(
+                new ReviewEvidenceAuditQuery(7510L, reviewCase.id(), item.id() + 1, job.jobNo())
+        );
+
+        List<String> actions = byEvent.stream().map(ReviewEvidenceAuditEntry::actionType).toList();
+        assertTrue(actions.contains("export_created"));
+        assertTrue(actions.contains("export_downloaded"));
+        assertTrue(actions.contains("media_access_granted"));
+        assertTrue(byEvent.stream().anyMatch(entry -> "playback".equals(entry.metadata().get("mediaAction"))));
+        assertTrue(byEvent.stream().anyMatch(entry -> "download".equals(entry.metadata().get("mediaAction"))));
+        assertTrue(byJob.size() >= 3);
+        assertTrue(byJob.stream().allMatch(entry -> entry.metadata().containsKey("entryHash")));
+        assertEquals("GENESIS", byJob.get(0).metadata().get("previousHash"));
+        assertTrue(intersectedMiss.isEmpty());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.queryEvidenceAuditTrail(new ReviewEvidenceAuditQuery(null, null, null, "  ")));
     }
 
     @Test
@@ -4252,6 +5801,128 @@ class SupervisionAlertReviewServiceTest {
                         && item.actionNote().contains("provider=external-review-provider")
                         && item.actionNote().contains("humanConfirmationStatus=pending")
                         && item.actionNote().contains("redactionStatus=not_required")));
+    }
+
+    @Test
+    void aiSummaryOverridesProviderSuppliedProvenanceWithServerOwnedValues() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> Optional.of(new ReviewAiSummary(
+                                request.reviewCaseId(),
+                                request.reviewItemIds(),
+                                "provider title",
+                                "provider summary",
+                                List.of("provider fact"),
+                                List.of(),
+                                List.of("provider action"),
+                                LocalDateTime.of(2026, 6, 30, 15, 10),
+                                "external-review-provider",
+                                Map.of("aiProvenance", Map.of(
+                                        "provider", "forged-provider",
+                                        "model", "forged-model",
+                                        "providerVersion", "forged-provider-version",
+                                        "promptVersion", "forged-prompt-version",
+                                        "requestedBy", -1L
+                                ))
+                        ))
+                )
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-ai-forged-provenance",
+                LocalDateTime.of(2026, 6, 30, 15, 5),
+                "ai-forged-provenance.jpg",
+                "ai-forged-provenance.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI forged provenance case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+        assertEquals("external-review-provider", provenance.get("provider"));
+        assertEquals("external-review-provider", provenance.get("model"));
+        assertEquals("review-ai-provider-v1", provenance.get("providerVersion"));
+        assertEquals("review-ai-summary-prompt-v1", provenance.get("promptVersion"));
+        assertEquals(9004L, provenance.get("requestedBy"));
+    }
+
+    @Test
+    void aiSummaryRedactsSensitiveProviderOutputAndRecordsOutputProvenance() {
+        String phone = "13812345678";
+        String identityNumber = "110101199001011234";
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> List.of(),
+                new StubReviewIntelligenceProvider(
+                        request -> Optional.empty(),
+                        request -> Optional.of(new ReviewAiSummary(
+                                request.reviewCaseId(),
+                                request.reviewItemIds(),
+                                "call " + phone,
+                                "identity " + identityNumber,
+                                List.of("fact " + phone),
+                                List.of("gap " + identityNumber),
+                                List.of("notify " + phone),
+                                LocalDateTime.of(2026, 6, 30, 15, 20),
+                                "external-review-provider",
+                                Map.of(
+                                        "phoneNumber", phone,
+                                        "nested", Map.of(
+                                                "idCard", identityNumber,
+                                                "notes", List.of("safe", "contact " + phone)
+                                        )
+                                )
+                        ))
+                )
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-ai-provider-output-redaction",
+                LocalDateTime.of(2026, 6, 30, 15, 15),
+                "ai-provider-output-redaction.jpg",
+                "ai-provider-output-redaction.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "AI provider output redaction case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewAiSummary summary = service.summarizeReviewCase(reviewCase.id(), 9004L);
+
+        assertEquals("[REDACTED]", summary.title());
+        assertEquals("[REDACTED]", summary.summary());
+        assertEquals(List.of("[REDACTED]"), summary.keyFacts());
+        assertEquals(List.of("[REDACTED]"), summary.evidenceGaps());
+        assertEquals(List.of("[REDACTED]"), summary.recommendedActions());
+        assertFalse(String.valueOf(summary).contains(phone));
+        assertFalse(String.valueOf(summary).contains(identityNumber));
+        Map<?, ?> nested = (Map<?, ?>) summary.structuredData().get("nested");
+        assertEquals("[REDACTED]", summary.structuredData().get("phoneNumber"));
+        assertEquals("[REDACTED]", nested.get("idCard"));
+        assertEquals(List.of("safe", "[REDACTED]"), nested.get("notes"));
+        Map<?, ?> provenance = (Map<?, ?>) summary.structuredData().get("aiProvenance");
+        assertEquals(true, provenance.get("outputRedacted"));
+        List<?> outputRedactedFields = (List<?>) provenance.get("outputRedactedFields");
+        assertTrue(outputRedactedFields.contains("title"));
+        assertTrue(outputRedactedFields.contains("summary"));
+        assertTrue(outputRedactedFields.contains("keyFacts[0]"));
+        assertTrue(outputRedactedFields.contains("evidenceGaps[0]"));
+        assertTrue(outputRedactedFields.contains("recommendedActions[0]"));
+        assertTrue(outputRedactedFields.contains("structuredData.phoneNumber"));
+        assertTrue(outputRedactedFields.contains("structuredData.nested.idCard"));
+        assertTrue(outputRedactedFields.contains("structuredData.nested.notes[1]"));
+        assertEquals("review-ai-provider-v1", provenance.get("providerVersion"));
+        assertEquals("review-ai-summary-prompt-v1", provenance.get("promptVersion"));
     }
 
     @Test
@@ -4605,13 +6276,75 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidenceExportDefaultsAndNormalizesVideoFormatsToRealMp4() {
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "video-export-default-mp4",
+                        "https://eye.yfeiai.com/exports/video-export-default-mp4.mp4",
+                        "ready",
+                        "VIDEO export ready",
+                        "https://eye.yfeiai.com/exports/video-export-default-mp4/manifest",
+                        validSha256('5'),
+                        List.of(Map.of(
+                                "sourceHash", validSha256('6'),
+                                "ffmpegCommandHash", validSha256('7'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", 0
+                        )),
+                        validSha256('8')
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-video-export-default",
+                LocalDateTime.of(2026, 7, 11, 12, 0),
+                "video-export-default.jpg",
+                "video-export-default.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "default real video export",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewEvidenceExportPackage defaultExport = service.exportReviewEvidence(
+                new ReviewEvidenceExportCommand(reviewCase.id(), List.of(item.id()), 9400L, null));
+        ReviewEvidenceExportPackage videoAliasExport = service.exportReviewEvidence(
+                new ReviewEvidenceExportCommand(reviewCase.id(), List.of(item.id()), 9400L, "video"));
+
+        assertEquals("mp4", defaultExport.format());
+        assertEquals("mp4", videoAliasExport.format());
+        assertEquals(List.of("mp4", "mp4"), videoExportProvider.requests().stream()
+                .map(ReviewEvidenceVideoExportRequest::format)
+                .toList());
+    }
+
+    @Test
     void evidenceExportRequestsVideoProviderAndKeepsExportTaskInManifest() {
         CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
                 Optional.of(new ReviewEvidenceVideoExportResult(
                         "video-export-001",
                         "https://eye.yfeiai.com/exports/video-export-001.mp4",
-                        "queued",
-                        "VIDEO export accepted"
+                        "ready",
+                        "VIDEO export ready",
+                        "https://eye.yfeiai.com/exports/video-export-001/manifest",
+                        validSha256('1'),
+                        List.of(Map.of(
+                                "sourceHash", validSha256('2'),
+                                "ffmpegCommandHash", validSha256('3'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", 0
+                        )),
+                        validSha256('4')
                 ))
         );
         SupervisionAlertReviewService service = newService(
@@ -4656,6 +6389,59 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(videoExports instanceof List<?>);
         assertEquals("video-export-001", ((Map<?, ?>) ((List<?>) videoExports).get(0)).get("exportId"));
         assertTrue(exportPackage.evidenceUris().contains("https://eye.yfeiai.com/exports/video-export-001.mp4"));
+    }
+
+    @Test
+    void evidenceExportRejectsProviderReadyResultWithoutVerifiableProvenance() {
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "video-export-fake-hash",
+                        "https://eye.yfeiai.com/exports/video-export-fake-hash.mp4",
+                        "ready",
+                        "not actually verified",
+                        "https://eye.yfeiai.com/exports/video-export-fake-hash/manifest",
+                        "sha256:media",
+                        List.of(Map.of(
+                                "sourceHash", "sha256:source",
+                                "ffmpegCommandHash", "sha256:command",
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", 0
+                        )),
+                        "sha256:export-command"
+                ))
+        );
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-video-export-fake-hash",
+                LocalDateTime.of(2026, 6, 30, 16, 10),
+                "video-export-fake-hash.jpg",
+                "video-export-fake-hash.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "invalid video export case",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        IllegalStateException rejected = assertThrows(IllegalStateException.class,
+                () -> service.exportReviewEvidence(new ReviewEvidenceExportCommand(
+                        reviewCase.id(),
+                        null,
+                        9003L,
+                        "mp4"
+                )));
+
+        assertTrue(rejected.getMessage().contains("evidence job cannot be ready"));
+        assertEquals(1, videoExportProvider.requests().size());
     }
 
     @Test
@@ -4789,6 +6575,77 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void reviewReconciliationDetectsMissingPersistedSegmentAndRepairsAfterReread() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 9, 10);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-persisted-segment-missing",
+                alertTime,
+                "persisted-segment-missing.jpg",
+                "persisted-segment-missing.mp4"
+        ));
+        itemStore.removePersistedReviewSegmentForTest(item.id());
+
+        ReviewRuntimeHealthReport before = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9320L
+        ));
+        ReviewReconciliationResult repaired = service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9321L,
+                true
+        ));
+        ReviewRuntimeHealthReport reread = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9322L
+        ));
+
+        assertTrue(before.alerts().contains("review_segment_double_write_drift"));
+        assertTrue(repaired.findings().contains("review_segment_repaired:" + item.id()));
+        assertTrue(itemStore.findPersistedReviewSegment(item.id()).isPresent());
+        assertFalse(reread.alerts().contains("review_segment_double_write_drift"));
+    }
+
+    @Test
+    void reviewReconciliationDetectsTamperedPersistedSegmentAndRepairsAfterReread() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 9, 20);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-persisted-segment-tampered",
+                alertTime,
+                "persisted-segment-tampered.jpg",
+                "persisted-segment-tampered.mp4"
+        ));
+        itemStore.tamperPersistedReviewSegmentCameraForTest(item.id(), "camera-other-tenant");
+
+        ReviewRuntimeHealthReport before = service.getReviewRuntimeHealth(new ReviewRuntimeHealthCommand(
+                new ReviewQuery(null, null, null, null),
+                9330L
+        ));
+        ReviewReconciliationResult repaired = service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9331L,
+                true
+        ));
+        ReviewSegmentView persisted = itemStore.findPersistedReviewSegment(item.id()).orElseThrow();
+
+        assertTrue(before.alerts().contains("review_segment_double_write_drift"));
+        assertTrue(repaired.findings().contains("review_segment_repaired:" + item.id()));
+        assertEquals("camera-01", persisted.cameraId());
+        assertFalse(repaired.healthReport().alerts().contains("review_segment_double_write_drift"));
+    }
+
+    @Test
     void reviewReconciliationRemovesInvalidOptionalReviewDataFields() {
         LocalDateTime alertTime = LocalDateTime.of(2026, 7, 10, 8, 30);
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
@@ -4853,14 +6710,32 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void integrationSmokeCoversReviewRecordCaseExportAndManifestVerification() {
+    void integrationSmokeCoversReviewRecordCaseExportAndManifestVerification() throws Exception {
         LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 2, 10, 0);
+        byte[] smokeVideoBytes = "integration-smoke-real-video-bytes".getBytes(StandardCharsets.UTF_8);
+        String smokeVideoHash = sha256Bytes(smokeVideoBytes);
         CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
                 Optional.of(new ReviewEvidenceVideoExportResult(
                         "smoke-video-export",
                         "https://eye.yfeiai.com/exports/smoke-video-export.mp4",
                         "ready",
-                        "smoke export ready"
+                        "smoke export ready",
+                        "https://eye.yfeiai.com/exports/smoke-video-export/manifest",
+                        smokeVideoHash,
+                        List.of(Map.of(
+                                "sourceHash", validSha256('6'),
+                                "ffmpegCommandHash", validSha256('7'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", 0
+                        )),
+                        validSha256('8')
+                )),
+                Optional.of(temporaryArtifact(
+                        null,
+                        "smoke-video-export.mp4",
+                        "video/mp4",
+                        smokeVideoBytes,
+                        smokeVideoHash
                 ))
         );
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
@@ -4908,6 +6783,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(smoke.checkpoints().contains("review_case_created"));
         assertTrue(smoke.checkpoints().contains("evidence_export_ready"));
         assertTrue(smoke.checkpoints().contains("manifest_verified"));
+        assertTrue(smoke.checkpoints().contains("evidence_download_bytes_verified"));
         assertTrue(smoke.checkpoints().contains("evidence_download_audited"));
         assertTrue(smoke.checkpoints().contains("review_rule_saved"));
         assertEquals(1, ruleStore.listAll().size());
@@ -4923,6 +6799,7 @@ class SupervisionAlertReviewServiceTest {
         assertEquals("person", smokeRule.objectLabel());
         assertEquals(3, smokeRule.inertiaFrames());
         assertEquals(20, smokeRule.loiteringSeconds());
+        assertEquals(1, videoExportProvider.downloadRequests().size());
         assertTrue(service.getEvidenceAuditTrail(smoke.reviewCaseId()).stream()
                 .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
                         && Objects.equals(9200L, entry.operatorUserId())
@@ -4930,9 +6807,11 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void realIntegrationSmokeUsesRequestedCameraAndRequiresRealVideoEvidence() {
+    void realIntegrationSmokeUsesRequestedCameraAndRequiresRealVideoEvidence() throws Exception {
         LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 10, 6, 11, 30);
         String cameraId = "gb28181-real-camera";
+        byte[] realVideoBytes = "real-camera-export-video-bytes".getBytes(StandardCharsets.UTF_8);
+        String realVideoHash = sha256Bytes(realVideoBytes);
         CapturingRecordEvidenceResolver recordResolver = new CapturingRecordEvidenceResolver(
                 Optional.of(new RecordEvidenceResult("/video/record/real.flv", "alert_record_match"))
         );
@@ -4949,8 +6828,24 @@ class SupervisionAlertReviewServiceTest {
                 Optional.of(new ReviewEvidenceVideoExportResult(
                         "real-export-001",
                         "/video/record/export/real-export-001/download",
-                        "retained",
-                        "real ffmpeg export retained"
+                        "ready",
+                        "real ffmpeg export ready",
+                        "/video/record/export/real-export-001/manifest",
+                        realVideoHash,
+                        List.of(Map.of(
+                                "sourceHash", validSha256('a'),
+                                "ffmpegCommandHash", validSha256('b'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 30D),
+                                "stitchOrder", 0
+                        )),
+                        validSha256('c')
+                )),
+                Optional.of(temporaryArtifact(
+                        null,
+                        "real-export-001.mp4",
+                        "video/mp4",
+                        realVideoBytes,
+                        realVideoHash
                 ))
         );
         SupervisionAlertReviewService service = newService(
@@ -4981,6 +6876,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(smoke.checkpoints().contains("video_record_query_checked"));
         assertTrue(smoke.checkpoints().contains("real_record_coverage_checked"));
         assertTrue(smoke.checkpoints().contains("video_export_confirmed"));
+        assertTrue(smoke.checkpoints().contains("evidence_download_bytes_verified"));
         assertEquals(cameraId, smoke.smokeRule().cameraId());
         assertEquals("zone-real", smoke.smokeRule().zoneCode());
         assertEquals(List.of(new RecordEvidenceRequest(
@@ -4991,6 +6887,7 @@ class SupervisionAlertReviewServiceTest {
         )), recordResolver.requests());
         assertEquals(cameraId, coverageResolver.requests().get(0).cameraId());
         assertEquals(cameraId, exportProvider.requests().get(0).cameraId());
+        assertEquals(cameraId, exportProvider.downloadRequests().get(0).cameraId());
     }
 
     @Test
@@ -5027,7 +6924,7 @@ class SupervisionAlertReviewServiceTest {
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> service.runIntegrationSmoke(command));
 
-        assertTrue(error.getMessage().contains("VIDEO export did not return a real artifact"));
+        assertTrue(error.getMessage().contains("VIDEO export failed"));
     }
 
     @Test
@@ -5113,9 +7010,22 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
-    void evidenceManifestV2AndVerifierReconstructDecisionTrailAndAuditChain() {
+    void evidenceManifestV2AndVerifierReconstructDecisionTrailAndAuditChain() throws Exception {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
-        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        CapturingVideoEvidenceExportProvider videoExportProvider = singleCameraDownloadableProvider(
+                "camera-01",
+                "manifest-v2-real-video".getBytes(StandardCharsets.UTF_8)
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
         LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 12, 0);
         ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
                 "video",
@@ -5144,16 +7054,22 @@ class SupervisionAlertReviewServiceTest {
                 item.id(),
                 List.of(item.id())
         ));
-        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+        ReviewEvidenceExportJob queuedJob = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
                 reviewCase.id(),
                 List.of(item.id()),
                 9401L,
-                "manifest",
+                "mp4",
                 "evidence reproducibility",
                 9402L,
                 "approved for replay"
         ));
-        service.recordEvidenceDownload(job.jobNo(), 9403L, "verifier download");
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9401L));
+        ReviewEvidenceExportJob job = itemStore.findExportJobByNo(queuedJob.jobNo()).orElseThrow();
+        try (ReviewEvidenceDownloadArtifact ignored = service.downloadEvidencePackage(
+                new ReviewEvidenceDownloadCommand(
+                        job.jobNo(), 9403L, List.of("camera-01"), "verifier download"))) {
+            assertTrue(ignored.contentLength() > 0);
+        }
 
         ReviewEvidenceVerificationReport verification = service.verifyEvidencePackage(new ReviewEvidenceVerificationCommand(
                 job.jobNo(),
@@ -5966,6 +7882,38 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(Boolean.FALSE, trace.get("qualifiedInside"));
     }
 
+    private static Object semanticTriggerTraceValue(ReviewSemanticTriggerResult result, String accessor) {
+        return recordTraceValue(result, accessor);
+    }
+
+    private static Object recordTraceValue(Object record, String accessor) {
+        try {
+            return record.getClass().getMethod(accessor).invoke(record);
+        } catch (NoSuchMethodException exception) {
+            return null;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static void processSemanticWorkerAfterStart(SupervisionAlertReviewService service,
+                                                        CountDownLatch ready,
+                                                        CountDownLatch start,
+                                                        AtomicReference<ReviewSemanticWorkerRun> result,
+                                                        AtomicReference<Throwable> failure) {
+        ready.countDown();
+        try {
+            start.await(2, TimeUnit.SECONDS);
+            result.set(service.processSemanticIndexQueue(new ReviewSemanticWorkerCommand(
+                    new ReviewQuery(null, "camera-01", null, null),
+                    10,
+                    9201L
+            )));
+        } catch (Throwable throwable) {
+            failure.compareAndSet(null, throwable);
+        }
+    }
+
     private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
                                                             InMemoryRuleStore ruleStore,
                                                             SupervisionEventService eventService) {
@@ -5987,7 +7935,8 @@ class SupervisionAlertReviewServiceTest {
                 VideoEvidenceExportProvider.unavailable(),
                 ReviewCameraPermissionResolver.unrestricted(),
                 new ReviewAiSummaryRedactionPolicy(),
-                cameraTopologyResolver
+                cameraTopologyResolver,
+                testManifestSigner()
         );
     }
 
@@ -6047,17 +7996,9 @@ class SupervisionAlertReviewServiceTest {
                                                             RecordCoverageResolver recordCoverageResolver,
                                                             ReviewIntelligenceProvider reviewIntelligenceProvider,
                                                             VideoEvidenceExportProvider videoEvidenceExportProvider) {
-        return new SupervisionAlertReviewServiceImpl(
-                itemStore,
-                ruleStore,
-                eventService,
-                recordEvidenceResolver,
-                eventProjectionStore,
-                recordCoverageResolver,
-                reviewIntelligenceProvider,
-                videoEvidenceExportProvider,
-                ReviewCameraPermissionResolver.unrestricted()
-        );
+        return newService(itemStore, ruleStore, eventService, recordEvidenceResolver, eventProjectionStore,
+                recordCoverageResolver, reviewIntelligenceProvider, videoEvidenceExportProvider,
+                ReviewCameraPermissionResolver.unrestricted());
     }
 
     private static SupervisionAlertReviewService newService(InMemoryReviewItemStore itemStore,
@@ -6078,7 +8019,10 @@ class SupervisionAlertReviewServiceTest {
                 recordCoverageResolver,
                 reviewIntelligenceProvider,
                 videoEvidenceExportProvider,
-                cameraPermissionResolver
+                cameraPermissionResolver,
+                new ReviewAiSummaryRedactionPolicy(),
+                ReviewCameraTopologyResolver.empty(),
+                testManifestSigner()
         );
     }
 
@@ -6098,8 +8042,16 @@ class SupervisionAlertReviewServiceTest {
                 reviewIntelligenceProvider,
                 VideoEvidenceExportProvider.unavailable(),
                 ReviewCameraPermissionResolver.unrestricted(),
-                aiSummaryRedactionPolicy
+                aiSummaryRedactionPolicy,
+                ReviewCameraTopologyResolver.empty(),
+                testManifestSigner()
         );
+    }
+
+    private static ReviewEvidenceManifestSigner testManifestSigner() {
+        String secret = java.util.Base64.getEncoder().encodeToString(
+                "yfeieye-review-manifest-test-key-0001".getBytes(StandardCharsets.UTF_8));
+        return new ReviewEvidenceManifestSigner("test-key", "test-key=" + secret, "hmac-sha256-v1");
     }
     private static AlertClueCommand newClue(String sourceAlertId,
                                             LocalDateTime alertTime,
@@ -6198,6 +8150,84 @@ class SupervisionAlertReviewServiceTest {
         return eventId -> Optional.empty();
     }
 
+    private static String validSha256(char hexDigit) {
+        if (Character.digit(hexDigit, 16) < 0) {
+            throw new IllegalArgumentException("hexDigit must be hexadecimal");
+        }
+        return "sha256:" + String.valueOf(hexDigit).repeat(64);
+    }
+
+    private static String sha256Bytes(byte[] bytes) throws Exception {
+        return "sha256:" + java.util.HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(bytes));
+    }
+
+    private static CapturingVideoEvidenceExportProvider singleCameraDownloadableProvider(
+            String cameraId,
+            byte[] bytes) throws Exception {
+        String fileHash = sha256Bytes(bytes);
+        return new CapturingVideoEvidenceExportProvider(
+                Optional.of(new ReviewEvidenceVideoExportResult(
+                        "export-" + cameraId,
+                        "https://eye.yfeiai.com/video/record/export/export-" + cameraId + "/download",
+                        "ready",
+                        "real VIDEO package ready",
+                        "https://eye.yfeiai.com/video/record/export/export-" + cameraId + "/manifest",
+                        fileHash,
+                        List.of(Map.of(
+                                "cameraId", cameraId,
+                                "originalRecordUri", cameraId + ".mp4",
+                                "sourceHash", validSha256('a'),
+                                "ffmpegCommandHash", validSha256('b'),
+                                "clipParameters", Map.of("offsetSeconds", 0D, "durationSeconds", 60D),
+                                "stitchOrder", 0
+                        )),
+                        validSha256('c')
+                )),
+                Optional.of(temporaryArtifact(
+                        null,
+                        "export-" + cameraId + ".mp4",
+                        "video/mp4",
+                        bytes,
+                        fileHash
+                ))
+        );
+    }
+
+    private static ReviewEvidenceDownloadArtifact temporaryArtifact(String jobNo,
+                                                                     String fileName,
+                                                                     String contentType,
+                                                                     byte[] bytes,
+                                                                     String fileHash) {
+        try {
+            Path file = Files.createTempFile("alert-review-test-artifact-", ".tmp");
+            Files.write(file, bytes);
+            return new ReviewEvidenceDownloadArtifact(
+                    jobNo,
+                    fileName,
+                    contentType,
+                    file,
+                    bytes.length,
+                    fileHash,
+                    null
+            );
+        } catch (Exception exception) {
+            throw new IllegalStateException("unable to create test artifact", exception);
+        }
+    }
+
+    private static Map<String, byte[]> unzipEntries(byte[] bytes) throws Exception {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                entries.put(entry.getName(), zip.readAllBytes());
+                zip.closeEntry();
+            }
+        }
+        return entries;
+    }
+
     private static final class StubReviewIntelligenceProvider implements ReviewIntelligenceProvider {
 
         private final Function<ReviewSemanticSearchRequest, Optional<List<ReviewSemanticHit>>> semanticSearch;
@@ -6266,10 +8296,18 @@ class SupervisionAlertReviewServiceTest {
     private static final class CapturingVideoEvidenceExportProvider implements VideoEvidenceExportProvider {
 
         private final Optional<ReviewEvidenceVideoExportResult> result;
+        private final Optional<ReviewEvidenceDownloadArtifact> downloadResult;
         private final List<ReviewEvidenceVideoExportRequest> requests = new ArrayList<>();
+        private final List<ReviewEvidenceVideoDownloadRequest> downloadRequests = new ArrayList<>();
 
         private CapturingVideoEvidenceExportProvider(Optional<ReviewEvidenceVideoExportResult> result) {
+            this(result, Optional.empty());
+        }
+
+        private CapturingVideoEvidenceExportProvider(Optional<ReviewEvidenceVideoExportResult> result,
+                                                     Optional<ReviewEvidenceDownloadArtifact> downloadResult) {
             this.result = result;
+            this.downloadResult = downloadResult;
         }
 
         @Override
@@ -6278,8 +8316,18 @@ class SupervisionAlertReviewServiceTest {
             return result;
         }
 
+        @Override
+        public Optional<ReviewEvidenceDownloadArtifact> download(ReviewEvidenceVideoDownloadRequest request) {
+            downloadRequests.add(request);
+            return downloadResult;
+        }
+
         List<ReviewEvidenceVideoExportRequest> requests() {
             return requests;
+        }
+
+        List<ReviewEvidenceVideoDownloadRequest> downloadRequests() {
+            return downloadRequests;
         }
 
     }
@@ -6336,6 +8384,48 @@ class SupervisionAlertReviewServiceTest {
 
         int createAttempts() {
             return createAttempts;
+        }
+    }
+
+    private static final class CountingExportClaimStore extends InMemoryReviewItemStore {
+
+        private final List<Integer> claimLimits = new ArrayList<>();
+
+        @Override
+        public List<ReviewEvidenceExportJob> claimProcessableExportJobs(Integer limit,
+                                                                        String claimToken,
+                                                                        Long claimedBy,
+                                                                        LocalDateTime claimedAt,
+                                                                        LocalDateTime reclaimBefore) {
+            claimLimits.add(limit);
+            return super.claimProcessableExportJobs(limit, claimToken, claimedBy, claimedAt, reclaimBefore);
+        }
+
+        List<Integer> claimLimits() {
+            return List.copyOf(claimLimits);
+        }
+    }
+
+    private static final class ConflictingExportCompletionStore extends InMemoryReviewItemStore {
+
+        private final Map<String, Integer> completionAttempts = new LinkedHashMap<>();
+        private String conflictingJobNo;
+
+        void conflictOn(String jobNo) {
+            conflictingJobNo = jobNo;
+        }
+
+        int completionAttempts(String jobNo) {
+            return completionAttempts.getOrDefault(jobNo, 0);
+        }
+
+        @Override
+        public ReviewEvidenceExportJob completeExportJobClaim(ReviewEvidenceExportJob job, String claimToken) {
+            completionAttempts.merge(job.jobNo(), 1, Integer::sum);
+            if (Objects.equals(conflictingJobNo, job.jobNo())) {
+                throw new IllegalStateException("export_job_claim_conflict: " + job.jobNo());
+            }
+            return super.completeExportJobClaim(job, claimToken);
         }
     }
 
@@ -6402,6 +8492,49 @@ class SupervisionAlertReviewServiceTest {
                                     LocalDateTime lockedUntil,
                                     LocalDateTime lastLockedAt) {
     }
+    private static final class BlockingSemanticIndexStore extends InMemoryReviewItemStore {
+
+        private final AtomicInteger indexedUpsertAttempts = new AtomicInteger();
+        private final CountDownLatch concurrentIndexedUpserts = new CountDownLatch(2);
+
+        @Override
+        public ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
+                                                           String document,
+                                                           String embeddingKey,
+                                                           String embeddingModel,
+                                                           String embeddingVectorHash,
+                                                           String indexStatus,
+                                                           Integer retryCount,
+                                                           String lastError,
+                                                           LocalDateTime indexedAt) {
+            if (SupervisionAlertReviewService.SEMANTIC_INDEX_INDEXED.equals(indexStatus)) {
+                indexedUpsertAttempts.incrementAndGet();
+                concurrentIndexedUpserts.countDown();
+                try {
+                    concurrentIndexedUpserts.await(1, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(exception);
+                }
+            }
+            return super.upsertSemanticIndex(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    embeddingVectorHash,
+                    indexStatus,
+                    retryCount,
+                    lastError,
+                    indexedAt
+            );
+        }
+
+        int indexedUpsertAttempts() {
+            return indexedUpsertAttempts.get();
+        }
+    }
+
     private static class FailingSemanticIndexStore extends InMemoryReviewItemStore {
 
         private final Map<Long, String> indexedFailures = new LinkedHashMap<>();
@@ -6443,20 +8576,69 @@ class SupervisionAlertReviewServiceTest {
     private static class InMemoryReviewItemStore implements ReviewItemStore {
 
         private final Map<Long, ReviewItemAggregate> items = new LinkedHashMap<>();
+        private final Map<Long, ReviewSegmentView> persistedReviewSegments = new LinkedHashMap<>();
         private final Map<Long, List<ReviewEvidenceItem>> evidenceByItemId = new LinkedHashMap<>();
         private final Map<Long, ReviewCaseView> cases = new LinkedHashMap<>();
         private final Map<Long, List<Long>> caseItemIds = new LinkedHashMap<>();
         private final Map<Long, List<ReviewCaseTimelineItem>> caseAudits = new LinkedHashMap<>();
+        private final Map<Long, List<ReviewCaseTimelineItem>> caseLevelEvidence = new LinkedHashMap<>();
         private final Map<Long, List<ReviewCaseTimelineItem>> itemMediaAudits = new LinkedHashMap<>();
         private final Map<String, ReviewEvidenceExportJob> exportJobs = new LinkedHashMap<>();
+        private final Map<String, String> exportJobClaims = new LinkedHashMap<>();
+        private final Map<String, LocalDateTime> exportJobClaimedAt = new LinkedHashMap<>();
         private final Map<Long, ReviewSemanticIndexEntry> semanticIndex = new LinkedHashMap<>();
         private final Map<String, ReviewUserStatusView> userStatuses = new LinkedHashMap<>();
         private final Map<String, ReviewReportAcknowledgement> reportAcknowledgements = new LinkedHashMap<>();
+        private final Map<String, List<SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord>> semanticTriggerAudits = new LinkedHashMap<>();
         private final List<RuntimeOutboxEntry> runtimeOutbox = new ArrayList<>();
         private long nextId = 1000L;
         private long nextCaseId = 3000L;
         private long nextExportJobId = 5000L;
         private long nextRuntimeOutboxId = 7000L;
+
+        void removePersistedReviewSegmentForTest(Long reviewItemId) {
+            persistedReviewSegments.remove(reviewItemId);
+        }
+
+        void tamperPersistedReviewSegmentCameraForTest(Long reviewItemId, String cameraId) {
+            ReviewSegmentView current = persistedReviewSegments.get(reviewItemId);
+            persistedReviewSegments.put(reviewItemId, new ReviewSegmentView(
+                    current.reviewItemId(),
+                    current.segmentId(),
+                    cameraId,
+                    current.severity(),
+                    current.status(),
+                    current.startTime(),
+                    current.endTime(),
+                    current.objectIds(),
+                    current.zones(),
+                    current.sourceAlertIds(),
+                    current.events(),
+                    current.metadata()
+            ));
+        }
+
+        @Override
+        public Optional<ReviewSegmentView> findPersistedReviewSegment(Long reviewItemId) {
+            return Optional.ofNullable(persistedReviewSegments.get(reviewItemId));
+        }
+
+        void addCaseLevelEvidence(Long reviewCaseId,
+                                  String cameraId,
+                                  String materialType,
+                                  String materialUri,
+                                  LocalDateTime happenedAt) {
+            caseLevelEvidence.computeIfAbsent(reviewCaseId, ignored -> new ArrayList<>())
+                    .add(new ReviewCaseTimelineItem(
+                            reviewCaseId,
+                            null,
+                            cameraId,
+                            null,
+                            materialType,
+                            materialUri,
+                            happenedAt
+                    ));
+        }
 
         @Override
         public Optional<ReviewItemAggregate> findMergeCandidate(String sourceSystem,
@@ -6507,6 +8689,7 @@ class SupervisionAlertReviewServiceTest {
                     null
             );
             items.put(id, item);
+            persistReviewSegment(item);
             evidenceByItemId.put(id, new ArrayList<>(evidenceItems));
             return item;
         }
@@ -6559,6 +8742,7 @@ class SupervisionAlertReviewServiceTest {
                     item.evidenceStatus()
             );
             items.put(reviewItemId, updated);
+            persistReviewSegment(updated);
             appendEvidence(reviewItemId, evidenceItems);
             return updated;
         }
@@ -6658,8 +8842,47 @@ class SupervisionAlertReviewServiceTest {
                     item.ruleSuggestionUpdatedAt()
             );
             items.put(reviewItemId, updated);
+            persistReviewSegment(updated);
             appendEvidence(reviewItemId, evidenceItems);
             return updated;
+        }
+
+        private void persistReviewSegment(ReviewItemAggregate item) {
+            Map<String, Object> segment = toStringObjectMap(
+                    item.reviewData() == null ? null : item.reviewData().get("reviewSegment"));
+            if (segment.isEmpty()) {
+                return;
+            }
+            persistedReviewSegments.put(item.id(), new ReviewSegmentView(
+                    item.id(),
+                    String.valueOf(segment.get("segmentId")),
+                    String.valueOf(segment.get("cameraId")),
+                    String.valueOf(segment.get("severity")),
+                    String.valueOf(segment.get("status")),
+                    LocalDateTime.parse(String.valueOf(segment.get("startTime"))),
+                    LocalDateTime.parse(String.valueOf(segment.get("endTime"))),
+                    reviewSegmentStringList(segment.get("objectIds")),
+                    reviewSegmentStringList(segment.get("zones")),
+                    reviewSegmentStringList(segment.get("sourceAlertIds")),
+                    reviewSegmentEvents(segment.get("events")),
+                    segment
+            ));
+        }
+
+        private static List<String> reviewSegmentStringList(Object value) {
+            if (!(value instanceof List<?> values)) {
+                return List.of();
+            }
+            return values.stream().map(String::valueOf).toList();
+        }
+
+        private static List<Map<String, Object>> reviewSegmentEvents(Object value) {
+            if (!(value instanceof List<?> values)) {
+                return List.of();
+            }
+            return values.stream()
+                    .map(SupervisionAlertReviewServiceTest::toStringObjectMap)
+                    .toList();
         }
 
         @Override
@@ -7151,6 +9374,7 @@ class SupervisionAlertReviewServiceTest {
                     ));
                 }
             }
+            timeline.addAll(caseLevelEvidence.getOrDefault(reviewCaseId, List.of()));
             timeline.addAll(caseAudits.getOrDefault(reviewCaseId, List.of()));
             return timeline;
         }
@@ -7166,6 +9390,34 @@ class SupervisionAlertReviewServiceTest {
                                                            String lastError,
                                                            LocalDateTime indexedAt) {
             ReviewSemanticIndexEntry current = semanticIndex.get(item.id());
+            return upsertSemanticIndex(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    embeddingVectorHash,
+                    indexStatus,
+                    retryCount,
+                    lastError,
+                    indexedAt,
+                    current == null ? null : current.indexGenerationId(),
+                    null
+            );
+        }
+
+        @Override
+        public synchronized ReviewSemanticIndexEntry upsertSemanticIndex(ReviewItemAggregate item,
+                                                                        String document,
+                                                                        String embeddingKey,
+                                                                        String embeddingModel,
+                                                                        String embeddingVectorHash,
+                                                                        String indexStatus,
+                                                                        Integer retryCount,
+                                                                        String lastError,
+                                                                        LocalDateTime indexedAt,
+                                                                        String indexGenerationId,
+                                                                        LocalDateTime nextRetryAt) {
+            ReviewSemanticIndexEntry current = semanticIndex.get(item.id());
             int indexVersion = (current == null || current.indexVersion() == null ? 0 : current.indexVersion()) + 1;
             ReviewSemanticIndexEntry entry = new ReviewSemanticIndexEntry(
                     item.id(),
@@ -7180,10 +9432,144 @@ class SupervisionAlertReviewServiceTest {
                     retryCount == null ? 0 : retryCount,
                     lastError,
                     indexedAt,
+                    indexGenerationId,
+                    null,
+                    null,
+                    null,
+                    nextRetryAt,
                     indexVersion
             );
             semanticIndex.put(item.id(), entry);
             return entry;
+        }
+
+        @Override
+        public synchronized List<ReviewSemanticIndexEntry> claimSemanticIndex(List<Long> reviewItemIds,
+                                                                              Integer limit,
+                                                                              String claimToken,
+                                                                              LocalDateTime claimedAt,
+                                                                              LocalDateTime claimExpiresAt) {
+            int normalizedLimit = limit == null || limit <= 0 ? 20 : Math.min(limit, 100);
+            List<ReviewSemanticIndexEntry> claimed = new ArrayList<>();
+            for (Long reviewItemId : reviewItemIds == null ? List.<Long>of() : reviewItemIds) {
+                ReviewSemanticIndexEntry current = semanticIndex.get(reviewItemId);
+                if (current == null || !semanticIndexClaimable(current, claimedAt)) {
+                    continue;
+                }
+                ReviewSemanticIndexEntry processing = new ReviewSemanticIndexEntry(
+                        current.reviewItemId(),
+                        current.cameraId(),
+                        current.firstAlertTime(),
+                        current.lastAlertTime(),
+                        SupervisionAlertReviewService.SEMANTIC_INDEX_PROCESSING,
+                        current.document(),
+                        current.embeddingKey(),
+                        current.embeddingModel(),
+                        current.embeddingVectorHash(),
+                        current.retryCount(),
+                        current.lastError(),
+                        current.indexedAt(),
+                        current.indexGenerationId(),
+                        claimToken,
+                        claimedAt,
+                        claimExpiresAt,
+                        current.nextRetryAt(),
+                        current.indexVersion()
+                );
+                semanticIndex.put(reviewItemId, processing);
+                claimed.add(processing);
+                if (claimed.size() >= normalizedLimit) {
+                    break;
+                }
+            }
+            return List.copyOf(claimed);
+        }
+
+        @Override
+        public synchronized ReviewSemanticIndexEntry completeSemanticIndexClaim(ReviewItemAggregate item,
+                                                                                String document,
+                                                                                String embeddingKey,
+                                                                                String embeddingModel,
+                                                                                String embeddingVectorHash,
+                                                                                String indexStatus,
+                                                                                Integer retryCount,
+                                                                                String lastError,
+                                                                                LocalDateTime indexedAt,
+                                                                                String indexGenerationId,
+                                                                                LocalDateTime nextRetryAt,
+                                                                                String claimToken) {
+            ReviewSemanticIndexEntry current = semanticIndex.get(item.id());
+            if (current == null || !Objects.equals(claimToken, current.claimToken())) {
+                throw new IllegalStateException("semantic_index_claim_conflict: " + item.id());
+            }
+            ReviewSemanticIndexEntry updated = upsertSemanticIndex(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    embeddingVectorHash,
+                    indexStatus,
+                    retryCount,
+                    lastError,
+                    indexedAt
+            );
+            ReviewSemanticIndexEntry completed = new ReviewSemanticIndexEntry(
+                    updated.reviewItemId(),
+                    updated.cameraId(),
+                    updated.firstAlertTime(),
+                    updated.lastAlertTime(),
+                    updated.indexStatus(),
+                    updated.document(),
+                    updated.embeddingKey(),
+                    updated.embeddingModel(),
+                    updated.embeddingVectorHash(),
+                    updated.retryCount(),
+                    updated.lastError(),
+                    updated.indexedAt(),
+                    indexGenerationId,
+                    null,
+                    null,
+                    null,
+                    nextRetryAt,
+                    updated.indexVersion()
+            );
+            semanticIndex.put(item.id(), completed);
+            return completed;
+        }
+
+        private static boolean semanticIndexClaimable(ReviewSemanticIndexEntry entry, LocalDateTime claimedAt) {
+            if (SupervisionAlertReviewService.SEMANTIC_INDEX_PENDING.equals(entry.indexStatus())) {
+                return true;
+            }
+            if (SupervisionAlertReviewService.SEMANTIC_INDEX_FAILED.equals(entry.indexStatus())) {
+                return entry.nextRetryAt() == null || !entry.nextRetryAt().isAfter(claimedAt);
+            }
+            return SupervisionAlertReviewService.SEMANTIC_INDEX_PROCESSING.equals(entry.indexStatus())
+                    && (entry.claimExpiresAt() == null || !entry.claimExpiresAt().isAfter(claimedAt));
+        }
+
+        synchronized void makeSemanticRetryDue(Long reviewItemId) {
+            ReviewSemanticIndexEntry current = semanticIndex.get(reviewItemId);
+            semanticIndex.put(reviewItemId, new ReviewSemanticIndexEntry(
+                    current.reviewItemId(),
+                    current.cameraId(),
+                    current.firstAlertTime(),
+                    current.lastAlertTime(),
+                    current.indexStatus(),
+                    current.document(),
+                    current.embeddingKey(),
+                    current.embeddingModel(),
+                    current.embeddingVectorHash(),
+                    current.retryCount(),
+                    current.lastError(),
+                    current.indexedAt(),
+                    current.indexGenerationId(),
+                    current.claimToken(),
+                    current.claimedAt(),
+                    current.claimExpiresAt(),
+                    LocalDateTime.now().minusSeconds(1),
+                    current.indexVersion()
+            ));
         }
 
         @Override
@@ -7208,17 +9594,29 @@ class SupervisionAlertReviewServiceTest {
             if (!cases.containsKey(exportPackage.reviewCaseId())) {
                 throw new IllegalArgumentException("reviewCaseId not found: " + exportPackage.reviewCaseId());
             }
+            Object requestKey = exportPackage.manifest().get("requestKey");
+            Optional<ReviewEvidenceExportJob> duplicate = exportJobs.values().stream()
+                    .filter(existing -> !SupervisionAlertReviewService.EXPORT_JOB_EXPIRED.equals(existing.status()))
+                    .filter(existing -> Objects.equals(
+                            requestKey,
+                            existing.exportPackage().manifest().get("requestKey")
+                    ))
+                    .findFirst();
+            if (duplicate.isPresent()) {
+                return duplicate.get();
+            }
             String jobNo = "REJ-" + nextExportJobId++;
             ReviewEvidenceExportJob job = new ReviewEvidenceExportJob(
                     jobNo,
-                    "ready",
+                    SupervisionAlertReviewService.EXPORT_JOB_PENDING,
                     exportPackage,
                     fileHash,
                     expiresAt,
                     operatorUserId,
                     reason,
                     boundEventIds == null ? List.of() : List.copyOf(boundEventIds),
-                    createdAt
+                    createdAt,
+                    0
             );
             exportJobs.put(jobNo, job);
             String auditNote = "jobNo=" + jobNo + "; fileHash=" + fileHash
@@ -7237,13 +9635,14 @@ class SupervisionAlertReviewServiceTest {
             return job;
         }
 
-        @Override
-        public ReviewEvidenceExportJob updateExportJob(ReviewEvidenceExportJob job) {
-            if (!exportJobs.containsKey(job.jobNo())) {
+        private ReviewEvidenceExportJob replaceExportJobForTest(ReviewEvidenceExportJob job) {
+            ReviewEvidenceExportJob current = exportJobs.get(job.jobNo());
+            if (current == null) {
                 throw new IllegalArgumentException("export job not found: " + job.jobNo());
             }
-            exportJobs.put(job.jobNo(), job);
-            return job;
+            ReviewEvidenceExportJob updated = exportJobWithVersion(job, current.version() + 1);
+            exportJobs.put(job.jobNo(), updated);
+            return updated;
         }
 
         @Override
@@ -7254,8 +9653,120 @@ class SupervisionAlertReviewServiceTest {
         }
 
         @Override
+        public List<ReviewEvidenceExportJob> listEvidenceAuditExportJobs(ReviewEvidenceAuditQuery query) {
+            return exportJobs.values().stream()
+                    .filter(job -> query.reviewCaseId() == null
+                            || Objects.equals(query.reviewCaseId(), job.exportPackage().reviewCaseId()))
+                    .filter(job -> query.reviewItemId() == null
+                            || job.exportPackage().reviewItemIds().contains(query.reviewItemId()))
+                    .filter(job -> query.eventId() == null || exportJobMatchesEvent(job, query.eventId()))
+                    .filter(job -> query.exportJobNo() == null || Objects.equals(query.exportJobNo(), job.jobNo()))
+                    .toList();
+        }
+
+        @Override
         public List<ReviewEvidenceExportJob> listAllExportJobs() {
             return List.copyOf(exportJobs.values());
+        }
+
+        @Override
+        public List<ReviewEvidenceExportJob> claimProcessableExportJobs(Integer limit,
+                                                                        String claimToken,
+                                                                        Long claimedBy,
+                                                                        LocalDateTime claimedAt,
+                                                                        LocalDateTime reclaimBefore) {
+            int normalizedLimit = limit == null || limit <= 0 ? 20 : limit;
+            List<ReviewEvidenceExportJob> claimed = new ArrayList<>();
+            for (ReviewEvidenceExportJob current : List.copyOf(exportJobs.values())) {
+                if (claimed.size() >= normalizedLimit || !inMemoryExportJobClaimable(current, claimedAt, reclaimBefore)) {
+                    continue;
+                }
+                ReviewEvidenceExportJob running = new ReviewEvidenceExportJob(
+                        current.jobNo(),
+                        SupervisionAlertReviewService.EXPORT_JOB_RUNNING,
+                        current.exportPackage(),
+                        current.fileHash(),
+                        current.expiresAt(),
+                        current.operatorUserId(),
+                        current.reason(),
+                        current.boundEventIds(),
+                        current.createdAt(),
+                        current.version() + 1
+                );
+                exportJobs.put(running.jobNo(), running);
+                exportJobClaims.put(running.jobNo(), claimToken);
+                exportJobClaimedAt.put(running.jobNo(), claimedAt);
+                claimed.add(running);
+            }
+            return List.copyOf(claimed);
+        }
+
+        @Override
+        public ReviewEvidenceExportJob completeExportJobClaim(ReviewEvidenceExportJob job, String claimToken) {
+            ReviewEvidenceExportJob current = exportJobs.get(job.jobNo());
+            if (current == null) {
+                throw new IllegalArgumentException("export job not found: " + job.jobNo());
+            }
+            if (!Objects.equals(claimToken, exportJobClaims.get(job.jobNo()))
+                    || !Objects.equals(current.version(), job.version())) {
+                throw new IllegalStateException("export_job_claim_conflict: " + job.jobNo());
+            }
+            ReviewEvidenceExportJob updated = exportJobWithVersion(job, current.version() + 1);
+            exportJobs.put(job.jobNo(), updated);
+            exportJobClaims.remove(job.jobNo());
+            exportJobClaimedAt.remove(job.jobNo());
+            return updated;
+        }
+
+        private boolean inMemoryExportJobClaimable(ReviewEvidenceExportJob job,
+                                                   LocalDateTime claimedAt,
+                                                   LocalDateTime reclaimBefore) {
+            boolean expired = job.expiresAt() != null && claimedAt != null && !job.expiresAt().isAfter(claimedAt);
+            if (SupervisionAlertReviewService.EXPORT_JOB_PENDING.equals(job.status())) {
+                return true;
+            }
+            if (SupervisionAlertReviewService.EXPORT_JOB_READY.equals(job.status())) {
+                return expired;
+            }
+            if (SupervisionAlertReviewService.EXPORT_JOB_FAILED.equals(job.status())) {
+                LocalDateTime nextRetryAt = inMemoryExportWorkerTime(job, "nextRetryAt");
+                return expired || nextRetryAt == null || claimedAt == null || !nextRetryAt.isAfter(claimedAt);
+            }
+            if (SupervisionAlertReviewService.EXPORT_JOB_RUNNING.equals(job.status())) {
+                LocalDateTime processedAt = exportJobClaimedAt.get(job.jobNo());
+                if (processedAt == null) {
+                    processedAt = inMemoryExportWorkerTime(job, "processedAt");
+                }
+                return reclaimBefore != null && (processedAt == null || processedAt.isBefore(reclaimBefore));
+            }
+            return false;
+        }
+
+        private static LocalDateTime inMemoryExportWorkerTime(ReviewEvidenceExportJob job, String field) {
+            Object worker = job.exportPackage().manifest().get("worker");
+            if (!(worker instanceof Map<?, ?> values) || values.get(field) == null) {
+                return null;
+            }
+            try {
+                return LocalDateTime.parse(String.valueOf(values.get(field)));
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+
+        private static ReviewEvidenceExportJob exportJobWithVersion(ReviewEvidenceExportJob job, int version) {
+            return new ReviewEvidenceExportJob(
+                    job.jobNo(),
+                    job.status(),
+                    job.exportPackage(),
+                    job.fileHash(),
+                    job.expiresAt(),
+                    job.operatorUserId(),
+                    job.reason(),
+                    job.boundEventIds(),
+                    job.createdAt(),
+                    version
+            );
         }
 
         void replaceExportJobStatus(String jobNo, String status) {
@@ -7272,7 +9783,8 @@ class SupervisionAlertReviewServiceTest {
                     job.operatorUserId(),
                     job.reason(),
                     job.boundEventIds(),
-                    job.createdAt()
+                    job.createdAt(),
+                    job.version()
             ));
         }
 
@@ -7519,13 +10031,27 @@ class SupervisionAlertReviewServiceTest {
         public ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
                                                                Long operatorUserId,
                                                                String reason,
-                                                               LocalDateTime happenedAt) {
+                                                               LocalDateTime happenedAt,
+                                                               String downloadFileHash,
+                                                               Map<String, Object> downloadMetadata) {
             ReviewEvidenceExportJob job = exportJobs.get(jobNo);
             if (job == null) {
                 throw new IllegalArgumentException("export job not found: " + jobNo);
             }
             LocalDateTime auditTime = happenedAt == null ? LocalDateTime.now() : happenedAt;
-            String auditNote = "jobNo=" + jobNo + "; fileHash=" + job.fileHash()
+            if (downloadFileHash == null || downloadFileHash.isBlank()) {
+                throw new IllegalArgumentException("downloadFileHash is required from downloaded bytes");
+            }
+            String auditedFileHash = downloadFileHash;
+            Map<String, Object> metadata = new LinkedHashMap<>(
+                    downloadMetadata == null ? Map.of() : downloadMetadata);
+            metadata.put("status", job.status());
+            metadata.put("downloadFileHash", auditedFileHash);
+            metadata.put("logicalPackageHash", job.fileHash());
+            metadata.put("hashSource", "downloaded_bytes");
+            String auditNote = "jobNo=" + jobNo + "; fileHash=" + auditedFileHash
+                    + "; downloadFileHash=" + auditedFileHash
+                    + "; logicalPackageHash=" + job.fileHash()
                     + (operatorUserId == null ? "" : "; operatorUserId=" + operatorUserId)
                     + (reason == null || reason.isBlank() ? "" : "; reason=" + reason);
             caseAudits.computeIfAbsent(job.exportPackage().reviewCaseId(), key -> new ArrayList<>())
@@ -7544,13 +10070,13 @@ class SupervisionAlertReviewServiceTest {
                     null,
                     "export_downloaded",
                     jobNo,
-                    job.fileHash(),
+                    auditedFileHash,
                     operatorUserId,
                     reason,
                     job.exportPackage().evidenceUris(),
                     job.boundEventIds(),
                     auditTime,
-                    Map.of("status", job.status())
+                    Map.copyOf(metadata)
             );
         }
 
@@ -7611,6 +10137,121 @@ class SupervisionAlertReviewServiceTest {
         public List<ReviewCaseTimelineItem> listMediaAccessAuditsByReviewItem(Long reviewItemId) {
             findById(reviewItemId).orElseThrow();
             return List.copyOf(itemMediaAudits.getOrDefault(reviewItemId, List.of()));
+        }
+
+        @Override
+        public List<ReviewCaseTimelineItem> listEvidenceAuditRecords(ReviewEvidenceAuditQuery query) {
+            List<ReviewCaseTimelineItem> audits = new ArrayList<>();
+            caseAudits.values().forEach(audits::addAll);
+            itemMediaAudits.values().forEach(audits::addAll);
+            return audits.stream()
+                    .filter(audit -> "export_downloaded".equals(audit.materialUri())
+                            || "media_access_granted".equals(audit.materialUri())
+                            || "media_access_denied".equals(audit.materialUri()))
+                    .filter(audit -> query.reviewCaseId() == null
+                            || Objects.equals(query.reviewCaseId(), audit.reviewCaseId()))
+                    .filter(audit -> query.reviewItemId() == null
+                            || Objects.equals(query.reviewItemId(), audit.reviewItemId())
+                            || auditExportJob(audit)
+                            .map(job -> job.exportPackage().reviewItemIds().contains(query.reviewItemId()))
+                            .orElse(false))
+                    .filter(audit -> query.eventId() == null
+                            || Optional.ofNullable(audit.reviewItemId())
+                            .flatMap(this::findById)
+                            .map(ReviewItemAggregate::eventId)
+                            .filter(query.eventId()::equals)
+                            .isPresent()
+                            || auditExportJob(audit)
+                            .map(job -> exportJobMatchesEvent(job, query.eventId()))
+                            .orElse(false))
+                    .filter(audit -> query.exportJobNo() == null
+                            || auditExportJob(audit)
+                            .map(ReviewEvidenceExportJob::jobNo)
+                            .filter(query.exportJobNo()::equals)
+                            .isPresent()
+                            || Optional.ofNullable(audit.reviewItemId())
+                            .map(reviewItemId -> exportJobs.get(query.exportJobNo()))
+                            .filter(Objects::nonNull)
+                            .map(job -> job.exportPackage().reviewItemIds().contains(audit.reviewItemId()))
+                            .orElse(false))
+                    .toList();
+        }
+
+        @Override
+        public void recordSemanticTriggerEvaluation(Long reviewItemId,
+                                                    String actionNote,
+                                                    Long operatorUserId,
+                                                    LocalDateTime happenedAt,
+                                                    Map<String, Object> metadata) {
+            String evaluationId = String.valueOf(metadata.get("evaluationId"));
+            semanticTriggerAudits.computeIfAbsent(evaluationId, ignored -> new ArrayList<>())
+                    .add(new SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord(
+                            reviewItemId,
+                            "semantic_trigger_evaluated",
+                            operatorUserId,
+                            happenedAt,
+                            metadata
+                    ));
+        }
+
+        @Override
+        public boolean recordSemanticTriggerDecision(String evaluationId,
+                                                      String actionType,
+                                                      String actionNote,
+                                                      Long operatorUserId,
+                                                      LocalDateTime happenedAt,
+                                                      Map<String, Object> metadata) {
+            List<SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord> audits =
+                    semanticTriggerAudits.getOrDefault(evaluationId, List.of());
+            if (audits.stream().anyMatch(audit ->
+                    ("semantic_trigger_confirmed".equals(audit.actionType())
+                            || "semantic_trigger_rejected".equals(audit.actionType()))
+                            && "semantic-trigger-evaluation-v1".equals(audit.metadata().get("schemaVersion"))
+                            && evaluationId.equals(audit.metadata().get("evaluationId")))) {
+                return false;
+            }
+            Long reviewItemId = audits.stream()
+                    .filter(audit -> "semantic_trigger_evaluated".equals(audit.actionType()))
+                    .map(SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord::reviewItemId)
+                    .findFirst()
+                    .orElse(null);
+            semanticTriggerAudits.computeIfAbsent(evaluationId, ignored -> new ArrayList<>())
+                    .add(new SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord(
+                            reviewItemId,
+                            actionType,
+                            operatorUserId,
+                            happenedAt,
+                            metadata
+                    ));
+            return true;
+        }
+
+        @Override
+        public List<SupervisionAlertReviewService.ReviewSemanticTriggerAuditRecord> listSemanticTriggerAudits(
+                String evaluationId) {
+            return List.copyOf(semanticTriggerAudits.getOrDefault(evaluationId, List.of()));
+        }
+
+        private boolean exportJobMatchesEvent(ReviewEvidenceExportJob job, Long eventId) {
+            return job.boundEventIds().contains(eventId)
+                    || job.exportPackage().reviewItemIds().stream()
+                    .map(items::get)
+                    .filter(Objects::nonNull)
+                    .map(ReviewItemAggregate::eventId)
+                    .anyMatch(eventId::equals);
+        }
+
+        private Optional<ReviewEvidenceExportJob> auditExportJob(ReviewCaseTimelineItem audit) {
+            if (!"export_downloaded".equals(audit.materialUri()) || audit.actionNote() == null) {
+                return Optional.empty();
+            }
+            return java.util.Arrays.stream(audit.actionNote().split(";"))
+                    .map(String::trim)
+                    .filter(part -> part.startsWith("jobNo="))
+                    .map(part -> part.substring("jobNo=".length()))
+                    .map(exportJobs::get)
+                    .filter(Objects::nonNull)
+                    .findFirst();
         }
 
         private void addCaseAudit(Long reviewCaseId,

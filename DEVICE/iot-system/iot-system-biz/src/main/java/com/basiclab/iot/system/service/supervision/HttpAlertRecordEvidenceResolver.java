@@ -4,6 +4,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResolver;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.RecordEvidenceResult;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -22,13 +24,16 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
     private final RestTemplate restTemplate;
     private final String alertRecordQueryUrl;
     private final String publicPlayHost;
+    private final VideoMediaServiceRequestSigner mediaRequestSigner;
 
     public HttpAlertRecordEvidenceResolver(RestTemplate restTemplate,
                                            @Value("${yfeieye.video.alert-record-query-url:}") String alertRecordQueryUrl,
-                                           @Value("${yfeieye.video.public-play-host:${MEDIA_HTTP_PLAY_HOST:}}") String publicPlayHost) {
+                                           @Value("${yfeieye.video.public-play-host:${MEDIA_HTTP_PLAY_HOST:}}") String publicPlayHost,
+                                           VideoMediaServiceRequestSigner mediaRequestSigner) {
         this.restTemplate = restTemplate;
         this.alertRecordQueryUrl = alertRecordQueryUrl;
         this.publicPlayHost = publicPlayHost;
+        this.mediaRequestSigner = mediaRequestSigner;
     }
 
     @Override
@@ -43,10 +48,20 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
                 .queryParam("time_range", DEFAULT_TIME_RANGE_SECONDS)
                 .queryParam("alert_id", request.sourceAlertId())
                 .build()
+                .encode()
                 .toUriString();
 
         try {
-            Map<?, ?> response = restTemplate.getForObject(url, Map.class);
+            URI requestUri = URI.create(url);
+            HttpEntity<Void> entity = new HttpEntity<>(mediaRequestSigner.sign(
+                    HttpMethod.GET,
+                    requestUri,
+                    "coverage",
+                    hasText(request.cameraId()) ? request.cameraId() : deviceId,
+                    ""
+            ));
+            Map<?, ?> response = restTemplate.exchange(
+                    requestUri, HttpMethod.GET, entity, Map.class).getBody();
             Map<?, ?> data = responseData(response);
             if (data == null) {
                 return Optional.empty();

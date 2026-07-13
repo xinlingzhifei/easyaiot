@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { createDecipheriv } from 'node:crypto';
 
 import {
   assertSmokeResult,
+  buildProductionAuthStoragePairs,
   parseArgs,
   requiredOptionErrors,
 } from './alert-review-player-live-smoke.mjs';
@@ -27,6 +29,26 @@ assert.equal(parsed.expectedOffsetSeconds, 2);
 assert.deepEqual(parsed.localStoragePairs, [{ key: 'token', value: 'abc' }]);
 assert.deepEqual(parsed.cookiePairs, [{ name: 'session', value: 'xyz' }]);
 
+const authParsed = parseArgs([], {
+  YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: 'access-token-1',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID: '42',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_STORAGE_PREFIX: 'IOT_ADMIN__PRODUCTION__2.1.0-SNAPSHOT__',
+});
+assert.equal(authParsed.accessToken, 'access-token-1');
+assert.equal(authParsed.tenantId, 42);
+const authStoragePairs = buildProductionAuthStoragePairs(authParsed, 1_783_748_800_000);
+assert.equal(authStoragePairs[0].key, 'jwt_token');
+assert.equal(authStoragePairs[0].value, 'access-token-1');
+assert.equal(
+  authStoragePairs[1].key,
+  'IOT_ADMIN__PRODUCTION__2.1.0-SNAPSHOT__COMMON__LOCAL__KEY__',
+);
+assert.equal(authStoragePairs[1].value.includes('access-token-1'), false);
+const decryptedAuthCache = decryptAuthCache(authStoragePairs[1].value);
+assert.equal(decryptedAuthCache.value.ACCESS_TOKEN__.value, 'access-token-1');
+assert.equal(decryptedAuthCache.value.TENANT_ID__.value, 42);
+assert.ok(decryptedAuthCache.expire > 1_783_748_800_000);
+
 const nativeParsed = parseArgs([
   '--workbench-url=https://example.test/yfeieye/alert?tab=review',
   '--review-row-text=RV-20260702-001',
@@ -47,6 +69,20 @@ const envParsed = parseArgs([], {
 });
 assert.equal(envParsed.workbenchUrl, 'https://env.example/review');
 assert.equal(envParsed.expectedOffsetSeconds, 2);
+
+function decryptAuthCache(ciphertext) {
+  const decipher = createDecipheriv(
+    'aes-128-ctr',
+    Buffer.from('_11111000001111@', 'utf8'),
+    Buffer.from('@11111000001111_', 'utf8'),
+  );
+  const padded = Buffer.concat([
+    decipher.update(Buffer.from(ciphertext, 'base64')),
+    decipher.final(),
+  ]);
+  const padding = padded[padded.length - 1];
+  return JSON.parse(padded.subarray(0, padded.length - padding).toString('utf8'));
+}
 
 const missing = requiredOptionErrors(parseArgs([], {}));
 assert.ok(missing.some(error => error.includes('workbench-url')));
@@ -134,7 +170,32 @@ assert.doesNotThrow(
     recordPath: 'https://example.test/video/east-gate-080000.mp4',
     playbackOffsetSeconds: 0,
     nativeCurrentTime: 0.4,
+    nativeCurrentSrc: 'https://example.test/video/east-gate-080000.mp4',
+    nativeReadyState: 4,
+    nativePaused: false,
+    nativeDuration: 30,
+    nativeError: null,
+    nativePlayingObserved: true,
   }, nativeParsed),
+);
+
+assert.throws(
+  () => assertSmokeResult({
+    clickedRow: true,
+    clickedAction: true,
+    seekTime: '2026-07-02T08:00:02',
+    currentUrl: 'https://example.test/video/east-gate-080000.mp4',
+    recordPath: 'https://example.test/video/east-gate-080000.mp4',
+    playbackOffsetSeconds: 0,
+    nativeCurrentTime: 0,
+    nativeCurrentSrc: 'https://example.test/video/east-gate-080000.mp4',
+    nativeReadyState: 0,
+    nativePaused: true,
+    nativeDuration: null,
+    nativeError: { code: 4, message: 'MEDIA_ERR_SRC_NOT_SUPPORTED' },
+    nativePlayingObserved: false,
+  }, nativeParsed),
+  /native video failed to load|native video metadata was not decoded|native video did not enter playing state/,
 );
 
 assert.throws(

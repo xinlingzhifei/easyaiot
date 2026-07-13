@@ -35,11 +35,19 @@ export interface AlertReviewItem {
   evidenceStatus?: string
   eventReviewStatus?: string
   inReviewCase?: boolean
-  ruleSuggestionStatus?: string
+  ruleSuggestionStatus?: AlertReviewRuleSuggestionLifecycleStatus
   ruleSuggestionUpdatedAt?: string
   reviewData?: Record<string, any>
   ruleSuggestion?: Record<string, any>
 }
+
+export type AlertReviewRuleSuggestionLifecycleStatus =
+  | 'pending'
+  | 'shadow_evaluated'
+  | 'accepted'
+  | 'rejected'
+  | 'applied'
+  | 'reverted'
 
 export interface AlertReviewEvidence {
   reviewItemId: number
@@ -196,6 +204,7 @@ export interface AlertReviewCase {
   endTime?: string
   ownerUserId?: number
   notes?: string
+  version?: number
 }
 
 export interface AlertReviewCaseTimelineItem {
@@ -221,17 +230,24 @@ export interface AlertReviewCaseOwnerUpdate {
   ownerUserId?: number
   operatorUserId?: number
   notes?: string
+  expectedVersion?: number
+  operationId?: string
 }
 
 export interface AlertReviewCaseCloseOperation {
   operatorUserId?: number
   notes?: string
+  expectedVersion?: number
+  operationId?: string
 }
 
 export interface AlertReviewCaseMergeRequest {
   sourceReviewCaseId: number
   operatorUserId?: number
   notes?: string
+  targetExpectedVersion?: number
+  sourceExpectedVersion?: number
+  operationId?: string
 }
 
 export interface AlertReviewCaseSplitRequest {
@@ -240,6 +256,8 @@ export interface AlertReviewCaseSplitRequest {
   ownerUserId?: number
   operatorUserId?: number
   notes?: string
+  sourceExpectedVersion?: number
+  operationId?: string
 }
 
 export interface AlertReviewCaseMergeResult {
@@ -263,7 +281,7 @@ export interface AlertReviewSummary {
 
 export interface AlertReviewRuleSuggestionStatus {
   reviewerUserId?: number
-  status: 'pending' | 'accepted' | 'rejected' | 'applied' | 'reverted' | string
+  status: 'pending' | 'shadow_evaluated' | 'accepted' | 'rejected' | 'applied' | 'reverted'
   note?: string
 }
 
@@ -344,6 +362,37 @@ export interface AlertReviewSemanticIndexEvaluation {
   recommendedActions: string[]
   evaluatedAt: string
   operatorUserId?: number
+}
+
+export interface AlertReviewSemanticTriggerEvaluation extends AlertReviewQuery {
+  triggerName: string
+  triggerType?: string
+  data: string
+  threshold?: number
+  actions?: string[]
+}
+
+export interface AlertReviewSemanticTriggerConfirmation {
+  confirmationStatus: 'confirmed' | 'rejected'
+  notes?: string
+}
+
+export interface AlertReviewSemanticTriggerResult {
+  triggerName: string
+  triggerType?: string
+  data: string
+  matchedReviewItemIds: number[]
+  actionPayloads: Record<string, any>[]
+  evaluatedAt: string
+  inputVersion: string
+  latestIndexVersion: number
+  hitExplanations: Record<string, any>[]
+  actionPreviews: Record<string, any>[]
+  humanConfirmationStatus: 'pending' | 'confirmed' | 'rejected' | string
+  evaluationId: string
+  confirmedBy?: number
+  confirmedAt?: string
+  duplicate?: boolean
 }
 
 export interface AlertReviewRecordGapReasonDefinition {
@@ -518,6 +567,13 @@ export interface AlertReviewEvidenceAuditEntry {
   boundEventIds: number[]
   happenedAt: string
   metadata: Record<string, any>
+}
+
+export interface AlertReviewEvidenceAuditQuery {
+  eventId?: number
+  reviewCaseId?: number
+  reviewItemId?: number
+  exportJobNo?: string
 }
 
 export interface AlertReviewMediaAccessAuditRequest {
@@ -723,6 +779,29 @@ export function semanticSearchAlertReview(params: AlertReviewQuery & { q: string
   })
 }
 
+export function evaluateAlertReviewSemanticTrigger(data: AlertReviewSemanticTriggerEvaluation) {
+  return defHttp.post<AlertReviewSemanticTriggerResult>({
+    url: '/system/supervision/alert-review/semantic-triggers/evaluate',
+    data,
+  })
+}
+
+export function getAlertReviewSemanticTrigger(evaluationId: string) {
+  return defHttp.get<AlertReviewSemanticTriggerResult>({
+    url: `/system/supervision/alert-review/semantic-triggers/${evaluationId}`,
+  })
+}
+
+export function confirmAlertReviewSemanticTrigger(
+  evaluationId: string,
+  data: AlertReviewSemanticTriggerConfirmation,
+) {
+  return defHttp.post<AlertReviewSemanticTriggerResult>({
+    url: `/system/supervision/alert-review/semantic-triggers/${evaluationId}/confirmation`,
+    data,
+  })
+}
+
 export function reindexAlertReviewSemanticIndex(params?: AlertReviewQuery) {
   return defHttp.post<AlertReviewSemanticIndexEntry[]>({
     url: '/system/supervision/alert-review/semantic-index/reindex',
@@ -838,6 +917,13 @@ export function getAlertReviewEvidenceAudit(reviewCaseId: number) {
 
 export function getAlertReviewItemEvidenceAudit(reviewItemId: number) {
   return defHttp.get<AlertReviewEvidenceAuditEntry[]>({ url: `${Api.Items}/${reviewItemId}/evidence-audit` })
+}
+
+export function queryAlertReviewEvidenceAudit(query: AlertReviewEvidenceAuditQuery) {
+  return defHttp.get<AlertReviewEvidenceAuditEntry[]>({
+    url: '/system/supervision/alert-review/evidence-audit',
+    params: query,
+  })
 }
 
 export function verifyAlertReviewManifest(jobNo: string) {

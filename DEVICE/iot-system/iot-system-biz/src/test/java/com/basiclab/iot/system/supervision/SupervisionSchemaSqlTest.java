@@ -390,6 +390,45 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void semanticTriggerConfirmationMigrationIsIdempotentTenantScopedAndLegacyMetadataSafe() throws IOException {
+        Path migration = modulePath(
+                "src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql");
+
+        assertTrue(Files.exists(migration), "semantic trigger confirmation migration should exist");
+        String sql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_alert_review_semantic_trigger_evaluation"));
+        assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_alert_review_semantic_trigger_terminal"));
+        assertTrue(sql.contains("tenant_id"));
+        assertTrue(sql.contains("substring(metadata"));
+        assertTrue(sql.contains("semantic_trigger_evaluated"));
+        assertTrue(sql.contains("semantic_trigger_confirmed"));
+        assertTrue(sql.contains("semantic_trigger_rejected"));
+        assertTrue(sql.contains("semantic-trigger-evaluation-v1"));
+        assertTrue(sql.contains("humanConfirmationStatus"));
+        assertTrue(sql.contains("system:supervision-alert-review:semantic-trigger:evaluate"));
+        assertTrue(sql.contains("system:supervision-alert-review:semantic-trigger:confirm"));
+        assertFalse(sql.contains("metadata::jsonb"));
+        assertFalse(sql.contains("metadata::JSONB"));
+    }
+
+    @Test
+    void semanticIndexClaimMigrationAddsGenerationLeaseAndRetryScheduling() throws IOException {
+        Path migration = modulePath(
+                "src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql");
+
+        assertTrue(Files.exists(migration), "semantic index claim migration should exist");
+        String sql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS index_generation_id VARCHAR(128)"));
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS claim_token VARCHAR(128)"));
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP"));
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS claim_expires_at TIMESTAMP"));
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP"));
+        assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_alert_review_semantic_claim"));
+        assertTrue(sql.contains("tenant_id, index_status, next_retry_at, claim_expires_at"));
+        assertTrue(sql.contains("WHERE deleted = 0"));
+    }
+
+    @Test
     void alertReviewHardeningMigrationIsSplitForProductionRelease() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql");
 
@@ -595,6 +634,15 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:export"));
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:download"));
         assertTrue(migrationSql.contains("system:supervision-alert-review:media:manifest"));
+        assertFalse(migrationSql.contains("system:supervision-alert-review:media:manage"));
+
+        Path managementMigration = modulePath(
+                "src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql");
+        assertTrue(Files.exists(managementMigration), "review media management permission migration should exist");
+        String managementSql = Files.readString(managementMigration, StandardCharsets.UTF_8);
+        assertTrue(managementSql.contains("system_menu"));
+        assertTrue(managementSql.contains("system_menu_seq"));
+        assertTrue(managementSql.contains("system:supervision-alert-review:media:manage"));
     }
 
     @Test

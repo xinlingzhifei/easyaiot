@@ -5,6 +5,7 @@ import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 
 from flask import Flask
 from sqlalchemy import create_engine, inspect, text
@@ -43,6 +44,10 @@ class _AlgorithmTaskWithoutAssignments:
 class TestDeviceDetectionRegionPersistence(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Other VIDEO unit modules temporarily replace ``sys.modules['models']``
+        # with narrow stubs. Rebind the real ORM module so this persistence suite
+        # remains order-independent when the release gate runs all tests together.
+        sys.modules['models'] = models
         camera_stub = types.ModuleType('app.blueprints.camera')
         camera_stub.upload_screenshot_to_minio = lambda *_args, **_kwargs: None
         camera_stub.grab_frame_for_snapshot = lambda *_args, **_kwargs: (None, 'not used')
@@ -219,6 +224,21 @@ class TestDeviceDetectionRegionPersistence(unittest.TestCase):
 
 
 class TestDeviceDetectionRegionLegacyMigration(unittest.TestCase):
+    def test_production_sql_migration_versions_region_rule_columns(self):
+        migration = Path(VIDEO_DIR) / 'migrations' / (
+            'V20260711__device_detection_region_rule_fields.sql'
+        )
+        self.assertTrue(migration.is_file())
+        sql = migration.read_text(encoding='utf-8')
+        self.assertIn('ALTER TABLE device_detection_region', sql)
+        self.assertIn('ADD COLUMN IF NOT EXISTS inertia_frames', sql)
+        self.assertIn('ADD COLUMN IF NOT EXISTS loitering_seconds', sql)
+        self.assertIn('UPDATE device_detection_region', sql)
+        self.assertIn('ALTER COLUMN inertia_frames SET NOT NULL', sql)
+        self.assertIn('ALTER COLUMN loitering_seconds SET NOT NULL', sql)
+        run_source = (Path(VIDEO_DIR) / 'run.py').read_text(encoding='utf-8')
+        self.assertNotIn('ensure_device_detection_region_rule_columns(db.engine)', run_source)
+
     def test_existing_rows_receive_defaults_and_migration_is_idempotent(self):
         ensure_columns = getattr(
             models,

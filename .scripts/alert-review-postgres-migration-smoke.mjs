@@ -20,6 +20,11 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_8__alert_review_segment_alert_severity_guard.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_9__alert_review_merge_index_same_camera.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_10__alert_review_deleted_smallint.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -259,14 +264,16 @@ BEGIN
     FROM system_menu
     WHERE permission IN (
       'system:supervision-alert-review:media:playback',
+      'system:supervision-alert-review:media:snapshot',
       'system:supervision-alert-review:media:export',
       'system:supervision-alert-review:media:download',
-      'system:supervision-alert-review:media:manifest'
+      'system:supervision-alert-review:media:manifest',
+      'system:supervision-alert-review:media:manage'
     )
       AND type = 3
       AND status = 0
       AND deleted = 0
-  ) <> 4 THEN
+  ) <> 6 THEN
     RAISE EXCEPTION 'expected review media permission seeds to be present';
   END IF;
 
@@ -281,6 +288,55 @@ BEGIN
 
   IF (
     SELECT count(*)
+    FROM system_menu
+    WHERE permission IN (
+      'system:supervision-alert-review:semantic-trigger:evaluate',
+      'system:supervision-alert-review:semantic-trigger:confirm'
+    )
+      AND type = 3
+      AND status = 0
+      AND deleted = 0
+  ) <> 2 THEN
+    RAISE EXCEPTION 'expected semantic trigger permission seeds to be present';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM pg_indexes
+    WHERE schemaname = current_schema()
+      AND tablename = 'system_supervision_alert_review_case_audit'
+      AND indexname IN (
+        'uk_alert_review_semantic_trigger_evaluation',
+        'uk_alert_review_semantic_trigger_terminal'
+      )
+      AND indexdef LIKE '%UNIQUE INDEX%'
+      AND indexdef LIKE '%tenant_id%'
+  ) <> 2 THEN
+    RAISE EXCEPTION 'expected semantic trigger confirmation indexes to be tenant scoped';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM information_schema.columns
+    WHERE table_name = 'system_supervision_alert_review_semantic_index'
+      AND column_name IN (
+        'index_generation_id', 'claim_token', 'claimed_at', 'claim_expires_at', 'next_retry_at'
+      )
+  ) <> 5 THEN
+    RAISE EXCEPTION 'expected semantic index generation and worker claim columns to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_semantic_index'
+      AND indexname = 'idx_alert_review_semantic_claim'
+  ) THEN
+    RAISE EXCEPTION 'expected semantic index worker claim index to exist';
+  END IF;
+
+  IF (
+    SELECT count(*)
     FROM infra_job
     WHERE handler_name IN (
       'supervisionAlertReviewRuntimePatrolJob',
@@ -290,10 +346,10 @@ BEGIN
       'supervisionAlertReviewSemanticIndexJob',
       'supervisionAlertReviewOperationsReportJob'
     )
-      AND status = 2
+      AND status = 1
       AND deleted = 0
   ) <> 7 THEN
-    RAISE EXCEPTION 'expected paused alert review scheduler job seeds to be present';
+    RAISE EXCEPTION 'expected active alert review scheduler jobs to be present';
   END IF;
 
   IF (
@@ -301,10 +357,10 @@ BEGIN
     FROM infra_job
     WHERE handler_name = 'supervisionAlertReviewEventReconcileJob'
       AND cron_expression = '0 0/5 * * * ?'
-      AND status = 2
+      AND status = 1
       AND deleted = 0
   ) <> 1 THEN
-    RAISE EXCEPTION 'expected event reconcile scheduler seed to be paused and deduplicated';
+    RAISE EXCEPTION 'expected event reconcile scheduler job to be active and deduplicated';
   END IF;
 
   IF (
@@ -313,10 +369,10 @@ BEGIN
     WHERE handler_name = 'supervisionAlertReviewEvidenceExportWorkerJob'
       AND handler_param = '20'
       AND cron_expression = '0 0/2 * * * ?'
-      AND status = 2
+      AND status = 1
       AND deleted = 0
   ) <> 1 THEN
-    RAISE EXCEPTION 'expected evidence export worker scheduler seed to be paused and deduplicated';
+    RAISE EXCEPTION 'expected evidence export worker scheduler job to be active and deduplicated';
   END IF;
 
   IF (
@@ -324,7 +380,7 @@ BEGIN
     FROM infra_job
     WHERE handler_name = 'supervisionAlertReviewOperationsReportJob'
       AND handler_param IN ('shift', 'daily')
-      AND status = 2
+      AND status = 1
       AND deleted = 0
   ) <> 2 THEN
     RAISE EXCEPTION 'expected operations report scheduler seeds to cover shift and daily reports';
@@ -376,6 +432,36 @@ BEGIN
       AND indexname = 'idx_supervision_alert_review_runtime_outbox_claim'
   ) THEN
     RAISE EXCEPTION 'expected runtime outbox claim index to exist';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM information_schema.columns
+    WHERE table_name = 'system_supervision_alert_review_export_job'
+      AND column_name IN (
+        'request_key', 'claim_token', 'claimed_by', 'claimed_at', 'next_retry_at', 'last_error'
+      )
+  ) <> 6 THEN
+    RAISE EXCEPTION 'expected persistent evidence export queue columns to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_export_job'
+      AND indexname = 'uk_supervision_alert_review_export_request'
+      AND indexdef LIKE '%tenant_id, request_key%'
+  ) THEN
+    RAISE EXCEPTION 'expected tenant-scoped evidence export request idempotency index to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE tablename = 'system_supervision_alert_review_export_job'
+      AND indexname = 'idx_supervision_alert_review_export_claim'
+  ) THEN
+    RAISE EXCEPTION 'expected evidence export worker claim index to exist';
   END IF;
 
   IF NOT EXISTS (
@@ -866,7 +952,7 @@ function printHelp() {
 Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container or a direct PostgreSQL URL.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
 The direct URL must be a maintenance database URL accepted by local psql; the smoke creates --database on the same server.
-The smoke creates a temporary database, applies V20260701 through V20260708_10 in MIGRATION_FILES order, and verifies platform SMALLINT deleted semantics, BaseDO tenant columns and indexes, the historical BOOLEAN upgrade path, ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, media permission seeds, scheduler job seeds, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260701 through V20260713 in MIGRATION_FILES order, and verifies platform SMALLINT deleted semantics, BaseDO tenant columns and indexes, the historical BOOLEAN upgrade path, ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, immutable media permission seeds plus the forward media-manage permission, semantic-trigger evaluation/confirmation permission seeds and tenant-scoped terminal indexes, semantic-index generation/worker claims, active scheduler jobs, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, persistent evidence export queue claims/idempotency, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {

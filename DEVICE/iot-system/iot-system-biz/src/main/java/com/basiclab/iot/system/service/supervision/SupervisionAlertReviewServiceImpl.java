@@ -1,6 +1,7 @@
 package com.basiclab.iot.system.service.supervision;
 
 import com.basiclab.iot.common.core.context.TenantContextHolder;
+import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionEventService.AlertToEventResult;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewAiSummaryRequest;
@@ -8,12 +9,20 @@ import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.Re
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchCandidate;
 import com.basiclab.iot.system.service.supervision.ReviewIntelligenceProvider.ReviewSemanticSearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.BufferedOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -33,7 +42,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReviewService {
@@ -45,6 +57,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final int DEFAULT_EXPORT_JOB_EXPIRES_DAYS = 7;
     private static final int DEFAULT_EXPORT_WORKER_LIMIT = 20;
     private static final int MAX_EXPORT_WORKER_LIMIT = 100;
+    private static final int EXPORT_WORKER_RECLAIM_MINUTES = 30;
+    private static final Set<String> EVIDENCE_EXPORT_FORMATS = Set.of(
+            "manifest", "mp4", "mkv", "mov", "avi", "webm", "ts"
+    );
     private static final int DEFAULT_RUNTIME_OUTBOX_LIMIT = 50;
     private static final int MAX_RUNTIME_OUTBOX_LIMIT = 200;
     private static final int RUNTIME_OUTBOX_CLAIM_TIMEOUT_MINUTES = 10;
@@ -58,9 +74,24 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final String LOCAL_RULE_SUMMARY_MODEL = "local-rule-summary";
     private static final String REVIEW_AI_SUMMARY_PROVIDER_VERSION = "review-ai-provider-v1";
     private static final String REVIEW_AI_SUMMARY_PROMPT_VERSION = "review-ai-summary-prompt-v1";
+    private static final Pattern SHA256_HASH = Pattern.compile("sha256:[0-9a-fA-F]{64}");
     private static final String AI_SUMMARY_GENERATED_ACTION = "ai_summary_generated";
     private static final String AI_SUMMARY_CONFIRMED_ACTION = "ai_summary_confirmed";
     private static final String AI_SUMMARY_REJECTED_ACTION = "ai_summary_rejected";
+    private static final String SEMANTIC_TRIGGER_EVALUATED_ACTION = "semantic_trigger_evaluated";
+    private static final String SEMANTIC_TRIGGER_CONFIRMED_ACTION = "semantic_trigger_confirmed";
+    private static final String SEMANTIC_TRIGGER_REJECTED_ACTION = "semantic_trigger_rejected";
+    private static final String SEMANTIC_TRIGGER_SCHEMA_VERSION = "semantic-trigger-evaluation-v1";
+    private static final String SEMANTIC_TRIGGER_INPUT_VERSION = "semantic-trigger-input-v1";
+    private static final long SEMANTIC_INDEX_CLAIM_LEASE_MINUTES = 5L;
+    private static final long SEMANTIC_INDEX_RETRY_BASE_SECONDS = 30L;
+    private static final long SEMANTIC_INDEX_RETRY_MAX_SECONDS = 3600L;
+    private static final Set<String> SEMANTIC_TRIGGER_ACTIONS = Set.of(
+            "notification", "sub_label", "attribute"
+    );
+    private static final Pattern SEMANTIC_TRIGGER_EVALUATION_ID = Pattern.compile(
+            "sem-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    );
     private static final String AI_SUMMARY_CONFIRMATION_CONFIRMED = "confirmed";
     private static final String AI_SUMMARY_CONFIRMATION_REJECTED = "rejected";
     private static final String MATERIAL_SNAPSHOT = "snapshot";
@@ -118,8 +149,14 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private final ReviewCameraPermissionResolver cameraPermissionResolver;
     private final ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy;
     private final ReviewCameraTopologyResolver cameraTopologyResolver;
+    private final ReviewEvidenceManifestSigner evidenceManifestSigner;
     private final ConcurrentMap<String, Object> reviewSegmentIngestLocks = new ConcurrentHashMap<>();
     private ReviewRuntimeOutboxPublisher runtimeOutboxPublisher = ReviewRuntimeOutboxPublisher.noop();
+    private ReviewPlaybackUrlSigner reviewPlaybackUrlSigner = ReviewPlaybackUrlSigner.passthrough();
+    private ReviewRecordStorageDriftResolver recordStorageDriftResolver = ReviewRecordStorageDriftResolver.unavailable();
+
+    @Value("${yfeieye.video.record-drift-retention-hours:24}")
+    private int recordStorageDriftRetentionHours = 24;
 
     private record RecordGapReasonDefinition(String code,
                                              String category,
@@ -179,7 +216,6 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 cameraPermissionResolver, aiSummaryRedactionPolicy, ReviewCameraTopologyResolver.empty());
     }
 
-    @Autowired
     public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
                                              ReviewRuleStore reviewRuleStore,
                                              SupervisionEventService supervisionEventService,
@@ -191,6 +227,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                              ReviewCameraPermissionResolver cameraPermissionResolver,
                                              ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy,
                                              ReviewCameraTopologyResolver cameraTopologyResolver) {
+        this(reviewItemStore, reviewRuleStore, supervisionEventService, recordEvidenceResolver,
+                eventProjectionStore, recordCoverageResolver, reviewIntelligenceProvider,
+                videoEvidenceExportProvider, cameraPermissionResolver, aiSummaryRedactionPolicy,
+                cameraTopologyResolver, new ReviewEvidenceManifestSigner("", "", "hmac-sha256-v1"));
+    }
+
+    @Autowired
+    public SupervisionAlertReviewServiceImpl(ReviewItemStore reviewItemStore,
+                                             ReviewRuleStore reviewRuleStore,
+                                             SupervisionEventService supervisionEventService,
+                                             RecordEvidenceResolver recordEvidenceResolver,
+                                             EventProjectionStore eventProjectionStore,
+                                             RecordCoverageResolver recordCoverageResolver,
+                                             ReviewIntelligenceProvider reviewIntelligenceProvider,
+                                             VideoEvidenceExportProvider videoEvidenceExportProvider,
+                                             ReviewCameraPermissionResolver cameraPermissionResolver,
+                                             ReviewAiSummaryRedactionPolicy aiSummaryRedactionPolicy,
+                                             ReviewCameraTopologyResolver cameraTopologyResolver,
+                                             ReviewEvidenceManifestSigner evidenceManifestSigner) {
         this.reviewItemStore = Objects.requireNonNull(reviewItemStore, "reviewItemStore");
         this.reviewRuleStore = Objects.requireNonNull(reviewRuleStore, "reviewRuleStore");
         this.supervisionEventService = Objects.requireNonNull(supervisionEventService, "supervisionEventService");
@@ -202,6 +257,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         this.cameraPermissionResolver = Objects.requireNonNull(cameraPermissionResolver, "cameraPermissionResolver");
         this.aiSummaryRedactionPolicy = Objects.requireNonNull(aiSummaryRedactionPolicy, "aiSummaryRedactionPolicy");
         this.cameraTopologyResolver = Objects.requireNonNull(cameraTopologyResolver, "cameraTopologyResolver");
+        this.evidenceManifestSigner = Objects.requireNonNull(evidenceManifestSigner, "evidenceManifestSigner");
     }
 
     @Autowired(required = false)
@@ -209,6 +265,20 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         this.runtimeOutboxPublisher = runtimeOutboxPublisher == null
                 ? ReviewRuntimeOutboxPublisher.noop()
                 : runtimeOutboxPublisher;
+    }
+
+    @Autowired(required = false)
+    public void setReviewPlaybackUrlSigner(ReviewPlaybackUrlSigner reviewPlaybackUrlSigner) {
+        this.reviewPlaybackUrlSigner = reviewPlaybackUrlSigner == null
+                ? ReviewPlaybackUrlSigner.passthrough()
+                : reviewPlaybackUrlSigner;
+    }
+
+    @Autowired(required = false)
+    public void setRecordStorageDriftResolver(ReviewRecordStorageDriftResolver recordStorageDriftResolver) {
+        this.recordStorageDriftResolver = recordStorageDriftResolver == null
+                ? ReviewRecordStorageDriftResolver.unavailable()
+                : recordStorageDriftResolver;
     }
 
     @Override
@@ -722,17 +792,20 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         String status = requireRuleSuggestionStatus(command.status());
         ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        requireRuleSuggestionTransition(item, status);
         Map<String, Object> suggestion = updateRuleSuggestionLifecycle(item.ruleSuggestion(), status, command.note());
-        if (RULE_SUGGESTION_ACCEPTED.equals(status)) {
+        if (RULE_SUGGESTION_SHADOW_EVALUATED.equals(status)) {
             suggestion = withCurrentRuleSuggestionSafety(item, suggestion);
             requireRuleSuggestionSampleReady(suggestion);
-            suggestion = withRuleGovernanceEvidence(item, suggestion, null);
+            suggestion = withRuleGovernanceEvidence(item, suggestion);
+        }
+        if (RULE_SUGGESTION_ACCEPTED.equals(status)) {
+            requireRuleSuggestionSampleReady(suggestion);
+            requireRuleGovernanceEvidence(suggestion);
         }
         if (RULE_SUGGESTION_APPLIED.equals(status)) {
-            requireAcceptedRuleSuggestion(item);
-            suggestion = withCurrentRuleSuggestionSafety(item, suggestion);
             requireRuleSuggestionSampleReady(suggestion);
-            suggestion = withRuleGovernanceEvidence(item, suggestion, command.note());
+            requireRuleGovernanceEvidence(suggestion);
             suggestion = applyRuleSuggestion(item, suggestion);
         }
         return withEventProjection(reviewItemStore.updateRuleSuggestionStatus(
@@ -775,6 +848,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
         ReviewItemAggregate item = reviewItemStore.findById(command.reviewItemId())
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
+        requireRuleSuggestionTransition(item, status);
         Map<String, Object> suggestion = updateRuleSuggestionLifecycle(item.ruleSuggestion(), status, command.note());
         suggestion = rollbackRuleSuggestion(item, suggestion);
         return withEventProjection(reviewItemStore.updateRuleSuggestionStatus(
@@ -1070,7 +1144,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.reviewCaseId(),
                 command.ownerUserId(),
                 command.notes(),
-                command.operatorUserId()
+                command.operatorUserId(),
+                command.expectedVersion(),
+                command.operationId()
         );
     }
 
@@ -1082,7 +1158,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.reviewCaseId(),
                 command.notes(),
                 command.operatorUserId(),
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                command.expectedVersion(),
+                command.operationId()
         );
     }
 
@@ -1098,7 +1176,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.targetReviewCaseId(),
                 command.sourceReviewCaseId(),
                 command.operatorUserId(),
-                command.notes()
+                command.notes(),
+                command.targetExpectedVersion(),
+                command.sourceExpectedVersion(),
+                command.operationId()
         );
     }
 
@@ -1111,7 +1192,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.sourceReviewCaseId(),
                 new ReviewCaseDraft(command.title(), reviewItemIds.get(0), command.ownerUserId(), command.notes()),
                 reviewItemIds,
-                command.operatorUserId()
+                command.operatorUserId(),
+                command.sourceExpectedVersion(),
+                command.operationId()
         );
     }
 
@@ -1192,9 +1275,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     public List<ReviewSemanticHit> semanticSearch(ReviewSemanticSearchCommand command) {
         Objects.requireNonNull(command, "command");
         requireText(command.query(), "query");
+        return semanticSearch(command, semanticSearchSnapshot(command.filters()).candidates());
+    }
+
+    private List<ReviewSemanticHit> semanticSearch(ReviewSemanticSearchCommand command,
+                                                   List<ReviewSemanticSearchCandidate> candidates) {
         List<String> terms = tokenize(command.query());
         int limit = command.limit() == null || command.limit() <= 0 ? 20 : command.limit();
-        List<ReviewSemanticSearchCandidate> candidates = semanticCandidates(command.filters());
         Optional<List<ReviewSemanticHit>> providerHits = reviewIntelligenceProvider.semanticSearch(
                 new ReviewSemanticSearchRequest(command.query(), command.filters(), limit, candidates)
         );
@@ -1214,6 +1301,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     @Override
     public List<ReviewSemanticIndexEntry> reindexSemanticIndex(ReviewQuery query) {
         LocalDateTime indexedAt = LocalDateTime.now();
+        String indexGenerationId = newSemanticIndexGenerationId();
         return listWorkbench(query).stream()
                 .map(item -> {
                     String document = buildSearchDocument(item);
@@ -1226,7 +1314,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                             SEMANTIC_INDEX_INDEXED,
                             0,
                             null,
-                            indexedAt
+                            indexedAt,
+                            indexGenerationId,
+                            null
                     );
                 })
                 .toList();
@@ -1236,6 +1326,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     public ReviewSemanticReindexJob queueSemanticReindex(ReviewSemanticReindexCommand command) {
         Objects.requireNonNull(command, "command");
         LocalDateTime queuedAt = LocalDateTime.now();
+        String indexGenerationId = newSemanticIndexGenerationId();
         List<ReviewItemAggregate> items = listWorkbench(command.query());
         List<Long> queuedIds = new ArrayList<>();
         for (ReviewItemAggregate item : items) {
@@ -1248,6 +1339,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     SEMANTIC_INDEX_PENDING,
                     0,
                     null,
+                    null,
+                    indexGenerationId,
                     null
             );
             queuedIds.add(item.id());
@@ -1266,31 +1359,57 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         Objects.requireNonNull(command, "command");
         int limit = boundedPositive(command.maxItems(), DEFAULT_SEMANTIC_WORKER_LIMIT, MAX_SEMANTIC_WORKER_LIMIT);
         List<ReviewItemAggregate> items = listWorkbench(command.query());
-        Map<Long, ReviewSemanticIndexEntry> indexByItemId = semanticIndexByItemId(command.query());
-        List<ReviewItemAggregate> backlog = items.stream()
-                .filter(item -> shouldProcessSemanticIndex(item, indexByItemId.get(item.id())))
-                .limit(limit)
-                .toList();
         LocalDateTime processedAt = LocalDateTime.now();
+        String claimToken = UUID.randomUUID().toString();
+        List<ReviewSemanticIndexEntry> claimedEntries = reviewItemStore.claimSemanticIndex(
+                items.stream().map(ReviewItemAggregate::id).toList(),
+                limit,
+                claimToken,
+                processedAt,
+                processedAt.plusMinutes(SEMANTIC_INDEX_CLAIM_LEASE_MINUTES)
+        );
+        Map<Long, ReviewItemAggregate> itemById = items.stream()
+                .collect(Collectors.toMap(ReviewItemAggregate::id, Function.identity()));
         List<Long> processedIds = new ArrayList<>();
         List<Long> failedIds = new ArrayList<>();
-        for (ReviewItemAggregate item : backlog) {
-            ReviewSemanticIndexEntry current = indexByItemId.get(item.id());
+        for (ReviewSemanticIndexEntry current : claimedEntries) {
+            ReviewItemAggregate item = itemById.get(current.reviewItemId());
+            if (item == null) {
+                continue;
+            }
+            String generationId = firstText(current.indexGenerationId(), newSemanticIndexGenerationId());
             try {
-                upsertIndexedSemanticDocument(item, processedAt);
+                String document = buildSearchDocument(item);
+                reviewItemStore.completeSemanticIndexClaim(
+                        item,
+                        document,
+                        semanticEmbeddingKey(item),
+                        LOCAL_EMBEDDING_MODEL,
+                        semanticEmbeddingVectorHash(document),
+                        SEMANTIC_INDEX_INDEXED,
+                        0,
+                        null,
+                        processedAt,
+                        generationId,
+                        null,
+                        claimToken
+                );
                 processedIds.add(item.id());
             } catch (RuntimeException ex) {
                 int retryCount = (current == null || current.retryCount() == null ? 0 : current.retryCount()) + 1;
-                reviewItemStore.upsertSemanticIndex(
+                reviewItemStore.completeSemanticIndexClaim(
                         item,
-                        current == null ? buildSearchDocument(item) : current.document(),
+                        current.document(),
                         semanticEmbeddingKey(item),
                         LOCAL_EMBEDDING_MODEL,
-                        current == null ? null : current.embeddingVectorHash(),
+                        current.embeddingVectorHash(),
                         SEMANTIC_INDEX_FAILED,
                         retryCount,
                         ex.getMessage(),
-                        null
+                        null,
+                        generationId,
+                        semanticIndexNextRetryAt(processedAt, retryCount),
+                        claimToken
                 );
                 failedIds.add(item.id());
             }
@@ -1300,7 +1419,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         String status = semanticWorkerStatus(processedIds.size(), failedIds.size(), evaluation.staleReviewItemIds().size());
         return new ReviewSemanticWorkerRun(
                 status,
-                backlog.size(),
+                claimedEntries.size(),
                 processedIds.size(),
                 failedIds.size(),
                 evaluation.staleReviewItemIds().size(),
@@ -1328,7 +1447,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 staleIds.add(item.id());
                 continue;
             }
-            if (SEMANTIC_INDEX_PENDING.equals(entry.indexStatus())) {
+            if (SEMANTIC_INDEX_PENDING.equals(entry.indexStatus())
+                    || SEMANTIC_INDEX_PROCESSING.equals(entry.indexStatus())) {
                 pending++;
                 staleIds.add(item.id());
             } else if (SEMANTIC_INDEX_FAILED.equals(entry.indexStatus())) {
@@ -1384,30 +1504,17 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return indexByItemId;
     }
 
-    private boolean shouldProcessSemanticIndex(ReviewItemAggregate item, ReviewSemanticIndexEntry entry) {
-        if (entry == null) {
-            return true;
-        }
-        if (SEMANTIC_INDEX_PENDING.equals(entry.indexStatus()) || SEMANTIC_INDEX_FAILED.equals(entry.indexStatus())) {
-            return true;
-        }
-        return SEMANTIC_INDEX_INDEXED.equals(entry.indexStatus())
-                && !Objects.equals(item.lastAlertTime(), entry.lastAlertTime());
+    private static String newSemanticIndexGenerationId() {
+        return "sig-" + UUID.randomUUID();
     }
 
-    private ReviewSemanticIndexEntry upsertIndexedSemanticDocument(ReviewItemAggregate item, LocalDateTime indexedAt) {
-        String document = buildSearchDocument(item);
-        return reviewItemStore.upsertSemanticIndex(
-                item,
-                document,
-                semanticEmbeddingKey(item),
-                LOCAL_EMBEDDING_MODEL,
-                semanticEmbeddingVectorHash(document),
-                SEMANTIC_INDEX_INDEXED,
-                0,
-                null,
-                indexedAt
+    private static LocalDateTime semanticIndexNextRetryAt(LocalDateTime failedAt, int retryCount) {
+        int exponent = Math.max(0, Math.min(retryCount - 1, 7));
+        long delaySeconds = Math.min(
+                SEMANTIC_INDEX_RETRY_MAX_SECONDS,
+                SEMANTIC_INDEX_RETRY_BASE_SECONDS * (1L << exponent)
         );
+        return failedAt.plusSeconds(delaySeconds);
     }
 
     private static String semanticWorkerStatus(int processedCount, int failedCount, int remainingBacklogCount) {
@@ -1449,7 +1556,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .filter(job -> EXPORT_JOB_FAILED.equals(job.status()))
                 .count();
         List<ReviewDataConsistency> reviewDataConsistencies = items.stream()
-                .map(SupervisionAlertReviewServiceImpl::reviewDataConsistency)
+                .map(this::reviewDataConsistency)
                 .toList();
         int reviewDataSchemaDriftCount = (int) reviewDataConsistencies.stream()
                 .filter(ReviewDataConsistency::schemaDrift)
@@ -1457,9 +1564,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         int reviewSegmentDoubleWriteDriftCount = (int) reviewDataConsistencies.stream()
                 .filter(ReviewDataConsistency::segmentDoubleWriteDrift)
                 .count();
-        Map<String, Integer> recordGapReasons = recordGapReasons(items);
+        List<ReviewRecordStorageDriftResolver.RecordStorageDriftReport> storageDriftReports =
+                inspectRecordStorageDrift(items);
+        Map<String, Integer> recordGapReasons = mergeRecordStorageDriftReasons(
+                recordGapReasons(items), storageDriftReports);
+        int storageDriftIssueCount = storageDriftReports.stream()
+                .mapToInt(ReviewRecordStorageDriftResolver.RecordStorageDriftReport::issueCount)
+                .sum();
         List<String> alerts = new ArrayList<>();
-        if (missingRecordCount > 0) {
+        if (missingRecordCount > 0 || !recordGapReasons.isEmpty()) {
             alerts.add("record_evidence_gap");
             for (String reason : recordGapReasons.keySet()) {
                 alerts.add("record_evidence_gap:" + reason);
@@ -1495,7 +1608,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 roundRate(failedExportJobCount, exportJobs.size()),
                 semanticBacklogCount,
                 missingRecordCount + semanticBacklogCount + failedExportJobCount
-                        + reviewDataSchemaDriftCount + reviewSegmentDoubleWriteDriftCount,
+                        + reviewDataSchemaDriftCount + reviewSegmentDoubleWriteDriftCount
+                        + storageDriftIssueCount,
                 Map.copyOf(recordGapReasons),
                 recordGapReasonCatalog(),
                 List.copyOf(alerts),
@@ -1891,16 +2005,45 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         Objects.requireNonNull(command, "command");
         requireText(command.triggerName(), "triggerName");
         requireText(command.data(), "data");
+        if (command.triggerName().length() > 128) {
+            throw new IllegalArgumentException("triggerName must not exceed 128 characters");
+        }
+        if (command.data().length() > 2000) {
+            throw new IllegalArgumentException("data must not exceed 2000 characters");
+        }
+        if (command.threshold() != null
+                && (!Double.isFinite(command.threshold())
+                || command.threshold() < 0D
+                || command.threshold() > 1D)) {
+            throw new IllegalArgumentException("threshold must be between 0 and 1");
+        }
         ReviewQuery filters = semanticTriggerFilters(command);
         int limit = command.actions() == null || command.actions().isEmpty() ? 20 : 50;
-        List<ReviewSemanticHit> hits = semanticSearch(new ReviewSemanticSearchCommand(command.data(), filters, limit))
+        SemanticSearchSnapshot semanticSnapshot = semanticSearchSnapshot(filters);
+        List<ReviewSemanticHit> hits = semanticSearch(
+                new ReviewSemanticSearchCommand(command.data(), filters, limit),
+                semanticSnapshot.candidates())
                 .stream()
                 .filter(hit -> matchesSemanticTriggerThreshold(hit, command.threshold()))
                 .toList();
         List<String> actions = command.actions() == null || command.actions().isEmpty()
                 ? List.of("notification")
-                : List.copyOf(command.actions());
+                : command.actions().stream()
+                .filter(SupervisionAlertReviewServiceImpl::hasText)
+                .map(String::trim)
+                .distinct()
+                .limit(11)
+                .toList();
+        if (actions.isEmpty() || actions.size() > 10) {
+            throw new IllegalArgumentException("actions must contain between 1 and 10 non-blank values");
+        }
+        if (actions.stream().anyMatch(action -> action.length() > 64 || !SEMANTIC_TRIGGER_ACTIONS.contains(action))) {
+            throw new IllegalArgumentException(
+                    "actions must contain only notification, sub_label, or attribute");
+        }
+        String inputHash = semanticTriggerInputHash(command, filters, actions, semanticSnapshot);
         LocalDateTime evaluatedAt = LocalDateTime.now();
+        String evaluationId = "sem-" + UUID.randomUUID();
         List<Map<String, Object>> actionPayloads = new ArrayList<>();
         List<Map<String, Object>> actionPreviews = new ArrayList<>();
         for (ReviewSemanticHit hit : hits) {
@@ -1910,17 +2053,115 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 actionPreviews.add(buildSemanticTriggerActionPreview(actionPayload));
             }
         }
-        return new ReviewSemanticTriggerResult(
+        ReviewSemanticTriggerResult result = new ReviewSemanticTriggerResult(
                 command.triggerName(),
                 command.triggerType(),
                 command.data(),
                 hits.stream().map(hit -> hit.item().id()).toList(),
                 List.copyOf(actionPayloads),
                 evaluatedAt,
-                hits.stream().map(hit -> buildSemanticTriggerHitExplanation(command, hit)).toList(),
+                SEMANTIC_TRIGGER_INPUT_VERSION,
+                inputHash,
+                semanticSnapshot.indexGenerationId(),
+                semanticSnapshot.latestIndexVersion(),
+                hits.stream().map(hit -> buildSemanticTriggerHitExplanation(
+                        command,
+                        hit,
+                        semanticSnapshot.indexProvenanceByItemId().get(hit.item().id()),
+                        semanticSnapshot.indexGenerationId())).toList(),
                 List.copyOf(actionPreviews),
-                "pending"
+                "pending",
+                evaluationId,
+                null,
+                null,
+                false
         );
+        Long reviewItemId = result.matchedReviewItemIds().stream().findFirst().orElse(null);
+        reviewItemStore.recordSemanticTriggerEvaluation(
+                reviewItemId,
+                "evaluationId=" + evaluationId + "; humanConfirmationStatus=pending; previewOnly=true",
+                command.operatorUserId(),
+                evaluatedAt,
+                semanticTriggerEvaluationMetadata(result, command.operatorUserId())
+        );
+        return result;
+    }
+
+    @Override
+    public ReviewSemanticTriggerResult getSemanticTrigger(String evaluationId) {
+        String normalizedEvaluationId = normalizeSemanticTriggerEvaluationId(evaluationId);
+        List<ReviewSemanticTriggerAuditRecord> audits = reviewItemStore.listSemanticTriggerAudits(
+                normalizedEvaluationId);
+        ReviewSemanticTriggerAuditRecord pendingAudit = semanticTriggerPendingAudit(
+                audits,
+                normalizedEvaluationId);
+        return semanticTriggerDecisionAudit(audits, normalizedEvaluationId)
+                .map(decision -> semanticTriggerResultFromAudits(
+                        normalizedEvaluationId,
+                        pendingAudit,
+                        decision,
+                        false
+                ))
+                .orElseGet(() -> semanticTriggerPendingResult(normalizedEvaluationId, pendingAudit));
+    }
+
+    @Override
+    public ReviewSemanticTriggerResult confirmSemanticTrigger(ReviewSemanticTriggerConfirmationCommand command) {
+        Objects.requireNonNull(command, "command");
+        String evaluationId = normalizeSemanticTriggerEvaluationId(command.evaluationId());
+        String confirmationStatus = normalizeSemanticTriggerConfirmationStatus(command.confirmationStatus());
+        requirePositive(command.operatorUserId(), "operatorUserId");
+
+        List<ReviewSemanticTriggerAuditRecord> existingAudits = reviewItemStore.listSemanticTriggerAudits(evaluationId);
+        ReviewSemanticTriggerAuditRecord pendingAudit = semanticTriggerPendingAudit(existingAudits, evaluationId);
+        Optional<ReviewSemanticTriggerAuditRecord> existingDecision = semanticTriggerDecisionAudit(
+                existingAudits,
+                evaluationId);
+        if (existingDecision.isPresent()) {
+            return resolveExistingSemanticTriggerDecision(
+                    evaluationId,
+                    confirmationStatus,
+                    pendingAudit,
+                    existingDecision.get()
+            );
+        }
+
+        LocalDateTime confirmedAt = LocalDateTime.now();
+        String actionType = "confirmed".equals(confirmationStatus)
+                ? SEMANTIC_TRIGGER_CONFIRMED_ACTION
+                : SEMANTIC_TRIGGER_REJECTED_ACTION;
+        Map<String, Object> decisionMetadata = semanticTriggerDecisionMetadata(
+                evaluationId,
+                confirmationStatus,
+                command.operatorUserId(),
+                confirmedAt,
+                command.notes(),
+                pendingAudit.metadata()
+        );
+        boolean inserted = reviewItemStore.recordSemanticTriggerDecision(
+                evaluationId,
+                actionType,
+                semanticTriggerDecisionAuditNote(decisionMetadata),
+                command.operatorUserId(),
+                confirmedAt,
+                decisionMetadata
+        );
+        List<ReviewSemanticTriggerAuditRecord> persistedAudits = reviewItemStore.listSemanticTriggerAudits(evaluationId);
+        ReviewSemanticTriggerAuditRecord persistedDecision = semanticTriggerDecisionAudit(
+                persistedAudits,
+                evaluationId)
+                .orElseThrow(() -> new IllegalStateException("semantic_trigger_decision_not_persisted"));
+        ReviewSemanticTriggerResult result = semanticTriggerResultFromAudits(
+                evaluationId,
+                pendingAudit,
+                persistedDecision,
+                !inserted
+        );
+        if (!confirmationStatus.equals(result.humanConfirmationStatus())) {
+            throw new IllegalStateException("semantic_trigger_already_decided: "
+                    + result.humanConfirmationStatus());
+        }
+        return result;
     }
 
     @Override
@@ -1995,7 +2236,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 generatedBy,
                 generatedAt,
                 LOCAL_RULE_SUMMARY_MODEL,
-                redactedFields
+                redactedFields,
+                List.of()
         ));
         ReviewAiSummary generatedSummary = new ReviewAiSummary(
                 reviewCaseId,
@@ -2361,12 +2603,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     @Override
     public ReviewEvidenceExportPackage exportReviewEvidence(ReviewEvidenceExportCommand command) {
-        return buildReviewEvidenceExportPackage(command);
+        return buildReviewEvidenceExportPackage(command, true);
     }
 
     @Override
     public ReviewEvidenceExportJob createReviewEvidenceExportJob(ReviewEvidenceExportCommand command) {
-        ReviewEvidenceExportPackage exportPackage = buildReviewEvidenceExportPackage(command);
+        ReviewEvidenceExportPackage exportPackage = buildReviewEvidenceExportPackage(command, false);
         LocalDateTime createdAt = exportPackage.generatedAt();
         return reviewItemStore.createExportJob(
                 exportPackage,
@@ -2384,19 +2626,31 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         Objects.requireNonNull(command, "command");
         int limit = boundedPositive(command.maxJobs(), DEFAULT_EXPORT_WORKER_LIMIT, MAX_EXPORT_WORKER_LIMIT);
         LocalDateTime processedAt = LocalDateTime.now();
-        List<ReviewEvidenceExportJob> backlog = reviewItemStore.listAllExportJobs().stream()
-                .filter(job -> shouldProcessExportJob(job, processedAt))
-                .limit(limit)
-                .toList();
         List<String> processedJobNos = new ArrayList<>();
         List<String> failedJobNos = new ArrayList<>();
         List<String> deferredJobNos = new ArrayList<>();
-        for (ReviewEvidenceExportJob job : backlog) {
+        int scannedCount = 0;
+        int claimConflictCount = 0;
+        for (int index = 0; index < limit; index++) {
+            String claimToken = UUID.randomUUID().toString();
+            List<ReviewEvidenceExportJob> claimed = reviewItemStore.claimProcessableExportJobs(
+                    1,
+                    claimToken,
+                    command.operatorUserId(),
+                    processedAt,
+                    processedAt.minusMinutes(EXPORT_WORKER_RECLAIM_MINUTES)
+            );
+            if (claimed.isEmpty()) {
+                break;
+            }
+            ReviewEvidenceExportJob job = claimed.get(0);
+            scannedCount++;
             int attemptCount = exportWorkerAttemptCount(job) + 1;
             try {
                 if (isExportJobExpired(job, processedAt)) {
-                    ReviewEvidenceExportJob expired = updateExportJobWorkerState(
+                    ReviewEvidenceExportJob expired = completeExportJobWorkerState(
                             job,
+                            claimToken,
                             EXPORT_JOB_EXPIRED,
                             attemptCount,
                             "expired",
@@ -2408,17 +2662,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     processedJobNos.add(expired.jobNo());
                     continue;
                 }
-                ReviewEvidenceExportJob running = updateExportJobWorkerState(
-                        job,
-                        EXPORT_JOB_RUNNING,
-                        attemptCount,
-                        "running",
-                        command.operatorUserId(),
-                        processedAt,
-                        null,
-                        null
+                ReviewEvidenceExportPackage exportPackage = buildReviewEvidenceExportPackage(
+                        exportCommandFromJob(job),
+                        true,
+                        job.expiresAt()
                 );
-                ReviewEvidenceExportPackage exportPackage = buildReviewEvidenceExportPackage(exportCommandFromJob(running));
                 ReviewEvidenceExportPackage readyPackage = withExportWorkerManifest(
                         exportPackage,
                         attemptCount,
@@ -2428,56 +2676,82 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                         null,
                         null
                 );
-                reviewItemStore.updateExportJob(new ReviewEvidenceExportJob(
-                        running.jobNo(),
+                reviewItemStore.completeExportJobClaim(new ReviewEvidenceExportJob(
+                        job.jobNo(),
                         EXPORT_JOB_READY,
                         readyPackage,
                         exportFileHash(readyPackage),
-                        processedAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS),
-                        running.operatorUserId(),
-                        running.reason(),
+                        job.expiresAt(),
+                        job.operatorUserId(),
+                        job.reason(),
                         boundEventIds(readyPackage.reviewItemIds()),
-                        running.createdAt()
-                ));
-                processedJobNos.add(running.jobNo());
+                        job.createdAt(),
+                        job.version()
+                ), claimToken);
+                processedJobNos.add(job.jobNo());
             } catch (RuntimeException ex) {
-                ReviewEvidenceExportJob failed = updateExportJobWorkerState(
-                        job,
-                        EXPORT_JOB_FAILED,
-                        attemptCount,
-                        "failed",
-                        command.operatorUserId(),
-                        processedAt,
-                        exportWorkerNextRetryAt(processedAt, attemptCount),
-                        ex.getMessage()
-                );
-                failedJobNos.add(failed.jobNo());
+                if (isExportJobClaimConflict(ex)) {
+                    deferredJobNos.add(job.jobNo());
+                    claimConflictCount++;
+                    continue;
+                }
+                try {
+                    ReviewEvidenceExportJob failed = completeExportJobWorkerState(
+                            job,
+                            claimToken,
+                            EXPORT_JOB_FAILED,
+                            attemptCount,
+                            "failed",
+                            command.operatorUserId(),
+                            processedAt,
+                            exportWorkerNextRetryAt(processedAt, attemptCount),
+                            ex.getMessage()
+                    );
+                    failedJobNos.add(failed.jobNo());
+                } catch (RuntimeException completionException) {
+                    if (!isExportJobClaimConflict(completionException)) {
+                        throw completionException;
+                    }
+                    deferredJobNos.add(job.jobNo());
+                    claimConflictCount++;
+                }
             }
         }
         List<ReviewEvidenceExportJob> jobsAfterRun = reviewItemStore.listAllExportJobs();
         int remainingBacklog = (int) jobsAfterRun.stream()
                 .filter(job -> shouldProcessExportJob(job, processedAt))
                 .count();
-        int deferredCount = (int) jobsAfterRun.stream()
-                .filter(job -> isExportWorkerDeferred(job, processedAt))
-                .count();
         jobsAfterRun.stream()
                 .filter(job -> isExportWorkerDeferred(job, processedAt))
                 .map(ReviewEvidenceExportJob::jobNo)
                 .forEach(deferredJobNos::add);
+        List<String> distinctDeferredJobNos = List.copyOf(new LinkedHashSet<>(deferredJobNos));
+        int deferredCount = distinctDeferredJobNos.size();
         return new ReviewEvidenceExportWorkerRun(
-                exportWorkerStatus(processedJobNos.size(), failedJobNos.size(), remainingBacklog),
-                backlog.size(),
+                exportWorkerStatus(processedJobNos.size(), failedJobNos.size(), remainingBacklog + claimConflictCount),
+                scannedCount,
                 processedJobNos.size(),
                 failedJobNos.size(),
                 deferredCount,
                 remainingBacklog,
                 List.copyOf(processedJobNos),
                 List.copyOf(failedJobNos),
-                List.copyOf(deferredJobNos),
+                distinctDeferredJobNos,
                 processedAt,
                 command.operatorUserId()
         );
+    }
+
+    private static boolean isExportJobClaimConflict(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current.getMessage() != null
+                    && current.getMessage().startsWith("export_job_claim_conflict:")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private ReviewEvidenceExportCommand exportCommandFromJob(ReviewEvidenceExportJob job) {
@@ -2493,14 +2767,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
     }
 
-    private ReviewEvidenceExportJob updateExportJobWorkerState(ReviewEvidenceExportJob job,
-                                                               String status,
-                                                               int attemptCount,
-                                                               String workerStatus,
-                                                               Long operatorUserId,
-                                                               LocalDateTime processedAt,
-                                                               LocalDateTime nextRetryAt,
-                                                               String lastError) {
+    private ReviewEvidenceExportJob completeExportJobWorkerState(ReviewEvidenceExportJob job,
+                                                                 String claimToken,
+                                                                 String status,
+                                                                 int attemptCount,
+                                                                 String workerStatus,
+                                                                 Long operatorUserId,
+                                                                 LocalDateTime processedAt,
+                                                                 LocalDateTime nextRetryAt,
+                                                                 String lastError) {
         ReviewEvidenceExportPackage exportPackage = withExportWorkerManifest(
                 job.exportPackage(),
                 attemptCount,
@@ -2510,7 +2785,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 nextRetryAt,
                 lastError
         );
-        return reviewItemStore.updateExportJob(new ReviewEvidenceExportJob(
+        return reviewItemStore.completeExportJobClaim(new ReviewEvidenceExportJob(
                 job.jobNo(),
                 status,
                 exportPackage,
@@ -2519,17 +2794,18 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 job.operatorUserId(),
                 job.reason(),
                 job.boundEventIds(),
-                job.createdAt()
-        ));
+                job.createdAt(),
+                job.version()
+        ), claimToken);
     }
 
-    private static ReviewEvidenceExportPackage withExportWorkerManifest(ReviewEvidenceExportPackage exportPackage,
-                                                                        int attemptCount,
-                                                                        String workerStatus,
-                                                                        Long operatorUserId,
-                                                                        LocalDateTime processedAt,
-                                                                        LocalDateTime nextRetryAt,
-                                                                        String lastError) {
+    private ReviewEvidenceExportPackage withExportWorkerManifest(ReviewEvidenceExportPackage exportPackage,
+                                                                 int attemptCount,
+                                                                 String workerStatus,
+                                                                 Long operatorUserId,
+                                                                 LocalDateTime processedAt,
+                                                                 LocalDateTime nextRetryAt,
+                                                                 String lastError) {
         Map<String, Object> manifest = new LinkedHashMap<>(exportPackage.manifest());
         Map<String, Object> worker = new LinkedHashMap<>();
         worker.put("status", workerStatus);
@@ -2563,8 +2839,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (EXPORT_JOB_READY.equals(job.status())) {
             return isExportJobExpired(job, now);
         }
+        if (EXPORT_JOB_RUNNING.equals(job.status())) {
+            LocalDateTime processedAt = exportWorkerProcessedAt(job);
+            return processedAt == null
+                    || (now != null && processedAt.isBefore(now.minusMinutes(EXPORT_WORKER_RECLAIM_MINUTES)));
+        }
         if (!EXPORT_JOB_PENDING.equals(job.status())
-                && !EXPORT_JOB_RUNNING.equals(job.status())
                 && !EXPORT_JOB_FAILED.equals(job.status())) {
             return false;
         }
@@ -2602,6 +2882,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             return 0;
         }
         return Math.toIntExact(Math.min(attemptCount, Integer.MAX_VALUE));
+    }
+
+    private static LocalDateTime exportWorkerProcessedAt(ReviewEvidenceExportJob job) {
+        if (job == null || job.exportPackage() == null || job.exportPackage().manifest() == null) {
+            return null;
+        }
+        return toLocalDateTime(toStringObjectMap(job.exportPackage().manifest().get("worker")).get("processedAt"));
     }
 
     private static LocalDateTime exportWorkerNextRetryAt(LocalDateTime processedAt, int attemptCount) {
@@ -2654,12 +2941,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         } else if (!Objects.equals(expectedManifestHash, actualManifestHash)) {
             violations.add("manifest_hash_mismatch");
         }
-        Map<String, Object> signature = toStringObjectMap(manifest.get("signature"));
-        String expectedSignature = expectedManifestSignature(manifest, expectedManifestHash);
-        if (signature.isEmpty()) {
-            violations.add("missing_signature");
-        } else if (!Objects.equals(expectedSignature, signature.get("value"))) {
-            violations.add("signature_mismatch");
+        ReviewEvidenceManifestSigner.Verification signatureVerification = evidenceManifestSigner.verify(
+                toStringObjectMap(manifest.get("signature")),
+                expectedManifestHash
+        );
+        if (!signatureVerification.valid()) {
+            violations.add(signatureVerification.violation());
         }
         if (!hasText(packageChecksum)) {
             violations.add("missing_package_checksum");
@@ -2829,7 +3116,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 "runtime smoke"
         ));
         checkpoints.add("review_case_created");
-        ReviewEvidenceExportJob job = createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+        ReviewEvidenceExportJob queuedJob = createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
                 reviewCase.id(),
                 List.of(item.id()),
                 command.operatorUserId(),
@@ -2839,6 +3126,19 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 null,
                 command.allowedCameraIds()
         ));
+        checkpoints.add("evidence_export_queued");
+        processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(1, command.operatorUserId()));
+        ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(queuedJob.jobNo())
+                .orElseThrow(() -> new IllegalStateException("evidence export job disappeared"));
+        if (!EXPORT_JOB_READY.equals(job.status())) {
+            String workerError = toText(toStringObjectMap(
+                    job.exportPackage().manifest().get("worker")
+            ).get("lastError"));
+            throw new IllegalStateException(firstText(
+                    workerError,
+                    "evidence export worker did not produce a ready package: " + job.status()
+            ));
+        }
         checkpoints.add("evidence_export_ready");
         boolean videoExportConfirmed = hasConfirmedVideoExport(job);
         if (videoExportConfirmed) {
@@ -2853,13 +3153,35 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
         if (verification.valid()) {
             checkpoints.add("manifest_verified");
-            recordEvidenceDownload(
-                    job.jobNo(),
-                    command.operatorUserId(),
-                    "integration smoke download audit",
-                    command.allowedCameraIds()
-            );
-            checkpoints.add("evidence_download_audited");
+            if (includeVideoExport) {
+                try (ReviewEvidenceDownloadArtifact artifact = downloadEvidencePackage(
+                        new ReviewEvidenceDownloadCommand(
+                                job.jobNo(),
+                                command.operatorUserId(),
+                                command.allowedCameraIds(),
+                                "integration smoke download audit"
+                        ))) {
+                    long actualLength = Files.size(artifact.temporaryFile());
+                    String actualHash = sha256File(artifact.temporaryFile());
+                    if (actualLength <= 0 || actualLength != artifact.contentLength()) {
+                        throw new IllegalStateException("integration smoke downloaded package length mismatch");
+                    }
+                    if (!sha256HashesEqual(actualHash, artifact.fileHash())) {
+                        throw new IllegalStateException("integration smoke downloaded package hash mismatch");
+                    }
+                    if (artifact.auditEntry() == null
+                            || !"export_downloaded".equals(artifact.auditEntry().actionType())
+                            || !sha256HashesEqual(actualHash, artifact.auditEntry().fileHash())) {
+                        throw new IllegalStateException("integration smoke download audit did not bind real bytes");
+                    }
+                    checkpoints.add("evidence_download_bytes_verified");
+                    checkpoints.add("evidence_download_audited");
+                } catch (IllegalStateException | SecurityException exception) {
+                    throw exception;
+                } catch (Exception exception) {
+                    throw new IllegalStateException("integration smoke evidence download failed", exception);
+                }
+            }
         }
         if (realProfile) {
             checkpoints.add("sample_web_contract_renderable");
@@ -2882,13 +3204,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private static boolean hasConfirmedVideoExport(ReviewEvidenceExportJob job) {
         return toMapList(job.exportPackage().manifest().get("videoExports")).stream()
-                .anyMatch(videoExport -> {
-                    String status = toText(videoExport.get("status"));
-                    String normalizedStatus = status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
-                    return hasText(toText(videoExport.get("exportId")))
-                            && hasText(toText(videoExport.get("exportUri")))
-                            && !Set.of("failed", "rejected", "unavailable").contains(normalizedStatus);
-                });
+                .anyMatch(SupervisionAlertReviewServiceImpl::hasCompleteVideoExportProvenance);
     }
 
     @Override
@@ -2911,10 +3227,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             }
         }
         List<ReviewEvidenceAuditEntry> sortedTrail = auditTrail.stream()
-                .sorted(Comparator
-                        .comparing(ReviewEvidenceAuditEntry::happenedAt,
-                                Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(ReviewEvidenceAuditEntry::actionType, Comparator.nullsLast(Comparator.naturalOrder())))
+                .sorted(Comparator.comparing(
+                        ReviewEvidenceAuditEntry::happenedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
         return withAuditHashChain(sortedTrail);
     }
@@ -2929,12 +3244,57 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .filter(timelineItem -> "case_audit".equals(timelineItem.materialType()))
                 .filter(timelineItem -> isMediaAccessAuditAction(timelineItem.materialUri()))
                 .map(timelineItem -> mediaAccessAuditEntry(timelineItem.reviewCaseId(), timelineItem))
+                .sorted(Comparator.comparing(
+                        ReviewEvidenceAuditEntry::happenedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        return withAuditHashChain(auditTrail);
+    }
+
+    @Override
+    public List<ReviewEvidenceAuditEntry> queryEvidenceAuditTrail(ReviewEvidenceAuditQuery query) {
+        Objects.requireNonNull(query, "query");
+        if (!query.hasCriteria()) {
+            throw new IllegalArgumentException(
+                    "at least one of eventId, reviewCaseId, reviewItemId or exportJobNo is required");
+        }
+        if (query.eventId() != null) {
+            requirePositive(query.eventId(), "eventId");
+        }
+        if (query.reviewCaseId() != null) {
+            requirePositive(query.reviewCaseId(), "reviewCaseId");
+        }
+        if (query.reviewItemId() != null) {
+            requirePositive(query.reviewItemId(), "reviewItemId");
+        }
+        if (query.exportJobNo() != null) {
+            requireText(query.exportJobNo(), "exportJobNo");
+        }
+
+        List<ReviewEvidenceAuditEntry> auditTrail = new ArrayList<>();
+        reviewItemStore.listEvidenceAuditExportJobs(query).stream()
+                .map(SupervisionAlertReviewServiceImpl::exportJobAuditEntry)
+                .forEach(auditTrail::add);
+        for (ReviewCaseTimelineItem timelineItem : reviewItemStore.listEvidenceAuditRecords(query)) {
+            if (!"case_audit".equals(timelineItem.materialType())) {
+                continue;
+            }
+            if ("export_downloaded".equals(timelineItem.materialUri())) {
+                auditTrail.add(downloadAuditEntry(timelineItem.reviewCaseId(), timelineItem));
+            } else if (isMediaAccessAuditAction(timelineItem.materialUri())) {
+                auditTrail.add(mediaAccessAuditEntry(timelineItem.reviewCaseId(), timelineItem));
+            }
+        }
+        List<ReviewEvidenceAuditEntry> sortedTrail = auditTrail.stream()
                 .sorted(Comparator
                         .comparing(ReviewEvidenceAuditEntry::happenedAt,
                                 Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(ReviewEvidenceAuditEntry::actionType, Comparator.nullsLast(Comparator.naturalOrder())))
+                        .thenComparing(ReviewEvidenceAuditEntry::actionType,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewEvidenceAuditEntry::jobNo,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
-        return withAuditHashChain(auditTrail);
+        return withAuditHashChain(sortedTrail);
     }
 
     @Override
@@ -2950,23 +3310,381 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         requireText(jobNo, "jobNo");
         ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(jobNo)
                 .orElseThrow(() -> new IllegalArgumentException("export job not found: " + jobNo));
+        LocalDateTime happenedAt = LocalDateTime.now();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("decision", "denied");
+        metadata.put("deniedReasons", List.of("audit_only_endpoint_disabled"));
+        metadata.put("jobNo", jobNo);
+        metadata.put("logicalPackageHash", job.fileHash());
+        metadata.put("reason", reason);
+        metadata.put("allowedCameraIds", allowedCameraIds == null ? List.of() : List.copyOf(allowedCameraIds));
+        String actionNote = "decision=denied; action=download; jobNo=" + jobNo
+                + "; deniedReasons=audit_only_endpoint_disabled"
+                + (hasText(reason) ? "; reason=" + reason : "");
+        reviewItemStore.recordMediaAccessAudit(
+                job.exportPackage().reviewCaseId(),
+                null,
+                "evidence_download_denied",
+                actionNote,
+                operatorUserId,
+                happenedAt,
+                immutableNonNullMap(metadata)
+        );
+        return new ReviewEvidenceAuditEntry(
+                job.exportPackage().reviewCaseId(),
+                null,
+                "evidence_download_denied",
+                jobNo,
+                null,
+                operatorUserId,
+                actionNote,
+                job.exportPackage().evidenceUris(),
+                job.boundEventIds(),
+                happenedAt,
+                immutableNonNullMap(metadata)
+        );
+    }
+
+    private ReviewEvidenceAuditEntry recordEvidenceDownload(String jobNo,
+                                                            Long operatorUserId,
+                                                            String reason,
+                                                            List<String> allowedCameraIds,
+                                                            String downloadFileHash,
+                                                            Map<String, Object> downloadMetadata) {
+        requireText(jobNo, "jobNo");
+        requireText(downloadFileHash, "downloadFileHash");
+        ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(jobNo)
+                .orElseThrow(() -> new IllegalArgumentException("export job not found: " + jobNo));
+        assertExportJobDownloadable(job, LocalDateTime.now());
+        ReviewEvidenceAuditEntry auditEntry = reviewItemStore.recordEvidenceDownload(
+                jobNo,
+                operatorUserId,
+                reason,
+                LocalDateTime.now(),
+                downloadFileHash,
+                downloadMetadata
+        );
+        return enrichDownloadAuditEntry(auditEntry, job);
+    }
+
+    @Override
+    public ReviewEvidenceDownloadArtifact downloadEvidencePackage(ReviewEvidenceDownloadCommand command) {
+        Objects.requireNonNull(command, "command");
+        requireText(command.jobNo(), "jobNo");
+        ReviewEvidenceExportJob job = reviewItemStore.findExportJobByNo(command.jobNo())
+                .orElseThrow(() -> new IllegalArgumentException("export job not found: " + command.jobNo()));
         assertExportJobDownloadable(job, LocalDateTime.now());
         enforceMediaAccessScope(
                 job.exportPackage().reviewCaseId(),
                 job.exportPackage().timeline(),
                 loadReviewItems(job.exportPackage().reviewItemIds()),
-                operatorUserId,
+                command.operatorUserId(),
                 "download",
-                allowedCameraIds,
-                reason
+                command.allowedCameraIds(),
+                command.reason()
         );
-        ReviewEvidenceAuditEntry auditEntry = reviewItemStore.recordEvidenceDownload(
-                jobNo,
-                operatorUserId,
-                reason,
-                LocalDateTime.now()
+        ReviewManifestVerification manifestVerification = verifyEvidenceExportManifest(
+                job.jobNo(),
+                command.operatorUserId(),
+                command.allowedCameraIds()
         );
-        return enrichDownloadAuditEntry(auditEntry, job);
+        if (!manifestVerification.valid()) {
+            throw new SecurityException("evidence manifest trust verification failed: "
+                    + String.join(",", manifestVerification.violations()));
+        }
+        List<Map<String, Object>> videoExports = videoExportsForDownload(job);
+        List<ReviewEvidenceDownloadArtifact> downloadedArtifacts = new ArrayList<>();
+        try {
+            for (Map<String, Object> videoExport : videoExports) {
+                downloadedArtifacts.add(downloadVideoExport(job, videoExport));
+            }
+            ReviewEvidenceDownloadArtifact packageArtifact;
+            if (downloadedArtifacts.size() == 1) {
+                Map<String, Object> videoExport = videoExports.get(0);
+                String expectedFileHash = toText(videoExport.get("fileHash"));
+                if (!sha256HashesEqual(expectedFileHash, job.fileHash())) {
+                    throw new IllegalStateException("export job file hash does not reference the ready VIDEO package");
+                }
+                packageArtifact = downloadedArtifacts.remove(0);
+            } else {
+                packageArtifact = createMultiCameraEvidencePackage(job, videoExports, downloadedArtifacts);
+                downloadedArtifacts.clear();
+            }
+            try {
+                ReviewEvidenceAuditEntry auditEntry = recordEvidenceDownload(
+                        job.jobNo(),
+                        command.operatorUserId(),
+                        command.reason(),
+                        command.allowedCameraIds(),
+                        packageArtifact.fileHash(),
+                        evidenceDownloadMetadata(job, packageArtifact, videoExports.size())
+                );
+                return new ReviewEvidenceDownloadArtifact(
+                        job.jobNo(),
+                        firstText(packageArtifact.fileName(), job.jobNo() + ".bin"),
+                        firstText(packageArtifact.contentType(), "application/octet-stream"),
+                        packageArtifact.temporaryFile(),
+                        packageArtifact.contentLength(),
+                        packageArtifact.fileHash(),
+                        auditEntry
+                );
+            } catch (RuntimeException exception) {
+                closeDownloadArtifactQuietly(packageArtifact);
+                throw exception;
+            }
+        } finally {
+            downloadedArtifacts.forEach(SupervisionAlertReviewServiceImpl::closeDownloadArtifactQuietly);
+        }
+    }
+
+    private static List<Map<String, Object>> videoExportsForDownload(ReviewEvidenceExportJob job) {
+        List<Map<String, Object>> videoExports = toMapList(job.exportPackage().manifest().get("videoExports"));
+        if (videoExports.isEmpty() || videoExports.stream()
+                .anyMatch(videoExport -> !hasCompleteVideoExportProvenance(videoExport))) {
+            throw new IllegalStateException("export job must reference ready VIDEO package artifacts");
+        }
+        return videoExports;
+    }
+
+    private static Map<String, Object> evidenceDownloadMetadata(ReviewEvidenceExportJob job,
+                                                                ReviewEvidenceDownloadArtifact artifact,
+                                                                int artifactCount) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("downloadFileHash", artifact.fileHash());
+        metadata.put("logicalPackageHash", job.fileHash());
+        metadata.put("manifestPackageChecksum", job.exportPackage().manifest().get("packageChecksum"));
+        metadata.put("fileName", artifact.fileName());
+        metadata.put("contentType", artifact.contentType());
+        metadata.put("contentLength", artifact.contentLength());
+        metadata.put("artifactCount", artifactCount);
+        metadata.put("hashSource", "downloaded_bytes");
+        return immutableNonNullMap(metadata);
+    }
+
+    private ReviewEvidenceDownloadArtifact downloadVideoExport(ReviewEvidenceExportJob job,
+                                                                 Map<String, Object> videoExport) {
+        String exportUri = toText(videoExport.get("exportUri"));
+        String expectedFileHash = toText(videoExport.get("fileHash"));
+        if (!hasText(exportUri) || !isSha256Hash(expectedFileHash)) {
+            throw new IllegalStateException("ready export job has no verifiable VIDEO package");
+        }
+        String cameraId = videoExportCameraId(videoExport, job.exportPackage().timeline());
+        ReviewEvidenceDownloadArtifact downloaded = videoEvidenceExportProvider.download(
+                        new ReviewEvidenceVideoDownloadRequest(exportUri, cameraId, expectedFileHash))
+                .orElseThrow(() -> new IllegalStateException("VIDEO package download is unavailable"));
+        try {
+            if (!Files.isRegularFile(downloaded.temporaryFile()) || downloaded.contentLength() <= 0L) {
+                throw new IllegalStateException("VIDEO package download returned no bytes");
+            }
+            long actualLength = Files.size(downloaded.temporaryFile());
+            if (actualLength != downloaded.contentLength()) {
+                throw new SecurityException("VIDEO package byte length mismatch");
+            }
+            String actualFileHash = sha256File(downloaded.temporaryFile());
+            if (!sha256HashesEqual(expectedFileHash, actualFileHash)
+                    || !sha256HashesEqual(actualFileHash, downloaded.fileHash())) {
+                throw new SecurityException("VIDEO package byte hash mismatch");
+            }
+            return downloaded;
+        } catch (RuntimeException exception) {
+            closeDownloadArtifactQuietly(downloaded);
+            throw exception;
+        } catch (Exception exception) {
+            closeDownloadArtifactQuietly(downloaded);
+            throw new IllegalStateException("VIDEO package download verification failed", exception);
+        }
+    }
+
+    private ReviewEvidenceDownloadArtifact createMultiCameraEvidencePackage(
+            ReviewEvidenceExportJob job,
+            List<Map<String, Object>> videoExports,
+            List<ReviewEvidenceDownloadArtifact> artifacts) {
+        if (videoExports.size() != artifacts.size() || artifacts.size() < 2) {
+            throw new IllegalStateException("multi-camera evidence package artifacts do not reconcile");
+        }
+        Path packageFile = createEvidencePackageTemporaryFile();
+        try {
+            List<Map<String, Object>> artifactMetadata = new ArrayList<>();
+            for (int index = 0; index < artifacts.size(); index++) {
+                ReviewEvidenceDownloadArtifact artifact = artifacts.get(index);
+                Map<String, Object> videoExport = videoExports.get(index);
+                String cameraId = videoExportCameraId(videoExport, job.exportPackage().timeline());
+                String entryName = "artifacts/" + String.format(Locale.ROOT, "%03d", index)
+                        + "-" + safeArchiveFileName(artifact.fileName(), cameraId + ".mp4");
+                Map<String, Object> metadata = new LinkedHashMap<>();
+                metadata.put("packageOrder", index);
+                metadata.put("entryName", entryName);
+                metadata.put("cameraId", cameraId);
+                metadata.put("exportId", videoExport.get("exportId"));
+                metadata.put("fileName", artifact.fileName());
+                metadata.put("contentType", artifact.contentType());
+                metadata.put("contentLength", artifact.contentLength());
+                metadata.put("fileHash", artifact.fileHash());
+                metadata.put("ffmpegCommandHash", videoExport.get("ffmpegCommandHash"));
+                metadata.put("recordSegments", videoExport.get("recordSegments"));
+                artifactMetadata.add(immutableNonNullMap(metadata));
+            }
+            String logicalPackageHash = sha256Token(
+                    "review-evidence-multi-camera-package-v1",
+                    job.jobNo(),
+                    job.exportPackage().manifest().get("manifestHash"),
+                    artifactMetadata
+            );
+            Map<String, Object> packageMetadata = new LinkedHashMap<>();
+            packageMetadata.put("schema", "yfeieye-evidence-package-v1");
+            packageMetadata.put("packageType", "multi-camera-zip");
+            packageMetadata.put("jobNo", job.jobNo());
+            packageMetadata.put("packageNo", job.exportPackage().packageNo());
+            packageMetadata.put("reviewCaseId", job.exportPackage().reviewCaseId());
+            packageMetadata.put("reviewItemIds", job.exportPackage().reviewItemIds());
+            packageMetadata.put("packageHash", logicalPackageHash);
+            packageMetadata.put("packageChecksum", job.exportPackage().manifest().get("packageChecksum"));
+            packageMetadata.put("manifestHash", job.exportPackage().manifest().get("manifestHash"));
+            packageMetadata.put("artifactCount", artifacts.size());
+            packageMetadata.put("artifactOrder", artifactMetadata.stream()
+                    .map(metadata -> metadata.get("entryName"))
+                    .toList());
+            packageMetadata.put("artifacts", List.copyOf(artifactMetadata));
+
+            MessageDigest archiveDigest = sha256Digest();
+            try (OutputStream fileOutput = Files.newOutputStream(
+                    packageFile,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
+                 DigestOutputStream digestOutput = new DigestOutputStream(
+                         new BufferedOutputStream(fileOutput), archiveDigest);
+                 ZipOutputStream zip = new ZipOutputStream(digestOutput, StandardCharsets.UTF_8)) {
+                writeZipEntry(zip, "manifest.json", JsonUtils.toJsonString(job.exportPackage().manifest()));
+                writeZipEntry(zip, "audit.json", JsonUtils.toJsonString(
+                        getEvidenceAuditTrail(job.exportPackage().reviewCaseId())));
+                writeZipEntry(zip, "metadata.json", JsonUtils.toJsonString(packageMetadata));
+                for (int index = 0; index < artifacts.size(); index++) {
+                    String entryName = toText(artifactMetadata.get(index).get("entryName"));
+                    writeZipFile(zip, entryName, artifacts.get(index).temporaryFile());
+                }
+            }
+            long contentLength = Files.size(packageFile);
+            if (contentLength <= 0L) {
+                throw new IllegalStateException("multi-camera evidence ZIP is empty");
+            }
+            return new ReviewEvidenceDownloadArtifact(
+                    job.jobNo(),
+                    safeArchiveFileName(job.jobNo(), "evidence-package") + ".zip",
+                    "application/zip",
+                    packageFile,
+                    contentLength,
+                    "sha256:" + java.util.HexFormat.of().formatHex(archiveDigest.digest()),
+                    null
+            );
+        } catch (RuntimeException exception) {
+            deleteTemporaryFile(packageFile);
+            throw exception;
+        } catch (Exception exception) {
+            deleteTemporaryFile(packageFile);
+            throw new IllegalStateException("unable to create multi-camera evidence ZIP", exception);
+        } finally {
+            artifacts.forEach(SupervisionAlertReviewServiceImpl::closeDownloadArtifactQuietly);
+        }
+    }
+
+    private static void writeZipEntry(ZipOutputStream zip, String entryName, String content) throws Exception {
+        ZipEntry entry = new ZipEntry(entryName);
+        entry.setTime(0L);
+        zip.putNextEntry(entry);
+        zip.write(content.getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
+    }
+
+    private static void writeZipFile(ZipOutputStream zip, String entryName, Path file) throws Exception {
+        ZipEntry entry = new ZipEntry(entryName);
+        entry.setTime(0L);
+        zip.putNextEntry(entry);
+        try (InputStream input = Files.newInputStream(file)) {
+            input.transferTo(zip);
+        }
+        zip.closeEntry();
+    }
+
+    private static Path createEvidencePackageTemporaryFile() {
+        try {
+            return Files.createTempFile("yfeieye-evidence-package-", ".zip");
+        } catch (Exception exception) {
+            throw new IllegalStateException("unable to create evidence package temporary file", exception);
+        }
+    }
+
+    private static String safeArchiveFileName(String fileName, String fallback) {
+        String candidate = hasText(fileName) ? fileName.trim() : fallback;
+        String sanitized = candidate.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (!hasText(sanitized) || ".".equals(sanitized) || "..".equals(sanitized)) {
+            sanitized = fallback;
+        }
+        return sanitized.length() <= 180 ? sanitized : sanitized.substring(0, 180);
+    }
+
+    private static String sha256File(Path file) {
+        MessageDigest digest = sha256Digest();
+        try (InputStream input = Files.newInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (read > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            return "sha256:" + java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (Exception exception) {
+            throw new IllegalStateException("unable to hash evidence artifact", exception);
+        }
+    }
+
+    private static MessageDigest sha256Digest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (Exception exception) {
+            throw new IllegalStateException("SHA-256 unavailable", exception);
+        }
+    }
+
+    private static void closeDownloadArtifactQuietly(ReviewEvidenceDownloadArtifact artifact) {
+        if (artifact == null) {
+            return;
+        }
+        try {
+            artifact.close();
+        } catch (Exception ignored) {
+            artifact.temporaryFile().toFile().deleteOnExit();
+        }
+    }
+
+    private static void deleteTemporaryFile(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (Exception ignored) {
+            file.toFile().deleteOnExit();
+        }
+    }
+
+    private static String videoExportCameraId(Map<String, Object> videoExport,
+                                              List<ReviewCaseTimelineItem> timeline) {
+        LinkedHashSet<String> cameraIds = new LinkedHashSet<>();
+        for (Map<String, Object> segment : toMapList(videoExport.get("recordSegments"))) {
+            String cameraId = firstText(toText(segment.get("cameraId")), toText(segment.get("camera_id")));
+            if (hasText(cameraId)) {
+                cameraIds.add(cameraId);
+            }
+        }
+        if (cameraIds.isEmpty()) {
+            for (ReviewCaseTimelineItem item : timeline == null ? List.<ReviewCaseTimelineItem>of() : timeline) {
+                if (isEvidenceMedia(item.materialType()) && hasText(item.cameraId())) {
+                    cameraIds.add(item.cameraId());
+                }
+            }
+        }
+        if (cameraIds.size() != 1) {
+            throw new IllegalStateException("unable to resolve one camera for VIDEO package download");
+        }
+        return cameraIds.iterator().next();
     }
 
     private static void assertExportJobDownloadable(ReviewEvidenceExportJob job, LocalDateTime now) {
@@ -3078,26 +3796,44 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.allowedCameraIds(),
                 command.reason()
         ));
+        String playbackUrl = "granted".equals(audit.decision()) && hasText(materialUri)
+                ? reviewPlaybackUrlSigner.signPlaybackUrl(materialUri, item.cameraId())
+                : null;
         return new ReviewPlaybackAccess(
                 command.reviewCaseId(),
                 command.reviewItemId(),
                 command.operatorUserId(),
                 item.cameraId(),
                 materialUri,
-                "granted".equals(audit.decision()) ? materialUri : null,
+                playbackUrl,
                 audit.decision(),
                 audit.deniedReasons(),
                 audit
         );
     }
 
-    private ReviewEvidenceExportPackage buildReviewEvidenceExportPackage(ReviewEvidenceExportCommand command) {
+    private ReviewEvidenceExportPackage buildReviewEvidenceExportPackage(ReviewEvidenceExportCommand command,
+                                                                          boolean requestVideoExport) {
+        return buildReviewEvidenceExportPackage(command, requestVideoExport, null);
+    }
+
+    private ReviewEvidenceExportPackage buildReviewEvidenceExportPackage(ReviewEvidenceExportCommand command,
+                                                                          boolean requestVideoExport,
+                                                                          LocalDateTime requestedExpiresAt) {
         Objects.requireNonNull(command, "command");
         requirePositive(command.reviewCaseId(), "reviewCaseId");
         List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(command.reviewCaseId());
+        List<Long> caseReviewItemIds = reviewItemIdsFromTimeline(timeline);
         List<Long> reviewItemIds = command.reviewItemIds() == null || command.reviewItemIds().isEmpty()
-                ? reviewItemIdsFromTimeline(timeline)
+                ? caseReviewItemIds
                 : List.copyOf(new LinkedHashSet<>(command.reviewItemIds()));
+        List<Long> caseExternalReviewItemIds = reviewItemIds.stream()
+                .filter(id -> id == null || !caseReviewItemIds.contains(id))
+                .toList();
+        if (!caseExternalReviewItemIds.isEmpty()) {
+            throw new IllegalArgumentException("review_item_not_in_case: " + caseExternalReviewItemIds);
+        }
+        Long approverUserId = authenticatedApproverUserId(command);
         List<ReviewCaseTimelineItem> scopedTimeline = timeline.stream()
                 .filter(item -> item.reviewItemId() == null || reviewItemIds.contains(item.reviewItemId()))
                 .toList();
@@ -3105,7 +3841,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .map(id -> withEventProjection(reviewItemStore.findById(id).orElse(null)))
                 .filter(Objects::nonNull)
                 .toList();
-        String format = hasText(command.format()) ? command.format() : "manifest";
+        String format = normalizeEvidenceExportFormat(command.format());
+        if (!EVIDENCE_EXPORT_FORMATS.contains(format)) {
+            throw new IllegalArgumentException("unsupported_export_format: " + format);
+        }
         enforceMediaAccessScope(
                 command.reviewCaseId(),
                 scopedTimeline,
@@ -3115,12 +3854,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.allowedCameraIds(),
                 command.reason()
         );
-        List<ReviewEvidenceVideoExportResult> videoExports = requestVideoExports(
-                command.reviewCaseId(),
-                reviewItemIds,
-                scopedTimeline,
-                format
-        );
+        LocalDateTime generatedAt = LocalDateTime.now();
+        LocalDateTime expiresAt = requestedExpiresAt == null
+                ? generatedAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS)
+                : requestedExpiresAt;
+        List<ReviewEvidenceVideoExportResult> videoExports = requestVideoExport
+                ? requestVideoExports(command.reviewCaseId(), reviewItemIds, scopedTimeline, format, expiresAt)
+                : List.of();
         List<String> evidenceUris = scopedTimeline.stream()
                 .filter(item -> MATERIAL_SNAPSHOT.equals(item.materialType()) || MATERIAL_RECORD.equals(item.materialType()))
                 .map(ReviewCaseTimelineItem::materialUri)
@@ -3128,7 +3868,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .distinct()
                 .toList();
         evidenceUris = mergeEvidenceUris(evidenceUris, videoExports);
-        LocalDateTime generatedAt = LocalDateTime.now();
+        String requestKey = evidenceExportRequestKey(command, reviewItemIds, format, approverUserId);
         Map<String, Object> manifest = buildEvidenceManifest(
                 command.reviewCaseId(),
                 reviewItemIds,
@@ -3138,8 +3878,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 videoExports,
                 format,
                 command.operatorUserId(),
-                command.approverUserId(),
+                approverUserId,
                 command.approvalNote(),
+                requestKey,
+                expiresAt,
                 generatedAt
         );
         return new ReviewEvidenceExportPackage(
@@ -3152,6 +3894,36 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 manifest,
                 generatedAt
         );
+    }
+
+    private static String evidenceExportRequestKey(ReviewEvidenceExportCommand command,
+                                                    List<Long> reviewItemIds,
+                                                    String format,
+                                                    Long approverUserId) {
+        List<Long> normalizedReviewItemIds = reviewItemIds == null
+                ? List.of()
+                : reviewItemIds.stream().filter(Objects::nonNull).sorted().toList();
+        return sha256Token(
+                "review-evidence-export-request-v1",
+                command.reviewCaseId(),
+                normalizedReviewItemIds,
+                command.operatorUserId(),
+                format == null ? null : format.trim().toLowerCase(Locale.ROOT),
+                command.reason(),
+                approverUserId,
+                command.approvalNote()
+        );
+    }
+
+    private static Long authenticatedApproverUserId(ReviewEvidenceExportCommand command) {
+        boolean approvalRequested = command.approverUserId() != null || hasText(command.approvalNote());
+        if (!approvalRequested) {
+            return null;
+        }
+        if (command.operatorUserId() == null || command.operatorUserId() <= 0) {
+            throw new SecurityException("authenticated approver is required");
+        }
+        return command.operatorUserId();
     }
 
     private void enforceItemMediaReadScope(Long reviewCaseId,
@@ -3245,7 +4017,18 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                 LinkedHashMap::new
                         ));
         for (ReviewCaseTimelineItem item : timeline == null ? List.<ReviewCaseTimelineItem>of() : timeline) {
-            if (!isEvidenceMedia(item.materialType()) || item.reviewItemId() == null) {
+            if (!isEvidenceMedia(item.materialType())) {
+                continue;
+            }
+            if (item.reviewItemId() == null) {
+                auditAndEnforceCaseLevelMediaAccess(
+                        reviewCaseId,
+                        item,
+                        operatorUserId,
+                        actionType,
+                        effectiveAllowedCameraIds,
+                        reason
+                );
                 continue;
             }
             ReviewItemAggregate reviewItem = itemById.get(item.reviewItemId());
@@ -3261,6 +4044,48 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     reason,
                     item.materialUri()
             );
+        }
+    }
+
+    private void auditAndEnforceCaseLevelMediaAccess(Long reviewCaseId,
+                                                     ReviewCaseTimelineItem item,
+                                                     Long operatorUserId,
+                                                     String actionType,
+                                                     List<String> allowedCameraIds,
+                                                     String reason) {
+        List<String> deniedReasons = new ArrayList<>();
+        if (!hasText(item.cameraId())) {
+            deniedReasons.add("camera_unresolved");
+        } else if (!allowedCameraIds.contains(item.cameraId())) {
+            deniedReasons.add("camera_not_allowed");
+        }
+        String decision = deniedReasons.isEmpty() ? "granted" : "denied";
+        LocalDateTime happenedAt = LocalDateTime.now();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("decision", decision);
+        metadata.put("cameraId", item.cameraId());
+        metadata.put("materialUri", item.materialUri());
+        metadata.put("allowedCameraIds", List.copyOf(allowedCameraIds));
+        metadata.put("deniedReasons", List.copyOf(deniedReasons));
+        metadata.put("reason", reason);
+        String auditNote = "decision=" + decision
+                + "; action=" + actionType
+                + "; cameraId=" + item.cameraId()
+                + "; materialUri=" + item.materialUri()
+                + (operatorUserId == null ? "" : "; operatorUserId=" + operatorUserId)
+                + (deniedReasons.isEmpty() ? "" : "; deniedReasons=" + String.join(",", deniedReasons))
+                + (hasText(reason) ? "; reason=" + reason : "");
+        reviewItemStore.recordMediaAccessAudit(
+                reviewCaseId,
+                null,
+                "media_access_" + decision,
+                auditNote,
+                operatorUserId,
+                happenedAt,
+                immutableNonNullMap(metadata)
+        );
+        if (!deniedReasons.isEmpty()) {
+            throw new SecurityException("media access denied: " + String.join(",", deniedReasons));
         }
     }
 
@@ -3825,6 +4650,70 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 || RECORD_EVIDENCE_FAILED.equals(item.recordEvidenceStatus()));
     }
 
+    private List<ReviewRecordStorageDriftResolver.RecordStorageDriftReport> inspectRecordStorageDrift(
+            List<ReviewItemAggregate> items) {
+        Map<String, ReviewItemAggregate> devices = new LinkedHashMap<>();
+        for (ReviewItemAggregate item : items == null ? List.<ReviewItemAggregate>of() : items) {
+            if (item == null) {
+                continue;
+            }
+            String deviceId = hasText(item.deviceId()) ? item.deviceId() : item.cameraId();
+            if (hasText(deviceId)) {
+                devices.putIfAbsent(deviceId, item);
+            }
+        }
+        List<ReviewRecordStorageDriftResolver.RecordStorageDriftReport> reports = new ArrayList<>();
+        for (Map.Entry<String, ReviewItemAggregate> entry : devices.entrySet()) {
+            ReviewItemAggregate item = entry.getValue();
+            try {
+                ReviewRecordStorageDriftResolver.RecordStorageDriftReport report =
+                        recordStorageDriftResolver.inspect(
+                                new ReviewRecordStorageDriftResolver.RecordStorageDriftRequest(
+                                        entry.getKey(),
+                                        item.cameraId(),
+                                        Math.max(1, recordStorageDriftRetentionHours)
+                                ));
+                if (report != null) {
+                    reports.add(report);
+                }
+            } catch (RuntimeException ignored) {
+                reports.add(new ReviewRecordStorageDriftResolver.RecordStorageDriftReport(
+                        entry.getKey(),
+                        item.cameraId(),
+                        null,
+                        false,
+                        0,
+                        1,
+                        Map.of(RECORD_GAP_PROBE_FAILED, 1),
+                        List.of(),
+                        RECORD_GAP_PROBE_FAILED,
+                        LocalDateTime.now()
+                ));
+            }
+        }
+        return List.copyOf(reports);
+    }
+
+    private static Map<String, Integer> mergeRecordStorageDriftReasons(
+            Map<String, Integer> itemReasons,
+            List<ReviewRecordStorageDriftResolver.RecordStorageDriftReport> reports) {
+        Map<String, Integer> merged = new LinkedHashMap<>(itemReasons == null ? Map.of() : itemReasons);
+        for (ReviewRecordStorageDriftResolver.RecordStorageDriftReport report
+                : reports == null ? List.<ReviewRecordStorageDriftResolver.RecordStorageDriftReport>of() : reports) {
+            if (report == null || report.issueReasons() == null) {
+                continue;
+            }
+            for (Map.Entry<String, Integer> entry : report.issueReasons().entrySet()) {
+                String reason = normalizeRecordGapReason(entry.getKey());
+                Integer count = entry.getValue();
+                if (hasText(reason) && count != null && count > 0) {
+                    merged.merge(reason, count, Integer::sum);
+                }
+            }
+        }
+        return Map.copyOf(merged);
+    }
+
     private Map<String, Integer> recordGapReasons(List<ReviewItemAggregate> items) {
         Map<String, Integer> reasons = new LinkedHashMap<>();
         for (ReviewItemAggregate item : items == null ? List.<ReviewItemAggregate>of() : items) {
@@ -3953,7 +4842,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         };
     }
 
-    private static ReviewDataConsistency reviewDataConsistency(ReviewItemAggregate item) {
+    private ReviewDataConsistency reviewDataConsistency(ReviewItemAggregate item) {
         if (item == null) {
             return new ReviewDataConsistency(Map.of(), true, true);
         }
@@ -4002,9 +4891,34 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
 
         Map<String, Object> segment = normalizeReviewSegmentDoubleWrite(item, normalized.get("reviewSegment"), objectIds, zones);
-        boolean segmentDoubleWriteDrift = reviewSegmentDoubleWriteDrift(item, toStringObjectMap(normalized.get("reviewSegment")), segment);
+        boolean segmentDoubleWriteDrift = reviewSegmentDoubleWriteDrift(
+                item,
+                toStringObjectMap(normalized.get("reviewSegment")),
+                segment
+        ) || persistedReviewSegmentDrift(item, segment);
         normalized.put("reviewSegment", segment);
         return new ReviewDataConsistency(Map.copyOf(normalized), schemaDrift, segmentDoubleWriteDrift);
+    }
+
+    private boolean persistedReviewSegmentDrift(ReviewItemAggregate item,
+                                                Map<String, Object> expectedSegment) {
+        Optional<ReviewSegmentView> persisted = reviewItemStore.findPersistedReviewSegment(item.id());
+        if (persisted.isEmpty()) {
+            return true;
+        }
+        ReviewSegmentView actual = persisted.get();
+        return !Objects.equals(item.id(), actual.reviewItemId())
+                || !Objects.equals(firstText(expectedSegment.get("segmentId"), null), actual.segmentId())
+                || !Objects.equals(firstText(expectedSegment.get("cameraId"), null), actual.cameraId())
+                || !Objects.equals(firstText(expectedSegment.get("severity"), null), actual.severity())
+                || !Objects.equals(firstText(expectedSegment.get("status"), null), actual.status())
+                || !Objects.equals(toLocalDateTime(expectedSegment.get("startTime")), actual.startTime())
+                || !Objects.equals(toLocalDateTime(expectedSegment.get("endTime")), actual.endTime())
+                || !Objects.equals(toStringList(expectedSegment.get("objectIds"), null), actual.objectIds())
+                || !Objects.equals(toStringList(expectedSegment.get("zones"), null), actual.zones())
+                || !Objects.equals(toStringList(expectedSegment.get("sourceAlertIds"), null), actual.sourceAlertIds())
+                || !Objects.equals(toMapList(expectedSegment.get("events")), actual.events())
+                || !Objects.equals(expectedSegment, actual.metadata());
     }
 
     private static boolean hasSchemaViolationPrefix(AlertReviewDataSchemaValidator.ValidationResult validation,
@@ -4514,9 +5428,6 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (threshold == null || threshold <= 0D) {
             return hit.score() > 0D;
         }
-        if (threshold <= 1D) {
-            return hit.score() > 0D;
-        }
         return hit.score() >= threshold;
     }
 
@@ -4547,7 +5458,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static Map<String, Object> buildSemanticTriggerHitExplanation(ReviewSemanticTriggerCommand command,
-                                                                          ReviewSemanticHit hit) {
+                                                                          ReviewSemanticHit hit,
+                                                                          ReviewSemanticIndexEntry indexEntry,
+                                                                          String indexGenerationId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("triggerName", command.triggerName());
         payload.put("triggerType", command.triggerType());
@@ -4561,6 +5474,16 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         payload.put("matchedTerms", hit.matchedTerms());
         payload.put("snippet", hit.snippet());
         payload.put("sourceAlertIds", hit.item().sourceAlertIds());
+        payload.put("indexVersion", indexEntry == null || indexEntry.indexVersion() == null
+                ? 0
+                : indexEntry.indexVersion());
+        payload.put("indexGenerationId", indexGenerationId);
+        payload.put("indexStatus", indexEntry == null ? "live_fallback" : indexEntry.indexStatus());
+        payload.put("indexedAt", indexEntry == null || indexEntry.indexedAt() == null
+                ? null
+                : indexEntry.indexedAt().toString());
+        payload.put("embeddingModel", indexEntry == null ? null : indexEntry.embeddingModel());
+        payload.put("embeddingVectorHash", indexEntry == null ? null : indexEntry.embeddingVectorHash());
         payload.put("correlationId", hit.item().reviewData() == null
                 ? null
                 : hit.item().reviewData().get("correlationId"));
@@ -4579,6 +5502,196 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         preview.put("requiresHumanConfirmation", actionPayload.get("requiresHumanConfirmation"));
         preview.put("humanConfirmationStatus", actionPayload.get("humanConfirmationStatus"));
         return immutableNonNullMap(preview);
+    }
+
+    private static Map<String, Object> semanticTriggerEvaluationMetadata(ReviewSemanticTriggerResult result,
+                                                                          Long operatorUserId) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("schemaVersion", SEMANTIC_TRIGGER_SCHEMA_VERSION);
+        metadata.put("evaluationId", result.evaluationId());
+        metadata.put("triggerName", result.triggerName());
+        metadata.put("triggerType", result.triggerType());
+        metadata.put("data", result.data());
+        metadata.put("matchedReviewItemIds", result.matchedReviewItemIds());
+        metadata.put("actionPayloads", result.actionPayloads());
+        metadata.put("hitExplanations", result.hitExplanations());
+        metadata.put("actionPreviews", result.actionPreviews());
+        metadata.put("evaluatedAt", result.evaluatedAt().toString());
+        metadata.put("inputVersion", result.inputVersion());
+        metadata.put("inputHash", result.inputHash());
+        metadata.put("indexGenerationId", result.indexGenerationId());
+        metadata.put("latestIndexVersion", result.latestIndexVersion());
+        metadata.put("evaluatedBy", operatorUserId);
+        metadata.put("humanConfirmationStatus", "pending");
+        metadata.put("previewOnly", true);
+        return immutableNonNullMap(metadata);
+    }
+
+    private static Map<String, Object> semanticTriggerDecisionMetadata(String evaluationId,
+                                                                        String confirmationStatus,
+                                                                        Long operatorUserId,
+                                                                        LocalDateTime confirmedAt,
+                                                                        String notes,
+                                                                        Map<String, Object> evaluationMetadata) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("schemaVersion", SEMANTIC_TRIGGER_SCHEMA_VERSION);
+        metadata.put("evaluationId", evaluationId);
+        metadata.put("inputVersion", firstText(
+                toText(evaluationMetadata.get("inputVersion")),
+                SEMANTIC_TRIGGER_INPUT_VERSION));
+        metadata.put("inputHash", toText(evaluationMetadata.get("inputHash")));
+        metadata.put("indexGenerationId", toText(evaluationMetadata.get("indexGenerationId")));
+        metadata.put("latestIndexVersion", firstNonNull(
+                toInteger(evaluationMetadata.get("latestIndexVersion")),
+                0));
+        metadata.put("humanConfirmationStatus", confirmationStatus);
+        metadata.put("confirmedBy", operatorUserId);
+        metadata.put("confirmedAt", confirmedAt.toString());
+        metadata.put("notes", hasText(notes) ? notes.trim() : null);
+        metadata.put("previewOnly", true);
+        metadata.put("actionsExecuted", false);
+        return immutableNonNullMap(metadata);
+    }
+
+    private static String semanticTriggerDecisionAuditNote(Map<String, Object> metadata) {
+        List<String> values = new ArrayList<>();
+        values.add("evaluationId=" + metadata.get("evaluationId"));
+        values.add("humanConfirmationStatus=" + metadata.get("humanConfirmationStatus"));
+        values.add("confirmedBy=" + metadata.get("confirmedBy"));
+        values.add("confirmedAt=" + metadata.get("confirmedAt"));
+        values.add("previewOnly=true");
+        values.add("actionsExecuted=false");
+        if (metadata.get("notes") != null) {
+            values.add("notes=" + metadata.get("notes"));
+        }
+        return String.join("; ", values);
+    }
+
+    private static String normalizeSemanticTriggerEvaluationId(String evaluationId) {
+        requireText(evaluationId, "evaluationId");
+        String normalized = evaluationId.trim().toLowerCase(Locale.ROOT);
+        if (!SEMANTIC_TRIGGER_EVALUATION_ID.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("evaluationId is invalid");
+        }
+        return normalized;
+    }
+
+    private static String normalizeSemanticTriggerConfirmationStatus(String confirmationStatus) {
+        requireText(confirmationStatus, "confirmationStatus");
+        String normalized = confirmationStatus.trim().toLowerCase(Locale.ROOT);
+        if (!Set.of("confirmed", "rejected").contains(normalized)) {
+            throw new IllegalArgumentException("confirmationStatus must be confirmed or rejected");
+        }
+        return normalized;
+    }
+
+    private static ReviewSemanticTriggerAuditRecord semanticTriggerPendingAudit(
+            List<ReviewSemanticTriggerAuditRecord> audits,
+            String evaluationId) {
+        return audits.stream()
+                .filter(audit -> SEMANTIC_TRIGGER_EVALUATED_ACTION.equals(audit.actionType()))
+                .filter(audit -> SEMANTIC_TRIGGER_SCHEMA_VERSION.equals(audit.metadata().get("schemaVersion")))
+                .filter(audit -> evaluationId.equals(audit.metadata().get("evaluationId")))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("evaluationId not found"));
+    }
+
+    private static Optional<ReviewSemanticTriggerAuditRecord> semanticTriggerDecisionAudit(
+            List<ReviewSemanticTriggerAuditRecord> audits,
+            String evaluationId) {
+        return audits.stream()
+                .filter(audit -> SEMANTIC_TRIGGER_CONFIRMED_ACTION.equals(audit.actionType())
+                        || SEMANTIC_TRIGGER_REJECTED_ACTION.equals(audit.actionType()))
+                .filter(audit -> SEMANTIC_TRIGGER_SCHEMA_VERSION.equals(audit.metadata().get("schemaVersion")))
+                .filter(audit -> evaluationId.equals(audit.metadata().get("evaluationId")))
+                .filter(audit -> semanticTriggerDecisionStatus(audit.actionType())
+                        .equals(audit.metadata().get("humanConfirmationStatus")))
+                .findFirst();
+    }
+
+    private static String semanticTriggerDecisionStatus(String actionType) {
+        return SEMANTIC_TRIGGER_CONFIRMED_ACTION.equals(actionType) ? "confirmed" : "rejected";
+    }
+
+    private static ReviewSemanticTriggerResult resolveExistingSemanticTriggerDecision(
+            String evaluationId,
+            String requestedStatus,
+            ReviewSemanticTriggerAuditRecord pendingAudit,
+            ReviewSemanticTriggerAuditRecord decisionAudit) {
+        ReviewSemanticTriggerResult result = semanticTriggerResultFromAudits(
+                evaluationId,
+                pendingAudit,
+                decisionAudit,
+                true
+        );
+        if (!requestedStatus.equals(result.humanConfirmationStatus())) {
+            throw new IllegalStateException("semantic_trigger_already_decided: "
+                    + result.humanConfirmationStatus());
+        }
+        return result;
+    }
+
+    private static ReviewSemanticTriggerResult semanticTriggerResultFromAudits(
+            String evaluationId,
+            ReviewSemanticTriggerAuditRecord pendingAudit,
+            ReviewSemanticTriggerAuditRecord decisionAudit,
+            boolean duplicate) {
+        Map<String, Object> pending = pendingAudit.metadata();
+        String triggerName = toText(pending.get("triggerName"));
+        LocalDateTime evaluatedAt = toLocalDateTime(pending.get("evaluatedAt"));
+        if (!hasText(triggerName) || evaluatedAt == null) {
+            throw new IllegalArgumentException("evaluationId not found");
+        }
+        String status = semanticTriggerDecisionStatus(decisionAudit.actionType());
+        return new ReviewSemanticTriggerResult(
+                triggerName,
+                toText(pending.get("triggerType")),
+                toText(pending.get("data")),
+                toLongList(pending.get("matchedReviewItemIds")),
+                toMapList(pending.get("actionPayloads")),
+                evaluatedAt,
+                firstText(toText(pending.get("inputVersion")), SEMANTIC_TRIGGER_INPUT_VERSION),
+                toText(pending.get("inputHash")),
+                toText(pending.get("indexGenerationId")),
+                firstNonNull(toInteger(pending.get("latestIndexVersion")), 0),
+                toMapList(pending.get("hitExplanations")),
+                toMapList(pending.get("actionPreviews")),
+                status,
+                evaluationId,
+                decisionAudit.operatorUserId(),
+                decisionAudit.happenedAt(),
+                duplicate
+        );
+    }
+
+    private static ReviewSemanticTriggerResult semanticTriggerPendingResult(
+            String evaluationId,
+            ReviewSemanticTriggerAuditRecord pendingAudit) {
+        Map<String, Object> pending = pendingAudit.metadata();
+        String triggerName = toText(pending.get("triggerName"));
+        LocalDateTime evaluatedAt = toLocalDateTime(pending.get("evaluatedAt"));
+        if (!hasText(triggerName) || evaluatedAt == null) {
+            throw new IllegalArgumentException("evaluationId not found");
+        }
+        return new ReviewSemanticTriggerResult(
+                triggerName,
+                toText(pending.get("triggerType")),
+                toText(pending.get("data")),
+                toLongList(pending.get("matchedReviewItemIds")),
+                toMapList(pending.get("actionPayloads")),
+                evaluatedAt,
+                firstText(toText(pending.get("inputVersion")), SEMANTIC_TRIGGER_INPUT_VERSION),
+                toText(pending.get("inputHash")),
+                toText(pending.get("indexGenerationId")),
+                firstNonNull(toInteger(pending.get("latestIndexVersion")), 0),
+                toMapList(pending.get("hitExplanations")),
+                toMapList(pending.get("actionPreviews")),
+                "pending",
+                evaluationId,
+                null,
+                null,
+                false
+        );
     }
 
     private static ReviewQuery reportQuery(ReviewReportCommand command) {
@@ -4601,20 +5714,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
     }
 
-    private static void requireAcceptedRuleSuggestion(ReviewItemAggregate item) {
-        String lifecycleStatus = item.ruleSuggestion() == null
-                ? null
-                : toText(item.ruleSuggestion().get("lifecycleStatus"));
-        if (RULE_SUGGESTION_ACCEPTED.equals(item.ruleSuggestionStatus())
-                || RULE_SUGGESTION_ACCEPTED.equals(lifecycleStatus)) {
-            return;
-        }
-        throw new IllegalStateException("rule suggestion must be accepted before apply");
-    }
-
     private Map<String, Object> withRuleGovernanceEvidence(ReviewItemAggregate item,
-                                                           Map<String, Object> suggestion,
-                                                           String applyNote) {
+                                                           Map<String, Object> suggestion) {
         Map<String, Object> updated = new LinkedHashMap<>(suggestion == null ? Map.of() : suggestion);
         Map<String, Object> shadowEvaluation = toStringObjectMap(updated.get("shadowEvaluation"));
         if (shadowEvaluation.isEmpty()) {
@@ -4624,10 +5725,16 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (toStringObjectMap(updated.get("replayReport")).isEmpty()) {
             updated.put("replayReport", buildRuleSuggestionReplayReport(item, shadowEvaluation));
         }
-        if (hasText(applyNote)) {
-            updated.put("applyNote", applyNote);
-        }
         return immutableNonNullMap(updated);
+    }
+
+    private static void requireRuleGovernanceEvidence(Map<String, Object> suggestion) {
+        if (toStringObjectMap(suggestion == null ? null : suggestion.get("shadowEvaluation")).isEmpty()
+                || toStringObjectMap(suggestion == null ? null : suggestion.get("replayReport")).isEmpty()) {
+            throw new IllegalStateException(
+                    "rule suggestion requires existing shadowEvaluation and replayReport before approval or apply"
+            );
+        }
     }
 
     private Map<String, Object> buildRuleShadowEvaluation(ReviewItemAggregate item) {
@@ -4986,37 +6093,69 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                         List<ReviewItemAggregate> reviewItems,
                                                         ReviewAiSummaryRequest request,
                                                         List<String> redactedFields) {
+        List<String> outputRedactedFields = new ArrayList<>();
+        String title = (String) redactAiSummaryValue(
+                summary.title(), "title", "title", outputRedactedFields);
+        String summaryText = (String) redactAiSummaryValue(
+                summary.summary(), "summary", "summary", outputRedactedFields);
+        List<String> keyFacts = redactAiSummaryOutputList(
+                summary.keyFacts(), "keyFacts", outputRedactedFields);
+        List<String> evidenceGaps = redactAiSummaryOutputList(
+                summary.evidenceGaps(), "evidenceGaps", outputRedactedFields);
+        List<String> recommendedActions = redactAiSummaryOutputList(
+                summary.recommendedActions(), "recommendedActions", outputRedactedFields);
+        Map<String, Object> providerStructuredData = redactAiSummaryReviewData(
+                summary.structuredData(), "structuredData", outputRedactedFields);
         Map<String, Object> defaults = buildStructuredAiSummaryData(
                 summary.reviewCaseId(),
-                summary.title(),
-                summary.summary(),
+                title,
+                summaryText,
                 reviewItems,
-                summary.evidenceGaps(),
-                summary.recommendedActions()
+                evidenceGaps,
+                recommendedActions
         );
         Map<String, Object> merged = new LinkedHashMap<>(defaults);
-        if (summary.structuredData() != null) {
-            merged.putAll(summary.structuredData());
+        if (!providerStructuredData.isEmpty()) {
+            merged.putAll(providerStructuredData);
         }
-        merged.putIfAbsent("aiProvenance", buildAiSummaryProvenance(
+        merged.put("aiProvenance", buildAiSummaryProvenance(
                 request,
                 summary.generatedBy(),
                 summary.generatedAt(),
                 firstText(summary.generatedBy(), "external-provider"),
-                redactedFields
+                redactedFields,
+                outputRedactedFields
         ));
         return new ReviewAiSummary(
                 summary.reviewCaseId(),
                 summary.reviewItemIds(),
-                summary.title(),
-                summary.summary(),
-                summary.keyFacts(),
-                summary.evidenceGaps(),
-                summary.recommendedActions(),
+                title,
+                summaryText,
+                keyFacts,
+                evidenceGaps,
+                recommendedActions,
                 summary.generatedAt(),
                 summary.generatedBy(),
                 immutableNonNullMap(merged)
         );
+    }
+
+    private List<String> redactAiSummaryOutputList(List<String> values,
+                                                   String path,
+                                                   List<String> redactedFields) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> redacted = new ArrayList<>();
+        for (int index = 0; index < values.size(); index++) {
+            redacted.add((String) redactAiSummaryValue(
+                    values.get(index),
+                    path + "[" + index + "]",
+                    path,
+                    redactedFields
+            ));
+        }
+        return List.copyOf(redacted);
     }
 
     private static Map<String, Object> buildStructuredAiSummaryData(Long reviewCaseId,
@@ -5058,7 +6197,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                          String generatedBy,
                                                          LocalDateTime generatedAt,
                                                          String model,
-                                                         List<String> redactedFields) {
+                                                         List<String> redactedFields,
+                                                         List<String> outputRedactedFields) {
         Map<String, Object> provenance = new LinkedHashMap<>();
         provenance.put("provider", firstText(generatedBy, firstText(model, "unknown")));
         provenance.put("model", firstText(model, firstText(generatedBy, "unknown")));
@@ -5069,6 +6209,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         List<String> redactions = redactedFields == null ? List.of() : List.copyOf(redactedFields);
         provenance.put("redactionStatus", redactions.isEmpty() ? "not_required" : "applied");
         provenance.put("redactedFields", redactions);
+        List<String> outputRedactions = outputRedactedFields == null
+                ? List.of()
+                : List.copyOf(new LinkedHashSet<>(outputRedactedFields));
+        provenance.put("outputRedacted", !outputRedactions.isEmpty());
+        provenance.put("outputRedactedFields", outputRedactions);
         provenance.put("humanConfirmationStatus", "pending");
         provenance.put("requestedBy", request == null ? null : request.operatorUserId());
         provenance.put("generatedAt", generatedAt == null ? null : generatedAt.toString());
@@ -5268,21 +6413,112 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
     }
 
-    private List<ReviewSemanticSearchCandidate> semanticCandidates(ReviewQuery filters) {
-        List<ReviewSemanticSearchCandidate> indexedCandidates = reviewItemStore.listSemanticIndex(filters).stream()
+    private SemanticSearchSnapshot semanticSearchSnapshot(ReviewQuery filters) {
+        List<ReviewSemanticIndexEntry> indexEntries = reviewItemStore.listSemanticIndex(filters);
+        List<ReviewSemanticIndexEntry> indexedEntries = indexEntries.stream()
                 .filter(entry -> SEMANTIC_INDEX_INDEXED.equals(entry.indexStatus()))
                 .filter(entry -> hasText(entry.document()))
-                .map(entry -> reviewItemStore.findById(entry.reviewItemId())
-                        .map(item -> new ReviewSemanticSearchCandidate(item, entry.document()))
-                        .orElse(null))
-                .filter(Objects::nonNull)
                 .toList();
-        if (!indexedCandidates.isEmpty()) {
-            return indexedCandidates;
+        String indexGenerationId = indexedEntries.stream()
+                .filter(entry -> hasText(entry.indexGenerationId()))
+                .max(Comparator
+                        .comparing(ReviewSemanticIndexEntry::indexedAt,
+                                Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(ReviewSemanticIndexEntry::indexVersion,
+                                Comparator.nullsFirst(Comparator.naturalOrder())))
+                .map(ReviewSemanticIndexEntry::indexGenerationId)
+                .orElse(null);
+        String selectedGenerationId = indexGenerationId;
+        List<ReviewSemanticIndexEntry> selectedEntries = hasText(indexGenerationId)
+                ? indexedEntries.stream()
+                        .filter(entry -> selectedGenerationId.equals(entry.indexGenerationId()))
+                        .toList()
+                : indexedEntries;
+        if (!hasText(indexGenerationId) && !selectedEntries.isEmpty()) {
+            indexGenerationId = "legacy-" + sha256Hex(selectedEntries.stream()
+                    .map(entry -> entry.reviewItemId() + ":" + entry.indexVersion())
+                    .sorted()
+                    .collect(Collectors.joining("|")));
         }
-        return listWorkbench(filters).stream()
-                .map(item -> new ReviewSemanticSearchCandidate(item, buildSearchDocument(item)))
+        Map<Long, ReviewSemanticIndexEntry> indexProvenanceByItemId = new LinkedHashMap<>();
+        List<ReviewSemanticSearchCandidate> candidates = new ArrayList<>();
+        for (ReviewSemanticIndexEntry entry : selectedEntries) {
+            reviewItemStore.findById(entry.reviewItemId()).ifPresent(item -> {
+                candidates.add(new ReviewSemanticSearchCandidate(item, entry.document()));
+                indexProvenanceByItemId.put(entry.reviewItemId(), entry);
+            });
+        }
+        if (candidates.isEmpty()) {
+            candidates.addAll(listWorkbench(filters).stream()
+                    .map(item -> new ReviewSemanticSearchCandidate(item, buildSearchDocument(item)))
+                    .toList());
+            indexProvenanceByItemId.clear();
+            indexGenerationId = "live-" + sha256Hex(candidates.stream()
+                    .map(candidate -> candidate.item().id() + ":"
+                            + candidate.item().firstAlertTime() + ":"
+                            + candidate.item().lastAlertTime())
+                    .sorted()
+                    .collect(Collectors.joining("|")));
+        }
+        int latestIndexVersion = selectedEntries.stream()
+                .map(ReviewSemanticIndexEntry::indexVersion)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
+        return new SemanticSearchSnapshot(
+                List.copyOf(candidates),
+                Map.copyOf(indexProvenanceByItemId),
+                indexGenerationId,
+                latestIndexVersion
+        );
+    }
+
+    private record SemanticSearchSnapshot(List<ReviewSemanticSearchCandidate> candidates,
+                                          Map<Long, ReviewSemanticIndexEntry> indexProvenanceByItemId,
+                                          String indexGenerationId,
+                                          int latestIndexVersion) {
+    }
+
+    private static String semanticTriggerInputHash(ReviewSemanticTriggerCommand command,
+                                                   ReviewQuery filters,
+                                                   List<String> actions,
+                                                   SemanticSearchSnapshot snapshot) {
+        List<String> candidateWindow = snapshot.candidates().stream()
+                .map(candidate -> candidate.item().id()
+                        + "|" + candidate.item().firstAlertTime()
+                        + "|" + candidate.item().lastAlertTime()
+                        + "|" + candidate.item().sourceAlertIds())
+                .sorted()
                 .toList();
+        List<String> normalizedActions = actions == null
+                ? List.of()
+                : actions.stream().map(String::trim).sorted().toList();
+        return sha256Token(
+                SEMANTIC_TRIGGER_INPUT_VERSION,
+                normalizeSemanticInputText(command.triggerName()),
+                normalizeSemanticInputText(command.cameraId()),
+                normalizeSemanticInputText(command.triggerType()),
+                normalizeSemanticInputText(command.data()),
+                command.threshold(),
+                normalizedActions,
+                filters == null ? null : filters.reviewStatus(),
+                filters == null ? null : filters.cameraId(),
+                filters == null ? null : filters.zoneCode(),
+                filters == null ? null : filters.objectLabel(),
+                filters == null ? null : filters.recordEvidenceStatus(),
+                filters == null ? null : filters.converted(),
+                filters == null ? null : filters.inReviewCase(),
+                filters == null ? null : filters.reviewerUserId(),
+                filters == null ? null : filters.beginTime(),
+                filters == null ? null : filters.endTime(),
+                snapshot.indexGenerationId(),
+                candidateWindow
+        );
+    }
+
+    private static String normalizeSemanticInputText(String value) {
+        return value == null ? null : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private String buildSearchDocument(ReviewItemAggregate item) {
@@ -5371,7 +6607,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return List.copyOf(ids);
     }
 
-    private static Map<String, Object> buildEvidenceManifest(Long reviewCaseId,
+    private Map<String, Object> buildEvidenceManifest(Long reviewCaseId,
                                                              List<Long> reviewItemIds,
                                                              List<String> evidenceUris,
                                                              List<ReviewCaseTimelineItem> timeline,
@@ -5381,10 +6617,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                              Long operatorUserId,
                                                              Long approverUserId,
                                                              String approvalNote,
+                                                             String requestKey,
+                                                             LocalDateTime expiresAt,
                                                              LocalDateTime generatedAt) {
         List<Long> eventIds = eventIdsFromTimeline(timeline);
         List<Map<String, Object>> files = evidenceFileHashes(evidenceUris);
-        LocalDateTime expiresAt = generatedAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS);
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("manifestVersion", "2");
         manifest.put("schema", "yfeieye-evidence-manifest-v2");
@@ -5396,6 +6633,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         manifest.put("format", format);
         manifest.put("operatorUserId", operatorUserId);
         manifest.put("generatedBy", operatorUserId);
+        manifest.put("requestKey", requestKey);
         manifest.put("generatedAt", generatedAt.toString());
         manifest.put("expiresAt", expiresAt.toString());
         Map<String, Object> operator = new LinkedHashMap<>();
@@ -5571,25 +6809,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return sha256Token(canonicalValue(hashable));
     }
 
-    private static Map<String, Object> manifestSignature(Map<String, Object> manifest,
-                                                         String manifestHash,
-                                                         LocalDateTime signedAt) {
-        Map<String, Object> signature = new LinkedHashMap<>();
-        signature.put("algorithm", "sha256");
-        signature.put("signer", "yFeiEye-evidence-chain");
-        signature.put("signedAt", signedAt == null ? null : signedAt.toString());
-        signature.put("value", expectedManifestSignature(manifest, manifestHash));
-        return immutableNonNullMap(signature);
-    }
-
-    private static String expectedManifestSignature(Map<String, Object> manifest, String manifestHash) {
-        Map<String, Object> approval = toStringObjectMap(manifest == null ? null : manifest.get("approval"));
-        return sha256Token(
-                manifest == null ? null : manifest.get("packageChecksum"),
-                manifestHash,
-                manifest == null ? null : manifest.get("generatedBy"),
-                approval.get("approvedBy")
-        );
+    private Map<String, Object> manifestSignature(Map<String, Object> manifest,
+                                                  String manifestHash,
+                                                  LocalDateTime signedAt) {
+        return evidenceManifestSigner.sign(manifestHash, signedAt);
     }
 
     private static String canonicalValue(Object value) {
@@ -5687,6 +6910,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static String exportFileHash(ReviewEvidenceExportPackage exportPackage) {
+        List<Map<String, Object>> videoExports = toMapList(exportPackage.manifest().get("videoExports"));
+        if (videoExports.size() == 1 && hasCompleteVideoExportProvenance(videoExports.get(0))) {
+            String realVideoHash = toText(videoExports.get(0).get("fileHash"));
+            if (hasText(realVideoHash) && SHA256_HASH.matcher(realVideoHash).matches()) {
+                return realVideoHash;
+            }
+        }
         String payload = exportPackage.packageNo()
                 + "|" + exportPackage.reviewCaseId()
                 + "|" + exportPackage.reviewItemIds()
@@ -5706,9 +6936,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static String sha256Hex(String payload) {
+        return sha256Hex(payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha256Hex(byte[] payload) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(payload);
             StringBuilder hex = new StringBuilder(hash.length * 2);
             for (byte value : hash) {
                 hex.append(String.format("%02x", value));
@@ -5722,13 +6956,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private List<ReviewEvidenceVideoExportResult> requestVideoExports(Long reviewCaseId,
                                                                       List<Long> reviewItemIds,
                                                                       List<ReviewCaseTimelineItem> timeline,
-                                                                      String format) {
+                                                                      String format,
+                                                                      LocalDateTime expiresAt) {
         if (timeline.isEmpty()) {
+            if (requiresVideoArtifact(format)) {
+                throw new IllegalStateException("video export requested but case timeline is empty");
+            }
             return List.of();
         }
         List<ReviewEvidenceVideoExportResult> results = new ArrayList<>();
-        Set<String> requested = new LinkedHashSet<>();
-        for (ReviewCaseTimelineItem timelineItem : timeline) {
+        Set<String> requestedSegments = new LinkedHashSet<>();
+        Map<String, List<VideoExportSegmentContext>> segmentsByCamera = new LinkedHashMap<>();
+        boolean videoArtifactRequired = requiresVideoArtifact(format);
+        List<ReviewCaseTimelineItem> orderedTimeline = timeline.stream()
+                .sorted(Comparator
+                        .comparing(ReviewCaseTimelineItem::happenedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewCaseTimelineItem::reviewItemId, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewCaseTimelineItem::materialUri, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        for (ReviewCaseTimelineItem timelineItem : orderedTimeline) {
             if (!MATERIAL_RECORD.equals(timelineItem.materialType())
                     || timelineItem.reviewItemId() == null
                     || !reviewItemIds.contains(timelineItem.reviewItemId())
@@ -5736,7 +6982,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 continue;
             }
             String requestKey = timelineItem.reviewItemId() + "|" + timelineItem.materialUri();
-            if (!requested.add(requestKey)) {
+            if (!requestedSegments.add(requestKey)) {
                 continue;
             }
             Optional<ReviewItemAggregate> aggregate = reviewItemStore.findById(timelineItem.reviewItemId());
@@ -5744,23 +6990,181 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 continue;
             }
             ReviewItemAggregate item = aggregate.get();
+            if (!hasText(item.cameraId())) {
+                continue;
+            }
+            segmentsByCamera.computeIfAbsent(item.cameraId(), ignored -> new ArrayList<>())
+                    .add(new VideoExportSegmentContext(item, timelineItem));
+        }
+        for (Map.Entry<String, List<VideoExportSegmentContext>> entry : segmentsByCamera.entrySet()) {
+            List<VideoExportSegmentContext> contexts = entry.getValue();
+            if (contexts.isEmpty()) {
+                continue;
+            }
+            List<ReviewEvidenceVideoSegmentRequest> segmentRequests = new ArrayList<>(contexts.size());
+            for (int index = 0; index < contexts.size(); index++) {
+                VideoExportSegmentContext context = contexts.get(index);
+                segmentRequests.add(new ReviewEvidenceVideoSegmentRequest(
+                        context.item().id(),
+                        context.timelineItem().sourceAlertId(),
+                        context.timelineItem().materialUri(),
+                        exportStartTime(context.item(), context.timelineItem()),
+                        exportEndTime(context.item(), context.timelineItem()),
+                        index
+                ));
+            }
+            VideoExportSegmentContext first = contexts.get(0);
+            LocalDateTime startTime = segmentRequests.stream()
+                    .map(ReviewEvidenceVideoSegmentRequest::clipStartTime)
+                    .filter(Objects::nonNull)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(null);
+            LocalDateTime endTime = segmentRequests.stream()
+                    .map(ReviewEvidenceVideoSegmentRequest::clipEndTime)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(null);
             try {
-                videoEvidenceExportProvider.export(new ReviewEvidenceVideoExportRequest(
-                        reviewCaseId,
-                        item.id(),
-                        item.deviceId(),
-                        item.cameraId(),
-                        timelineItem.sourceAlertId(),
-                        exportStartTime(item, timelineItem),
-                        exportEndTime(item, timelineItem),
-                        timelineItem.materialUri(),
-                        format
-                )).ifPresent(results::add);
-            } catch (RuntimeException ignored) {
-                // Evidence export must still return the manifest when VIDEO export is unavailable.
+                Optional<ReviewEvidenceVideoExportResult> exportResult = videoEvidenceExportProvider.export(
+                        new ReviewEvidenceVideoExportRequest(
+                                reviewCaseId,
+                                first.item().id(),
+                                first.item().deviceId(),
+                                entry.getKey(),
+                                first.timelineItem().sourceAlertId(),
+                                startTime,
+                                endTime,
+                                first.timelineItem().materialUri(),
+                                format,
+                                segmentRequests,
+                                expiresAt
+                        ));
+                if (exportResult.isPresent()) {
+                    if (videoArtifactRequired && !hasCompleteVideoExportProvenance(exportResult.get())) {
+                        throw new IllegalStateException("VIDEO export returned incomplete media provenance");
+                    }
+                    results.add(exportResult.get());
+                } else if (videoArtifactRequired) {
+                    throw new IllegalStateException("VIDEO export did not return a ready media artifact");
+                }
+            } catch (RuntimeException exception) {
+                if (videoArtifactRequired) {
+                    throw new IllegalStateException("VIDEO export failed; evidence job cannot be ready", exception);
+                }
             }
         }
+        if (videoArtifactRequired && requestedSegments.isEmpty()) {
+            throw new IllegalStateException("video export requested but case has no recording evidence");
+        }
+        if (videoArtifactRequired && results.size() != segmentsByCamera.size()) {
+            throw new IllegalStateException("VIDEO export did not complete every requested camera timeline");
+        }
         return List.copyOf(results);
+    }
+
+    private record VideoExportSegmentContext(ReviewItemAggregate item,
+                                             ReviewCaseTimelineItem timelineItem) {
+    }
+
+    private static boolean hasCompleteVideoExportProvenance(ReviewEvidenceVideoExportResult result) {
+        return result != null
+                && "ready".equals(normalizeVideoExportStatus(result.status()))
+                && hasText(result.exportId())
+                && hasText(result.exportUri())
+                && hasText(result.manifestUri())
+                && isSha256Hash(result.fileHash())
+                && isSha256Hash(result.ffmpegCommandHash())
+                && hasCompleteVideoSegmentProvenance(result.recordSegments());
+    }
+
+    private static boolean hasCompleteVideoExportProvenance(Map<String, Object> result) {
+        return result != null
+                && "ready".equals(normalizeVideoExportStatus(toText(result.get("status"))))
+                && hasText(toText(result.get("exportId")))
+                && hasText(toText(result.get("exportUri")))
+                && hasText(toText(result.get("manifestUri")))
+                && isSha256Hash(toText(result.get("fileHash")))
+                && isSha256Hash(toText(result.get("ffmpegCommandHash")))
+                && hasCompleteVideoSegmentProvenance(toMapList(result.get("recordSegments")));
+    }
+
+    private static boolean hasCompleteVideoSegmentProvenance(List<Map<String, Object>> segments) {
+        if (segments == null || segments.isEmpty()) {
+            return false;
+        }
+        Set<Integer> stitchOrders = new LinkedHashSet<>();
+        for (Map<String, Object> segment : segments) {
+            if (!isSha256Hash(toText(segment.get("sourceHash")))
+                    || !isSha256Hash(toText(segment.get("ffmpegCommandHash")))) {
+                return false;
+            }
+            if (!(segment.get("clipParameters") instanceof Map<?, ?> clipParameters)
+                    || !isFiniteNonNegative(clipParameters.get("offsetSeconds"))
+                    || !isFinitePositive(clipParameters.get("durationSeconds"))) {
+                return false;
+            }
+            Integer stitchOrder = exactVideoExportInteger(segment.get("stitchOrder"));
+            if (stitchOrder == null || stitchOrder < 0 || !stitchOrders.add(stitchOrder)) {
+                return false;
+            }
+        }
+        for (int expected = 0; expected < segments.size(); expected++) {
+            if (!stitchOrders.contains(expected)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String normalizeVideoExportStatus(String status) {
+        return status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isSha256Hash(String value) {
+        return hasText(value) && SHA256_HASH.matcher(value).matches();
+    }
+
+    private static boolean sha256HashesEqual(String left, String right) {
+        return isSha256Hash(left) && isSha256Hash(right) && left.equalsIgnoreCase(right);
+    }
+
+    private static Integer exactVideoExportInteger(Object value) {
+        if (!(value instanceof Number number)) {
+            return null;
+        }
+        double candidate = number.doubleValue();
+        if (!Double.isFinite(candidate) || candidate != Math.rint(candidate)
+                || candidate < Integer.MIN_VALUE || candidate > Integer.MAX_VALUE) {
+            return null;
+        }
+        return (int) candidate;
+    }
+
+    private static boolean isFiniteNonNegative(Object value) {
+        return value instanceof Number number
+                && Double.isFinite(number.doubleValue())
+                && number.doubleValue() >= 0D;
+    }
+
+    private static boolean isFinitePositive(Object value) {
+        return value instanceof Number number
+                && Double.isFinite(number.doubleValue())
+                && number.doubleValue() > 0D;
+    }
+
+    private static boolean requiresVideoArtifact(String format) {
+        if (!hasText(format)) {
+            return false;
+        }
+        return Set.of("mp4", "mkv", "mov", "avi", "webm", "ts")
+                .contains(format.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static String normalizeEvidenceExportFormat(String format) {
+        String normalized = hasText(format)
+                ? format.trim().toLowerCase(Locale.ROOT)
+                : "mp4";
+        return "video".equals(normalized) ? "mp4" : normalized;
     }
 
     private static LocalDateTime exportStartTime(ReviewItemAggregate item, ReviewCaseTimelineItem timelineItem) {
@@ -5799,6 +7203,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         values.put("exportUri", videoExport.exportUri());
         values.put("status", videoExport.status());
         values.put("message", videoExport.message());
+        values.put("manifestUri", videoExport.manifestUri());
+        values.put("fileHash", videoExport.fileHash());
+        values.put("recordSegments", videoExport.recordSegments());
+        values.put("ffmpegCommandHash", videoExport.ffmpegCommandHash());
         values.entrySet().removeIf(entry -> entry.getValue() == null);
         return Map.copyOf(values);
     }
@@ -6760,8 +8168,36 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (RULE_SUGGESTION_ACCEPTED.equals(status) && hasText(note)) {
             suggestion.put("approvalNote", note);
         }
+        if (RULE_SUGGESTION_APPLIED.equals(status) && hasText(note)) {
+            suggestion.put("applyNote", note);
+        }
         suggestion.put("lifecycleUpdatedAt", LocalDateTime.now().toString());
         return Map.copyOf(suggestion);
+    }
+
+    private static void requireRuleSuggestionTransition(ReviewItemAggregate item, String nextStatus) {
+        String lifecycleStatus = item.ruleSuggestion() == null
+                ? null
+                : toText(item.ruleSuggestion().get("lifecycleStatus"));
+        String currentStatus = hasText(item.ruleSuggestionStatus())
+                ? item.ruleSuggestionStatus()
+                : lifecycleStatus;
+        Set<String> requiredCurrentStatuses = switch (nextStatus) {
+            case RULE_SUGGESTION_SHADOW_EVALUATED -> Set.of(RULE_SUGGESTION_PENDING);
+            case RULE_SUGGESTION_ACCEPTED -> Set.of(RULE_SUGGESTION_SHADOW_EVALUATED);
+            case RULE_SUGGESTION_REJECTED -> Set.of(
+                    RULE_SUGGESTION_PENDING,
+                    RULE_SUGGESTION_SHADOW_EVALUATED
+            );
+            case RULE_SUGGESTION_APPLIED -> Set.of(RULE_SUGGESTION_ACCEPTED);
+            case RULE_SUGGESTION_REVERTED -> Set.of(RULE_SUGGESTION_APPLIED);
+            default -> Set.of();
+        };
+        if (requiredCurrentStatuses.contains(currentStatus)) {
+            return;
+        }
+        throw new IllegalStateException("rule suggestion transition requires "
+                + requiredCurrentStatuses + " -> " + nextStatus + ", current: " + currentStatus);
     }
 
     private static String ruleConfigVersion(Long ruleId, Map<String, Object> suggestion, String versionKey) {
@@ -7221,7 +8657,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private static String requireRuleSuggestionStatus(String status) {
         requireText(status, "status");
-        if (List.of(RULE_SUGGESTION_PENDING, RULE_SUGGESTION_ACCEPTED, RULE_SUGGESTION_REJECTED,
+        if (List.of(RULE_SUGGESTION_PENDING, RULE_SUGGESTION_SHADOW_EVALUATED,
+                RULE_SUGGESTION_ACCEPTED, RULE_SUGGESTION_REJECTED,
                 RULE_SUGGESTION_APPLIED, RULE_SUGGESTION_REVERTED).contains(status)) {
             return status;
         }
@@ -7290,6 +8727,24 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
         if (value instanceof Map<?, ?> map) {
             values.add(normalizeStringKeyMap(map));
+        }
+        return List.copyOf(values);
+    }
+
+    private static List<Long> toLongList(Object value) {
+        List<Long> values = new ArrayList<>();
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                Long parsed = toLong(item);
+                if (parsed != null) {
+                    values.add(parsed);
+                }
+            }
+        } else {
+            Long parsed = toLong(value);
+            if (parsed != null) {
+                values.add(parsed);
+            }
         }
         return List.copyOf(values);
     }
