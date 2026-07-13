@@ -5521,6 +5521,242 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void evidenceExportWorkerNormalizesMinioRecordUriToUniqueCanonicalCameraRecord() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 13, 45, 16);
+        String objectName = "camera-01/2026/07/13/record-001.flv";
+        String minioUri = "https://eye.yfeiai.com/api/v1/buckets/record-space/objects/download"
+                + "?prefix=camera-01%2F2026%2F07%2F13%2Frecord-001.flv";
+        String canonicalUri = "/video/record/space/7/video/" + objectName;
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-minio-alias",
+                alertTime,
+                "record-001.jpg",
+                minioUri
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9202L,
+                List.of(new RecordCoverageSegment(
+                        "available",
+                        alertTime.plusSeconds(1),
+                        alertTime.plusSeconds(61),
+                        7,
+                        canonicalUri
+                ))
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "canonical record URI",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9203L,
+                "mp4",
+                "normalize MinIO alias"
+        ));
+
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9204L));
+
+        assertEquals(1, videoExportProvider.requests().size());
+        ReviewEvidenceVideoExportRequest request = videoExportProvider.requests().get(0);
+        assertEquals(canonicalUri, request.recordUri());
+        assertEquals(List.of(canonicalUri), request.recordSegments().stream()
+                .map(segment -> segment.recordUri())
+                .toList());
+        assertEquals(List.of(0), request.recordSegments().stream()
+                .map(segment -> segment.stitchOrder())
+                .toList());
+    }
+
+    @Test
+    void evidenceExportWorkerRejectsUnboundMinioRecordUriForCamera() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 14, 0);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-unbound-minio",
+                alertTime,
+                "unbound-minio.jpg",
+                "https://eye.yfeiai.com/api/v1/buckets/record-space/objects/download"
+                        + "?prefix=camera-01%2F2026%2F07%2F13%2Funbound.flv"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "unbound MinIO record URI",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9205L,
+                "mp4",
+                "reject unbound MinIO alias"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9206L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
+    }
+
+    @Test
+    void evidenceExportWorkerRejectsAmbiguousCanonicalRecordsForMinioObject() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 14, 10);
+        String objectName = "camera-01/2026/07/13/ambiguous.flv";
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-ambiguous-minio",
+                alertTime,
+                "ambiguous-minio.jpg",
+                "https://eye.yfeiai.com/api/v1/buckets/record-space/objects/download"
+                        + "?prefix=camera-01%2F2026%2F07%2F13%2Fambiguous.flv"
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(
+                item.id(),
+                9207L,
+                List.of(
+                        new RecordCoverageSegment(
+                                "available",
+                                alertTime.plusSeconds(1),
+                                alertTime.plusSeconds(61),
+                                7,
+                                "/video/record/space/7/video/" + objectName
+                        ),
+                        new RecordCoverageSegment(
+                                "available",
+                                alertTime.plusSeconds(62),
+                                alertTime.plusSeconds(122),
+                                8,
+                                "/video/record/space/8/video/" + objectName
+                        )
+                )
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "ambiguous canonical records",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9208L,
+                "mp4",
+                "reject ambiguous canonical records"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9209L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
+    }
+
+    @Test
+    void evidenceExportWorkerDoesNotBindMinioAliasToAnotherCameraCanonicalRecord() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 14, 20);
+        String objectName = "shared/2026/07/13/cross-camera.flv";
+        ReviewItemAggregate aliasItem = service.ingestClue(newClue(
+                "alert-export-cross-camera-alias",
+                alertTime,
+                "cross-camera-alias.jpg",
+                "https://eye.yfeiai.com/api/v1/buckets/record-space/objects/download"
+                        + "?prefix=shared%2F2026%2F07%2F13%2Fcross-camera.flv"
+        ));
+        ReviewItemAggregate canonicalItem = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-export-cross-camera-canonical",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                alertTime.plusMinutes(1),
+                "device-02",
+                "camera-02",
+                "zone-b",
+                "person",
+                15,
+                "cross-camera-canonical.jpg",
+                "/video/record/space/7/video/" + objectName,
+                null
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "cross-camera canonical isolation",
+                aliasItem.id(),
+                List.of(aliasItem.id(), canonicalItem.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(aliasItem.id(), canonicalItem.id()),
+                9210L,
+                "mp4",
+                "reject cross-camera canonical binding"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9211L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
+    }
+
+    @Test
     void evidenceExportWorkerClaimsOnlyOneJobBeforeEachLongRunningExport() {
         CountingExportClaimStore itemStore = new CountingExportClaimStore();
         SupervisionAlertReviewService service = newService(

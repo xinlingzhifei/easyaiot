@@ -458,6 +458,11 @@ function copyTextIfPresent(target, source, key) {
 }
 
 async function fetchJson(fetchImpl, url, options) {
+  const { payload } = await fetchJsonResponse(fetchImpl, url, options);
+  return payload;
+}
+
+async function fetchJsonResponse(fetchImpl, url, options) {
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
   try {
@@ -477,7 +482,7 @@ async function fetchJson(fetchImpl, url, options) {
     if (!response.ok) {
       throw new Error(`${options.label} failed with HTTP ${response.status} ${response.statusText || ''}: ${summarizePayload(payload)}`);
     }
-    return payload;
+    return { payload, rawText: text };
   } finally {
     if (timer) {
       clearTimeout(timer);
@@ -586,10 +591,15 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
     options.recordExportUrl,
     options.cameraId,
   );
-  const manifest = responseData(await fetchJson(fetchImpl, manifestUrl, {
+  const manifestResponse = await fetchJsonResponse(fetchImpl, manifestUrl, {
     timeoutMs: options.timeoutMs,
     label: 'record export manifest',
-  }));
+  });
+  const manifest = responseData(manifestResponse.payload);
+  const manifestRawJson = rawResponseDataJson(
+    manifestResponse.rawText,
+    manifestResponse.payload,
+  );
   const version = firstText(manifest.manifestVersion, manifest.manifest_version, manifest.version);
   if (Number(version) !== 2) {
     throw new Error('record export manifest is not manifestVersion 2');
@@ -672,6 +682,7 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
   const storageLifecycle = validateManifestStorageLifecycle(manifest, outputs, options);
   const manifestVerification = await runManifestVerifierIfConfigured({
     manifest,
+    manifestRawJson,
     manifestUrl,
     options,
     dependencies,
@@ -813,7 +824,13 @@ function validateManifestStorageLifecycle(manifest, outputs, options) {
   };
 }
 
-async function runManifestVerifierIfConfigured({ manifest, manifestUrl, options, dependencies }) {
+async function runManifestVerifierIfConfigured({
+  manifest,
+  manifestRawJson,
+  manifestUrl,
+  options,
+  dependencies,
+}) {
   const injectedVerifier = dependencies && typeof dependencies.verifyManifest === 'function'
     ? dependencies.verifyManifest
     : null;
@@ -821,8 +838,17 @@ async function runManifestVerifierIfConfigured({ manifest, manifestUrl, options,
     return null;
   }
   const report = injectedVerifier
-    ? await injectedVerifier({ manifest, manifestUrl, options })
-    : runManifestVerifierScript(options.manifestVerifierScript, manifest, options.timeoutMs);
+    ? await injectedVerifier({
+      manifest,
+      manifestRawJson,
+      manifestUrl,
+      options,
+    })
+    : runManifestVerifierScript(
+      options.manifestVerifierScript,
+      manifestRawJson,
+      options.timeoutMs,
+    );
   const normalized = normalizeManifestVerificationReport(report);
   if (normalized.valid !== true) {
     const detail = normalized.violations.length ? normalized.violations.join(', ') : 'invalid_manifest';
@@ -831,11 +857,11 @@ async function runManifestVerifierIfConfigured({ manifest, manifestUrl, options,
   return normalized;
 }
 
-function runManifestVerifierScript(scriptPath, manifest, timeoutMs) {
+function runManifestVerifierScript(scriptPath, manifestRawJson, timeoutMs) {
   const tempDir = mkdtempSync(join(tmpdir(), 'yfeieye-manifest-'));
   const manifestPath = join(tempDir, 'manifest.json');
   try {
-    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    writeFileSync(manifestPath, manifestRawJson, 'utf8');
     const result = spawnSync(process.execPath, [resolve(scriptPath), '--manifest', manifestPath], {
       encoding: 'utf8',
       env: process.env,
@@ -861,6 +887,94 @@ function runManifestVerifierScript(scriptPath, manifest, timeoutMs) {
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+function rawResponseDataJson(rawText, payload) {
+  if (!hasText(rawText)) {
+    throw new Error('record export manifest response did not include raw JSON text');
+  }
+  if (payload && typeof payload === 'object'
+      && payload.data && typeof payload.data === 'object') {
+    return extractTopLevelJsonObject(rawText, 'data');
+  }
+  return rawText;
+}
+
+function extractTopLevelJsonObject(rawJson, propertyName) {
+  let objectDepth = 0;
+  let sawTopLevelObject = false;
+  let propertyJson;
+  let index = 0;
+  while (index < rawJson.length) {
+    if (rawJson[index] === '{') {
+      objectDepth += 1;
+      sawTopLevelObject = true;
+    } else if (rawJson[index] === '}') {
+      objectDepth -= 1;
+    } else if (rawJson[index] === '"') {
+      const keyEnd = jsonStringEnd(rawJson, index);
+      const separator = skipJsonWhitespace(rawJson, keyEnd);
+      if (objectDepth === 1
+          && rawJson[separator] === ':'
+          && JSON.parse(rawJson.slice(index, keyEnd)) === propertyName) {
+        const valueStart = skipJsonWhitespace(rawJson, separator + 1);
+        const valueEnd = jsonObjectEnd(rawJson, valueStart);
+        if (propertyJson !== undefined) {
+          throw new Error(`record export manifest response contains duplicate top-level ${propertyName} payloads`);
+        }
+        propertyJson = rawJson.slice(valueStart, valueEnd);
+      }
+      index = keyEnd;
+      continue;
+    }
+    index += 1;
+  }
+  if (!sawTopLevelObject) {
+    throw new Error('record export manifest response is not a JSON object');
+  }
+  if (propertyJson !== undefined) {
+    return propertyJson;
+  }
+  throw new Error(`record export manifest response missing raw ${propertyName} payload`);
+}
+
+function jsonStringEnd(rawJson, start) {
+  for (let index = start + 1; index < rawJson.length; index += 1) {
+    if (rawJson[index] === '\\') {
+      index += 1;
+    } else if (rawJson[index] === '"') {
+      return index + 1;
+    }
+  }
+  throw new Error('record export manifest response contains an unterminated JSON string');
+}
+
+function jsonObjectEnd(rawJson, start) {
+  if (rawJson[start] !== '{') {
+    throw new Error('record export manifest data is not a JSON object');
+  }
+  let depth = 0;
+  for (let index = start; index < rawJson.length; index += 1) {
+    if (rawJson[index] === '"') {
+      index = jsonStringEnd(rawJson, index) - 1;
+    } else if (rawJson[index] === '{') {
+      depth += 1;
+    } else if (rawJson[index] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+  }
+  throw new Error('record export manifest response contains an unterminated data object');
+}
+
+function skipJsonWhitespace(rawJson, start) {
+  let index = start;
+  while (index < rawJson.length && /\s/.test(rawJson[index])) {
+    index += 1;
+  }
+  return index;
 }
 
 function normalizeManifestVerificationReport(report) {

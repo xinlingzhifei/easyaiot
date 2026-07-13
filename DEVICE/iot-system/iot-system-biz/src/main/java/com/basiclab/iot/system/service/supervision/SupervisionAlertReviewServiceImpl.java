@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.BufferedOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,6 +77,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static final String REVIEW_AI_SUMMARY_PROVIDER_VERSION = "review-ai-provider-v1";
     private static final String REVIEW_AI_SUMMARY_PROMPT_VERSION = "review-ai-summary-prompt-v1";
     private static final Pattern SHA256_HASH = Pattern.compile("sha256:[0-9a-fA-F]{64}");
+    private static final Pattern CANONICAL_RECORD_URI_PATH = Pattern.compile(
+            "/video/record/space/[1-9][0-9]*/video/(.+)$");
+    private static final Pattern MINIO_RECORD_DOWNLOAD_PATH = Pattern.compile(
+            "/api/v1/buckets/[^/]+/objects/download/?$");
     private static final String AI_SUMMARY_GENERATED_ACTION = "ai_summary_generated";
     private static final String AI_SUMMARY_CONFIRMED_ACTION = "ai_summary_confirmed";
     private static final String AI_SUMMARY_REJECTED_ACTION = "ai_summary_rejected";
@@ -7208,10 +7214,6 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     || !hasText(timelineItem.materialUri())) {
                 continue;
             }
-            String requestKey = timelineItem.reviewItemId() + "|" + timelineItem.materialUri();
-            if (!requestedSegments.add(requestKey)) {
-                continue;
-            }
             Optional<ReviewItemAggregate> aggregate = reviewItemStore.findById(timelineItem.reviewItemId());
             if (aggregate.isEmpty()) {
                 continue;
@@ -7228,19 +7230,33 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             if (contexts.isEmpty()) {
                 continue;
             }
+            Map<String, Set<String>> canonicalUrisByObjectName = canonicalRecordUrisByObjectName(contexts);
             List<ReviewEvidenceVideoSegmentRequest> segmentRequests = new ArrayList<>(contexts.size());
-            for (int index = 0; index < contexts.size(); index++) {
-                VideoExportSegmentContext context = contexts.get(index);
+            VideoExportSegmentContext first = null;
+            for (VideoExportSegmentContext context : contexts) {
+                String normalizedRecordUri = normalizeVideoExportRecordUri(
+                        context.timelineItem().materialUri(),
+                        canonicalUrisByObjectName
+                );
+                String requestKey = entry.getKey() + "|" + context.item().id() + "|" + normalizedRecordUri;
+                if (!requestedSegments.add(requestKey)) {
+                    continue;
+                }
+                if (first == null) {
+                    first = context;
+                }
                 segmentRequests.add(new ReviewEvidenceVideoSegmentRequest(
                         context.item().id(),
                         context.timelineItem().sourceAlertId(),
-                        context.timelineItem().materialUri(),
+                        normalizedRecordUri,
                         exportStartTime(context.item(), context.timelineItem()),
                         exportEndTime(context.item(), context.timelineItem()),
-                        index
+                        segmentRequests.size()
                 ));
             }
-            VideoExportSegmentContext first = contexts.get(0);
+            if (segmentRequests.isEmpty()) {
+                continue;
+            }
             LocalDateTime startTime = segmentRequests.stream()
                     .map(ReviewEvidenceVideoSegmentRequest::clipStartTime)
                     .filter(Objects::nonNull)
@@ -7261,7 +7277,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                 first.timelineItem().sourceAlertId(),
                                 startTime,
                                 endTime,
-                                first.timelineItem().materialUri(),
+                                segmentRequests.get(0).recordUri(),
                                 format,
                                 segmentRequests,
                                 expiresAt
@@ -7291,6 +7307,92 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private record VideoExportSegmentContext(ReviewItemAggregate item,
                                              ReviewCaseTimelineItem timelineItem) {
+    }
+
+    private static Map<String, Set<String>> canonicalRecordUrisByObjectName(
+            List<VideoExportSegmentContext> contexts) {
+        Map<String, Set<String>> canonicalUrisByObjectName = new LinkedHashMap<>();
+        for (VideoExportSegmentContext context : contexts) {
+            String recordUri = context.timelineItem().materialUri();
+            canonicalRecordObjectName(recordUri).ifPresent(objectName ->
+                    canonicalUrisByObjectName.computeIfAbsent(objectName, ignored -> new LinkedHashSet<>())
+                            .add(recordUri));
+        }
+        return canonicalUrisByObjectName;
+    }
+
+    private static String normalizeVideoExportRecordUri(String recordUri,
+                                                        Map<String, Set<String>> canonicalUrisByObjectName) {
+        if (canonicalRecordObjectName(recordUri).isPresent()) {
+            return recordUri;
+        }
+        Optional<String> minioObjectName = minioRecordObjectName(recordUri);
+        if (minioObjectName.isEmpty()) {
+            return recordUri;
+        }
+        Set<String> candidates = canonicalUrisByObjectName.get(minioObjectName.get());
+        if (candidates == null || candidates.size() != 1) {
+            throw new IllegalStateException(
+                    "VIDEO export MinIO record URI is not uniquely bound to a canonical camera record");
+        }
+        return candidates.iterator().next();
+    }
+
+    private static Optional<String> canonicalRecordObjectName(String recordUri) {
+        try {
+            URI uri = URI.create(recordUri);
+            java.util.regex.Matcher matcher = CANONICAL_RECORD_URI_PATH.matcher(uri.getPath());
+            if (!matcher.find()) {
+                return Optional.empty();
+            }
+            return normalizedRecordObjectName(matcher.group(1));
+        } catch (RuntimeException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<String> minioRecordObjectName(String recordUri) {
+        URI uri;
+        try {
+            uri = URI.create(recordUri);
+        } catch (RuntimeException exception) {
+            if (recordUri.contains("/api/v1/buckets/") && recordUri.contains("/objects/download")) {
+                throw new IllegalStateException(
+                        "VIDEO export MinIO record URI is not uniquely bound to a canonical camera record",
+                        exception);
+            }
+            return Optional.empty();
+        }
+        if (!MINIO_RECORD_DOWNLOAD_PATH.matcher(uri.getPath()).find()) {
+            return Optional.empty();
+        }
+        Set<String> prefixes = new LinkedHashSet<>();
+        String rawQuery = uri.getRawQuery();
+        if (rawQuery != null) {
+            for (String parameter : rawQuery.split("&")) {
+                int separator = parameter.indexOf('=');
+                String rawName = separator < 0 ? parameter : parameter.substring(0, separator);
+                if (!"prefix".equals(URLDecoder.decode(rawName, StandardCharsets.UTF_8))) {
+                    continue;
+                }
+                String rawValue = separator < 0 ? "" : parameter.substring(separator + 1);
+                normalizedRecordObjectName(URLDecoder.decode(rawValue, StandardCharsets.UTF_8))
+                        .ifPresent(prefixes::add);
+            }
+        }
+        if (prefixes.size() != 1) {
+            throw new IllegalStateException(
+                    "VIDEO export MinIO record URI is not uniquely bound to a canonical camera record");
+        }
+        return Optional.of(prefixes.iterator().next());
+    }
+
+    private static Optional<String> normalizedRecordObjectName(String objectName) {
+        if (!hasText(objectName)) {
+            return Optional.empty();
+        }
+        String normalized = objectName.replace('\\', '/').replaceFirst("^/+", "");
+        return hasText(normalized) ? Optional.of(normalized) : Optional.empty();
     }
 
     private static boolean hasCompleteVideoExportProvenance(ReviewEvidenceVideoExportResult result) {

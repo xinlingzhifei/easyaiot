@@ -819,6 +819,80 @@ await assert.rejects(
   /record export manifest verifier failed: missing_hmac_key/,
 );
 
+const lexicalManifestVerifierTempDir = mkdtempSync(
+  join(tmpdir(), 'yfeieye-live-video-lexical-manifest-verifier-'),
+);
+const lexicalManifestVerifierPath = join(
+  lexicalManifestVerifierTempDir,
+  'lexical-manifest-verifier.mjs',
+);
+writeFileSync(lexicalManifestVerifierPath, `
+import { readFileSync } from 'node:fs';
+const manifestIndex = process.argv.indexOf('--manifest');
+const rawManifest = readFileSync(process.argv[manifestIndex + 1], 'utf8');
+if (JSON.parse(rawManifest).manifestVersion !== 2) {
+  console.error('manifest response wrapper was not removed');
+  process.exit(9);
+}
+if (!rawManifest.includes('"durationSeconds":30.0')) {
+  console.error('durationSeconds=30.0 lexical form was not preserved');
+  process.exit(8);
+}
+console.log(JSON.stringify({
+  valid: true,
+  signatureValid: true,
+  signatureKeyAvailable: true,
+  keyId: '2026-q2',
+  signatureVersion: 'v2',
+  violations: [],
+}));
+`, 'utf8');
+const lexicalManifestFetch = async (url, init = {}) => {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
+    const manifestResponse = await fakeFetch(url, init);
+    const manifestText = (await manifestResponse.text()).replace(
+      /}$/,
+      ',"mediaProbe":{"durationSeconds":30.0}}',
+    );
+    return rawJsonResponse(`{"code":0,"data":${manifestText},"msg":"success"}`);
+  }
+  return fakeFetch(url, init);
+};
+try {
+  const lexicalManifestSmoke = await runSmoke({
+    ...parsedWithVerifier,
+    manifestVerifierScript: lexicalManifestVerifierPath,
+  }, { fetchImpl: lexicalManifestFetch });
+  assert.equal(lexicalManifestSmoke.manifestVerification.valid, true);
+} finally {
+  rmSync(lexicalManifestVerifierTempDir, { recursive: true, force: true });
+}
+
+const duplicateTopLevelDataManifestFetch = async (url, init = {}) => {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
+    const manifestResponse = await fakeFetch(url, init);
+    const manifestText = await manifestResponse.text();
+    return rawJsonResponse(
+      `{"code":0,"data":${manifestText},"data":${manifestText},"msg":"success"}`,
+    );
+  }
+  return fakeFetch(url, init);
+};
+await assert.rejects(
+  () => runSmoke(parsedWithVerifier, {
+    fetchImpl: duplicateTopLevelDataManifestFetch,
+    verifyManifest: async () => ({
+      valid: true,
+      signatureValid: true,
+      signatureKeyAvailable: true,
+      keyId: '2026-q2',
+      signatureVersion: 'v2',
+      violations: [],
+    }),
+  }),
+  /duplicate top-level data/,
+);
+
 const verifierTempDir = mkdtempSync(join(tmpdir(), 'yfeieye-live-video-verifier-'));
 const falseSuccessVerifierPath = join(verifierTempDir, 'false-success-verifier.mjs');
 writeFileSync(falseSuccessVerifierPath, 'console.log(JSON.stringify({ valid: true })); process.exit(7);\n', 'utf8');
@@ -1467,6 +1541,26 @@ function jsonResponse(body, status = 200, headers = {}) {
     },
     async text() {
       return JSON.stringify(body);
+    },
+  };
+}
+
+function rawJsonResponse(rawBody, status = 200, headers = {}) {
+  const headerMap = new Map(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)]));
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status === 200 ? 'OK' : 'ERROR',
+    headers: {
+      get(name) {
+        return headerMap.get(String(name).toLowerCase()) || null;
+      },
+    },
+    async json() {
+      return JSON.parse(rawBody);
+    },
+    async text() {
+      return rawBody;
     },
   };
 }
