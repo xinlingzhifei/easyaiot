@@ -495,7 +495,13 @@ public interface SupervisionAlertReviewService {
     }
 
     record ReviewToEventCommand(Long reviewItemId,
-                                Long reviewerUserId) {
+                                Long reviewerUserId,
+                                boolean dispatchTasks) {
+
+        public ReviewToEventCommand(Long reviewItemId,
+                                    Long reviewerUserId) {
+            this(reviewItemId, reviewerUserId, true);
+        }
     }
 
     record ReviewToEventResult(Long reviewItemId,
@@ -1481,6 +1487,7 @@ public interface SupervisionAlertReviewService {
 
     record ReviewIntegrationSmokeResult(String status,
                                         Long reviewItemId,
+                                        Long eventId,
                                         Long reviewCaseId,
                                         String exportJobNo,
                                         boolean manifestValid,
@@ -1500,7 +1507,7 @@ public interface SupervisionAlertReviewService {
                                             List<String> checkpoints,
                                             LocalDateTime executedAt,
                                             Long operatorUserId) {
-            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested, false,
+            this(status, reviewItemId, null, reviewCaseId, exportJobNo, manifestValid, videoExportRequested, false,
                     checkpoints, executedAt, operatorUserId, "service-synthetic", null);
         }
 
@@ -1514,7 +1521,7 @@ public interface SupervisionAlertReviewService {
                                             LocalDateTime executedAt,
                                             Long operatorUserId,
                                             String profile) {
-            this(status, reviewItemId, reviewCaseId, exportJobNo, manifestValid, videoExportRequested, false,
+            this(status, reviewItemId, null, reviewCaseId, exportJobNo, manifestValid, videoExportRequested, false,
                     checkpoints, executedAt, operatorUserId, profile, null);
         }
     }

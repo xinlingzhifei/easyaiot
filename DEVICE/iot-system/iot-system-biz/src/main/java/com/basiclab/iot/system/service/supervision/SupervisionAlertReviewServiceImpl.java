@@ -3228,6 +3228,17 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             checkpoints.add("real_record_coverage_checked");
             checkpoints.add("sample_record_coverage_probed");
         }
+        ReviewToEventResult eventResult = convertToEvent(new ReviewToEventCommand(
+                item.id(),
+                command.operatorUserId(),
+                false
+        ));
+        Long eventId = eventResult.eventId();
+        if (eventId == null || eventId <= 0L) {
+            throw new IllegalStateException("integration smoke event conversion did not return a positive eventId");
+        }
+        checkpoints.add("review_event_bound");
+        checkpoints.add("review_event_bound_without_task_dispatch");
         ReviewCaseView reviewCase = createReviewCase(new ReviewCaseCommand(
                 "integration smoke " + sourceAlertId,
                 item.id(),
@@ -3260,6 +3271,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             ));
         }
         checkpoints.add("evidence_export_ready");
+        if (job.boundEventIds() == null || !job.boundEventIds().contains(eventId)) {
+            throw new IllegalStateException("integration smoke evidence export lost event binding: " + eventId);
+        }
+        checkpoints.add("evidence_export_event_bound");
         boolean videoExportConfirmed = hasConfirmedVideoExport(job);
         if (videoExportConfirmed) {
             checkpoints.add("video_export_confirmed");
@@ -3309,6 +3324,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return new ReviewIntegrationSmokeResult(
                 verification.valid() ? "passed" : "failed",
                 item.id(),
+                eventId,
                 reviewCase.id(),
                 job.jobNo(),
                 verification.valid(),
@@ -4328,7 +4344,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 item.ruleCode(),
                 item.sourceAlertType(),
                 item.firstAlertTime(),
-                null
+                null,
+                command.dispatchTasks()
         ));
         LocalDateTime convertedAt = LocalDateTime.now();
         markUserReviewed(item.id(), command.reviewerUserId(), convertedAt);

@@ -26,7 +26,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim|V20260713_2__alert_review_evidence_record_start)\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim|V20260713_2__alert_review_evidence_record_start|V20260713_3__supervision_event_create_permission)\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
@@ -137,6 +137,7 @@ export const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/.gitignore',
@@ -1555,7 +1556,33 @@ export function scanVideoIntegrationConfigGate(files) {
 export function scanLiveVideoEvidenceGate(files) {
   const blockers = [];
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
+  const deviceSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-device-integration-smoke.mjs');
   const recordVideoService = files.find((file) => normalizePath(file.path || '') === 'VIDEO/app/services/record_video_service.py');
+  if (deviceSmoke && !containsAll(deviceSmoke.content, [
+    'const auditChain = await runEvidenceAuditSmoke(options, result, fetchImpl)',
+    '/system/supervision/alert-review/evidence-audit',
+    "url.searchParams.set('eventId'",
+    "url.searchParams.set('reviewCaseId'",
+    "url.searchParams.set('reviewItemId'",
+    "url.searchParams.set('exportJobNo'",
+    "fetchJson(fetchImpl, buildEvidenceAuditUrl(options, result), {\n    method: 'GET'",
+    'entries.find((entry) => matchesEvidenceAuditEntry(entry, result))',
+    "String(entry.actionType || '') !== 'export_downloaded'",
+    'idsEqual(entry.reviewCaseId, result.reviewCaseId)',
+    "String(entry.jobNo || '') === result.exportJobNo",
+    'idListIncludes(entry.boundEventIds, result.eventId)',
+    'idListIncludes(metadata.reviewItemIds, result.reviewItemId)',
+    'idListIncludes(metadata.eventIds, result.eventId)',
+    "String(metadata.exportJobNo || '') === result.exportJobNo",
+    'evidence_audit_chain_verified',
+    'review_event_bound_without_task_dispatch',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-device-integration-smoke.mjs'),
+      reason: 'device_smoke_evidence_audit_chain_missing',
+    });
+  }
   if (recordVideoService && recordVideoService.content.includes('_normalize_gap_reason') && !containsAll(recordVideoService.content, [
     '_normalize_gap_reason_token',
     'isalnum',
@@ -2081,7 +2108,20 @@ export function scanLiveVideoEvidenceGate(files) {
     'eventIds',
     'reviewItemIds',
     'evidence_download_audited',
+    'evidence_audit_chain_verified',
     'export_downloaded',
+    "copyPositiveIdIfPresent(summary, payload, 'eventId')",
+    "copyPositiveIdListIfPresent(summary, payload, 'eventIds')",
+    'normalizePositiveId',
+    "Object.hasOwn(payload, 'eventIds')",
+    'explicitEmptyEventIds',
+    'missing eventId evidence',
+    'missing eventIds evidence',
+    'eventIds do not exactly match eventId',
+    'auditChain reviewCaseId does not match reviewCaseId',
+    'auditChain reviewItemIds do not exactly match reviewItemId',
+    'auditChain eventIds do not exactly match eventId',
+    'auditChain exportJobNo does not match exportJobNo',
     'missing auditChain exportJobNo evidence',
   ]);
   if (productionSmokeMissingAuditChainGate) {

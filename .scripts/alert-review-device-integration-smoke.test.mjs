@@ -15,6 +15,7 @@ import {
 } from './verify-alert-review-release-package.mjs';
 
 assert.ok(REQUIRED_CHECKPOINTS.includes('review_rule_saved'));
+assert.ok(REQUIRED_CHECKPOINTS.includes('review_event_bound_without_task_dispatch'));
 
 const parsed = parseArgs([
   '--device-base-url=http://device.local/api',
@@ -115,6 +116,7 @@ const validPayload = {
   status: 'passed',
   reviewItemId: 1001,
   reviewCaseId: 2001,
+  eventId: 7001,
   exportJobNo: 'REJ-1',
   manifestValid: true,
   videoExportRequested: true,
@@ -140,6 +142,17 @@ const validated = validateSmokeResult(validPayload);
 assert.equal(validated.ok, true);
 assert.deepEqual(validated.checkpoints, validPayload.checkpoints);
 assert.deepEqual(validated.ruleEvidence, validPayload.ruleEvidence);
+assert.equal(validated.eventId, 7001);
+
+assert.throws(
+  () => validateSmokeResult({ ...validPayload, eventId: undefined }),
+  /integration smoke response missing positive eventId/,
+);
+
+assert.throws(
+  () => validateSmokeResult({ ...validPayload, eventId: 0 }),
+  /integration smoke response missing positive eventId/,
+);
 
 assert.throws(
   () => validateSmokeResult({ ...validPayload, ruleEvidence: undefined }),
@@ -173,6 +186,22 @@ assert.throws(
   /integration smoke rule evidence missing loiteringSeconds=20/,
 );
 
+const validAuditEntry = {
+  reviewCaseId: 2001,
+  reviewItemId: null,
+  actionType: 'export_downloaded',
+  jobNo: 'REJ-1',
+  fileHash: 'sha256:must-not-be-emitted',
+  evidenceUris: ['https://storage.example/package.zip?secret=must-not-be-emitted'],
+  boundEventIds: [7001],
+  metadata: {
+    reviewCaseId: 2001,
+    reviewItemIds: [1001],
+    eventIds: [7001],
+    exportJobNo: 'REJ-1',
+  },
+};
+
 const calls = [];
 const smoke = await runSmoke(parsed, {
   fetchImpl: async (url, init = {}) => {
@@ -190,10 +219,18 @@ const smoke = await runSmoke(parsed, {
     assert.equal(init.method, 'GET');
     assert.equal(init.headers.authorization, 'Bearer token-1');
     assert.equal(init.headers['tenant-id'], '42');
+    if (calls.length === 2) {
+      assert.equal(requestUrl.pathname, '/api/system/supervision/alert-review/evidence-audit');
+      assert.equal(requestUrl.searchParams.get('eventId'), '7001');
+      assert.equal(requestUrl.searchParams.get('reviewCaseId'), '2001');
+      assert.equal(requestUrl.searchParams.get('reviewItemId'), '1001');
+      assert.equal(requestUrl.searchParams.get('exportJobNo'), 'REJ-1');
+      return jsonResponse({ code: 0, data: [validAuditEntry] });
+    }
     assert.equal(requestUrl.pathname, '/api/system/supervision/alert-review/items/1001/playback-url');
     assert.equal(requestUrl.searchParams.get('reviewCaseId'), '2001');
     assert.equal(requestUrl.searchParams.get('materialUri'), 'playback-url.mp4');
-    if (calls.length === 2) {
+    if (calls.length === 3) {
       assert.equal(requestUrl.searchParams.get('allowedCameraIds'), 'camera-01');
       assert.equal(requestUrl.searchParams.get('reason'), 'release-smoke-playback allow');
       return jsonResponse({
@@ -225,10 +262,68 @@ const smoke = await runSmoke(parsed, {
 });
 assert.equal(smoke.ok, true);
 assert.equal(smoke.result.reviewItemId, 1001);
+assert.deepEqual(smoke.auditChain, {
+  action: 'export_downloaded',
+  reviewCaseId: 2001,
+  reviewItemIds: [1001],
+  eventIds: [7001],
+  exportJobNo: 'REJ-1',
+});
 assert.deepEqual(smoke.playback.checkpoints, ['playback_url_granted', 'playback_url_denied']);
+assert.ok(smoke.checkpoints.includes('evidence_audit_chain_verified'));
 assert.ok(smoke.checkpoints.includes('playback_url_granted'));
 assert.ok(smoke.checkpoints.includes('playback_url_denied'));
-assert.equal(calls.length, 3);
+assert.equal(calls.length, 4);
+
+const parsedWithoutPlayback = {
+  ...parsed,
+  playbackReviewItemId: Number.NaN,
+  playbackReviewCaseId: Number.NaN,
+  playbackMaterialUri: '',
+  playbackAllowedCameraIds: [],
+  playbackDeniedCameraIds: [],
+};
+
+async function runWithAuditEntries(entries) {
+  let callCount = 0;
+  return runSmoke(parsedWithoutPlayback, {
+    fetchImpl: async () => {
+      callCount += 1;
+      return callCount === 1
+        ? jsonResponse({ code: 0, data: validPayload })
+        : jsonResponse({ code: 0, data: entries });
+    },
+  });
+}
+
+await assert.rejects(
+  () => runWithAuditEntries([]),
+  /evidence audit missing matching export_downloaded entry/,
+);
+
+for (const [label, entry] of [
+  ['reviewCaseId', { ...validAuditEntry, reviewCaseId: 2999 }],
+  ['jobNo', { ...validAuditEntry, jobNo: 'REJ-other' }],
+  ['boundEventIds', { ...validAuditEntry, boundEventIds: [7999] }],
+  ['metadata.reviewItemIds', {
+    ...validAuditEntry,
+    metadata: { ...validAuditEntry.metadata, reviewItemIds: [1999] },
+  }],
+  ['metadata.eventIds', {
+    ...validAuditEntry,
+    metadata: { ...validAuditEntry.metadata, eventIds: [7999] },
+  }],
+  ['metadata.exportJobNo', {
+    ...validAuditEntry,
+    metadata: { ...validAuditEntry.metadata, exportJobNo: 'REJ-other' },
+  }],
+]) {
+  await assert.rejects(
+    () => runWithAuditEntries([entry]),
+    /evidence audit missing matching export_downloaded entry/,
+    label,
+  );
+}
 
 await assert.rejects(
   () => runSmoke(parseArgs([

@@ -2,6 +2,7 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionEventController;
+import com.basiclab.iot.system.controller.admin.supervision.vo.event.AlertEventCreateReqVO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionTaskMapper;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventLevelEnum;
 import com.basiclab.iot.system.enums.supervision.SupervisionEventStatusEnum;
@@ -17,6 +18,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -24,12 +26,23 @@ import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SupervisionEventControllerTest {
+
+    @Test
+    void createEventFromAlertRequiresSeededCreatePermission() throws Exception {
+        PreAuthorize preAuthorize = SupervisionEventController.class
+                .getMethod("createEventFromAlert", AlertEventCreateReqVO.class)
+                .getAnnotation(PreAuthorize.class);
+
+        assertNotNull(preAuthorize);
+        assertEquals("@ss.hasPermission('supervision:event:create')", preAuthorize.value());
+    }
 
     @Test
     void createEventFromAlertMapsHttpRequestToApplicationFacade() throws Exception {

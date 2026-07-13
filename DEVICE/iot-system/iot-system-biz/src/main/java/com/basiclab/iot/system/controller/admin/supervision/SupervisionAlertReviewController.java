@@ -763,6 +763,7 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/items/{reviewItemId}/to-event")
+    @PreAuthorize("@ss.hasPermission('supervision:event:create')")
     @Operation(summary = "Convert alert review item to supervision event")
     public CommonResult<ToEventRespVO> convertToEvent(@PathVariable("reviewItemId") Long reviewItemId,
                                                       @RequestBody(required = false) OperationReqVO reqVO) {
@@ -1054,7 +1055,11 @@ public class SupervisionAlertReviewController {
     }
 
     @PostMapping("/integration-smoke")
-    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:export')")
+    @PreAuthorize("@ss.hasPermission('system:supervision-alert-review:media:playback')"
+            + " and @ss.hasPermission('system:supervision-alert-review:media:export')"
+            + " and @ss.hasPermission('system:supervision-alert-review:media:manifest')"
+            + " and @ss.hasPermission('system:supervision-alert-review:media:download')"
+            + " and @ss.hasPermission('supervision:event:create')")
     @Operation(summary = "Run alert review integration smoke")
     public CommonResult<IntegrationSmokeRespVO> runIntegrationSmoke(@RequestBody(required = false) IntegrationSmokeReqVO reqVO) {
         IntegrationSmokeReqVO body = reqVO == null ? new IntegrationSmokeReqVO() : reqVO;

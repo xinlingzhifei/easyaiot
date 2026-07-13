@@ -110,6 +110,31 @@ class SupervisionEventServiceImplTest {
         assertEquals(List.of(), eventStore.dispatchedEventIds());
     }
 
+    @Test
+    void createFromAlertCanPersistSyntheticEventWithoutDispatchingTasks() {
+        InMemoryEventStore eventStore = new InMemoryEventStore();
+        CapturingTaskDispatcher taskDispatcher = new CapturingTaskDispatcher();
+        SupervisionEventService eventService = new SupervisionEventServiceImpl(eventStore, taskDispatcher);
+        AlertToEventCommand command = new AlertToEventCommand(
+                "alert-review",
+                "integration-smoke-001",
+                SupervisionRuleSeeds.RULE_FALL_DOWN,
+                "fall_down",
+                LocalDateTime.of(2026, 7, 13, 16, 50),
+                "payload-hash-smoke",
+                false
+        );
+
+        AlertToEventResult first = eventService.createFromAlert(command);
+        AlertToEventResult second = eventService.createFromAlert(command);
+
+        assertEquals(SupervisionEventStatusEnum.CREATED.getCode(), first.eventStatus());
+        assertFalse(first.reused());
+        assertTrue(second.reused());
+        assertEquals(List.of(), taskDispatcher.commands());
+        assertEquals(List.of(), eventStore.dispatchedEventIds());
+    }
+
     private static final class InMemoryEventStore implements EventStore {
 
         private long nextEventId = 1000L;

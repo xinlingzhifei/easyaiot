@@ -26,6 +26,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -299,6 +300,17 @@ BEGIN
       AND deleted = 0
   ) <> 2 THEN
     RAISE EXCEPTION 'expected semantic trigger permission seeds to be present';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM system_menu
+    WHERE permission = 'supervision:event:create'
+      AND type = 3
+      AND status = 0
+      AND deleted = 0
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected supervision event create permission seed to be present';
   END IF;
 
   IF (

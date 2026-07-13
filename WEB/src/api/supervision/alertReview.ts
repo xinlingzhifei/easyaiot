@@ -684,6 +684,7 @@ export interface AlertReviewIntegrationSmokeRequest {
 export interface AlertReviewIntegrationSmokeResult {
   status: string
   reviewItemId: number
+  eventId: number
   reviewCaseId: number
   exportJobNo: string
   manifestValid: boolean

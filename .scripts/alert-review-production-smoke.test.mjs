@@ -477,6 +477,7 @@ const smokeWithEvidence = await runProductionSmoke({
   "profile": "device-video-web",
   "reviewItemId": 1001,
   "reviewCaseId": 2001,
+  "eventId": 7500,
   "eventIds": [7500],
   "exportJobNo": "EXP-20260707-001",
   "auditChain": {
@@ -485,18 +486,10 @@ const smokeWithEvidence = await runProductionSmoke({
       "value": 2001,
       "debugToken": "audit-chain-review-case-secret"
     },
-    "reviewItemIds": [
-      {
-        "value": 1001,
-        "debugToken": "audit-chain-review-item-secret"
-      }
-    ],
-    "eventIds": [
-      {
-        "value": 7500,
-        "debugToken": "audit-chain-event-secret"
-      }
-    ],
+    "reviewItemIds": [1001],
+    "reviewItemIdsDebugToken": "audit-chain-review-item-secret",
+    "eventIds": [7500],
+    "eventIdsDebugToken": "audit-chain-event-secret",
     "exportJobNo": {
       "value": "EXP-20260707-001",
       "debugToken": "audit-chain-export-job-secret"
@@ -524,6 +517,7 @@ const smokeWithEvidence = await runProductionSmoke({
   },
   "checkpoints": [
     "ingest_review_item",
+    "review_event_bound_without_task_dispatch",
     "review_rule_saved",
     "record_coverage_synced",
     "review_case_created",
@@ -531,6 +525,7 @@ const smokeWithEvidence = await runProductionSmoke({
     "manifest_verified",
     "evidence_download_bytes_verified",
     "evidence_download_audited",
+    "evidence_audit_chain_verified",
     "playback_url_granted",
     "playback_url_denied"
   ]
@@ -695,6 +690,7 @@ assert.deepEqual(evidenceReport.steps[2].summary, {
   timeout: { timeoutMs: 12345 },
   checkpoints: [
     'ingest_review_item',
+    'review_event_bound_without_task_dispatch',
     'review_rule_saved',
     'record_coverage_synced',
     'review_case_created',
@@ -702,6 +698,7 @@ assert.deepEqual(evidenceReport.steps[2].summary, {
     'manifest_verified',
     'evidence_download_bytes_verified',
     'evidence_download_audited',
+    'evidence_audit_chain_verified',
     'playback_url_granted',
     'playback_url_denied',
   ],
@@ -721,6 +718,7 @@ assert.deepEqual(evidenceReport.steps[2].summary, {
   profile: 'device-video-web',
   reviewItemId: 1001,
   reviewCaseId: 2001,
+  eventId: 7500,
   eventIds: [7500],
   exportJobNo: 'EXP-20260707-001',
   auditChain: {
@@ -885,6 +883,90 @@ assert.equal(JSON.stringify(evidenceReport).includes('manifest-verifier-debug-se
 assert.equal(JSON.stringify(evidenceReport).includes('storage-lifecycle-secret'), false);
 assert.equal(JSON.stringify(evidenceReport).includes('storage-lifecycle-debug-secret'), false);
 
+const unsafeIdEvidenceWrites = [];
+await assert.rejects(
+  () => runProductionSmoke({
+    ...parsed,
+    evidenceOutputFile: 'artifacts/review-smoke-unsafe-ids.json',
+  }, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: (file, content) => unsafeIdEvidenceWrites.push({ file, content }),
+    runCommand: async (step) => {
+      if (step.name !== 'LiveDevice') {
+        return { status: 0, stdout: summaryStdoutForStep(step.name) };
+      }
+      const summary = JSON.parse(summaryStdoutForStep(step.name));
+      summary.reviewItemId = { value: 1001, debugToken: 'review-item-id-debug-secret' };
+      summary.reviewCaseId = { value: 2001, debugToken: 'review-case-id-debug-secret' };
+      summary.eventId = { value: 7500, debugToken: 'event-id-debug-secret' };
+      summary.reviewItemIds = [{ value: 1001, debugToken: 'review-item-ids-debug-secret' }];
+      summary.eventIds = [{ value: 7500, debugToken: 'event-ids-debug-secret' }];
+      summary.exportJobNo = { value: 'EXP-20260707-001', debugToken: 'export-job-debug-secret' };
+      return { status: 0, stdout: JSON.stringify(summary) };
+    },
+  }),
+  /production smoke step LiveDevice missing reviewItemId evidence/,
+);
+assert.equal(unsafeIdEvidenceWrites.length, 1);
+const unsafeIdEvidenceReport = unsafeIdEvidenceWrites[0].content;
+for (const leakedSecret of [
+  'review-item-id-debug-secret',
+  'review-case-id-debug-secret',
+  'event-id-debug-secret',
+  'review-item-ids-debug-secret',
+  'event-ids-debug-secret',
+  'export-job-debug-secret',
+]) {
+  assert.equal(unsafeIdEvidenceReport.includes(leakedSecret), false, leakedSecret);
+}
+
+for (const mixedIdScenario of [
+  {
+    name: 'top-event-ids',
+    secret: 'mixed-top-event-ids-debug-secret',
+    expectedError: /production smoke step LiveDevice missing eventIds evidence/,
+    mutate(summary) {
+      summary.eventIds = [summary.eventId, { debugToken: this.secret }];
+      summary.auditChain = matchingAuditChain(summary, { eventIds: [summary.eventId] });
+    },
+  },
+  {
+    name: 'audit-event-ids',
+    secret: 'mixed-audit-event-ids-debug-secret',
+    expectedError: /production smoke step LiveDevice missing auditChain eventIds evidence/,
+    mutate(summary) {
+      summary.auditChain = matchingAuditChain(summary, {
+        eventIds: [summary.eventId, { debugToken: this.secret }],
+      });
+    },
+  },
+  {
+    name: 'audit-review-item-ids',
+    secret: 'mixed-audit-review-item-ids-debug-secret',
+    expectedError: /production smoke step LiveDevice missing auditChain reviewItemIds evidence/,
+    mutate(summary) {
+      summary.auditChain = matchingAuditChain(summary, {
+        reviewItemIds: [summary.reviewItemId, { debugToken: this.secret }],
+      });
+    },
+  },
+]) {
+  const evidenceWrites = [];
+  await assert.rejects(
+    () => runProductionSmokeWithLiveDeviceMutation(
+      (summary) => mixedIdScenario.mutate(summary),
+      {
+        evidenceOutputFile: `artifacts/review-smoke-${mixedIdScenario.name}.json`,
+        writeFile: (file, content) => evidenceWrites.push({ file, content }),
+      },
+    ),
+    mixedIdScenario.expectedError,
+  );
+  assert.equal(evidenceWrites.length, 1);
+  assert.equal(evidenceWrites[0].content.includes(mixedIdScenario.secret), false, mixedIdScenario.name);
+}
+
 const failedEvidenceWrites = [];
 await assert.rejects(
   () => runProductionSmoke(parsed, {
@@ -909,10 +991,13 @@ await assert.rejects(
             profile: 'device-video-web',
             reviewItemId: 1001,
             reviewCaseId: 2001,
+            eventId: 7500,
+            eventIds: [7500],
             manifestValid: true,
             videoExportRequested: true,
             checkpoints: [
               'ingest_review_item',
+              'review_event_bound_without_task_dispatch',
               'review_rule_saved',
               'record_coverage_synced',
               'review_case_created',
@@ -920,6 +1005,7 @@ await assert.rejects(
               'manifest_verified',
               'evidence_download_bytes_verified',
               'evidence_download_audited',
+              'evidence_audit_chain_verified',
               'playback_url_granted',
               'playback_url_denied',
             ],
@@ -928,6 +1014,105 @@ await assert.rejects(
     }),
   }),
   /production smoke step LiveDevice missing auditChain exportJobNo evidence/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.auditChain = matchingAuditChain(summary, { eventIds: [] });
+  }),
+  /production smoke step LiveDevice missing auditChain eventIds evidence/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.eventIds = [];
+    summary.auditChain = matchingAuditChain(summary);
+  }),
+  /production smoke step LiveDevice missing eventIds evidence/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.eventIds = [summary.eventId + 1];
+    summary.auditChain = matchingAuditChain(summary);
+  }),
+  /production smoke step LiveDevice eventIds do not exactly match eventId/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.checkpoints = summary.checkpoints.filter((checkpoint) => checkpoint !== 'evidence_audit_chain_verified');
+  }),
+  /production smoke step LiveDevice missing evidence checkpoint: evidence_audit_chain_verified/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.checkpoints = summary.checkpoints.filter((checkpoint) => checkpoint !== 'review_event_bound_without_task_dispatch');
+  }),
+  /production smoke step LiveDevice missing evidence checkpoint: review_event_bound_without_task_dispatch/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    delete summary.eventId;
+  }),
+  /production smoke step LiveDevice missing eventId evidence/,
+);
+
+const eventIdAuditFallbackSmoke = await runProductionSmokeWithLiveDeviceMutation((summary) => {
+  delete summary.eventIds;
+});
+assert.equal(eventIdAuditFallbackSmoke.ok, true);
+
+const numericStringEventIdSmoke = await runProductionSmokeWithLiveDeviceMutation((summary) => {
+  summary.eventId = String(summary.eventId);
+  summary.eventIds = summary.eventIds.map(String);
+});
+assert.equal(numericStringEventIdSmoke.ok, true);
+
+const longStringAuditIdentitySmoke = await runProductionSmokeWithLiveDeviceMutation((summary) => {
+  summary.reviewItemId = '9007199254740993';
+  summary.reviewCaseId = '9007199254740995';
+  summary.eventId = '0009007199254740997';
+  summary.eventIds = ['9007199254740997'];
+  summary.exportJobNo = 'EXP-LONG-IDENTITY';
+  summary.auditChain = {
+    action: 'export_downloaded',
+    reviewCaseId: '09007199254740995',
+    reviewItemIds: ['0009007199254740993'],
+    eventIds: ['09007199254740997'],
+    exportJobNo: 'EXP-LONG-IDENTITY',
+  };
+});
+assert.equal(longStringAuditIdentitySmoke.ok, true);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.auditChain = matchingAuditChain(summary, { reviewItemIds: [summary.reviewItemId + 1] });
+  }),
+  /production smoke step LiveDevice auditChain reviewItemIds do not exactly match reviewItemId/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.auditChain = matchingAuditChain(summary, { reviewCaseId: summary.reviewCaseId + 1 });
+  }),
+  /production smoke step LiveDevice auditChain reviewCaseId does not match reviewCaseId/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.auditChain = matchingAuditChain(summary, { eventIds: [summary.eventId + 1] });
+  }),
+  /production smoke step LiveDevice auditChain eventIds do not exactly match eventId/,
+);
+
+await assert.rejects(
+  () => runProductionSmokeWithLiveDeviceMutation((summary) => {
+    summary.auditChain = matchingAuditChain(summary, { exportJobNo: `${summary.exportJobNo}-mismatch` });
+  }),
+  /production smoke step LiveDevice auditChain exportJobNo does not match exportJobNo/,
 );
 
 await assert.rejects(
@@ -943,12 +1128,14 @@ await assert.rejects(
             profile: 'device-video-web',
             reviewItemId: 1001,
             reviewCaseId: 2001,
+            eventId: 7500,
             eventIds: [7500],
             exportJobNo: 'EXP-20260707-001',
             manifestValid: true,
             videoExportRequested: true,
             checkpoints: [
               'ingest_review_item',
+              'review_event_bound_without_task_dispatch',
               'review_rule_saved',
               'record_coverage_synced',
               'review_case_created',
@@ -956,6 +1143,7 @@ await assert.rejects(
               'manifest_verified',
               'evidence_download_bytes_verified',
               'evidence_download_audited',
+              'evidence_audit_chain_verified',
               'playback_url_granted',
               'playback_url_denied',
             ],
@@ -979,6 +1167,7 @@ await assert.rejects(
             profile: 'device-video-web',
             reviewItemId: 1001,
             reviewCaseId: 2001,
+            eventId: 7500,
             eventIds: [7500],
             exportJobNo: 'EXP-20260707-001',
             manifestValid: true,
@@ -990,6 +1179,7 @@ await assert.rejects(
             },
             checkpoints: [
               'ingest_review_item',
+              'review_event_bound_without_task_dispatch',
               'review_rule_saved',
               'record_coverage_synced',
               'review_case_created',
@@ -997,6 +1187,7 @@ await assert.rejects(
               'manifest_verified',
               'evidence_download_bytes_verified',
               'evidence_download_audited',
+              'evidence_audit_chain_verified',
               'playback_url_granted',
               'playback_url_denied',
             ],
@@ -1369,6 +1560,36 @@ assert.equal(trackedProductionSmokeEntries.length, 2);
 
 console.log('alert review production smoke tests OK');
 
+function runProductionSmokeWithLiveDeviceMutation(mutate, options = {}) {
+  return runProductionSmoke({
+    ...parsed,
+    evidenceOutputFile: options.evidenceOutputFile || parsed.evidenceOutputFile,
+  }, {
+    nodePath: 'node',
+    scriptDir: '.scripts',
+    writeFile: options.writeFile || (() => {}),
+    runCommand: async (step) => {
+      if (step.name !== 'LiveDevice') {
+        return { status: 0, stdout: summaryStdoutForStep(step.name) };
+      }
+      const summary = JSON.parse(summaryStdoutForStep(step.name));
+      mutate(summary);
+      return { status: 0, stdout: JSON.stringify(summary) };
+    },
+  });
+}
+
+function matchingAuditChain(summary, overrides = {}) {
+  return {
+    action: 'export_downloaded',
+    reviewCaseId: summary.reviewCaseId,
+    reviewItemIds: [summary.reviewItemId],
+    eventIds: [summary.eventId],
+    exportJobNo: summary.exportJobNo,
+    ...overrides,
+  };
+}
+
 function summaryStdoutForStep(name, options = {}) {
   const playerRecordPath = options.playerRecordPath || 'https://media.example.test/records/device-01/20260705-100000.mp4';
   if (name === 'LiveDevice') {
@@ -1377,6 +1598,7 @@ function summaryStdoutForStep(name, options = {}) {
       profile: 'device-video-web',
       reviewItemId: 1001,
       reviewCaseId: 2001,
+      eventId: 7500,
       eventIds: [7500],
       exportJobNo: 'EXP-20260707-001',
       manifestValid: true,
@@ -1396,6 +1618,7 @@ function summaryStdoutForStep(name, options = {}) {
       },
       checkpoints: [
         'ingest_review_item',
+        'review_event_bound_without_task_dispatch',
         'review_rule_saved',
         'record_coverage_synced',
         'review_case_created',
@@ -1403,6 +1626,7 @@ function summaryStdoutForStep(name, options = {}) {
         'manifest_verified',
         'evidence_download_bytes_verified',
         'evidence_download_audited',
+        'evidence_audit_chain_verified',
         'playback_url_granted',
         'playback_url_denied',
       ],

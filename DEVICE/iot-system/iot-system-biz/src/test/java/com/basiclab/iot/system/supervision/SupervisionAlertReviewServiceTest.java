@@ -7100,19 +7100,23 @@ class SupervisionAlertReviewServiceTest {
                 ))
         );
         InMemoryRuleStore ruleStore = new InMemoryRuleStore();
+        AtomicReference<AlertToEventCommand> smokeEventCommand = new AtomicReference<>();
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
                 ruleStore,
-                command -> new AlertToEventResult(
-                        7600L,
-                        command.sourceSystem(),
-                        command.sourceAlertId(),
-                        command.ruleCode(),
-                        "supervision_order",
-                        SupervisionEventLevelEnum.L2,
-                        SupervisionEventStatusEnum.ACCEPTED.getCode(),
-                        false
-                ),
+                command -> {
+                    smokeEventCommand.set(command);
+                    return new AlertToEventResult(
+                            7600L,
+                            command.sourceSystem(),
+                            command.sourceAlertId(),
+                            command.ruleCode(),
+                            "supervision_order",
+                            SupervisionEventLevelEnum.L2,
+                            SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                            false
+                    );
+                },
                 noRecordEvidenceResolver(),
                 noEventProjectionStore(),
                 request -> List.of(new RecordCoverageSegment(
@@ -7134,15 +7138,20 @@ class SupervisionAlertReviewServiceTest {
 
         assertEquals("passed", smoke.status());
         assertTrue(smoke.reviewItemId() > 0);
+        assertEquals(7600L, smoke.eventId());
         assertTrue(smoke.reviewCaseId() > 0);
         assertTrue(smoke.exportJobNo().startsWith("REJ-"));
         assertTrue(smoke.manifestValid());
         assertTrue(smoke.videoExportRequested());
         assertEquals(1, videoExportProvider.requests().size());
         assertTrue(smoke.checkpoints().contains("ingest_review_item"));
+        assertTrue(smoke.checkpoints().contains("review_event_bound"));
+        assertTrue(smoke.checkpoints().contains("review_event_bound_without_task_dispatch"));
+        assertFalse(smokeEventCommand.get().dispatchTasks());
         assertTrue(smoke.checkpoints().contains("record_coverage_synced"));
         assertTrue(smoke.checkpoints().contains("review_case_created"));
         assertTrue(smoke.checkpoints().contains("evidence_export_ready"));
+        assertTrue(smoke.checkpoints().contains("evidence_export_event_bound"));
         assertTrue(smoke.checkpoints().contains("manifest_verified"));
         assertTrue(smoke.checkpoints().contains("evidence_download_bytes_verified"));
         assertTrue(smoke.checkpoints().contains("evidence_download_audited"));
@@ -7164,6 +7173,7 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(service.getEvidenceAuditTrail(smoke.reviewCaseId()).stream()
                 .anyMatch(entry -> "export_downloaded".equals(entry.actionType())
                         && Objects.equals(9200L, entry.operatorUserId())
+                        && entry.boundEventIds().contains(7600L)
                         && "integration smoke download audit".equals(entry.actionNote())));
     }
 
@@ -7212,7 +7222,7 @@ class SupervisionAlertReviewServiceTest {
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
                 new InMemoryRuleStore(),
-                unusedEventService(),
+                eventServiceReturning(7601L),
                 recordResolver,
                 noEventProjectionStore(),
                 coverageResolver,
@@ -7234,6 +7244,8 @@ class SupervisionAlertReviewServiceTest {
 
         assertEquals("passed", smoke.status());
         assertTrue(smoke.videoExportConfirmed());
+        assertTrue(smoke.checkpoints().contains("review_event_bound"));
+        assertTrue(smoke.checkpoints().contains("evidence_export_event_bound"));
         assertTrue(smoke.checkpoints().contains("video_record_query_checked"));
         assertTrue(smoke.checkpoints().contains("real_record_coverage_checked"));
         assertTrue(smoke.checkpoints().contains("video_export_confirmed"));
@@ -7257,7 +7269,7 @@ class SupervisionAlertReviewServiceTest {
         SupervisionAlertReviewService service = newService(
                 new InMemoryReviewItemStore(),
                 new InMemoryRuleStore(),
-                unusedEventService(),
+                eventServiceReturning(7602L),
                 request -> Optional.of(new RecordEvidenceResult("/video/record/real.flv", "alert_record_match")),
                 noEventProjectionStore(),
                 request -> List.of(new RecordCoverageSegment(
@@ -7286,6 +7298,61 @@ class SupervisionAlertReviewServiceTest {
                 () -> service.runIntegrationSmoke(command));
 
         assertTrue(error.getMessage().contains("VIDEO export failed"));
+    }
+
+    @Test
+    void integrationSmokeRejectsNonPositiveConvertedEventId() {
+        LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 10, 6, 13);
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                eventServiceReturning(0L)
+        );
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                        9203L,
+                        false,
+                        smokeTime
+                )));
+
+        assertTrue(error.getMessage().contains("positive eventId"));
+    }
+
+    @Test
+    void integrationSmokeRejectsReadyExportThatLostEventBinding() {
+        LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 10, 6, 14);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore() {
+            @Override
+            public ReviewEvidenceExportJob completeExportJobClaim(ReviewEvidenceExportJob job, String claimToken) {
+                return super.completeExportJobClaim(new ReviewEvidenceExportJob(
+                        job.jobNo(),
+                        job.status(),
+                        job.exportPackage(),
+                        job.fileHash(),
+                        job.expiresAt(),
+                        job.operatorUserId(),
+                        job.reason(),
+                        List.of(),
+                        job.createdAt(),
+                        job.version()
+                ), claimToken);
+            }
+        };
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                eventServiceReturning(7603L)
+        );
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                        9204L,
+                        false,
+                        smokeTime
+                )));
+
+        assertTrue(error.getMessage().contains("event binding"));
     }
 
     @Test
@@ -8456,6 +8523,19 @@ class SupervisionAlertReviewServiceTest {
         return command -> {
             throw new AssertionError("event service should not be called");
         };
+    }
+
+    private static SupervisionEventService eventServiceReturning(Long eventId) {
+        return command -> new AlertToEventResult(
+                eventId,
+                command.sourceSystem(),
+                command.sourceAlertId(),
+                command.ruleCode(),
+                "supervision_order",
+                SupervisionEventLevelEnum.L2,
+                SupervisionEventStatusEnum.ACCEPTED.getCode(),
+                false
+        );
     }
 
     private static RecordEvidenceResolver noRecordEvidenceResolver() {

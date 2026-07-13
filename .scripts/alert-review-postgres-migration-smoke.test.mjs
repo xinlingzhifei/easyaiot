@@ -87,6 +87,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
 ]);
 
 assert.equal(
@@ -189,6 +190,14 @@ const recordStartMigrationSql = readFileSync(
   'utf8',
 );
 assert.match(recordStartMigrationSql, /record_start_time TIMESTAMP/);
+
+const eventCreatePermissionMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('supervision_event_create_permission')),
+  'utf8',
+);
+assert.match(eventCreatePermissionMigrationSql, /system_menu/);
+assert.match(eventCreatePermissionMigrationSql, /supervision:event:create/);
+assert.match(eventCreatePermissionMigrationSql, /监管事件创建/);
 assert.match(semanticIndexClaimMigrationSql, /claim_token VARCHAR\(128\)/);
 assert.match(semanticIndexClaimMigrationSql, /claim_expires_at TIMESTAMP/);
 assert.match(semanticIndexClaimMigrationSql, /next_retry_at TIMESTAMP/);
@@ -321,6 +330,8 @@ assert.match(assertionSql, /system:supervision-alert-review:media:playback/);
 assert.match(assertionSql, /expected review media permission seeds to be present/);
 assert.match(assertionSql, /system:supervision-alert-review:media:manage/);
 assert.match(assertionSql, /<> 6/);
+assert.match(assertionSql, /supervision:event:create/);
+assert.match(assertionSql, /expected supervision event create permission seed to be present/);
 assert.match(assertionSql, /system:supervision-alert-review:semantic-trigger:evaluate/);
 assert.match(assertionSql, /system:supervision-alert-review:semantic-trigger:confirm/);
 assert.match(assertionSql, /uk_alert_review_semantic_trigger_evaluation/);

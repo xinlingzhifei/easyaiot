@@ -7,6 +7,7 @@ export const REQUIRED_CHECKPOINTS = [
   'video_record_query_checked',
   'real_record_coverage_checked',
   'ingest_review_item',
+  'review_event_bound_without_task_dispatch',
   'review_rule_saved',
   'record_coverage_synced',
   'review_case_created',
@@ -168,15 +169,19 @@ export async function runSmoke(options, dependencies = {}) {
     body: buildSmokeBody(options),
   });
   const result = validateSmokeResult(responseData(payload));
+  const auditChain = await runEvidenceAuditSmoke(options, result, fetchImpl);
   const playback = playbackProbeEnabled(options)
     ? await runPlaybackUrlSmoke(options, result, fetchImpl)
     : null;
-  const checkpoints = playback
-    ? [...result.checkpoints, ...playback.checkpoints]
-    : result.checkpoints;
+  const checkpoints = [
+    ...result.checkpoints,
+    'evidence_audit_chain_verified',
+    ...(playback ? playback.checkpoints : []),
+  ];
   return {
     ok: true,
     result,
+    auditChain,
     checkpoints,
     ...(playback ? { playback } : {}),
   };
@@ -216,6 +221,9 @@ export function validateSmokeResult(result) {
   if (!hasValue(result.reviewCaseId)) {
     throw new Error('integration smoke response missing reviewCaseId');
   }
+  if (!isPositiveId(result.eventId)) {
+    throw new Error('integration smoke response missing positive eventId');
+  }
   if (!hasText(result.exportJobNo)) {
     throw new Error('integration smoke response missing exportJobNo');
   }
@@ -242,6 +250,54 @@ export function validateSmokeResult(result) {
     checkpoints,
     ruleEvidence,
   };
+}
+
+function buildEvidenceAuditUrl(options, result) {
+  const url = new URL(`${stripTrailingSlash(options.deviceBaseUrl)}/system/supervision/alert-review/evidence-audit`);
+  url.searchParams.set('eventId', String(result.eventId));
+  url.searchParams.set('reviewCaseId', String(result.reviewCaseId));
+  url.searchParams.set('reviewItemId', String(result.reviewItemId));
+  url.searchParams.set('exportJobNo', result.exportJobNo);
+  return url.toString();
+}
+
+async function runEvidenceAuditSmoke(options, result, fetchImpl) {
+  const payload = await fetchJson(fetchImpl, buildEvidenceAuditUrl(options, result), {
+    method: 'GET',
+    timeoutMs: options.timeoutMs,
+    token: options.token,
+    tenantId: options.tenantId,
+    label: 'DEVICE evidence audit chain smoke',
+  });
+  const entries = responseData(payload);
+  const matchingEntry = Array.isArray(entries)
+    ? entries.find((entry) => matchesEvidenceAuditEntry(entry, result))
+    : null;
+  if (!matchingEntry) {
+    throw new Error('evidence audit missing matching export_downloaded entry');
+  }
+  return {
+    action: 'export_downloaded',
+    reviewCaseId: result.reviewCaseId,
+    reviewItemIds: [result.reviewItemId],
+    eventIds: [result.eventId],
+    exportJobNo: result.exportJobNo,
+  };
+}
+
+function matchesEvidenceAuditEntry(entry, result) {
+  if (!entry || typeof entry !== 'object' || String(entry.actionType || '') !== 'export_downloaded') {
+    return false;
+  }
+  const metadata = entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+    ? entry.metadata
+    : {};
+  return idsEqual(entry.reviewCaseId, result.reviewCaseId)
+    && String(entry.jobNo || '') === result.exportJobNo
+    && idListIncludes(entry.boundEventIds, result.eventId)
+    && idListIncludes(metadata.reviewItemIds, result.reviewItemId)
+    && idListIncludes(metadata.eventIds, result.eventId)
+    && String(metadata.exportJobNo || '') === result.exportJobNo;
 }
 
 function smokeRuleEvidence(result) {
@@ -410,6 +466,19 @@ function hasValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
+function isPositiveId(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && Number.isInteger(numeric) && numeric > 0;
+}
+
+function idsEqual(left, right) {
+  return hasValue(left) && hasValue(right) && String(left).trim() === String(right).trim();
+}
+
+function idListIncludes(values, expected) {
+  return Array.isArray(values) && values.some((value) => idsEqual(value, expected));
+}
+
 function hasText(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
@@ -496,7 +565,10 @@ async function runCli() {
     profile: smoke.result.profile,
     reviewItemId: smoke.result.reviewItemId,
     reviewCaseId: smoke.result.reviewCaseId,
+    eventId: smoke.result.eventId,
+    eventIds: smoke.auditChain.eventIds,
     exportJobNo: smoke.result.exportJobNo,
+    auditChain: smoke.auditChain,
     manifestValid: smoke.result.manifestValid,
     videoExportRequested: smoke.result.videoExportRequested,
     videoExportConfirmed: smoke.result.videoExportConfirmed,

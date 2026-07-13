@@ -497,6 +497,17 @@ const untrackedBaselineMigration = evaluateStatus(`
 assert.equal(untrackedBaselineMigration.ok, false);
 assert.equal(untrackedBaselineMigration.blockers[0].group, 'DEVICE schema and migration');
 
+const supervisionEventCreatePermissionMigrationPath = 'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql';
+const untrackedSupervisionEventCreatePermissionMigration = evaluateStatus(`
+?? ${supervisionEventCreatePermissionMigrationPath}
+`);
+assert.equal(untrackedSupervisionEventCreatePermissionMigration.ok, false);
+assert.equal(untrackedSupervisionEventCreatePermissionMigration.blockers[0].group, 'DEVICE schema and migration');
+assert.equal(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(supervisionEventCreatePermissionMigrationPath),
+  true,
+);
+
 const untrackedVideoTenantMigration = evaluateStatus(`
 ?? VIDEO/migrations/V20260712__record_snapshot_tenant_scope.sql
 `);
@@ -1724,12 +1735,37 @@ assert.deepEqual(aliasedVideoIntegrationConfigScan.blockers.map((blocker) => blo
 
 const completeLiveVideoSmokeContent = 'requiredOptionErrors; sameReleaseEndpoint; record coverage URL must not equal alert record query URL; selectPlayableSegment; describeNonPlayableSegments; non_exportable_reason; nonExportableReason; exportable=false; record coverage query returned no playable/exportable record segment; validateCoverageClassification; STANDARD_COVERAGE_CLASSIFICATIONS; continuous; motion; alert; detection; normalizeCoverageClassification; normalized === \'all\'; normalized === \'record\'; normalized === \'recording\'; return \'continuous\'; coverageSummary; retainMode; coverageSource; record coverage query missing retain mode or source classification evidence; record coverage query returned non-standard retain mode or source classification; validateStorageDriftReport; REQUIRED_STORAGE_DRIFT_REASON_KEYS; storageDriftReasonKeys; standardReasonKeys; missing standard reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; validateManifestStorageLifecycle; validateManifestSignature(manifest); isHmacSha256SignatureValue(value); signature value is not canonical hmac-sha256; runManifestVerifierIfConfigured(); manifestSignature; manifestVerification; manifestVerifierScript; runManifestVerifierScript(scriptPath, manifest); spawnSync(process.execPath; timeout: timeoutMs; ETIMEDOUT; timed out after; result.status !== 0; verifier failed with exit; missing --manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; hmac-sha256; signatureVersion; keyId; assertReleaseMediaEvidence(options, "record URI", value); assertReleaseSegmentMediaEvidence(options, segment); assertReleaseMediaEvidence(options, "download URL", value); assertReleaseMediaEvidence(options, "manifest URL", value); assertReleaseMediaEvidence(options, "export package storage reference", objectKey); looksLocalOrMockMediaEvidence(value); looksInlineOrOpaqueMediaEvidence(value); looksAbsoluteLocalPathEvidence(value); data:; blob:; about:; validateDownloadProbeHeaders(response); isVideoDownloadContentType(contentType); content-type; content-length; video/; application/octet-stream; isSha256Digest(value); [a-f0-9]{64}; invalid source segment hash; invalid output file hash; ffmpegCommandHashes; invalid ffmpeg command hash; validateClipWindows(sourceSegments); invalid clip window; validateManifestConcatOrder(recordSegments, concatOrder); normalizeConcatOrderEntry(entry); validateRootConcatOrderCoverage(segmentOrderEntries, orderEntries, recordSegments.length); concatOrder.map; entry.index; duplicate concat order index; invalid concat order index; references missing segment index; omits segment index; does not match segment count; raw.startsWith; mock/; mock\\; https:${raw}; recordUriSource; file_path;';
 const completeRecordVideoServiceContent = '_normalize_gap_reason; _normalize_gap_reason_token; isalnum; normalized.strip(\'_\'); \'file_expired\': \'retention_expired\'; \'retention_expired\': \'retention\'; \'video_url_not_configured\': \'configuration\'; \'record_space_not_found\': \'configuration\'; \'file_missing\': \'filesystem\'; \'probe_failed\': \'probe\'; \'permission_denied\': \'permission\'; \'disk_full\': \'storage\'; \'cache_flush_failed\': \'cache\';';
-const completeProductionSmokeContent = 'requiredOptionErrors; liveVideoEvidenceError; liveDeviceEvidenceError; livePlayerEvidenceError; buildSmokeSteps; W4:visible-copy; alert-review-visible-copy-scan.mjs; visible-copy files for replacement characters; playerSmokeStep; --assert-native-current-time; Number.isFinite(player.nativeCurrentTime); missing native currentTime evidence; W2:typecheck; --pm-on-fail=ignore; pnpm_version_guard; typecheckRetry; REQUIRED_STORAGE_DRIFT_REASON_KEYS; payload.coverageSummary; summary.coverageSummary = buildCoverageSummary(payload.coverageSummary); buildCoverageSummary(payload.coverageSummary); copyTextIfPresent(coverage, source, \'retainMode\'); copyTextIfPresent(coverage, source, \'coverageSource\'); summary.coverageSummary?.retainMode; summary.coverageSummary?.coverageSource; missing coverage retain/source evidence; payload.storageDriftSummary; summary.storageDriftSummary = buildStorageDriftSummary(payload.storageDriftSummary); copyBooleanIfPresent(storageDriftSummary, source, \'healthy\'); copyNumberIfPresent(storageDriftSummary, source, \'recordCount\'); copyNumberIfPresent(storageDriftSummary, source, \'issueCount\'); issueReasons; standardReasonKeys; summary.storageDriftSummary?.standardReasonKeys; missing standard storage drift reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; payload.exportResult; buildExportResultSummary(payload.exportResult); copyTextIfPresent(exportResult, source, \'exportId\'); copySanitizedUrlIfPresent(exportResult, source, \'downloadUrl\'); copySanitizedUrlIfPresent(exportResult, source, \'manifestUrl\'); payload.manifestSignature; summary.manifestSignature = buildManifestSignatureSummary(payload.manifestSignature); copyTextIfPresent(manifestSignature, source, \'algorithm\'); copyTextIfPresent(manifestSignature, source, \'keyId\'); copyTextIfPresent(manifestSignature, source, \'signatureVersion\'); payload.manifestStorageLifecycle; buildManifestStorageLifecycleSummary(payload.manifestStorageLifecycle); copyTextIfPresent(manifestStorageLifecycle, source, \'storageType\'); copyTextIfPresent(manifestStorageLifecycle, source, \'status\'); copyTextIfPresent(manifestStorageLifecycle, source, \'expiresAt\'); copyTextIfPresent(manifestStorageLifecycle, source, \'exportPackageObjectKey\'); summary.manifestStorageLifecycle?.status; missing persisted manifest storage lifecycle evidence; payload.manifestVerification; buildManifestVerificationSummary(payload.manifestVerification); copyBooleanIfPresent(manifestVerification, source, \'valid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureValid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureKeyAvailable\'); copyTextIfPresent(manifestVerification, source, \'keyId\'); copyTextIfPresent(manifestVerification, source, \'signatureVersion\'); violations; summary.manifestVerification?.valid; summary.manifestVerification.signatureValid; summary.manifestVerification.signatureKeyAvailable; missing valid manifest verifier evidence; missing HMAC manifest verifier signature evidence; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs}; childSmokeSummary; buildPlaybackAccessSummary(payload.playback); copyTextIfPresent(playback, source, \'grantedDecision\'); copyTextIfPresent(playback, source, \'deniedDecision\'); deniedReasons; copySanitizedUrlIfPresent(player, payload, \'recordPath\'); stripUrlSecrets; evidence_download_audited; auditChain; firstAuditScalar; firstAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence; liveDevicePlaybackEvidenceError; summary.playback; grantedDecision; deniedDecision; camera_not_allowed; missing playback URL allow/deny decision evidence; missing playback URL deny reason evidence; liveDeviceRuleEvidenceError; summary.ruleEvidence; buildRuleEvidenceSummary(payload); copyTextIfPresent(ruleEvidence, source, \'ruleCode\'); copyTextIfPresent(ruleEvidence, source, \'cameraId\'); copyTextIfPresent(ruleEvidence, source, \'zoneCode\'); copyTextIfPresent(ruleEvidence, source, \'objectLabel\'); copyNumberIfPresent(ruleEvidence, source, \'inertiaFrames\'); copyNumberIfPresent(ruleEvidence, source, \'loiteringSeconds\'); inertiaFrames; loiteringSeconds; missing rule inertia/loitering evidence; missing rule inertiaFrames=3 evidence; missing rule loiteringSeconds=20 evidence;';
+const requiredDeviceEvidenceAuditAnchors = [
+  'const auditChain = await runEvidenceAuditSmoke(options, result, fetchImpl)',
+  '/system/supervision/alert-review/evidence-audit',
+  "url.searchParams.set('eventId'",
+  "url.searchParams.set('reviewCaseId'",
+  "url.searchParams.set('reviewItemId'",
+  "url.searchParams.set('exportJobNo'",
+  "fetchJson(fetchImpl, buildEvidenceAuditUrl(options, result), {\n    method: 'GET'",
+  'entries.find((entry) => matchesEvidenceAuditEntry(entry, result))',
+  "String(entry.actionType || '') !== 'export_downloaded'",
+  'idsEqual(entry.reviewCaseId, result.reviewCaseId)',
+  "String(entry.jobNo || '') === result.exportJobNo",
+  'idListIncludes(entry.boundEventIds, result.eventId)',
+  'idListIncludes(metadata.reviewItemIds, result.reviewItemId)',
+  'idListIncludes(metadata.eventIds, result.eventId)',
+  "String(metadata.exportJobNo || '') === result.exportJobNo",
+  'evidence_audit_chain_verified',
+  'review_event_bound_without_task_dispatch',
+];
+const completeDeviceEvidenceAuditContent = requiredDeviceEvidenceAuditAnchors.join('; ');
+const completeProductionSmokeContent = 'requiredOptionErrors; liveVideoEvidenceError; liveDeviceEvidenceError; livePlayerEvidenceError; buildSmokeSteps; W4:visible-copy; alert-review-visible-copy-scan.mjs; visible-copy files for replacement characters; playerSmokeStep; --assert-native-current-time; Number.isFinite(player.nativeCurrentTime); missing native currentTime evidence; W2:typecheck; --pm-on-fail=ignore; pnpm_version_guard; typecheckRetry; REQUIRED_STORAGE_DRIFT_REASON_KEYS; payload.coverageSummary; summary.coverageSummary = buildCoverageSummary(payload.coverageSummary); buildCoverageSummary(payload.coverageSummary); copyTextIfPresent(coverage, source, \'retainMode\'); copyTextIfPresent(coverage, source, \'coverageSource\'); summary.coverageSummary?.retainMode; summary.coverageSummary?.coverageSource; missing coverage retain/source evidence; payload.storageDriftSummary; summary.storageDriftSummary = buildStorageDriftSummary(payload.storageDriftSummary); copyBooleanIfPresent(storageDriftSummary, source, \'healthy\'); copyNumberIfPresent(storageDriftSummary, source, \'recordCount\'); copyNumberIfPresent(storageDriftSummary, source, \'issueCount\'); issueReasons; standardReasonKeys; summary.storageDriftSummary?.standardReasonKeys; missing standard storage drift reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; payload.exportResult; buildExportResultSummary(payload.exportResult); copyTextIfPresent(exportResult, source, \'exportId\'); copySanitizedUrlIfPresent(exportResult, source, \'downloadUrl\'); copySanitizedUrlIfPresent(exportResult, source, \'manifestUrl\'); payload.manifestSignature; summary.manifestSignature = buildManifestSignatureSummary(payload.manifestSignature); copyTextIfPresent(manifestSignature, source, \'algorithm\'); copyTextIfPresent(manifestSignature, source, \'keyId\'); copyTextIfPresent(manifestSignature, source, \'signatureVersion\'); payload.manifestStorageLifecycle; buildManifestStorageLifecycleSummary(payload.manifestStorageLifecycle); copyTextIfPresent(manifestStorageLifecycle, source, \'storageType\'); copyTextIfPresent(manifestStorageLifecycle, source, \'status\'); copyTextIfPresent(manifestStorageLifecycle, source, \'expiresAt\'); copyTextIfPresent(manifestStorageLifecycle, source, \'exportPackageObjectKey\'); summary.manifestStorageLifecycle?.status; missing persisted manifest storage lifecycle evidence; payload.manifestVerification; buildManifestVerificationSummary(payload.manifestVerification); copyBooleanIfPresent(manifestVerification, source, \'valid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureValid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureKeyAvailable\'); copyTextIfPresent(manifestVerification, source, \'keyId\'); copyTextIfPresent(manifestVerification, source, \'signatureVersion\'); violations; summary.manifestVerification?.valid; summary.manifestVerification.signatureValid; summary.manifestVerification.signatureKeyAvailable; missing valid manifest verifier evidence; missing HMAC manifest verifier signature evidence; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs}; childSmokeSummary; buildPlaybackAccessSummary(payload.playback); copyTextIfPresent(playback, source, \'grantedDecision\'); copyTextIfPresent(playback, source, \'deniedDecision\'); deniedReasons; copySanitizedUrlIfPresent(player, payload, \'recordPath\'); stripUrlSecrets; evidence_download_audited; auditChain; firstAuditScalar; firstAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence; liveDevicePlaybackEvidenceError; summary.playback; grantedDecision; deniedDecision; camera_not_allowed; missing playback URL allow/deny decision evidence; missing playback URL deny reason evidence; liveDeviceRuleEvidenceError; summary.ruleEvidence; buildRuleEvidenceSummary(payload); copyTextIfPresent(ruleEvidence, source, \'ruleCode\'); copyTextIfPresent(ruleEvidence, source, \'cameraId\'); copyTextIfPresent(ruleEvidence, source, \'zoneCode\'); copyTextIfPresent(ruleEvidence, source, \'objectLabel\'); copyNumberIfPresent(ruleEvidence, source, \'inertiaFrames\'); copyNumberIfPresent(ruleEvidence, source, \'loiteringSeconds\'); inertiaFrames; loiteringSeconds; missing rule inertia/loitering evidence; missing rule inertiaFrames=3 evidence; missing rule loiteringSeconds=20 evidence; evidence_audit_chain_verified; copyPositiveIdIfPresent(summary, payload, \'eventId\'); copyPositiveIdListIfPresent(summary, payload, \'eventIds\'); normalizePositiveId; Object.hasOwn(payload, \'eventIds\'); explicitEmptyEventIds; missing eventId evidence; missing eventIds evidence; eventIds do not exactly match eventId; auditChain reviewCaseId does not match reviewCaseId; auditChain reviewItemIds do not exactly match reviewItemId; auditChain eventIds do not exactly match eventId; auditChain exportJobNo does not match exportJobNo;';
 const completeLiveVideoTokenContent = `${completeLiveVideoSmokeContent} parseArgs; token: env.YFEIEYE_VIDEO_SMOKE_TOKEN; arg.startsWith('--token='); !options.allowLocalEndpoints && !hasText(options.token); missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN; runSmoke; withBearerAuthorization; const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token);`;
 const completeProductionSmokeTokenContent = `${completeProductionSmokeContent} formatStepCommand; --token=\${options.token}; maskSensitiveArg; value.startsWith('--token='); return '--token=***';`;
 const productionSmokeTimeoutEvidenceContent = 'stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs};';
+const productionSmokeAuditIdentityContent = "auditChain; firstAuditScalar; firstAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; evidence_audit_chain_verified; copyPositiveIdIfPresent(summary, payload, 'eventId'); copyPositiveIdListIfPresent(summary, payload, 'eventIds'); normalizePositiveId; Object.hasOwn(payload, 'eventIds'); explicitEmptyEventIds; missing eventId evidence; missing eventIds evidence; eventIds do not exactly match eventId; auditChain reviewCaseId does not match reviewCaseId; auditChain reviewItemIds do not exactly match reviewItemId; auditChain eventIds do not exactly match eventId; auditChain exportJobNo does not match exportJobNo; missing auditChain exportJobNo evidence;";
 
 const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
+  {
+    path: '.scripts/alert-review-device-integration-smoke.mjs',
+    content: completeDeviceEvidenceAuditContent,
+  },
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
     content: completeLiveVideoSmokeContent,
@@ -1744,6 +1780,19 @@ const liveVideoEvidenceGateScan = scanLiveVideoEvidenceGate([
   },
 ]);
 assert.equal(liveVideoEvidenceGateScan.ok, true);
+
+for (const requiredDeviceEvidenceAuditAnchor of requiredDeviceEvidenceAuditAnchors) {
+  const missingDeviceEvidenceAuditGateScan = scanLiveVideoEvidenceGate([
+    {
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      content: completeDeviceEvidenceAuditContent.replace(requiredDeviceEvidenceAuditAnchor, ''),
+    },
+  ]);
+  assert.equal(missingDeviceEvidenceAuditGateScan.ok, false, requiredDeviceEvidenceAuditAnchor);
+  assert.deepEqual(missingDeviceEvidenceAuditGateScan.blockers.map((blocker) => blocker.reason), [
+    'device_smoke_evidence_audit_chain_missing',
+  ]);
+}
 
 const liveVideoTokenGateScan = scanLiveVideoEvidenceGate([
   {
@@ -2499,6 +2548,28 @@ assert.deepEqual(missingProductionSmokeAuditChainGateScan.blockers.map((blocker)
   'production_smoke_audit_chain_summary_missing',
 ]);
 
+for (const requiredAuditIdentityAnchor of [
+  'evidence_audit_chain_verified',
+  "copyPositiveIdIfPresent(summary, payload, 'eventId')",
+  "copyPositiveIdListIfPresent(summary, payload, 'eventIds')",
+  'missing eventIds evidence',
+  'auditChain reviewCaseId does not match reviewCaseId',
+  'auditChain reviewItemIds do not exactly match reviewItemId',
+  'auditChain eventIds do not exactly match eventId',
+  'auditChain exportJobNo does not match exportJobNo',
+]) {
+  const missingProductionSmokeAuditIdentityScan = scanLiveVideoEvidenceGate([
+    {
+      path: '.scripts/alert-review-production-smoke.mjs',
+      content: completeProductionSmokeContent.replace(requiredAuditIdentityAnchor, ''),
+    },
+  ]);
+  assert.equal(missingProductionSmokeAuditIdentityScan.ok, false, requiredAuditIdentityAnchor);
+  assert.deepEqual(missingProductionSmokeAuditIdentityScan.blockers.map((blocker) => blocker.reason), [
+    'production_smoke_audit_chain_summary_missing',
+  ]);
+}
+
 const missingProductionSmokeAuditChainScalarWhitelistGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-video-live-smoke.mjs',
@@ -2520,7 +2591,7 @@ assert.deepEqual(missingProductionSmokeAuditChainScalarWhitelistGateScan.blocker
 const missingProductionSmokePlaybackAccessGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: `payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; requiredOptionErrors; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; ${productionSmokeTimeoutEvidenceContent} liveDeviceEvidenceError; childSmokeSummary; evidence_download_audited; auditChain; firstAuditScalar; firstAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence;`,
+    content: `payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; requiredOptionErrors; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; ${productionSmokeTimeoutEvidenceContent} liveDeviceEvidenceError; childSmokeSummary; evidence_download_audited; ${productionSmokeAuditIdentityContent}`,
   },
 ]);
 assert.equal(missingProductionSmokePlaybackAccessGateScan.ok, false);
@@ -2531,7 +2602,7 @@ assert.deepEqual(missingProductionSmokePlaybackAccessGateScan.blockers.map((bloc
 const missingProductionSmokeRuleSemanticsEvidenceGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-production-smoke.mjs',
-    content: `payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; requiredOptionErrors; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; ${productionSmokeTimeoutEvidenceContent} liveDeviceEvidenceError; childSmokeSummary; evidence_download_audited; auditChain; firstAuditScalar; firstAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence; liveDevicePlaybackEvidenceError; summary.playback; grantedDecision; deniedDecision; camera_not_allowed; missing playback URL allow/deny decision evidence; missing playback URL deny reason evidence;`,
+    content: `payload.manifestSignature; summary.manifestSignature = payload.manifestSignature; payload.manifestVerification; summary.manifestVerification = payload.manifestVerification; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; requiredOptionErrors; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; ${productionSmokeTimeoutEvidenceContent} liveDeviceEvidenceError; childSmokeSummary; evidence_download_audited; ${productionSmokeAuditIdentityContent} liveDevicePlaybackEvidenceError; summary.playback; grantedDecision; deniedDecision; camera_not_allowed; missing playback URL allow/deny decision evidence; missing playback URL deny reason evidence;`,
   },
 ]);
 assert.equal(missingProductionSmokeRuleSemanticsEvidenceGateScan.ok, false);

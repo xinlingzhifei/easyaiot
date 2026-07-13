@@ -1326,6 +1326,7 @@ public final class AlertReviewVO {
 
         private String status;
         private Long reviewItemId;
+        private Long eventId;
         private Long reviewCaseId;
         private String exportJobNo;
         private boolean manifestValid;
@@ -1341,6 +1342,7 @@ public final class AlertReviewVO {
             IntegrationSmokeRespVO respVO = new IntegrationSmokeRespVO();
             respVO.setStatus(result.status());
             respVO.setReviewItemId(result.reviewItemId());
+            respVO.setEventId(result.eventId());
             respVO.setReviewCaseId(result.reviewCaseId());
             respVO.setExportJobNo(result.exportJobNo());
             respVO.setManifestValid(result.manifestValid());

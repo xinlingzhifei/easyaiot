@@ -447,6 +447,7 @@ function passedStepEvidenceError(step, summary) {
 function liveDeviceEvidenceError(stepName, summary) {
   const missing = missingCheckpoints(summary.checkpoints, [
     'ingest_review_item',
+    'review_event_bound_without_task_dispatch',
     'review_rule_saved',
     'record_coverage_synced',
     'review_case_created',
@@ -454,6 +455,7 @@ function liveDeviceEvidenceError(stepName, summary) {
     'manifest_verified',
     'evidence_download_bytes_verified',
     'evidence_download_audited',
+    'evidence_audit_chain_verified',
     'playback_url_granted',
     'playback_url_denied',
   ]);
@@ -472,6 +474,15 @@ function liveDeviceEvidenceError(stepName, summary) {
   if (!hasText(String(summary.reviewCaseId ?? ''))) {
     return `production smoke step ${stepName} missing reviewCaseId evidence`;
   }
+  if (!isPositiveId(summary.eventId)) {
+    return `production smoke step ${stepName} missing eventId evidence`;
+  }
+  if (!Array.isArray(summary.eventIds) || summary.eventIds.length === 0) {
+    return `production smoke step ${stepName} missing eventIds evidence`;
+  }
+  if (!isExactAuditIdList(summary.eventIds, summary.eventId)) {
+    return `production smoke step ${stepName} eventIds do not exactly match eventId`;
+  }
   if (!summary.auditChain || typeof summary.auditChain !== 'object') {
     return `production smoke step ${stepName} missing auditChain evidence`;
   }
@@ -481,14 +492,26 @@ function liveDeviceEvidenceError(stepName, summary) {
   if (!hasText(String(summary.auditChain.reviewCaseId ?? ''))) {
     return `production smoke step ${stepName} missing auditChain reviewCaseId evidence`;
   }
+  if (!samePositiveId(summary.auditChain.reviewCaseId, summary.reviewCaseId)) {
+    return `production smoke step ${stepName} auditChain reviewCaseId does not match reviewCaseId`;
+  }
   if (!Array.isArray(summary.auditChain.reviewItemIds) || summary.auditChain.reviewItemIds.length === 0) {
     return `production smoke step ${stepName} missing auditChain reviewItemIds evidence`;
   }
-  if (!Array.isArray(summary.auditChain.eventIds)) {
+  if (!isExactAuditIdList(summary.auditChain.reviewItemIds, summary.reviewItemId)) {
+    return `production smoke step ${stepName} auditChain reviewItemIds do not exactly match reviewItemId`;
+  }
+  if (!Array.isArray(summary.auditChain.eventIds) || summary.auditChain.eventIds.length === 0) {
     return `production smoke step ${stepName} missing auditChain eventIds evidence`;
+  }
+  if (!isExactAuditIdList(summary.auditChain.eventIds, summary.eventId)) {
+    return `production smoke step ${stepName} auditChain eventIds do not exactly match eventId`;
   }
   if (!hasText(summary.auditChain.exportJobNo)) {
     return `production smoke step ${stepName} missing auditChain exportJobNo evidence`;
+  }
+  if (String(summary.auditChain.exportJobNo) !== String(summary.exportJobNo ?? '')) {
+    return `production smoke step ${stepName} auditChain exportJobNo does not match exportJobNo`;
   }
   const playbackEvidenceError = liveDevicePlaybackEvidenceError(stepName, summary.playback);
   if (playbackEvidenceError) {
@@ -827,11 +850,15 @@ function childSmokeSummary(result) {
   if (hasText(payload.profile)) {
     summary.profile = payload.profile;
   }
-  copyIfPresent(summary, payload, 'reviewItemId');
-  copyIfPresent(summary, payload, 'reviewCaseId');
-  copyIfPresent(summary, payload, 'reviewItemIds');
-  copyIfPresent(summary, payload, 'eventIds');
-  copyIfPresent(summary, payload, 'exportJobNo');
+  copyPositiveIdIfPresent(summary, payload, 'reviewItemId');
+  copyPositiveIdIfPresent(summary, payload, 'reviewCaseId');
+  copyPositiveIdIfPresent(summary, payload, 'eventId');
+  copyPositiveIdListIfPresent(summary, payload, 'reviewItemIds');
+  copyPositiveIdListIfPresent(summary, payload, 'eventIds');
+  if (!Object.hasOwn(payload, 'eventIds') && isPositiveId(summary.eventId)) {
+    summary.eventIds = [summary.eventId];
+  }
+  copyTextIfPresent(summary, payload, 'exportJobNo');
   const auditChain = buildAuditChainSummary(payload, summary);
   if (auditChain) {
     summary.auditChain = auditChain;
@@ -936,12 +963,17 @@ function buildAuditChainSummary(payload, summary) {
   const source = payload.auditChain && typeof payload.auditChain === 'object' ? payload.auditChain : {};
   const action = firstText(source.action, hasCheckpoint(payload.checkpoints, 'evidence_download_audited') ? 'export_downloaded' : '');
   const reviewCaseId = firstAuditScalar(source.reviewCaseId, payload.reviewCaseId, summary.reviewCaseId);
-  const reviewItemIds = firstAuditIdList(
-    source.reviewItemIds,
-    payload.reviewItemIds,
-    payload.reviewItemId == null ? [] : [payload.reviewItemId],
-  );
-  const eventIds = firstAuditIdList(source.eventIds, payload.eventIds);
+  const reviewItemIds = resolveExactAuditIdList(source, payload, 'reviewItemIds', 'reviewItemId');
+  const explicitEmptyEventIds = (Object.hasOwn(source, 'eventIds')
+      && Array.isArray(source.eventIds)
+      && source.eventIds.length === 0)
+    || (!Object.hasOwn(source, 'eventIds')
+      && Object.hasOwn(payload, 'eventIds')
+      && Array.isArray(payload.eventIds)
+      && payload.eventIds.length === 0);
+  const eventIds = explicitEmptyEventIds
+    ? []
+    : resolveExactAuditIdList(source, payload, 'eventIds', 'eventId');
   const exportJobNo = firstText(source.exportJobNo, payload.exportJobNo, summary.exportJobNo);
   if (!hasText(action) && reviewCaseId == null && reviewItemIds.length === 0 && eventIds.length === 0 && !hasText(exportJobNo)) {
     return null;
@@ -965,19 +997,22 @@ function firstAuditScalar(...values) {
   return undefined;
 }
 
-function firstAuditIdList(...values) {
-  for (const value of values) {
-    const normalized = normalizeAuditIdList(value);
-    if (normalized.length > 0) {
-      return normalized;
-    }
+function resolveExactAuditIdList(source, payload, listKey, scalarKey) {
+  if (Object.hasOwn(source, listKey)) {
+    return normalizeAuditIdList(source[listKey]);
   }
-  return [];
+  if (Object.hasOwn(payload, listKey)) {
+    return normalizeAuditIdList(payload[listKey]);
+  }
+  return normalizeAuditIdList(payload[scalarKey] == null ? [] : [payload[scalarKey]]);
 }
 
 function normalizeAuditIdList(value) {
-  const values = Array.isArray(value) ? value : value == null ? [] : [value];
-  return values.map(normalizeAuditScalar).filter((entry) => entry !== undefined);
+  if (!Array.isArray(value) || value.length !== 1) {
+    return [];
+  }
+  const normalized = normalizePositiveId(value[0]);
+  return normalized === undefined ? [] : [normalized];
 }
 
 function normalizeAuditScalar(value) {
@@ -988,6 +1023,35 @@ function normalizeAuditScalar(value) {
     return value;
   }
   return undefined;
+}
+
+function isPositiveId(value) {
+  return normalizePositiveId(value) !== undefined;
+}
+
+function normalizePositiveId(value) {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) {
+    return undefined;
+  }
+  const canonical = value.trim().replace(/^0+/, '');
+  return canonical === '' ? undefined : canonical;
+}
+
+function samePositiveId(actual, expected) {
+  const normalizedActual = normalizePositiveId(actual);
+  const normalizedExpected = normalizePositiveId(expected);
+  return normalizedActual !== undefined
+    && normalizedExpected !== undefined
+    && String(normalizedActual) === String(normalizedExpected);
+}
+
+function isExactAuditIdList(values, expected) {
+  return Array.isArray(values)
+    && values.length === 1
+    && samePositiveId(values[0], expected);
 }
 
 function firstObject(...values) {
@@ -1052,6 +1116,26 @@ function copyNumberIfPresent(target, source, key) {
   if (Number.isFinite(source[key])) {
     target[key] = source[key];
   }
+}
+
+function copyPositiveIdIfPresent(target, source, key) {
+  const normalized = normalizePositiveId(source[key]);
+  if (normalized !== undefined) {
+    target[key] = normalized;
+  }
+}
+
+function copyPositiveIdListIfPresent(target, source, key) {
+  if (!Object.hasOwn(source, key)) {
+    return;
+  }
+  const values = source[key];
+  if (!Array.isArray(values) || values.length !== 1) {
+    target[key] = [];
+    return;
+  }
+  const normalized = normalizePositiveId(values[0]);
+  target[key] = normalized === undefined ? [] : [normalized];
 }
 
 function copyIfPresent(target, source, key) {

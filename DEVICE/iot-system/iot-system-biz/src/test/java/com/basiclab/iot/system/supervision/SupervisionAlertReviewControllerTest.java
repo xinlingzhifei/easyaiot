@@ -504,6 +504,7 @@ class SupervisionAlertReviewControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data.operatorUserId").value(780))
+                    .andExpect(jsonPath("$.data.eventId").value(7604))
                     .andExpect(jsonPath("$.data.videoExportConfirmed").value(true));
         } finally {
             SecurityContextHolder.clearContext();
@@ -706,6 +707,11 @@ class SupervisionAlertReviewControllerTest {
 
     @Test
     void mediaEndpointsDeclareSeededPermissions() throws Exception {
+        assertPreAuthorize(
+                "convertToEvent",
+                new Class<?>[]{Long.class, OperationReqVO.class},
+                "supervision:event:create"
+        );
         assertPreAuthorizeExpression(
                 "findReviewCaseByItem",
                 new Class<?>[]{Long.class},
@@ -771,10 +777,14 @@ class SupervisionAlertReviewControllerTest {
                 new Class<?>[]{String.class, Long.class, List.class, String.class},
                 "system:supervision-alert-review:media:download"
         );
-        assertPreAuthorize(
+        assertPreAuthorizeExpression(
                 "runIntegrationSmoke",
                 new Class<?>[]{IntegrationSmokeReqVO.class},
-                "system:supervision-alert-review:media:export"
+                "@ss.hasPermission('system:supervision-alert-review:media:playback')"
+                        + " and @ss.hasPermission('system:supervision-alert-review:media:export')"
+                        + " and @ss.hasPermission('system:supervision-alert-review:media:manifest')"
+                        + " and @ss.hasPermission('system:supervision-alert-review:media:download')"
+                        + " and @ss.hasPermission('supervision:event:create')"
         );
     }
 
@@ -1045,6 +1055,7 @@ class SupervisionAlertReviewControllerTest {
         return new ReviewIntegrationSmokeResult(
                 "passed",
                 100L,
+                7604L,
                 10L,
                 "JOB-SMOKE",
                 true,
