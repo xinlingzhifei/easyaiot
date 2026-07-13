@@ -22,11 +22,12 @@ class SupervisionAlertReviewSegmentMapperTest {
 
     @Test
     void transactionLockHashesTenantNamespaceAndCameraInsidePostgresTransaction() throws Exception {
-        Select select = SupervisionAlertReviewSegmentMapper.class
-                .getMethod("acquireTransactionLock", Long.class, String.class, String.class)
-                .getAnnotation(Select.class);
+        Method lockMethod = SupervisionAlertReviewSegmentMapper.class
+                .getMethod("acquireTransactionLock", Long.class, String.class, String.class);
+        Select select = lockMethod.getAnnotation(Select.class);
 
         assertTrue(select != null);
+        assertTrue(lockMethod.getReturnType() == String.class);
         String sql = String.join(" ", select.value());
         assertTrue(sql.contains("pg_advisory_xact_lock"));
         assertTrue(sql.contains("hashtextextended"));

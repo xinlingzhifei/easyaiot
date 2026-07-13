@@ -28,9 +28,9 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
                 )
             )
             """)
-    void acquireTransactionLock(@Param("tenantId") Long tenantId,
-                                @Param("namespace") String namespace,
-                                @Param("lockKey") String lockKey);
+    String acquireTransactionLock(@Param("tenantId") Long tenantId,
+                                  @Param("namespace") String namespace,
+                                  @Param("lockKey") String lockKey);
 
     default SupervisionAlertReviewSegmentDO selectByReviewItemId(Long reviewItemId) {
         return selectOne(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
