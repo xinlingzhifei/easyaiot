@@ -102,11 +102,17 @@ class HttpVideoResolverTest {
     }
 
     @Test
-    void runtimeOutboxAdminUsersStayUnconfiguredWhenEnvironmentIsAbsent() throws Exception {
+    void runtimeOutboxNotifyUsesTenantScopedAdminRoutesWithoutGlobalFallback() throws Exception {
         String applicationYaml = Files.readString(modulePath("src/main/resources/application.yaml"), StandardCharsets.UTF_8);
+        String dockerCompose = Files.readString(modulePath("../../docker-compose.yml"), StandardCharsets.UTF_8);
 
+        assertTrue(applicationYaml.contains(
+                "tenant-admin-user-routes: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES:}"));
         assertFalse(applicationYaml.contains(
                 "admin-user-ids: ${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:[]}"));
+        assertTrue(dockerCompose.contains(
+                "YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES:-}"));
+        assertFalse(dockerCompose.contains("YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS="));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.supervision;
 
+import com.basiclab.iot.common.core.aop.DataPermissionContextHolder;
 import com.basiclab.iot.common.core.context.TenantContextHolder;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewReportAckDO;
@@ -45,6 +46,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -83,11 +85,15 @@ class SupervisionAlertReviewMapperStoreTest {
     @Test
     void runtimeOutboxClaimRequiresAndPassesCurrentTenant() {
         AtomicReference<Long> claimedTenantId = new AtomicReference<>();
+        AtomicBoolean dataPermissionIgnored = new AtomicBoolean();
         SupervisionAlertReviewRuntimeOutboxMapper outboxMapper = mapper(
                 SupervisionAlertReviewRuntimeOutboxMapper.class,
                 (proxy, method, args) -> {
                     if ("claimPending".equals(method.getName())) {
                         claimedTenantId.set((Long) args[0]);
+                        dataPermissionIgnored.set(
+                                DataPermissionContextHolder.get() != null
+                                        && !DataPermissionContextHolder.get().enable());
                         return 0;
                     }
                     return defaultValue(method.getReturnType());
@@ -105,6 +111,9 @@ class SupervisionAlertReviewMapperStoreTest {
             store.claimPendingRuntimeOutbox(
                     10, "claim-tenant-42", null, LocalDateTime.now(), LocalDateTime.now().minusMinutes(10));
             assertEquals(42L, claimedTenantId.get());
+            assertTrue(dataPermissionIgnored.get());
+            assertFalse(TenantContextHolder.isIgnore());
+            assertNull(DataPermissionContextHolder.get());
         } finally {
             TenantContextHolder.clear();
         }
@@ -113,11 +122,15 @@ class SupervisionAlertReviewMapperStoreTest {
     @Test
     void semanticIndexClaimRequiresAndPassesCurrentTenant() {
         AtomicReference<Object[]> claimArguments = new AtomicReference<>();
+        AtomicBoolean dataPermissionIgnored = new AtomicBoolean();
         SupervisionAlertReviewSemanticIndexMapper semanticIndexMapper = mapper(
                 SupervisionAlertReviewSemanticIndexMapper.class,
                 (proxy, method, args) -> {
                     if ("claimProcessable".equals(method.getName())) {
                         claimArguments.set(args.clone());
+                        dataPermissionIgnored.set(
+                                DataPermissionContextHolder.get() != null
+                                        && !DataPermissionContextHolder.get().enable());
                         return 0;
                     }
                     return defaultValue(method.getReturnType());
@@ -136,6 +149,9 @@ class SupervisionAlertReviewMapperStoreTest {
                     List.of(101L), 10, "semantic-tenant-42", claimedAt, claimedAt.plusMinutes(5));
             assertEquals(42L, claimArguments.get()[0]);
             assertEquals(List.of(101L), claimArguments.get()[1]);
+            assertTrue(dataPermissionIgnored.get());
+            assertFalse(TenantContextHolder.isIgnore());
+            assertNull(DataPermissionContextHolder.get());
         } finally {
             TenantContextHolder.clear();
         }
@@ -450,11 +466,15 @@ class SupervisionAlertReviewMapperStoreTest {
     @Test
     void exportQueueClaimPassesCurrentTenantAndFailsClosedWithoutIt() {
         AtomicReference<Object[]> claimArgs = new AtomicReference<>();
+        AtomicBoolean dataPermissionIgnored = new AtomicBoolean();
         SupervisionAlertReviewExportJobMapper exportMapper = mapper(
                 SupervisionAlertReviewExportJobMapper.class,
                 (proxy, method, args) -> {
                     if ("claimProcessable".equals(method.getName())) {
                         claimArgs.set(args);
+                        dataPermissionIgnored.set(
+                                DataPermissionContextHolder.get() != null
+                                        && !DataPermissionContextHolder.get().enable());
                         return 0;
                     }
                     return defaultValue(method.getReturnType());
@@ -479,6 +499,9 @@ class SupervisionAlertReviewMapperStoreTest {
                 List.of(42L, 1, "claim-tenant-42", 9001L, claimedAt, reclaimBefore),
                 List.of(claimArgs.get())
         );
+        assertTrue(dataPermissionIgnored.get());
+        assertFalse(TenantContextHolder.isIgnore());
+        assertNull(DataPermissionContextHolder.get());
         SecurityException error = assertThrows(
                 SecurityException.class,
                 () -> store.claimProcessableExportJobs(

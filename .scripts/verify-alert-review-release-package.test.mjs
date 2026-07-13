@@ -1447,7 +1447,7 @@ YFEIEYE_VIDEO_RECORD_EXPORT_URL=\${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://video
 YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=\${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:-}
 YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=\${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-}
 YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}
-YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}
+YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES:-}
 YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE=\${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:-YFEIEYE_REVIEW_RUNTIME_ALERT}
 YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE=\${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:-YFEIEYE_REVIEW_OPERATIONS_REPORT}
 \${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images
@@ -1457,6 +1457,19 @@ const videoIntegrationConfigScan = scanVideoIntegrationConfigGate([{
   content: completeVideoIntegrationConfig,
 }]);
 assert.equal(videoIntegrationConfigScan.ok, true);
+
+const legacyGlobalRuntimeOutboxRecipientsScan = scanVideoIntegrationConfigGate([{
+  path: 'DEVICE/docker-compose.yml',
+  content: completeVideoIntegrationConfig.replace(
+    'YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES:-}',
+    'YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}',
+  ),
+}]);
+assert.equal(legacyGlobalRuntimeOutboxRecipientsScan.ok, false);
+assert.deepEqual(legacyGlobalRuntimeOutboxRecipientsScan.blockers.map((blocker) => blocker.reason), [
+  'runtime_outbox_notify_global_admin_fallback_forbidden',
+  'runtime_outbox_notify_compose_wiring_missing',
+]);
 
 const missingPublicVideoPlayHostScan = scanVideoIntegrationConfigGate([{
   path: 'DEVICE/docker-compose.yml',

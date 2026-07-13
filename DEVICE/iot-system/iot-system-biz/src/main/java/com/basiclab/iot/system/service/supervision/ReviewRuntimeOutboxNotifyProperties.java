@@ -3,8 +3,6 @@ package com.basiclab.iot.system.service.supervision;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
 @Component
 @ConfigurationProperties(prefix = "yfeieye.review.runtime-outbox.notify")
 public class ReviewRuntimeOutboxNotifyProperties {
@@ -13,7 +11,7 @@ public class ReviewRuntimeOutboxNotifyProperties {
     public static final String DEFAULT_OPERATIONS_REPORT_TEMPLATE_CODE = "YFEIEYE_REVIEW_OPERATIONS_REPORT";
 
     private boolean enabled;
-    private List<Long> adminUserIds = List.of();
+    private String tenantAdminUserRoutes = "";
     private String runtimeAlertTemplateCode = DEFAULT_RUNTIME_ALERT_TEMPLATE_CODE;
     private String operationsReportTemplateCode = DEFAULT_OPERATIONS_REPORT_TEMPLATE_CODE;
 
@@ -25,12 +23,12 @@ public class ReviewRuntimeOutboxNotifyProperties {
         this.enabled = enabled;
     }
 
-    public List<Long> getAdminUserIds() {
-        return adminUserIds;
+    public String getTenantAdminUserRoutes() {
+        return tenantAdminUserRoutes;
     }
 
-    public void setAdminUserIds(List<Long> adminUserIds) {
-        this.adminUserIds = adminUserIds == null ? List.of() : adminUserIds;
+    public void setTenantAdminUserRoutes(String tenantAdminUserRoutes) {
+        this.tenantAdminUserRoutes = tenantAdminUserRoutes == null ? "" : tenantAdminUserRoutes;
     }
 
     public String getRuntimeAlertTemplateCode() {

@@ -1256,6 +1256,21 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
                     record_export_service, export_id, action)
                 self.assertEqual(1, len(export_audit), export_audit)
                 self.assertEqual('access_allowed', export_audit[0]['action'])
+                if action == 'manifest_verify':
+                    returned_manifest = response.get_json()['data']
+                    from app.services.record_export_manifest_verifier import verify_manifest
+                    verification = verify_manifest(returned_manifest)
+                    self.assertNotIn(
+                        'file_hash_mismatch', verification['violations'], verification)
+                    self.assertTrue(verification['signatureValid'], verification)
+                    self.assertEqual(
+                        verification['canonicalHash'],
+                        verification['actualManifestHash'],
+                    )
+                    self.assertNotIn(
+                        'audit.json',
+                        [item['name'] for item in returned_manifest['files']],
+                    )
 
     def test_export_access_retry_completes_both_ledgers_without_mixed_decisions(self):
         record_export_service, record_module, export_id = self._create_export_job()

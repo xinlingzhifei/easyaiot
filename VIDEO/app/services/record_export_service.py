@@ -917,9 +917,29 @@ def get_record_export_manifest(export_id: str) -> dict:
             if os.path.exists(manifest_path) else None
         if isinstance(manifest, dict):
             _validate_manifest_integrity(manifest)
-            if _uses_object_storage(job) and job.get('status') == 'ready':
+            object_storage_ready = (
+                _uses_object_storage(job) and job.get('status') == 'ready')
+            if object_storage_ready:
                 _verify_object_file_copy(job, 'manifest.json', manifest_path)
                 _verify_object_commit_marker(job, manifest)
+            if _manifest_references_mutable_audit_file(manifest):
+                legacy_manifest = manifest
+                try:
+                    manifest = _persist_manifest(export_id)
+                    _validate_manifest_integrity(manifest)
+                    if object_storage_ready:
+                        _sync_object_storage_artifacts(job, metadata_only=True)
+                        _publish_object_commit_marker(job)
+                except Exception:
+                    _write_json(manifest_path, legacy_manifest)
+                    if object_storage_ready:
+                        try:
+                            _sync_object_storage_artifacts(job, metadata_only=True)
+                            _publish_object_commit_marker(job)
+                        except Exception:
+                            _LOGGER.exception(
+                                'failed to restore legacy record export manifest')
+                    raise
             return manifest
         return _persist_manifest(export_id)
     finally:
@@ -2660,9 +2680,12 @@ def _manifest_files(export_id: str, job: dict) -> list:
             'path': path,
             'storage': _artifact_storage_reference(job, export_id, 'content.bin', 'export_package', path, expires_at),
         })
+    # audit.json is append-only mutable metadata. The complete audit chain is
+    # already embedded in and signed by each manifest snapshot, so hashing the
+    # live ledger here would invalidate a fetched manifest as soon as its own
+    # access decision is appended.
     for name, path, role in (
-            ('job.json', _job_path(export_id), 'export_job'),
-            ('audit.json', _audit_path(export_id), 'audit_log')):
+            ('job.json', _job_path(export_id), 'export_job'),):
         if not os.path.exists(path):
             continue
         files.append({
@@ -2687,6 +2710,15 @@ def _manifest_files(export_id: str, job: dict) -> list:
             'storage': _artifact_storage_reference(job, export_id, name, 'source_record_segment', path, expires_at),
         })
     return files
+
+
+def _manifest_references_mutable_audit_file(manifest: dict) -> bool:
+    return any(
+        isinstance(item, dict)
+        and (_text(item.get('name')).lower() == 'audit.json'
+             or _text(item.get('role')).lower() == 'audit_log')
+        for item in manifest.get('files') or []
+    )
 
 
 def _manifest_storage_lifecycle(export_id: str, job: dict, expires_at: str) -> dict:

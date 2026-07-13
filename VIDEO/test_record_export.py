@@ -979,6 +979,167 @@ class TestRecordExportService(unittest.TestCase):
             os.environ.pop('YFEIEYE_RECORD_EXPORT_STORE_DIR', None)
             importlib.reload(export_service)
 
+    def test_manifest_read_upgrades_legacy_mutable_audit_file_reference(self):
+        import app.services.record_export_service as export_service
+
+        started = export_service.create_record_export({
+            'review_case_id': 3010,
+            'review_item_id': 1010,
+            'device_id': 'device-01',
+            'camera_id': 'device-01',
+            'record_uri': '/video/record/space/7/video/live/device-01/legacy.flv',
+        }, record_resolver=_trusted_record_resolver,
+           async_worker=True,
+           worker_runner=lambda job: _provenance_worker_result(
+               job, b'legacy-manifest-content'))
+        export_service.poll_record_export(started['export_id'])
+        manifest = export_service.get_record_export_manifest(started['export_id'])
+        audit_path = export_service._audit_path(started['export_id'])
+        manifest['files'].append({
+            'name': 'audit.json',
+            'role': 'audit_log',
+            'hash': export_service._sha256_file(audit_path),
+            'sizeBytes': os.path.getsize(audit_path),
+            'path': audit_path,
+        })
+        signing_key = export_service.validate_record_export_signing_configuration()
+        manifest['manifestHash'] = export_service._expected_manifest_hash(manifest)
+        manifest['signature']['value'] = export_service._expected_manifest_signature(
+            manifest, manifest['manifestHash'], signing_key.get('secret') or '')
+        export_service._write_json(
+            export_service._manifest_path(started['export_id']), manifest)
+
+        upgraded = export_service.get_record_export_manifest(started['export_id'])
+
+        self.assertNotIn('audit.json', [item['name'] for item in upgraded['files']])
+        self.assertNotEqual(manifest['manifestHash'], upgraded['manifestHash'])
+        export_service._validate_manifest_integrity(upgraded)
+
+    def _assert_legacy_object_manifest_upgrade_recovers(self, failed_name):
+        import app.services.record_export_service as export_service
+
+        class FaultInjectingObjectStorage:
+            def __init__(self):
+                self.objects = {}
+                self.fail_next_key = None
+                self.failed_keys = []
+
+            def put_file(self, object_key, path, content_type=None):
+                with open(path, 'rb') as file_obj:
+                    self.objects[object_key] = file_obj.read()
+                if object_key == self.fail_next_key:
+                    self.fail_next_key = None
+                    self.failed_keys.append(object_key)
+                    raise RuntimeError(f'injected object write failure: {object_key}')
+
+            def stat(self, object_key):
+                return {'size': len(self.objects[object_key])}
+
+            def open(self, object_key):
+                return io.BytesIO(self.objects[object_key])
+
+            def delete(self, object_key):
+                self.objects.pop(object_key, None)
+
+            def uri(self, object_key):
+                return 's3://review-evidence/' + object_key
+
+        adapter = FaultInjectingObjectStorage()
+        export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+        try:
+            with mock.patch.dict(os.environ, {
+                'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE': 's3',
+                'YFEIEYE_RECORD_EXPORT_STORAGE_URI': 's3://review-evidence/cases',
+            }, clear=False):
+                started = export_service.create_record_export({
+                    'review_case_id': 'legacy-object-upgrade',
+                    'review_item_id': 'legacy-item',
+                    'device_id': 'camera-01',
+                    'camera_id': 'camera-01',
+                    'tenant_id': '7',
+                    'record_uri': (
+                        '/video/record/space/7/video/live/camera-01/legacy.mp4'),
+                    'storage_type': 's3',
+                    'storage_root': 's3://review-evidence/cases',
+                }, record_resolver=_trusted_record_resolver, async_worker=True,
+                   worker_runner=lambda job: _provenance_worker_result(
+                       job, b'legacy-object-manifest'))
+                ready = export_service.poll_record_export(started['export_id'])
+                self.assertEqual('ready', ready['status'])
+
+                export_id = started['export_id']
+                job = export_service._get_export_job(export_id)
+                manifest_path = export_service._manifest_path(export_id)
+                audit_path = export_service._audit_path(export_id)
+                legacy_manifest = export_service.get_record_export_manifest(export_id)
+                legacy_manifest['files'].append({
+                    'name': 'audit.json',
+                    'role': 'audit_log',
+                    'hash': export_service._sha256_file(audit_path),
+                    'sizeBytes': os.path.getsize(audit_path),
+                    'path': audit_path,
+                })
+                signing_key = export_service.validate_record_export_signing_configuration()
+                legacy_manifest['manifestHash'] = (
+                    export_service._expected_manifest_hash(legacy_manifest))
+                legacy_manifest['signature']['value'] = (
+                    export_service._expected_manifest_signature(
+                        legacy_manifest,
+                        legacy_manifest['manifestHash'],
+                        signing_key.get('secret') or ''))
+                export_service._write_json(manifest_path, legacy_manifest)
+                export_service._sync_object_storage_artifacts(
+                    job, metadata_only=True)
+                legacy_marker = export_service._publish_object_commit_marker(job)
+
+                manifest_key = export_service._storage_object_key(job, 'manifest.json')
+                commit_key = export_service._storage_object_key(job, 'commit.json')
+                failed_key = export_service._storage_object_key(job, failed_name)
+                adapter.fail_next_key = failed_key
+
+                with self.assertRaisesRegex(RuntimeError, 'injected object write failure'):
+                    export_service.get_record_export_manifest(export_id)
+
+                self.assertEqual([failed_key], adapter.failed_keys)
+                restored_local = export_service._read_json_strict(
+                    manifest_path, 'record export manifest')
+                restored_remote = json.loads(
+                    adapter.objects[manifest_key].decode('utf-8'))
+                restored_marker = json.loads(
+                    adapter.objects[commit_key].decode('utf-8'))
+                marker_fields = (
+                    'version', 'exportId', 'fileHash', 'manifestHash',
+                    'auditHeadHash', 'claimEpoch')
+                self.assertEqual(legacy_manifest, restored_local)
+                self.assertEqual(legacy_manifest, restored_remote)
+                self.assertEqual(
+                    {name: legacy_marker.get(name) for name in marker_fields},
+                    {name: restored_marker.get(name) for name in marker_fields})
+                export_service._verify_object_commit_marker(job, restored_local)
+
+                upgraded = export_service.get_record_export_manifest(export_id)
+
+                self.assertNotIn(
+                    'audit.json', [item['name'] for item in upgraded['files']])
+                self.assertNotEqual(
+                    legacy_manifest['manifestHash'], upgraded['manifestHash'])
+                self.assertEqual(
+                    upgraded,
+                    export_service._read_json_strict(
+                        manifest_path, 'record export manifest'))
+                self.assertEqual(
+                    upgraded,
+                    json.loads(adapter.objects[manifest_key].decode('utf-8')))
+                export_service._verify_object_commit_marker(job, upgraded)
+        finally:
+            export_service.configure_record_export_storage_adapter(None)
+
+    def test_legacy_object_manifest_upgrade_recovers_after_manifest_sync_failure(self):
+        self._assert_legacy_object_manifest_upgrade_recovers('manifest.json')
+
+    def test_legacy_object_manifest_upgrade_recovers_after_commit_publish_failure(self):
+        self._assert_legacy_object_manifest_upgrade_recovers('commit.json')
+
     def test_manifest_hmac_signature_verifier_checks_files_source_segments_and_clip_params(self):
         with tempfile.TemporaryDirectory() as store_dir:
             os.environ['YFEIEYE_RECORD_EXPORT_STORE_DIR'] = store_dir

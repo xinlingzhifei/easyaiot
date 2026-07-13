@@ -2,6 +2,7 @@ package com.basiclab.iot.system.service.supervision;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.basiclab.iot.common.core.context.TenantContextHolder;
+import com.basiclab.iot.common.core.util.DataPermissionUtils;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewEvidenceDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseDO;
@@ -1168,20 +1169,23 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         LocalDateTime normalizedClaimExpiresAt = claimExpiresAt == null
                 ? normalizedClaimedAt.plusMinutes(5)
                 : claimExpiresAt;
-        int claimed = reviewSemanticIndexMapper.claimProcessable(
-                TenantContextHolder.getRequiredTenantId(),
-                reviewItemIds,
-                normalizedLimit,
-                normalizedToken,
-                normalizedClaimedAt,
-                normalizedClaimExpiresAt
-        );
-        if (claimed <= 0) {
-            return List.of();
-        }
-        return reviewSemanticIndexMapper.selectClaimed(normalizedToken, normalizedLimit).stream()
-                .map(this::toSemanticIndexEntry)
-                .toList();
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        return DataPermissionUtils.executeIgnore(() -> {
+            int claimed = reviewSemanticIndexMapper.claimProcessable(
+                    tenantId,
+                    reviewItemIds,
+                    normalizedLimit,
+                    normalizedToken,
+                    normalizedClaimedAt,
+                    normalizedClaimExpiresAt
+            );
+            if (claimed <= 0) {
+                return List.of();
+            }
+            return reviewSemanticIndexMapper.selectClaimed(normalizedToken, normalizedLimit).stream()
+                    .map(this::toSemanticIndexEntry)
+                    .toList();
+        });
     }
 
     @Override
@@ -1369,20 +1373,22 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         if (tenantId == null) {
             throw new SecurityException("tenant context is required for export queue claim");
         }
-        int claimedCount = reviewExportJobMapper.claimProcessable(
-                tenantId,
-                normalizedLimit,
-                claimToken,
-                claimedBy,
-                claimedAt,
-                reclaimBefore
-        );
-        if (claimedCount <= 0) {
-            return List.of();
-        }
-        return reviewExportJobMapper.selectClaimed(claimToken, normalizedLimit).stream()
-                .map(this::toExportJob)
-                .toList();
+        return DataPermissionUtils.executeIgnore(() -> {
+            int claimedCount = reviewExportJobMapper.claimProcessable(
+                    tenantId,
+                    normalizedLimit,
+                    claimToken,
+                    claimedBy,
+                    claimedAt,
+                    reclaimBefore
+            );
+            if (claimedCount <= 0) {
+                return List.of();
+            }
+            return reviewExportJobMapper.selectClaimed(claimToken, normalizedLimit).stream()
+                    .map(this::toExportJob)
+                    .toList();
+        });
     }
 
     @Override
@@ -1752,21 +1758,24 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
         String normalizedToken = hasText(claimToken) ? claimToken : UUID.randomUUID().toString();
         LocalDateTime normalizedClaimedAt = claimedAt == null ? LocalDateTime.now() : claimedAt;
-        int claimedCount = reviewRuntimeOutboxMapper.claimPending(
-                TenantContextHolder.getRequiredTenantId(),
-                normalizedLimit,
-                normalizedToken,
-                operatorUserId,
-                normalizedClaimedAt,
-                reclaimBefore
-        );
-        if (claimedCount <= 0) {
-            return List.of();
-        }
-        return reviewRuntimeOutboxMapper.selectClaimed(normalizedToken, normalizedLimit)
-                .stream()
-                .map(SupervisionAlertReviewMapperStore::toRuntimeOutboxMessage)
-                .toList();
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        return DataPermissionUtils.executeIgnore(() -> {
+            int claimedCount = reviewRuntimeOutboxMapper.claimPending(
+                    tenantId,
+                    normalizedLimit,
+                    normalizedToken,
+                    operatorUserId,
+                    normalizedClaimedAt,
+                    reclaimBefore
+            );
+            if (claimedCount <= 0) {
+                return List.of();
+            }
+            return reviewRuntimeOutboxMapper.selectClaimed(normalizedToken, normalizedLimit)
+                    .stream()
+                    .map(SupervisionAlertReviewMapperStore::toRuntimeOutboxMessage)
+                    .toList();
+        });
     }
 
     private static ReviewRuntimeOutboxMessage toRuntimeOutboxMessage(SupervisionAlertReviewRuntimeOutboxDO outboxDO) {
