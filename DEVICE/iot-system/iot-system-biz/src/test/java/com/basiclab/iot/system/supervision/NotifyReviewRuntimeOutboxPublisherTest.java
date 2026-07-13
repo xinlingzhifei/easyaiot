@@ -95,6 +95,31 @@ class NotifyReviewRuntimeOutboxPublisherTest {
     }
 
     @Test
+    void publisherSuppliesRequiredActionWhenRuntimePatrolOnlyHasRecommendedActions() {
+        CapturingNotifySendService notifySendService = new CapturingNotifySendService();
+        NotifyReviewRuntimeOutboxPublisher publisher = publisher(
+                notifySendService,
+                adminUsers(Map.of(1001L, enabledUser(1001L, 1L))),
+                "1=1001");
+
+        TenantContextHolder.setTenantId(1L);
+        ReviewRuntimeOutboxDeliveryResult result = publisher.publish(new ReviewRuntimeOutboxMessage(
+                3L,
+                "run-recommended-action",
+                "review_runtime_alert",
+                "record_storage_drift:file_missing",
+                "{\"alert\":\"record_storage_drift:file_missing\","
+                        + "\"recommendedActions\":[\"inspect_record_storage\",\"rerun_runtime_reconciliation\"]}",
+                0,
+                LocalDateTime.of(2026, 7, 13, 22, 30)
+        ));
+
+        assertTrue(result.success());
+        assertEquals("inspect_record_storage",
+                notifySendService.calls.get(0).templateParams().get("action"));
+    }
+
+    @Test
     void publisherSkipsAlreadyDeliveredRecipientsWhenRetryingAfterPartialFailure() {
         CapturingNotifySendService notifySendService = new CapturingNotifySendService();
         notifySendService.failOnceForUserId = 1002L;

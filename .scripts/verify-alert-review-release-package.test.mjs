@@ -519,6 +519,17 @@ assert.equal(
   'DEVICE schema and migration',
 );
 
+const notifyMessageParamsMigrationPath =
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_5__alert_review_notify_message_params_text.sql';
+const untrackedNotifyMessageParamsMigration = evaluateStatus(`
+?? ${notifyMessageParamsMigrationPath}
+`);
+assert.equal(untrackedNotifyMessageParamsMigration.ok, false);
+assert.equal(
+  untrackedNotifyMessageParamsMigration.blockers[0].group,
+  'DEVICE schema and migration',
+);
+
 const tenantJobRuntimePaths = [
   'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/config/YudaoTenantAutoConfiguration.java',
   'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/core/job/TenantJobAspect.java',
@@ -529,7 +540,11 @@ for (const path of tenantJobRuntimePaths) {
   assert.equal(untrackedTenantJobRuntime.ok, false);
   assert.equal(untrackedTenantJobRuntime.blockers[0].group, 'DEVICE tenant job runtime');
 }
-for (const path of [localSchedulerOwnershipMigrationPath, ...tenantJobRuntimePaths]) {
+for (const path of [
+  localSchedulerOwnershipMigrationPath,
+  notifyMessageParamsMigrationPath,
+  ...tenantJobRuntimePaths,
+]) {
   assert.equal(
     releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
     true,
@@ -616,13 +631,14 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_5__alert_review_notify_message_params_text.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryDO.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/pgsql/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryMapper.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryStore.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryMapperStore.java',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/NotifyReviewRuntimeOutboxPublisherTest.java',
 ]);
-assert.equal(trackedReleaseEntries.length, 46);
+assert.equal(trackedReleaseEntries.length, 47);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -753,6 +769,11 @@ assert.deepEqual(
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
+      'DEVICE schema and migration',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_5__alert_review_notify_message_params_text.sql',
       'DEVICE schema and migration',
     ],
     [

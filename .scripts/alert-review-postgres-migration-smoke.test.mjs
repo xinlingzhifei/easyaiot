@@ -93,6 +93,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_5__alert_review_notify_message_params_text.sql',
 ]);
 
 assert.equal(
@@ -255,6 +256,13 @@ assert.match(runtimeOutboxNotifyTemplateMigrationSql, /system_notify_template/);
 assert.match(runtimeOutboxNotifyTemplateMigrationSql, /YFEIEYE_REVIEW_RUNTIME_ALERT/);
 assert.match(runtimeOutboxNotifyTemplateMigrationSql, /YFEIEYE_REVIEW_OPERATIONS_REPORT/);
 assert.match(runtimeOutboxNotifyTemplateMigrationSql, /existing\.code = seed\.code/);
+
+const runtimeOutboxNotifyParamsMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('notify_message_params_text')),
+  'utf8',
+);
+assert.match(runtimeOutboxNotifyParamsMigrationSql, /ALTER TABLE system_notify_message/);
+assert.match(runtimeOutboxNotifyParamsMigrationSql, /ALTER COLUMN template_params TYPE TEXT/);
 
 const runtimeOutboxDeliveryMigrationSql = readFileSync(
   MIGRATION_FILES.find((file) => file.includes('runtime_outbox_delivery')),

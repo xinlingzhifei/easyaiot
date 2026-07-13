@@ -183,7 +183,9 @@ public class NotifyReviewRuntimeOutboxPublisher implements ReviewRuntimeOutboxPu
         putText(params, "retryCount", message.retryCount());
         putText(params, "createdAt", message.createdAt());
         putText(params, "alert", firstValue(payload.get("alert"), message.alertKey()));
-        putText(params, "action", payload.get("action"));
+        putText(params, "action", firstValue(
+                payload.get("action"),
+                firstListValue(payload.get("recommendedActions"), "inspect_runtime_alert")));
         putText(params, "reportKey", firstValue(payload.get("reportKey"), message.alertKey()));
         putText(params, "reportType", payload.get("reportType"));
         putText(params, "deliveryStatus", payload.get("deliveryStatus"));
@@ -219,6 +221,18 @@ public class NotifyReviewRuntimeOutboxPublisher implements ReviewRuntimeOutboxPu
             return fallback;
         }
         return value == null ? fallback : value;
+    }
+
+    private static Object firstListValue(Object value, Object fallback) {
+        if (!(value instanceof List<?> values)) {
+            return fallback;
+        }
+        return values.stream()
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .filter(NotifyReviewRuntimeOutboxPublisher::hasText)
+                .findFirst()
+                .orElse(String.valueOf(fallback));
     }
 
     private static void putText(Map<String, Object> params, String key, Object value) {

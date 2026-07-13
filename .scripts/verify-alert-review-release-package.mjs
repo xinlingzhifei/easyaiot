@@ -31,7 +31,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim|V20260713_2__alert_review_evidence_record_start|V20260713_3__supervision_event_create_permission|V20260713_4__alert_review_local_scheduler_ownership)\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim|V20260713_2__alert_review_evidence_record_start|V20260713_3__supervision_event_create_permission|V20260713_4__alert_review_local_scheduler_ownership|V20260713_5__alert_review_notify_message_params_text)\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
@@ -147,6 +147,7 @@ export const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_5__alert_review_notify_message_params_text.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/.gitignore',

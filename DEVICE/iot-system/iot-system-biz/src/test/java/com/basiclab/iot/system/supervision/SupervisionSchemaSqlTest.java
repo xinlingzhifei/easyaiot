@@ -575,6 +575,17 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void alertReviewRuntimeOutboxNotifyParamsMigrationRemovesLegacyLengthLimit() throws IOException {
+        Path migration = modulePath(
+                "src/main/resources/sql/migrations/V20260713_5__alert_review_notify_message_params_text.sql");
+
+        assertTrue(Files.exists(migration), "runtime outbox notify params migration should exist");
+        String migrationSql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(migrationSql.contains("ALTER TABLE system_notify_message"));
+        assertTrue(migrationSql.contains("ALTER COLUMN template_params TYPE TEXT"));
+    }
+
+    @Test
     void alertReviewRuntimeOutboxDeliveryMigrationTracksRecipientIdempotency() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260708_5__alert_review_runtime_outbox_delivery.sql");
         Path baseline = modulePath("src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql");
