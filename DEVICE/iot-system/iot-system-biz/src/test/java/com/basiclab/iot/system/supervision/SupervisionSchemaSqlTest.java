@@ -1,8 +1,12 @@
 package com.basiclab.iot.system.supervision;
 
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
+import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewSemanticIndexMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -13,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -46,6 +51,28 @@ class SupervisionSchemaSqlTest {
             "system_supervision_alert_review_runtime_outbox_delivery",
             "system_supervision_alert_review_report_ack"
     );
+
+    @Test
+    void semanticReindexCasRendersPostgresOperatorsThroughMybatis() {
+        Configuration configuration = new Configuration();
+        configuration.addMapper(SupervisionAlertReviewSemanticIndexMapper.class);
+        SupervisionAlertReviewSemanticIndexDO desired = new SupervisionAlertReviewSemanticIndexDO()
+                .setReviewItemId(9001L)
+                .setCameraId("camera-01")
+                .setIndexGenerationId("sig-9001");
+        BoundSql boundSql = configuration.getMappedStatement(
+                        SupervisionAlertReviewSemanticIndexMapper.class.getName()
+                                + ".queueReindexUnlessActivelyClaimed")
+                .getBoundSql(Map.of(
+                        "index", desired,
+                        "queuedAt", LocalDateTime.of(2026, 7, 13, 10, 0)
+                ));
+        String renderedSql = boundSql.getSql().replaceAll("\\s+", " ").trim();
+
+        assertFalse(renderedSql.contains("&lt;"), renderedSql);
+        assertTrue(renderedSql.contains("index_status <> 'processing'"), renderedSql);
+        assertTrue(renderedSql.contains("claim_expires_at <= ?"), renderedSql);
+    }
 
     @Test
     void schemaCreatesOnlySupervisionTables() throws IOException {
@@ -426,6 +453,17 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS idx_alert_review_semantic_claim"));
         assertTrue(sql.contains("tenant_id, index_status, next_retry_at, claim_expires_at"));
         assertTrue(sql.contains("WHERE deleted = 0"));
+    }
+
+    @Test
+    void recordEvidenceMigrationPersistsTheRealRecordingStartTime() throws IOException {
+        Path migration = modulePath(
+                "src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql");
+
+        assertTrue(Files.exists(migration), "record evidence start migration should exist");
+        String sql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(sql.contains("ALTER TABLE system_supervision_alert_review_evidence"));
+        assertTrue(sql.contains("ADD COLUMN IF NOT EXISTS record_start_time TIMESTAMP"));
     }
 
     @Test

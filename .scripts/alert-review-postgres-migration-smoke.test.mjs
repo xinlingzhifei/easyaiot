@@ -86,6 +86,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
 ]);
 
 assert.equal(
@@ -182,10 +183,29 @@ const semanticIndexClaimMigrationSql = readFileSync(
   'utf8',
 );
 assert.match(semanticIndexClaimMigrationSql, /index_generation_id VARCHAR\(128\)/);
+
+const recordStartMigrationSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('evidence_record_start')),
+  'utf8',
+);
+assert.match(recordStartMigrationSql, /record_start_time TIMESTAMP/);
 assert.match(semanticIndexClaimMigrationSql, /claim_token VARCHAR\(128\)/);
 assert.match(semanticIndexClaimMigrationSql, /claim_expires_at TIMESTAMP/);
 assert.match(semanticIndexClaimMigrationSql, /next_retry_at TIMESTAMP/);
 assert.match(semanticIndexClaimMigrationSql, /idx_alert_review_semantic_claim/);
+
+assert.equal(
+  typeof postgresSmoke.buildSemanticIndexQueueCasSmokeSql,
+  'function',
+  'the real PostgreSQL smoke must verify semantic reindex CAS claim preservation',
+);
+const semanticIndexQueueCasSmokeSql = postgresSmoke.buildSemanticIndexQueueCasSmokeSql();
+assert.match(semanticIndexQueueCasSmokeSql, /ON CONFLICT DO NOTHING/);
+assert.match(semanticIndexQueueCasSmokeSql, /index_status <> 'processing'/);
+assert.match(semanticIndexQueueCasSmokeSql, /claim_expires_at <= TIMESTAMP/);
+assert.match(semanticIndexQueueCasSmokeSql, /expected active semantic index claim to survive reindex queue/);
+assert.match(semanticIndexQueueCasSmokeSql, /expected expired semantic index claim to be requeued/);
+assert.doesNotMatch(semanticIndexQueueCasSmokeSql, /&lt;/);
 
 const reportAckMigrationSql = readFileSync(MIGRATION_FILES.find((file) => file.includes('report_ack')), 'utf8');
 assert.match(reportAckMigrationSql, /system_supervision_alert_review_report_ack/);

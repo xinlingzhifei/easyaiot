@@ -529,6 +529,17 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         stream.addAll(buildMotionDetailStream(item));
         stream.addAll(buildLifecycleDetailStream(item));
         for (ReviewEvidenceItem evidenceItem : reviewItemStore.listTimeline(reviewItemId)) {
+            LocalDateTime seekTime = evidenceItem.happenedAt() == null
+                    ? item.firstAlertTime()
+                    : evidenceItem.happenedAt();
+            LocalDateTime recordStartTime = MATERIAL_RECORD.equals(evidenceItem.materialType())
+                    ? evidenceItem.recordStartTime()
+                    : null;
+            Integer playbackOffsetSeconds = null;
+            if (recordStartTime != null && seekTime != null && !seekTime.isBefore(recordStartTime)) {
+                long offsetSeconds = Duration.between(recordStartTime, seekTime).getSeconds();
+                playbackOffsetSeconds = (int) Math.min(offsetSeconds, Integer.MAX_VALUE);
+            }
             stream.add(new ReviewDetailStreamItem(
                     item.id(),
                     evidenceItem.sourceAlertId(),
@@ -538,12 +549,14 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     item.objectLabel(),
                     evidenceItem.materialType(),
                     evidenceItem.happenedAt(),
-                    evidenceItem.happenedAt() == null ? item.firstAlertTime() : evidenceItem.happenedAt(),
+                    seekTime,
                     toDoubleList(item.reviewData() == null ? null : item.reviewData().get("bbox")),
                     List.of(),
                     evidenceItem.materialType(),
                     evidenceItem.materialUri(),
-                    Map.of("source", "timeline")
+                    Map.of("source", "timeline"),
+                    recordStartTime,
+                    playbackOffsetSeconds
             ));
         }
         return stream.stream()
@@ -1019,7 +1032,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                     firstSourceAlertId(item),
                     MATERIAL_RECORD,
                     segment.recordUri(),
-                    segment.startTime() == null ? item.firstAlertTime() : segment.startTime()
+                    segment.startTime() == null ? item.firstAlertTime() : segment.startTime(),
+                    segment.startTime()
             ));
         }
         if (!evidenceItems.isEmpty()) {
@@ -1070,7 +1084,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             }
             if (hasText(segment.recordUri())) {
                 evidenceItems.add(new ReviewEvidenceItem(item.id(), firstSourceAlertId(item), MATERIAL_RECORD,
-                        segment.recordUri(), segment.startTime()));
+                        segment.recordUri(), segment.startTime(), segment.startTime()));
             }
         }
         String syncStatus = missingCount > 0 ? "partial" : (availableCount > 0 ? "complete" : "missing");
@@ -1204,11 +1218,36 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         List<ReviewCaseTimelineItem> timeline = new ArrayList<>(reviewItemStore.listCaseTimeline(reviewCaseId));
         timeline.addAll(buildCaseDerivedTimeline(reviewCaseId, timeline));
         return timeline.stream()
+                .map(this::withCaseTimelinePlaybackContext)
                 .sorted(Comparator
                         .comparing(ReviewCaseTimelineItem::happenedAt,
                                 Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparingInt(item -> materialOrder(item.materialType())))
                 .toList();
+    }
+
+    private ReviewCaseTimelineItem withCaseTimelinePlaybackContext(ReviewCaseTimelineItem item) {
+        if (!MATERIAL_RECORD.equals(item.materialType()) || item.reviewItemId() == null) {
+            return item;
+        }
+        LocalDateTime recordStartTime = item.recordStartTime();
+        Integer playbackOffsetSeconds = null;
+        if (recordStartTime != null && item.happenedAt() != null && !item.happenedAt().isBefore(recordStartTime)) {
+            long offsetSeconds = Duration.between(recordStartTime, item.happenedAt()).getSeconds();
+            playbackOffsetSeconds = (int) Math.min(offsetSeconds, Integer.MAX_VALUE);
+        }
+        return new ReviewCaseTimelineItem(
+                item.reviewCaseId(),
+                item.reviewItemId(),
+                item.cameraId(),
+                item.sourceAlertId(),
+                item.materialType(),
+                item.materialUri(),
+                item.happenedAt(),
+                item.actionNote(),
+                recordStartTime,
+                playbackOffsetSeconds
+        );
     }
 
     @Override
@@ -1303,23 +1342,58 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         LocalDateTime indexedAt = LocalDateTime.now();
         String indexGenerationId = newSemanticIndexGenerationId();
         return listWorkbench(query).stream()
-                .map(item -> {
-                    String document = buildSearchDocument(item);
-                    return reviewItemStore.upsertSemanticIndex(
-                            item,
-                            document,
-                            semanticEmbeddingKey(item),
-                            LOCAL_EMBEDDING_MODEL,
-                            semanticEmbeddingVectorHash(document),
-                            SEMANTIC_INDEX_INDEXED,
-                            0,
-                            null,
-                            indexedAt,
-                            indexGenerationId,
-                            null
-                    );
-                })
+                .map(item -> reindexSemanticItem(item, indexedAt, indexGenerationId))
                 .toList();
+    }
+
+    private ReviewSemanticIndexEntry reindexSemanticItem(ReviewItemAggregate item,
+                                                          LocalDateTime indexedAt,
+                                                          String indexGenerationId) {
+        String document = buildSearchDocument(item);
+        ReviewSemanticIndexEntry queued = reviewItemStore.queueSemanticIndex(
+                item,
+                document,
+                semanticEmbeddingKey(item),
+                LOCAL_EMBEDDING_MODEL,
+                indexGenerationId,
+                indexedAt
+        );
+        if (!SEMANTIC_INDEX_PENDING.equals(queued.indexStatus())
+                || !Objects.equals(indexGenerationId, queued.indexGenerationId())) {
+            return queued;
+        }
+        String claimToken = UUID.randomUUID().toString();
+        List<ReviewSemanticIndexEntry> claimed = reviewItemStore.claimSemanticIndex(
+                List.of(item.id()),
+                1,
+                claimToken,
+                indexedAt,
+                indexedAt.plusMinutes(SEMANTIC_INDEX_CLAIM_LEASE_MINUTES)
+        );
+        if (claimed.isEmpty()) {
+            return queued;
+        }
+        try {
+            return reviewItemStore.completeSemanticIndexClaim(
+                    item,
+                    document,
+                    semanticEmbeddingKey(item),
+                    LOCAL_EMBEDDING_MODEL,
+                    semanticEmbeddingVectorHash(document),
+                    SEMANTIC_INDEX_INDEXED,
+                    0,
+                    null,
+                    indexedAt,
+                    indexGenerationId,
+                    null,
+                    claimToken
+            );
+        } catch (RuntimeException ex) {
+            if (isSemanticIndexClaimConflict(ex)) {
+                return queued;
+            }
+            throw ex;
+        }
     }
 
     @Override
@@ -1330,24 +1404,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         List<ReviewItemAggregate> items = listWorkbench(command.query());
         List<Long> queuedIds = new ArrayList<>();
         for (ReviewItemAggregate item : items) {
-            reviewItemStore.upsertSemanticIndex(
+            ReviewSemanticIndexEntry queued = reviewItemStore.queueSemanticIndex(
                     item,
                     buildSearchDocument(item),
                     semanticEmbeddingKey(item),
                     LOCAL_EMBEDDING_MODEL,
-                    null,
-                    SEMANTIC_INDEX_PENDING,
-                    0,
-                    null,
-                    null,
                     indexGenerationId,
-                    null
+                    queuedAt
             );
-            queuedIds.add(item.id());
+            if (SEMANTIC_INDEX_PENDING.equals(queued.indexStatus())
+                    && Objects.equals(indexGenerationId, queued.indexGenerationId())) {
+                queuedIds.add(item.id());
+            }
         }
+        String status = queuedIds.size() == items.size()
+                ? "queued"
+                : queuedIds.isEmpty() ? "deferred" : "partially_queued";
         return new ReviewSemanticReindexJob(
                 "RSJ-" + UUID.randomUUID(),
-                "queued",
+                status,
                 List.copyOf(queuedIds),
                 queuedAt,
                 command.operatorUserId()
@@ -1372,6 +1447,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .collect(Collectors.toMap(ReviewItemAggregate::id, Function.identity()));
         List<Long> processedIds = new ArrayList<>();
         List<Long> failedIds = new ArrayList<>();
+        List<Long> deferredIds = new ArrayList<>();
         for (ReviewSemanticIndexEntry current : claimedEntries) {
             ReviewItemAggregate item = itemById.get(current.reviewItemId());
             if (item == null) {
@@ -1396,27 +1472,43 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 );
                 processedIds.add(item.id());
             } catch (RuntimeException ex) {
+                if (isSemanticIndexClaimConflict(ex)) {
+                    deferredIds.add(item.id());
+                    continue;
+                }
                 int retryCount = (current == null || current.retryCount() == null ? 0 : current.retryCount()) + 1;
-                reviewItemStore.completeSemanticIndexClaim(
-                        item,
-                        current.document(),
-                        semanticEmbeddingKey(item),
-                        LOCAL_EMBEDDING_MODEL,
-                        current.embeddingVectorHash(),
-                        SEMANTIC_INDEX_FAILED,
-                        retryCount,
-                        ex.getMessage(),
-                        null,
-                        generationId,
-                        semanticIndexNextRetryAt(processedAt, retryCount),
-                        claimToken
-                );
+                try {
+                    reviewItemStore.completeSemanticIndexClaim(
+                            item,
+                            current.document(),
+                            semanticEmbeddingKey(item),
+                            LOCAL_EMBEDDING_MODEL,
+                            current.embeddingVectorHash(),
+                            SEMANTIC_INDEX_FAILED,
+                            retryCount,
+                            ex.getMessage(),
+                            null,
+                            generationId,
+                            semanticIndexNextRetryAt(processedAt, retryCount),
+                            claimToken
+                    );
+                } catch (RuntimeException completionEx) {
+                    if (isSemanticIndexClaimConflict(completionEx)) {
+                        deferredIds.add(item.id());
+                        continue;
+                    }
+                    throw completionEx;
+                }
                 failedIds.add(item.id());
             }
         }
         ReviewSemanticIndexEvaluation evaluation = evaluateSemanticIndex(
                 new ReviewSemanticIndexEvaluationCommand(command.query(), command.operatorUserId()));
-        String status = semanticWorkerStatus(processedIds.size(), failedIds.size(), evaluation.staleReviewItemIds().size());
+        String status = semanticWorkerStatus(
+                processedIds.size(),
+                failedIds.size(),
+                deferredIds.size(),
+                evaluation.staleReviewItemIds().size());
         return new ReviewSemanticWorkerRun(
                 status,
                 claimedEntries.size(),
@@ -1517,12 +1609,33 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return failedAt.plusSeconds(delaySeconds);
     }
 
-    private static String semanticWorkerStatus(int processedCount, int failedCount, int remainingBacklogCount) {
+    private static boolean isSemanticIndexClaimConflict(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.startsWith("semantic_index_claim_conflict:")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static String semanticWorkerStatus(int processedCount,
+                                               int failedCount,
+                                               int deferredCount,
+                                               int remainingBacklogCount) {
         if (failedCount > 0 && processedCount > 0) {
             return "partial_failed";
         }
         if (failedCount > 0) {
             return "failed";
+        }
+        if (deferredCount > 0 && processedCount > 0) {
+            return "partial_deferred";
+        }
+        if (deferredCount > 0) {
+            return "deferred";
         }
         if (remainingBacklogCount > 0) {
             return "partial";
@@ -1975,7 +2088,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (repair && !semanticBefore.staleReviewItemIds().isEmpty()) {
             Set<Long> staleIds = new LinkedHashSet<>(semanticBefore.staleReviewItemIds());
             for (ReviewSemanticIndexEntry entry : reindexSemanticIndex(query)) {
-                if (staleIds.contains(entry.reviewItemId())) {
+                if (staleIds.contains(entry.reviewItemId())
+                        && SEMANTIC_INDEX_INDEXED.equals(entry.indexStatus())) {
                     repairedSemanticIndexCount++;
                     findings.add("semantic_reindexed:" + entry.reviewItemId());
                 }
@@ -7486,7 +7600,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                         sourceAlertId,
                         MATERIAL_RECORD,
                         resolved.get().recordUri(),
-                        alertTime
+                        alertTime,
+                        resolved.get().recordStartTime()
                 );
                 return new RecordEvidenceAttempt(
                         Optional.of(evidenceItem),
@@ -8088,9 +8203,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                         item.cameraId(),
                         firstSourceAlertId(item),
                         MATERIAL_RECORD_COVERAGE,
+                        segment.recordUri(),
+                        segment.startTime(),
                         segment.status(),
                         segment.startTime(),
-                        segment.recordUri()
+                        0
                 ));
             }
             if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {

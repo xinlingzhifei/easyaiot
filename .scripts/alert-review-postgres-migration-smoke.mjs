@@ -25,6 +25,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -324,6 +325,16 @@ BEGIN
       )
   ) <> 5 THEN
     RAISE EXCEPTION 'expected semantic index generation and worker claim columns to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'system_supervision_alert_review_evidence'
+      AND column_name = 'record_start_time'
+      AND data_type = 'timestamp without time zone'
+  ) THEN
+    RAISE EXCEPTION 'expected review evidence recording start column to exist';
   END IF;
 
   IF NOT EXISTS (
@@ -867,6 +878,127 @@ WHERE id = 8001
 `;
 }
 
+export function buildSemanticIndexQueueCasSmokeSql() {
+  return `
+DO $$
+DECLARE
+  active_update_count INTEGER;
+  expired_update_count INTEGER;
+BEGIN
+  INSERT INTO system_supervision_alert_review_semantic_index(
+    tenant_id, review_item_id, camera_id, first_alert_time, last_alert_time, index_status, document,
+    embedding_key, embedding_model, retry_count, index_generation_id, claim_token, claimed_at,
+    claim_expires_at, version, deleted
+  ) VALUES (
+    6006, 9001, 'camera-semantic-cas-01', TIMESTAMP '2026-07-13 10:00', TIMESTAMP '2026-07-13 10:05',
+    'processing', 'active claim document', 'camera-semantic-cas-01:9001', 'local-hash-v1', 0,
+    'sig-active-claim', 'active-worker-claim', TIMESTAMP '2026-07-13 10:20', TIMESTAMP '2026-07-13 10:40', 1, 0
+  );
+
+  INSERT INTO system_supervision_alert_review_semantic_index(
+    tenant_id, review_item_id, camera_id, first_alert_time, last_alert_time, index_status, document,
+    embedding_key, embedding_model, retry_count, index_generation_id, version, deleted
+  ) VALUES (
+    6006, 9001, 'camera-semantic-cas-01', TIMESTAMP '2026-07-13 10:00', TIMESTAMP '2026-07-13 10:05',
+    'pending', 'queued document', 'camera-semantic-cas-01:9001', 'local-hash-v1', 0, 'sig-requeue', 0, 0
+  )
+  ON CONFLICT DO NOTHING;
+
+  UPDATE system_supervision_alert_review_semantic_index
+  SET camera_id = 'camera-semantic-cas-01',
+      first_alert_time = TIMESTAMP '2026-07-13 10:00',
+      last_alert_time = TIMESTAMP '2026-07-13 10:05',
+      index_status = 'pending',
+      document = 'queued document',
+      embedding_key = 'camera-semantic-cas-01:9001',
+      embedding_model = 'local-hash-v1',
+      embedding_vector_hash = NULL,
+      retry_count = 0,
+      last_error = NULL,
+      indexed_at = NULL,
+      index_generation_id = 'sig-requeue',
+      next_retry_at = NULL,
+      claim_token = NULL,
+      claimed_at = NULL,
+      claim_expires_at = NULL,
+      version = version + 1,
+      update_time = CURRENT_TIMESTAMP
+  WHERE tenant_id = 6006
+    AND review_item_id = 9001
+    AND deleted = 0
+    AND (
+      index_status <> 'processing'
+      OR claim_token IS NULL
+      OR claim_expires_at IS NULL
+      OR claim_expires_at <= TIMESTAMP '2026-07-13 10:30'
+    );
+  GET DIAGNOSTICS active_update_count = ROW_COUNT;
+
+  IF active_update_count <> 0 OR NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_semantic_index
+    WHERE tenant_id = 6006
+      AND review_item_id = 9001
+      AND index_status = 'processing'
+      AND claim_token = 'active-worker-claim'
+      AND index_generation_id = 'sig-active-claim'
+      AND deleted = 0
+  ) THEN
+    RAISE EXCEPTION 'expected active semantic index claim to survive reindex queue';
+  END IF;
+
+  UPDATE system_supervision_alert_review_semantic_index
+  SET claim_expires_at = TIMESTAMP '2026-07-13 10:25'
+  WHERE tenant_id = 6006 AND review_item_id = 9001 AND deleted = 0;
+
+  INSERT INTO system_supervision_alert_review_semantic_index(
+    tenant_id, review_item_id, camera_id, first_alert_time, last_alert_time, index_status, document,
+    embedding_key, embedding_model, retry_count, index_generation_id, version, deleted
+  ) VALUES (
+    6006, 9001, 'camera-semantic-cas-01', TIMESTAMP '2026-07-13 10:00', TIMESTAMP '2026-07-13 10:05',
+    'pending', 'queued after expiry', 'camera-semantic-cas-01:9001', 'local-hash-v1', 0,
+    'sig-after-expiry', 0, 0
+  )
+  ON CONFLICT DO NOTHING;
+
+  UPDATE system_supervision_alert_review_semantic_index
+  SET index_status = 'pending',
+      document = 'queued after expiry',
+      index_generation_id = 'sig-after-expiry',
+      claim_token = NULL,
+      claimed_at = NULL,
+      claim_expires_at = NULL,
+      version = version + 1,
+      update_time = CURRENT_TIMESTAMP
+  WHERE tenant_id = 6006
+    AND review_item_id = 9001
+    AND deleted = 0
+    AND (
+      index_status <> 'processing'
+      OR claim_token IS NULL
+      OR claim_expires_at IS NULL
+      OR claim_expires_at <= TIMESTAMP '2026-07-13 10:30'
+    );
+  GET DIAGNOSTICS expired_update_count = ROW_COUNT;
+
+  IF expired_update_count <> 1 OR NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_semantic_index
+    WHERE tenant_id = 6006
+      AND review_item_id = 9001
+      AND index_status = 'pending'
+      AND claim_token IS NULL
+      AND index_generation_id = 'sig-after-expiry'
+      AND deleted = 0
+  ) THEN
+    RAISE EXCEPTION 'expected expired semantic index claim to be requeued';
+  END IF;
+END $$;
+
+SELECT 'semantic index queue CAS smoke passed' AS result;
+`;
+}
+
 export function buildConcurrentReviewSegmentBootstrapSql() {
   return `
 INSERT INTO system_supervision_alert_review_item(
@@ -1116,12 +1248,17 @@ export async function runSmoke(options) {
       }
     }
     const assertionOutput = runPsql(options, options.database, buildPostMigrationAssertionSql());
+    const semanticIndexQueueCasOutput = runPsql(
+      options,
+      options.database,
+      buildSemanticIndexQueueCasSmokeSql(),
+    );
     const concurrentOutput = await runConcurrentDuplicateIdentitySmoke(options);
     runPsql(options, options.database, buildConcurrentReviewStatusBootstrapSql());
     const concurrentReviewStatusOutput = await runConcurrentReviewStatusSmoke(options);
     runPsql(options, options.database, buildConcurrentReviewSegmentBootstrapSql());
     const concurrentSegmentOutput = await runConcurrentReviewSegmentSmoke(options);
-    return `${assertionOutput}${concurrentOutput}\n${concurrentReviewStatusOutput}\n${concurrentSegmentOutput}\n`;
+    return `${assertionOutput}${semanticIndexQueueCasOutput}${concurrentOutput}\n${concurrentReviewStatusOutput}\n${concurrentSegmentOutput}\n`;
   } finally {
     if (!options.keepDatabase) {
       runPsql(options, adminDatabase, `DROP DATABASE IF EXISTS ${options.database};\n`);

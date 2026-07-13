@@ -171,6 +171,7 @@ class HttpVideoResolverTest {
                           "data": {
                             "video_url": "/video/alert/record?path=%2Fdata%2Fplaybacks%2Fclip.flv",
                             "file_path": "/data/playbacks/clip.flv",
+                            "event_time": "2026-06-30T10:14:30",
                             "source": "alert_record_path"
                           }
                         }
@@ -193,6 +194,41 @@ class HttpVideoResolverTest {
         assertEquals("https://eye.yfeiai.com/video/alert/record?path=%2Fdata%2Fplaybacks%2Fclip.flv",
                 result.get().recordUri());
         assertEquals("alert_record_path", result.get().message());
+        assertEquals(LocalDateTime.of(2026, 6, 30, 10, 14, 30), result.get().recordStartTime());
+        server.verify();
+    }
+
+    @Test
+    void alertRecordResolverAcceptsRecordStartTimeAliasFromVideoContract() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertTrue(request.getURI().toString()
+                        .startsWith("http://video.local/video/alert/record/query?")))
+                .andRespond(withSuccess("""
+                        {
+                          "code": 200,
+                          "data": {
+                            "video_url": "/video/alert/record?path=%2Fdata%2Fplaybacks%2Falias.flv",
+                            "recordStartTime": "2026-06-30 10:13:45",
+                            "source": "playback_match"
+                          }
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        HttpAlertRecordEvidenceResolver resolver = new HttpAlertRecordEvidenceResolver(
+                restTemplate,
+                "http://video.local/video/alert/record/query",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
+        RecordEvidenceResult result = resolver.resolve(new RecordEvidenceRequest(
+                "alert-alias",
+                "device-01",
+                "camera-01",
+                LocalDateTime.of(2026, 6, 30, 10, 15)
+        )).orElseThrow();
+
+        assertEquals(LocalDateTime.of(2026, 6, 30, 10, 13, 45), result.recordStartTime());
         server.verify();
     }
 

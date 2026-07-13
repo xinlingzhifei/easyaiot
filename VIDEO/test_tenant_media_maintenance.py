@@ -1,8 +1,10 @@
 """Tenant isolation gates for VIDEO maintenance and drift paths."""
 from __future__ import annotations
 
+import ast
 import importlib
 import os
+import re
 import tempfile
 import types
 import unittest
@@ -46,6 +48,7 @@ class TenantMaintenanceTest(unittest.TestCase):
             'VIDEO_ENV': 'production',
             'MINIO_ACCESS_KEY': 'video-service-user',
             'MINIO_SECRET_KEY': 'm' * 32,
+            'YFEIEYE_SRS_HOOK_TOKEN': 'h' * 32,
         }
         for secret in ('', 'your-secret-key-please-change-this-to-a-random-string', 'short'):
             with self.subTest(secret=secret), mock.patch.dict(
@@ -56,7 +59,10 @@ class TenantMaintenanceTest(unittest.TestCase):
                 ('MINIO_ACCESS_KEY', ''),
                 ('MINIO_ACCESS_KEY', 'minioadmin'),
                 ('MINIO_SECRET_KEY', ''),
-                ('MINIO_SECRET_KEY', 'short')):
+                ('MINIO_SECRET_KEY', 'short'),
+                ('YFEIEYE_SRS_HOOK_TOKEN', ''),
+                ('YFEIEYE_SRS_HOOK_TOKEN', 'short'),
+                ('YFEIEYE_SRS_HOOK_TOKEN', ('h' * 31) + '?')):
             with self.subTest(key=key, value=value), mock.patch.dict(
                     os.environ, {
                         **common,
@@ -74,12 +80,31 @@ class TenantMaintenanceTest(unittest.TestCase):
                 'SECRET_KEY': 's' * 32,
                 'MINIO_ACCESS_KEY': 'video-service-user',
                 'MINIO_SECRET_KEY': 'm' * 32,
+                'YFEIEYE_SRS_HOOK_TOKEN': 'h' * 32,
         }, clear=True):
             validate_production_runtime_secrets()
+
+    def test_srs_hook_token_authorization_is_fail_closed(self):
+        from app.utils.video_env import authorize_srs_hook_token
+
+        token = 'h' * 32
+        for configured, provided, expected in (
+                ('', '', False),
+                ('short', 'short', False),
+                (('h' * 31) + '?', ('h' * 31) + '?', False),
+                (token, '', False),
+                (token, 'wrong-' + token, False),
+                (token, token, True)):
+            with self.subTest(configured=configured, provided=provided), mock.patch.dict(
+                    os.environ, {'YFEIEYE_SRS_HOOK_TOKEN': configured}, clear=True):
+                self.assertEqual(expected, authorize_srs_hook_token(provided))
 
     def test_video_runtime_state_mounts_live_outside_versioned_release_tree(self):
         compose = (Path(__file__).resolve().parent / 'docker-compose.yaml').read_text(
             encoding='utf-8')
+        device_compose = (
+            Path(__file__).resolve().parents[1] / 'DEVICE' / 'docker-compose.yml'
+        ).read_text(encoding='utf-8')
 
         for directory in ('data', 'static', 'temp_uploads', 'model', 'alert_images', 'logs'):
             self.assertIn(
@@ -87,6 +112,11 @@ class TenantMaintenanceTest(unittest.TestCase):
                 compose,
             )
             self.assertNotIn(f'\n      - ./{directory}:/app/{directory}', compose)
+        self.assertIn(
+            '${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images',
+            device_compose,
+        )
+        self.assertNotIn('../VIDEO/alert_images:/app/alert_images', device_compose)
 
     def test_video_compose_keeps_host_service_private_and_secrets_out_of_source(self):
         compose = (Path(__file__).resolve().parent / 'docker-compose.yaml').read_text(
@@ -94,19 +124,21 @@ class TenantMaintenanceTest(unittest.TestCase):
         example = (Path(__file__).resolve().parent / 'env.example').read_text(
             encoding='utf-8')
 
-        self.assertIn('FLASK_RUN_HOST=${FLASK_RUN_HOST:-127.0.0.1}', compose)
-        self.assertNotIn('ALLOWED_HOSTS=${ALLOWED_HOSTS:-[*]}', compose)
+        self.assertIn('FLASK_RUN_HOST=${FLASK_RUN_HOST:?', compose)
+        self.assertIn('ALLOWED_HOSTS=${ALLOWED_HOSTS:?', compose)
+        self.assertNotRegex(compose, r'FLASK_RUN_HOST=\$\{FLASK_RUN_HOST:-(?:127\.0\.0\.1|0\.0\.0\.0)\}')
+        self.assertNotRegex(compose, r'ALLOWED_HOSTS=\$\{ALLOWED_HOSTS:-\[?\*\]?\}')
         self.assertNotIn('DATABASE_URL=postgresql://', compose)
         self.assertNotIn('SECRET_KEY=${SECRET_KEY:-', compose)
         self.assertNotRegex(compose, r'MINIO_ACCESS_KEY=\$\{MINIO_ACCESS_KEY:-[^}]+\}')
         self.assertNotRegex(compose, r'MINIO_SECRET_KEY=\$\{MINIO_SECRET_KEY:-[^}]+\}')
         self.assertIn('env_file:\n      - .env.docker', compose)
         self.assertIn(
-            'http://$${FLASK_RUN_HOST:-127.0.0.1}:$${FLASK_RUN_PORT:-6000}/actuator/health',
+            'http://$${FLASK_RUN_HOST}:$${FLASK_RUN_PORT:-6000}/actuator/health',
             compose,
         )
-        self.assertIn('FLASK_RUN_HOST=127.0.0.1', example)
-        self.assertIn('ALLOWED_HOSTS=localhost,127.0.0.1', example)
+        self.assertIn('FLASK_RUN_HOST=172.17.0.1', example)
+        self.assertIn('ALLOWED_HOSTS=172.17.0.1', example)
         for unsafe in (
                 'your-secret-key-please-change-this-to-a-random-string',
                 'postgresql://postgres:iot45722414822@',
@@ -114,11 +146,176 @@ class TenantMaintenanceTest(unittest.TestCase):
                 'MINIO_SECRET_KEY=basiclab@iot975248395'):
             self.assertNotIn(unsafe, example)
 
+    def test_srs_hooks_require_shared_token_and_public_nginx_paths_are_denied(self):
+        root = Path(__file__).resolve().parents[1]
+        video_root = Path(__file__).resolve().parent
+        camera_source = (video_root / 'app' / 'blueprints' / 'camera.py').read_text(
+            encoding='utf-8')
+        installer = (root / '.scripts' / 'docker' / 'install_middleware_linux.sh').read_text(
+            encoding='utf-8')
+        middleware_example = (root / '.scripts' / 'docker' / 'env.example').read_text(
+            encoding='utf-8')
+
+        self.assertGreaterEqual(camera_source.count('authorize_srs_hook_token('), 2)
+        self.assertIn('resolve_srs_hook_token()', installer)
+        self.assertIn('?hook_token=${srs_hook_token}', installer)
+        self.assertIn('chmod 600 "$srs_config_file"', installer)
+        self.assertNotIn('/admin-api/video/camera/callback/on_publish', installer)
+        self.assertIn('VIDEO_CALLBACK_HOST=172.17.0.1', middleware_example)
+        self.assertIn('YFEIEYE_SRS_HOOK_TOKEN=', middleware_example)
+
+        expected_public_paths = {
+            root / 'APP' / 'conf' / 'nginx.conf': (
+                '/dev-api/video/camera/callback/on_publish',
+                '/dev-api/video/camera/callback/on_dvr',
+            ),
+            root / 'WEB' / 'conf' / 'nginx.conf': (
+                '/yfeieye/dev-api/video/camera/callback/on_publish',
+                '/yfeieye/dev-api/video/camera/callback/on_dvr',
+                '/dev-api/video/camera/callback/on_publish',
+                '/dev-api/video/camera/callback/on_dvr',
+            ),
+            root / 'WEB' / 'conf' / 'nginx.mini.conf': (
+                '/dev-api/video/camera/callback/on_publish',
+                '/dev-api/video/camera/callback/on_dvr',
+            ),
+        }
+        for path, callback_paths in expected_public_paths.items():
+            source = path.read_text(encoding='utf-8')
+            self.assertIn(
+                'include /etc/nginx/yfeieye-secrets/yfeieye-stream-secret.runtime.conf;',
+                source,
+            )
+            self.assertNotIn('set $stream_secret "";', source)
+            self.assertNotIn('yfeieye-stream-secret*.conf', source)
+            for callback_path in callback_paths:
+                self.assertRegex(
+                    source,
+                    rf'location\s*=\s*{re.escape(callback_path)}\s*\{{\s*return\s+403;',
+                )
+
+    def test_alternate_media_hooks_require_token_and_are_not_publicly_proxied(self):
+        root = Path(__file__).resolve().parents[1]
+        media_hook_path = Path(__file__).resolve().parent / 'app' / 'blueprints' / 'media_hook.py'
+        media_hook_source = media_hook_path.read_text(encoding='utf-8')
+        tree = ast.parse(media_hook_source)
+        protected_functions = {
+            'srs_on_dvr',
+            'srs_on_publish',
+            'srs_on_unpublish',
+            'snap_completed',
+            'zlm_on_record',
+        }
+        functions = {
+            node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+        }
+        for name in protected_functions:
+            calls = [
+                node.func.id
+                for node in ast.walk(functions[name])
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            ]
+            self.assertIn('_require_internal_hook_token', calls, name)
+        self.assertIn("request.headers.get('X-YFeiEye-Hook-Token')", media_hook_source)
+
+        public_prefixes = {
+            root / 'APP' / 'conf' / 'nginx.conf': (
+                '/dev-api/video/media/hook/',
+            ),
+            root / 'WEB' / 'conf' / 'nginx.conf': (
+                '/yfeieye/dev-api/video/media/hook/',
+                '/dev-api/video/media/hook/',
+            ),
+            root / 'WEB' / 'conf' / 'nginx.mini.conf': (
+                '/dev-api/video/media/hook/',
+            ),
+        }
+        for path, prefixes in public_prefixes.items():
+            source = path.read_text(encoding='utf-8')
+            for prefix in prefixes:
+                self.assertRegex(
+                    source,
+                    rf'location\s+\^~\s+{re.escape(prefix)}\s*\{{\s*return\s+403;',
+                )
+
+        cluster_root = root / '.scripts' / 'media-cluster'
+        srs_template = (cluster_root / 'srs' / 'cluster.conf.template').read_text(
+            encoding='utf-8')
+        zlm_template = (cluster_root / 'zlm' / 'config.ini.template').read_text(
+            encoding='utf-8')
+        cluster_installer = (cluster_root / 'install_media_stack.sh').read_text(
+            encoding='utf-8')
+        cluster_enable = (cluster_root / 'enable_cluster_mode.sh').read_text(
+            encoding='utf-8')
+        cluster_compose = (cluster_root / 'docker-compose.media-node.yml').read_text(
+            encoding='utf-8')
+        for template in (srs_template, zlm_template):
+            self.assertIn('?hook_token=${YFEIEYE_SRS_HOOK_TOKEN}', template)
+        self.assertIn('YFEIEYE_SRS_HOOK_TOKEN', cluster_installer)
+        self.assertIn("envsubst '${MEDIA_NODE_ID} ${MEDIA_HOOK_HOST}", cluster_installer)
+        self.assertIn('${YFEIEYE_SRS_HOOK_TOKEN}', cluster_installer)
+        self.assertGreaterEqual(cluster_installer.count('chmod 600 "${out}"'), 2)
+        self.assertIn('YFEIEYE_SRS_HOOK_TOKEN=', cluster_enable)
+        self.assertIn('chmod 600 "${ENV_SNIPPET}"', cluster_enable)
+        self.assertIn('YFEIEYE_SRS_HOOK_TOKEN', cluster_compose)
+        self.assertIn('container_name: "${MEDIA_NODE_ID}-srs"', cluster_compose)
+        self.assertIn('container_name: "${MEDIA_NODE_ID}-zlm"', cluster_compose)
+        self.assertGreaterEqual(
+            cluster_installer.count('export MEDIA_NODE_ID="${MEDIA_NODE_NAME}"'),
+            2,
+        )
+        self.assertNotIn('ZLM_SECRET="${ZLM_SECRET:-yFeiEye_Media_Secret}"', cluster_installer)
+        self.assertIn('validate_zlm_secret()', cluster_installer)
+        self.assertIn('ZLM_SECRET must contain at least 32 characters', cluster_installer)
+        self.assertIn('validate_hook_token()', cluster_enable)
+        self.assertIn(
+            'YFEIEYE_SRS_HOOK_TOKEN must contain at least 32 characters',
+            cluster_enable,
+        )
+
+    def test_alternate_srs_publish_hook_calls_authorized_core_without_revalidation(self):
+        video_root = Path(__file__).resolve().parent
+        media_tree = ast.parse(
+            (video_root / 'app' / 'blueprints' / 'media_hook.py').read_text(
+                encoding='utf-8'))
+        camera_tree = ast.parse(
+            (video_root / 'app' / 'blueprints' / 'camera.py').read_text(
+                encoding='utf-8'))
+        media_functions = {
+            node.name: node for node in media_tree.body if isinstance(node, ast.FunctionDef)
+        }
+        camera_functions = {
+            node.name: node for node in camera_tree.body if isinstance(node, ast.FunctionDef)
+        }
+        self.assertIn('_handle_authorized_on_publish_callback', camera_functions)
+
+        media_calls = [
+            node.func.id
+            for node in ast.walk(media_functions['srs_on_publish'])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        ]
+        route_calls = [
+            node.func.id
+            for node in ast.walk(camera_functions['on_publish_callback'])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        ]
+        core_calls = [
+            node.func.id
+            for node in ast.walk(camera_functions['_handle_authorized_on_publish_callback'])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        ]
+
+        self.assertEqual(1, media_calls.count('_require_internal_hook_token'))
+        self.assertEqual(1, media_calls.count('_handle_authorized_on_publish_callback'))
+        self.assertNotIn('on_publish_callback', media_calls)
+        self.assertEqual(1, route_calls.count('authorize_srs_hook_token'))
+        self.assertEqual(1, route_calls.count('_handle_authorized_on_publish_callback'))
+        self.assertNotIn('authorize_srs_hook_token', core_calls)
+
     def test_minio_compose_binds_loopback_and_requires_external_credentials(self):
-        compose = (
-            Path(__file__).resolve().parents[1]
-            / '.scripts' / 'docker' / 'docker-compose.yml'
-        ).read_text(encoding='utf-8')
+        docker_root = Path(__file__).resolve().parents[1] / '.scripts' / 'docker'
+        compose = (docker_root / 'docker-compose.yml').read_text(encoding='utf-8')
+        example = (docker_root / 'env.example').read_text(encoding='utf-8')
 
         self.assertIn('127.0.0.1:9000:9000', compose)
         self.assertIn('127.0.0.1:9001:9001', compose)
@@ -127,10 +324,15 @@ class TenantMaintenanceTest(unittest.TestCase):
         self.assertIn('MINIO_ROOT_USER=${MINIO_ROOT_USER:?', compose)
         self.assertIn('MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?', compose)
         self.assertNotIn('MINIO_ROOT_USER=minioadmin', compose)
+        self.assertIn('MINIO_ROOT_USER=', example)
+        self.assertIn('MINIO_ROOT_PASSWORD=', example)
+        self.assertNotIn('MINIO_ROOT_USER=minioadmin', example)
+        self.assertNotRegex(example, r'MINIO_ROOT_PASSWORD=\S+')
 
     def test_minio_clients_do_not_override_external_credentials_with_defaults(self):
         root = Path(__file__).resolve().parents[1]
         ai_compose = (root / 'AI' / 'docker-compose.yaml').read_text(encoding='utf-8')
+        ai_example = (root / 'AI' / 'env.example').read_text(encoding='utf-8')
         device_compose = (root / 'DEVICE' / 'docker-compose.yml').read_text(
             encoding='utf-8')
 
@@ -139,6 +341,10 @@ class TenantMaintenanceTest(unittest.TestCase):
         self.assertNotRegex(
             ai_compose, r'MINIO_SECRET_KEY=\$\{MINIO_SECRET_KEY:-[^}]+\}')
         self.assertIn('env_file:\n      - .env.docker', ai_compose)
+        self.assertIn('MINIO_ACCESS_KEY=', ai_example)
+        self.assertIn('MINIO_SECRET_KEY=', ai_example)
+        self.assertNotRegex(ai_example, r'MINIO_ACCESS_KEY=\S+')
+        self.assertNotRegex(ai_example, r'MINIO_SECRET_KEY=\S+')
         self.assertIn('MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?', device_compose)
         self.assertIn('MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?', device_compose)
         self.assertNotIn('MINIO_ACCESS_KEY=minioadmin', device_compose)

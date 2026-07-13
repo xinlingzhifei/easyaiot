@@ -91,8 +91,16 @@ class RecordExportExpiredError(ValueError):
     """Raised when an export exists but its download lifetime has elapsed."""
 
 
+class RecordExportIntegrityError(RuntimeError):
+    """Raised when persisted export bytes no longer match their manifest."""
+
+
 class RecordExportClaimLostError(RuntimeError):
     """Raised when a reclaimed worker fences an older worker from publishing."""
+
+
+class RecordExportAccessDecisionConflictError(RuntimeError):
+    """Raised when an access decision id is reused with different semantics."""
 
 
 class _MinioObjectStorageAdapter:
@@ -947,7 +955,8 @@ def download_record_export(export_id: str, operator_user_id=None, reason=None) -
         stat = adapter.stat(object_key) or {}
         actual_size = _storage_stat_size(stat)
         if actual_size != expected_size:
-            raise ValueError(f'export object size mismatch: {export_id}')
+            raise RecordExportIntegrityError(
+                f'export object size mismatch: {export_id}')
         os.makedirs(_export_temp_root(), mode=0o750, exist_ok=True)
         _ensure_export_temp_quota(expected_size)
         verified_path = os.path.join(
@@ -966,7 +975,8 @@ def download_record_export(export_id: str, operator_user_id=None, reason=None) -
         if not os.path.isfile(path):
             raise ValueError(f'export content not found: {export_id}')
         if os.path.getsize(path) != expected_size or _sha256_file(path) != expected_hash:
-            raise ValueError(f'export content verification failed: {export_id}')
+            raise RecordExportIntegrityError(
+                f'export content verification failed: {export_id}')
         source = {
             'path': path,
             'content_length': expected_size,
@@ -1008,7 +1018,8 @@ def _copy_object_to_verified_path(adapter, object_key: str, destination: str,
                     break
                 size += len(chunk)
                 if size > _max_output_bytes():
-                    raise ValueError('export object exceeds configured output size limit')
+                    raise RecordExportIntegrityError(
+                        'export object exceeds configured output size limit')
                 output.write(chunk)
                 digest.update(chunk)
             output.flush()
@@ -1024,10 +1035,10 @@ def _copy_object_to_verified_path(adapter, object_key: str, destination: str,
     actual_hash = 'sha256:' + digest.hexdigest()
     if size != expected_size:
         os.remove(destination)
-        raise ValueError('export object readback size mismatch')
+        raise RecordExportIntegrityError('export object readback size mismatch')
     if actual_hash != expected_hash:
         os.remove(destination)
-        raise ValueError('export object readback hash mismatch')
+        raise RecordExportIntegrityError('export object readback hash mismatch')
 
 
 def _validate_manifest_integrity(manifest: dict):
@@ -1079,7 +1090,10 @@ def append_record_export_access_audit(export_id: str,
                                       tenant_id=None,
                                       camera_id=None,
                                       action=None,
-                                      reason=None):
+                                      reason=None,
+                                      decision_id=None,
+                                      auth_type=None,
+                                      service_id=None):
     """Persist an allow/deny media decision in the export's hash-chained audit."""
     export_id = _text(export_id)
     if not _get_export_job(export_id):
@@ -1087,6 +1101,7 @@ def append_record_export_access_audit(export_id: str,
     normalized_decision = _text(decision).lower()
     if normalized_decision not in ('allowed', 'denied'):
         raise ValueError('decision must be allowed or denied')
+    decision_id = _text(decision_id) or None
     return _append_export_audit(
         export_id,
         f'access_{normalized_decision}',
@@ -1097,7 +1112,11 @@ def append_record_export_access_audit(export_id: str,
             'camera_id': _text(camera_id) or None,
             'media_action': _text(action) or None,
             'decision': normalized_decision,
+            'decision_id': decision_id,
+            'auth_type': _text(auth_type) or None,
+            'service_id': _text(service_id) or None,
         },
+        idempotency_key=decision_id,
     )
 
 
@@ -1957,7 +1976,8 @@ def _public_job(job: dict) -> dict:
 
 
 def _append_export_audit(export_id: str, action: str, operator_user_id=None,
-                         reason=None, extra=None, claim_token=None):
+                         reason=None, extra=None, claim_token=None,
+                         idempotency_key=None):
     lock_token = _acquire_audit_lock(export_id)
     job = None
     try:
@@ -1967,6 +1987,22 @@ def _append_export_audit(export_id: str, action: str, operator_user_id=None,
         if not isinstance(stored, list):
             raise RuntimeError('record export audit must be a JSON array')
         existing = _ensure_audit_hash_chain(stored)
+        if idempotency_key:
+            for current in existing:
+                if current.get('decision_id') == idempotency_key:
+                    comparable = {
+                        'export_id': export_id,
+                        'action': action,
+                        'operator_user_id': _text(operator_user_id) or None,
+                        'reason': _text(reason) or None,
+                    }
+                    if extra:
+                        comparable.update(extra)
+                    if any(current.get(key) != value
+                           for key, value in comparable.items()):
+                        raise RecordExportAccessDecisionConflictError(
+                            f'record export access decision conflict: {idempotency_key}')
+                    return current
         previous_audit = list(existing)
         previous_hash = existing[-1].get('entryHash') if existing else 'GENESIS'
         entry = {

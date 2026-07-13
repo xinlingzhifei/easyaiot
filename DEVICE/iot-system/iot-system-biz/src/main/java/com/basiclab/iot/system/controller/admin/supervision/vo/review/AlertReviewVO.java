@@ -402,6 +402,8 @@ public final class AlertReviewVO {
         private String materialType;
         private String materialUri;
         private Map<String, Object> metadata;
+        private LocalDateTime recordStartTime;
+        private Integer playbackOffsetSeconds;
 
         public static DetailStreamRespVO from(ReviewDetailStreamItem item) {
             DetailStreamRespVO respVO = new DetailStreamRespVO();
@@ -419,6 +421,8 @@ public final class AlertReviewVO {
             respVO.setMaterialType(item.materialType());
             respVO.setMaterialUri(item.materialUri());
             respVO.setMetadata(item.metadata());
+            respVO.setRecordStartTime(item.recordStartTime());
+            respVO.setPlaybackOffsetSeconds(item.playbackOffsetSeconds());
             return respVO;
         }
 
@@ -621,6 +625,8 @@ public final class AlertReviewVO {
         private String materialType;
         private String materialUri;
         private LocalDateTime happenedAt;
+        private LocalDateTime recordStartTime;
+        private Integer playbackOffsetSeconds;
         private String actionNote;
 
         public static CaseTimelineRespVO from(ReviewCaseTimelineItem item) {
@@ -632,6 +638,10 @@ public final class AlertReviewVO {
             respVO.setMaterialType(item.materialType());
             respVO.setMaterialUri(item.materialUri());
             respVO.setHappenedAt(item.happenedAt());
+            respVO.setRecordStartTime(item.recordStartTime() != null
+                    ? item.recordStartTime()
+                    : "record_coverage".equals(item.materialType()) ? item.happenedAt() : null);
+            respVO.setPlaybackOffsetSeconds(item.playbackOffsetSeconds());
             respVO.setActionNote(item.actionNote());
             return respVO;
         }

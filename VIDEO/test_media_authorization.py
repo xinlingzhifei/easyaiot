@@ -9,6 +9,7 @@ import time
 import types
 import unittest
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from urllib.parse import urlencode
 from unittest.mock import patch
 
@@ -831,6 +832,7 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
             'camera_id': payload['camera_id'],
             'status': 'ready',
         }
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: {}
         authorization = _JsonResponse({
             'code': 0,
             'data': {
@@ -879,6 +881,7 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
             'camera_id': payload['camera_id'],
             'status': 'pending',
         }
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: {}
 
         class _SpaceQuery:
             @staticmethod
@@ -1107,13 +1110,882 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
 
         self.assertEqual(410, response.status_code, response.get_json())
         self.assertEqual('export_expired', response.get_json()['reason'])
-        audit = self._audit_entries()
-        self.assertTrue(any(
-            entry['decision'] == 'denied'
-            and entry['exportId'] == export_id
-            and entry['reason'] == 'export_expired'
-            for entry in audit
-        ))
+        media_audit = self._media_export_audit_entries(export_id, 'download')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('denied', media_audit[0]['decision'])
+        self.assertEqual('export_expired', media_audit[0]['reason'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'download')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_denied', export_audit[0]['action'])
+        self.assertEqual('export_expired', export_audit[0]['reason'])
+
+    def test_export_authorization_denial_writes_one_final_denied_audit(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': False,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'permission_denied',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().get(
+                f'/video/record/export/{export_id}',
+                headers={'Authorization': 'Bearer scoped-user', 'tenant-id': '7'},
+            )
+
+        self.assertEqual(403, response.status_code, response.get_json())
+        media_audit = self._media_export_audit_entries(export_id, 'export')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('denied', media_audit[0]['decision'])
+        self.assertEqual('permission_denied', media_audit[0]['reason'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'export')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_denied', export_audit[0]['action'])
+
+    def test_export_scope_mismatch_writes_one_final_denied_audit(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-02',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().get(
+                f'/video/record/export/{export_id}',
+                headers={'Authorization': 'Bearer scoped-user', 'tenant-id': '7'},
+            )
+
+        self.assertEqual(403, response.status_code, response.get_json())
+        self.assertEqual('camera_scope_denied', response.get_json()['reason'])
+        media_audit = self._media_export_audit_entries(export_id, 'export')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('denied', media_audit[0]['decision'])
+        self.assertEqual('camera_scope_denied', media_audit[0]['reason'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'export')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_denied', export_audit[0]['action'])
+        self.assertEqual('camera_scope_denied', export_audit[0]['reason'])
+
+    def test_successful_export_download_writes_one_final_allowed_audit(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        record_module.download_record_export = lambda *args, **kwargs: {
+            'stream': BytesIO(b'export-content'),
+            'filename': f'{export_id}.mp4',
+            'mimetype': 'video/mp4',
+            'content_length': len(b'export-content'),
+        }
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'download',
+                'reason': 'granted',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().get(
+                f'/video/record/export/{export_id}/download',
+                headers={'Authorization': 'Bearer scoped-user', 'tenant-id': '7'},
+            )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(b'export-content', response.data)
+        media_audit = self._media_export_audit_entries(export_id, 'download')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('allowed', media_audit[0]['decision'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'download')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_allowed', export_audit[0]['action'])
+
+    def test_successful_export_status_and_manifest_write_one_final_allowed_audit(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        routes = (
+            (f'/video/record/export/{export_id}', 'export'),
+            (f'/video/record/export/{export_id}/manifest', 'manifest_verify'),
+        )
+
+        client = self._app(record_module).test_client()
+        for path, action in routes:
+            authorization = _JsonResponse({
+                'code': 0,
+                'data': {
+                    'allowed': True,
+                    'userId': 42,
+                    'tenantId': 7,
+                    'cameraId': 'camera-01',
+                    'action': action,
+                    'reason': 'granted',
+                },
+            })
+            with self.subTest(action=action), patch(
+                    'requests.post', return_value=authorization):
+                response = client.get(
+                    path,
+                    headers={
+                        'Authorization': 'Bearer scoped-user',
+                        'tenant-id': '7',
+                    },
+                )
+
+                self.assertEqual(200, response.status_code, response.get_json())
+                media_audit = self._media_export_audit_entries(export_id, action)
+                self.assertEqual(1, len(media_audit), media_audit)
+                self.assertEqual('allowed', media_audit[0]['decision'])
+                export_audit = self._record_export_access_entries(
+                    record_export_service, export_id, action)
+                self.assertEqual(1, len(export_audit), export_audit)
+                self.assertEqual('access_allowed', export_audit[0]['action'])
+
+    def test_export_access_retry_completes_both_ledgers_without_mixed_decisions(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        append_media_audit = record_module.append_media_access_audit
+        attempts = []
+
+        def fail_second_ledger_once(*args, **kwargs):
+            attempts.append(kwargs.get('decision_override'))
+            if len(attempts) == 1:
+                raise RuntimeError('media audit disk unavailable')
+            return append_media_audit(*args, **kwargs)
+
+        record_module.append_media_access_audit = fail_second_ledger_once
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+        headers = {
+            'Authorization': 'Bearer scoped-user',
+            'tenant-id': '7',
+            'Idempotency-Key': 'status-audit-retry-001',
+        }
+        client = self._app(record_module).test_client()
+
+        with patch('requests.post', return_value=authorization):
+            first_response = client.get(
+                f'/video/record/export/{export_id}', headers=headers)
+
+            self.assertEqual(503, first_response.status_code, first_response.get_json())
+            self.assertEqual(
+                'export_audit_unavailable', first_response.get_json()['reason'])
+            first_media_audit = self._media_export_audit_entries(export_id, 'export')
+            self.assertEqual([], first_media_audit)
+            first_export_audit = self._record_export_access_entries(
+                record_export_service, export_id, 'export')
+            self.assertEqual(1, len(first_export_audit), first_export_audit)
+            self.assertEqual({'access_allowed'}, {
+                entry['action'] for entry in first_export_audit
+            })
+
+            retry_response = client.get(
+                f'/video/record/export/{export_id}', headers=headers)
+
+        self.assertEqual(200, retry_response.status_code, retry_response.get_json())
+        media_audit = self._media_export_audit_entries(export_id, 'export')
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'export')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual({'allowed'}, {entry['decision'] for entry in media_audit})
+        self.assertEqual({'access_allowed'}, {
+            entry['action'] for entry in export_audit
+        })
+        self.assertEqual(
+            media_audit[0]['decisionId'],
+            export_audit[0]['decision_id'],
+        )
+
+    def test_export_access_idempotency_key_rejects_a_changed_terminal_decision(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+        headers = {
+            'Authorization': 'Bearer scoped-user',
+            'tenant-id': '7',
+            'Idempotency-Key': 'status-terminal-conflict-001',
+        }
+        client = self._app(record_module).test_client()
+
+        with patch('requests.post', return_value=authorization):
+            first_response = client.get(
+                f'/video/record/export/{export_id}', headers=headers)
+
+            def fail_status(_export_id):
+                raise RuntimeError('status store unavailable')
+
+            record_module.get_record_export_status = fail_status
+            conflict_response = client.get(
+                f'/video/record/export/{export_id}', headers=headers)
+
+        self.assertEqual(200, first_response.status_code, first_response.get_json())
+        self.assertEqual(409, conflict_response.status_code, conflict_response.get_json())
+        self.assertEqual(
+            'export_access_decision_conflict',
+            conflict_response.get_json()['reason'],
+        )
+        media_audit = self._media_export_audit_entries(export_id, 'export')
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'export')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual({'allowed'}, {entry['decision'] for entry in media_audit})
+        self.assertEqual({'access_allowed'}, {
+            entry['action'] for entry in export_audit
+        })
+
+    def test_export_failure_audit_unavailable_is_stable_json_for_all_routes(self):
+        routes = ('create', 'status', 'retry', 'audit', 'manifest', 'download')
+
+        for index, route in enumerate(routes):
+            with self.subTest(route=route):
+                record_export_service, record_module, export_id = self._create_export_job(
+                    review_case_id=3050 + index,
+                    review_item_id=1050 + index,
+                )
+                action = 'manifest_verify' if route in ('audit', 'manifest') else (
+                    'download' if route == 'download' else 'export')
+                authorization = _JsonResponse({
+                    'code': 0,
+                    'data': {
+                        'allowed': True,
+                        'userId': 42,
+                        'tenantId': 7,
+                        'cameraId': 'camera-01',
+                        'action': action,
+                        'reason': 'granted',
+                    },
+                })
+                method = 'GET'
+                payload = None
+                if route == 'create':
+                    record_module.validate_record_export_request = lambda *_args: (
+                        (_ for _ in ()).throw(ValueError('invalid export')))
+                    path = '/video/record/export'
+                    method = 'POST'
+                    payload = {
+                        'camera_id': 'camera-01',
+                        'device_id': 'camera-01',
+                        'record_uri': '/video/record/space/7/video/camera-01/source.mp4',
+                    }
+                elif route == 'status':
+                    record_module.get_record_export_status = lambda *_args: (
+                        (_ for _ in ()).throw(RuntimeError('status failed')))
+                    path = f'/video/record/export/{export_id}'
+                elif route == 'retry':
+                    record_module.retry_record_export = lambda *_args: (
+                        (_ for _ in ()).throw(RuntimeError('retry failed')))
+                    path = f'/video/record/export/{export_id}/retry'
+                    method = 'POST'
+                elif route == 'audit':
+                    record_module.get_record_export_audit = lambda *_args: (
+                        (_ for _ in ()).throw(RuntimeError('audit read failed')))
+                    path = f'/video/record/export/{export_id}/audit'
+                elif route == 'manifest':
+                    load_manifest = record_module.get_record_export_manifest
+                    calls = 0
+
+                    def fail_manifest_response(*args, **kwargs):
+                        nonlocal calls
+                        calls += 1
+                        if calls == 1:
+                            return load_manifest(*args, **kwargs)
+                        raise RuntimeError('manifest failed')
+
+                    record_module.get_record_export_manifest = fail_manifest_response
+                    path = f'/video/record/export/{export_id}/manifest'
+                else:
+                    record_module.download_record_export = lambda *_args, **_kwargs: (
+                        (_ for _ in ()).throw(RuntimeError('download failed')))
+                    path = f'/video/record/export/{export_id}/download'
+
+                record_module.append_media_access_audit = lambda *_args, **_kwargs: (
+                    (_ for _ in ()).throw(RuntimeError('global audit disk unavailable')))
+                with patch('requests.post', return_value=authorization):
+                    response = self._app(record_module).test_client().open(
+                        path,
+                        method=method,
+                        json=payload,
+                        headers={
+                            'Authorization': 'Bearer scoped-user',
+                            'tenant-id': '7',
+                            'Idempotency-Key': f'{route}-failure-audit-001',
+                        },
+                    )
+
+                self.assertEqual(503, response.status_code, response.get_data(as_text=True))
+                self.assertTrue(response.is_json, response.get_data(as_text=True))
+                self.assertEqual(
+                    'export_audit_unavailable', response.get_json()['reason'])
+
+    def test_export_create_failures_write_only_the_final_denied_decision(self):
+        failures = (
+            (ValueError('invalid export request'), 400),
+            (RuntimeError('export store unavailable'), 500),
+        )
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+
+        for index, (error, expected_status) in enumerate(failures):
+            with self.subTest(error=type(error).__name__):
+                record_module = self._record_blueprint()
+
+                def fail_validation(*_args, **_kwargs):
+                    raise error
+
+                record_module.validate_record_export_request = fail_validation
+                before = len(self._audit_entries())
+                with patch('requests.post', return_value=authorization):
+                    response = self._app(record_module).test_client().post(
+                        '/video/record/export',
+                        headers={
+                            'Authorization': 'Bearer scoped-user',
+                            'tenant-id': '7',
+                            'Idempotency-Key': f'create-failure-{index}',
+                        },
+                        json={
+                            'camera_id': 'camera-01',
+                            'device_id': 'camera-01',
+                            'record_uri': '/video/record/space/7/video/camera-01/source.mp4',
+                        },
+                    )
+
+                self.assertEqual(expected_status, response.status_code, response.get_json())
+                entries = self._audit_entries()[before:]
+                self.assertEqual(1, len(entries), entries)
+                self.assertEqual('denied', entries[0]['decision'])
+                self.assertEqual('export_create_failed', entries[0]['reason'])
+
+    def test_export_create_export_audit_failure_does_not_write_global_allowed(self):
+        from app.services import record_export_service
+
+        importlib.reload(record_export_service)
+        record_module = self._record_blueprint()
+        record_module.validate_record_export_request = lambda *_args: None
+        created = []
+
+        def create_export(payload, async_worker=False):
+            result = record_export_service.create_record_export(
+                payload,
+                record_resolver=_trusted_record_resolver,
+                async_worker=async_worker,
+            )
+            created.append(result)
+            return result
+
+        record_module.create_record_export = create_export
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: (
+            (_ for _ in ()).throw(RuntimeError('export audit disk unavailable')))
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().post(
+                '/video/record/export',
+                headers={
+                    'Authorization': 'Bearer scoped-user',
+                    'tenant-id': '7',
+                    'Idempotency-Key': 'create-export-audit-failure-001',
+                },
+                json={
+                    'camera_id': 'camera-01',
+                    'device_id': 'camera-01',
+                    'record_uri': '/video/record/space/7/video/camera-01/source.mp4',
+                },
+            )
+
+        self.assertEqual(503, response.status_code, response.get_json())
+        self.assertEqual('export_audit_unavailable', response.get_json()['reason'])
+        export_id = created[0]['export_id']
+        self.assertEqual([], self._media_export_audit_entries(export_id, 'export'))
+        self.assertEqual([], self._record_export_access_entries(
+            record_export_service, export_id, 'export'))
+
+    def test_export_create_global_audit_retry_preserves_export_decision(self):
+        from app.services import record_export_service
+
+        importlib.reload(record_export_service)
+        record_module = self._record_blueprint()
+        record_module.validate_record_export_request = lambda *_args: None
+        record_module.create_record_export = lambda payload, async_worker=False: (
+            record_export_service.create_record_export(
+                payload,
+                record_resolver=_trusted_record_resolver,
+                async_worker=async_worker,
+            )
+        )
+        append_media_audit = record_module.append_media_access_audit
+        attempts = []
+
+        def fail_global_once(*args, **kwargs):
+            attempts.append(kwargs.get('decision_override'))
+            if len(attempts) == 1:
+                raise RuntimeError('media audit disk unavailable')
+            return append_media_audit(*args, **kwargs)
+
+        record_module.append_media_access_audit = fail_global_once
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+        headers = {
+            'Authorization': 'Bearer scoped-user',
+            'tenant-id': '7',
+            'Idempotency-Key': 'create-global-audit-retry-001',
+        }
+        payload = {
+            'camera_id': 'camera-01',
+            'device_id': 'camera-01',
+            'record_uri': '/video/record/space/7/video/camera-01/source.mp4',
+        }
+        client = self._app(record_module).test_client()
+
+        with patch('requests.post', return_value=authorization):
+            first_response = client.post(
+                '/video/record/export', headers=headers, json=payload)
+
+            self.assertEqual(503, first_response.status_code, first_response.get_json())
+            export_id = record_export_service._build_record_export({
+                **payload,
+                'operator_user_id': '42',
+                'approved_by': '42',
+                'tenant_id': '7',
+            }, _trusted_record_resolver)['export_id']
+            self.assertEqual([], self._media_export_audit_entries(export_id, 'export'))
+            first_export_audit = self._record_export_access_entries(
+                record_export_service, export_id, 'export')
+            self.assertEqual(1, len(first_export_audit), first_export_audit)
+
+            retry_response = client.post(
+                '/video/record/export', headers=headers, json=payload)
+
+        self.assertEqual(200, retry_response.status_code, retry_response.get_json())
+        media_audit = self._media_export_audit_entries(export_id, 'export')
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'export')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual(
+            media_audit[0]['decisionId'], export_audit[0]['decision_id'])
+
+    def test_export_create_success_writes_matching_dual_ledgers(self):
+        from app.services import record_export_service
+
+        importlib.reload(record_export_service)
+        record_module = self._record_blueprint()
+        record_module.validate_record_export_request = lambda *_args: None
+        record_module.create_record_export = lambda payload, async_worker=False: (
+            record_export_service.create_record_export(
+                payload,
+                record_resolver=_trusted_record_resolver,
+                async_worker=async_worker,
+            )
+        )
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'export',
+                'reason': 'granted',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().post(
+                '/video/record/export',
+                headers={
+                    'Authorization': 'Bearer scoped-user',
+                    'tenant-id': '7',
+                    'Idempotency-Key': 'create-success-001',
+                },
+                json={
+                    'camera_id': 'camera-01',
+                    'device_id': 'camera-01',
+                    'record_uri': '/video/record/space/7/video/camera-01/source.mp4',
+                },
+            )
+
+        self.assertEqual(200, response.status_code, response.get_json())
+        export_id = response.get_json()['data']['export_id']
+        media_audit = self._media_export_audit_entries(export_id, 'export')
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'export')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('allowed', media_audit[0]['decision'])
+        self.assertEqual('access_allowed', export_audit[0]['action'])
+        self.assertEqual(
+            media_audit[0]['decisionId'], export_audit[0]['decision_id'])
+
+    def test_export_retry_and_audit_success_write_terminal_dual_ledgers(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        record_module.retry_record_export = lambda current_export_id: {
+            'export_id': current_export_id,
+            'status': 'pending',
+        }
+        record_module.get_record_export_audit = lambda _export_id: []
+        routes = (
+            (f'/video/record/export/{export_id}/retry', 'POST', 'export'),
+            (f'/video/record/export/{export_id}/audit', 'GET', 'manifest_verify'),
+        )
+
+        for path, method, action in routes:
+            authorization = _JsonResponse({
+                'code': 0,
+                'data': {
+                    'allowed': True,
+                    'userId': 42,
+                    'tenantId': 7,
+                    'cameraId': 'camera-01',
+                    'action': action,
+                    'reason': 'granted',
+                },
+            })
+            with self.subTest(action=action), patch(
+                    'requests.post', return_value=authorization):
+                response = self._app(record_module).test_client().open(
+                    path,
+                    method=method,
+                    headers={
+                        'Authorization': 'Bearer scoped-user',
+                        'tenant-id': '7',
+                        'Idempotency-Key': f'{action}-success-001',
+                    },
+                )
+
+            self.assertEqual(200, response.status_code, response.get_json())
+            media_audit = self._media_export_audit_entries(export_id, action)
+            export_audit = self._record_export_access_entries(
+                record_export_service, export_id, action)
+            self.assertEqual(1, len(media_audit), media_audit)
+            self.assertEqual(1, len(export_audit), export_audit)
+            self.assertEqual('allowed', media_audit[0]['decision'])
+            self.assertEqual('access_allowed', export_audit[0]['action'])
+
+    def test_export_routes_write_one_denied_audit_on_manifest_integrity_error(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+
+        def corrupted_manifest(_export_id):
+            raise RuntimeError('record export manifest hash mismatch')
+
+        record_module.get_record_export_manifest = corrupted_manifest
+        routes = (
+            (f'/video/record/export/{export_id}', 'export'),
+            (f'/video/record/export/{export_id}/manifest', 'manifest_verify'),
+            (f'/video/record/export/{export_id}/download', 'download'),
+        )
+
+        client = self._app(record_module).test_client()
+        for path, action in routes:
+            authorization = _JsonResponse({
+                'code': 0,
+                'data': {
+                    'allowed': True,
+                    'userId': 42,
+                    'tenantId': 7,
+                    'cameraId': 'camera-01',
+                    'action': action,
+                    'reason': 'granted',
+                },
+            })
+            with self.subTest(action=action), patch(
+                    'requests.post', return_value=authorization):
+                response = client.get(
+                    path,
+                    headers={
+                        'Authorization': 'Bearer scoped-user',
+                        'tenant-id': '7',
+                    },
+                )
+
+                self.assertEqual(500, response.status_code, response.get_json())
+                media_audit = self._media_export_audit_entries(export_id, action)
+                self.assertEqual(1, len(media_audit), media_audit)
+                self.assertEqual('denied', media_audit[0]['decision'])
+                self.assertEqual('export_integrity_error', media_audit[0]['reason'])
+                export_audit = self._record_export_access_entries(
+                    record_export_service, export_id, action)
+                self.assertEqual(1, len(export_audit), export_audit)
+                self.assertEqual('access_denied', export_audit[0]['action'])
+                self.assertEqual('export_integrity_error', export_audit[0]['reason'])
+
+    def test_export_download_failure_writes_one_final_denied_audit(self):
+        failures = (
+            (ValueError('export is not ready'), 404),
+            (RuntimeError('object storage unavailable'), 500),
+        )
+
+        for index, (error, expected_status) in enumerate(failures):
+            with self.subTest(error=type(error).__name__):
+                record_export_service, record_module, export_id = self._create_export_job(
+                    review_case_id=3100 + index,
+                    review_item_id=1100 + index,
+                )
+
+                def fail_download(*_args, **_kwargs):
+                    raise error
+
+                record_module.download_record_export = fail_download
+                authorization = _JsonResponse({
+                    'code': 0,
+                    'data': {
+                        'allowed': True,
+                        'userId': 42,
+                        'tenantId': 7,
+                        'cameraId': 'camera-01',
+                        'action': 'download',
+                        'reason': 'granted',
+                    },
+                })
+                with patch('requests.post', return_value=authorization):
+                    response = self._app(record_module).test_client().get(
+                        f'/video/record/export/{export_id}/download',
+                        headers={
+                            'Authorization': 'Bearer scoped-user',
+                            'tenant-id': '7',
+                        },
+                    )
+
+                self.assertEqual(expected_status, response.status_code, response.get_json())
+                media_audit = self._media_export_audit_entries(export_id, 'download')
+                self.assertEqual(1, len(media_audit), media_audit)
+                self.assertEqual('denied', media_audit[0]['decision'])
+                self.assertEqual('export_download_failed', media_audit[0]['reason'])
+                export_audit = self._record_export_access_entries(
+                    record_export_service, export_id, 'download')
+                self.assertEqual(1, len(export_audit), export_audit)
+                self.assertEqual('access_denied', export_audit[0]['action'])
+                self.assertEqual('export_download_failed', export_audit[0]['reason'])
+
+    def test_export_download_integrity_failure_writes_one_integrity_audit_chain(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+
+        def fail_download(*_args, **_kwargs):
+            raise record_export_service.RecordExportIntegrityError(
+                'export package hash mismatch')
+
+        record_module.download_record_export = fail_download
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'download',
+                'reason': 'granted',
+            },
+        })
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().get(
+                f'/video/record/export/{export_id}/download',
+                headers={
+                    'Authorization': 'Bearer scoped-user',
+                    'tenant-id': '7',
+                },
+            )
+
+        self.assertEqual(500, response.status_code, response.get_json())
+        self.assertEqual('export_integrity_error', response.get_json()['reason'])
+        media_audit = self._media_export_audit_entries(export_id, 'download')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('denied', media_audit[0]['decision'])
+        self.assertEqual('export_integrity_error', media_audit[0]['reason'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'download')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_denied', export_audit[0]['action'])
+        self.assertEqual('export_integrity_error', export_audit[0]['reason'])
+
+    def test_export_status_failure_writes_one_final_denied_audit(self):
+        failures = (
+            (ValueError('export job disappeared'), 404),
+            (RuntimeError('status store unavailable'), 500),
+        )
+
+        for index, (error, expected_status) in enumerate(failures):
+            with self.subTest(error=type(error).__name__):
+                record_export_service, record_module, export_id = self._create_export_job(
+                    review_case_id=3200 + index,
+                    review_item_id=1200 + index,
+                )
+
+                def fail_status(*_args, **_kwargs):
+                    raise error
+
+                record_module.get_record_export_status = fail_status
+                authorization = _JsonResponse({
+                    'code': 0,
+                    'data': {
+                        'allowed': True,
+                        'userId': 42,
+                        'tenantId': 7,
+                        'cameraId': 'camera-01',
+                        'action': 'export',
+                        'reason': 'granted',
+                    },
+                })
+                with patch('requests.post', return_value=authorization):
+                    response = self._app(record_module).test_client().get(
+                        f'/video/record/export/{export_id}',
+                        headers={
+                            'Authorization': 'Bearer scoped-user',
+                            'tenant-id': '7',
+                        },
+                    )
+
+                self.assertEqual(expected_status, response.status_code, response.get_json())
+                media_audit = self._media_export_audit_entries(export_id, 'export')
+                self.assertEqual(1, len(media_audit), media_audit)
+                self.assertEqual('denied', media_audit[0]['decision'])
+                self.assertEqual('export_status_failed', media_audit[0]['reason'])
+                export_audit = self._record_export_access_entries(
+                    record_export_service, export_id, 'export')
+                self.assertEqual(1, len(export_audit), export_audit)
+                self.assertEqual('access_denied', export_audit[0]['action'])
+                self.assertEqual('export_status_failed', export_audit[0]['reason'])
+
+    def test_export_manifest_response_failure_writes_one_final_denied_audit(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        load_manifest = record_module.get_record_export_manifest
+        calls = 0
+
+        def fail_second_manifest_read(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return load_manifest(*args, **kwargs)
+            raise RuntimeError('manifest store unavailable')
+
+        record_module.get_record_export_manifest = fail_second_manifest_read
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'manifest_verify',
+                'reason': 'granted',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().get(
+                f'/video/record/export/{export_id}/manifest',
+                headers={'Authorization': 'Bearer scoped-user', 'tenant-id': '7'},
+            )
+
+        self.assertEqual(500, response.status_code, response.get_json())
+        media_audit = self._media_export_audit_entries(export_id, 'manifest_verify')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('denied', media_audit[0]['decision'])
+        self.assertEqual('export_manifest_failed', media_audit[0]['reason'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'manifest_verify')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_denied', export_audit[0]['action'])
+        self.assertEqual('export_manifest_failed', export_audit[0]['reason'])
+
+    def test_export_download_response_failure_writes_one_final_denied_audit(self):
+        record_export_service, record_module, export_id = self._create_export_job()
+        record_module.download_record_export = lambda *_args, **_kwargs: {
+            'path': 'unused-export-path',
+            'filename': f'{export_id}.mp4',
+            'mimetype': 'video/mp4',
+        }
+        record_module.send_file = lambda *_args, **_kwargs: (
+            (_ for _ in ()).throw(RuntimeError('response construction failed')))
+        authorization = _JsonResponse({
+            'code': 0,
+            'data': {
+                'allowed': True,
+                'userId': 42,
+                'tenantId': 7,
+                'cameraId': 'camera-01',
+                'action': 'download',
+                'reason': 'granted',
+            },
+        })
+
+        with patch('requests.post', return_value=authorization):
+            response = self._app(record_module).test_client().get(
+                f'/video/record/export/{export_id}/download',
+                headers={'Authorization': 'Bearer scoped-user', 'tenant-id': '7'},
+            )
+
+        self.assertEqual(500, response.status_code, response.get_json())
+        media_audit = self._media_export_audit_entries(export_id, 'download')
+        self.assertEqual(1, len(media_audit), media_audit)
+        self.assertEqual('denied', media_audit[0]['decision'])
+        self.assertEqual('export_download_failed', media_audit[0]['reason'])
+        export_audit = self._record_export_access_entries(
+            record_export_service, export_id, 'download')
+        self.assertEqual(1, len(export_audit), export_audit)
+        self.assertEqual('access_denied', export_audit[0]['action'])
+        self.assertEqual('export_download_failed', export_audit[0]['reason'])
 
     def test_export_access_decision_is_reversible_from_export_audit(self):
         from app.services import record_export_service
@@ -1217,6 +2089,51 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
             for entry in self._audit_entries()
         ))
 
+    def test_authenticated_missing_export_routes_write_one_final_not_found_audit(self):
+        record_module = self._record_blueprint()
+        routes = (
+            ('/video/record/export/nonexistent-status', 'nonexistent-status', 'export'),
+            (
+                '/video/record/export/nonexistent-manifest/manifest',
+                'nonexistent-manifest',
+                'manifest_verify',
+            ),
+            (
+                '/video/record/export/nonexistent-download/download',
+                'nonexistent-download',
+                'download',
+            ),
+        )
+
+        client = self._app(record_module).test_client()
+        for path, export_id, action in routes:
+            authorization = _JsonResponse({
+                'code': 0,
+                'data': {
+                    'allowed': True,
+                    'userId': 42,
+                    'tenantId': 7,
+                    'cameraId': 'camera-01',
+                    'action': action,
+                    'reason': 'granted',
+                },
+            })
+            with self.subTest(action=action), patch(
+                    'requests.post', return_value=authorization):
+                response = client.get(
+                    path,
+                    headers={
+                        'Authorization': 'Bearer scoped-user',
+                        'tenant-id': '7',
+                    },
+                )
+
+                self.assertEqual(404, response.status_code, response.get_json())
+                entries = self._media_export_audit_entries(export_id, action)
+                self.assertEqual(1, len(entries), entries)
+                self.assertEqual('denied', entries[0]['decision'])
+                self.assertEqual('export_not_found', entries[0]['reason'])
+
     def test_resolve_alert_uses_coverage_authorization_not_record_management(self):
         record_module = self._record_blueprint()
         record_module.find_segment_for_alert = lambda device_id, alert_id, **kwargs: {
@@ -1256,6 +2173,7 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
         record_module = self._record_blueprint()
         captured = []
         record_module.validate_record_export_request = lambda payload, camera_id: payload
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: {}
         record_module.create_record_export = lambda payload, async_worker=False: captured.append(payload) or {
             'export_id': 'exp-service-1',
             'camera_id': payload['camera_id'],
@@ -1547,6 +2465,35 @@ class TestRecordMediaAuthorization(_ModuleIsolationTestCase):
             return []
         with open(path, 'r', encoding='utf-8') as audit_file:
             return [json.loads(line) for line in audit_file if line.strip()]
+
+    def _create_export_job(self, review_case_id=3000, review_item_id=1000):
+        from app.services import record_export_service
+
+        importlib.reload(record_export_service)
+        started = record_export_service.create_record_export({
+            'review_case_id': review_case_id,
+            'review_item_id': review_item_id,
+            'camera_id': 'camera-01',
+            'device_id': 'camera-01',
+            'record_uri': '/video/record/space/7/video/camera-01/source.mp4',
+            'operator_user_id': '42',
+            'tenant_id': '7',
+        }, record_resolver=_trusted_record_resolver, async_worker=True)
+        return record_export_service, self._record_blueprint(), started['export_id']
+
+    def _media_export_audit_entries(self, export_id, action):
+        return [
+            entry for entry in self._audit_entries()
+            if entry.get('exportId') == export_id and entry.get('action') == action
+        ]
+
+    @staticmethod
+    def _record_export_access_entries(record_export_service, export_id, action):
+        return [
+            entry for entry in record_export_service.get_record_export_audit(export_id)
+            if entry.get('action') in ('access_allowed', 'access_denied')
+            and entry.get('media_action') == action
+        ]
 
     @staticmethod
     def _install_group_policy_service(scopes, updates):

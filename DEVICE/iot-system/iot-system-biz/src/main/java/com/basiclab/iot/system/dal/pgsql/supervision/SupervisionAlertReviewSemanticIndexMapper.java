@@ -3,6 +3,7 @@ package com.basiclab.iot.system.dal.pgsql.supervision;
 import com.basiclab.iot.common.core.mapper.BaseMapperX;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
@@ -25,6 +26,85 @@ public interface SupervisionAlertReviewSemanticIndexMapper extends BaseMapperX<S
         return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewSemanticIndexDO>()
                 .in(SupervisionAlertReviewSemanticIndexDO::getReviewItemId, reviewItemIds));
     }
+
+    @Insert("""
+            INSERT INTO system_supervision_alert_review_semantic_index (
+                review_item_id,
+                camera_id,
+                first_alert_time,
+                last_alert_time,
+                index_status,
+                document,
+                embedding_key,
+                embedding_model,
+                embedding_vector_hash,
+                retry_count,
+                last_error,
+                indexed_at,
+                index_generation_id,
+                next_retry_at,
+                claim_token,
+                claimed_at,
+                claim_expires_at,
+                version,
+                deleted
+            ) VALUES (
+                #{index.reviewItemId,jdbcType=BIGINT},
+                #{index.cameraId,jdbcType=VARCHAR},
+                #{index.firstAlertTime,jdbcType=TIMESTAMP},
+                #{index.lastAlertTime,jdbcType=TIMESTAMP},
+                'pending',
+                #{index.document,jdbcType=LONGVARCHAR},
+                #{index.embeddingKey,jdbcType=VARCHAR},
+                #{index.embeddingModel,jdbcType=VARCHAR},
+                NULL,
+                0,
+                NULL,
+                NULL,
+                #{index.indexGenerationId,jdbcType=VARCHAR},
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                0,
+                0
+            )
+            ON CONFLICT DO NOTHING
+            """)
+    int insertPendingIfAbsent(@Param("index") SupervisionAlertReviewSemanticIndexDO index);
+
+    @Update("""
+            UPDATE system_supervision_alert_review_semantic_index
+            SET camera_id = #{index.cameraId,jdbcType=VARCHAR},
+                first_alert_time = #{index.firstAlertTime,jdbcType=TIMESTAMP},
+                last_alert_time = #{index.lastAlertTime,jdbcType=TIMESTAMP},
+                index_status = 'pending',
+                document = #{index.document,jdbcType=LONGVARCHAR},
+                embedding_key = #{index.embeddingKey,jdbcType=VARCHAR},
+                embedding_model = #{index.embeddingModel,jdbcType=VARCHAR},
+                embedding_vector_hash = NULL,
+                retry_count = 0,
+                last_error = NULL,
+                indexed_at = NULL,
+                index_generation_id = #{index.indexGenerationId,jdbcType=VARCHAR},
+                next_retry_at = NULL,
+                claim_token = NULL,
+                claimed_at = NULL,
+                claim_expires_at = NULL,
+                version = version + 1,
+                update_time = CURRENT_TIMESTAMP
+            WHERE review_item_id = #{index.reviewItemId,jdbcType=BIGINT}
+              AND deleted = 0
+              AND (
+                index_status <> 'processing'
+                OR claim_token IS NULL
+                OR claim_expires_at IS NULL
+                OR claim_expires_at <= #{queuedAt,jdbcType=TIMESTAMP}
+              )
+            """)
+    int queueReindexUnlessActivelyClaimed(
+            @Param("index") SupervisionAlertReviewSemanticIndexDO index,
+            @Param("queuedAt") LocalDateTime queuedAt);
 
     @Update("""
             <script>

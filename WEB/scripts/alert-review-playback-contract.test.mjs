@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 
 const playbackSource = readFileSync('src/utils/alertRecordPlayback.ts', 'utf8')
 const workbenchSource = readFileSync('src/views/alert/components/AlertReviewWorkbench.vue', 'utf8')
+const alertReviewApiSource = readFileSync('src/api/supervision/alertReview.ts', 'utf8')
 const alertPageSource = readFileSync('src/views/alert/index.vue', 'utf8')
 const dialogPlayerSource = readFileSync('src/components/VideoPlayer/DialogPlayer.vue', 'utf8')
 const jessibucaSource = readFileSync('src/components/Player/module/jessibuca.vue', 'utf8')
@@ -13,9 +14,23 @@ assert.match(playbackSource, /seek_time\?: string \| null/)
 assert.match(playbackSource, /playback_offset_seconds\?: number \| null/)
 assert.match(playbackSource, /function resolvePlaybackSeekContext/)
 assert.match(playbackSource, /playback_offset_seconds: seekContext\.playbackOffsetSeconds/)
+assert.match(playbackSource, /record\.playback_offset_seconds != null/)
 
-assert.match(workbenchSource, /record_start_time: reviewSegment\.value\?\.startTime/)
+const detailStreamPlayback = workbenchSource.match(
+  /async function openDetailStreamEntry[\s\S]*?\n}\n\nasync function openUnifiedTimelineEntry/,
+)?.[0] || ''
+assert.match(detailStreamPlayback, /record_start_time: entry\.recordStartTime/)
+assert.match(detailStreamPlayback, /playback_offset_seconds: entry\.playbackOffsetSeconds/)
+assert.doesNotMatch(detailStreamPlayback, /reviewSegment/)
 assert.match(workbenchSource, /record_start_time: segment\.startTime/)
+assert.match(alertReviewApiSource, /recordStartTime\?: string \| null/)
+assert.match(alertReviewApiSource, /playbackOffsetSeconds\?: number \| null/)
+const caseTimelinePlayback = workbenchSource.match(
+  /async function openCaseTimelineEntry[\s\S]*?\n}\n\nasync function guardCaseTimelineMediaAccess/,
+)?.[0] || ''
+assert.match(caseTimelinePlayback, /record_start_time: entry\.recordStartTime/)
+assert.match(caseTimelinePlayback, /playback_offset_seconds: entry\.playbackOffsetSeconds/)
+assert.doesNotMatch(caseTimelinePlayback, /reviewSegment|activeCase\.value\?\.startTime/)
 assert.match(
   workbenchSource,
   /createAlertReviewEvidenceExportJob\(activeCase\.value\.id, \{[\s\S]*?format: 'mp4'/,
@@ -28,7 +43,8 @@ assert.match(alertPageSource, /playback_offset_seconds: record\['playback_offset
 assert.match(alertPageSource, /video_url: record\['video_url'\]/)
 assert.match(alertPageSource, /url: record\['url'\]/)
 
-assert.match(dialogPlayerSource, /seekOffsetSeconds: 0/)
+assert.match(dialogPlayerSource, /seekOffsetSeconds: -1/)
+assert.match(dialogPlayerSource, /record\['playback_offset_seconds'\] != null/)
 assert.match(dialogPlayerSource, /data-testid="alert-review-dialog-player-stage"/)
 assert.match(dialogPlayerSource, /:data-seek-time="state\.seekTime"/)
 assert.match(dialogPlayerSource, /:data-playback-offset-seconds="state\.seekOffsetSeconds"/)

@@ -51,7 +51,8 @@ function parseTimeMs(value?: string | null): number | null {
 
 function resolvePlaybackSeekContext(record: AlertRecordPlayInput) {
   const seekTime = record.seek_time || record.time || '';
-  const explicitOffset = Number(record.playback_offset_seconds);
+  const hasExplicitOffset = record.playback_offset_seconds != null;
+  const explicitOffset = hasExplicitOffset ? Number(record.playback_offset_seconds) : Number.NaN;
   if (Number.isFinite(explicitOffset) && explicitOffset >= 0) {
     return {
       seekTime,

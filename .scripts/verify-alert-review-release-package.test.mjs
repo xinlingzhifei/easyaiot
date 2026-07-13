@@ -14,10 +14,369 @@ const {
   scanMediaPermissionGate,
   scanRawMinioProxyGate,
   scanReleaseTraceabilityGate,
+  scanStatefulReleaseMountGate,
   scanVideoIntegrationConfigGate,
   scanWebTypecheckGate,
   scanTextQuality,
 } = releasePackageVerifier;
+
+const releaseBoundStateScan = scanStatefulReleaseMountGate([
+  {
+    path: '.scripts/docker/docker-compose.yml',
+    content: [
+      './standalone-logs:/home/nacos/logs',
+      './db_data/data:/var/lib/postgresql/data',
+      './taos_data/data:/var/lib/taos',
+      './milvus_data:/var/lib/milvus',
+      './nodered_data/data:/data',
+      '../zlmediakit/conf:/conf',
+    ].join('\n'),
+  },
+  {
+    path: 'AI/docker-compose.yaml',
+    content: [
+      './data:/app/data',
+      './static:/app/static',
+      './temp_uploads:/app/temp_uploads',
+      './model:/app/model',
+    ].join('\n'),
+  },
+  {
+    path: '.scripts/docker/install_middleware_linux.sh',
+    content: [
+      'MIDDLEWARE_ENV_FILE=',
+      '$COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE" "$@"',
+      '$COMPOSE_CMD -f "$COMPOSE_FILE" up -d',
+    ].join('\n'),
+  },
+  {
+    path: 'AI/install_linux.sh',
+    content: 'AI_COMPOSE_ENV_FILE=\n$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"\nai_compose up\n$COMPOSE_CMD up -d',
+  },
+  {
+    path: 'AI/install_linux_arm.sh',
+    content: 'AI_COMPOSE_ENV_FILE=\n$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"\nai_compose up\n$COMPOSE_CMD up -d',
+  },
+  {
+    path: 'AI/install_linux_kylin.sh',
+    content: 'AI_COMPOSE_ENV_FILE=\n$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"\nai_compose up\n$COMPOSE_CMD up -d',
+  },
+  {
+    path: 'VIDEO/install_linux.sh',
+    content: 'VIDEO_COMPOSE_ENV_FILE=\n$COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"\nvideo_compose up\n$COMPOSE_CMD up -d',
+  },
+  {
+    path: 'VIDEO/install_linux_arm.sh',
+    content: 'VIDEO_COMPOSE_ENV_FILE=\n$COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"\nvideo_compose up\n$COMPOSE_CMD up -d',
+  },
+  {
+    path: 'VIDEO/install_linux_kylin.sh',
+    content: 'VIDEO_COMPOSE_ENV_FILE=\n$COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"\nvideo_compose up\n$COMPOSE_CMD up -d',
+  },
+]);
+assert.equal(releaseBoundStateScan.ok, false);
+assert.deepEqual(releaseBoundStateScan.blockers.map((blocker) => blocker.reason), [
+  'middleware_state_mounts_release_bound',
+  'ai_state_mounts_release_bound',
+  'middleware_compose_env_file_not_explicit',
+  'middleware_prepare_srs_config_command_missing',
+  'middleware_nacos_empty_data_preflight_missing',
+  'ai_compose_env_file_not_explicit',
+  'ai_log_state_directories_missing',
+  'ai_compose_env_file_not_explicit',
+  'ai_log_state_directories_missing',
+  'ai_compose_env_file_not_explicit',
+  'ai_log_state_directories_missing',
+  'video_compose_env_file_not_explicit',
+  'video_compose_env_file_not_explicit',
+  'video_compose_env_file_not_explicit',
+]);
+
+const releaseBoundDeviceStateScan = scanStatefulReleaseMountGate([
+  {
+    path: 'DEVICE/docker-compose.yml',
+    content: [
+      '../.build-cache/device/logs:/root/logs/',
+      '../.build-cache/device/node-logs:/root/logs/',
+      '../VIDEO/alert_images:/app/alert_images',
+    ].join('\n'),
+  },
+  {
+    path: 'DEVICE/install_linux.sh',
+    content: [
+      'device_compose() {',
+      '  $DOCKER_COMPOSE -f "$COMPOSE_FILE" "$@"',
+      '}',
+      'start_services() {',
+      '  compose_up_detached | grep Started || true',
+      '}',
+      'restart_services() {',
+      '  $DOCKER_COMPOSE restart',
+      '}',
+    ].join('\n'),
+  },
+]);
+assert.equal(releaseBoundDeviceStateScan.ok, false);
+assert.deepEqual(releaseBoundDeviceStateScan.blockers.map((blocker) => blocker.reason), [
+  'device_state_mounts_release_bound',
+  'device_state_directory_preflight_missing',
+  'device_compose_lifecycle_failure_swallowed',
+  'device_restart_does_not_recreate_state_mounts',
+]);
+
+const missingNacosDataMountScan = scanStatefulReleaseMountGate([{
+  path: '.scripts/docker/docker-compose.yml',
+  content: [
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/nacos_data/logs:/home/nacos/logs',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/db_data/data:/var/lib/postgresql/data',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/db_data/log:/var/log/postgresql',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/taos_data/data:/var/lib/taos',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/redis_data/data:/data',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/mq_data/data:/var/lib/kafka/data',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/minio_data/data:/data',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/milvus_data:/var/lib/milvus',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/srs_data/conf:/usr/local/srs/conf',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/nodered_data/data:/data',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/zlmediakit/conf:/conf',
+    '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/gpustack_data:/var/lib/gpustack',
+  ].join('\n'),
+}]);
+assert.equal(missingNacosDataMountScan.ok, false);
+assert.deepEqual(missingNacosDataMountScan.blockers.map((blocker) => blocker.reason), [
+  'middleware_state_mounts_release_bound',
+]);
+
+const missingNacosEmptyDataPreflightScan = scanStatefulReleaseMountGate([{
+  path: '.scripts/docker/install_middleware_linux.sh',
+  content: [
+    'MIDDLEWARE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE" "$@"',
+    'prepare-srs-config)',
+    'prepare_srs_config --config-only',
+  ].join('\n'),
+}]);
+assert.equal(missingNacosEmptyDataPreflightScan.ok, false);
+assert.deepEqual(missingNacosEmptyDataPreflightScan.blockers.map((blocker) => blocker.reason), [
+  'middleware_nacos_empty_data_preflight_missing',
+]);
+
+const missingAiLogMountScan = scanStatefulReleaseMountGate([{
+  path: 'AI/docker-compose.yaml',
+  content: [
+    '${YFEIEYE_AI_STATE_ROOT:-/opt/yfeieye-source/shared/ai}/data:/app/data',
+    '${YFEIEYE_AI_STATE_ROOT:-/opt/yfeieye-source/shared/ai}/static:/app/static',
+    '${YFEIEYE_AI_STATE_ROOT:-/opt/yfeieye-source/shared/ai}/temp_uploads:/app/temp_uploads',
+    '${YFEIEYE_AI_STATE_ROOT:-/opt/yfeieye-source/shared/ai}/model:/app/model',
+  ].join('\n'),
+}]);
+assert.equal(missingAiLogMountScan.ok, false);
+assert.deepEqual(missingAiLogMountScan.blockers.map((blocker) => blocker.reason), [
+  'ai_state_mounts_release_bound',
+]);
+
+const missingAiLogDirectoryScan = scanStatefulReleaseMountGate([{
+  path: 'AI/install_linux.sh',
+  content: [
+    'AI_COMPOSE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"',
+    'ai_compose up',
+  ].join('\n'),
+}]);
+assert.equal(missingAiLogDirectoryScan.ok, false);
+assert.deepEqual(missingAiLogDirectoryScan.blockers.map((blocker) => blocker.reason), [
+  'ai_log_state_directories_missing',
+]);
+
+const staleAiRestartMountScan = scanStatefulReleaseMountGate([{
+  path: 'AI/install_linux_kylin.sh',
+  content: [
+    'AI_COMPOSE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"',
+    'ai_compose up',
+    'mkdir -p "${state_root}/logs/app"',
+    'mkdir -p "${state_root}/logs/services"',
+    'restart_service() {',
+    '  ai_compose restart',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(staleAiRestartMountScan.ok, false);
+assert.deepEqual(staleAiRestartMountScan.blockers.map((blocker) => blocker.reason), [
+  'ai_restart_does_not_recreate_state_mounts',
+]);
+
+const staleMiddlewareRestartMountScan = scanStatefulReleaseMountGate([{
+  path: '.scripts/docker/install_middleware_linux.sh',
+  content: [
+    'MIDDLEWARE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE" "$@"',
+    'prepare-srs-config)',
+    'prepare_srs_config --config-only',
+    'ensure_nacos_data_ready()',
+    'YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT',
+    'find "$nacos_data_dir" -mindepth 1 -print -quit',
+    'ensure_nacos_data_ready || exit 1',
+    'restart_middleware() {',
+    '  mw_compose restart',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(staleMiddlewareRestartMountScan.ok, false);
+assert.deepEqual(staleMiddlewareRestartMountScan.blockers.map((blocker) => blocker.reason), [
+  'middleware_restart_does_not_recreate_state_mounts',
+]);
+
+const swallowedAiLifecycleFailureScan = scanStatefulReleaseMountGate([{
+  path: 'AI/install_linux.sh',
+  content: [
+    'AI_COMPOSE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"',
+    'ai_compose up',
+    'mkdir -p "${state_root}/logs/app"',
+    'mkdir -p "${state_root}/logs/services"',
+    'install_service() {',
+    '  ai_compose up -d || true',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(swallowedAiLifecycleFailureScan.ok, false);
+assert.deepEqual(swallowedAiLifecycleFailureScan.blockers.map((blocker) => blocker.reason), [
+  'ai_compose_lifecycle_failure_swallowed',
+]);
+
+const swallowedMiddlewareStopFailureScan = scanStatefulReleaseMountGate([{
+  path: '.scripts/docker/install_middleware_linux.sh',
+  content: [
+    'MIDDLEWARE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE" "$@"',
+    'prepare-srs-config)',
+    'prepare_srs_config --config-only',
+    'ensure_nacos_data_ready()',
+    'YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT',
+    'find "$nacos_data_dir" -mindepth 1 -print -quit',
+    'ensure_nacos_data_ready || exit 1',
+    'stop_middleware() {',
+    '  mw_compose down 2>&1 | tee -a "$LOG_FILE"',
+    '  print_success "stopped"',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(swallowedMiddlewareStopFailureScan.ok, false);
+assert.deepEqual(swallowedMiddlewareStopFailureScan.blockers.map((blocker) => blocker.reason), [
+  'middleware_compose_lifecycle_failure_swallowed',
+]);
+
+const swallowedAiStopFailureScan = scanStatefulReleaseMountGate([{
+  path: 'AI/install_linux.sh',
+  content: [
+    'AI_COMPOSE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"',
+    'ai_compose up',
+    'mkdir -p "${state_root}/logs/app"',
+    'mkdir -p "${state_root}/logs/services"',
+    'stop_service() {',
+    '  ai_compose down --remove-orphans 2>&1 | grep -v noisy || true',
+    '  print_success "stopped"',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(swallowedAiStopFailureScan.ok, false);
+assert.deepEqual(swallowedAiStopFailureScan.blockers.map((blocker) => blocker.reason), [
+  'ai_compose_lifecycle_failure_swallowed',
+]);
+
+const repairedMiddlewareComposeFailureScan = scanStatefulReleaseMountGate([{
+  path: '.scripts/docker/install_middleware_linux.sh',
+  content: [
+    'MIDDLEWARE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE" "$@"',
+    'prepare-srs-config)',
+    'prepare_srs_config --config-only',
+    'ensure_nacos_data_ready()',
+    'YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT',
+    'find "$nacos_data_dir" -mindepth 1 -print -quit',
+    'ensure_nacos_data_ready || exit 1',
+    'compose_up_middleware() {',
+    '  mw_compose up -d',
+    '  _up_rc=$?',
+    '  _repair_created_middleware_containers',
+    '  _repair_rc=$?',
+    '  if [ "$_repair_rc" -eq 0 ] && [ "$_up_rc" -ne 0 ]; then',
+    '    _up_rc=0',
+    '  fi',
+    '  return "$_up_rc"',
+    '}',
+    'install_middleware() {',
+    '  if compose_up_middleware; then _up_rc=0; else _up_rc=$?; fi',
+    '  run_best_effort_diagnostics || true',
+    '}',
+    'start_middleware() {',
+    '  if compose_up_middleware; then _up_rc=0; else _up_rc=$?; fi',
+    '  run_best_effort_diagnostics || true',
+    '}',
+    'restart_middleware() {',
+    '  mw_compose up -d --force-recreate',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(repairedMiddlewareComposeFailureScan.ok, false);
+assert.deepEqual(repairedMiddlewareComposeFailureScan.blockers.map((blocker) => blocker.reason), [
+  'middleware_compose_lifecycle_failure_swallowed',
+]);
+
+const staleVideoRestartMountScan = scanStatefulReleaseMountGate([{
+  path: 'VIDEO/install_linux_kylin.sh',
+  content: [
+    'VIDEO_COMPOSE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"',
+    'video_compose up',
+    'restart_service() {',
+    '  video_compose restart',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(staleVideoRestartMountScan.ok, false);
+assert.deepEqual(staleVideoRestartMountScan.blockers.map((blocker) => blocker.reason), [
+  'video_restart_does_not_recreate_state_mounts',
+]);
+
+const swallowedVideoLifecycleFailureScan = scanStatefulReleaseMountGate([{
+  path: 'VIDEO/install_linux_kylin.sh',
+  content: [
+    'VIDEO_COMPOSE_ENV_FILE=',
+    '$COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"',
+    'video_compose up',
+    'install_service() {',
+    '  video_compose up -d || true',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(swallowedVideoLifecycleFailureScan.ok, false);
+assert.deepEqual(swallowedVideoLifecycleFailureScan.blockers.map((blocker) => blocker.reason), [
+  'video_compose_lifecycle_failure_swallowed',
+]);
+
+const currentStatefulReleaseFiles = [
+  'DEVICE/docker-compose.yml',
+  'DEVICE/install_linux.sh',
+  '.scripts/docker/docker-compose.yml',
+  '.scripts/docker/env.example',
+  '.scripts/docker/install_middleware_linux.sh',
+  'AI/docker-compose.yaml',
+  'AI/env.example',
+  'AI/install_linux.sh',
+  'AI/install_linux_arm.sh',
+  'AI/install_linux_kylin.sh',
+  'VIDEO/install_linux.sh',
+  'VIDEO/install_linux_arm.sh',
+  'VIDEO/install_linux_kylin.sh',
+].map((path) => ({ path, content: readFileSync(path, 'utf8') }));
+const currentStatefulReleaseScan = scanStatefulReleaseMountGate(currentStatefulReleaseFiles);
+assert.equal(
+  currentStatefulReleaseScan.ok,
+  true,
+  `current stateful release contract failed: ${JSON.stringify(currentStatefulReleaseScan.blockers)}`,
+);
 
 const clean = evaluateStatus(`
  M README.md
@@ -99,6 +458,14 @@ assert.equal(
 );
 assert.equal(
   releasePackageVerifier.TRACKED_RELEASE_PATHS.includes('WEB/install_linux.sh'),
+  true,
+);
+assert.equal(
+  evaluateStatus('?? DEVICE/install_linux.sh').blockers[0]?.group,
+  'DEVICE video integration config',
+);
+assert.equal(
+  releasePackageVerifier.TRACKED_RELEASE_PATHS.includes('DEVICE/install_linux.sh'),
   true,
 );
 
@@ -554,6 +921,7 @@ const newlyHardenedMediaArtifacts = [
   'VIDEO/app/services/media_janitor_service.py',
   'VIDEO/app/services/media_resource_guard.py',
   'VIDEO/app/services/playback_disk_guard_service.py',
+  'VIDEO/app/blueprints/media_hook.py',
   'VIDEO/app/utils/minio_bucket_policy.py',
   'VIDEO/test_local_media_path_security.py',
   'VIDEO/test_minio_bucket_policy.py',
@@ -577,11 +945,35 @@ assert.deepEqual(
     'VIDEO record evidence package',
     'VIDEO record evidence package',
     'VIDEO record evidence package',
+    'VIDEO record evidence package',
     'WEB alert review workbench package',
     'WEB alert review workbench package',
   ],
 );
 for (const path of newlyHardenedMediaArtifacts) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
+
+const clusterHookHardeningArtifacts = [
+  '.scripts/media-cluster/docker-compose.media-node.yml',
+  '.scripts/media-cluster/enable_cluster_mode.sh',
+  '.scripts/media-cluster/install_media_stack.sh',
+  '.scripts/media-cluster/srs/cluster.conf.template',
+  '.scripts/media-cluster/zlm/config.ini.template',
+];
+const untrackedClusterHookHardening = evaluateStatus(
+  clusterHookHardeningArtifacts.map((path) => `?? ${path}`).join('\n'),
+);
+assert.equal(untrackedClusterHookHardening.ok, false);
+assert.deepEqual(
+  untrackedClusterHookHardening.blockers.map((entry) => entry.group),
+  clusterHookHardeningArtifacts.map(() => 'FR production media deployment'),
+);
+for (const path of clusterHookHardeningArtifacts) {
   assert.equal(
     releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
     true,
@@ -618,6 +1010,7 @@ for (const path of videoRuntimeHardeningArtifacts) {
 const protectedMediaProxyArtifacts = [
   'AI/app/blueprints/minio_proxy.py',
   'AI/tests/test_minio_proxy.py',
+  'AI/env.example',
   'APP/conf/nginx.conf',
   'WEB/conf/nginx.conf',
   'WEB/conf/nginx.mini.conf',
@@ -634,6 +1027,7 @@ assert.equal(untrackedProtectedMediaProxyArtifacts.ok, false);
 assert.deepEqual(
   untrackedProtectedMediaProxyArtifacts.blockers.map((entry) => entry.group),
   [
+    'Protected media raw proxy package',
     'Protected media raw proxy package',
     'Protected media raw proxy package',
     'Protected media raw proxy package',
@@ -674,8 +1068,13 @@ def download_bucket_object(bucket_name):
     return _download_from_minio(normalized_bucket, object_name, temp_path)
 `;
 const nginxBucketProxyContent = `
-set $stream_secret "";
-include /etc/nginx/yfeieye-secrets/yfeieye-stream-secret*.conf;
+include /etc/nginx/yfeieye-secrets/yfeieye-stream-secret.runtime.conf;
+location = /dev-api/video/camera/callback/on_publish { return 403; }
+location = /dev-api/video/camera/callback/on_dvr { return 403; }
+location = /yfeieye/dev-api/video/camera/callback/on_publish { return 403; }
+location = /yfeieye/dev-api/video/camera/callback/on_dvr { return 403; }
+location ^~ /dev-api/video/media/hook/ { return 403; }
+location ^~ /yfeieye/dev-api/video/media/hook/ { return 403; }
 location ^~ /api/v1/buckets {
     proxy_pass http://ai-host:5000;
 }
@@ -732,9 +1131,9 @@ assert.deepEqual(incompleteRawMinioDenylistScan.blockers.map((blocker) => blocke
 ]);
 
 const publicNginxBucketProxyScan = scanRawMinioProxyGate([
-  { path: 'APP/conf/nginx.conf', content: nginxBucketProxyContent.replace('{', '{\n    allow all;') },
-  { path: 'WEB/conf/nginx.conf', content: nginxBucketProxyContent.replace('{', '{\n    allow all;') },
-  { path: 'WEB/conf/nginx.mini.conf', content: nginxBucketProxyContent.replace('{', '{\n    allow all;') },
+  { path: 'APP/conf/nginx.conf', content: nginxBucketProxyContent.replace('location ^~ /api/v1/buckets {', 'location ^~ /api/v1/buckets {\n    allow all;') },
+  { path: 'WEB/conf/nginx.conf', content: nginxBucketProxyContent.replace('location ^~ /api/v1/buckets {', 'location ^~ /api/v1/buckets {\n    allow all;') },
+  { path: 'WEB/conf/nginx.mini.conf', content: nginxBucketProxyContent.replace('location ^~ /api/v1/buckets {', 'location ^~ /api/v1/buckets {\n    allow all;') },
 ]);
 assert.equal(publicNginxBucketProxyScan.ok, false);
 assert.deepEqual(publicNginxBucketProxyScan.blockers.map((blocker) => blocker.reason), [
@@ -766,8 +1165,23 @@ assert.equal(insecureStreamTicketScan.ok, false);
 assert.deepEqual(insecureStreamTicketScan.blockers.map((blocker) => blocker.reason), [
   'stream_ticket_hardcoded_secret',
   'stream_ticket_external_secret_missing',
+  'srs_hook_public_callback_deny_missing',
   'stream_ticket_enforcement_missing',
 ]);
+
+const optionalEmptyStreamSecretFallbackScan = scanRawMinioProxyGate([{
+  path: 'APP/conf/nginx.conf',
+  content: nginxBucketProxyContent
+    .replace(
+      'include /etc/nginx/yfeieye-secrets/yfeieye-stream-secret.runtime.conf;',
+      'set $stream_secret "";\ninclude /etc/nginx/yfeieye-secrets/yfeieye-stream-secret*.conf;',
+    ),
+}]);
+assert.equal(optionalEmptyStreamSecretFallbackScan.ok, false);
+assert.deepEqual(
+  optionalEmptyStreamSecretFallbackScan.blockers.map((blocker) => blocker.reason),
+  ['stream_ticket_empty_fallback', 'stream_ticket_external_secret_missing'],
+);
 
 const missingStreamSecretMountScan = scanRawMinioProxyGate([
   { path: 'APP/conf/nginx.conf', content: nginxBucketProxyContent },
@@ -965,6 +1379,7 @@ YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NO
 YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=\${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}
 YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE=\${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:-YFEIEYE_REVIEW_RUNTIME_ALERT}
 YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE=\${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:-YFEIEYE_REVIEW_OPERATIONS_REPORT}
+\${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images
 `;
 const videoIntegrationConfigScan = scanVideoIntegrationConfigGate([{
   path: 'DEVICE/docker-compose.yml',
@@ -972,7 +1387,22 @@ const videoIntegrationConfigScan = scanVideoIntegrationConfigGate([{
 }]);
 assert.equal(videoIntegrationConfigScan.ok, true);
 
+const divergentAlertImageMountScan = scanVideoIntegrationConfigGate([{
+  path: 'DEVICE/docker-compose.yml',
+  content: completeVideoIntegrationConfig.replace(
+    '${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images',
+    '../VIDEO/alert_images:/app/alert_images',
+  ),
+}]);
+assert.equal(divergentAlertImageMountScan.ok, false);
+assert.deepEqual(divergentAlertImageMountScan.blockers.map((blocker) => blocker.reason), [
+  'alert_image_shared_state_mount_missing',
+]);
+
 const completeVideoResourceControlConfig = [
+  'FLASK_RUN_HOST=${FLASK_RUN_HOST:?FLASK_RUN_HOST must be set to the Docker bridge gateway}',
+  'ALLOWED_HOSTS=${ALLOWED_HOSTS:?ALLOWED_HOSTS must be set}',
+  'http://$${FLASK_RUN_HOST}:$${FLASK_RUN_PORT:-6000}/actuator/health',
   'YFEIEYE_FFMPEG_MAX_CONCURRENT=${YFEIEYE_FFMPEG_MAX_CONCURRENT:-1}',
   'YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS=${YFEIEYE_FFMPEG_SLOT_WAIT_SECONDS:-30}',
   'YFEIEYE_FFMPEG_THREADS=${YFEIEYE_FFMPEG_THREADS:-1}',
@@ -999,7 +1429,26 @@ const missingVideoResourceControlScan = scanVideoIntegrationConfigGate([{
 }]);
 assert.equal(missingVideoResourceControlScan.ok, false);
 assert.deepEqual(missingVideoResourceControlScan.blockers.map((blocker) => blocker.reason), [
+  'video_bridge_bind_contract_missing',
   'video_resource_control_compose_wiring_missing',
+]);
+
+const publicVideoBindScan = scanVideoIntegrationConfigGate([{
+  path: 'VIDEO/docker-compose.yaml',
+  content: [
+    'python /app/prepare_database.py',
+    'python /app/apply_migrations.py --verify-only',
+    'exec python /app/run.py',
+    'YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}',
+    completeVideoResourceControlConfig.replace(
+      'FLASK_RUN_HOST=${FLASK_RUN_HOST:?FLASK_RUN_HOST must be set to the Docker bridge gateway}',
+      'FLASK_RUN_HOST=${FLASK_RUN_HOST:-0.0.0.0}',
+    ),
+  ].join('; '),
+}]);
+assert.equal(publicVideoBindScan.ok, false);
+assert.deepEqual(publicVideoBindScan.blockers.map((blocker) => blocker.reason), [
+  'video_bridge_bind_contract_missing',
 ]);
 
 const missingPlaybackTicketWindowScan = scanVideoIntegrationConfigGate([{
@@ -1070,6 +1519,181 @@ const incompleteVideoSecurityEnvContractScan = scanVideoIntegrationConfigGate([{
 assert.equal(incompleteVideoSecurityEnvContractScan.ok, false);
 assert.deepEqual(incompleteVideoSecurityEnvContractScan.blockers.map((blocker) => blocker.reason), [
   'video_production_security_env_contract_missing',
+]);
+
+const incompleteSrsHookAuthorizationScan = scanVideoIntegrationConfigGate([
+  { path: 'VIDEO/app/utils/video_env.py', content: 'def validate_production_runtime_secrets(): pass' },
+  { path: 'VIDEO/app/blueprints/camera.py', content: 'def on_publish_callback(): pass\ndef on_dvr_callback(): pass' },
+  { path: '.scripts/docker/install_middleware_linux.sh', content: 'on_publish http://gateway/callback' },
+  { path: '.scripts/docker/env.example', content: 'VIDEO_CALLBACK_HOST=localhost' },
+]);
+assert.equal(incompleteSrsHookAuthorizationScan.ok, false);
+assert.deepEqual(incompleteSrsHookAuthorizationScan.blockers.map((blocker) => blocker.reason), [
+  'srs_hook_runtime_authorization_missing',
+  'srs_hook_route_authorization_missing',
+  'srs_hook_installer_contract_missing',
+  'srs_hook_middleware_env_contract_missing',
+]);
+
+const incompleteSrsHookHardeningScan = scanVideoIntegrationConfigGate([
+  {
+    path: 'VIDEO/app/utils/video_env.py',
+    content: 'authorize_srs_hook_token; YFEIEYE_SRS_HOOK_TOKEN; hmac.compare_digest; at least 32 bytes in production',
+  },
+  {
+    path: '.scripts/docker/install_middleware_linux.sh',
+    content: 'resolve_srs_hook_token(); resolve_video_callback_host; ?hook_token=${srs_hook_token}',
+  },
+]);
+assert.equal(incompleteSrsHookHardeningScan.ok, false);
+assert.deepEqual(incompleteSrsHookHardeningScan.blockers.map((blocker) => blocker.reason), [
+  'srs_hook_runtime_authorization_missing',
+  'srs_hook_installer_contract_missing',
+]);
+
+const incompleteAlternateMediaHookScan = scanVideoIntegrationConfigGate([
+  {
+    path: 'VIDEO/app/blueprints/media_hook.py',
+    content: 'def srs_on_dvr(): pass\ndef srs_on_publish(): pass\ndef srs_on_unpublish(): pass\ndef snap_completed(): pass\ndef zlm_on_record(): pass',
+  },
+  {
+    path: '.scripts/media-cluster/srs/cluster.conf.template',
+    content: '/video/media/hook/srs/on_dvr',
+  },
+  {
+    path: '.scripts/media-cluster/zlm/config.ini.template',
+    content: '/video/media/hook/zlm/on_record_mp4',
+  },
+  {
+    path: '.scripts/media-cluster/install_media_stack.sh',
+    content: 'envsubst MEDIA_HOOK_HOST',
+  },
+  {
+    path: '.scripts/media-cluster/enable_cluster_mode.sh',
+    content: 'CLUSTER_MODE=true',
+  },
+  {
+    path: '.scripts/media-cluster/docker-compose.media-node.yml',
+    content: 'services: {}',
+  },
+]);
+assert.equal(incompleteAlternateMediaHookScan.ok, false);
+assert.deepEqual(incompleteAlternateMediaHookScan.blockers.map((blocker) => blocker.reason), [
+  'alternate_media_hook_authorization_missing',
+  'cluster_srs_hook_token_missing',
+  'cluster_zlm_hook_token_missing',
+  'cluster_hook_installer_token_missing',
+  'cluster_zlm_secret_contract_missing',
+  'cluster_media_compose_base_id_missing',
+  'cluster_srs_config_refresh_missing',
+  'cluster_hook_env_template_token_missing',
+  'cluster_hook_env_token_validation_missing',
+  'cluster_hook_compose_usage_token_missing',
+  'cluster_media_container_names_not_distinct',
+]);
+
+const weakClusterZlmSecretScan = scanVideoIntegrationConfigGate([{
+  path: '.scripts/media-cluster/install_media_stack.sh',
+  content: [
+    'validate_hook_token()',
+    'YFEIEYE_SRS_HOOK_TOKEN',
+    '${YFEIEYE_SRS_HOOK_TOKEN}',
+    'ZLM_SECRET="${ZLM_SECRET:-}"',
+    'validate_zlm_secret()',
+    'ZLM_SECRET must contain at least 32 characters',
+    'ZLM_SECRET must contain only URL-safe characters',
+    'MEDIA_HOOK_PORT="${MEDIA_HOOK_PORT:-6000}"',
+    'MEDIA_HOOK_PATH_PREFIX="${MEDIA_HOOK_PATH_PREFIX:-}"',
+    'chmod 600 "${out}"',
+    'chmod 600 "${out}"',
+    'export MEDIA_NODE_ID="${MEDIA_NODE_NAME}"',
+    'export MEDIA_NODE_ID="${MEDIA_NODE_NAME}"',
+    'ZLM_SECRET="${ZLM_SECRET:-yFeiEye_Media_Secret}"',
+  ].join('\n'),
+}]);
+assert.equal(weakClusterZlmSecretScan.ok, false);
+assert.deepEqual(weakClusterZlmSecretScan.blockers.map((blocker) => blocker.reason), [
+  'cluster_zlm_secret_contract_missing',
+  'cluster_srs_config_refresh_missing',
+]);
+
+const staleHealthySrsConfigScan = scanVideoIntegrationConfigGate([{
+  path: '.scripts/media-cluster/install_media_stack.sh',
+  content: [
+    'validate_hook_token()',
+    'YFEIEYE_SRS_HOOK_TOKEN',
+    '${YFEIEYE_SRS_HOOK_TOKEN}',
+    'ZLM_SECRET="${ZLM_SECRET:-}"',
+    'validate_zlm_secret()',
+    'ZLM_SECRET must contain at least 32 characters',
+    'ZLM_SECRET must contain only URL-safe characters',
+    'MEDIA_HOOK_PORT="${MEDIA_HOOK_PORT:-6000}"',
+    'MEDIA_HOOK_PATH_PREFIX="${MEDIA_HOOK_PATH_PREFIX:-}"',
+    'chmod 600 "${out}"',
+    'chmod 600 "${out}"',
+    'export MEDIA_NODE_ID="${MEDIA_NODE_NAME}"',
+    'export MEDIA_NODE_ID="${MEDIA_NODE_NAME}"',
+    'deploy_srs() {',
+    '  if srs_healthy; then',
+    '    return 0',
+    '  fi',
+    '  render_srs_config',
+    '}',
+  ].join('\n'),
+}]);
+assert.equal(staleHealthySrsConfigScan.ok, false);
+assert.deepEqual(staleHealthySrsConfigScan.blockers.map((blocker) => blocker.reason), [
+  'cluster_srs_config_refresh_missing',
+]);
+
+const unvalidatedClusterEnvHookTokenScan = scanVideoIntegrationConfigGate([{
+  path: '.scripts/media-cluster/enable_cluster_mode.sh',
+  content: [
+    'YFEIEYE_SRS_HOOK_TOKEN=',
+    'chmod 600 "${ENV_SNIPPET}"',
+  ].join('\n'),
+}]);
+assert.equal(unvalidatedClusterEnvHookTokenScan.ok, false);
+assert.deepEqual(unvalidatedClusterEnvHookTokenScan.blockers.map((blocker) => blocker.reason), [
+  'cluster_hook_env_token_validation_missing',
+]);
+
+const duplicateClusterContainerNameScan = scanVideoIntegrationConfigGate([{
+  path: '.scripts/media-cluster/docker-compose.media-node.yml',
+  content: [
+    'MEDIA_HOOK_PORT=6000',
+    'YFEIEYE_SRS_HOOK_TOKEN=',
+    'container_name: "${MEDIA_NODE_ID}"',
+    'container_name: "${MEDIA_NODE_ID}"',
+  ].join('\n'),
+}]);
+assert.equal(duplicateClusterContainerNameScan.ok, false);
+assert.deepEqual(duplicateClusterContainerNameScan.blockers.map((blocker) => blocker.reason), [
+  'cluster_media_container_names_not_distinct',
+]);
+
+const suffixedClusterComposeIdScan = scanVideoIntegrationConfigGate([{
+  path: '.scripts/media-cluster/install_media_stack.sh',
+  content: [
+    'validate_hook_token()',
+    'YFEIEYE_SRS_HOOK_TOKEN',
+    '${YFEIEYE_SRS_HOOK_TOKEN}',
+    'ZLM_SECRET="${ZLM_SECRET:-}"',
+    'validate_zlm_secret()',
+    'ZLM_SECRET must contain at least 32 characters',
+    'ZLM_SECRET must contain only URL-safe characters',
+    'MEDIA_HOOK_PORT="${MEDIA_HOOK_PORT:-6000}"',
+    'MEDIA_HOOK_PATH_PREFIX="${MEDIA_HOOK_PATH_PREFIX:-}"',
+    'chmod 600 "${out}"',
+    'chmod 600 "${out}"',
+    'export MEDIA_NODE_ID="${MEDIA_NODE_NAME}-srs"',
+    'export MEDIA_NODE_ID="${MEDIA_NODE_NAME}-zlm"',
+  ].join('\n'),
+}]);
+assert.equal(suffixedClusterComposeIdScan.ok, false);
+assert.deepEqual(suffixedClusterComposeIdScan.blockers.map((blocker) => blocker.reason), [
+  'cluster_media_compose_base_id_missing',
+  'cluster_srs_config_refresh_missing',
 ]);
 
 const aliasedVideoIntegrationConfigScan = scanVideoIntegrationConfigGate([{

@@ -32,6 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+MIDDLEWARE_ENV_FILE="${YFEIEYE_MIDDLEWARE_ENV_FILE:-${SCRIPT_DIR}/.env.docker}"
 
 # shellcheck source=deploy_profile.sh
 source "${SCRIPT_DIR}/deploy_profile.sh"
@@ -78,7 +79,12 @@ init_kafka_topics_if_enabled() {
 }
 
 mw_compose() {
-    $COMPOSE_CMD -f "$COMPOSE_FILE" ${COMPOSE_PROFILE_ARGS[@]+"${COMPOSE_PROFILE_ARGS[@]}"} "$@"
+    if [ ! -f "$MIDDLEWARE_ENV_FILE" ]; then
+        print_error "中间件 Compose 环境文件不存在: $MIDDLEWARE_ENV_FILE"
+        print_info "请先复制 env.example 为 .env.docker 并填写必需凭据"
+        return 1
+    fi
+    $COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE" ${COMPOSE_PROFILE_ARGS[@]+"${COMPOSE_PROFILE_ARGS[@]}"} "$@"
 }
 
 # 强制对所有已存在的存储目录做完整递归 chmod/chown（兜底用）。
@@ -1849,7 +1855,9 @@ set_data_dir_perms() {
 
 # 创建并设置 NodeRED 数据目录权限
 create_nodered_directories() {
-    local nodered_data_dir="${SCRIPT_DIR}/nodered_data/data"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local nodered_data_dir="${middleware_data_root}/nodered_data/data"
     print_info "创建 NodeRED 数据目录并设置权限..."
     if set_data_dir_perms "1000:1000" "$nodered_data_dir"; then
         print_success "NodeRED 数据目录权限已设置 (UID 1000:1000, 777)"
@@ -1860,8 +1868,10 @@ create_nodered_directories() {
 
 # 创建并设置 PostgreSQL 数据目录权限
 create_postgresql_directories() {
-    local postgresql_data_dir="${SCRIPT_DIR}/db_data/data"
-    local postgresql_log_dir="${SCRIPT_DIR}/db_data/log"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local postgresql_data_dir="${middleware_data_root}/db_data/data"
+    local postgresql_log_dir="${middleware_data_root}/db_data/log"
     print_info "创建 PostgreSQL 数据目录并设置权限..."
     if set_data_dir_perms "999:999" "$postgresql_data_dir" "$postgresql_log_dir"; then
         print_success "PostgreSQL 数据目录权限已设置 (UID 999:999, 777)"
@@ -1872,8 +1882,10 @@ create_postgresql_directories() {
 
 # 创建并设置 Redis 数据目录权限
 create_redis_directories() {
-    local redis_data_dir="${SCRIPT_DIR}/redis_data/data"
-    local redis_log_dir="${SCRIPT_DIR}/redis_data/logs"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local redis_data_dir="${middleware_data_root}/redis_data/data"
+    local redis_log_dir="${middleware_data_root}/redis_data/logs"
     print_info "创建 Redis 数据目录并设置权限..."
     if set_data_dir_perms "999:999" "$redis_data_dir" "$redis_log_dir"; then
         print_success "Redis 数据目录权限已设置 (UID 999:999, 777)"
@@ -1884,7 +1896,9 @@ create_redis_directories() {
 
 # 创建并设置 Kafka 数据目录权限
 create_kafka_directories() {
-    local kafka_data_dir="${SCRIPT_DIR}/mq_data/data"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local kafka_data_dir="${middleware_data_root}/mq_data/data"
     
     print_info "创建 Kafka 数据目录并设置权限..."
     
@@ -2023,23 +2037,24 @@ create_all_storage_directories() {
     # 定义所有需要创建的存储目录及其权限设置
     # 格式: "目录路径:UID:GID:权限"
     local storage_dirs=(
-        "${SCRIPT_DIR}/standalone-logs:::"              # Nacos 日志（使用默认权限）
-        "${SCRIPT_DIR}/db_data/data:999:999:777"       # PostgreSQL 数据
-        "${SCRIPT_DIR}/db_data/log:999:999:777"        # PostgreSQL 日志
-        "${SCRIPT_DIR}/taos_data/data:::"              # TDengine 数据（使用默认权限）
-        "${SCRIPT_DIR}/taos_data/log:::"               # TDengine 日志（使用默认权限）
+        "${middleware_data_root}/nacos_data/data:::"             # Nacos 持久数据
+        "${middleware_data_root}/nacos_data/logs:::"             # Nacos 日志（使用默认权限）
+        "${middleware_data_root}/db_data/data:999:999:777"       # PostgreSQL 数据
+        "${middleware_data_root}/db_data/log:999:999:777"        # PostgreSQL 日志
+        "${middleware_data_root}/taos_data/data:::"              # TDengine 数据（使用默认权限）
+        "${middleware_data_root}/taos_data/log:::"               # TDengine 日志（使用默认权限）
         "${middleware_data_root}/redis_data/data:999:999:777"   # Redis 数据
         "${middleware_data_root}/redis_data/logs:999:999:777"    # Redis 日志
         "${middleware_data_root}/mq_data/data:1000:1000:777"    # Kafka 数据（uid=1000, gid=1000）
         "${middleware_data_root}/minio_data/data:::"             # MinIO 数据（使用默认权限）
         "${middleware_data_root}/minio_data/config:::"           # MinIO 配置（使用默认权限）
-        "${SCRIPT_DIR}/milvus_data:::"                 # Milvus 数据（使用默认权限）
-        "${SCRIPT_DIR}/milvus_config:::"               # Milvus 嵌入式 etcd 配置
+        "${middleware_data_root}/milvus_data:::"                 # Milvus 数据（使用默认权限）
         "${middleware_data_root}/srs_data/conf:::"     # SRS 配置（跨 release 持久化）
-        "${SCRIPT_DIR}/nodered_data/data:1000:1000:777" # NodeRED 数据
-        "${SCRIPT_DIR}/../zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
-        "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
-        "${SCRIPT_DIR}/../zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
+        "${middleware_data_root}/nodered_data/data:1000:1000:777" # NodeRED 数据
+        "${middleware_data_root}/zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
+        "${middleware_data_root}/zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
+        "${middleware_data_root}/zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
+        "${middleware_data_root}/gpustack_data:::"          # GPUStack 数据
     )
     local created_count=0
     local total_count=${#storage_dirs[@]}
@@ -2110,17 +2125,17 @@ create_all_storage_directories() {
 
     # 同时设置所有父目录为777权限（仅顶层，父目录的数据子目录已在上面单独处理）
     local parent_dirs=(
-        "${SCRIPT_DIR}/standalone-logs"
-        "${SCRIPT_DIR}/db_data"
-        "${SCRIPT_DIR}/taos_data"
-        "${SCRIPT_DIR}/redis_data"
-        "${SCRIPT_DIR}/mq_data"
-        "${SCRIPT_DIR}/minio_data"
-        "${SCRIPT_DIR}/milvus_data"
-        "${SCRIPT_DIR}/milvus_config"
-        "${SCRIPT_DIR}/srs_data"
-        "${SCRIPT_DIR}/nodered_data"
-        "${SCRIPT_DIR}/../zlmediakit"
+        "${middleware_data_root}/nacos_data"
+        "${middleware_data_root}/db_data"
+        "${middleware_data_root}/taos_data"
+        "${middleware_data_root}/redis_data"
+        "${middleware_data_root}/mq_data"
+        "${middleware_data_root}/minio_data"
+        "${middleware_data_root}/milvus_data"
+        "${middleware_data_root}/srs_data"
+        "${middleware_data_root}/nodered_data"
+        "${middleware_data_root}/zlmediakit"
+        "${middleware_data_root}/gpustack_data"
         "${SCRIPT_DIR}/logs"
     )
     # 默认只设父目录顶层权限；FORCE_CHMOD=true 时递归兜底修复
@@ -2131,6 +2146,10 @@ create_all_storage_directories() {
             run_priv chmod $PR 777 "$parent_dir" 2>/dev/null || true
         fi
     done
+
+    # Existing installations must migrate Nacos state before any recreate. An
+    # empty data directory is accepted only through the explicit one-time flag.
+    ensure_nacos_data_ready || exit 1
 
     # SRS 容器绑定宿主机 /data -> 容器 /data（与 docker-compose.yml 一致）
     # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
@@ -2246,7 +2265,9 @@ get_docker_network_gateway() {
 
 # 准备 ZLMediaKit 配置文件
 prepare_zlmediakit_config() {
-    local zlm_config_dir="${SCRIPT_DIR}/../zlmediakit/conf"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local zlm_config_dir="${middleware_data_root}/zlmediakit/conf"
     local zlm_config_file="${zlm_config_dir}/config.ini"
     
     print_info "准备 ZLMediaKit 配置文件..."
@@ -2482,7 +2503,9 @@ EOF
 
 # 从 ZLM 配置文件中读取 api.secret（ZLM HTTP API 必须带 secret，否则报 Required parameter missed: "secret"）
 get_zlm_api_secret() {
-    local conf="$SCRIPT_DIR/../zlmediakit/conf/config.ini"
+    local middleware_data_root
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    local conf="${middleware_data_root}/zlmediakit/conf/config.ini"
     if [ -f "$conf" ]; then
         awk -F= '/^\[api\]/ { in_api=1; next } /^\[/ { in_api=0 } in_api && $1=="secret" { gsub(/^[ \t]+|[ \t]+$/,"",$2); print $2; exit }' "$conf"
     fi
@@ -3149,8 +3172,8 @@ ensure_host_data_directory_before_srs() {
 # 从 .env.docker 安全读取单值，不执行文件内容。
 read_middleware_env_value() {
     local key="$1"
-    [ -f "${SCRIPT_DIR}/.env.docker" ] || return 0
-    sed -n "s/^[[:space:]]*${key}=//p" "${SCRIPT_DIR}/.env.docker" \
+    [ -f "$MIDDLEWARE_ENV_FILE" ] || return 0
+    sed -n "s/^[[:space:]]*${key}=//p" "$MIDDLEWARE_ENV_FILE" \
         | tail -n 1 | tr -d '\r'
 }
 
@@ -3171,7 +3194,32 @@ resolve_middleware_data_root() {
     printf '%s' "${data_root%/}"
 }
 
-# 读取 mini 形态的 VIDEO 回调主机。优先使用已导出的变量，其次读取
+ensure_nacos_data_ready() {
+    local middleware_data_root nacos_data_dir allow_empty
+    middleware_data_root=$(resolve_middleware_data_root) || return 1
+    nacos_data_dir="${middleware_data_root}/nacos_data/data"
+    mkdir -p "$nacos_data_dir" || return 1
+
+    if find "$nacos_data_dir" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        return 0
+    fi
+
+    allow_empty="${YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT:-}"
+    if [ -z "$allow_empty" ]; then
+        allow_empty=$(read_middleware_env_value YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT)
+    fi
+    allow_empty=$(printf '%s' "$allow_empty" | tr '[:upper:]' '[:lower:]' | tr -d '\r')
+    if [[ "$allow_empty" =~ ^(1|true|yes)$ ]]; then
+        print_warning "Nacos 数据目录为空；已通过一次性显式开关允许首次初始化: $nacos_data_dir"
+        return 0
+    fi
+
+    print_error "Nacos 数据目录为空，拒绝启动以避免 release 切换后误初始化: $nacos_data_dir"
+    print_info "已有环境请先停写并迁移 /home/nacos/data；仅全新安装可临时设置 YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT=true"
+    return 1
+}
+
+# 读取 VIDEO bridge 回调主机。优先使用已导出的变量，其次读取
 # .env.docker；只接受主机/IP 字符，避免把任意 URL 注入 SRS 配置。
 resolve_video_callback_host() {
     local callback_host="${VIDEO_CALLBACK_HOST:-}"
@@ -3182,7 +3230,10 @@ resolve_video_callback_host() {
         callback_host="${callback_host#\'}"
         callback_host="${callback_host%\'}"
     fi
-    callback_host="${callback_host:-localhost}"
+    if [ -z "$callback_host" ]; then
+        print_error "VIDEO_CALLBACK_HOST 必须显式配置为 VIDEO 绑定的 Docker bridge 网关"
+        return 1
+    fi
     if [[ ! "$callback_host" =~ ^[A-Za-z0-9._:-]+$ ]]; then
         print_error "VIDEO_CALLBACK_HOST 只能是主机名或 IP 地址"
         return 1
@@ -3190,24 +3241,39 @@ resolve_video_callback_host() {
     printf '%s' "$callback_host"
 }
 
-# 按部署形态写入 SRS http_hooks（SRS 使用 host 网络）
+# SRS Hook 使用仅在 SRS 与 VIDEO 间共享的 URL-safe token。空值、短值或
+# URL 不安全字符都直接拒绝，避免生成可绕过的回调配置。
+resolve_srs_hook_token() {
+    local hook_token="${YFEIEYE_SRS_HOOK_TOKEN:-}"
+    if [ -z "$hook_token" ]; then
+        hook_token=$(read_middleware_env_value YFEIEYE_SRS_HOOK_TOKEN)
+        hook_token="${hook_token#\"}"
+        hook_token="${hook_token%\"}"
+        hook_token="${hook_token#\'}"
+        hook_token="${hook_token%\'}"
+    fi
+    if [ "${#hook_token}" -lt 32 ]; then
+        print_error "YFEIEYE_SRS_HOOK_TOKEN 必须至少 32 个字符"
+        return 1
+    fi
+    if [[ ! "$hook_token" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+        print_error "YFEIEYE_SRS_HOOK_TOKEN 只能包含 URL-safe 字符"
+        return 1
+    fi
+    printf '%s' "$hook_token"
+}
+
+# 写入直连 VIDEO bridge 的 SRS http_hooks（SRS 使用 host 网络）
 _apply_srs_http_hooks() {
     local srs_config_file="$1"
-    local gateway_ip="$2"
     local on_publish_url on_dvr_url
-
-    if is_mini_deploy_profile; then
-        local video_port="${FLASK_RUN_PORT:-6000}"
-        local video_callback_host
-        video_callback_host=$(resolve_video_callback_host) || return 1
-        on_publish_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_publish"
-        on_dvr_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_dvr"
-        print_info "mini 形态：SRS Hook 直连 VIDEO 服务 ${on_publish_url}（无 Gateway）"
-    else
-        on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
-        on_dvr_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr"
-        print_info "SRS Hook 经 Gateway: http://${gateway_ip}:48080/admin-api/video/camera/callback/*"
-    fi
+    local video_port="${FLASK_RUN_PORT:-6000}"
+    local video_callback_host srs_hook_token
+    video_callback_host=$(resolve_video_callback_host) || return 1
+    srs_hook_token=$(resolve_srs_hook_token) || return 1
+    on_publish_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_publish?hook_token=${srs_hook_token}"
+    on_dvr_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_dvr?hook_token=${srs_hook_token}"
+    print_info "SRS Hook 直连 VIDEO bridge 服务（shared token 已配置）"
 
     sed -i -E "s|on_dvr[[:space:]]+http://[^;]+;|on_dvr              ${on_dvr_url};|g" "$srs_config_file"
     sed -i -E "s|on_publish[[:space:]]+http://[^;]+;|on_publish          ${on_publish_url};|g" "$srs_config_file"
@@ -3216,7 +3282,9 @@ _apply_srs_http_hooks() {
 # 准备 SRS 配置文件
 # 强制更新模式：无论配置文件是否存在，都重新生成并自动替换 IP 地址
 prepare_srs_config() {
-    ensure_host_data_directory_before_srs
+    if [ "${1:-}" != "--config-only" ]; then
+        ensure_host_data_directory_before_srs
+    fi
 
     local srs_config_source="${SCRIPT_DIR}/../srs/conf"
     local middleware_data_root
@@ -3225,24 +3293,6 @@ prepare_srs_config() {
     local srs_config_file="${srs_config_target}/docker.conf"
     
     print_info "准备 SRS 配置文件..."
-    
-    # 获取宿主机 IP 地址（用于VIDEO服务，如果VIDEO在宿主机运行）
-    local host_ip=$(get_host_ip)
-    if [ -z "$host_ip" ]; then
-        print_warning "无法获取宿主机 IP，将使用 127.0.0.1（可能导致 VIDEO 模块回调失败）"
-        host_ip="127.0.0.1"
-    else
-        print_info "检测到宿主机 IP: $host_ip"
-    fi
-    
-    # 获取 Docker 网络网关 IP（用于Gateway服务，如果Gateway在宿主机运行）
-    local gateway_ip=$(get_docker_network_gateway "yfeieye-network")
-    if [ -z "$gateway_ip" ]; then
-        print_warning "无法获取 Docker 网络网关 IP，将使用 172.18.0.1"
-        gateway_ip="172.18.0.1"
-    else
-        print_info "检测到 Docker 网络网关 IP: $gateway_ip"
-    fi
     
     # 创建目标目录
     mkdir -p "$srs_config_target"
@@ -3254,7 +3304,11 @@ prepare_srs_config() {
     if [ -d "$srs_config_source" ] && [ -f "$srs_config_source/docker.conf" ]; then
         print_info "从源目录复制 SRS 配置文件..."
         if cp -f "$srs_config_source/docker.conf" "$srs_config_file" 2>/dev/null; then
-            _apply_srs_http_hooks "$srs_config_file" "$gateway_ip"
+            _apply_srs_http_hooks "$srs_config_file" || return 1
+            chmod 600 "$srs_config_file" || {
+                print_error "无法收紧 SRS 配置文件权限: $srs_config_file"
+                return 1
+            }
             print_success "SRS 配置文件已复制并更新: $srs_config_source/docker.conf -> $srs_config_file"
             # 验证文件确实存在
             if [ -f "$srs_config_file" ]; then
@@ -3270,16 +3324,12 @@ prepare_srs_config() {
     # 如果复制失败或源文件不存在，创建默认配置文件
     print_info "创建默认 SRS 配置文件..."
     local on_publish_url on_dvr_url
-    if is_mini_deploy_profile; then
-        local video_port="${FLASK_RUN_PORT:-6000}"
-        local video_callback_host
-        video_callback_host=$(resolve_video_callback_host) || return 1
-        on_publish_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_publish"
-        on_dvr_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_dvr"
-    else
-        on_publish_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_publish"
-        on_dvr_url="http://${gateway_ip}:48080/admin-api/video/camera/callback/on_dvr"
-    fi
+    local video_port="${FLASK_RUN_PORT:-6000}"
+    local video_callback_host srs_hook_token
+    video_callback_host=$(resolve_video_callback_host) || return 1
+    srs_hook_token=$(resolve_srs_hook_token) || return 1
+    on_publish_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_publish?hook_token=${srs_hook_token}"
+    on_dvr_url="http://${video_callback_host}:${video_port}/video/camera/callback/on_dvr?hook_token=${srs_hook_token}"
     cat > "$srs_config_file" << EOF
 # SRS Docker 配置文件
 # 用于 Docker 容器部署的 SRS 配置
@@ -3337,15 +3387,15 @@ vhost __defaultVhost__ {
     }
 }
 EOF
+    chmod 600 "$srs_config_file" || {
+        print_error "无法收紧 SRS 配置文件权限: $srs_config_file"
+        return 1
+    }
     
     # 验证文件是否创建成功
     if [ -f "$srs_config_file" ]; then
         print_success "默认 SRS 配置文件已创建: $srs_config_file"
-        if is_mini_deploy_profile; then
-            print_info "  - VIDEO 回调地址: ${on_publish_url}"
-        else
-            print_info "  - Gateway 回调地址: http://${gateway_ip}:48080/admin-api/video/camera/callback/*"
-        fi
+        print_info "  - VIDEO bridge 回调已启用（shared token 不输出）"
         return 0
     else
         print_error "无法创建 SRS 配置文件: $srs_config_file"
@@ -4637,9 +4687,19 @@ _format_service_list() {
 # 启动中间件容器；可选服务镜像缺失时自动跳过，避免阻塞核心中间件
 # 遇到 rootless Docker 的 /dev/null OCI 错误时自动重试（最多 3 次，退避 3/6/12s）
 compose_up_middleware() {
+    local force_recreate=0
+    if [ "${1:-}" = "--force-recreate" ]; then
+        force_recreate=1
+        shift
+    fi
     local -a skip_services=("$@")
     local -a up_services=()
+    local -a compose_up_args=(up -d)
     local svc should_skip
+
+    if [ "$force_recreate" -eq 1 ]; then
+        compose_up_args+=(--force-recreate)
+    fi
 
     while IFS= read -r svc; do
         [ -z "$svc" ] && continue
@@ -4679,7 +4739,7 @@ compose_up_middleware() {
     print_info "正在启动 ${_svc_count} 个中间件容器：${_svc_list}"
     local _up_log _up_rc _retry _delay
     _up_log=$(mktemp)
-    mw_compose up -d "${up_services[@]}" > "$_up_log" 2>&1
+    mw_compose "${compose_up_args[@]}" "${up_services[@]}" > "$_up_log" 2>&1
     _up_rc=$?
     cat "$_up_log" >> "$LOG_FILE"
 
@@ -4695,7 +4755,7 @@ compose_up_middleware() {
         print_warning "检测到间歇性 OCI /dev/null 错误，${_delay}s 后重试（第 ${_retry}/3 次）..."
         sleep "$_delay"
         : > "$_up_log"
-        mw_compose up -d "${up_services[@]}" > "$_up_log" 2>&1
+        mw_compose "${compose_up_args[@]}" "${up_services[@]}" > "$_up_log" 2>&1
         _up_rc=$?
         cat "$_up_log" >> "$LOG_FILE"
     done
@@ -4707,13 +4767,11 @@ compose_up_middleware() {
     _repair_created_middleware_containers
     local _repair_rc=$?
 
-    # 如果修复成功（没有 Created 容器或已全部修复），覆盖原始错误码
-    if [ $_repair_rc -eq 0 ] && [ "$_up_rc" -ne 0 ]; then
-        print_success "Created 容器已修复，中间件启动成功"
-        _up_rc=0
+    # repair 是补充恢复步骤，不能把原始 compose up 失败重新归类为成功。
+    if [ "$_up_rc" -ne 0 ]; then
+        return "$_up_rc"
     fi
-
-    return "$_up_rc"
+    return "$_repair_rc"
 }
 
 # 检测并修复 Created 状态的中间件容器（compose up 成功但 OCI 启动失败）。
@@ -4919,7 +4977,7 @@ extract_ports_from_compose() {
     local ports=()
     
     # 使用 docker-compose config 获取端口映射
-    local port_mappings=$($COMPOSE_CMD -f "$COMPOSE_FILE" config 2>/dev/null | grep -A 20 "^  ${service_name}:" | grep -E "^\s+- \"[0-9]+:" | sed 's/.*"\([0-9]*\):.*/\1/' || echo "")
+    local port_mappings=$(mw_compose config 2>/dev/null | grep -A 20 "^  ${service_name}:" | grep -E "^\s+- \"[0-9]+:" | sed 's/.*"\([0-9]*\):.*/\1/' || echo "")
     
     if [ -n "$port_mappings" ]; then
         while IFS= read -r port; do
@@ -4980,7 +5038,7 @@ check_and_clean_ports() {
     
     # 先执行 docker-compose down 清理所有残留容器和端口绑定
     print_info "清理 docker-compose 管理的容器和端口绑定..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>/dev/null || true
+    mw_compose down 2>/dev/null || true
     sleep 2
     
     # 强制清理所有可能占用端口的容器（包括停止状态的）
@@ -5692,7 +5750,7 @@ cleanup_stale_containers() {
     # 获取所有中间件容器名称
     local container_names=()
     for service in "${MIDDLEWARE_SERVICES[@]}"; do
-        local container_name=$(docker-compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || echo "")
+        local container_name=$(mw_compose ps -q "$service" 2>/dev/null || echo "")
         if [ -z "$container_name" ]; then
             # 尝试通过容器名称查找
             case "$service" in
@@ -5966,6 +6024,7 @@ install_middleware() {
     print_section "启动中间件容器"
     # 取 PIPESTATUS[0] 判定（tee 恒 0，`if 管道` 永远走成功分支，失败会被掩盖）
     local -a _skip_optional=()
+    local _up_rc
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
     # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
     if compose_up_middleware "${_skip_optional[@]}"; then
@@ -6121,6 +6180,7 @@ install_middleware() {
     
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
+    return "${_up_rc}"
 }
 
 # 启动所有中间件
@@ -6156,6 +6216,7 @@ start_middleware() {
     check_and_clean_ports
     
     local -a _skip_optional=()
+    local _up_rc
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
     # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
     if compose_up_middleware "${_skip_optional[@]}"; then
@@ -6220,6 +6281,7 @@ start_middleware() {
 
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
+    return "${_up_rc}"
 }
 
 # 停止所有中间件
@@ -6231,7 +6293,13 @@ stop_middleware() {
     check_compose_file
     
     print_info "停止所有中间件服务..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>&1 | tee -a "$LOG_FILE"
+    local _down_rc
+    mw_compose down 2>&1 | tee -a "$LOG_FILE"
+    _down_rc="${PIPESTATUS[0]}"
+    if [ "$_down_rc" -ne 0 ]; then
+        print_error "停止中间件失败（Docker Compose 返回码: $_down_rc）"
+        return "$_down_rc"
+    fi
     
     print_success "所有中间件已停止"
 }
@@ -6261,7 +6329,7 @@ restart_middleware() {
     prepare_zlmediakit_config
 
     print_info "重启所有中间件服务..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" restart 2>&1 | tee -a "$LOG_FILE"
+    mw_compose up -d --force-recreate
     
     print_success "所有中间件重启完成"
     echo ""
@@ -6315,7 +6383,7 @@ status_middleware() {
     check_docker_compose
     check_compose_file
     
-    $COMPOSE_CMD -f "$COMPOSE_FILE" ps 2>&1 | tee -a "$LOG_FILE"
+    mw_compose ps 2>&1 | tee -a "$LOG_FILE"
 
 }
 
@@ -6329,10 +6397,10 @@ view_logs() {
 
     if [ -z "$service" ]; then
         print_info "查看主中间件 compose 日志..."
-        $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 2>&1 | tee -a "$LOG_FILE"
+        mw_compose logs --tail=100 2>&1 | tee -a "$LOG_FILE"
     else
         print_info "查看 $service 服务日志..."
-        $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 "$service" 2>&1 | tee -a "$LOG_FILE"
+        mw_compose logs --tail=100 "$service" 2>&1 | tee -a "$LOG_FILE"
     fi
 }
 
@@ -6345,7 +6413,7 @@ build_middleware() {
     check_compose_file
     
     print_info "构建所有中间件镜像..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" build --no-cache 2>&1 | tee -a "$LOG_FILE"
+    mw_compose build --no-cache 2>&1 | tee -a "$LOG_FILE"
     
     print_success "所有中间件镜像构建完成"
 }
@@ -6410,14 +6478,14 @@ clean_middleware() {
         
         # 第一步：先停止所有容器（正常停止）
         print_info "正在停止所有中间件服务..."
-        $COMPOSE_CMD -f "$COMPOSE_FILE" stop 2>&1 | tee -a "$LOG_FILE"
+        mw_compose stop 2>&1 | tee -a "$LOG_FILE"
         
         # 等待容器停止
         sleep 3
         
         # 第二步：强制停止所有容器（处理重启循环中的容器）
         print_info "强制停止所有容器..."
-        $COMPOSE_CMD -f "$COMPOSE_FILE" kill 2>&1 | tee -a "$LOG_FILE"
+        mw_compose kill 2>&1 | tee -a "$LOG_FILE"
         
         # 等待容器完全停止
         sleep 2
@@ -6426,11 +6494,11 @@ clean_middleware() {
         # 注意：使用 down -v 只会删除容器和卷，不会删除镜像
         # 如果要删除镜像，需要使用 down --rmi all 或 down --rmi local，这里不使用
         print_info "删除所有容器和 Docker 具名卷（镜像将保留，不会删除）..."
-        $COMPOSE_CMD -f "$COMPOSE_FILE" down -v 2>&1 | tee -a "$LOG_FILE"
+        mw_compose down -v 2>&1 | tee -a "$LOG_FILE"
         
         # 第四步：检查并强制删除可能残留的容器（处理重启循环中的容器）
         print_info "检查并清理残留容器..."
-        local remaining_containers=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -q 2>/dev/null || echo "")
+        local remaining_containers=$(mw_compose ps -q 2>/dev/null || echo "")
         if [ -n "$remaining_containers" ]; then
             print_warning "发现残留容器，正在强制删除..."
             echo "$remaining_containers" | xargs -r docker rm -f 2>&1 | tee -a "$LOG_FILE"
@@ -6616,9 +6684,10 @@ update_middleware() {
     fix_nacos_startup_failure
     print_info "重启所有中间件服务..."
     local -a _skip_optional=()
+    local _up_rc
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
     # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
-    if compose_up_middleware "${_skip_optional[@]}"; then
+    if compose_up_middleware --force-recreate "${_skip_optional[@]}"; then
         _up_rc=0
     else
         _up_rc=$?
@@ -6644,7 +6713,7 @@ update_middleware() {
         print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过 Milvus"
     fi
 
-
+    return "${_up_rc}"
 }
 
 # 显示帮助信息
@@ -6665,6 +6734,7 @@ show_help() {
     echo "  build           - 重新构建所有镜像"
     echo "  clean           - 清理所有容器和镜像"
     echo "  update          - 更新并重启所有中间件"
+    echo "  prepare-srs-config - 仅生成共享 SRS 配置，不启动或停止容器"
     echo "  profile         - 显示当前部署规格与服务范围"
     echo "  analyze-memory  - 分析运行中容器内存占用与规格符合性（见 analyze_deploy_memory.sh）"
     echo "  fix-postgresql  - 修复 PostgreSQL 密码问题"
@@ -6696,7 +6766,7 @@ main() {
     local cmd="${1:-help}"
 
     # 在执行任何命令之前（除了 help/profile），先检查 Git
-    if [ "$cmd" != "help" ] && [ "$cmd" != "--help" ] && [ "$cmd" != "-h" ] && [ "$cmd" != "profile" ]; then
+    if [ "$cmd" != "help" ] && [ "$cmd" != "--help" ] && [ "$cmd" != "-h" ] && [ "$cmd" != "profile" ] && [ "$cmd" != "prepare-srs-config" ]; then
         check_and_require_git
     fi
 
@@ -6741,6 +6811,9 @@ main() {
             refresh_compose_profile_args
             print_info "部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
             update_middleware
+            ;;
+        prepare-srs-config)
+            prepare_srs_config --config-only
             ;;
         fix-postgresql)
             ensure_postgresql_password

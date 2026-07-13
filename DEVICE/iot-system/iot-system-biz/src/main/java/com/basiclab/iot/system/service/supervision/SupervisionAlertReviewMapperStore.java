@@ -915,7 +915,10 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                         evidenceItem.sourceAlertId(),
                         evidenceItem.materialType(),
                         evidenceItem.materialUri(),
-                        evidenceItem.happenedAt()
+                        evidenceItem.happenedAt(),
+                        null,
+                        evidenceItem.recordStartTime(),
+                        null
                 ));
             }
         }
@@ -1154,6 +1157,33 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         return reviewSemanticIndexMapper.selectClaimed(normalizedToken, normalizedLimit).stream()
                 .map(this::toSemanticIndexEntry)
                 .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewSemanticIndexEntry queueSemanticIndex(ReviewItemAggregate item,
+                                                        String document,
+                                                        String embeddingKey,
+                                                        String embeddingModel,
+                                                        String indexGenerationId,
+                                                        LocalDateTime queuedAt) {
+        Objects.requireNonNull(item, "item");
+        SupervisionAlertReviewSemanticIndexDO desired = new SupervisionAlertReviewSemanticIndexDO()
+                .setReviewItemId(item.id())
+                .setCameraId(item.cameraId())
+                .setFirstAlertTime(item.firstAlertTime())
+                .setLastAlertTime(item.lastAlertTime())
+                .setDocument(document)
+                .setEmbeddingKey(embeddingKey)
+                .setEmbeddingModel(embeddingModel)
+                .setIndexGenerationId(indexGenerationId);
+        reviewSemanticIndexMapper.insertPendingIfAbsent(desired);
+        reviewSemanticIndexMapper.queueReindexUnlessActivelyClaimed(
+                desired,
+                queuedAt == null ? LocalDateTime.now() : queuedAt
+        );
+        return toSemanticIndexEntry(
+                reviewSemanticIndexMapper.selectByReviewItemId(item.id()));
     }
 
     @Override
@@ -2027,7 +2057,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 evidenceDO.getSourceAlertId(),
                 evidenceDO.getMaterialType(),
                 evidenceDO.getMaterialUri(),
-                evidenceDO.getHappenedAt()
+                evidenceDO.getHappenedAt(),
+                evidenceDO.getRecordStartTime()
         );
     }
 
@@ -2046,7 +2077,8 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .setSourceAlertId(evidenceItem.sourceAlertId())
                 .setMaterialType(evidenceItem.materialType())
                 .setMaterialUri(evidenceItem.materialUri())
-                .setHappenedAt(evidenceItem.happenedAt());
+                .setHappenedAt(evidenceItem.happenedAt())
+                .setRecordStartTime(evidenceItem.recordStartTime());
     }
 
     private EventProjection toEventProjection(SupervisionEventDO eventDO) {

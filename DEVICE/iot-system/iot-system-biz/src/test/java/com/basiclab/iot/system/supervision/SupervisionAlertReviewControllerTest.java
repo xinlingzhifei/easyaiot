@@ -2,6 +2,8 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.domain.LoginUser;
 import com.basiclab.iot.system.controller.admin.supervision.SupervisionAlertReviewController;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.CaseTimelineRespVO;
+import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.DetailStreamRespVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.OperationReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.EvidenceDownloadAuditReqVO;
 import com.basiclab.iot.system.controller.admin.supervision.vo.review.AlertReviewVO.EvidenceExportReqVO;
@@ -19,6 +21,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseSplitResult;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseTimelineItem;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewDetailStreamItem;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationCommand;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditEntry;
@@ -71,6 +75,92 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SupervisionAlertReviewControllerTest {
+
+    @Test
+    void detailStreamResponseCarriesOnlyExplicitRecordPlaybackContext() {
+        LocalDateTime happenedAt = LocalDateTime.of(2026, 7, 13, 10, 0, 20);
+        LocalDateTime recordStart = happenedAt.minusSeconds(20);
+
+        DetailStreamRespVO response = DetailStreamRespVO.from(new ReviewDetailStreamItem(
+                22L,
+                "alert-22",
+                "camera-02",
+                "zone-a",
+                null,
+                "person",
+                "record",
+                happenedAt,
+                happenedAt,
+                List.of(),
+                List.of(),
+                "record",
+                "prerecord.mp4",
+                Map.of("source", "timeline"),
+                recordStart,
+                20
+        ));
+
+        assertEquals(recordStart, response.getRecordStartTime());
+        assertEquals(20, response.getPlaybackOffsetSeconds());
+    }
+
+    @Test
+    void recordCoverageTimelineResponseCarriesItsOwnRecordStartTime() {
+        LocalDateTime segmentStart = LocalDateTime.of(2026, 7, 13, 9, 15, 30);
+
+        CaseTimelineRespVO response = CaseTimelineRespVO.from(new ReviewCaseTimelineItem(
+                11L,
+                22L,
+                "camera-02",
+                "alert-02",
+                "record_coverage",
+                "segment-02.mp4",
+                segmentStart,
+                "available"
+        ));
+
+        assertEquals("segment-02.mp4", response.getMaterialUri());
+        assertEquals(segmentStart, response.getRecordStartTime());
+    }
+
+    @Test
+    void recordTimelineResponseCarriesExplicitPlaybackContext() {
+        LocalDateTime recordStart = LocalDateTime.of(2026, 7, 2, 8, 0);
+
+        CaseTimelineRespVO response = CaseTimelineRespVO.from(new ReviewCaseTimelineItem(
+                501L,
+                101L,
+                "cam-east-gate",
+                "frigate-event-1",
+                "record",
+                "/video/record/east-gate-080000.mp4",
+                recordStart.plusSeconds(10),
+                "primary evidence",
+                recordStart,
+                10
+        ));
+
+        assertEquals(recordStart, response.getRecordStartTime());
+        assertEquals(10, responsePlaybackOffsetSeconds(response));
+    }
+
+    @Test
+    void legacySemanticReindexEndpointReturnsDeferredActiveClaimWithoutForcingIndexedState() throws Exception {
+        CapturingReviewService reviewService = new CapturingReviewService();
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new SupervisionAlertReviewController(reviewService.proxy()))
+                .build();
+
+        mockMvc.perform(post("/system/supervision/alert-review/semantic-index/reindex")
+                        .param("cameraId", "camera-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].reviewItemId").value(1001))
+                .andExpect(jsonPath("$.data[0].indexStatus").value("processing"));
+
+        ReviewQuery query = (ReviewQuery) reviewService.command("reindexSemanticIndex");
+        assertEquals("camera-01", query.cameraId());
+    }
 
     @Test
     void semanticTriggerEndpointsUseLoginOperatorAndExposePreviewOnlyConfirmationContract() throws Exception {
@@ -767,6 +857,26 @@ class SupervisionAlertReviewControllerTest {
                         ((SupervisionAlertReviewService.ReviewSemanticTriggerConfirmationCommand) command).operatorUserId(),
                         LocalDateTime.of(2026, 7, 11, 12, 30)
                 );
+                case "reindexSemanticIndex" -> List.of(new SupervisionAlertReviewService.ReviewSemanticIndexEntry(
+                        1001L,
+                        "camera-01",
+                        LocalDateTime.of(2026, 7, 13, 9, 30),
+                        LocalDateTime.of(2026, 7, 13, 9, 30),
+                        "processing",
+                        "camera-01 person",
+                        "camera-01:1001",
+                        "local-hash-v1",
+                        null,
+                        0,
+                        null,
+                        null,
+                        "sig-active",
+                        "active-claim",
+                        LocalDateTime.of(2026, 7, 13, 9, 31),
+                        LocalDateTime.of(2026, 7, 13, 9, 36),
+                        null,
+                        1
+                ));
                 case "runIntegrationSmoke" -> integrationSmokeResult((ReviewIntegrationSmokeCommand) command);
                 case "generateReviewReport" -> operationsReport((ReviewReportCommand) command);
                 case "acknowledgeReviewReport" -> reportAcknowledgement((ReviewReportAcknowledgementCommand) command);
@@ -956,6 +1066,16 @@ class SupervisionAlertReviewControllerTest {
                 false,
                 Map.of("periodStart", String.valueOf(command.periodStart()))
         );
+    }
+
+    private static Object responsePlaybackOffsetSeconds(CaseTimelineRespVO response) {
+        try {
+            return response.getClass().getMethod("getPlaybackOffsetSeconds").invoke(response);
+        } catch (NoSuchMethodException exception) {
+            return null;
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
     }
 
 }

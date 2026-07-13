@@ -1260,7 +1260,8 @@ async function openDetailStreamEntry(entry: AlertReviewDetailStreamItem) {
     device_id: entry.cameraId || selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.seekTime || entry.happenedAt,
     seek_time: entry.seekTime || entry.happenedAt,
-    record_start_time: reviewSegment.value?.startTime,
+    record_start_time: entry.recordStartTime,
+    playback_offset_seconds: entry.playbackOffsetSeconds,
     record_path: prepared.recordPath,
   })
 }
@@ -1324,7 +1325,8 @@ async function openCaseTimelineEntry(entry: AlertReviewCaseTimelineItem) {
     device_id: entry.cameraId || selectedItem.value?.deviceId || selectedItem.value?.cameraId,
     time: entry.happenedAt,
     seek_time: entry.happenedAt,
-    record_start_time: reviewSegment.value?.startTime || activeCase.value?.startTime,
+    record_start_time: entry.recordStartTime,
+    playback_offset_seconds: entry.playbackOffsetSeconds,
     record_path: prepared.recordPath,
   })
 }

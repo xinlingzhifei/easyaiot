@@ -18,5 +18,6 @@ public class SupervisionAlertReviewEvidenceDO extends BaseDO {
     private String materialType;
     private String materialUri;
     private LocalDateTime happenedAt;
+    private LocalDateTime recordStartTime;
 
 }

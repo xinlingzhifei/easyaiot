@@ -35,6 +35,7 @@ cd "$SCRIPT_DIR"
 ARM_BASE_IMAGE="pytorch/manylinuxaarch64-builder:cuda12.9"
 DOCKER_PLATFORM="linux/arm64"
 YFEIEYE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VIDEO_COMPOSE_ENV_FILE="${YFEIEYE_VIDEO_COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env.docker}"
 # shellcheck source=../.scripts/docker/init-build-cache-dirs.sh
 source "${YFEIEYE_ROOT}/.scripts/docker/init-build-cache-dirs.sh"
 # shellcheck source=../.scripts/docker/deploy_profile.sh
@@ -57,6 +58,16 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Compose `env_file` only injects container variables; host-side interpolation
+# (ports and bind roots) must use the same explicit file.
+video_compose() {
+    if [ ! -f "$VIDEO_COMPOSE_ENV_FILE" ]; then
+        print_error "Compose 环境文件不存在: $VIDEO_COMPOSE_ENV_FILE"
+        return 1
+    fi
+    $COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"
 }
 
 # 清理 compose recreate 被中断后遗留的「改名孤儿容器」（形如 <12位hex>_video-service）。
@@ -496,7 +507,7 @@ clean_compose_cache() {
     cd "$SCRIPT_DIR"
     
     print_info "执行 docker-compose down 清理容器和网络连接..."
-    if eval "$COMPOSE_CMD down" 2>/dev/null; then
+    if video_compose down 2>/dev/null; then
         print_success "容器和网络连接已清理"
     else
         print_info "docker-compose down 执行完成（可能没有运行的容器）"
@@ -504,7 +515,7 @@ clean_compose_cache() {
     sleep 1
     
     print_info "强制重新读取配置以清除缓存..."
-    if eval "$COMPOSE_CMD config" > /dev/null 2>&1; then
+    if video_compose config > /dev/null 2>&1; then
         print_success "配置已重新验证"
     else
         print_warning "配置验证失败，但继续执行"
@@ -657,7 +668,7 @@ install_service() {
     
     print_info "启动服务..."
     cleanup_renamed_containers
-    $COMPOSE_CMD up -d --remove-orphans
+    video_compose up -d --remove-orphans
     
     print_success "服务安装完成！"
     print_info "等待服务启动..."
@@ -689,7 +700,7 @@ start_service() {
     fi
     
     cleanup_renamed_containers
-    $COMPOSE_CMD up -d --force-recreate --remove-orphans
+    video_compose up -d --force-recreate --remove-orphans
     print_success "服务已启动"
     check_status
 }
@@ -700,7 +711,7 @@ stop_service() {
     check_docker
     check_docker_compose
     
-    $COMPOSE_CMD down
+    video_compose down
     print_success "服务已停止"
 }
 
@@ -721,7 +732,7 @@ restart_service() {
     fi
 
     cleanup_renamed_containers
-    $COMPOSE_CMD up -d --force-recreate --remove-orphans
+    video_compose up -d --force-recreate --remove-orphans
     print_success "服务已重启"
     check_status
 }
@@ -732,7 +743,7 @@ check_status() {
     check_docker
     check_docker_compose
     
-    $COMPOSE_CMD ps
+    video_compose ps
     
     echo ""
     print_info "容器健康状态:"
@@ -755,10 +766,10 @@ view_logs() {
     
     if [ "$1" == "-f" ] || [ "$1" == "--follow" ]; then
         print_info "实时查看日志（按 Ctrl+C 退出）..."
-        $COMPOSE_CMD logs -f --tail=50
+        video_compose logs -f --tail=50
     else
         print_info "查看最近日志（最近50行）..."
-        $COMPOSE_CMD logs --tail=50
+        video_compose logs --tail=50
     fi
 }
 
@@ -815,7 +826,7 @@ clean_service() {
     check_docker
     check_docker_compose
     print_info "停止并删除容器..."
-    $COMPOSE_CMD down -v
+    video_compose down -v
 
     print_info "删除镜像..."
     docker rmi video-service:latest 2>/dev/null || true
@@ -900,11 +911,11 @@ update_service() {
 
         print_info "应用新镜像（仅重建变更服务，最小化停机）..."
         cleanup_renamed_containers
-        $COMPOSE_CMD up -d --remove-orphans --no-deps video-service
+        video_compose up -d --force-recreate --remove-orphans --no-deps video-service
     else
         print_success "依赖未变，跳过镜像构建（业务代码经卷挂载，重启进程即可生效）"
         cleanup_renamed_containers
-        $COMPOSE_CMD up -d --remove-orphans --no-deps video-service
+        video_compose up -d --force-recreate --remove-orphans --no-deps video-service
 
         local code_changed=0
         if [ -n "$rev_before" ] && [ "$rev_before" != "$rev_after" ]; then
@@ -915,7 +926,7 @@ update_service() {
 
         if [ "$code_changed" = "1" ]; then
             print_info "重启容器进程以加载最新源码（秒级）..."
-            $COMPOSE_CMD restart video-service
+            video_compose up -d --force-recreate --remove-orphans --no-deps video-service
         else
             print_info "代码无变更，无需重启"
         fi

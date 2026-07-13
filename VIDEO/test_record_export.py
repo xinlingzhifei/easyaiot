@@ -1436,6 +1436,35 @@ class TestRecordExportService(unittest.TestCase):
         with open(downloaded['path'], 'rb') as file_obj:
             self.assertEqual(b'streamed-export', file_obj.read())
 
+    def test_local_export_download_rejects_package_size_and_hash_mismatch_as_integrity_error(self):
+        import app.services.record_export_service as export_service
+
+        for mutation in ('size', 'hash'):
+            with self.subTest(mutation=mutation):
+                started = export_service.create_record_export({
+                    'review_case_id': 4012,
+                    'review_item_id': 2012,
+                    'device_id': 'camera-01',
+                    'camera_id': 'camera-01',
+                    'record_uri': (
+                        f'/video/record/space/7/video/live/camera-01/{mutation}.mp4'),
+                }, record_resolver=_trusted_record_resolver, async_worker=True,
+                   worker_runner=lambda job: _provenance_worker_result(
+                       job, b'integrity-protected-export'))
+                ready = export_service.poll_record_export(started['export_id'])
+                content_path = export_service._content_path(ready['export_id'])
+                with open(content_path, 'rb') as content_file:
+                    content = content_file.read()
+                if mutation == 'size':
+                    corrupted = content + b'!'
+                else:
+                    corrupted = bytes([content[0] ^ 1]) + content[1:]
+                with open(content_path, 'wb') as content_file:
+                    content_file.write(corrupted)
+
+                with self.assertRaises(export_service.RecordExportIntegrityError):
+                    export_service.download_record_export(ready['export_id'])
+
     def test_concurrent_process_audit_appends_preserve_one_atomic_hash_chain(self):
         import app.services.record_export_service as export_service
 
@@ -2173,7 +2202,59 @@ class TestRecordExportService(unittest.TestCase):
             original = adapter.objects[content_key]
             adapter.objects[content_key] = bytes([original[0] ^ 1]) + original[1:]
 
-            with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+            with self.assertRaisesRegex(
+                    export_service.RecordExportIntegrityError, 'hash mismatch'):
+                export_service.download_record_export(ready['export_id'])
+        finally:
+            export_service.configure_record_export_storage_adapter(None)
+            storage_env.stop()
+
+    def test_object_download_rejects_stat_size_mismatch_as_integrity_error(self):
+        import app.services.record_export_service as export_service
+
+        class MemoryStorage:
+            def __init__(self):
+                self.objects = {}
+
+            def put_file(self, key, path, content_type=None):
+                with open(path, 'rb') as handle:
+                    self.objects[key] = handle.read()
+
+            def stat(self, key):
+                return {'size': len(self.objects[key])}
+
+            def open(self, key):
+                return io.BytesIO(self.objects[key])
+
+            def delete(self, key):
+                self.objects.pop(key, None)
+
+            def uri(self, key):
+                return 's3://evidence/' + key
+
+        adapter = MemoryStorage()
+        storage_env = mock.patch.dict(os.environ, {
+            'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE': 'minio',
+            'YFEIEYE_RECORD_EXPORT_STORAGE_URI': 's3://evidence/exports',
+        }, clear=False)
+        storage_env.start()
+        export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+        try:
+            started = export_service.create_record_export({
+                'camera_id': 'camera-01',
+                'device_id': 'camera-01',
+                'tenant_id': '7',
+                'record_uri': '/video/record/space/7/video/live/camera-01/size.mp4',
+                'storage_type': 'minio',
+            }, record_resolver=_trusted_record_resolver, async_worker=True,
+               worker_runner=lambda job: _provenance_worker_result(
+                   job, b'original-media'))
+            ready = export_service.poll_record_export(started['export_id'])
+            content_key = f'tenants/7/exports/{ready["export_id"]}/content.bin'
+            adapter.objects[content_key] += b'!'
+
+            with self.assertRaisesRegex(
+                    export_service.RecordExportIntegrityError, 'size mismatch'):
                 export_service.download_record_export(ready['export_id'])
         finally:
             export_service.configure_record_export_storage_adapter(None)
@@ -2839,6 +2920,7 @@ class TestRecordExportBlueprint(unittest.TestCase):
 
     def test_user_export_binds_identity_and_strips_sensitive_service_associations(self):
         record_module = self._import_record_blueprint_with_stubs()
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: {}
         from app.services.media_authorization_service import MediaAuthorizationDecision
         record_module.authorize_media_request = lambda *args, **kwargs: MediaAuthorizationDecision(
             True, 'trusted-user', 'trusted-tenant', 'camera-01', 'export',
@@ -2878,6 +2960,7 @@ class TestRecordExportBlueprint(unittest.TestCase):
 
     def test_service_hmac_export_may_supply_traceable_case_event_snapshot_associations(self):
         record_module = self._import_record_blueprint_with_stubs()
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: {}
         from app.services.media_authorization_service import MediaAuthorizationDecision
         record_module.authorize_media_request = lambda *args, **kwargs: MediaAuthorizationDecision(
             True, 'device-worker', 'tenant-1', 'camera-01', 'export',
@@ -2904,6 +2987,7 @@ class TestRecordExportBlueprint(unittest.TestCase):
 
     def test_record_export_route_posts_to_service(self):
         record_module = self._import_record_blueprint_with_stubs()
+        record_module.append_record_export_access_audit = lambda *_args, **_kwargs: {}
 
         app = Flask(__name__)
         app.register_blueprint(record_module.record_bp, url_prefix='/video/record')

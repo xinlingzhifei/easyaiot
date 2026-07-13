@@ -357,7 +357,15 @@ public interface SupervisionAlertReviewService {
                               String sourceAlertId,
                               String materialType,
                               String materialUri,
-                              LocalDateTime happenedAt) {
+                              LocalDateTime happenedAt,
+                              LocalDateTime recordStartTime) {
+        public ReviewEvidenceItem(Long reviewItemId,
+                                  String sourceAlertId,
+                                  String materialType,
+                                  String materialUri,
+                                  LocalDateTime happenedAt) {
+            this(reviewItemId, sourceAlertId, materialType, materialUri, happenedAt, null);
+        }
     }
 
     record ReviewDetailStreamItem(Long reviewItemId,
@@ -373,7 +381,27 @@ public interface SupervisionAlertReviewService {
                                   List<Map<String, Object>> path,
                                   String materialType,
                                   String materialUri,
-                                  Map<String, Object> metadata) {
+                                  Map<String, Object> metadata,
+                                  LocalDateTime recordStartTime,
+                                  Integer playbackOffsetSeconds) {
+        public ReviewDetailStreamItem(Long reviewItemId,
+                                      String sourceAlertId,
+                                      String cameraId,
+                                      String zoneCode,
+                                      String objectId,
+                                      String label,
+                                      String lifecycleEvent,
+                                      LocalDateTime happenedAt,
+                                      LocalDateTime seekTime,
+                                      List<Double> bbox,
+                                      List<Map<String, Object>> path,
+                                      String materialType,
+                                      String materialUri,
+                                      Map<String, Object> metadata) {
+            this(reviewItemId, sourceAlertId, cameraId, zoneCode, objectId, label,
+                    lifecycleEvent, happenedAt, seekTime, bbox, path, materialType,
+                    materialUri, metadata, null, null);
+        }
     }
 
     record ReviewSegmentView(Long reviewItemId,
@@ -610,7 +638,21 @@ public interface SupervisionAlertReviewService {
                                   String materialType,
                                   String materialUri,
                                   LocalDateTime happenedAt,
-                                  String actionNote) {
+                                  String actionNote,
+                                  LocalDateTime recordStartTime,
+                                  Integer playbackOffsetSeconds) {
+        public ReviewCaseTimelineItem(Long reviewCaseId,
+                                      Long reviewItemId,
+                                      String cameraId,
+                                      String sourceAlertId,
+                                      String materialType,
+                                      String materialUri,
+                                      LocalDateTime happenedAt,
+                                      String actionNote) {
+            this(reviewCaseId, reviewItemId, cameraId, sourceAlertId, materialType, materialUri,
+                    happenedAt, actionNote, null, null);
+        }
+
         public ReviewCaseTimelineItem(Long reviewCaseId,
                                       Long reviewItemId,
                                       String cameraId,
@@ -618,7 +660,8 @@ public interface SupervisionAlertReviewService {
                                       String materialType,
                                       String materialUri,
                                       LocalDateTime happenedAt) {
-            this(reviewCaseId, reviewItemId, cameraId, sourceAlertId, materialType, materialUri, happenedAt, null);
+            this(reviewCaseId, reviewItemId, cameraId, sourceAlertId, materialType, materialUri,
+                    happenedAt, null, null, null);
         }
     }
 
@@ -1492,7 +1535,11 @@ public interface SupervisionAlertReviewService {
     }
 
     record RecordEvidenceResult(String recordUri,
-                                String message) {
+                                String message,
+                                LocalDateTime recordStartTime) {
+        public RecordEvidenceResult(String recordUri, String message) {
+            this(recordUri, message, null);
+        }
     }
 
     record RecordCoverageRequest(String deviceId,
@@ -1812,6 +1859,27 @@ public interface SupervisionAlertReviewService {
                                                              LocalDateTime nextRetryAt) {
             return upsertSemanticIndex(item, document, embeddingKey, embeddingModel, embeddingVectorHash,
                     indexStatus, retryCount, lastError, indexedAt);
+        }
+
+        default ReviewSemanticIndexEntry queueSemanticIndex(ReviewItemAggregate item,
+                                                             String document,
+                                                             String embeddingKey,
+                                                             String embeddingModel,
+                                                             String indexGenerationId,
+                                                             LocalDateTime queuedAt) {
+            return upsertSemanticIndex(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    null,
+                    SEMANTIC_INDEX_PENDING,
+                    0,
+                    null,
+                    null,
+                    indexGenerationId,
+                    null
+            );
         }
 
         default List<ReviewSemanticIndexEntry> claimSemanticIndex(List<Long> reviewItemIds,

@@ -197,6 +197,8 @@ const detailStream = [
     materialType: 'record',
     materialUri: '/video/record/east-gate-080000.mp4',
     metadata: { confidence: 0.92 },
+    recordStartTime: '2026-07-02T08:00:00',
+    playbackOffsetSeconds: 2,
   },
 ]
 
@@ -263,6 +265,8 @@ const caseTimeline = [
     materialType: 'record',
     materialUri: '/video/record/east-gate-080000.mp4',
     happenedAt: '2026-07-02T08:00:10',
+    recordStartTime: '2026-07-02T08:00:00',
+    playbackOffsetSeconds: 10,
     actionNote: 'primary evidence',
   },
 ]

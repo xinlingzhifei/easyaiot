@@ -72,6 +72,8 @@ export interface AlertReviewDetailStreamItem {
   materialType?: string
   materialUri?: string
   metadata?: Record<string, any>
+  recordStartTime?: string | null
+  playbackOffsetSeconds?: number | null
 }
 
 export interface AlertReviewSegment {
@@ -215,6 +217,8 @@ export interface AlertReviewCaseTimelineItem {
   materialType: 'snapshot' | 'record' | string
   materialUri?: string
   happenedAt: string
+  recordStartTime?: string | null
+  playbackOffsetSeconds?: number | null
   actionNote?: string
 }
 

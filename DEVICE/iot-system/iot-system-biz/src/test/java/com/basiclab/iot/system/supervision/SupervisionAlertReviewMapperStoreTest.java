@@ -4,6 +4,7 @@ import com.basiclab.iot.common.core.context.TenantContextHolder;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSegmentDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseAuditMapper;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseItemMapper;
@@ -25,6 +26,8 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewMapperS
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemAggregate;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.InvocationHandler;
@@ -33,10 +36,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -754,6 +761,101 @@ class SupervisionAlertReviewMapperStoreTest {
         assertEquals(1, conditionalUpdateCount.get());
     }
 
+    @Test
+    void queueSemanticIndexPreservesClaimAcquiredBetweenInsertAndCas() throws Exception {
+        LocalDateTime queuedAt = LocalDateTime.of(2026, 7, 13, 10, 30);
+        ReviewItemAggregate item = semanticReviewItem(9001L, queuedAt.minusMinutes(5));
+        AtomicReference<SupervisionAlertReviewSemanticIndexDO> persisted = new AtomicReference<>();
+        AtomicReference<Throwable> workerFailure = new AtomicReference<>();
+        AtomicInteger selectCount = new AtomicInteger();
+        List<String> mutations = new CopyOnWriteArrayList<>();
+        CountDownLatch rowReady = new CountDownLatch(1);
+        CountDownLatch workerClaimed = new CountDownLatch(1);
+        SupervisionAlertReviewSemanticIndexMapper semanticIndexMapper = mapper(
+                SupervisionAlertReviewSemanticIndexMapper.class,
+                (proxy, method, args) -> {
+                    if ("selectByReviewItemId".equals(method.getName())) {
+                        int selection = selectCount.incrementAndGet();
+                        SupervisionAlertReviewSemanticIndexDO current = persisted.get();
+                        if (current != null) {
+                            return copySemanticIndexRow(current);
+                        }
+                        if (selection == 1) {
+                            return null;
+                        }
+                        SupervisionAlertReviewSemanticIndexDO pending = semanticIndexRow(
+                                item, "sig-queue-cas", "pending", null, null);
+                        persisted.set(copySemanticIndexRow(pending));
+                        rowReady.countDown();
+                        assertTrue(workerClaimed.await(5, TimeUnit.SECONDS));
+                        return pending;
+                    }
+                    if ("insertPendingIfAbsent".equals(method.getName())) {
+                        mutations.add("insert-if-absent");
+                        persisted.compareAndSet(null, semanticIndexRow(
+                                item, "sig-queue-cas", "pending", null, null));
+                        rowReady.countDown();
+                        assertTrue(workerClaimed.await(5, TimeUnit.SECONDS));
+                        return 0;
+                    }
+                    if ("queueReindexUnlessActivelyClaimed".equals(method.getName())) {
+                        mutations.add("conditional-cas");
+                        SupervisionAlertReviewSemanticIndexDO current = persisted.get();
+                        if ("processing".equals(current.getIndexStatus())
+                                && current.getClaimToken() != null
+                                && current.getClaimExpiresAt().isAfter((LocalDateTime) args[1])) {
+                            return 0;
+                        }
+                        persisted.set(semanticIndexRow(item, "sig-queue-cas", "pending", null, null));
+                        return 1;
+                    }
+                    if ("insert".equals(method.getName()) || "updateById".equals(method.getName())) {
+                        mutations.add(method.getName());
+                        persisted.set(copySemanticIndexRow((SupervisionAlertReviewSemanticIndexDO) args[0]));
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(semanticIndexMapper);
+        Thread worker = new Thread(() -> {
+            try {
+                if (!rowReady.await(5, TimeUnit.SECONDS)) {
+                    throw new AssertionError("semantic index row was not initialized");
+                }
+                persisted.set(semanticIndexRow(
+                        item,
+                        "sig-queue-cas",
+                        "processing",
+                        "active-worker-claim",
+                        queuedAt.plusMinutes(5)
+                ));
+            } catch (Throwable error) {
+                workerFailure.set(error);
+            } finally {
+                workerClaimed.countDown();
+            }
+        }, "semantic-index-claim-race");
+        worker.start();
+
+        ReviewSemanticIndexEntry queued = store.queueSemanticIndex(
+                item,
+                "camera-01 person",
+                "camera-01:9001",
+                "local-hash-v1",
+                "sig-queue-cas",
+                queuedAt
+        );
+        worker.join(6000);
+
+        assertNull(workerFailure.get());
+        assertFalse(worker.isAlive());
+        assertEquals(List.of("insert-if-absent", "conditional-cas"), mutations);
+        assertEquals("processing", queued.indexStatus());
+        assertEquals("active-worker-claim", queued.claimToken());
+        assertEquals(queuedAt.plusMinutes(5), queued.claimExpiresAt());
+    }
+
     private static SupervisionAlertReviewItemDO reviewItem(Long id,
                                                            String reviewStatus,
                                                            Long reviewerUserId,
@@ -779,6 +881,85 @@ class SupervisionAlertReviewMapperStoreTest {
                 .setReviewedAt(reviewedAt)
                 .setRecordEvidenceStatus("not_required")
                 .setVersion(0);
+    }
+
+    private static ReviewItemAggregate semanticReviewItem(Long id, LocalDateTime alertTime) {
+        return new ReviewItemAggregate(
+                id,
+                "ARI-" + id,
+                "video",
+                "restricted_area",
+                "motion",
+                "device-01",
+                "camera-01",
+                "zone-a",
+                "person",
+                alertTime,
+                alertTime,
+                1,
+                List.of("alert-" + id),
+                Map.of(),
+                SupervisionAlertReviewService.STATUS_PENDING_REVIEW,
+                null,
+                null,
+                null,
+                Map.of(),
+                null,
+                null,
+                "available",
+                alertTime,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private static SupervisionAlertReviewSemanticIndexDO semanticIndexRow(ReviewItemAggregate item,
+                                                                           String generationId,
+                                                                           String status,
+                                                                           String claimToken,
+                                                                           LocalDateTime claimExpiresAt) {
+        return new SupervisionAlertReviewSemanticIndexDO()
+                .setId(7001L)
+                .setReviewItemId(item.id())
+                .setCameraId(item.cameraId())
+                .setFirstAlertTime(item.firstAlertTime())
+                .setLastAlertTime(item.lastAlertTime())
+                .setIndexStatus(status)
+                .setDocument("camera-01 person")
+                .setEmbeddingKey("camera-01:9001")
+                .setEmbeddingModel("local-hash-v1")
+                .setRetryCount(0)
+                .setIndexGenerationId(generationId)
+                .setClaimToken(claimToken)
+                .setClaimedAt(claimToken == null ? null : item.lastAlertTime())
+                .setClaimExpiresAt(claimExpiresAt)
+                .setVersion(1);
+    }
+
+    private static SupervisionAlertReviewSemanticIndexDO copySemanticIndexRow(
+            SupervisionAlertReviewSemanticIndexDO source) {
+        return new SupervisionAlertReviewSemanticIndexDO()
+                .setId(source.getId())
+                .setReviewItemId(source.getReviewItemId())
+                .setCameraId(source.getCameraId())
+                .setFirstAlertTime(source.getFirstAlertTime())
+                .setLastAlertTime(source.getLastAlertTime())
+                .setIndexStatus(source.getIndexStatus())
+                .setDocument(source.getDocument())
+                .setEmbeddingKey(source.getEmbeddingKey())
+                .setEmbeddingModel(source.getEmbeddingModel())
+                .setEmbeddingVectorHash(source.getEmbeddingVectorHash())
+                .setRetryCount(source.getRetryCount())
+                .setLastError(source.getLastError())
+                .setIndexedAt(source.getIndexedAt())
+                .setIndexGenerationId(source.getIndexGenerationId())
+                .setClaimToken(source.getClaimToken())
+                .setClaimedAt(source.getClaimedAt())
+                .setClaimExpiresAt(source.getClaimExpiresAt())
+                .setNextRetryAt(source.getNextRetryAt())
+                .setVersion(source.getVersion());
     }
 
     private static SupervisionAlertReviewMapperStore newStore(SupervisionAlertReviewItemMapper reviewItemMapper,
@@ -816,6 +997,28 @@ class SupervisionAlertReviewMapperStoreTest {
                 auditMapper,
                 exportMapper,
                 noopMapper(SupervisionAlertReviewSemanticIndexMapper.class),
+                noopMapper(SupervisionAlertReviewUserStatusMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
+                noopMapper(SupervisionAlertReviewReportAckMapper.class),
+                noopMapper(SupervisionEventMapper.class)
+        );
+    }
+
+    private static SupervisionAlertReviewMapperStore newStore(
+            SupervisionAlertReviewSemanticIndexMapper semanticIndexMapper) {
+        return new SupervisionAlertReviewMapperStore(
+                noopMapper(SupervisionAlertReviewItemMapper.class),
+                noopMapper(SupervisionAlertReviewEvidenceMapper.class),
+                noopMapper(SupervisionAlertReviewIngestIdentityMapper.class),
+                noopMapper(SupervisionAlertReviewRuleMapper.class),
+                noopMapper(SupervisionAlertReviewCaseMapper.class),
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class),
+                noopMapper(SupervisionAlertReviewCaseAuditMapper.class),
+                noopMapper(SupervisionAlertReviewExportJobMapper.class),
+                semanticIndexMapper,
                 noopMapper(SupervisionAlertReviewUserStatusMapper.class),
                 noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),
                 noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),

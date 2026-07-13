@@ -675,7 +675,56 @@ def find_record_file_for_alert(device_id: str, alert_time, time_range: int = 300
     return best
 
 
-def _record_path_playback_payload(record_path: str, device_id: str) -> dict:
+def _record_start_time_for_path(
+    record_path: str,
+    device_id: str,
+    alert_time,
+    time_range: int = 300,
+    tenant_id=None,
+):
+    """从与 record_path 对应的录像元数据或文件名解析真实片段起点。"""
+    from app.services.media_dvr_utils import (
+        parse_srs_dvr_segment_start_from_filename,
+    )
+    from app.services.space_file_metadata_service import extract_prefix_from_url
+
+    record_path = (record_path or '').strip()
+    if not record_path or not device_id or alert_time is None:
+        return None
+
+    path_or_object = extract_prefix_from_url(record_path) or record_path
+    filename_start = parse_srs_dvr_segment_start_from_filename(path_or_object)
+    if filename_start is not None:
+        return filename_start
+
+    try:
+        playback = find_playback_for_alert(
+            device_id, alert_time, time_range, tenant_id=tenant_id)
+        if playback and (getattr(playback, 'file_path', '') or '').strip() == record_path:
+            return getattr(playback, 'event_time', None)
+    except Exception as exc:
+        logger.debug('record_path Playback 起点解析跳过 path=%s: %s', record_path, exc)
+
+    try:
+        record_file = find_record_file_for_alert(
+            device_id, alert_time, time_range, tenant_id=tenant_id)
+        if record_file:
+            stored_url = (getattr(record_file, 'url', '') or '').strip()
+            object_name = (getattr(record_file, 'object_name', '') or '').strip()
+            path_prefix = extract_prefix_from_url(record_path)
+            if record_path == stored_url or (object_name and path_prefix == object_name):
+                return getattr(record_file, 'event_time', None)
+    except Exception as exc:
+        logger.debug('record_path RecordFile 起点解析跳过 path=%s: %s', record_path, exc)
+
+    return None
+
+
+def _record_path_playback_payload(
+    record_path: str,
+    device_id: str,
+    record_start_time=None,
+) -> dict:
     """将 alert.record_path 转为可播放响应。"""
     from urllib.parse import quote
 
@@ -690,6 +739,8 @@ def _record_path_playback_payload(record_path: str, device_id: str) -> dict:
             'video_url': api_path,
             'device_id': device_id,
             'source': 'alert_record_path',
+            'record_start_time': (
+                record_start_time.isoformat() if record_start_time else None),
         }
     if not minio_storage_enabled() and is_local_filesystem_path(record_path):
         api_path = f'/video/alert/record?path={quote(record_path, safe="")}'
@@ -697,6 +748,8 @@ def _record_path_playback_payload(record_path: str, device_id: str) -> dict:
             'video_url': api_path,
             'device_id': device_id,
             'source': 'alert_record_path',
+            'record_start_time': (
+                record_start_time.isoformat() if record_start_time else None),
         }
     return {}
 
@@ -729,7 +782,18 @@ def resolve_alert_record_video(
                 try_backfill_alert_record_from_playback(alert_row)
             except Exception as exc:
                 logger.debug('查询前回填 record_path 跳过 alert_id=%s: %s', alert_row.id, exc)
-        payload = _record_path_playback_payload(alert_row.record_path, alert_row.device_id)
+        record_start_time = _record_start_time_for_path(
+            alert_row.record_path,
+            alert_row.device_id,
+            alert_time,
+            time_range,
+            tenant_id=tenant_id,
+        )
+        payload = _record_path_playback_payload(
+            alert_row.record_path,
+            alert_row.device_id,
+            record_start_time,
+        )
         if payload:
             return payload
 
@@ -744,6 +808,7 @@ def resolve_alert_record_video(
             'playback_id': playback.id,
             'video_url': file_path,
             'event_time': playback.event_time.isoformat() if playback.event_time else None,
+            'record_start_time': playback.event_time.isoformat() if playback.event_time else None,
             'duration': playback.duration,
             'device_id': playback.device_id,
             'device_name': playback.device_name,
@@ -760,6 +825,7 @@ def resolve_alert_record_video(
                 'record_file_id': record_file.id,
                 'video_url': file_path,
                 'event_time': record_file.event_time.isoformat() if record_file.event_time else None,
+                'record_start_time': record_file.event_time.isoformat() if record_file.event_time else None,
                 'duration': record_file.duration,
                 'device_id': record_file.device_id,
                 'source': 'record_file_match',

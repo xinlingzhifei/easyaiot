@@ -65,9 +65,9 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       # Flask配置
       - FLASK_RUN_PORT=${FLASK_RUN_PORT:-6000}
-      - FLASK_RUN_HOST=${FLASK_RUN_HOST:-127.0.0.1}
+      - FLASK_RUN_HOST=${FLASK_RUN_HOST:?FLASK_RUN_HOST must be set to the Docker bridge gateway}
       - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:?ALLOWED_HOSTS must be set}
       # 数据库配置（使用localhost，因为使用host网络模式，中间件端口已映射到宿主机）
       # DATABASE_URL and SECRET_KEY are required in .env.docker.
       - YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}
@@ -143,7 +143,7 @@ services:
       # TDengine配置（使用localhost，因为使用host网络模式）
       - TDENGINE_HOST=${TDENGINE_HOST:-localhost}
       - TDENGINE_PORT=${TDENGINE_PORT:-6030}
-      # 告警图片落盘根目录（与卷 ./alert_images:/app/alert_images 一致，供 iot-sink 读取并上传 MinIO）
+      # 告警图片落盘根目录（与外置 alert_images 卷一致，供 iot-sink 读取并上传 MinIO）
       - ALERT_IMAGES_DIR=/app/alert_images
       # 视频服务特有配置
       - MODEL_AI_PUSH_URL=${MODEL_AI_PUSH_URL:-pro.basiclab.top:1935}
@@ -198,7 +198,7 @@ services:
     healthcheck:
       # Resolve inside the container so a production host-network deployment can
       # bind only the Docker bridge gateway instead of exposing port 6000 publicly.
-      test: ["CMD-SHELL", "curl -f http://$${FLASK_RUN_HOST:-127.0.0.1}:$${FLASK_RUN_PORT:-6000}/actuator/health"]
+      test: ["CMD-SHELL", "curl -f http://$${FLASK_RUN_HOST}:$${FLASK_RUN_PORT:-6000}/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3

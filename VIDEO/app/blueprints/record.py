@@ -3,11 +3,14 @@
 @author reese
 @email reese
 """
+import hashlib
+import json
 import logging
 import os
 import re
+import uuid
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify, send_file, Response, stream_with_context
+from flask import Blueprint, g, request, jsonify, send_file, Response, stream_with_context
 from io import BytesIO
 from urllib.parse import unquote, urlparse
 
@@ -24,7 +27,9 @@ from app.services.record_video_service import (
     materialize_record_video,
 )
 from app.services.record_export_service import (
+    RecordExportAccessDecisionConflictError,
     RecordExportExpiredError,
+    RecordExportIntegrityError,
     append_record_export_access_audit,
     create_record_export,
     get_record_export_status,
@@ -36,6 +41,7 @@ from app.services.record_export_service import (
     validate_record_export_request,
 )
 from app.services.media_authorization_service import (
+    MediaAccessAuditConflictError,
     MediaAuthorizationDecision,
     append_media_access_audit,
     audit_media_response,
@@ -52,6 +58,14 @@ from app.services.record_cache_flush_event_service import (
 
 record_bp = Blueprint('record', __name__)
 logger = logging.getLogger(__name__)
+
+
+class _ExportAccessAuditUnavailable(RuntimeError):
+    pass
+
+
+class _ExportAccessDecisionConflict(RuntimeError):
+    pass
 
 _MEDIA_AUTHORIZED_ENDPOINTS = {
     'record.list_spaces',
@@ -204,7 +218,8 @@ def _authorization_denied_response(decision):
     return jsonify(payload), status
 
 
-def _scope_mismatch_decision(decision, reason='camera_device_scope_mismatch', export_id=None):
+def _scope_mismatch_decision(decision, reason='camera_device_scope_mismatch', export_id=None,
+                             defer_audit=False):
     denied = MediaAuthorizationDecision(
         False,
         decision.user_id,
@@ -216,7 +231,8 @@ def _scope_mismatch_decision(decision, reason='camera_device_scope_mismatch', ex
         decision.auth_type,
         decision.service_id,
     )
-    append_media_access_audit(denied, resource=request.path, export_id=export_id)
+    if not defer_audit:
+        append_media_access_audit(denied, resource=request.path, export_id=export_id)
     return denied
 
 
@@ -352,7 +368,206 @@ def _authorize_record_group_policy(group_type, group_key):
     return None, trusted_tenant_id, list(dict.fromkeys(allowed_camera_ids))
 
 
-def _authorize_export_access(export_id, action):
+def _append_export_access_decision(export_id, decision, action, camera_id=None,
+                                   reason=None, decision_override=None):
+    final_decision = decision_override or ('allowed' if decision.allowed else 'denied')
+    final_reason = reason or decision.reason
+    decision_id = _export_access_decision_id(export_id, decision, action)
+    try:
+        stored = append_record_export_access_audit(
+            export_id,
+            decision=final_decision,
+            user_id=decision.user_id,
+            tenant_id=decision.tenant_id,
+            camera_id=camera_id or decision.camera_id,
+            action=action,
+            reason=final_reason,
+            decision_id=decision_id,
+            auth_type=decision.auth_type,
+            service_id=decision.service_id,
+        )
+    except RecordExportAccessDecisionConflictError as exc:
+        raise _ExportAccessDecisionConflict(str(exc)) from exc
+    except ValueError:
+        logger.warning('export access audit could not resolve job %s', export_id)
+        try:
+            append_media_access_audit(
+                decision,
+                resource=request.path,
+                export_id=export_id,
+                reason=final_reason,
+                decision_override=final_decision,
+                decision_id=decision_id,
+            )
+        except MediaAccessAuditConflictError as exc:
+            raise _ExportAccessDecisionConflict(str(exc)) from exc
+        except Exception as exc:
+            raise _ExportAccessAuditUnavailable(
+                f'export access audit unavailable: {decision_id}') from exc
+        return None
+    except Exception as exc:
+        raise _ExportAccessAuditUnavailable(
+            f'export access audit unavailable: {decision_id}') from exc
+
+    stored_decision = stored.get('decision') or final_decision
+    stored_reason = stored.get('reason') or final_reason
+    stored_authorization = MediaAuthorizationDecision(
+        stored_decision == 'allowed',
+        stored.get('operator_user_id'),
+        stored.get('tenant_id'),
+        stored.get('camera_id'),
+        stored.get('media_action') or action,
+        stored_reason,
+        200 if stored_decision == 'allowed' else 403,
+        stored.get('auth_type') or decision.auth_type,
+        stored.get('service_id') or decision.service_id,
+    )
+    try:
+        append_media_access_audit(
+            stored_authorization,
+            resource=request.path,
+            export_id=export_id,
+            reason=stored_reason,
+            decision_override=stored_decision,
+            decision_id=decision_id,
+        )
+    except MediaAccessAuditConflictError as exc:
+        raise _ExportAccessDecisionConflict(str(exc)) from exc
+    except Exception as exc:
+        raise _ExportAccessAuditUnavailable(
+            f'export access audit unavailable: {decision_id}') from exc
+    return stored
+
+
+def _append_global_export_access_decision(decision, reason=None,
+                                          decision_override=None,
+                                          export_id=None,
+                                          decision_id=None):
+    final_decision = decision_override or ('allowed' if decision.allowed else 'denied')
+    final_reason = reason or decision.reason
+    decision_id = decision_id or _export_access_decision_id(
+        'create', decision, 'export')
+    try:
+        append_media_access_audit(
+            decision,
+            resource=request.path,
+            export_id=export_id,
+            reason=final_reason,
+            decision_override=final_decision,
+            decision_id=decision_id,
+        )
+    except MediaAccessAuditConflictError as exc:
+        raise _ExportAccessDecisionConflict(str(exc)) from exc
+    except Exception as exc:
+        raise _ExportAccessAuditUnavailable(
+            f'export access audit unavailable: {decision_id}') from exc
+    return decision_id
+
+
+def _append_created_export_access_decision(export_id, decision, camera_id=None):
+    decision_id = _export_access_decision_id('create', decision, 'export')
+    try:
+        stored = append_record_export_access_audit(
+            export_id,
+            decision='allowed',
+            user_id=decision.user_id,
+            tenant_id=decision.tenant_id,
+            camera_id=camera_id or decision.camera_id,
+            action='export',
+            reason=decision.reason,
+            decision_id=decision_id,
+            auth_type=decision.auth_type,
+            service_id=decision.service_id,
+        )
+    except RecordExportAccessDecisionConflictError as exc:
+        raise _ExportAccessDecisionConflict(str(exc)) from exc
+    except Exception as exc:
+        raise _ExportAccessAuditUnavailable(
+            f'export access audit unavailable: {decision_id}') from exc
+    _append_global_export_access_decision(
+        decision, export_id=export_id, decision_id=decision_id)
+    return stored
+
+
+def _export_access_audit_error_response(error):
+    if isinstance(error, _ExportAccessDecisionConflict):
+        return jsonify({
+            'code': 409,
+            'msg': 'export access decision conflicts with idempotency key',
+            'reason': 'export_access_decision_conflict',
+        }), 409
+    return jsonify({
+        'code': 503,
+        'msg': 'export access audit unavailable',
+        'reason': 'export_audit_unavailable',
+    }), 503
+
+
+def _append_export_access_failure_response(export_id, decision, action, reason):
+    try:
+        _append_export_access_failure(export_id, decision, action, reason)
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
+    return None
+
+
+def _append_global_export_access_failure_response(decision, reason):
+    if decision is None:
+        return None
+    try:
+        _append_global_export_access_decision(
+            decision,
+            reason=reason,
+            decision_override='denied',
+        )
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
+    return None
+
+
+def _export_access_decision_id(export_id, decision, action):
+    operation_ids = getattr(g, '_export_access_operation_ids', None)
+    if operation_ids is None:
+        operation_ids = {}
+        g._export_access_operation_ids = operation_ids
+    operation_key = f'{export_id}:{action}'
+    if operation_key not in operation_ids:
+        supplied = (
+            request.headers.get('Idempotency-Key')
+            or request.headers.get('X-Request-Id')
+        )
+        operation_ids[operation_key] = str(supplied).strip() if supplied else uuid.uuid4().hex
+    identity = {
+        'operationId': operation_ids[operation_key],
+        'method': request.method,
+        'resource': request.path,
+        'exportId': str(export_id),
+        'action': str(action),
+        'userId': str(decision.user_id or ''),
+        'tenantId': str(decision.tenant_id or ''),
+        'cameraId': str(decision.camera_id or ''),
+        'authType': str(decision.auth_type or ''),
+        'serviceId': str(decision.service_id or ''),
+    }
+    digest = hashlib.sha256(json.dumps(
+        identity, ensure_ascii=True, separators=(',', ':'), sort_keys=True,
+    ).encode('utf-8')).hexdigest()
+    return f'export-access-{digest}'
+
+
+def _append_export_access_failure(export_id, decision, action, reason):
+    if decision is None:
+        return
+    _append_export_access_decision(
+        export_id,
+        decision,
+        action,
+        reason=reason,
+        decision_override='denied',
+    )
+
+
+def _authorize_export_access(export_id, action, defer_allowed_audit=False):
     camera_hint = (
         request.args.get('camera_id')
         or request.args.get('cameraId')
@@ -364,28 +579,42 @@ def _authorize_export_access(export_id, action):
         camera_id=camera_hint,
         resource=request.path,
         export_id=export_id,
+        defer_audit=True,
     )
     if not decision.allowed:
+        _append_export_access_decision(export_id, decision, action)
         return decision
-    manifest = get_record_export_manifest(export_id)
+    try:
+        manifest = get_record_export_manifest(export_id)
+    except ValueError:
+        _append_export_access_decision(
+            export_id,
+            decision,
+            action,
+            reason='export_not_found',
+            decision_override='denied',
+        )
+        raise
+    except Exception:
+        _append_export_access_decision(
+            export_id,
+            decision,
+            action,
+            reason='export_integrity_error',
+            decision_override='denied',
+        )
+        raise
     camera_id = str(manifest.get('cameraId') or '').strip() or None
     tenant_id = str(manifest.get('tenantId') or '').strip() or None
     if not camera_id or camera_id != decision.camera_id:
-        decision = _scope_mismatch_decision(decision, 'camera_scope_denied', export_id)
+        decision = _scope_mismatch_decision(
+            decision, 'camera_scope_denied', export_id, defer_audit=True)
     elif not tenant_id or tenant_id != decision.tenant_id:
-        decision = _scope_mismatch_decision(decision, 'tenant_scope_denied', export_id)
-    try:
-        append_record_export_access_audit(
-            export_id,
-            decision='allowed' if decision.allowed else 'denied',
-            user_id=decision.user_id,
-            tenant_id=decision.tenant_id,
-            camera_id=camera_id,
-            action=action,
-            reason=decision.reason,
-        )
-    except ValueError:
-        logger.warning('export access audit could not resolve job %s', export_id)
+        decision = _scope_mismatch_decision(
+            decision, 'tenant_scope_denied', export_id, defer_audit=True)
+    if not decision.allowed or not defer_allowed_audit:
+        _append_export_access_decision(
+            export_id, decision, action, camera_id=camera_id)
     return decision
 
 
@@ -834,6 +1063,7 @@ def record_availability():
 @record_bp.route('/export', methods=['POST'])
 def export_record():
     """Create a review evidence record export task."""
+    decision = None
     try:
         data = request.get_json() or {}
         camera_id = _derive_export_camera(data)
@@ -842,16 +1072,22 @@ def export_record():
             action='export',
             camera_id=camera_id,
             resource=request.path,
+            defer_audit=True,
         )
         if not decision.allowed:
+            _append_global_export_access_decision(decision)
             return _authorization_denied_response(decision)
         if not camera_id:
-            return _authorization_denied_response(_scope_mismatch_decision(
-                decision, 'record_export_camera_scope_missing'))
+            denied = _scope_mismatch_decision(
+                decision, 'record_export_camera_scope_missing', defer_audit=True)
+            _append_global_export_access_decision(denied)
+            return _authorization_denied_response(denied)
         device_id = data.get('device_id') or data.get('deviceId')
         explicit_camera_id = data.get('camera_id') or data.get('cameraId')
         if explicit_camera_id and device_id and explicit_camera_id != device_id:
-            return _authorization_denied_response(_scope_mismatch_decision(decision))
+            denied = _scope_mismatch_decision(decision, defer_audit=True)
+            _append_global_export_access_decision(denied)
+            return _authorization_denied_response(denied)
         for key in _EXPORT_IDENTITY_KEYS | _EXPORT_POLICY_KEYS:
             data.pop(key, None)
         if decision.auth_type != 'service_hmac':
@@ -867,26 +1103,26 @@ def export_record():
             data['device_id'] = camera_id
         validate_record_export_request(data, camera_id)
         result = create_record_export(data, async_worker=True)
-        try:
-            append_record_export_access_audit(
-                result.get('export_id'),
-                decision='allowed',
-                user_id=decision.user_id,
-                tenant_id=decision.tenant_id,
-                camera_id=camera_id,
-                action='export',
-                reason=decision.reason,
-            )
-        except ValueError:
-            logger.warning('created export %s was not available for access audit', result.get('export_id'))
+        _append_created_export_access_decision(
+            result.get('export_id'), decision, camera_id=camera_id)
         return jsonify({
             'code': 0,
             'msg': 'success',
             'data': result,
         })
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
     except ValueError as e:
+        audit_response = _append_global_export_access_failure_response(
+            decision, 'export_create_failed')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 400, 'msg': str(e)}), 400
     except Exception as e:
+        audit_response = _append_global_export_access_failure_response(
+            decision, 'export_create_failed')
+        if audit_response is not None:
+            return audit_response
         logger.error(f'\u521b\u5efa\u590d\u6838\u8bc1\u636e\u5f55\u50cf\u5bfc\u51fa\u4efb\u52a1\u5931\u8d25: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'\u670d\u52a1\u5668\u5185\u90e8\u9519\u8bef: {str(e)}'}), 500
 
@@ -894,19 +1130,33 @@ def export_record():
 @record_bp.route('/export/<export_id>', methods=['GET'])
 def get_record_export(export_id):
     """Poll a review evidence record export task."""
+    decision = None
     try:
-        decision = _authorize_export_access(export_id, 'export')
+        decision = _authorize_export_access(
+            export_id, 'export', defer_allowed_audit=True)
         if not decision.allowed:
             return _authorization_denied_response(decision)
         result = get_record_export_status(export_id)
-        return jsonify({
+        response = jsonify({
             'code': 0,
             'msg': 'success',
             'data': result,
         })
+        _append_export_access_decision(export_id, decision, 'export')
+        return response
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
     except ValueError as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'export', 'export_status_failed')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 404, 'msg': str(e)}), 404
     except Exception as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'export', 'export_status_failed')
+        if audit_response is not None:
+            return audit_response
         logger.error(f'查询复核证据录像导出任务失败: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 
@@ -914,19 +1164,33 @@ def get_record_export(export_id):
 @record_bp.route('/export/<export_id>/retry', methods=['POST'])
 def retry_record_export_job(export_id):
     """Requeue a failed review evidence record export task."""
+    decision = None
     try:
-        decision = _authorize_export_access(export_id, 'export')
+        decision = _authorize_export_access(
+            export_id, 'export', defer_allowed_audit=True)
         if not decision.allowed:
             return _authorization_denied_response(decision)
         result = retry_record_export(export_id)
-        return jsonify({
+        response = jsonify({
             'code': 0,
             'msg': 'success',
             'data': result,
         })
+        _append_export_access_decision(export_id, decision, 'export')
+        return response
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
     except ValueError as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'export', 'export_retry_failed')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 404, 'msg': str(e)}), 404
     except Exception as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'export', 'export_retry_failed')
+        if audit_response is not None:
+            return audit_response
         logger.error(f'retry review evidence record export failed: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
 
@@ -934,19 +1198,34 @@ def retry_record_export_job(export_id):
 @record_bp.route('/export/<export_id>/audit', methods=['GET'])
 def get_record_export_audit_entries(export_id):
     """List review evidence record export audit entries."""
+    decision = None
     try:
-        decision = _authorize_export_access(export_id, 'manifest_verify')
+        decision = _authorize_export_access(
+            export_id, 'manifest_verify', defer_allowed_audit=True)
         if not decision.allowed:
             return _authorization_denied_response(decision)
         result = get_record_export_audit(export_id)
-        return jsonify({
+        response = jsonify({
             'code': 0,
             'msg': 'success',
             'data': result,
         })
+        _append_export_access_decision(
+            export_id, decision, 'manifest_verify')
+        return response
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
     except ValueError as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'manifest_verify', 'export_audit_read_failed')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 404, 'msg': str(e)}), 404
     except Exception as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'manifest_verify', 'export_audit_read_failed')
+        if audit_response is not None:
+            return audit_response
         logger.error(f'list review evidence record export audit failed: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
 
@@ -954,19 +1233,34 @@ def get_record_export_audit_entries(export_id):
 @record_bp.route('/export/<export_id>/manifest', methods=['GET'])
 def get_record_export_manifest_file(export_id):
     """Return the persistent review evidence record export manifest."""
+    decision = None
     try:
-        decision = _authorize_export_access(export_id, 'manifest_verify')
+        decision = _authorize_export_access(
+            export_id, 'manifest_verify', defer_allowed_audit=True)
         if not decision.allowed:
             return _authorization_denied_response(decision)
         result = get_record_export_manifest(export_id)
-        return jsonify({
+        response = jsonify({
             'code': 0,
             'msg': 'success',
             'data': result,
         })
+        _append_export_access_decision(
+            export_id, decision, 'manifest_verify')
+        return response
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
     except ValueError as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'manifest_verify', 'export_manifest_failed')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 404, 'msg': str(e)}), 404
     except Exception as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'manifest_verify', 'export_manifest_failed')
+        if audit_response is not None:
+            return audit_response
         logger.error(f'get review evidence record export manifest failed: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'server error: {str(e)}'}), 500
 
@@ -974,8 +1268,10 @@ def get_record_export_manifest_file(export_id):
 @record_bp.route('/export/<export_id>/download', methods=['GET'])
 def download_record_export_file(export_id):
     """Download a generated review evidence record export."""
+    decision = None
     try:
-        decision = _authorize_export_access(export_id, 'download')
+        decision = _authorize_export_access(
+            export_id, 'download', defer_allowed_audit=True)
         if not decision.allowed:
             return _authorization_denied_response(decision)
         result = download_record_export(
@@ -995,6 +1291,7 @@ def download_record_export_file(export_id):
                 temporary_path = result['path']
                 response.call_on_close(
                     lambda: _remove_temporary_download(temporary_path))
+            _append_export_access_decision(export_id, decision, 'download')
             return response
         stream = result.get('stream')
         if stream is None:
@@ -1008,28 +1305,37 @@ def download_record_export_file(export_id):
         response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         if result.get('content_length') is not None:
             response.content_length = int(result['content_length'])
+        _append_export_access_decision(export_id, decision, 'download')
         return response
+    except (_ExportAccessAuditUnavailable, _ExportAccessDecisionConflict) as error:
+        return _export_access_audit_error_response(error)
     except RecordExportExpiredError:
-        append_media_access_audit(
-            decision,
-            resource=request.path,
-            export_id=export_id,
-            reason='export_expired',
-            decision_override='denied',
-        )
-        append_record_export_access_audit(
-            export_id,
-            decision='denied',
-            user_id=decision.user_id,
-            tenant_id=decision.tenant_id,
-            camera_id=decision.camera_id,
-            action='download',
-            reason='export_expired',
-        )
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'download', 'export_expired')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 410, 'msg': 'export expired', 'reason': 'export_expired'}), 410
+    except RecordExportIntegrityError:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'download', 'export_integrity_error')
+        if audit_response is not None:
+            return audit_response
+        return jsonify({
+            'code': 500,
+            'msg': 'export integrity verification failed',
+            'reason': 'export_integrity_error',
+        }), 500
     except ValueError as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'download', 'export_download_failed')
+        if audit_response is not None:
+            return audit_response
         return jsonify({'code': 404, 'msg': str(e)}), 404
     except Exception as e:
+        audit_response = _append_export_access_failure_response(
+            export_id, decision, 'download', 'export_download_failed')
+        if audit_response is not None:
+            return audit_response
         logger.error(f'下载复核证据录像导出任务失败: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 

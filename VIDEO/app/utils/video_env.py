@@ -1,7 +1,9 @@
 """VIDEO 根目录环境变量加载：优先 .env.{VIDEO_ENV}，供 run.py 与各 algorithm 子进程共用。"""
 from __future__ import annotations
 
+import hmac
 import os
+import re
 from typing import Mapping, Optional
 
 from dotenv import load_dotenv
@@ -21,6 +23,7 @@ _PRODUCTION_ENV_NAMES = {'production', 'prod', 'release'}
 _KNOWN_WEAK_APPLICATION_SECRETS = {
     'your-secret-key-please-change-this-to-a-random-string',
 }
+_SRS_HOOK_TOKEN_RE = re.compile(r'^[A-Za-z0-9._~-]+$')
 
 
 def _remove_media_service_authority(env) -> None:
@@ -56,6 +59,24 @@ def validate_production_runtime_secrets() -> None:
         raise RuntimeError('MINIO_ACCESS_KEY must be configured in production')
     if len(minio_secret_key.encode('utf-8')) < 16 or minio_secret_key.lower() == 'minioadmin':
         raise RuntimeError('MINIO_SECRET_KEY must contain at least 16 bytes in production')
+    srs_hook_token = str(os.getenv('YFEIEYE_SRS_HOOK_TOKEN') or '')
+    if (len(srs_hook_token.encode('utf-8')) < 32
+            or _SRS_HOOK_TOKEN_RE.fullmatch(srs_hook_token) is None):
+        raise RuntimeError(
+            'YFEIEYE_SRS_HOOK_TOKEN must contain at least 32 bytes in production')
+
+
+def authorize_srs_hook_token(provided_token: Optional[str]) -> bool:
+    """Validate the private SRS callback bearer token without timing leaks."""
+    configured_token = str(os.getenv('YFEIEYE_SRS_HOOK_TOKEN') or '')
+    if (len(configured_token.encode('utf-8')) < 32
+            or _SRS_HOOK_TOKEN_RE.fullmatch(configured_token) is None
+            or not provided_token):
+        return False
+    return hmac.compare_digest(
+        configured_token.encode('utf-8'),
+        str(provided_token).encode('utf-8'),
+    )
 
 
 def video_root_dir() -> str:

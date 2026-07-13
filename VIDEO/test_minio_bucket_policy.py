@@ -114,7 +114,10 @@ class TestPrivateBucketPolicy(unittest.TestCase):
         self.assertIn('resolve_video_callback_host', installer)
         self.assertGreaterEqual(installer.count('video_callback_host=$(resolve_video_callback_host)'), 2)
         self.assertNotIn('http://localhost:${video_port}/video/camera/callback', installer)
-        self.assertIn('VIDEO_CALLBACK_HOST=localhost', middleware_env)
+        self.assertIn('VIDEO_CALLBACK_HOST=172.17.0.1', middleware_env)
+        self.assertRegex(middleware_env, r'(?m)^YFEIEYE_SRS_HOOK_TOKEN=\s*$')
+        self.assertIn('?hook_token=${srs_hook_token}', installer)
+        self.assertIn('chmod 600 "$srs_config_file"', installer)
         self.assertIn('resolve_middleware_data_root', installer)
         self.assertIn('local srs_config_target="${middleware_data_root}/srs_data/conf"', installer)
         self.assertIn(

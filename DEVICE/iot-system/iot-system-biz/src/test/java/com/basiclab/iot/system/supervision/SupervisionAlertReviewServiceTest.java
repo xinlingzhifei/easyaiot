@@ -688,8 +688,14 @@ class SupervisionAlertReviewServiceTest {
     @Test
     void ingestWithoutRecordUriBackfillsRecordEvidenceWhenResolverFindsRecord() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 11, 0);
+        LocalDateTime recordStartTime = alertTime.minusSeconds(15);
         CapturingRecordEvidenceResolver resolver = new CapturingRecordEvidenceResolver(
-                Optional.of(new RecordEvidenceResult("record-from-video.mp4", "playback_match"))
+                Optional.of(new RecordEvidenceResult(
+                        "record-from-video.mp4",
+                        "playback_match",
+                        recordStartTime
+                ))
         );
         SupervisionAlertReviewService service = newService(
                 itemStore,
@@ -698,8 +704,6 @@ class SupervisionAlertReviewServiceTest {
                 resolver,
                 noEventProjectionStore()
         );
-        LocalDateTime alertTime = LocalDateTime.of(2026, 6, 30, 11, 0);
-
         ReviewItemAggregate item = service.ingestClue(newClue("alert-003", alertTime, "snap-003.jpg", null));
 
         assertEquals("found", item.recordEvidenceStatus());
@@ -711,6 +715,23 @@ class SupervisionAlertReviewServiceTest {
                 service.getTimeline(item.id()).stream().map(ReviewEvidenceItem::materialType).toList());
         assertEquals(List.of("snap-003.jpg", "record-from-video.mp4"),
                 service.getTimeline(item.id()).stream().map(ReviewEvidenceItem::materialUri).toList());
+        ReviewEvidenceItem recordEvidence = service.getTimeline(item.id()).stream()
+                .filter(evidence -> "record".equals(evidence.materialType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(recordStartTime, recordEvidence.recordStartTime());
+
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "resolver record playback",
+                item.id(),
+                List.of(item.id())
+        ));
+        ReviewCaseTimelineItem caseRecord = service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .filter(evidence -> "record".equals(evidence.materialType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(recordStartTime, caseRecord.recordStartTime());
+        assertEquals(15, caseRecord.playbackOffsetSeconds());
     }
 
     @Test
@@ -1392,6 +1413,65 @@ class SupervisionAlertReviewServiceTest {
         assertTrue(stream.stream().anyMatch(row -> "record".equals(row.lifecycleEvent())
                 && "detail-record.mp4".equals(row.materialUri())
                 && alertTime.equals(row.seekTime())));
+    }
+
+    @Test
+    void reviewDetailRecordUsesItsPersistedEvidenceStartAndOffset() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 10, 0, 20);
+        LocalDateTime recordStartTime = alertTime.minusSeconds(20);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-detail-record-start", alertTime, "detail-start.jpg", null));
+        itemStore.appendEvidence(item.id(), List.of(new ReviewEvidenceItem(
+                item.id(),
+                "alert-detail-record-start",
+                "record",
+                "detail-prerecord.mp4",
+                alertTime,
+                recordStartTime
+        )));
+
+        ReviewDetailStreamItem record = service.getReviewDetailStream(item.id()).stream()
+                .filter(row -> "detail-prerecord.mp4".equals(row.materialUri()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(recordStartTime, record.recordStartTime());
+        assertEquals(20, record.playbackOffsetSeconds());
+    }
+
+    @Test
+    void reviewDetailRecordKeepsPlaybackContextNullWhenEvidenceStartIsMissing() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 10, 0, 20);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-detail-record-unknown", alertTime, "detail-unknown.jpg", null));
+        itemStore.appendEvidence(item.id(), List.of(new ReviewEvidenceItem(
+                item.id(),
+                "alert-detail-record-unknown",
+                "record",
+                "detail-unknown-start.mp4",
+                alertTime
+        )));
+
+        assertNotNull(service.getReviewSegment(item.id()).startTime());
+        ReviewDetailStreamItem record = service.getReviewDetailStream(item.id()).stream()
+                .filter(row -> "detail-unknown-start.mp4".equals(row.materialUri()))
+                .findFirst()
+                .orElseThrow();
+
+        assertNull(record.recordStartTime());
+        assertNull(record.playbackOffsetSeconds());
     }
 
     @Test
@@ -2817,6 +2897,153 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void semanticReindexDoesNotOverwriteAnActiveProcessingClaim() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-semantic-reindex-active-claim",
+                LocalDateTime.of(2026, 7, 13, 9, 30),
+                "semantic-reindex-active-claim.jpg",
+                "semantic-reindex-active-claim.mp4"
+        ));
+        ReviewQuery query = new ReviewQuery(null, "camera-01", null, null);
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(query, 9203L));
+        LocalDateTime claimedAt = LocalDateTime.now();
+        ReviewSemanticIndexEntry activeClaim = itemStore.claimSemanticIndex(
+                List.of(item.id()),
+                1,
+                "active-semantic-claim",
+                claimedAt,
+                claimedAt.plusMinutes(5)
+        ).get(0);
+
+        ReviewSemanticReindexJob queued = service.queueSemanticReindex(
+                new ReviewSemanticReindexCommand(query, 9204L));
+        ReviewSemanticIndexEntry legacyReindex = service.reindexSemanticIndex(query).get(0);
+        ReviewSemanticIndexEntry afterQueue = itemStore.listSemanticIndex(query).get(0);
+
+        assertEquals("processing", afterQueue.indexStatus());
+        assertEquals(activeClaim.claimToken(), afterQueue.claimToken());
+        assertEquals(activeClaim.indexGenerationId(), afterQueue.indexGenerationId());
+        assertEquals("processing", legacyReindex.indexStatus());
+        assertEquals(activeClaim.claimToken(), legacyReindex.claimToken());
+        assertEquals("deferred", queued.status());
+        assertEquals(List.of(), queued.queuedReviewItemIds());
+    }
+
+    @Test
+    void reviewReconciliationDoesNotClearAnActiveSemanticProcessingClaim() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-reconcile-active-semantic-claim",
+                LocalDateTime.of(2026, 7, 13, 9, 45),
+                "reconcile-active-semantic-claim.jpg",
+                "reconcile-active-semantic-claim.mp4"
+        ));
+        ReviewQuery query = new ReviewQuery(null, "camera-01", null, null);
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(query, 9205L));
+        LocalDateTime claimedAt = LocalDateTime.now();
+        ReviewSemanticIndexEntry activeClaim = itemStore.claimSemanticIndex(
+                List.of(item.id()),
+                1,
+                "reconcile-active-claim",
+                claimedAt,
+                claimedAt.plusMinutes(5)
+        ).get(0);
+
+        ReviewReconciliationResult reconciliation = service.reconcileReviewRuntime(
+                new ReviewReconciliationCommand(query, 9206L, true));
+        ReviewSemanticIndexEntry persisted = itemStore.listSemanticIndex(query).get(0);
+
+        assertEquals("processing", persisted.indexStatus());
+        assertEquals(activeClaim.claimToken(), persisted.claimToken());
+        assertEquals(activeClaim.indexGenerationId(), persisted.indexGenerationId());
+        assertEquals(0, reconciliation.repairedSemanticIndexCount());
+        assertFalse(reconciliation.findings().contains("semantic_reindexed:" + item.id()));
+    }
+
+    @Test
+    void semanticIndexWorkerDefersCompletionClaimConflictAndProcessesLaterClaim() {
+        ClaimConflictSemanticIndexStore itemStore = new ClaimConflictSemanticIndexStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 13, 9, 40);
+        ReviewItemAggregate conflicted = service.ingestClue(newClue(
+                "alert-semantic-worker-completion-conflict",
+                baseTime,
+                "semantic-worker-completion-conflict.jpg",
+                "semantic-worker-completion-conflict.mp4"
+        ));
+        ReviewItemAggregate later = service.ingestClue(newClue(
+                "alert-semantic-worker-after-completion-conflict",
+                baseTime.plusMinutes(10),
+                "semantic-worker-after-completion-conflict.jpg",
+                "semantic-worker-after-completion-conflict.mp4"
+        ));
+        ReviewQuery query = new ReviewQuery(null, "camera-01", null, null);
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(query, 9205L));
+        itemStore.conflictOnCompletion(conflicted.id());
+
+        ReviewSemanticWorkerRun run = service.processSemanticIndexQueue(
+                new ReviewSemanticWorkerCommand(query, 10, 9205L));
+
+        assertEquals("partial_deferred", run.status());
+        assertEquals(2, run.scannedCount());
+        assertEquals(1, run.processedCount());
+        assertEquals(0, run.failedCount());
+        assertEquals(List.of(later.id()), run.processedReviewItemIds());
+        assertEquals(List.of(), run.failedReviewItemIds());
+    }
+
+    @Test
+    void semanticIndexWorkerDefersFailureCompletionClaimConflictAndProcessesLaterClaim() {
+        ClaimConflictSemanticIndexStore itemStore = new ClaimConflictSemanticIndexStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 13, 9, 50);
+        ReviewItemAggregate conflicted = service.ingestClue(newClue(
+                "alert-semantic-worker-failure-conflict",
+                baseTime,
+                "semantic-worker-failure-conflict.jpg",
+                "semantic-worker-failure-conflict.mp4"
+        ));
+        ReviewItemAggregate later = service.ingestClue(newClue(
+                "alert-semantic-worker-after-failure-conflict",
+                baseTime.plusMinutes(10),
+                "semantic-worker-after-failure-conflict.jpg",
+                "semantic-worker-after-failure-conflict.mp4"
+        ));
+        ReviewQuery query = new ReviewQuery(null, "camera-01", null, null);
+        service.queueSemanticReindex(new ReviewSemanticReindexCommand(query, 9206L));
+        itemStore.failThenConflictOnCompletion(conflicted.id());
+
+        ReviewSemanticWorkerRun run = service.processSemanticIndexQueue(
+                new ReviewSemanticWorkerCommand(query, 10, 9206L));
+
+        assertEquals("partial_deferred", run.status());
+        assertEquals(2, run.scannedCount());
+        assertEquals(1, run.processedCount());
+        assertEquals(0, run.failedCount());
+        assertEquals(List.of(later.id()), run.processedReviewItemIds());
+        assertEquals(List.of(), run.failedReviewItemIds());
+    }
+
+    @Test
     void semanticIndexFailureSchedulesRetryAndSkipsWorkerBeforeNextRetryAt() {
         FailingSemanticIndexStore itemStore = new FailingSemanticIndexStore();
         SupervisionAlertReviewService service = newService(
@@ -3382,7 +3609,16 @@ class SupervisionAlertReviewServiceTest {
                         false
                 ),
                 new CapturingRecordEvidenceResolver(Optional.empty()),
-                noEventProjectionStore()
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "available",
+                        request.beginTime(),
+                        request.endTime(),
+                        0,
+                        "timeline-segment.mp4",
+                        0,
+                        Map.of()
+                ))
         );
         ReviewItemAggregate falsePositive = service.ingestClue(newClue("alert-timeline-fp", baseTime, "fp.jpg", null));
         ReviewItemAggregate converted = service.ingestClue(newClue("alert-timeline-event", baseTime.plusMinutes(8), "event.jpg", "event.mp4"));
@@ -3396,12 +3632,99 @@ class SupervisionAlertReviewServiceTest {
 
         List<ReviewCaseTimelineItem> timeline = service.getReviewCaseTimeline(reviewCase.id());
 
-        assertTrue(timeline.stream().anyMatch(item -> "record_coverage".equals(item.materialType())
-                && "missing".equals(item.materialUri())));
+        ReviewCaseTimelineItem coverageItem = timeline.stream()
+                .filter(item -> falsePositive.id().equals(item.reviewItemId()))
+                .filter(item -> "record_coverage".equals(item.materialType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("timeline-segment.mp4", coverageItem.materialUri());
+        assertEquals(baseTime.minusMinutes(5), coverageItem.happenedAt());
+        assertEquals("available", coverageItem.actionNote());
         assertTrue(timeline.stream().anyMatch(item -> "review_action".equals(item.materialType())
                 && "false_positive".equals(item.materialUri())));
         assertTrue(timeline.stream().anyMatch(item -> "review_action".equals(item.materialType())
                 && "converted_to_event:7200".equals(item.materialUri())));
+    }
+
+    @Test
+    void reviewCaseRecordTimelineUsesEachRecordFileStartForPrerollOffsets() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime firstRecordStart = LocalDateTime.of(2026, 7, 2, 8, 0);
+        LocalDateTime secondRecordStart = LocalDateTime.of(2026, 7, 2, 8, 1);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-case-record-playback",
+                firstRecordStart.plusSeconds(10),
+                "case-record-playback.jpg",
+                "case-record-playback.mp4"
+        ));
+        itemStore.evidenceByItemId.put(item.id(), List.of(
+                new ReviewEvidenceItem(
+                        item.id(),
+                        "alert-case-record-playback",
+                        "record",
+                        "case-record-playback.mp4",
+                        firstRecordStart.plusSeconds(10),
+                        firstRecordStart
+                ),
+                new ReviewEvidenceItem(
+                        item.id(),
+                        "alert-case-record-playback-2",
+                        "record",
+                        "case-record-playback-2.mp4",
+                        secondRecordStart.plusSeconds(5),
+                        secondRecordStart
+                )
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "case record playback",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        List<ReviewCaseTimelineItem> records = service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .filter(entry -> "record".equals(entry.materialType()))
+                .toList();
+
+        assertEquals(2, records.size());
+        assertEquals(firstRecordStart, records.get(0).recordStartTime());
+        assertEquals(10, records.get(0).playbackOffsetSeconds());
+        assertEquals(secondRecordStart, records.get(1).recordStartTime());
+        assertEquals(5, records.get(1).playbackOffsetSeconds());
+    }
+
+    @Test
+    void reviewCaseRecordTimelineKeepsPlaybackContextEmptyWhenRecordStartIsUnknown() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 2, 8, 30, 10);
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-case-record-no-start",
+                alertTime,
+                "case-record-no-start.jpg",
+                "case-record-no-start.mp4"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "case record without start",
+                item.id(),
+                List.of(item.id())
+        ));
+
+        ReviewCaseTimelineItem record = service.getReviewCaseTimeline(reviewCase.id()).stream()
+                .filter(entry -> "record".equals(entry.materialType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertNull(record.recordStartTime());
+        assertNull(record.playbackOffsetSeconds());
     }
 
     @Test
@@ -8573,6 +8896,58 @@ class SupervisionAlertReviewServiceTest {
         }
     }
 
+    private static final class ClaimConflictSemanticIndexStore extends InMemoryReviewItemStore {
+
+        private Long conflictReviewItemId;
+        private boolean failBeforeConflict;
+
+        void conflictOnCompletion(Long reviewItemId) {
+            conflictReviewItemId = reviewItemId;
+            failBeforeConflict = false;
+        }
+
+        void failThenConflictOnCompletion(Long reviewItemId) {
+            conflictReviewItemId = reviewItemId;
+            failBeforeConflict = true;
+        }
+
+        @Override
+        public ReviewSemanticIndexEntry completeSemanticIndexClaim(ReviewItemAggregate item,
+                                                                    String document,
+                                                                    String embeddingKey,
+                                                                    String embeddingModel,
+                                                                    String embeddingVectorHash,
+                                                                    String indexStatus,
+                                                                    Integer retryCount,
+                                                                    String lastError,
+                                                                    LocalDateTime indexedAt,
+                                                                    String indexGenerationId,
+                                                                    LocalDateTime nextRetryAt,
+                                                                    String claimToken) {
+            if (Objects.equals(conflictReviewItemId, item.id())) {
+                if (failBeforeConflict
+                        && SupervisionAlertReviewService.SEMANTIC_INDEX_INDEXED.equals(indexStatus)) {
+                    throw new IllegalStateException("embedding provider timeout");
+                }
+                throw new IllegalStateException("semantic_index_claim_conflict: " + item.id());
+            }
+            return super.completeSemanticIndexClaim(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    embeddingVectorHash,
+                    indexStatus,
+                    retryCount,
+                    lastError,
+                    indexedAt,
+                    indexGenerationId,
+                    nextRetryAt,
+                    claimToken
+            );
+        }
+    }
+
     private static class InMemoryReviewItemStore implements ReviewItemStore {
 
         private final Map<Long, ReviewItemAggregate> items = new LinkedHashMap<>();
@@ -9370,7 +9745,10 @@ class SupervisionAlertReviewServiceTest {
                             evidenceItem.sourceAlertId(),
                             evidenceItem.materialType(),
                             evidenceItem.materialUri(),
-                            evidenceItem.happenedAt()
+                            evidenceItem.happenedAt(),
+                            null,
+                            evidenceItem.recordStartTime(),
+                            null
                     ));
                 }
             }
@@ -9483,6 +9861,36 @@ class SupervisionAlertReviewServiceTest {
                 }
             }
             return List.copyOf(claimed);
+        }
+
+        @Override
+        public synchronized ReviewSemanticIndexEntry queueSemanticIndex(ReviewItemAggregate item,
+                                                                         String document,
+                                                                         String embeddingKey,
+                                                                         String embeddingModel,
+                                                                         String indexGenerationId,
+                                                                         LocalDateTime queuedAt) {
+            ReviewSemanticIndexEntry current = semanticIndex.get(item.id());
+            if (current != null
+                    && SupervisionAlertReviewService.SEMANTIC_INDEX_PROCESSING.equals(current.indexStatus())
+                    && current.claimToken() != null
+                    && current.claimExpiresAt() != null
+                    && current.claimExpiresAt().isAfter(queuedAt)) {
+                return current;
+            }
+            return upsertSemanticIndex(
+                    item,
+                    document,
+                    embeddingKey,
+                    embeddingModel,
+                    null,
+                    SupervisionAlertReviewService.SEMANTIC_INDEX_PENDING,
+                    0,
+                    null,
+                    null,
+                    indexGenerationId,
+                    null
+            );
         }
 
         @Override

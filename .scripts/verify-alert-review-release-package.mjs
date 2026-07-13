@@ -15,6 +15,10 @@ export const FR_RELEASE_PATH_RULES = [
     match: /^\.scripts\/docker\/(docker-compose\.yml|env\.example|install_middleware_linux\.sh|upload_minio_data\.sh)$/,
   },
   {
+    group: 'FR production media deployment',
+    match: /^\.scripts\/media-cluster\/(docker-compose\.media-node\.yml|enable_cluster_mode\.sh|install_media_stack\.sh|srs\/cluster\.conf\.template|zlm\/config\.ini\.template)$/,
+  },
+  {
     group: 'DEVICE review backend',
     match:
       /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/java\/com\/basiclab\/iot\/system\/(controller\/admin\/supervision\/|controller\/admin\/auth\/(AuthController\.java|vo\/MediaPermissionCheck.*\.java)$|dal\/dataobject\/supervision\/|dal\/pgsql\/supervision\/|job\/supervision\/|service\/supervision\/)/,
@@ -22,7 +26,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE schema and migration',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim)\.sql)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/main\/resources\/(schemas\/alert-review-|sql\/migrations\/(V20260701__supervision_event_closure_baseline|V2026070[245678]__alert_review_(frigate_hardening|segment_tenant_scope|review_data_backfill|media_permissions|item_media_audit|segment_status_transition)|V20260708_2__alert_review_scheduler_jobs|V20260708_3__alert_review_report_ack|V20260708_4__alert_review_runtime_outbox_notify_templates|V20260708_5__alert_review_runtime_outbox_delivery|V20260708_6__alert_review_runtime_outbox_claim|V20260708_7__alert_review_segment_end_time_guard|V20260708_8__alert_review_segment_alert_severity_guard|V20260708_9__alert_review_merge_index_same_camera|V20260708_10__alert_review_deleted_smallint|V20260709__alert_review_scheduler_activation|V20260710__alert_review_export_queue|V20260711__alert_review_media_manage_permission|V20260712__alert_review_semantic_trigger_confirmation|V20260713__alert_review_semantic_index_claim|V20260713_2__alert_review_evidence_record_start)\.sql)/,
   },
   {
     group: 'DEVICE review regression tests',
@@ -31,16 +35,16 @@ export const FR_RELEASE_PATH_RULES = [
   },
   {
     group: 'DEVICE video integration config',
-    match: /^DEVICE\/(docker-compose\.yml|iot-system\/iot-system-biz\/src\/main\/resources\/application\.yaml)$/,
+    match: /^DEVICE\/(docker-compose\.yml|install_linux\.sh|iot-system\/iot-system-biz\/src\/main\/resources\/application\.yaml)$/,
   },
   {
     group: 'VIDEO record evidence package',
     match:
-      /^VIDEO\/(\.gitignore|apply_migrations\.py|bootstrap_schema\.py|enforce_private_media_buckets\.py|prepare_database\.py|schema_lock\.py|run\.py|models\.py|migrations\/(V20260711__device_detection_region_rule_fields|V20260712__record_snapshot_tenant_scope|V20260713__alert_image_playback_tenant_scope)\.sql|app\/blueprints\/(alert|camera|device_detection_region|playback|record|snap)\.py|app\/services\/(alert_service|algorithm_task_daemon|algorithm_task_launcher_service|auto_frame_extraction_service|device_detection_region_service|dvr_upload_service|library_matching_service|local_media_path_service|media_authorization_service|media_janitor_service|media_kafka_service|media_resource_guard|playback_disk_guard_service|post_process_launcher_service|record_cache_flush_event_service|seekable_playback_service|snap_(image|space|task|upload)_service|space_(file_metadata|folder_tree|group_save_time)_service|storage_service|stream_forward_launcher_service|record_(export|export_manifest_verifier|space|video).*)\.py|app\/utils\/(face_model_paths|minio_bucket_policy|patrol_snap_upload|plate_model_paths|video_env)\.py|services\/(patrol_algorithm_service|realtime_algorithm_service|snapshot_algorithm_service)\/run_deploy\.py|test_(alert_hook_direct_persist|alert_media_serialization|alert_notification|alert_tenant_scope|apply_migrations|archive_atomicity|device_detection_region_persistence|local_media_path_security|media_authorization|minio_bucket_policy|playback_media_authorization|record_(availability|export)|record_export_minio_smoke|record_space_tenant_listing|seekable_playback|snap_media_authorization|stream_forward|subprocess_environment|tenant_media_(maintenance|persistence)|tenant_migration_postgres)\.py|tests\/(test_gb28181_sync_service|test_realtime_algorithm_context|test_stream_url_sync_service)\.py|docker-compose\.yaml|env\.example)$/,
+      /^VIDEO\/(\.gitignore|apply_migrations\.py|bootstrap_schema\.py|enforce_private_media_buckets\.py|prepare_database\.py|schema_lock\.py|run\.py|models\.py|migrations\/(V20260711__device_detection_region_rule_fields|V20260712__record_snapshot_tenant_scope|V20260713__alert_image_playback_tenant_scope)\.sql|app\/blueprints\/(alert|camera|device_detection_region|media_hook|playback|record|snap)\.py|app\/services\/(alert_service|algorithm_task_daemon|algorithm_task_launcher_service|auto_frame_extraction_service|device_detection_region_service|dvr_upload_service|library_matching_service|local_media_path_service|media_authorization_service|media_janitor_service|media_kafka_service|media_resource_guard|playback_disk_guard_service|post_process_launcher_service|record_cache_flush_event_service|seekable_playback_service|snap_(image|space|task|upload)_service|space_(file_metadata|folder_tree|group_save_time)_service|storage_service|stream_forward_launcher_service|record_(export|export_manifest_verifier|space|video).*)\.py|app\/utils\/(face_model_paths|minio_bucket_policy|patrol_snap_upload|plate_model_paths|video_env)\.py|services\/(patrol_algorithm_service|realtime_algorithm_service|snapshot_algorithm_service)\/run_deploy\.py|test_(alert_hook_direct_persist|alert_media_serialization|alert_notification|alert_tenant_scope|apply_migrations|archive_atomicity|device_detection_region_persistence|local_media_path_security|media_authorization|minio_bucket_policy|playback_media_authorization|record_(availability|export)|record_export_minio_smoke|record_space_tenant_listing|seekable_playback|snap_media_authorization|stream_forward|subprocess_environment|tenant_media_(maintenance|persistence)|tenant_migration_postgres)\.py|tests\/(test_gb28181_sync_service|test_realtime_algorithm_context|test_stream_url_sync_service)\.py|install_linux(?:_arm|_kylin)?\.sh|docker-compose\.yaml|env\.example)$/,
   },
   {
     group: 'Protected media raw proxy package',
-    match: /^(AI\/(app\/blueprints\/minio_proxy|tests\/test_minio_proxy)\.py|AI\/docker-compose\.yaml|APP\/(conf\/nginx\.conf|docker-compose\.yaml)|WEB\/(conf\/nginx(?:\.mini)?\.conf|docker-compose\.yaml|install_linux\.sh))$/,
+    match: /^(AI\/(app\/blueprints\/minio_proxy|tests\/test_minio_proxy)\.py|AI\/(docker-compose\.yaml|env\.example|install_linux(?:_arm|_kylin)?\.sh)|APP\/(conf\/nginx\.conf|docker-compose\.yaml)|WEB\/(conf\/nginx(?:\.mini)?\.conf|docker-compose\.yaml|install_linux\.sh))$/,
   },
   {
     group: 'WEB alert review workbench package',
@@ -86,12 +90,22 @@ export const TRACKED_RELEASE_PATHS = [
   '.scripts/docker/env.example',
   '.scripts/docker/install_middleware_linux.sh',
   '.scripts/docker/upload_minio_data.sh',
+  '.scripts/media-cluster/enable_cluster_mode.sh',
+  '.scripts/media-cluster/docker-compose.media-node.yml',
+  '.scripts/media-cluster/install_media_stack.sh',
+  '.scripts/media-cluster/srs/cluster.conf.template',
+  '.scripts/media-cluster/zlm/config.ini.template',
   'AI/app/blueprints/minio_proxy.py',
   'AI/tests/test_minio_proxy.py',
   'AI/docker-compose.yaml',
+  'AI/env.example',
+  'AI/install_linux.sh',
+  'AI/install_linux_arm.sh',
+  'AI/install_linux_kylin.sh',
   'APP/conf/nginx.conf',
   'APP/docker-compose.yaml',
   'DEVICE/docker-compose.yml',
+  'DEVICE/install_linux.sh',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/supervision',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/vo/MediaPermissionCheckReqVO.java',
@@ -122,6 +136,7 @@ export const TRACKED_RELEASE_PATHS = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260712__alert_review_semantic_trigger_confirmation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision',
   'VIDEO/.gitignore',
@@ -137,6 +152,7 @@ export const TRACKED_RELEASE_PATHS = [
   'VIDEO/app/blueprints/record.py',
   'VIDEO/app/blueprints/snap.py',
   'VIDEO/app/blueprints/camera.py',
+  'VIDEO/app/blueprints/media_hook.py',
   'VIDEO/app/blueprints/device_detection_region.py',
   'VIDEO/app/services/device_detection_region_service.py',
   'VIDEO/app/services/alert_service.py',
@@ -205,6 +221,9 @@ export const TRACKED_RELEASE_PATHS = [
   'VIDEO/tests/test_realtime_algorithm_context.py',
   'VIDEO/tests/test_stream_url_sync_service.py',
   'VIDEO/env.example',
+  'VIDEO/install_linux.sh',
+  'VIDEO/install_linux_arm.sh',
+  'VIDEO/install_linux_kylin.sh',
   'WEB/package.json',
   'WEB/conf/nginx.conf',
   'WEB/conf/nginx.mini.conf',
@@ -457,6 +476,36 @@ const RAW_MINIO_NGINX_PATHS = [
   'WEB/conf/nginx.mini.conf',
 ];
 
+const SRS_PUBLIC_CALLBACK_PATHS = {
+  'APP/conf/nginx.conf': [
+    '/dev-api/video/camera/callback/on_publish',
+    '/dev-api/video/camera/callback/on_dvr',
+  ],
+  'WEB/conf/nginx.conf': [
+    '/yfeieye/dev-api/video/camera/callback/on_publish',
+    '/yfeieye/dev-api/video/camera/callback/on_dvr',
+    '/dev-api/video/camera/callback/on_publish',
+    '/dev-api/video/camera/callback/on_dvr',
+  ],
+  'WEB/conf/nginx.mini.conf': [
+    '/dev-api/video/camera/callback/on_publish',
+    '/dev-api/video/camera/callback/on_dvr',
+  ],
+};
+
+const INTERNAL_MEDIA_HOOK_PUBLIC_PREFIXES = {
+  'APP/conf/nginx.conf': [
+    '/dev-api/video/media/hook/',
+  ],
+  'WEB/conf/nginx.conf': [
+    '/yfeieye/dev-api/video/media/hook/',
+    '/dev-api/video/media/hook/',
+  ],
+  'WEB/conf/nginx.mini.conf': [
+    '/dev-api/video/media/hook/',
+  ],
+};
+
 const STREAM_TICKET_COMPOSE_PATHS = [
   'APP/docker-compose.yaml',
   'WEB/docker-compose.yaml',
@@ -526,11 +575,38 @@ export function scanRawMinioProxyGate(files) {
         reason: 'stream_ticket_hardcoded_secret',
       });
     }
-    if (!/\binclude\s+[^;]*yfeieye-stream-secret[^;]*;/.test(nginxDirectives)) {
+    if (/\bset\s+\$stream_secret\s+""\s*;/.test(nginxDirectives)) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'stream_ticket_empty_fallback',
+      });
+    }
+    if (!/\binclude\s+\/etc\/nginx\/yfeieye-secrets\/yfeieye-stream-secret\.runtime\.conf\s*;/.test(
+      nginxDirectives,
+    )) {
       blockers.push({
         path,
         group: releaseGroupFor(path),
         reason: 'stream_ticket_external_secret_missing',
+      });
+    }
+    const missingCallbackDeny = SRS_PUBLIC_CALLBACK_PATHS[path].some((callbackPath) => {
+      const escapedPath = callbackPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return !new RegExp(
+        `location\\s*=\\s*${escapedPath}\\s*\\{\\s*return\\s+403\\s*;\\s*\\}`,
+      ).test(nginxDirectives);
+    }) || INTERNAL_MEDIA_HOOK_PUBLIC_PREFIXES[path].some((hookPrefix) => {
+      const escapedPrefix = hookPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return !new RegExp(
+        `location\\s+\\^~\\s+${escapedPrefix}\\s*\\{\\s*return\\s+403\\s*;\\s*\\}`,
+      ).test(nginxDirectives);
+    });
+    if (missingCallbackDeny) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'srs_hook_public_callback_deny_missing',
       });
     }
     const secureLinkCount = (nginxDirectives.match(
@@ -587,6 +663,412 @@ export function scanRawMinioProxyGate(files) {
   return { ok: blockers.length === 0, blockers };
 }
 
+const MIDDLEWARE_SHARED_STATE_MOUNTS = [
+  '/nacos_data/data:/home/nacos/data',
+  '/nacos_data/logs:/home/nacos/logs',
+  '/db_data/data:/var/lib/postgresql/data',
+  '/db_data/log:/var/log/postgresql',
+  '/taos_data/data:/var/lib/taos',
+  '/redis_data/data:/data',
+  '/mq_data/data:/var/lib/kafka/data',
+  '/minio_data/data:/data',
+  '/milvus_data:/var/lib/milvus',
+  '/srs_data/conf:/usr/local/srs/conf',
+  '/nodered_data/data:/data',
+  '/zlmediakit/conf:/conf',
+  '/gpustack_data:/var/lib/gpustack',
+];
+
+const AI_SHARED_STATE_MOUNTS = [
+  '/data:/app/data',
+  '/static:/app/static',
+  '/temp_uploads:/app/temp_uploads',
+  '/model:/app/model',
+  '/logs/app:/app/logs',
+  '/logs/services:/app/services/logs',
+];
+
+const DEVICE_SHARED_STATE_MOUNTS = [
+  '${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/',
+  '${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/node-logs:/root/logs/',
+  '${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images',
+];
+
+export function scanStatefulReleaseMountGate(files) {
+  const blockers = [];
+  const byPath = new Map(
+    files.map((file) => [normalizePath(file.path || ''), String(file.content ?? '')]),
+  );
+  const shellFunctionBody = (source, name) => source.match(
+    new RegExp(`(?:^|\\n)${name}\\(\\) \\{([\\s\\S]*?)\\n\\}`),
+  )?.[1] || '';
+  const lifecycleFailureIsSwallowed = (source, functionNames, composeWrapper) => functionNames
+    .map((name) => shellFunctionBody(source, name))
+    .filter(Boolean)
+    .some((body) => body.split(/\r?\n/).some(
+      (line) => line.includes(composeWrapper)
+        && (/\|\|\s*true/.test(line) || /\|\s*grep\b/.test(line)),
+    ));
+  const lifecycleDoesNotForceRecreate = (source, functionName, composeWrapper) => {
+    const body = shellFunctionBody(source, functionName);
+    if (!body) return false;
+    const invocations = body.split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith(`${composeWrapper} up `)
+        || line.startsWith(`${composeWrapper} restart`));
+    return invocations.length === 0 || invocations.some(
+      (line) => line.startsWith(`${composeWrapper} restart`)
+        || !line.includes('--force-recreate'),
+    );
+  };
+  const pipedComposeStopFailureIsSwallowed = (source, functionName, composeWrapper) => {
+    const body = shellFunctionBody(source, functionName);
+    if (!body) return false;
+    const hasPipedStop = body.split(/\r?\n/).some(
+      (line) => line.includes(`${composeWrapper} down`) && line.includes('|'),
+    );
+    if (!hasPipedStop) return false;
+    const hasPipefail = /(?:^|\n)\s*set\s+-o\s+pipefail\b/.test(source)
+      || /(?:^|\n)\s*set\s+-[^\n]*\bpipefail\b/.test(source);
+    const propagatesComposeStatus = body.includes('PIPESTATUS[0]')
+      && /return\s+["']?\$\{?_[A-Za-z0-9_]*rc\}?["']?/.test(body);
+    return !hasPipefail && !propagatesComposeStatus;
+  };
+
+  const deviceComposePath = 'DEVICE/docker-compose.yml';
+  const deviceCompose = byPath.get(deviceComposePath);
+  if (deviceCompose !== undefined) {
+    const usesSharedRoot = DEVICE_SHARED_STATE_MOUNTS.every(
+      (mount) => deviceCompose.includes(mount),
+    );
+    const hasReleaseBoundState = /(?:^|\n)\s*-\s*["']?\.\.\/(?:\.build-cache\/device|VIDEO\/alert_images)\//m.test(
+      deviceCompose,
+    );
+    if (!usesSharedRoot || hasReleaseBoundState) {
+      blockers.push({
+        path: deviceComposePath,
+        group: releaseGroupFor(deviceComposePath),
+        reason: 'device_state_mounts_release_bound',
+      });
+    }
+  }
+
+  const deviceInstallerPath = 'DEVICE/install_linux.sh';
+  const deviceInstaller = byPath.get(deviceInstallerPath);
+  if (deviceInstaller !== undefined) {
+    if (!containsAll(deviceInstaller, [
+      'prepare_device_state_dirs()',
+      'YFEIEYE_DEVICE_STATE_ROOT',
+      'mkdir -p "$state_root/logs" "$state_root/node-logs"',
+      'chmod 0777 "$state_root/logs" "$state_root/node-logs"',
+      'prepare_device_state_dirs',
+    ])) {
+      blockers.push({
+        path: deviceInstallerPath,
+        group: releaseGroupFor(deviceInstallerPath),
+        reason: 'device_state_directory_preflight_missing',
+      });
+    }
+    if (lifecycleFailureIsSwallowed(deviceInstaller, [
+      'start_services',
+      'restart_services',
+      'update_services',
+    ], 'compose_up_detached')) {
+      blockers.push({
+        path: deviceInstallerPath,
+        group: releaseGroupFor(deviceInstallerPath),
+        reason: 'device_compose_lifecycle_failure_swallowed',
+      });
+    }
+    const restartBodies = ['restart_services', 'restart_service']
+      .map((name) => shellFunctionBody(deviceInstaller, name))
+      .filter(Boolean);
+    if (restartBodies.some((body) => (
+      !body.includes('compose_up_detached --force-recreate')
+      || body.includes('$DOCKER_COMPOSE restart')
+      || body.includes('device_compose restart')
+    ))) {
+      blockers.push({
+        path: deviceInstallerPath,
+        group: releaseGroupFor(deviceInstallerPath),
+        reason: 'device_restart_does_not_recreate_state_mounts',
+      });
+    }
+  }
+
+  const middlewareComposePath = '.scripts/docker/docker-compose.yml';
+  const middlewareCompose = byPath.get(middlewareComposePath);
+  if (middlewareCompose !== undefined) {
+    const usesSharedRoot = MIDDLEWARE_SHARED_STATE_MOUNTS.every(
+      (mount) => middlewareCompose.includes(`\${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}${mount}`),
+    );
+    const hasReleaseBoundState = /(?:^|\n)\s*-\s*["']?(?:\.\.?\/)?(?:standalone-logs|db_data|taos_data|redis_data|mq_data|minio_data|milvus_data|srs_data|nodered_data|gpustack_data|\.\.\/zlmediakit)\//m.test(
+      middlewareCompose,
+    );
+    if (!usesSharedRoot || hasReleaseBoundState) {
+      blockers.push({
+        path: middlewareComposePath,
+        group: releaseGroupFor(middlewareComposePath),
+        reason: 'middleware_state_mounts_release_bound',
+      });
+    }
+  }
+
+  const middlewareEnvPath = '.scripts/docker/env.example';
+  const middlewareEnv = byPath.get(middlewareEnvPath);
+  if (middlewareEnv !== undefined
+      && !containsAll(middlewareEnv, [
+        'YFEIEYE_DOCKER_DATA_ROOT=/opt/yfeieye-source/shared/docker',
+        'YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT=false',
+      ])) {
+    blockers.push({
+      path: middlewareEnvPath,
+      group: releaseGroupFor(middlewareEnvPath),
+      reason: 'middleware_state_root_env_missing',
+    });
+  }
+
+  const aiComposePath = 'AI/docker-compose.yaml';
+  const aiCompose = byPath.get(aiComposePath);
+  if (aiCompose !== undefined) {
+    const usesSharedRoot = AI_SHARED_STATE_MOUNTS.every(
+      (mount) => aiCompose.includes(`\${YFEIEYE_AI_STATE_ROOT:-/opt/yfeieye-source/shared/ai}${mount}`),
+    );
+    const hasReleaseBoundState = /(?:^|\n)\s*-\s*["']?\.\/(?:data|static|temp_uploads|model):\/app\//m.test(aiCompose);
+    if (!usesSharedRoot || hasReleaseBoundState) {
+      blockers.push({
+        path: aiComposePath,
+        group: releaseGroupFor(aiComposePath),
+        reason: 'ai_state_mounts_release_bound',
+      });
+    }
+  }
+
+  const aiEnvPath = 'AI/env.example';
+  const aiEnv = byPath.get(aiEnvPath);
+  if (aiEnv !== undefined
+      && !aiEnv.includes('YFEIEYE_AI_STATE_ROOT=/opt/yfeieye-source/shared/ai')) {
+    blockers.push({
+      path: aiEnvPath,
+      group: releaseGroupFor(aiEnvPath),
+      reason: 'ai_state_root_env_missing',
+    });
+  }
+
+  const middlewareInstallerPath = '.scripts/docker/install_middleware_linux.sh';
+  const middlewareInstaller = byPath.get(middlewareInstallerPath);
+  if (middlewareInstaller !== undefined) {
+    const hasRawComposeInvocation = middlewareInstaller.split(/\r?\n/).some(
+      (line) => /^\s*\$COMPOSE_CMD\b/.test(line)
+        && line.includes('-f "$COMPOSE_FILE"')
+        && !line.includes('--env-file "$MIDDLEWARE_ENV_FILE"'),
+    );
+    if (hasRawComposeInvocation || !containsAll(middlewareInstaller, [
+      'MIDDLEWARE_ENV_FILE=',
+      '$COMPOSE_CMD --env-file "$MIDDLEWARE_ENV_FILE" -f "$COMPOSE_FILE"',
+    ])) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'middleware_compose_env_file_not_explicit',
+      });
+    }
+    if (!containsAll(middlewareInstaller, [
+      'prepare-srs-config)',
+      'prepare_srs_config --config-only',
+    ])) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'middleware_prepare_srs_config_command_missing',
+      });
+    }
+    if (!containsAll(middlewareInstaller, [
+      'ensure_nacos_data_ready()',
+      'YFEIEYE_NACOS_ALLOW_EMPTY_DATA_INIT',
+      'find "$nacos_data_dir" -mindepth 1 -print -quit',
+      'ensure_nacos_data_ready || exit 1',
+    ])) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'middleware_nacos_empty_data_preflight_missing',
+      });
+    }
+    const middlewareRestartBody = shellFunctionBody(middlewareInstaller, 'restart_middleware');
+    if (middlewareRestartBody && (
+      !middlewareRestartBody.includes('mw_compose up -d --force-recreate')
+      || middlewareRestartBody.includes('mw_compose restart')
+      || middlewareRestartBody.includes('mw_compose down')
+      || middlewareRestartBody.includes('--remove-orphans')
+    )) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'middleware_restart_does_not_recreate_state_mounts',
+      });
+    }
+    const middlewareUpdateBody = shellFunctionBody(middlewareInstaller, 'update_middleware');
+    if (middlewareUpdateBody && (
+      !middlewareUpdateBody.includes('compose_up_middleware --force-recreate')
+      || !middlewareUpdateBody.includes('return "${_up_rc}"')
+    )) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'middleware_update_does_not_recreate_state_mounts',
+      });
+    }
+    const middlewareComposeUpBody = shellFunctionBody(
+      middlewareInstaller,
+      'compose_up_middleware',
+    );
+    const repairCanReclassifyComposeFailure = /if\s+\[[^\n]*_repair_rc[^\n]*\][^\n]*_up_rc[^\n]*;?\s*then[\s\S]*?_up_rc\s*=\s*0/.test(
+      middlewareComposeUpBody,
+    );
+    const composeFailureCapturedWithoutReturn = ['install_middleware', 'start_middleware']
+      .map((name) => shellFunctionBody(middlewareInstaller, name))
+      .filter(Boolean)
+      .some((body) => body.includes('compose_up_middleware')
+        && body.includes('_up_rc')
+        && !/return\s+["']?\$\{?_up_rc\}?["']?/.test(body));
+    if (repairCanReclassifyComposeFailure
+        || composeFailureCapturedWithoutReturn
+        || pipedComposeStopFailureIsSwallowed(
+          middlewareInstaller, 'stop_middleware', 'mw_compose')
+        || lifecycleFailureIsSwallowed(middlewareInstaller, [
+      'install_middleware',
+      'start_middleware',
+      'restart_middleware',
+      'update_middleware',
+    ], 'mw_compose')) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'middleware_compose_lifecycle_failure_swallowed',
+      });
+    }
+  }
+
+  for (const path of [
+    'AI/install_linux.sh',
+    'AI/install_linux_arm.sh',
+    'AI/install_linux_kylin.sh',
+  ]) {
+    const installer = byPath.get(path);
+    if (installer === undefined) continue;
+    const hasRawComposeInvocation = installer.split(/\r?\n/).some(
+      (line) => /^\s*\$COMPOSE_CMD\b/.test(line)
+        && !line.includes('--env-file "$AI_COMPOSE_ENV_FILE"'),
+    );
+    if (hasRawComposeInvocation || !containsAll(installer, [
+      'AI_COMPOSE_ENV_FILE=',
+      '$COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml"',
+      'ai_compose up',
+    ])) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'ai_compose_env_file_not_explicit',
+      });
+    }
+    if (!containsAll(installer, [
+      'mkdir -p "${state_root}/logs/app"',
+      'mkdir -p "${state_root}/logs/services"',
+    ])) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'ai_log_state_directories_missing',
+      });
+    }
+    const restartBody = shellFunctionBody(installer, 'restart_service');
+    if (restartBody && !restartBody.includes('ai_compose up -d --force-recreate')) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'ai_restart_does_not_recreate_state_mounts',
+      });
+    }
+    if (lifecycleDoesNotForceRecreate(installer, 'update_service', 'ai_compose')) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'ai_update_does_not_recreate_state_mounts',
+      });
+    }
+    if (lifecycleFailureIsSwallowed(installer, [
+      'install_service',
+      'start_service',
+      'stop_service',
+      'restart_service',
+      'update_service',
+    ], 'ai_compose')) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'ai_compose_lifecycle_failure_swallowed',
+      });
+    }
+  }
+
+  for (const path of [
+    'VIDEO/install_linux.sh',
+    'VIDEO/install_linux_arm.sh',
+    'VIDEO/install_linux_kylin.sh',
+  ]) {
+    const installer = byPath.get(path);
+    if (installer === undefined) continue;
+    const hasRawComposeInvocation = installer.split(/\r?\n/).some(
+      (line) => /^\s*\$COMPOSE_CMD\b/.test(line)
+        && !line.includes('--env-file "$VIDEO_COMPOSE_ENV_FILE"'),
+    );
+    if (hasRawComposeInvocation || !containsAll(installer, [
+      'VIDEO_COMPOSE_ENV_FILE=',
+      '$COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml"',
+      'video_compose up',
+    ])) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'video_compose_env_file_not_explicit',
+      });
+    }
+    const restartBody = shellFunctionBody(installer, 'restart_service');
+    if (restartBody && (
+      !restartBody.includes('video_compose up -d --force-recreate')
+      || restartBody.includes('video_compose restart')
+    )) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'video_restart_does_not_recreate_state_mounts',
+      });
+    }
+    if (lifecycleDoesNotForceRecreate(installer, 'update_service', 'video_compose')) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'video_update_does_not_recreate_state_mounts',
+      });
+    }
+    if (lifecycleFailureIsSwallowed(installer, [
+      'install_service',
+      'start_service',
+      'restart_service',
+      'update_service',
+    ], 'video_compose')) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason: 'video_compose_lifecycle_failure_swallowed',
+      });
+    }
+  }
+
+  return { ok: blockers.length === 0, blockers };
+}
+
 function extractNginxBucketLocation(content) {
   const match = /location\s+(?:\^~\s+)?\/api\/v1\/buckets\/?\s*\{/.exec(content);
   if (!match) {
@@ -621,6 +1103,38 @@ export function scanVideoIntegrationConfigGate(files) {
   const videoSchemaCoordinator = files.find((file) => normalizePath(file.path || '') === videoSchemaCoordinatorPath);
   const videoSchemaLockPath = 'VIDEO/schema_lock.py';
   const videoSchemaLock = files.find((file) => normalizePath(file.path || '') === videoSchemaLockPath);
+  const videoEnvLoaderPath = 'VIDEO/app/utils/video_env.py';
+  const videoEnvLoader = files.find((file) => normalizePath(file.path || '') === videoEnvLoaderPath);
+  const videoCameraPath = 'VIDEO/app/blueprints/camera.py';
+  const videoCamera = files.find((file) => normalizePath(file.path || '') === videoCameraPath);
+  const middlewareInstallerPath = '.scripts/docker/install_middleware_linux.sh';
+  const middlewareInstaller = files.find(
+    (file) => normalizePath(file.path || '') === middlewareInstallerPath,
+  );
+  const middlewareEnvPath = '.scripts/docker/env.example';
+  const middlewareEnv = files.find((file) => normalizePath(file.path || '') === middlewareEnvPath);
+  const alternateHookPath = 'VIDEO/app/blueprints/media_hook.py';
+  const alternateHook = files.find((file) => normalizePath(file.path || '') === alternateHookPath);
+  const clusterSrsTemplatePath = '.scripts/media-cluster/srs/cluster.conf.template';
+  const clusterSrsTemplate = files.find(
+    (file) => normalizePath(file.path || '') === clusterSrsTemplatePath,
+  );
+  const clusterZlmTemplatePath = '.scripts/media-cluster/zlm/config.ini.template';
+  const clusterZlmTemplate = files.find(
+    (file) => normalizePath(file.path || '') === clusterZlmTemplatePath,
+  );
+  const clusterInstallerPath = '.scripts/media-cluster/install_media_stack.sh';
+  const clusterInstaller = files.find(
+    (file) => normalizePath(file.path || '') === clusterInstallerPath,
+  );
+  const clusterEnablePath = '.scripts/media-cluster/enable_cluster_mode.sh';
+  const clusterEnable = files.find(
+    (file) => normalizePath(file.path || '') === clusterEnablePath,
+  );
+  const clusterComposePath = '.scripts/media-cluster/docker-compose.media-node.yml';
+  const clusterCompose = files.find(
+    (file) => normalizePath(file.path || '') === clusterComposePath,
+  );
   if (videoSchemaBootstrap && !containsAll(String(videoSchemaBootstrap.content ?? ''), [
     'fresh-install baseline',
     'db.create_all()',
@@ -699,12 +1213,206 @@ export function scanVideoIntegrationConfigGate(files) {
     'YFEIEYE_VIDEO_SCHEMA_LOCK_WAIT_SECONDS',
     'YFEIEYE_VIDEO_SCHEMA_STATEMENT_TIMEOUT_MS',
     'YFEIEYE_VIDEO_SCHEMA_DB_LOCK_TIMEOUT_MS',
+    'YFEIEYE_SRS_HOOK_TOKEN',
+    'FLASK_RUN_HOST=172.17.0.1',
   ])) {
     blockers.push({
       path: videoEnvExamplePath,
       group: releaseGroupFor(videoEnvExamplePath),
       reason: 'video_production_security_env_contract_missing',
     });
+  }
+  if (videoEnvLoader && !containsAll(String(videoEnvLoader.content ?? ''), [
+    'authorize_srs_hook_token',
+    'YFEIEYE_SRS_HOOK_TOKEN',
+    'hmac.compare_digest',
+    '_SRS_HOOK_TOKEN_RE',
+    'fullmatch',
+    'at least 32 bytes in production',
+  ])) {
+    blockers.push({
+      path: videoEnvLoaderPath,
+      group: releaseGroupFor(videoEnvLoaderPath),
+      reason: 'srs_hook_runtime_authorization_missing',
+    });
+  }
+  if (videoCamera) {
+    const cameraContent = String(videoCamera.content ?? '');
+    const authorizationCallCount = (cameraContent.match(/authorize_srs_hook_token\(/g) || []).length;
+    if (authorizationCallCount < 2 || !cameraContent.includes("request.args.get('hook_token')")) {
+      blockers.push({
+        path: videoCameraPath,
+        group: releaseGroupFor(videoCameraPath),
+        reason: 'srs_hook_route_authorization_missing',
+      });
+    }
+  }
+  if (middlewareInstaller) {
+    const installerContent = String(middlewareInstaller.content ?? '');
+    if (!containsAll(installerContent, [
+      'resolve_srs_hook_token()',
+      '?hook_token=${srs_hook_token}',
+      'resolve_video_callback_host',
+      'chmod 600 "$srs_config_file"',
+    ]) || installerContent.includes('/admin-api/video/camera/callback/')) {
+      blockers.push({
+        path: middlewareInstallerPath,
+        group: releaseGroupFor(middlewareInstallerPath),
+        reason: 'srs_hook_installer_contract_missing',
+      });
+    }
+  }
+  if (middlewareEnv && !containsAll(String(middlewareEnv.content ?? ''), [
+    'VIDEO_CALLBACK_HOST=172.17.0.1',
+    'YFEIEYE_SRS_HOOK_TOKEN=',
+  ])) {
+    blockers.push({
+      path: middlewareEnvPath,
+      group: releaseGroupFor(middlewareEnvPath),
+      reason: 'srs_hook_middleware_env_contract_missing',
+    });
+  }
+  if (alternateHook) {
+    const hookContent = String(alternateHook.content ?? '');
+    const authorizationCallCount = (hookContent.match(/_require_internal_hook_token\(/g) || []).length;
+    if (authorizationCallCount < 6 || !containsAll(hookContent, [
+      'authorize_srs_hook_token',
+      "request.headers.get('X-YFeiEye-Hook-Token')",
+      "@media_hook_bp.route('/hook/srs/on_dvr'",
+      "@media_hook_bp.route('/hook/srs/on_publish'",
+      "@media_hook_bp.route('/hook/srs/on_unpublish'",
+      "@media_hook_bp.route('/hook/snap/completed'",
+      "@media_hook_bp.route('/hook/zlm/on_record_mp4'",
+      "@media_hook_bp.route('/hook/zlm/on_record_ts'",
+    ])) {
+      blockers.push({
+        path: alternateHookPath,
+        group: releaseGroupFor(alternateHookPath),
+        reason: 'alternate_media_hook_authorization_missing',
+      });
+    }
+  }
+  if (clusterSrsTemplate) {
+    const content = String(clusterSrsTemplate.content ?? '');
+    if ((content.match(/\?hook_token=\$\{YFEIEYE_SRS_HOOK_TOKEN\}/g) || []).length < 3) {
+      blockers.push({
+        path: clusterSrsTemplatePath,
+        group: releaseGroupFor(clusterSrsTemplatePath),
+        reason: 'cluster_srs_hook_token_missing',
+      });
+    }
+  }
+  if (clusterZlmTemplate) {
+    const content = String(clusterZlmTemplate.content ?? '');
+    if ((content.match(/\?hook_token=\$\{YFEIEYE_SRS_HOOK_TOKEN\}/g) || []).length < 3) {
+      blockers.push({
+        path: clusterZlmTemplatePath,
+        group: releaseGroupFor(clusterZlmTemplatePath),
+        reason: 'cluster_zlm_hook_token_missing',
+      });
+    }
+  }
+  if (clusterInstaller) {
+    const content = String(clusterInstaller.content ?? '');
+    const secureConfigCount = (content.match(/chmod 600 "\$\{out\}"/g) || []).length;
+    if (secureConfigCount < 2 || !containsAll(content, [
+      'validate_hook_token()',
+      'YFEIEYE_SRS_HOOK_TOKEN',
+      '${YFEIEYE_SRS_HOOK_TOKEN}',
+      'MEDIA_HOOK_PORT="${MEDIA_HOOK_PORT:-6000}"',
+      'MEDIA_HOOK_PATH_PREFIX="${MEDIA_HOOK_PATH_PREFIX:-}"',
+    ]) || content.includes('MEDIA_HOOK_PATH_PREFIX="${MEDIA_HOOK_PATH_PREFIX:-/admin-api}"')) {
+      blockers.push({
+        path: clusterInstallerPath,
+        group: releaseGroupFor(clusterInstallerPath),
+        reason: 'cluster_hook_installer_token_missing',
+      });
+    }
+    if (!containsAll(content, [
+      'ZLM_SECRET="${ZLM_SECRET:-}"',
+      'validate_zlm_secret()',
+      'ZLM_SECRET must contain at least 32 characters',
+      'ZLM_SECRET must contain only URL-safe characters',
+    ]) || content.includes('ZLM_SECRET="${ZLM_SECRET:-yFeiEye_Media_Secret}"')) {
+      blockers.push({
+        path: clusterInstallerPath,
+        group: releaseGroupFor(clusterInstallerPath),
+        reason: 'cluster_zlm_secret_contract_missing',
+      });
+    }
+    if ((content.match(/export MEDIA_NODE_ID="\$\{MEDIA_NODE_NAME\}"/g) || []).length < 2) {
+      blockers.push({
+        path: clusterInstallerPath,
+        group: releaseGroupFor(clusterInstallerPath),
+        reason: 'cluster_media_compose_base_id_missing',
+      });
+    }
+    const deploySrsStart = content.indexOf('deploy_srs()');
+    const deploySrsEnd = content.indexOf('deploy_zlm()', deploySrsStart + 1);
+    const deploySrsContent = deploySrsStart >= 0
+      ? content.slice(deploySrsStart, deploySrsEnd >= 0 ? deploySrsEnd : undefined)
+      : '';
+    const renderIndex = deploySrsContent.indexOf('render_srs_config');
+    const healthySkipIndex = deploySrsContent.indexOf('if srs_healthy');
+    if (!containsAll(content, [
+      'SRS_CONFIG_CHANGED=',
+      'cmp -s',
+      'compose_force_recreate srs',
+      '--force-recreate',
+    ]) || renderIndex < 0 || healthySkipIndex < 0 || renderIndex > healthySkipIndex) {
+      blockers.push({
+        path: clusterInstallerPath,
+        group: releaseGroupFor(clusterInstallerPath),
+        reason: 'cluster_srs_config_refresh_missing',
+      });
+    }
+  }
+  if (clusterEnable) {
+    const content = String(clusterEnable.content ?? '');
+    if (!containsAll(content, [
+      'YFEIEYE_SRS_HOOK_TOKEN=',
+      'chmod 600 "${ENV_SNIPPET}"',
+    ])) {
+      blockers.push({
+        path: clusterEnablePath,
+        group: releaseGroupFor(clusterEnablePath),
+        reason: 'cluster_hook_env_template_token_missing',
+      });
+    }
+    if (!containsAll(content, [
+      'validate_hook_token()',
+      'YFEIEYE_SRS_HOOK_TOKEN must contain at least 32 characters',
+      'YFEIEYE_SRS_HOOK_TOKEN must contain only URL-safe characters',
+    ])) {
+      blockers.push({
+        path: clusterEnablePath,
+        group: releaseGroupFor(clusterEnablePath),
+        reason: 'cluster_hook_env_token_validation_missing',
+      });
+    }
+  }
+  if (clusterCompose) {
+    const content = String(clusterCompose.content ?? '');
+    if (!containsAll(content, [
+      'MEDIA_HOOK_PORT=6000',
+      'YFEIEYE_SRS_HOOK_TOKEN=',
+    ])) {
+      blockers.push({
+        path: clusterComposePath,
+        group: releaseGroupFor(clusterComposePath),
+        reason: 'cluster_hook_compose_usage_token_missing',
+      });
+    }
+    if (!containsAll(content, [
+      'container_name: "${MEDIA_NODE_ID}-srs"',
+      'container_name: "${MEDIA_NODE_ID}-zlm"',
+    ])) {
+      blockers.push({
+        path: clusterComposePath,
+        group: releaseGroupFor(clusterComposePath),
+        reason: 'cluster_media_container_names_not_distinct',
+      });
+    }
   }
   if (videoMigrationRunner && !containsAll(String(videoMigrationRunner.content ?? ''), [
     'MIGRATION_FILES',
@@ -725,6 +1433,19 @@ export function scanVideoIntegrationConfigGate(files) {
   }
   if (videoCompose) {
     const videoComposeContent = String(videoCompose.content ?? '');
+    if (!containsAll(videoComposeContent, [
+      'FLASK_RUN_HOST=${FLASK_RUN_HOST:?',
+      'ALLOWED_HOSTS=${ALLOWED_HOSTS:?',
+      'http://$${FLASK_RUN_HOST}:$${FLASK_RUN_PORT:-6000}/actuator/health',
+    ]) || /FLASK_RUN_HOST=\$\{FLASK_RUN_HOST:-(?:127\.0\.0\.1|0\.0\.0\.0)\}/.test(
+      videoComposeContent,
+    )) {
+      blockers.push({
+        path: videoComposePath,
+        group: releaseGroupFor(videoComposePath),
+        reason: 'video_bridge_bind_contract_missing',
+      });
+    }
     if (!videoComposeContent.includes(
       'YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS=${YFEIEYE_MEDIA_SERVICE_MAX_SKEW_SECONDS:-300}',
     )) {
@@ -777,6 +1498,15 @@ export function scanVideoIntegrationConfigGate(files) {
   }
   if (!compose) return { ok: blockers.length === 0, blockers };
   const content = String(compose.content ?? '');
+  if (!content.includes(
+    '${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images',
+  ) || content.includes('../VIDEO/alert_images:/app/alert_images')) {
+    blockers.push({
+      path,
+      group: releaseGroupFor(path),
+      reason: 'alert_image_shared_state_mount_missing',
+    });
+  }
   if (!containsAll(content, [
     'YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}',
     'YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ADMIN_USER_IDS:-}',
@@ -1608,6 +2338,7 @@ function runCli() {
   const webTypecheckResult = scanWebTypecheckGate(releaseTextFiles);
   const mediaPermissionResult = scanMediaPermissionGate(releaseTextFiles);
   const rawMinioProxyResult = scanRawMinioProxyGate(releaseTextFiles);
+  const statefulReleaseMountResult = scanStatefulReleaseMountGate(releaseTextFiles);
   const videoIntegrationConfigResult = scanVideoIntegrationConfigGate(releaseTextFiles);
   const liveVideoEvidenceResult = scanLiveVideoEvidenceGate(releaseTextFiles);
   const traceabilityResult = scanReleaseTraceabilityGate(releaseTextFiles);
@@ -1615,6 +2346,7 @@ function runCli() {
   result.blockers.push(...webTypecheckResult.blockers);
   result.blockers.push(...mediaPermissionResult.blockers);
   result.blockers.push(...rawMinioProxyResult.blockers);
+  result.blockers.push(...statefulReleaseMountResult.blockers);
   result.blockers.push(...videoIntegrationConfigResult.blockers);
   result.blockers.push(...liveVideoEvidenceResult.blockers);
   result.blockers.push(...traceabilityResult.blockers);

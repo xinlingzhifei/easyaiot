@@ -179,7 +179,7 @@ const state = reactive({
   activeKey: 'info',
   playLoading: false,
   vodMode: false,
-  seekOffsetSeconds: 0,
+  seekOffsetSeconds: -1,
   seekTime: '',
   recordPath: '',
   playerOptions: {
@@ -201,7 +201,7 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.playSources = [];
   state.playLoading = false;
   state.vodMode = false;
-  state.seekOffsetSeconds = 0;
+  state.seekOffsetSeconds = -1;
   state.seekTime = '';
   state.recordPath = '';
 
@@ -248,8 +248,9 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   // 已有播放地址（如摄像头、告警录像等）
   state.deviceId = record['id'];
   const streamUrl = String(record['http_stream'] ?? '').trim();
-  const rawSeekOffset = Number(record['playback_offset_seconds']);
-  state.seekOffsetSeconds = Number.isFinite(rawSeekOffset) && rawSeekOffset > 0 ? rawSeekOffset : 0;
+  const hasSeekOffset = record['playback_offset_seconds'] != null;
+  const rawSeekOffset = hasSeekOffset ? Number(record['playback_offset_seconds']) : Number.NaN;
+  state.seekOffsetSeconds = Number.isFinite(rawSeekOffset) && rawSeekOffset >= 0 ? rawSeekOffset : -1;
   state.seekTime = String(record['seek_time'] ?? '');
   state.recordPath = String(record['record_path'] ?? streamUrl);
 
@@ -296,8 +297,8 @@ const handleChange = (value: string) => {
   if (value) playerKey.value += 1;
 };
 
-function shouldUseNativeSeekPlayback(url: string, seekOffsetSeconds: number, seekTime: string): boolean {
-  if (!url || !seekTime || seekOffsetSeconds < 0) {
+function shouldUseNativeSeekPlayback(url: string, _seekOffsetSeconds: number, _seekTime: string): boolean {
+  if (!url) {
     return false;
   }
   const normalized = safeDecode(url).toLowerCase();

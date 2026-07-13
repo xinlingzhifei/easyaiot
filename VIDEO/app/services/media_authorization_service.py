@@ -51,6 +51,10 @@ _ALERT_INGEST_UNSIGNED_ENV = 'YFEIEYE_ALERT_INGEST_ALLOW_UNSIGNED'
 _MIN_SERVICE_SECRET_BYTES = 32
 
 
+class MediaAccessAuditConflictError(RuntimeError):
+    """Raised when an idempotency key is reused for a different decision."""
+
+
 @dataclass(frozen=True)
 class MediaAuthorizationDecision:
     allowed: bool
@@ -109,8 +113,10 @@ def append_media_access_audit(decision: MediaAuthorizationDecision,
                               resource=None,
                               export_id=None,
                               reason=None,
-                              decision_override=None) -> dict[str, Any]:
+                              decision_override=None,
+                              decision_id=None) -> dict[str, Any]:
     """Append a durable JSONL decision record and return the stored entry."""
+    decision_id = _optional_text(decision_id)
     entry = {
         'auditId': f'media-{uuid.uuid4().hex}',
         'userId': _optional_text(decision.user_id),
@@ -125,16 +131,51 @@ def append_media_access_audit(decision: MediaAuthorizationDecision,
         'serviceId': _optional_text(decision.service_id),
         'timestamp': datetime.now(timezone.utc).isoformat(),
     }
+    if decision_id:
+        entry['decisionId'] = decision_id
     path = _audit_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     line = json.dumps(entry, ensure_ascii=False, separators=(',', ':')) + '\n'
     with _AUDIT_LOCK:
+        existing = _find_media_audit_decision(path, decision_id)
+        if existing is not None:
+            comparable = {
+                key: value
+                for key, value in entry.items()
+                if key not in ('auditId', 'timestamp')
+            }
+            if any(existing.get(key) != value for key, value in comparable.items()):
+                raise MediaAccessAuditConflictError(
+                    f'media access audit idempotency conflict: {decision_id}')
+            return existing
         _rotate_audit_if_needed(path, len(line.encode('utf-8')))
         with open(path, 'a', encoding='utf-8', newline='') as audit_file:
             audit_file.write(line)
             audit_file.flush()
             os.fsync(audit_file.fileno())
     return entry
+
+
+def _find_media_audit_decision(path: str, decision_id):
+    if not decision_id:
+        return None
+    for index in range(_audit_backup_count() + 1):
+        candidate = path if index == 0 else f'{path}.{index}'
+        try:
+            with open(candidate, 'r', encoding='utf-8') as audit_file:
+                for line in audit_file:
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(entry, dict) \
+                            and entry.get('decisionId') == decision_id:
+                        return entry
+        except FileNotFoundError:
+            continue
+    return None
 
 
 def audit_media_response(decision: MediaAuthorizationDecision,

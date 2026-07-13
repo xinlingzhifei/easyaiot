@@ -11,6 +11,9 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.format.DateTimeFormatter;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
@@ -72,7 +75,13 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
                 return Optional.empty();
             }
             String message = firstText(data.get("source"), data.get("message"), data.get("msg"));
-            return Optional.of(new RecordEvidenceResult(recordUri, message));
+            LocalDateTime recordStartTime = parseRecordStartTime(firstText(
+                    data.get("recordStartTime"),
+                    data.get("record_start_time"),
+                    data.get("event_time"),
+                    data.get("eventTime")
+            ));
+            return Optional.of(new RecordEvidenceResult(recordUri, message, recordStartTime));
         } catch (RuntimeException ignored) {
             return Optional.empty();
         }
@@ -134,6 +143,25 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
             }
         }
         return null;
+    }
+
+    private static LocalDateTime parseRecordStartTime(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(value).toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+            try {
+                return LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            } catch (DateTimeParseException ignoredIso) {
+                try {
+                    return LocalDateTime.parse(value, ALERT_TIME_FORMATTER);
+                } catch (DateTimeParseException ignoredLegacy) {
+                    return null;
+                }
+            }
+        }
     }
 
     private static String toText(Object value) {

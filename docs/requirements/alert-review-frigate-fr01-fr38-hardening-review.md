@@ -72,7 +72,7 @@ Command aliases used below:
 - `J1`: `mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewControllerTest,SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test`
 - `J2`: `mvn -pl iot-system/iot-system-biz -am "-Dtest=ConfiguredReviewCameraPermissionResolverTest,MediaPermissionCheckControllerTest,VideoMediaServiceRequestSignerTest,HttpVideoResolverStorageDriftTest,ReviewEvidenceManifestSignerTest,SupervisionAlertReviewAuditLookupMapperTest,SupervisionAlertReviewExportQueuePersistenceTest,SupervisionAlertReviewRuntimeSchedulingTest" -DfailIfNoTests=false test`; release acceptance requires the reactor command, even when a local target-module-only run is used to isolate unrelated reactor compilation drift.
 - `V1`: from `VIDEO/`, run `python -m unittest -q test_record_export test_record_availability`.
-- `V2`: from `VIDEO/`, run `python -m unittest discover -q`; the 2026-07-13 release-candidate run executed 305 tests with 0 failures/errors and 2 explicit external-service skips.
+- `V2`: from `VIDEO/`, run `python -m unittest discover -q`; the 2026-07-13 release-candidate run executed 333 tests with 0 failures/errors and 2 explicit external-service skips.
 - `VMig`: from `VIDEO/`, run `python bootstrap_schema.py --database-url=postgresql://...`, then `python apply_migrations.py --database-url=postgresql://...`, restart the service, and run `python apply_migrations.py --database-url=postgresql://... --verify-only`; verification must show checksum/history coverage for `V20260711` through `V20260713`, and a unit/dry-run plan is not a substitute for this release-database gate.
 - `MinIO`: configure a private release-like endpoint plus `YFEIEYE_RECORD_EXPORT_STORAGE_TYPE=minio`, `YFEIEYE_RECORD_EXPORT_STORAGE_URI=s3://...`, HMAC keyring variables, and `YFEIEYE_RECORD_EXPORT_REAL_MINIO_SMOKE=true`, then run `python -m pytest test_record_export_minio_smoke.py -q`; a skip is not a pass.
 - `W1`: `pnpm test:alert-review-workbench`; split modes are `pnpm test:alert-review-workbench:contract`, `pnpm test:alert-review-workbench:dev-api-mock`, `pnpm test:alert-review-workbench:dev-api-real-drawer`, and runner validation `pnpm test:alert-review-workbench:runner`.
@@ -1067,8 +1067,8 @@ Manifest verifier and HMAC key rotation:
 
 ## 2026-07-13 Release-Candidate Closure
 
-- DEVICE exact reactor gates passed: `J1` ran 209 tests and `J2` ran 40 tests with 0 failures/errors.
-- VIDEO full discovery passed: `python -m unittest discover -q` ran 305 tests with 0 failures/errors and 2 explicit external-service skips.
+- DEVICE exact reactor gates passed: `J1` ran 225 tests and `J2` ran 40 tests with 0 failures/errors.
+- VIDEO full discovery passed: `python -m unittest discover -q` ran 333 tests with 0 failures/errors and 2 explicit external-service skips.
 - WEB full type baseline, production build, workbench all-mode E2E, playback contract, W4 visible-copy scan, and release-package self-test passed.
 - Real DEVICE PostgreSQL migration smoke passed against the release PostgreSQL container, including duplicate ingest, concurrent reviewer status, and concurrent ReviewSegment overlap races. The production migration runner now includes `V20260713__alert_review_semantic_index_claim.sql` instead of stopping at `V20260712`.
 - Real VIDEO PostgreSQL migration smoke passed through an SSH tunnel with schema-history/checksum coverage through VIDEO `V20260713`.

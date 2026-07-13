@@ -40,6 +40,7 @@ from app.utils.ffmpeg_compat import (
 from app.utils.gb28181_source import resolve_gb28181_source
 from app.utils.node_client import resolve_java_backend_url
 from app.utils.minio_bucket_policy import ensure_bucket_private
+from app.utils.video_env import authorize_srs_hook_token
 from app.services.media_authorization_service import (
     audit_media_response,
     authorization_error,
@@ -1866,6 +1867,18 @@ def on_publish_callback():
     
     注意：此回调必须快速响应（建议<1秒），否则SRS可能会超时并拒绝推流
     """
+    hook_token = (
+        request.args.get('hook_token')
+        or request.headers.get('X-YFeiEye-Hook-Token')
+    )
+    if not authorize_srs_hook_token(hook_token):
+        logger.warning('on_publish callback rejected: invalid SRS hook token')
+        return jsonify({'code': 403, 'msg': 'forbidden'}), 403
+    return _handle_authorized_on_publish_callback()
+
+
+def _handle_authorized_on_publish_callback():
+    """Handle an on_publish callback after the private hook token is verified."""
     import threading
     
     # 立即返回允许推流，避免阻塞
@@ -2208,6 +2221,14 @@ def on_dvr_callback():
     MEDIA_UPLOAD_MODE=kafka 时仅入队 Kafka；否则同步走 dvr_upload_service。
     集群 Hook 推荐使用 /video/media/hook/srs/on_dvr。
     """
+    hook_token = (
+        request.args.get('hook_token')
+        or request.headers.get('X-YFeiEye-Hook-Token')
+    )
+    if not authorize_srs_hook_token(hook_token):
+        logger.warning('on_dvr callback rejected: invalid SRS hook token')
+        return jsonify({'code': 403, 'msg': 'forbidden'}), 403
+
     from app.services.dvr_device_resolver import resolve_device_from_hook
     from app.services.dvr_upload_service import process_dvr_event
     from app.services.media_kafka_service import (
