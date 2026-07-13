@@ -467,6 +467,22 @@ class SupervisionSchemaSqlTest {
     }
 
     @Test
+    void localSchedulerOwnershipMigrationPausesQuartzAndProtectsReportIdempotency() throws IOException {
+        Path migration = modulePath(
+                "src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql");
+
+        assertTrue(Files.exists(migration), "local scheduler ownership migration should exist");
+        String sql = Files.readString(migration, StandardCharsets.UTF_8);
+        assertTrue(sql.contains("LOCK TABLE infra_job"));
+        assertTrue(sql.contains("system_supervision_alert_review_runtime_outbox_delivery"));
+        assertTrue(sql.contains("SET status = 2"));
+        assertTrue(sql.contains("ROW_NUMBER() OVER"));
+        assertTrue(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_runtime_outbox_report"));
+        assertTrue(sql.contains("tenant_id, event_type, alert_key"));
+        assertTrue(sql.contains("event_type = 'review_operations_report'"));
+    }
+
+    @Test
     void alertReviewHardeningMigrationIsSplitForProductionRelease() throws IOException {
         Path migration = modulePath("src/main/resources/sql/migrations/V20260702__alert_review_frigate_hardening.sql");
 
@@ -539,6 +555,7 @@ class SupervisionSchemaSqlTest {
         assertTrue(migrationSql.contains("acknowledged_by BIGINT"));
         assertTrue(migrationSql.contains("CREATE UNIQUE INDEX IF NOT EXISTS uk_supervision_alert_review_report_ack_key"));
         assertTrue(migrationSql.contains("ON system_supervision_alert_review_report_ack(tenant_id, report_key)"));
+        assertTrue(migrationSql.contains("WHERE deleted = 0"));
     }
 
     @Test

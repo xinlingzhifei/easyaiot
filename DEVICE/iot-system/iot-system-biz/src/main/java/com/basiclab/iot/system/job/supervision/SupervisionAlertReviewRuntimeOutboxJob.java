@@ -17,6 +17,7 @@ public class SupervisionAlertReviewRuntimeOutboxJob implements JobHandler {
     }
 
     @Override
+    @SupervisionAlertReviewRuntimeJob("supervisionAlertReviewRuntimeOutboxJob")
     @TenantJob
     public String execute(String param) {
         ReviewRuntimeOutboxPublishResult result = supervisionAlertReviewService.publishRuntimeOutbox(

@@ -129,6 +129,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -4728,6 +4729,54 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void scheduledReportKeyIsStableForLateDataAndUsesHalfOpenWindows() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                request -> Optional.empty(),
+                noEventProjectionStore()
+        );
+        LocalDateTime periodStart = LocalDateTime.of(2026, 7, 1, 8, 0);
+        LocalDateTime periodEnd = periodStart.plusHours(8);
+        service.ingestClue(newClue(
+                "alert-report-first", periodStart.plusHours(1), "report-first.jpg", "report-first.mp4"));
+
+        ReviewOperationsReport initial = service.generateReviewReport(new ReviewReportCommand(
+                "shift", null, periodStart, periodEnd, null));
+        String initialKey = String.valueOf(initial.deliveryPlan().get("reportKey"));
+
+        service.ingestClue(newClue(
+                "alert-report-late", periodStart.plusHours(2), "report-late.jpg", "report-late.mp4"));
+        ReviewItemAggregate boundary = service.ingestClue(newClue(
+                "alert-report-boundary", periodEnd, "report-boundary.jpg", "report-boundary.mp4"));
+        ReviewOperationsReport updated = service.generateReviewReport(new ReviewReportCommand(
+                "shift", null, periodStart, periodEnd, null));
+        ReviewOperationsReport next = service.generateReviewReport(new ReviewReportCommand(
+                "shift", null, periodEnd, periodEnd.plusHours(8), null));
+        ReviewOperationsReport exactCamera = service.generateReviewReport(new ReviewReportCommand(
+                "shift",
+                new ReviewQuery(null, "camera-01", null, null, null, null, null, null,
+                        periodStart, periodEnd),
+                periodStart,
+                periodEnd,
+                null));
+        ReviewOperationsReport whitespaceCamera = service.generateReviewReport(new ReviewReportCommand(
+                "shift",
+                new ReviewQuery(null, " camera-01 ", null, null, null, null, null, null,
+                        periodStart, periodEnd),
+                periodStart,
+                periodEnd,
+                null));
+
+        assertEquals(initialKey, updated.deliveryPlan().get("reportKey"));
+        assertFalse(updated.reviewItemIds().contains(boundary.id()));
+        assertTrue(next.reviewItemIds().contains(boundary.id()));
+        assertNotEquals(exactCamera.deliveryPlan().get("reportKey"),
+                whitespaceCamera.deliveryPlan().get("reportKey"));
+    }
+
+    @Test
     void operationsReportAcknowledgementPersistsForSameReportScopeAndIsIdempotent() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(
@@ -4757,8 +4806,8 @@ class SupervisionAlertReviewServiceTest {
         ReviewReportAcknowledgement acknowledged = service.acknowledgeReviewReport(new ReviewReportAcknowledgementCommand(
                 "shift",
                 query,
-                shiftStart,
-                shiftEnd,
+                null,
+                null,
                 9002L,
                 "shift leader reviewed"
         ));
@@ -4769,6 +4818,8 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(9002L, acknowledged.acknowledgedBy());
         assertEquals("shift leader reviewed", acknowledged.note());
         assertFalse(acknowledged.duplicate());
+        assertEquals(shiftStart.toString(), acknowledged.metadata().get("periodStart"));
+        assertEquals(shiftEnd.toString(), acknowledged.metadata().get("periodEnd"));
 
         ReviewOperationsReport reloaded = service.generateReviewReport(new ReviewReportCommand(
                 "shift",
@@ -4896,7 +4947,9 @@ class SupervisionAlertReviewServiceTest {
                 noEventProjectionStore()
         );
         service.setRuntimeOutboxPublisher(message -> ReviewRuntimeOutboxDeliveryResult.delivered());
-        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 1, 9, 30);
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        LocalDateTime shiftEnd = now.toLocalDate().atTime((now.getHour() / 8) * 8, 0);
+        LocalDateTime alertTime = shiftEnd.minusHours(1);
         service.ingestClue(newClue("alert-report-job", alertTime, "report-job.jpg", null));
 
         SupervisionAlertReviewOperationsReportJob job = new SupervisionAlertReviewOperationsReportJob(service);

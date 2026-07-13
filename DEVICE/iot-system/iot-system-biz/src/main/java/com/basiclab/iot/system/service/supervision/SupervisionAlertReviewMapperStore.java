@@ -379,7 +379,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
             return Optional.empty();
         }
         return Optional.ofNullable(reviewReportAckMapper.selectByTenantAndReportKey(
-                        reviewIdentityTenantId(TenantContextHolder.getTenantId()),
+                        TenantContextHolder.getRequiredTenantId(),
                         reportKey
                 ))
                 .map(SupervisionAlertReviewMapperStore::toReportAcknowledgement);
@@ -388,16 +388,9 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     @Override
     public ReviewReportAcknowledgement saveReportAcknowledgement(ReviewReportAcknowledgement acknowledgement) {
         Objects.requireNonNull(acknowledgement, "acknowledgement");
-        Long tenantId = reviewIdentityTenantId(TenantContextHolder.getTenantId());
-        SupervisionAlertReviewReportAckDO existing = reviewReportAckMapper.selectByTenantAndReportKey(
-                tenantId,
-                acknowledgement.reportKey()
-        );
-        if (existing != null) {
-            return toReportAcknowledgement(existing);
-        }
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
         Map<String, Object> metadata = acknowledgement.metadata();
-        reviewReportAckMapper.insert(new SupervisionAlertReviewReportAckDO()
+        int inserted = reviewReportAckMapper.insertIfAbsent(tenantId, new SupervisionAlertReviewReportAckDO()
                 .setTenantId(tenantId)
                 .setReportKey(acknowledgement.reportKey())
                 .setReportType(acknowledgement.reportType())
@@ -410,7 +403,27 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .setAcknowledgementNote(acknowledgement.note())
                 .setMetadata(writeJson(metadata))
                 .setVersion(0));
-        return findReportAcknowledgement(acknowledgement.reportKey()).orElse(acknowledgement);
+        SupervisionAlertReviewReportAckDO persisted = reviewReportAckMapper.selectByTenantAndReportKey(
+                tenantId, acknowledgement.reportKey());
+        if (persisted == null) {
+            throw new IllegalStateException(
+                    "report acknowledgement insert completed without a readable row: "
+                            + acknowledgement.reportKey());
+        }
+        ReviewReportAcknowledgement result = toReportAcknowledgement(persisted);
+        if (inserted > 0) {
+            return result;
+        }
+        return new ReviewReportAcknowledgement(
+                result.reportKey(),
+                result.reportType(),
+                result.status(),
+                result.acknowledgedBy(),
+                result.acknowledgedAt(),
+                result.note(),
+                true,
+                result.metadata()
+        );
     }
 
     @Override
@@ -1681,9 +1694,6 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         if (!hasText(reportKey)) {
             return 0;
         }
-        if (reviewRuntimeOutboxMapper.existsActive("review_operations_report", reportKey)) {
-            return 0;
-        }
         LocalDateTime createdAt = queuedAt == null ? LocalDateTime.now() : queuedAt;
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("reportKey", reportKey);
@@ -1699,7 +1709,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         payload.put("generatedAt", report.generatedAt() == null ? null : report.generatedAt().toString());
         payload.put("operatorUserId", report.operatorUserId());
         payload.entrySet().removeIf(entry -> entry.getValue() == null);
-        reviewRuntimeOutboxMapper.insert(new SupervisionAlertReviewRuntimeOutboxDO()
+        SupervisionAlertReviewRuntimeOutboxDO entry = new SupervisionAlertReviewRuntimeOutboxDO()
                 .setRunId(runtimeOutboxReportRunId(reportKey))
                 .setEventType("review_operations_report")
                 .setAlertKey(reportKey)
@@ -1708,8 +1718,9 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 .setOperatorUserId(report.operatorUserId())
                 .setCreatedAt(createdAt)
                 .setRetryCount(0)
-                .setVersion(0));
-        return 1;
+                .setVersion(0);
+        return reviewRuntimeOutboxMapper.insertOperationsReportIfAbsent(
+                TenantContextHolder.getRequiredTenantId(), entry);
     }
 
     private static String runtimeOutboxReportRunId(String reportKey) {

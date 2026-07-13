@@ -12,6 +12,9 @@ import {
   buildConcurrentReviewStatusUpdateSql,
   buildConcurrentReviewSegmentBootstrapSql,
   buildConcurrentReviewSegmentInsertSql,
+  buildConcurrentOperationsReportInsertSql,
+  buildConcurrentReportAcknowledgementInsertSql,
+  buildReportAcknowledgementLifecycleSmokeSql,
   buildPsqlInvocation,
   databaseUrlForDatabase,
   buildPostMigrationAssertionSql,
@@ -19,6 +22,7 @@ import {
   summarizeConcurrentDuplicateResults,
   summarizeConcurrentReviewStatusResults,
   summarizeConcurrentReviewSegmentResults,
+  summarizeConcurrentNoopResults,
 } from './alert-review-postgres-migration-smoke.mjs';
 import {
   evaluateStatus,
@@ -88,6 +92,7 @@ assert.deepEqual(MIGRATION_FILES, [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
 ]);
 
 assert.equal(
@@ -100,6 +105,15 @@ assert.match(legacyBooleanDeletedFixtureSql, /DROP COLUMN tenant_id/);
 assert.match(legacyBooleanDeletedFixtureSql, /ALTER COLUMN deleted TYPE BOOLEAN/);
 assert.match(legacyBooleanDeletedFixtureSql, /WHERE deleted = FALSE/);
 assert.match(legacyBooleanDeletedFixtureSql, /'pending', TRUE/);
+
+const legacyOperationsReportDuplicateFixtureSql =
+  postgresSmoke.buildLegacyOperationsReportDuplicateFixtureSql();
+assert.match(legacyOperationsReportDuplicateFixtureSql, /report-duplicate-first/);
+assert.match(legacyOperationsReportDuplicateFixtureSql, /report-duplicate-second/);
+assert.match(legacyOperationsReportDuplicateFixtureSql, /'runtime_alert'/);
+assert.match(legacyOperationsReportDuplicateFixtureSql, /, 1\);/);
+assert.match(legacyOperationsReportDuplicateFixtureSql, /99611/);
+assert.match(legacyOperationsReportDuplicateFixtureSql, /99612/);
 
 const platformCompatibilityMigrationSql = readFileSync(
   MIGRATION_FILES.find((file) => file.includes('deleted_smallint')),
@@ -134,6 +148,17 @@ assert.match(schedulerActivationSql, /supervisionAlertReviewEventReconcileJob/);
 assert.match(schedulerActivationSql, /supervisionAlertReviewEvidenceExportWorkerJob/);
 assert.match(schedulerActivationSql, /supervisionAlertReviewSemanticIndexJob/);
 assert.match(schedulerActivationSql, /supervisionAlertReviewOperationsReportJob/);
+
+const localSchedulerOwnershipSql = readFileSync(
+  MIGRATION_FILES.find((file) => file.includes('local_scheduler_ownership')),
+  'utf8',
+);
+assert.match(localSchedulerOwnershipSql, /SET status = 2/);
+assert.match(localSchedulerOwnershipSql, /LOCK TABLE infra_job/);
+assert.match(localSchedulerOwnershipSql, /system_supervision_alert_review_runtime_outbox_delivery/);
+assert.match(localSchedulerOwnershipSql, /uk_supervision_alert_review_runtime_outbox_report/);
+assert.match(localSchedulerOwnershipSql, /tenant_id, event_type, alert_key/);
+assert.match(localSchedulerOwnershipSql, /review_operations_report/);
 
 const exportQueueMigrationSql = readFileSync(
   MIGRATION_FILES.find((file) => file.includes('export_queue')),
@@ -338,7 +363,7 @@ assert.match(assertionSql, /uk_alert_review_semantic_trigger_evaluation/);
 assert.match(assertionSql, /uk_alert_review_semantic_trigger_terminal/);
 assert.match(assertionSql, /expected semantic trigger permission seeds to be present/);
 assert.match(assertionSql, /expected semantic trigger confirmation indexes to be tenant scoped/);
-assert.match(assertionSql, /expected active alert review scheduler jobs to be present/);
+assert.match(assertionSql, /expected local-owned alert review Quartz jobs to be paused/);
 assert.match(assertionSql, /supervisionAlertReviewEventReconcileJob/);
 assert.match(assertionSql, /supervisionAlertReviewEvidenceExportWorkerJob/);
 assert.match(assertionSql, /supervisionAlertReviewOperationsReportJob/);
@@ -349,6 +374,11 @@ assert.match(assertionSql, /system_supervision_alert_review_runtime_outbox_deliv
 assert.match(assertionSql, /expected runtime outbox delivery recipient idempotency index to exist/);
 assert.match(assertionSql, /expected runtime outbox claim columns to exist/);
 assert.match(assertionSql, /expected runtime outbox claim index to exist/);
+assert.match(assertionSql, /expected operations report outbox idempotency index to exist/);
+assert.match(assertionSql, /index_info\.indisunique/);
+assert.match(assertionSql, /expected operations report migration to preserve the earliest active duplicate/);
+assert.match(assertionSql, /expected operations report dedupe to retire duplicate recipient deliveries/);
+assert.match(assertionSql, /expected operations report dedupe to preserve other tenants, event types, and deleted history/);
 assert.match(assertionSql, /expected review case audit to allow pre-case media audit rows/);
 assert.match(assertionSql, /idx_supervision_alert_review_case_audit_item/);
 assert.match(assertionSql, /expected stale review status version update to affect no rows/);
@@ -391,6 +421,28 @@ assert.match(concurrentSegmentInsertSql, /review_item_id, segment_no, tenant_id,
 assert.match(concurrentSegmentInsertSql, /7001, 'seg-race-1'/);
 assert.match(concurrentSegmentInsertSql, /camera-segment-race-01/);
 assert.match(concurrentSegmentInsertSql, /NULL, 0/);
+
+const concurrentOperationsReportInsertSql = buildConcurrentOperationsReportInsertSql('report-worker-a');
+assert.match(concurrentOperationsReportInsertSql, /review_operations_report/);
+assert.match(concurrentOperationsReportInsertSql, /ON CONFLICT \(tenant_id, event_type, alert_key\)/);
+assert.match(concurrentOperationsReportInsertSql, /DO NOTHING/);
+
+const concurrentReportAcknowledgementInsertSql = buildConcurrentReportAcknowledgementInsertSql({
+  userId: 9101,
+  note: 'first contender',
+});
+assert.match(concurrentReportAcknowledgementInsertSql, /report-ack-concurrent/);
+assert.match(concurrentReportAcknowledgementInsertSql, /ON CONFLICT \(tenant_id, report_key\) WHERE deleted = 0/);
+assert.match(concurrentReportAcknowledgementInsertSql, /DO NOTHING/);
+
+const reportAcknowledgementLifecycleSmokeSql = buildReportAcknowledgementLifecycleSmokeSql();
+assert.match(reportAcknowledgementLifecycleSmokeSql, /tenant_id = 8008/);
+assert.match(reportAcknowledgementLifecycleSmokeSql, /tenant_id = 8009/);
+assert.match(reportAcknowledgementLifecycleSmokeSql, /replacement after soft delete/);
+assert.match(
+  reportAcknowledgementLifecycleSmokeSql,
+  /expected report acknowledgement uniqueness to be tenant scoped and soft-delete aware/,
+);
 
 assert.equal(
   summarizeConcurrentDuplicateResults([
@@ -443,6 +495,21 @@ assert.throws(
     { status: 0, stdout: 'INSERT 0 1', stderr: '' },
   ]),
   /expected exactly one concurrent ReviewSegment insert to succeed/,
+);
+
+assert.equal(
+  summarizeConcurrentNoopResults([
+    { status: 0, stdout: 'INSERT 0 1', stderr: '' },
+    { status: 0, stdout: 'INSERT 0 0', stderr: '' },
+  ], 'operations report outbox'),
+  'concurrent operations report outbox first-writer-wins smoke passed',
+);
+assert.throws(
+  () => summarizeConcurrentNoopResults([
+    { status: 0, stdout: 'INSERT 0 1', stderr: '' },
+    { status: 0, stdout: 'INSERT 0 1', stderr: '' },
+  ], 'operations report outbox'),
+  /expected exactly one concurrent operations report outbox insert and one atomic no-op/,
 );
 
 assert.deepEqual(parseArgs(['--container=pg-review', '--database=yfeieye_smoke']), {

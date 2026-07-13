@@ -3,6 +3,8 @@ package com.basiclab.iot.system.dal.pgsql.supervision;
 import com.basiclab.iot.common.core.mapper.BaseMapperX;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewRuntimeOutboxDO;
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
@@ -12,6 +14,31 @@ import java.util.List;
 
 @Mapper
 public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<SupervisionAlertReviewRuntimeOutboxDO> {
+
+    @InterceptorIgnore(tenantLine = "true")
+    @Insert("""
+            INSERT INTO system_supervision_alert_review_runtime_outbox(
+                tenant_id, run_id, event_type, alert_key, payload, outbox_status,
+                operator_user_id, created_at, retry_count, version
+            ) VALUES (
+                #{tenantId,jdbcType=BIGINT},
+                #{entry.runId,jdbcType=VARCHAR},
+                #{entry.eventType,jdbcType=VARCHAR},
+                #{entry.alertKey,jdbcType=VARCHAR},
+                #{entry.payload,jdbcType=VARCHAR},
+                #{entry.outboxStatus,jdbcType=VARCHAR},
+                #{entry.operatorUserId,jdbcType=BIGINT},
+                #{entry.createdAt,jdbcType=TIMESTAMP},
+                #{entry.retryCount,jdbcType=INTEGER},
+                #{entry.version,jdbcType=INTEGER}
+            )
+            ON CONFLICT (tenant_id, event_type, alert_key)
+            WHERE deleted = 0
+              AND event_type = 'review_operations_report'
+            DO NOTHING
+            """)
+    int insertOperationsReportIfAbsent(@Param("tenantId") Long tenantId,
+                                       @Param("entry") SupervisionAlertReviewRuntimeOutboxDO entry);
 
     default List<SupervisionAlertReviewRuntimeOutboxDO> selectPending(Integer limit) {
         int normalizedLimit = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
@@ -81,7 +108,8 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
         return selectCount(new LambdaQueryWrapperX<SupervisionAlertReviewRuntimeOutboxDO>()
                 .eq(SupervisionAlertReviewRuntimeOutboxDO::getEventType, eventType)
                 .eq(SupervisionAlertReviewRuntimeOutboxDO::getAlertKey, alertKey)
-                .in(SupervisionAlertReviewRuntimeOutboxDO::getOutboxStatus, List.of("pending", "processing", "published"))) > 0;
+                .in(SupervisionAlertReviewRuntimeOutboxDO::getOutboxStatus,
+                        List.of("pending", "processing", "published", "failed"))) > 0;
     }
 
 }

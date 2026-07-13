@@ -18,6 +18,7 @@ public class SupervisionAlertReviewSemanticIndexJob implements JobHandler {
     }
 
     @Override
+    @SupervisionAlertReviewRuntimeJob("supervisionAlertReviewSemanticIndexJob")
     @TenantJob
     public String execute(String param) {
         ReviewSemanticWorkerRun result = supervisionAlertReviewService.processSemanticIndexQueue(

@@ -20,6 +20,7 @@ public class SupervisionAlertReviewRuntimePatrolJob implements JobHandler {
     }
 
     @Override
+    @SupervisionAlertReviewRuntimeJob("supervisionAlertReviewRuntimePatrolJob")
     @TenantJob
     public String execute(String param) {
         ReviewRuntimePatrolResult result = supervisionAlertReviewService.runRuntimePatrol(

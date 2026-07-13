@@ -17,6 +17,7 @@ public class SupervisionAlertReviewEvidenceExportWorkerJob implements JobHandler
     }
 
     @Override
+    @SupervisionAlertReviewRuntimeJob("supervisionAlertReviewEvidenceExportWorkerJob")
     @TenantJob
     public String execute(String param) {
         ReviewEvidenceExportWorkerRun result = supervisionAlertReviewService.processEvidenceExportQueue(

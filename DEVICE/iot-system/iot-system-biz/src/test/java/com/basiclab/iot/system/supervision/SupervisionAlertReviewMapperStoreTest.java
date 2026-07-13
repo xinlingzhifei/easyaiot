@@ -2,6 +2,7 @@ package com.basiclab.iot.system.supervision;
 
 import com.basiclab.iot.common.core.context.TenantContextHolder;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewItemDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewReportAckDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseItemDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
@@ -30,6 +31,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCaseView;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemDraft;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewItemAggregate;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewReportAcknowledgement;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewSemanticIndexEntry;
 import org.junit.jupiter.api.Test;
 
@@ -52,6 +54,54 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionAlertReviewMapperStoreTest {
+
+    @Test
+    void reportAcknowledgementInsertIsFirstWriterWinsAndReturnsDuplicateWinner() {
+        AtomicReference<SupervisionAlertReviewReportAckDO> stored = new AtomicReference<>();
+        AtomicReference<Long> insertedTenantId = new AtomicReference<>();
+        AtomicInteger ordinaryInsertCount = new AtomicInteger();
+        SupervisionAlertReviewReportAckMapper ackMapper = mapper(
+                SupervisionAlertReviewReportAckMapper.class,
+                (proxy, method, args) -> {
+                    if ("insertIfAbsent".equals(method.getName())) {
+                        insertedTenantId.set((Long) args[0]);
+                        return stored.compareAndSet(null, (SupervisionAlertReviewReportAckDO) args[1]) ? 1 : 0;
+                    }
+                    if ("selectByTenantAndReportKey".equals(method.getName())) {
+                        return stored.get();
+                    }
+                    if ("insert".equals(method.getName())) {
+                        ordinaryInsertCount.incrementAndGet();
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(ackMapper);
+        LocalDateTime firstAt = LocalDateTime.of(2026, 7, 13, 18, 0);
+        ReviewReportAcknowledgement first = new ReviewReportAcknowledgement(
+                "report-atomic", "shift", "acknowledged", 9001L, firstAt,
+                "first", false, Map.of("periodStart", "2026-07-13T08:00:00"));
+        ReviewReportAcknowledgement second = new ReviewReportAcknowledgement(
+                "report-atomic", "shift", "acknowledged", 9002L, firstAt.plusSeconds(1),
+                "second", false, Map.of("periodStart", "2026-07-13T08:00:00"));
+
+        TenantContextHolder.setTenantId(42L);
+        try {
+            ReviewReportAcknowledgement inserted = store.saveReportAcknowledgement(first);
+            ReviewReportAcknowledgement duplicate = store.saveReportAcknowledgement(second);
+
+            assertFalse(inserted.duplicate());
+            assertTrue(duplicate.duplicate());
+            assertEquals(9001L, duplicate.acknowledgedBy());
+            assertEquals("first", duplicate.note());
+            assertEquals(firstAt, duplicate.acknowledgedAt());
+            assertEquals(42L, insertedTenantId.get());
+            assertEquals(0, ordinaryInsertCount.get());
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
 
     @Test
     @SuppressWarnings("unchecked")
@@ -1139,6 +1189,28 @@ class SupervisionAlertReviewMapperStoreTest {
                 noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
                 noopMapper(SupervisionAlertReviewSegmentMapper.class),
                 noopMapper(SupervisionAlertReviewReportAckMapper.class),
+                noopMapper(SupervisionEventMapper.class)
+        );
+    }
+
+    private static SupervisionAlertReviewMapperStore newStore(
+            SupervisionAlertReviewReportAckMapper reportAckMapper) {
+        return new SupervisionAlertReviewMapperStore(
+                noopMapper(SupervisionAlertReviewItemMapper.class),
+                noopMapper(SupervisionAlertReviewEvidenceMapper.class),
+                noopMapper(SupervisionAlertReviewIngestIdentityMapper.class),
+                noopMapper(SupervisionAlertReviewRuleMapper.class),
+                noopMapper(SupervisionAlertReviewCaseMapper.class),
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class),
+                noopMapper(SupervisionAlertReviewCaseAuditMapper.class),
+                noopMapper(SupervisionAlertReviewExportJobMapper.class),
+                noopMapper(SupervisionAlertReviewSemanticIndexMapper.class),
+                noopMapper(SupervisionAlertReviewUserStatusMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeRunMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
+                reportAckMapper,
                 noopMapper(SupervisionEventMapper.class)
         );
     }

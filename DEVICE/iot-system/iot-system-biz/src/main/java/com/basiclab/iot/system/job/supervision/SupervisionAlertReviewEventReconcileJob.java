@@ -18,6 +18,7 @@ public class SupervisionAlertReviewEventReconcileJob implements JobHandler {
     }
 
     @Override
+    @SupervisionAlertReviewRuntimeJob("supervisionAlertReviewEventReconcileJob")
     @TenantJob
     public String execute(String param) {
         ReviewEventReconciliationResult result = supervisionAlertReviewService.reconcileEventProjections(

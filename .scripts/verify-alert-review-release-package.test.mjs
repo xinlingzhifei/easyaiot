@@ -508,6 +508,35 @@ assert.equal(
   true,
 );
 
+const localSchedulerOwnershipMigrationPath =
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql';
+const untrackedLocalSchedulerOwnershipMigration = evaluateStatus(`
+?? ${localSchedulerOwnershipMigrationPath}
+`);
+assert.equal(untrackedLocalSchedulerOwnershipMigration.ok, false);
+assert.equal(
+  untrackedLocalSchedulerOwnershipMigration.blockers[0].group,
+  'DEVICE schema and migration',
+);
+
+const tenantJobRuntimePaths = [
+  'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/config/YudaoTenantAutoConfiguration.java',
+  'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/core/job/TenantJobAspect.java',
+  'DEVICE/iot-common/iot-common-tenant/src/test/java/com/basiclab/iot/common/core/job/TenantJobAspectTest.java',
+];
+for (const path of tenantJobRuntimePaths) {
+  const untrackedTenantJobRuntime = evaluateStatus(`?? ${path}`);
+  assert.equal(untrackedTenantJobRuntime.ok, false);
+  assert.equal(untrackedTenantJobRuntime.blockers[0].group, 'DEVICE tenant job runtime');
+}
+for (const path of [localSchedulerOwnershipMigrationPath, ...tenantJobRuntimePaths]) {
+  assert.equal(
+    releasePackageVerifier.TRACKED_RELEASE_PATHS.includes(path),
+    true,
+    `${path} must remain part of the formal FR release package`,
+  );
+}
+
 const untrackedVideoTenantMigration = evaluateStatus(`
 ?? VIDEO/migrations/V20260712__record_snapshot_tenant_scope.sql
 `);
@@ -565,6 +594,9 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   '.scripts/alert-review-visible-copy-scan.test.mjs',
   '.scripts/alert-review-player-live-smoke.mjs',
   '.scripts/alert-review-player-live-smoke.test.mjs',
+  'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/config/YudaoTenantAutoConfiguration.java',
+  'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/core/job/TenantJobAspect.java',
+  'DEVICE/iot-common/iot-common-tenant/src/test/java/com/basiclab/iot/common/core/job/TenantJobAspectTest.java',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260704__alert_review_segment_tenant_scope.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260705__alert_review_review_data_backfill.sql',
@@ -583,13 +615,14 @@ const trackedReleaseEntries = releaseEntriesForTrackedPaths([
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260709__alert_review_scheduler_activation.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260710__alert_review_export_queue.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/dataobject/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryDO.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/dal/pgsql/supervision/SupervisionAlertReviewRuntimeOutboxDeliveryMapper.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryStore.java',
   'DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ReviewRuntimeOutboxNotifyDeliveryMapperStore.java',
   'DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/NotifyReviewRuntimeOutboxPublisherTest.java',
 ]);
-assert.equal(trackedReleaseEntries.length, 42);
+assert.equal(trackedReleaseEntries.length, 46);
 assert.deepEqual(
   trackedReleaseEntries.map((entry) => [entry.status, entry.path, entry.group]),
   [
@@ -612,6 +645,21 @@ assert.deepEqual(
     ['  ', '.scripts/alert-review-visible-copy-scan.test.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.mjs', 'FR release gate tooling'],
     ['  ', '.scripts/alert-review-player-live-smoke.test.mjs', 'FR release gate tooling'],
+    [
+      '  ',
+      'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/config/YudaoTenantAutoConfiguration.java',
+      'DEVICE tenant job runtime',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-common/iot-common-tenant/src/main/java/com/basiclab/iot/common/core/job/TenantJobAspect.java',
+      'DEVICE tenant job runtime',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-common/iot-common-tenant/src/test/java/com/basiclab/iot/common/core/job/TenantJobAspectTest.java',
+      'DEVICE tenant job runtime',
+    ],
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260701__supervision_event_closure_baseline.sql',
@@ -700,6 +748,11 @@ assert.deepEqual(
     [
       '  ',
       'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260711__alert_review_media_manage_permission.sql',
+      'DEVICE schema and migration',
+    ],
+    [
+      '  ',
+      'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
       'DEVICE schema and migration',
     ],
     [

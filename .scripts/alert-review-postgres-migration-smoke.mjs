@@ -27,6 +27,7 @@ export const MIGRATION_FILES = [
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713__alert_review_semantic_index_claim.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_2__alert_review_evidence_record_start.sql',
   'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_3__supervision_event_create_permission.sql',
+  'DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql',
 ];
 
 export function parseArgs(args, cwd = process.cwd()) {
@@ -192,6 +193,30 @@ ON system_supervision_alert_review_runtime_outbox_delivery(delivery_status, last
 
 CREATE INDEX idx_supervision_alert_review_runtime_outbox_delivery_alert
 ON system_supervision_alert_review_runtime_outbox_delivery(event_type, alert_key);
+`;
+}
+
+export function buildLegacyOperationsReportDuplicateFixtureSql() {
+  return `
+INSERT INTO system_supervision_alert_review_runtime_outbox(
+  id, tenant_id, run_id, event_type, alert_key, payload, outbox_status, deleted
+)
+VALUES
+  (99601, 7007, 'report-duplicate-first', 'review_operations_report', 'report-duplicate', '{}', 'pending', 0),
+  (99602, 7007, 'report-duplicate-second', 'review_operations_report', 'report-duplicate', '{}', 'failed', 0),
+  (99603, 7008, 'report-other-tenant', 'review_operations_report', 'report-duplicate', '{}', 'pending', 0),
+  (99604, 7007, 'report-other-event', 'runtime_alert', 'report-duplicate', '{}', 'pending', 0),
+  (99605, 7007, 'report-already-deleted', 'review_operations_report', 'report-duplicate', '{}', 'pending', 1);
+
+INSERT INTO system_supervision_alert_review_runtime_outbox_delivery(
+  id, tenant_id, outbox_id, event_type, alert_key, channel, recipient_user_id,
+  template_code, delivery_status, deleted
+)
+VALUES
+  (99611, 7007, 99601, 'review_operations_report', 'report-duplicate', 'notify', 9001,
+   'YFEIEYE_REVIEW_OPERATIONS_REPORT', 'pending', 0),
+  (99612, 7007, 99602, 'review_operations_report', 'report-duplicate', 'notify', 9001,
+   'YFEIEYE_REVIEW_OPERATIONS_REPORT', 'pending', 0);
 `;
 }
 
@@ -369,10 +394,10 @@ BEGIN
       'supervisionAlertReviewSemanticIndexJob',
       'supervisionAlertReviewOperationsReportJob'
     )
-      AND status = 1
+      AND status = 2
       AND deleted = 0
   ) <> 7 THEN
-    RAISE EXCEPTION 'expected active alert review scheduler jobs to be present';
+    RAISE EXCEPTION 'expected local-owned alert review Quartz jobs to be paused';
   END IF;
 
   IF (
@@ -380,10 +405,10 @@ BEGIN
     FROM infra_job
     WHERE handler_name = 'supervisionAlertReviewEventReconcileJob'
       AND cron_expression = '0 0/5 * * * ?'
-      AND status = 1
+      AND status = 2
       AND deleted = 0
   ) <> 1 THEN
-    RAISE EXCEPTION 'expected event reconcile scheduler job to be active and deduplicated';
+    RAISE EXCEPTION 'expected event reconcile Quartz seed to be paused and deduplicated';
   END IF;
 
   IF (
@@ -392,10 +417,10 @@ BEGIN
     WHERE handler_name = 'supervisionAlertReviewEvidenceExportWorkerJob'
       AND handler_param = '20'
       AND cron_expression = '0 0/2 * * * ?'
-      AND status = 1
+      AND status = 2
       AND deleted = 0
   ) <> 1 THEN
-    RAISE EXCEPTION 'expected evidence export worker scheduler job to be active and deduplicated';
+    RAISE EXCEPTION 'expected evidence export Quartz seed to be paused and deduplicated';
   END IF;
 
   IF (
@@ -403,10 +428,10 @@ BEGIN
     FROM infra_job
     WHERE handler_name = 'supervisionAlertReviewOperationsReportJob'
       AND handler_param IN ('shift', 'daily')
-      AND status = 1
+      AND status = 2
       AND deleted = 0
   ) <> 2 THEN
-    RAISE EXCEPTION 'expected operations report scheduler seeds to cover shift and daily reports';
+    RAISE EXCEPTION 'expected paused operations report seeds to cover shift and daily reports';
   END IF;
 
   IF (
@@ -455,6 +480,66 @@ BEGIN
       AND indexname = 'idx_supervision_alert_review_runtime_outbox_claim'
   ) THEN
     RAISE EXCEPTION 'expected runtime outbox claim index to exist';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index index_info
+    JOIN pg_class index_class ON index_class.oid = index_info.indexrelid
+    JOIN pg_class table_class ON table_class.oid = index_info.indrelid
+    WHERE table_class.relname = 'system_supervision_alert_review_runtime_outbox'
+      AND index_class.relname = 'uk_supervision_alert_review_runtime_outbox_report'
+      AND index_info.indisunique
+      AND index_info.indnkeyatts = 3
+      AND pg_get_indexdef(index_info.indexrelid, 1, TRUE) = 'tenant_id'
+      AND pg_get_indexdef(index_info.indexrelid, 2, TRUE) = 'event_type'
+      AND pg_get_indexdef(index_info.indexrelid, 3, TRUE) = 'alert_key'
+      AND pg_get_expr(index_info.indpred, index_info.indrelid) LIKE '%deleted = 0%'
+      AND pg_get_expr(index_info.indpred, index_info.indrelid) LIKE '%review_operations_report%'
+  ) THEN
+    RAISE EXCEPTION 'expected operations report outbox idempotency index to exist';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM system_supervision_alert_review_runtime_outbox
+    WHERE tenant_id = 7007
+      AND event_type = 'review_operations_report'
+      AND alert_key = 'report-duplicate'
+      AND deleted = 0
+  ) <> 1 OR NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_runtime_outbox
+    WHERE id = 99601 AND deleted = 0
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM system_supervision_alert_review_runtime_outbox
+    WHERE id = 99602 AND deleted = 1
+  ) THEN
+    RAISE EXCEPTION 'expected operations report migration to preserve the earliest active duplicate';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM system_supervision_alert_review_runtime_outbox_delivery
+    WHERE id = 99611 AND deleted = 0
+  ) OR NOT EXISTS (
+    SELECT 1 FROM system_supervision_alert_review_runtime_outbox_delivery
+    WHERE id = 99612 AND deleted = 1
+  ) THEN
+    RAISE EXCEPTION 'expected operations report dedupe to retire duplicate recipient deliveries';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM system_supervision_alert_review_runtime_outbox
+    WHERE id IN (99603, 99604, 99605)
+  ) <> 3 OR (
+    SELECT count(*) FROM system_supervision_alert_review_runtime_outbox
+    WHERE id IN (99603, 99604) AND deleted = 0
+  ) <> 2 OR (
+    SELECT count(*) FROM system_supervision_alert_review_runtime_outbox
+    WHERE id = 99605 AND deleted = 1
+  ) <> 1 THEN
+    RAISE EXCEPTION 'expected operations report dedupe to preserve other tenants, event types, and deleted history';
   END IF;
 
   IF (
@@ -1034,6 +1119,85 @@ VALUES (${reviewItemId}, '${segmentNo}', 4004, 'camera-segment-race-01', 'detect
 `;
 }
 
+export function buildConcurrentOperationsReportInsertSql(runId) {
+  return `
+INSERT INTO system_supervision_alert_review_runtime_outbox(
+  tenant_id, run_id, event_type, alert_key, payload, outbox_status, retry_count, version
+)
+VALUES (8008, '${runId}', 'review_operations_report', 'report-concurrent', '{}', 'pending', 0, 0)
+ON CONFLICT (tenant_id, event_type, alert_key)
+WHERE deleted = 0 AND event_type = 'review_operations_report'
+DO NOTHING;
+`;
+}
+
+export function buildConcurrentReportAcknowledgementInsertSql({ userId, note }) {
+  return `
+INSERT INTO system_supervision_alert_review_report_ack(
+  tenant_id, report_key, report_type, period_start, period_end, review_item_ids,
+  acknowledgement_status, acknowledged_by, acknowledged_at, acknowledgement_note,
+  metadata, version
+)
+VALUES (
+  8008, 'report-ack-concurrent', 'shift', TIMESTAMP '2026-07-13 08:00',
+  TIMESTAMP '2026-07-13 16:00', '', 'acknowledged', ${userId}, CURRENT_TIMESTAMP,
+  '${note}', '{}', 0
+)
+ON CONFLICT (tenant_id, report_key) WHERE deleted = 0
+DO NOTHING;
+`;
+}
+
+export function buildReportAcknowledgementLifecycleSmokeSql() {
+  return `
+INSERT INTO system_supervision_alert_review_report_ack(
+  tenant_id, report_key, report_type, period_start, period_end, review_item_ids,
+  acknowledgement_status, acknowledged_by, acknowledged_at, acknowledgement_note,
+  metadata, version
+)
+VALUES (
+  8009, 'report-ack-concurrent', 'shift', TIMESTAMP '2026-07-13 08:00',
+  TIMESTAMP '2026-07-13 16:00', '', 'acknowledged', 9201, CURRENT_TIMESTAMP,
+  'other tenant', '{}', 0
+);
+
+UPDATE system_supervision_alert_review_report_ack
+SET deleted = 1, update_time = CURRENT_TIMESTAMP
+WHERE tenant_id = 8008 AND report_key = 'report-ack-concurrent' AND deleted = 0;
+
+INSERT INTO system_supervision_alert_review_report_ack(
+  tenant_id, report_key, report_type, period_start, period_end, review_item_ids,
+  acknowledgement_status, acknowledged_by, acknowledged_at, acknowledgement_note,
+  metadata, version
+)
+VALUES (
+  8008, 'report-ack-concurrent', 'shift', TIMESTAMP '2026-07-13 08:00',
+  TIMESTAMP '2026-07-13 16:00', '', 'acknowledged', 9202, CURRENT_TIMESTAMP,
+  'replacement after soft delete', '{}', 0
+);
+
+DO $$
+BEGIN
+  IF (
+    SELECT count(*) FROM system_supervision_alert_review_report_ack
+    WHERE tenant_id = 8008 AND report_key = 'report-ack-concurrent' AND deleted = 0
+  ) <> 1 OR NOT EXISTS (
+    SELECT 1 FROM system_supervision_alert_review_report_ack
+    WHERE tenant_id = 8008 AND report_key = 'report-ack-concurrent'
+      AND acknowledged_by = 9202 AND deleted = 0
+  ) OR NOT EXISTS (
+    SELECT 1 FROM system_supervision_alert_review_report_ack
+    WHERE tenant_id = 8009 AND report_key = 'report-ack-concurrent'
+      AND acknowledged_by = 9201 AND deleted = 0
+  ) THEN
+    RAISE EXCEPTION 'expected report acknowledgement uniqueness to be tenant scoped and soft-delete aware';
+  END IF;
+END $$;
+
+SELECT 'report acknowledgement tenant and soft-delete lifecycle smoke passed' AS result;
+`;
+}
+
 export function summarizeConcurrentDuplicateResults(results) {
   const successCount = results.filter((result) => result.status === 0).length;
   const duplicateCount = results.filter((result) =>
@@ -1090,13 +1254,33 @@ export function summarizeConcurrentReviewSegmentResults(results) {
   return 'concurrent ReviewSegment overlap smoke passed';
 }
 
+export function summarizeConcurrentNoopResults(results, label) {
+  const insertedCount = results.filter((result) =>
+    result.status === 0 && /\bINSERT 0 1\b/.test(`${result.stdout ?? ''}\n${result.stderr ?? ''}`),
+  ).length;
+  const noopCount = results.filter((result) =>
+    result.status === 0 && /\bINSERT 0 0\b/.test(`${result.stdout ?? ''}\n${result.stderr ?? ''}`),
+  ).length;
+  if (insertedCount !== 1 || noopCount !== 1) {
+    throw new Error(
+      [
+        `expected exactly one concurrent ${label} insert and one atomic no-op`,
+        ...results.map((result, index) =>
+          `process ${index + 1}: status=${result.status} stdout=${JSON.stringify(result.stdout)} stderr=${JSON.stringify(result.stderr)}`,
+        ),
+      ].join('\n'),
+    );
+  }
+  return `concurrent ${label} first-writer-wins smoke passed`;
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-postgres-migration-smoke.mjs (--container=NAME | --database-url=URL) [--database=NAME] [--repo-root=PATH] [--keep-database]
 
 Runs FR-01/FR-20/FR-24/FR-30/FR-33/FR-35 alert review PostgreSQL migration smoke against an existing Docker PostgreSQL container or a direct PostgreSQL URL.
 The target container must accept: docker exec -i NAME psql -U postgres -d DATABASE.
 The direct URL must be a maintenance database URL accepted by local psql; the smoke creates --database on the same server.
-The smoke creates a temporary database, applies V20260701 through V20260713 in MIGRATION_FILES order, and verifies platform SMALLINT deleted semantics, BaseDO tenant columns and indexes, the historical BOOLEAN upgrade path, ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, immutable media permission seeds plus the forward media-manage permission, semantic-trigger evaluation/confirmation permission seeds and tenant-scoped terminal indexes, semantic-index generation/worker claims, active scheduler jobs, report acknowledgement DDL, operations report seeds, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, persistent evidence export queue claims/idempotency, item media audit lookup, and concurrent races.`);
+The smoke creates a temporary database, applies V20260701 through V20260713_4 in MIGRATION_FILES order, and verifies platform SMALLINT deleted semantics, BaseDO tenant columns and indexes, the historical BOOLEAN upgrade path, ingest identity, ReviewSegment constraints, status transitions, ended segment end-time guard, alert segment severity guard, same-camera merge index shape, ReviewData backfill, immutable media permission seeds plus the forward media-manage permission, semantic-trigger evaluation/confirmation permission seeds and tenant-scoped terminal indexes, semantic-index generation/worker claims, paused Quartz seeds for local scheduler ownership, report acknowledgement DDL, atomic operations report outbox idempotency, runtime outbox notify templates, runtime outbox recipient delivery idempotency, runtime outbox claim columns, persistent evidence export queue claims/idempotency, item media audit lookup, and concurrent races.`);
 }
 
 function assertSafeDatabaseName(database) {
@@ -1254,7 +1438,14 @@ export async function runSmoke(options) {
       if (migrationFile.endsWith('V20260708_10__alert_review_deleted_smallint.sql')) {
         runPsql(options, options.database, buildLegacyBooleanDeletedFixtureSql());
       }
-      runPsql(options, options.database, readMigrationSql(options.repoRoot, migrationFile));
+      if (migrationFile.endsWith('V20260713_4__alert_review_local_scheduler_ownership.sql')) {
+        runPsql(options, options.database, buildLegacyOperationsReportDuplicateFixtureSql());
+      }
+      runPsql(
+        options,
+        options.database,
+        `BEGIN;\n${readMigrationSql(options.repoRoot, migrationFile)}\nCOMMIT;\n`,
+      );
       if (index === 0) {
         runPsql(options, options.database, buildLegacyReviewFixtureSql());
       }
@@ -1270,7 +1461,14 @@ export async function runSmoke(options) {
     const concurrentReviewStatusOutput = await runConcurrentReviewStatusSmoke(options);
     runPsql(options, options.database, buildConcurrentReviewSegmentBootstrapSql());
     const concurrentSegmentOutput = await runConcurrentReviewSegmentSmoke(options);
-    return `${assertionOutput}${semanticIndexQueueCasOutput}${concurrentOutput}\n${concurrentReviewStatusOutput}\n${concurrentSegmentOutput}\n`;
+    const concurrentReportOutput = await runConcurrentOperationsReportSmoke(options);
+    const concurrentReportAckOutput = await runConcurrentReportAcknowledgementSmoke(options);
+    const reportAckLifecycleOutput = runPsql(
+      options,
+      options.database,
+      buildReportAcknowledgementLifecycleSmokeSql(),
+    );
+    return `${assertionOutput}${semanticIndexQueueCasOutput}${concurrentOutput}\n${concurrentReviewStatusOutput}\n${concurrentSegmentOutput}\n${concurrentReportOutput}\n${concurrentReportAckOutput}\n${reportAckLifecycleOutput}\n`;
   } finally {
     if (!options.keepDatabase) {
       runPsql(options, adminDatabase, `DROP DATABASE IF EXISTS ${options.database};\n`);
@@ -1308,6 +1506,30 @@ async function runConcurrentReviewSegmentSmoke(options) {
     ),
   ]);
   return summarizeConcurrentReviewSegmentResults(results);
+}
+
+async function runConcurrentOperationsReportSmoke(options) {
+  const results = await Promise.all([
+    runPsqlAsync(options, options.database, buildConcurrentOperationsReportInsertSql('report-worker-a')),
+    runPsqlAsync(options, options.database, buildConcurrentOperationsReportInsertSql('report-worker-b')),
+  ]);
+  return summarizeConcurrentNoopResults(results, 'operations report outbox');
+}
+
+async function runConcurrentReportAcknowledgementSmoke(options) {
+  const results = await Promise.all([
+    runPsqlAsync(
+      options,
+      options.database,
+      buildConcurrentReportAcknowledgementInsertSql({ userId: 9101, note: 'first contender' }),
+    ),
+    runPsqlAsync(
+      options,
+      options.database,
+      buildConcurrentReportAcknowledgementInsertSql({ userId: 9102, note: 'second contender' }),
+    ),
+  ]);
+  return summarizeConcurrentNoopResults(results, 'report acknowledgement');
 }
 
 async function runCli() {

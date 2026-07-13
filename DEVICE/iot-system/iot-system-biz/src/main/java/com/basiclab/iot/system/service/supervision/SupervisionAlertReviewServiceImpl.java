@@ -2528,7 +2528,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         structuredData.put("ruleDimensions", buildReportDimensions(reviewItems, ReviewItemAggregate::ruleCode));
         structuredData.put("operatorUserId", command.operatorUserId());
         structuredData.put("generatedAt", generatedAt.toString());
-        String reportKey = buildReportKey(reportType, command.periodStart(), command.periodEnd(), reviewItemIds);
+        String reportKey = buildReportKey(reportType, query);
         Map<String, Object> deliveryPlan = buildReportDeliveryPlan(command, reportType, reviewItemIds, generatedAt, reportKey);
         Map<String, Object> acknowledgement = buildReportAcknowledgement(
                 command,
@@ -2574,7 +2574,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 command.operatorUserId()
         ));
         List<Long> reviewItemIds = listWorkbench(query).stream().map(ReviewItemAggregate::id).toList();
-        String reportKey = buildReportKey(reportType, command.periodStart(), command.periodEnd(), reviewItemIds);
+        String reportKey = buildReportKey(reportType, query);
         Optional<ReviewReportAcknowledgement> existing = reviewItemStore.findReportAcknowledgement(reportKey);
         if (existing.isPresent()) {
             ReviewReportAcknowledgement acknowledgement = existing.get();
@@ -2591,8 +2591,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
         LocalDateTime acknowledgedAt = LocalDateTime.now();
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("periodStart", command.periodStart() == null ? null : command.periodStart().toString());
-        metadata.put("periodEnd", command.periodEnd() == null ? null : command.periodEnd().toString());
+        metadata.put("periodStart", query.beginTime() == null ? null : query.beginTime().toString());
+        metadata.put("periodEnd", query.endTime() == null ? null : query.endTime().toString());
         metadata.put("reviewItemIds", reviewItemIds);
         metadata.put("requestedBy", command.operatorUserId());
         return reviewItemStore.saveReportAcknowledgement(new ReviewReportAcknowledgement(
@@ -2691,14 +2691,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return immutableNonNullMap(acknowledgement);
     }
 
-    private static String buildReportKey(String reportType,
-                                         LocalDateTime periodStart,
-                                         LocalDateTime periodEnd,
-                                         List<Long> reviewItemIds) {
-        return "report-" + sha256Hex(reportType
-                + "|" + (periodStart == null ? "" : periodStart)
-                + "|" + (periodEnd == null ? "" : periodEnd)
-                + "|" + (reviewItemIds == null ? List.of() : reviewItemIds));
+    private static String buildReportKey(String reportType, ReviewQuery query) {
+        ReviewQuery normalizedQuery = query == null
+                ? new ReviewQuery(null, null, null, null, null, null, null, null, null, null)
+                : query;
+        return "report-" + sha256Hex(reportScopeValue(reportType).toLowerCase(Locale.ROOT)
+                + "|" + reportScopeValue(normalizedQuery.reviewStatus())
+                + "|" + reportScopeValue(normalizedQuery.cameraId())
+                + "|" + reportScopeValue(normalizedQuery.zoneCode())
+                + "|" + reportScopeValue(normalizedQuery.objectLabel())
+                + "|" + reportScopeValue(normalizedQuery.recordEvidenceStatus())
+                + "|" + reportScopeValue(normalizedQuery.converted())
+                + "|" + reportScopeValue(normalizedQuery.inReviewCase())
+                + "|" + reportScopeValue(normalizedQuery.reviewerUserId())
+                + "|" + reportScopeValue(normalizedQuery.beginTime())
+                + "|" + reportScopeValue(normalizedQuery.endTime()));
+    }
+
+    private static String reportScopeValue(Object value) {
+        return value == null ? "" : value.toString();
     }
 
     private static boolean isUnreviewedBacklog(ReviewItemAggregate item) {
@@ -8639,7 +8650,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (beginTime != null && lastAlertTime != null && lastAlertTime.isBefore(beginTime)) {
             return false;
         }
-        return endTime == null || firstAlertTime == null || !firstAlertTime.isAfter(endTime);
+        return endTime == null || firstAlertTime == null || firstAlertTime.isBefore(endTime);
     }
 
     private boolean correlates(ReviewItemAggregate base, ReviewItemAggregate candidate) {

@@ -74,7 +74,7 @@ public interface SupervisionAlertReviewItemMapper extends BaseMapperX<Supervisio
                 .eqIfPresent(SupervisionAlertReviewItemDO::getReviewStatus, reviewStatus)
                 .eqIfPresent(SupervisionAlertReviewItemDO::getCameraId, cameraId)
                 .geIfPresent(SupervisionAlertReviewItemDO::getLastAlertTime, beginTime)
-                .leIfPresent(SupervisionAlertReviewItemDO::getFirstAlertTime, endTime)
+                .ltIfPresent(SupervisionAlertReviewItemDO::getFirstAlertTime, endTime)
                 .orderByDesc(SupervisionAlertReviewItemDO::getLastAlertTime));
     }
 
