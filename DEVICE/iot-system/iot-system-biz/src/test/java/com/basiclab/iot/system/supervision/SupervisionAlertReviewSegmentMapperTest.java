@@ -53,7 +53,7 @@ class SupervisionAlertReviewSegmentMapperTest {
         assertTrue(sqlSegment.contains("review_item_id"));
         assertTrue(sqlSegment.contains("deleted"));
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue(9001L));
-        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(false));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(0));
     }
 
     @Test
@@ -72,7 +72,23 @@ class SupervisionAlertReviewSegmentMapperTest {
         assertTrue(sqlSegment.contains("camera_id"));
         assertTrue(sqlSegment.contains("deleted"));
         assertTrue(queryWrapper.getParamNameValuePairs().containsValue("camera-01"));
-        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(false));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(0));
+    }
+
+    @Test
+    void selectLatestOpenUsesSmallintSoftDeleteValue() {
+        initTableInfo();
+        CapturingMapperHandler handler = new CapturingMapperHandler();
+        SupervisionAlertReviewSegmentMapper mapper = handler.createProxy();
+
+        mapper.selectLatestOpen(1001L, "camera-01");
+
+        assertTrue(handler.queryWrapper() instanceof LambdaQueryWrapperX);
+        LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO> queryWrapper =
+                (LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>) handler.queryWrapper();
+        assertTrue(queryWrapper.getSqlSegment().contains("deleted"));
+        assertTrue(queryWrapper.getParamNameValuePairs().containsValue(0));
+        assertTrue(!queryWrapper.getParamNameValuePairs().containsValue(false));
     }
 
     private static void initTableInfo() {

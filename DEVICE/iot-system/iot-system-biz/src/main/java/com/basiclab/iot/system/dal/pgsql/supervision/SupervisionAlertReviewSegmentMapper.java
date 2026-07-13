@@ -35,7 +35,7 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
     default SupervisionAlertReviewSegmentDO selectByReviewItemId(Long reviewItemId) {
         return selectOne(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
                 .eq(SupervisionAlertReviewSegmentDO::getReviewItemId, reviewItemId)
-                .eq(SupervisionAlertReviewSegmentDO::getDeleted, false));
+                .eq(SupervisionAlertReviewSegmentDO::getDeleted, 0));
     }
 
     default List<SupervisionAlertReviewSegmentDO> selectOverlapping(Long tenantId,
@@ -44,7 +44,7 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
                                                                     LocalDateTime endTime) {
         return selectList(new LambdaQueryWrapperX<SupervisionAlertReviewSegmentDO>()
                 .eq(SupervisionAlertReviewSegmentDO::getCameraId, cameraId)
-                .eq(SupervisionAlertReviewSegmentDO::getDeleted, false)
+                .eq(SupervisionAlertReviewSegmentDO::getDeleted, 0)
                 .orderByDesc(SupervisionAlertReviewSegmentDO::getStartTime))
                 .stream()
                 .filter(segment -> Objects.equals(tenantId, segment.getTenantId()))
@@ -58,7 +58,7 @@ public interface SupervisionAlertReviewSegmentMapper extends BaseMapperX<Supervi
                 .eq(SupervisionAlertReviewSegmentDO::getCameraId, cameraId)
                 .ne(SupervisionAlertReviewSegmentDO::getSegmentStatus, "ended")
                 .isNull(SupervisionAlertReviewSegmentDO::getEndTime)
-                .eq(SupervisionAlertReviewSegmentDO::getDeleted, false)
+                .eq(SupervisionAlertReviewSegmentDO::getDeleted, 0)
                 .orderByDesc(SupervisionAlertReviewSegmentDO::getStartTime)
                 .last("LIMIT 1"));
     }
