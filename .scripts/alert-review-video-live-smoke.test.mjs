@@ -29,6 +29,10 @@ const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
   'cache_flush_failed',
 ];
 
+function urlPathEndsWith(url, suffix) {
+  return new URL(String(url)).pathname.endsWith(suffix);
+}
+
 const parsed = parseArgs([
   '--token=token-1',
   '--alert-record-query-url=http://video.local/video/record/availability',
@@ -266,7 +270,7 @@ const fakeFetch = async (url, init = {}) => {
       },
     });
   }
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -310,7 +314,7 @@ const fakeFetch = async (url, init = {}) => {
       },
     });
   }
-  if (String(url).endsWith('/video/record/export/review-export-1')) {
+  if (urlPathEndsWith(url, '/video/record/export/review-export-1')) {
     return jsonResponse({
       code: 0,
       data: {
@@ -321,7 +325,7 @@ const fakeFetch = async (url, init = {}) => {
       },
     });
   }
-  if (String(url).endsWith('/downloads/review-export-1.mp4')) {
+  if (urlPathEndsWith(url, '/downloads/review-export-1.mp4')) {
     assert.equal(init.method, 'HEAD');
     return jsonResponse({}, 200, {
       'content-length': '1048576',
@@ -371,6 +375,14 @@ assert.equal(smoke.coverage.segment.retainMode, 'motion');
 assert.equal(smoke.coverage.segment.coverageSource, 'detection');
 assert.equal(calls.length, 8);
 assert.equal(calls.every(({ init }) => new Headers(init.headers).get('authorization') === 'Bearer token-1'), true);
+for (const pathname of [
+  '/video/record/export/review-export-1',
+  '/downloads/review-export-1.mp4',
+  '/manifests/review-export-1.json',
+]) {
+  const scopedCall = calls.find(({ url }) => new URL(url).pathname === pathname);
+  assert.equal(new URL(scopedCall.url).searchParams.get('camera_id'), 'camera-01');
+}
 const cliSummary = summarizeCliResult(smoke);
 assert.deepEqual(cliSummary.coverageSummary, {
   status: 'available',
@@ -536,9 +548,9 @@ const mockRecordUriFetch = async (url, init = {}) => {
   }
   if (String(url).includes('/space/device/device-01')
     || String(url).includes('/space/7/videos/drift')
-    || String(url).endsWith('/video/record/export/review-export-1')
-    || String(url).endsWith('/downloads/review-export-1.mp4')
-    || String(url).endsWith('/manifests/review-export-1.json')) {
+    || urlPathEndsWith(url, '/video/record/export/review-export-1')
+    || urlPathEndsWith(url, '/downloads/review-export-1.mp4')
+    || urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return fakeFetch(url, init);
   }
   return jsonResponse({
@@ -569,9 +581,9 @@ const relativeMockRecordUriFetch = async (url, init = {}) => {
   }
   if (String(url).includes('/space/device/device-01')
     || String(url).includes('/space/7/videos/drift')
-    || String(url).endsWith('/video/record/export/review-export-1')
-    || String(url).endsWith('/downloads/review-export-1.mp4')
-    || String(url).endsWith('/manifests/review-export-1.json')) {
+    || urlPathEndsWith(url, '/video/record/export/review-export-1')
+    || urlPathEndsWith(url, '/downloads/review-export-1.mp4')
+    || urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return fakeFetch(url, init);
   }
   return jsonResponse({
@@ -602,9 +614,9 @@ const inlineRecordUriFetch = async (url, init = {}) => {
   }
   if (String(url).includes('/space/device/device-01')
     || String(url).includes('/space/7/videos/drift')
-    || String(url).endsWith('/video/record/export/review-export-1')
-    || String(url).endsWith('/downloads/review-export-1.mp4')
-    || String(url).endsWith('/manifests/review-export-1.json')) {
+    || urlPathEndsWith(url, '/video/record/export/review-export-1')
+    || urlPathEndsWith(url, '/downloads/review-export-1.mp4')
+    || urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return fakeFetch(url, init);
   }
   return jsonResponse({
@@ -635,9 +647,9 @@ const protocolRelativeLocalRecordUriFetch = async (url, init = {}) => {
   }
   if (String(url).includes('/space/device/device-01')
     || String(url).includes('/space/7/videos/drift')
-    || String(url).endsWith('/video/record/export/review-export-1')
-    || String(url).endsWith('/downloads/review-export-1.mp4')
-    || String(url).endsWith('/manifests/review-export-1.json')) {
+    || urlPathEndsWith(url, '/video/record/export/review-export-1')
+    || urlPathEndsWith(url, '/downloads/review-export-1.mp4')
+    || urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return fakeFetch(url, init);
   }
   return jsonResponse({
@@ -668,9 +680,9 @@ const localFilePathFetch = async (url, init = {}) => {
   }
   if (String(url).includes('/space/device/device-01')
     || String(url).includes('/space/7/videos/drift')
-    || String(url).endsWith('/video/record/export/review-export-1')
-    || String(url).endsWith('/downloads/review-export-1.mp4')
-    || String(url).endsWith('/manifests/review-export-1.json')) {
+    || urlPathEndsWith(url, '/video/record/export/review-export-1')
+    || urlPathEndsWith(url, '/downloads/review-export-1.mp4')
+    || urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return fakeFetch(url, init);
   }
   return jsonResponse({
@@ -701,9 +713,9 @@ const absoluteRecordUriFetch = async (url, init = {}) => {
   }
   if (String(url).includes('/space/device/device-01')
     || String(url).includes('/space/7/videos/drift')
-    || String(url).endsWith('/video/record/export/review-export-1')
-    || String(url).endsWith('/downloads/review-export-1.mp4')
-    || String(url).endsWith('/manifests/review-export-1.json')) {
+    || urlPathEndsWith(url, '/video/record/export/review-export-1')
+    || urlPathEndsWith(url, '/downloads/review-export-1.mp4')
+    || urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return fakeFetch(url, init);
   }
   return jsonResponse({
@@ -727,7 +739,7 @@ await assert.rejects(
 );
 
 const mockDownloadUrlFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/video/record/export/review-export-1')) {
+  if (urlPathEndsWith(url, '/video/record/export/review-export-1')) {
     return jsonResponse({
       code: 0,
       data: {
@@ -746,7 +758,7 @@ await assert.rejects(
 );
 
 const localManifestUrlFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/video/record/export/review-export-1')) {
+  if (urlPathEndsWith(url, '/video/record/export/review-export-1')) {
     return jsonResponse({
       code: 0,
       data: {
@@ -781,7 +793,7 @@ const smokeWithVerifier = await runSmoke(parsedWithVerifier, {
 });
 assert.equal(verifierCalls.length, 1);
 assert.equal(verifierCalls[0].manifest.signature.keyId, '2026-q2');
-assert.equal(verifierCalls[0].manifestUrl, 'http://video.local/manifests/review-export-1.json');
+assert.equal(verifierCalls[0].manifestUrl, 'http://video.local/manifests/review-export-1.json?camera_id=camera-01');
 assert.deepEqual(smokeWithVerifier.manifestVerification, {
   valid: true,
   signatureValid: true,
@@ -863,7 +875,7 @@ await assert.rejects(
 );
 
 const failedDownloadFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/downloads/review-export-1.mp4')) {
+  if (urlPathEndsWith(url, '/downloads/review-export-1.mp4')) {
     assert.equal(init.method, 'HEAD');
     return jsonResponse({ message: 'missing export file' }, 404);
   }
@@ -875,7 +887,7 @@ await assert.rejects(
 );
 
 const nonVideoDownloadFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/downloads/review-export-1.mp4')) {
+  if (urlPathEndsWith(url, '/downloads/review-export-1.mp4')) {
     assert.equal(init.method, 'HEAD');
     return jsonResponse({ message: 'not a video export' }, 200, {
       'content-length': '64',
@@ -890,7 +902,7 @@ await assert.rejects(
 );
 
 const invalidManifestHashFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -942,7 +954,7 @@ await assert.rejects(
 );
 
 const invalidOutputHashFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -994,7 +1006,7 @@ await assert.rejects(
 );
 
 const invalidFfmpegCommandHashFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -1046,7 +1058,7 @@ await assert.rejects(
 );
 
 const invalidClipWindowFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -1098,7 +1110,7 @@ await assert.rejects(
 );
 
 const duplicateConcatOrderFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -1212,7 +1224,7 @@ function rootConcatOrderManifest(concatOrder) {
 }
 
 const duplicateRootConcatOrderFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse(rootConcatOrderManifest([0, 0]));
   }
   return fakeFetch(url, init);
@@ -1223,7 +1235,7 @@ await assert.rejects(
 );
 
 const missingRootConcatOrderReferenceFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse(rootConcatOrderManifest([0, 2]));
   }
   return fakeFetch(url, init);
@@ -1234,7 +1246,7 @@ await assert.rejects(
 );
 
 const omittedRootConcatOrderSegmentFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse(rootConcatOrderManifest([0]));
   }
   return fakeFetch(url, init);
@@ -1245,7 +1257,7 @@ await assert.rejects(
 );
 
 const missingManifestFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/video/record/export/review-export-1')) {
+  if (urlPathEndsWith(url, '/video/record/export/review-export-1')) {
     return jsonResponse({ code: 0, data: { export_id: 'review-export-1', status: 'ready', download_url: '/downloads/review-export-1.mp4' } });
   }
   return fakeFetch(url, init);
@@ -1256,7 +1268,7 @@ await assert.rejects(
 );
 
 const missingStorageLifecycleFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -1292,7 +1304,7 @@ await assert.rejects(
 );
 
 const localStorageReferenceFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -1340,7 +1352,7 @@ await assert.rejects(
 );
 
 const unsignedManifestFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       recordSegments: [
@@ -1370,7 +1382,7 @@ await assert.rejects(
 );
 
 const malformedSignatureValueFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       ...rootConcatOrderManifest([0, 1]),
       signature: {
@@ -1389,7 +1401,7 @@ await assert.rejects(
 );
 
 const incompleteManifestFetch = async (url, init = {}) => {
-  if (String(url).endsWith('/manifests/review-export-1.json')) {
+  if (urlPathEndsWith(url, '/manifests/review-export-1.json')) {
     return jsonResponse({
       manifestVersion: 2,
       ffmpegCommandHash: FFMPEG_COMMAND_HASH,

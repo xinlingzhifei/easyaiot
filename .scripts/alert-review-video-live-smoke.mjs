@@ -508,7 +508,11 @@ async function waitForExportDownload(fetchImpl, options, exportResult) {
     if (attempt > 0 && options.exportPollIntervalMs > 0) {
       await delay(options.exportPollIntervalMs);
     }
-    const statusPayload = await fetchJson(fetchImpl, buildExportStatusUrl(options.recordExportUrl, exportResult.exportId), {
+    const statusPayload = await fetchJson(fetchImpl, buildExportStatusUrl(
+      options.recordExportUrl,
+      exportResult.exportId,
+      options.cameraId,
+    ), {
       timeoutMs: options.timeoutMs,
       label: 'record export status',
     });
@@ -530,7 +534,11 @@ async function probeDownloadUrl(fetchImpl, options, downloadUrl) {
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
   try {
-    const response = await fetchImpl(resolveDownloadUrl(downloadUrl, options.recordExportUrl), {
+    const response = await fetchImpl(resolveScopedExportUrl(
+      downloadUrl,
+      options.recordExportUrl,
+      options.cameraId,
+    ), {
       method: 'HEAD',
       signal: controller?.signal,
     });
@@ -573,7 +581,11 @@ async function verifyExportManifest(fetchImpl, options, exportResult, dependenci
     throw new Error('record export response did not include manifest_url for reproducible evidence verification');
   }
   assertReleaseMediaEvidence(options, 'manifest URL', exportResult.manifestUrl);
-  const manifestUrl = resolveDownloadUrl(exportResult.manifestUrl, options.recordExportUrl);
+  const manifestUrl = resolveScopedExportUrl(
+    exportResult.manifestUrl,
+    options.recordExportUrl,
+    options.cameraId,
+  );
   const manifest = responseData(await fetchJson(fetchImpl, manifestUrl, {
     timeoutMs: options.timeoutMs,
     label: 'record export manifest',
@@ -921,8 +933,23 @@ export function resolveDownloadUrl(downloadUrl, baseUrl) {
   return new URL(downloadUrl, baseUrl).toString();
 }
 
-function buildExportStatusUrl(recordExportUrl, exportId) {
-  return `${stripTrailingSlash(recordExportUrl)}/${encodeURIComponent(exportId)}`;
+function buildExportStatusUrl(recordExportUrl, exportId, cameraId) {
+  return appendCameraScope(
+    `${stripTrailingSlash(recordExportUrl)}/${encodeURIComponent(exportId)}`,
+    cameraId,
+  );
+}
+
+function resolveScopedExportUrl(resourceUrl, recordExportUrl, cameraId) {
+  return appendCameraScope(resolveDownloadUrl(resourceUrl, recordExportUrl), cameraId);
+}
+
+function appendCameraScope(resourceUrl, cameraId) {
+  const url = new URL(resourceUrl);
+  if (hasText(cameraId)) {
+    url.searchParams.set('camera_id', cameraId);
+  }
+  return url.toString();
 }
 
 function buildRecordDriftUrl(recordBaseUrl, spaceData, options) {
