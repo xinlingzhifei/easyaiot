@@ -1852,6 +1852,145 @@ class TestRecordExportService(unittest.TestCase):
         }, clear=False), self.assertRaisesRegex(RuntimeError, 'store quota'):
             export_service._ensure_export_store_quota(1)
 
+    def test_cleanup_keeps_unscoped_legacy_jobs_on_local_storage(self):
+        import app.services.record_export_service as export_service
+
+        legacy_job = {
+            'export_id': 'legacy-local-export',
+            'status': 'failed',
+            'created_at': '2026-07-09T00:00:00+00:00',
+        }
+        explicit_local_job = {
+            **legacy_job,
+            'storage_type': 'local_filesystem',
+        }
+        legacy_dir = os.path.join(
+            self._isolated_export_store.name, legacy_job['export_id'])
+        os.makedirs(legacy_dir)
+        with open(os.path.join(legacy_dir, 'job.json'), 'w', encoding='utf-8') as handle:
+            json.dump(legacy_job, handle)
+
+        adapter = mock.Mock()
+        adapter_factory = mock.Mock(return_value=adapter)
+        export_service.configure_record_export_storage_adapter(adapter_factory)
+        try:
+            with mock.patch.dict(os.environ, {
+                'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE': 'minio',
+                'YFEIEYE_RECORD_EXPORT_STORAGE_URI': 's3://review-evidence/exports',
+            }, clear=False), self.assertNoLogs(export_service._LOGGER.name, level='WARNING'):
+                self.assertEqual('local_filesystem', export_service._storage_type(legacy_job))
+                self.assertEqual(
+                    self._isolated_export_store.name,
+                    export_service._storage_root(legacy_job),
+                )
+                self.assertEqual(
+                    self._isolated_export_store.name,
+                    export_service._storage_root(explicit_local_job),
+                )
+                lifecycle = export_service._manifest_storage_lifecycle(
+                    legacy_job['export_id'],
+                    explicit_local_job,
+                    '2026-07-20T00:00:00Z',
+                )
+                reference = export_service._artifact_storage_reference(
+                    explicit_local_job,
+                    legacy_job['export_id'],
+                    'content.bin',
+                    'export_package',
+                    '',
+                    '2026-07-20T00:00:00Z',
+                )
+                self.assertEqual('local_filesystem', lifecycle['storageType'])
+                self.assertEqual(self._isolated_export_store.name, lifecycle['storeRoot'])
+                self.assertEqual('local_filesystem', reference['storageType'])
+                self.assertEqual(
+                    self._isolated_export_store.name.replace('\\', '/').rstrip('/')
+                    + '/legacy-local-export/content.bin',
+                    reference['uri'],
+                )
+                self.assertEqual(
+                    's3://review-evidence/exports',
+                    export_service._storage_root({
+                        'tenant_id': '7',
+                        'storage_type': 'minio',
+                    }),
+                )
+                first = export_service.cleanup_record_export_resources(now=time.time())
+                second = export_service.cleanup_record_export_resources(now=time.time())
+        finally:
+            export_service.configure_record_export_storage_adapter(None)
+
+        self.assertEqual('completed', first['status'])
+        self.assertEqual('completed', second['status'])
+        self.assertEqual(0, first['cleanup_failures'])
+        self.assertEqual(0, second['cleanup_failures'])
+        adapter_factory.assert_not_called()
+        adapter.list.assert_not_called()
+        adapter.delete.assert_not_called()
+
+    def test_cleanup_reports_tenant_scoped_object_storage_failures(self):
+        import app.services.record_export_service as export_service
+
+        job = {
+            'export_id': 'tenant-minio-export',
+            'status': 'failed',
+            'tenant_id': '7',
+            'storage_type': 'minio',
+            'storage_root': 's3://review-evidence/exports',
+        }
+        export_dir = os.path.join(self._isolated_export_store.name, job['export_id'])
+        os.makedirs(export_dir)
+        with open(os.path.join(export_dir, 'job.json'), 'w', encoding='utf-8') as handle:
+            json.dump(job, handle)
+
+        adapter = mock.Mock()
+        adapter.list.side_effect = RuntimeError('object storage unavailable')
+        export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+        try:
+            with self.assertLogs(export_service._LOGGER.name, level='WARNING'):
+                result = export_service.cleanup_record_export_resources(now=time.time())
+        finally:
+            export_service.configure_record_export_storage_adapter(None)
+
+        self.assertEqual('partial', result['status'])
+        self.assertEqual(1, result['cleanup_failures'])
+        adapter.list.assert_called_once_with(
+            'tenants/7/exports/tenant-minio-export/.staging/')
+        adapter.delete.assert_not_called()
+
+    def test_cleanup_rejects_object_keys_outside_tenant_staging_prefix(self):
+        import app.services.record_export_service as export_service
+
+        job = {
+            'export_id': 'tenant-minio-export',
+            'status': 'failed',
+            'tenant_id': '7',
+            'storage_type': 'minio',
+            'storage_root': 's3://review-evidence/exports',
+        }
+        export_dir = os.path.join(self._isolated_export_store.name, job['export_id'])
+        os.makedirs(export_dir)
+        with open(os.path.join(export_dir, 'job.json'), 'w', encoding='utf-8') as handle:
+            json.dump(job, handle)
+
+        adapter = mock.Mock()
+        adapter.list.return_value = [
+            'tenants/7/exports/tenant-minio-export/.staging/claim/content.bin',
+            'tenants/8/exports/other-export/.staging/claim/content.bin',
+        ]
+        export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+        try:
+            with self.assertLogs(export_service._LOGGER.name, level='WARNING'):
+                result = export_service.cleanup_record_export_resources(now=time.time())
+        finally:
+            export_service.configure_record_export_storage_adapter(None)
+
+        self.assertEqual('partial', result['status'])
+        self.assertEqual(1, result['cleanup_failures'])
+        adapter.list.assert_called_once_with(
+            'tenants/7/exports/tenant-minio-export/.staging/')
+        adapter.delete.assert_not_called()
+
     def test_ffmpeg_worker_removes_configured_temp_workdir_after_materialize_failure(self):
         import app.services.record_export_service as export_service
 

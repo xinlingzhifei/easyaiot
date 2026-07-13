@@ -610,8 +610,14 @@ def _cleanup_object_storage_staging(job: dict) -> int:
     list_objects = getattr(adapter, 'list', None)
     if not callable(list_objects):
         return 0
+    staging_prefix = _storage_object_key(job, '.staging/')
+    object_keys = list(list_objects(staging_prefix))
+    if any(not isinstance(object_key, str) or not object_key.startswith(staging_prefix)
+           for object_key in object_keys):
+        raise RuntimeError(
+            'record export cleanup received an object key outside the authorized staging prefix')
     removed = 0
-    for object_key in list(list_objects(_storage_object_key(job, '.staging/'))):
+    for object_key in object_keys:
         adapter.delete(object_key)
         removed += 1
     return removed
@@ -2762,14 +2768,26 @@ def _artifact_storage_reference(job: dict, export_id: str, name: str, role: str,
 
 
 def _storage_type(job: dict) -> str:
+    job = job or {}
     storage_type = _text(
-        job.get('storage_type') or job.get('storageType') or os.environ.get(_STORE_TYPE_ENV)
+        job.get('storage_type') or job.get('storageType')
     ).lower()
-    return storage_type or 'local_filesystem'
+    if storage_type:
+        return storage_type
+    tenant_id = _text(job.get('tenant_id') or job.get('tenantId'))
+    if not tenant_id:
+        return 'local_filesystem'
+    return _text(os.environ.get(_STORE_TYPE_ENV)).lower() or 'local_filesystem'
 
 
 def _storage_root(job: dict) -> str:
-    return _text(job.get('storage_root') or job.get('storageRoot') or os.environ.get(_STORE_URI_ENV)) or _store_root()
+    job = job or {}
+    storage_root = _text(job.get('storage_root') or job.get('storageRoot'))
+    if storage_root:
+        return storage_root
+    if _storage_type(job) not in ('minio', 's3'):
+        return _store_root()
+    return _text(os.environ.get(_STORE_URI_ENV)) or _store_root()
 
 
 def _storage_object_key(job: dict, name: str) -> str:
