@@ -269,6 +269,7 @@ class SupervisionAlertReviewRuntimeSchedulingTest {
     void outboxClaimAtomicallyReclaimsFailedRowsOnlyAfterBackoff() throws NoSuchMethodException {
         Method claimMethod = SupervisionAlertReviewRuntimeOutboxMapper.class.getMethod(
                 "claimPending",
+                Long.class,
                 Integer.class,
                 String.class,
                 Long.class,
@@ -282,7 +283,12 @@ class SupervisionAlertReviewRuntimeSchedulingTest {
         assertTrue(sql.contains("published_at"));
         assertTrue(sql.contains("interval '1 second'"));
         assertTrue(sql.contains("for update skip locked"));
+        assertTrue(sql.contains("target.tenant_id = #{tenantid"));
+        assertTrue(sql.contains("candidate.tenant_id = #{tenantid"));
         assertFalse(sql.contains("payload ="));
+        InterceptorIgnore interceptorIgnore = claimMethod.getAnnotation(InterceptorIgnore.class);
+        assertNotNull(interceptorIgnore);
+        assertEquals("true", interceptorIgnore.tenantLine());
     }
 
     @Test

@@ -68,6 +68,8 @@ import org.springframework.dao.DuplicateKeyException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -89,7 +91,9 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
     private static final String REVIEW_CASE_NO_PREFIX = "RC-";
     private static final String SOURCE_ALERT_ID_SEPARATOR = "\n";
     private static final String CSV_SEPARATOR = ",";
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final TypeReference<List<Map<String, Object>>> MAP_LIST_TYPE = new TypeReference<>() {
@@ -1748,6 +1752,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
         String normalizedToken = hasText(claimToken) ? claimToken : UUID.randomUUID().toString();
         LocalDateTime normalizedClaimedAt = claimedAt == null ? LocalDateTime.now() : claimedAt;
         int claimedCount = reviewRuntimeOutboxMapper.claimPending(
+                TenantContextHolder.getRequiredTenantId(),
                 normalizedLimit,
                 normalizedToken,
                 operatorUserId,

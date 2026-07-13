@@ -49,46 +49,50 @@ public interface SupervisionAlertReviewRuntimeOutboxMapper extends BaseMapperX<S
                 .last("LIMIT " + normalizedLimit));
     }
 
+    @InterceptorIgnore(tenantLine = "true")
     @Update("""
-            UPDATE system_supervision_alert_review_runtime_outbox
+            UPDATE system_supervision_alert_review_runtime_outbox AS target
             SET outbox_status = 'processing',
                 claim_token = #{claimToken,jdbcType=VARCHAR},
                 claimed_by = #{claimedBy,jdbcType=BIGINT},
                 claimed_at = #{claimedAt,jdbcType=TIMESTAMP},
                 update_time = CURRENT_TIMESTAMP
-            WHERE id IN (
-                SELECT id
-                FROM system_supervision_alert_review_runtime_outbox
-                WHERE (
-                    outbox_status = 'pending'
+            WHERE target.tenant_id = #{tenantId,jdbcType=BIGINT}
+              AND target.id IN (
+                SELECT candidate.id
+                FROM system_supervision_alert_review_runtime_outbox AS candidate
+                WHERE candidate.tenant_id = #{tenantId,jdbcType=BIGINT}
+                  AND (
+                    candidate.outbox_status = 'pending'
                     OR (
-                        outbox_status = 'failed'
-                        AND COALESCE(retry_count, 0) < 10
+                        candidate.outbox_status = 'failed'
+                        AND COALESCE(candidate.retry_count, 0) < 10
                         AND (
-                            published_at IS NULL
-                            OR published_at <= #{claimedAt,jdbcType=TIMESTAMP}
+                            candidate.published_at IS NULL
+                            OR candidate.published_at <= #{claimedAt,jdbcType=TIMESTAMP}
                                 - (INTERVAL '1 second' * LEAST(
                                     3600,
-                                    30 * POWER(2, LEAST(COALESCE(retry_count, 0), 7))
+                                    30 * POWER(2, LEAST(COALESCE(candidate.retry_count, 0), 7))
                                 ))
                         )
                     )
                     OR (
-                        outbox_status = 'processing'
+                        candidate.outbox_status = 'processing'
                         AND #{reclaimBefore,jdbcType=TIMESTAMP} IS NOT NULL
                         AND (
-                            claimed_at IS NULL
-                            OR claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP}
+                            candidate.claimed_at IS NULL
+                            OR candidate.claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP}
                         )
                     )
                 )
-                  AND deleted = 0
-                ORDER BY created_at ASC, id ASC
+                  AND candidate.deleted = 0
+                ORDER BY candidate.created_at ASC, candidate.id ASC
                 LIMIT #{limit,jdbcType=INTEGER}
                 FOR UPDATE SKIP LOCKED
             )
             """)
-    int claimPending(@Param("limit") Integer limit,
+    int claimPending(@Param("tenantId") Long tenantId,
+                     @Param("limit") Integer limit,
                      @Param("claimToken") String claimToken,
                      @Param("claimedBy") Long claimedBy,
                      @Param("claimedAt") LocalDateTime claimedAt,

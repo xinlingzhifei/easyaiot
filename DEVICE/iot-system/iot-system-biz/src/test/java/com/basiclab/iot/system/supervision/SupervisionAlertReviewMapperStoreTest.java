@@ -7,6 +7,7 @@ import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReview
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseItemDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewCaseAuditDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
+import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewRuntimeRunDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSegmentDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewCaseAuditMapper;
@@ -54,6 +55,60 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SupervisionAlertReviewMapperStoreTest {
+
+    @Test
+    void runtimePatrolMetadataSerializesJavaTimeValues() {
+        AtomicReference<SupervisionAlertReviewRuntimeRunDO> inserted = new AtomicReference<>();
+        SupervisionAlertReviewRuntimeRunMapper runMapper = mapper(
+                SupervisionAlertReviewRuntimeRunMapper.class,
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        inserted.set((SupervisionAlertReviewRuntimeRunDO) args[0]);
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(
+                runMapper, noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class));
+        LocalDateTime lockedUntil = LocalDateTime.of(2026, 7, 13, 20, 30);
+
+        store.recordRuntimePatrolRun(
+                "healthy", 1, List.of(), List.of(), null, lockedUntil.minusMinutes(1),
+                Map.of("lockedUntil", lockedUntil));
+
+        assertTrue(inserted.get().getMetadata().contains("\"lockedUntil\":\"2026-07-13T20:30:00\""));
+    }
+
+    @Test
+    void runtimeOutboxClaimRequiresAndPassesCurrentTenant() {
+        AtomicReference<Long> claimedTenantId = new AtomicReference<>();
+        SupervisionAlertReviewRuntimeOutboxMapper outboxMapper = mapper(
+                SupervisionAlertReviewRuntimeOutboxMapper.class,
+                (proxy, method, args) -> {
+                    if ("claimPending".equals(method.getName())) {
+                        claimedTenantId.set((Long) args[0]);
+                        return 0;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(
+                noopMapper(SupervisionAlertReviewRuntimeRunMapper.class), outboxMapper);
+        TenantContextHolder.clear();
+
+        assertThrows(NullPointerException.class, () -> store.claimPendingRuntimeOutbox(
+                10, "claim-no-tenant", null, LocalDateTime.now(), LocalDateTime.now().minusMinutes(10)));
+
+        TenantContextHolder.setTenantId(42L);
+        try {
+            store.claimPendingRuntimeOutbox(
+                    10, "claim-tenant-42", null, LocalDateTime.now(), LocalDateTime.now().minusMinutes(10));
+            assertEquals(42L, claimedTenantId.get());
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
 
     @Test
     void reportAcknowledgementInsertIsFirstWriterWinsAndReturnsDuplicateWinner() {
@@ -1211,6 +1266,29 @@ class SupervisionAlertReviewMapperStoreTest {
                 noopMapper(SupervisionAlertReviewRuntimeOutboxMapper.class),
                 noopMapper(SupervisionAlertReviewSegmentMapper.class),
                 reportAckMapper,
+                noopMapper(SupervisionEventMapper.class)
+        );
+    }
+
+    private static SupervisionAlertReviewMapperStore newStore(
+            SupervisionAlertReviewRuntimeRunMapper runtimeRunMapper,
+            SupervisionAlertReviewRuntimeOutboxMapper runtimeOutboxMapper) {
+        return new SupervisionAlertReviewMapperStore(
+                noopMapper(SupervisionAlertReviewItemMapper.class),
+                noopMapper(SupervisionAlertReviewEvidenceMapper.class),
+                noopMapper(SupervisionAlertReviewIngestIdentityMapper.class),
+                noopMapper(SupervisionAlertReviewRuleMapper.class),
+                noopMapper(SupervisionAlertReviewCaseMapper.class),
+                noopMapper(SupervisionAlertReviewCaseItemMapper.class),
+                noopMapper(SupervisionAlertReviewCaseAuditMapper.class),
+                noopMapper(SupervisionAlertReviewExportJobMapper.class),
+                noopMapper(SupervisionAlertReviewSemanticIndexMapper.class),
+                noopMapper(SupervisionAlertReviewUserStatusMapper.class),
+                noopMapper(SupervisionAlertReviewRuntimeLockMapper.class),
+                runtimeRunMapper,
+                runtimeOutboxMapper,
+                noopMapper(SupervisionAlertReviewSegmentMapper.class),
+                noopMapper(SupervisionAlertReviewReportAckMapper.class),
                 noopMapper(SupervisionEventMapper.class)
         );
     }

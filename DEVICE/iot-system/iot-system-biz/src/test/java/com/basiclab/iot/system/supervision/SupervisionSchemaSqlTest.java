@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.supervision;
 
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewSemanticIndexMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -662,7 +663,7 @@ class SupervisionSchemaSqlTest {
     void runtimeOutboxClaimSqlReclaimsStaleProcessingRowsWithSkipLocked() throws Exception {
         Method claimPending = Class
                 .forName("com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewRuntimeOutboxMapper")
-                .getDeclaredMethod("claimPending", Integer.class, String.class, Long.class,
+                .getDeclaredMethod("claimPending", Long.class, Integer.class, String.class, Long.class,
                         LocalDateTime.class, LocalDateTime.class);
         Update update = claimPending.getAnnotation(Update.class);
         assertNotNull(update);
@@ -673,6 +674,9 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("#{reclaimBefore,jdbcType=TIMESTAMP} IS NOT NULL"));
         assertTrue(sql.contains("claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP}"));
         assertTrue(sql.contains("FOR UPDATE SKIP LOCKED"));
+        assertTrue(sql.contains("target.tenant_id = #{tenantId,jdbcType=BIGINT}"));
+        assertTrue(sql.contains("candidate.tenant_id = #{tenantId,jdbcType=BIGINT}"));
+        assertEquals("true", claimPending.getAnnotation(InterceptorIgnore.class).tenantLine());
     }
 
     @Test
