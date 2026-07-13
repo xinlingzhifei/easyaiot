@@ -895,6 +895,12 @@ const untrackedManifestSignerTest = evaluateStatus(`
 assert.equal(untrackedManifestSignerTest.ok, false);
 assert.equal(untrackedManifestSignerTest.blockers[0].group, 'DEVICE review regression tests');
 
+const untrackedSupervisionPersistenceIdContractTest = evaluateStatus(`
+?? DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/SupervisionPersistenceIdContractTest.java
+`);
+assert.equal(untrackedSupervisionPersistenceIdContractTest.ok, false);
+assert.equal(untrackedSupervisionPersistenceIdContractTest.blockers[0].group, 'DEVICE review regression tests');
+
 const untrackedWorkbenchRunner = evaluateStatus(`
 ?? WEB/scripts/alert-review-workbench-e2e-check.test.mjs
 ?? WEB/scripts/alert-review-playback-contract.test.mjs

@@ -31,7 +31,7 @@ export const FR_RELEASE_PATH_RULES = [
   {
     group: 'DEVICE review regression tests',
     match:
-      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(AlertReviewDataSchemaValidatorTest|ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|MediaPermissionCheckControllerTest|NotifyReviewRuntimeOutboxPublisherTest|ReviewEvidenceManifestSignerTest|SupervisionAlertReview|SupervisionSchemaSqlTest|VideoMediaServiceRequestSignerTest)/,
+      /^DEVICE\/iot-system\/iot-system-biz\/src\/test\/java\/com\/basiclab\/iot\/system\/supervision\/(AlertReviewDataSchemaValidatorTest|ConfiguredReviewCameraPermissionResolver|HttpVideoResolver|MediaPermissionCheckControllerTest|NotifyReviewRuntimeOutboxPublisherTest|ReviewEvidenceManifestSignerTest|SupervisionAlertReview|SupervisionPersistenceIdContractTest|SupervisionSchemaSqlTest|VideoMediaServiceRequestSignerTest)/,
   },
   {
     group: 'DEVICE video integration config',

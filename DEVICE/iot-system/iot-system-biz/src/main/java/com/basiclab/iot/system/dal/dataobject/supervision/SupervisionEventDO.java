@@ -1,5 +1,7 @@
 package com.basiclab.iot.system.dal.dataobject.supervision;
 
+import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.basiclab.iot.common.core.dataobject.BaseDO;
 import lombok.Data;
@@ -9,10 +11,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @TableName("system_supervision_event")
+@KeySequence("system_supervision_event_id_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class SupervisionEventDO extends BaseDO {
 
+    @TableId
     private Long id;
     private String eventNo;
     private Long tenantId;
