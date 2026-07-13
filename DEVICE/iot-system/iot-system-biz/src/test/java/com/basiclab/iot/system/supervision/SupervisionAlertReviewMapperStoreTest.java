@@ -312,6 +312,46 @@ class SupervisionAlertReviewMapperStoreTest {
     }
 
     @Test
+    void exportQueueClaimPassesCurrentTenantAndFailsClosedWithoutIt() {
+        AtomicReference<Object[]> claimArgs = new AtomicReference<>();
+        SupervisionAlertReviewExportJobMapper exportMapper = mapper(
+                SupervisionAlertReviewExportJobMapper.class,
+                (proxy, method, args) -> {
+                    if ("claimProcessable".equals(method.getName())) {
+                        claimArgs.set(args);
+                        return 0;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(
+                noopMapper(SupervisionAlertReviewCaseAuditMapper.class),
+                exportMapper
+        );
+        LocalDateTime claimedAt = LocalDateTime.of(2026, 7, 13, 18, 36);
+        LocalDateTime reclaimBefore = claimedAt.minusMinutes(10);
+
+        try {
+            TenantContextHolder.setTenantId(42L);
+            assertTrue(store.claimProcessableExportJobs(
+                    1, "claim-tenant-42", 9001L, claimedAt, reclaimBefore).isEmpty());
+        } finally {
+            TenantContextHolder.clear();
+        }
+
+        assertEquals(
+                List.of(42L, 1, "claim-tenant-42", 9001L, claimedAt, reclaimBefore),
+                List.of(claimArgs.get())
+        );
+        SecurityException error = assertThrows(
+                SecurityException.class,
+                () -> store.claimProcessableExportJobs(
+                        1, "claim-no-tenant", 9001L, claimedAt, reclaimBefore)
+        );
+        assertEquals("tenant context is required for export queue claim", error.getMessage());
+    }
+
+    @Test
     void appendClueLocksReviewItemRowBeforeMergingConcurrentSourceIds() {
         AtomicInteger lockedReads = new AtomicInteger();
         AtomicInteger unlockedReads = new AtomicInteger();

@@ -1347,7 +1347,12 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                                                                     LocalDateTime claimedAt,
                                                                     LocalDateTime reclaimBefore) {
         int normalizedLimit = limit == null || limit <= 0 ? 20 : Math.min(limit, 100);
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            throw new SecurityException("tenant context is required for export queue claim");
+        }
         int claimedCount = reviewExportJobMapper.claimProcessable(
+                tenantId,
                 normalizedLimit,
                 claimToken,
                 claimedBy,

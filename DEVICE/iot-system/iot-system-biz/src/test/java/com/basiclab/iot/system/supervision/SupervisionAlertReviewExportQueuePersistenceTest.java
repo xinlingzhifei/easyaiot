@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.supervision;
 
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewExportJobMapper;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceExportJob;
@@ -50,6 +51,7 @@ class SupervisionAlertReviewExportQueuePersistenceTest {
     void exportQueueClaimUsesPostgresSkipLockedAndVersionedOwnership() throws Exception {
         Method claim = SupervisionAlertReviewExportJobMapper.class.getMethod(
                 "claimProcessable",
+                Long.class,
                 Integer.class,
                 String.class,
                 Long.class,
@@ -64,6 +66,11 @@ class SupervisionAlertReviewExportQueuePersistenceTest {
         assertTrue(claimSql.contains("claimed_at"));
         assertTrue(claimSql.contains("version = version + 1"));
         assertTrue(claimSql.contains("reclaimbefore"));
+        assertTrue(claimSql.contains("target.tenant_id = #{tenantid"));
+        assertTrue(claimSql.contains("candidate.tenant_id = #{tenantid"));
+        InterceptorIgnore interceptorIgnore = claim.getAnnotation(InterceptorIgnore.class);
+        assertNotNull(interceptorIgnore);
+        assertTrue(Boolean.parseBoolean(interceptorIgnore.tenantLine()));
 
         Method complete = SupervisionAlertReviewExportJobMapper.class.getMethod(
                 "completeClaim",

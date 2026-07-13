@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.dal.pgsql.supervision;
 
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.basiclab.iot.common.core.mapper.BaseMapperX;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewExportJobDO;
@@ -130,41 +131,47 @@ public interface SupervisionAlertReviewExportJobMapper extends BaseMapperX<Super
             """)
     int insertIfAbsent(@Param("job") SupervisionAlertReviewExportJobDO job);
 
+    @InterceptorIgnore(tenantLine = "true")
     @Update("""
-            UPDATE system_supervision_alert_review_export_job
+            UPDATE system_supervision_alert_review_export_job AS target
             SET status = 'running',
                 claim_token = #{claimToken,jdbcType=VARCHAR},
                 claimed_by = #{claimedBy,jdbcType=BIGINT},
                 claimed_at = #{claimedAt,jdbcType=TIMESTAMP},
                 version = version + 1,
                 update_time = CURRENT_TIMESTAMP
-            WHERE id IN (
-                SELECT id
-                FROM system_supervision_alert_review_export_job
-                WHERE deleted = 0
+            WHERE target.tenant_id = #{tenantId,jdbcType=BIGINT}
+              AND target.id IN (
+                SELECT candidate.id
+                FROM system_supervision_alert_review_export_job AS candidate
+                WHERE candidate.tenant_id = #{tenantId,jdbcType=BIGINT}
+                  AND candidate.deleted = 0
                   AND (
                     (
-                      status IN ('pending', 'failed', 'ready')
-                      AND expires_at IS NOT NULL
-                      AND expires_at <= #{claimedAt,jdbcType=TIMESTAMP}
+                      candidate.status IN ('pending', 'failed', 'ready')
+                      AND candidate.expires_at IS NOT NULL
+                      AND candidate.expires_at <= #{claimedAt,jdbcType=TIMESTAMP}
                     )
-                    OR status = 'pending'
+                    OR candidate.status = 'pending'
                     OR (
-                      status = 'failed'
-                      AND (next_retry_at IS NULL OR next_retry_at <= #{claimedAt,jdbcType=TIMESTAMP})
+                      candidate.status = 'failed'
+                      AND (candidate.next_retry_at IS NULL
+                           OR candidate.next_retry_at <= #{claimedAt,jdbcType=TIMESTAMP})
                     )
                     OR (
-                      status = 'running'
+                      candidate.status = 'running'
                       AND #{reclaimBefore,jdbcType=TIMESTAMP} IS NOT NULL
-                      AND (claimed_at IS NULL OR claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP})
+                      AND (candidate.claimed_at IS NULL
+                           OR candidate.claimed_at < #{reclaimBefore,jdbcType=TIMESTAMP})
                     )
                   )
-                ORDER BY generated_at ASC, id ASC
+                ORDER BY candidate.generated_at ASC, candidate.id ASC
                 LIMIT #{limit,jdbcType=INTEGER}
                 FOR UPDATE SKIP LOCKED
             )
             """)
-    int claimProcessable(@Param("limit") Integer limit,
+    int claimProcessable(@Param("tenantId") Long tenantId,
+                         @Param("limit") Integer limit,
                          @Param("claimToken") String claimToken,
                          @Param("claimedBy") Long claimedBy,
                          @Param("claimedAt") LocalDateTime claimedAt,
