@@ -1169,6 +1169,7 @@ public class SupervisionAlertReviewMapperStore implements ReviewItemStore, Revie
                 ? normalizedClaimedAt.plusMinutes(5)
                 : claimExpiresAt;
         int claimed = reviewSemanticIndexMapper.claimProcessable(
+                TenantContextHolder.getRequiredTenantId(),
                 reviewItemIds,
                 normalizedLimit,
                 normalizedToken,

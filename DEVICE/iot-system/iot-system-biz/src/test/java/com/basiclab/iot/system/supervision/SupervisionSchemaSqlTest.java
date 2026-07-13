@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -677,6 +678,27 @@ class SupervisionSchemaSqlTest {
         assertTrue(sql.contains("target.tenant_id = #{tenantId,jdbcType=BIGINT}"));
         assertTrue(sql.contains("candidate.tenant_id = #{tenantId,jdbcType=BIGINT}"));
         assertEquals("true", claimPending.getAnnotation(InterceptorIgnore.class).tenantLine());
+    }
+
+    @Test
+    void semanticIndexClaimSqlIsTenantScopedAndSkipsTenantParser() throws Exception {
+        Method claimProcessable = SupervisionAlertReviewSemanticIndexMapper.class.getDeclaredMethod(
+                "claimProcessable",
+                Long.class,
+                List.class,
+                Integer.class,
+                String.class,
+                LocalDateTime.class,
+                LocalDateTime.class
+        );
+        Update update = claimProcessable.getAnnotation(Update.class);
+        assertNotNull(update);
+        String sql = String.join("\n", update.value());
+
+        assertTrue(sql.contains("target.tenant_id = #{tenantId,jdbcType=BIGINT}"));
+        assertTrue(sql.contains("candidate.tenant_id = #{tenantId,jdbcType=BIGINT}"));
+        assertTrue(sql.contains("FOR UPDATE SKIP LOCKED"));
+        assertEquals("true", claimProcessable.getAnnotation(InterceptorIgnore.class).tenantLine());
     }
 
     @Test

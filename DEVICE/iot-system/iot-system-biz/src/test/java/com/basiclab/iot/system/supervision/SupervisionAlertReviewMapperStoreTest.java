@@ -111,6 +111,37 @@ class SupervisionAlertReviewMapperStoreTest {
     }
 
     @Test
+    void semanticIndexClaimRequiresAndPassesCurrentTenant() {
+        AtomicReference<Object[]> claimArguments = new AtomicReference<>();
+        SupervisionAlertReviewSemanticIndexMapper semanticIndexMapper = mapper(
+                SupervisionAlertReviewSemanticIndexMapper.class,
+                (proxy, method, args) -> {
+                    if ("claimProcessable".equals(method.getName())) {
+                        claimArguments.set(args.clone());
+                        return 0;
+                    }
+                    return defaultValue(method.getReturnType());
+                }
+        );
+        SupervisionAlertReviewMapperStore store = newStore(semanticIndexMapper);
+        LocalDateTime claimedAt = LocalDateTime.of(2026, 7, 13, 20, 50);
+        TenantContextHolder.clear();
+
+        assertThrows(NullPointerException.class, () -> store.claimSemanticIndex(
+                List.of(101L), 10, "semantic-no-tenant", claimedAt, claimedAt.plusMinutes(5)));
+
+        TenantContextHolder.setTenantId(42L);
+        try {
+            store.claimSemanticIndex(
+                    List.of(101L), 10, "semantic-tenant-42", claimedAt, claimedAt.plusMinutes(5));
+            assertEquals(42L, claimArguments.get()[0]);
+            assertEquals(List.of(101L), claimArguments.get()[1]);
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @Test
     void reportAcknowledgementInsertIsFirstWriterWinsAndReturnsDuplicateWinner() {
         AtomicReference<SupervisionAlertReviewReportAckDO> stored = new AtomicReference<>();
         AtomicReference<Long> insertedTenantId = new AtomicReference<>();

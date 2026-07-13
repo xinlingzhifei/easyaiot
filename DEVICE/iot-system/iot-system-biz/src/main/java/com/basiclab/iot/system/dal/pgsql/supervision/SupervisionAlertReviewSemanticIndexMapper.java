@@ -1,5 +1,6 @@
 package com.basiclab.iot.system.dal.pgsql.supervision;
 
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.basiclab.iot.common.core.mapper.BaseMapperX;
 import com.basiclab.iot.common.core.query.LambdaQueryWrapperX;
 import com.basiclab.iot.system.dal.dataobject.supervision.SupervisionAlertReviewSemanticIndexDO;
@@ -106,19 +107,22 @@ public interface SupervisionAlertReviewSemanticIndexMapper extends BaseMapperX<S
             @Param("index") SupervisionAlertReviewSemanticIndexDO index,
             @Param("queuedAt") LocalDateTime queuedAt);
 
+    @InterceptorIgnore(tenantLine = "true")
     @Update("""
             <script>
-            UPDATE system_supervision_alert_review_semantic_index
+            UPDATE system_supervision_alert_review_semantic_index AS target
             SET index_status = 'processing',
                 claim_token = #{claimToken,jdbcType=VARCHAR},
                 claimed_at = #{claimedAt,jdbcType=TIMESTAMP},
                 claim_expires_at = #{claimExpiresAt,jdbcType=TIMESTAMP},
                 update_time = CURRENT_TIMESTAMP
-            WHERE id IN (
-                SELECT id
-                FROM system_supervision_alert_review_semantic_index
-                WHERE deleted = 0
-                  AND review_item_id IN
+            WHERE target.tenant_id = #{tenantId,jdbcType=BIGINT}
+              AND target.id IN (
+                SELECT candidate.id
+                FROM system_supervision_alert_review_semantic_index AS candidate
+                WHERE candidate.tenant_id = #{tenantId,jdbcType=BIGINT}
+                  AND candidate.deleted = 0
+                  AND candidate.review_item_id IN
                   <foreach collection="reviewItemIds" item="reviewItemId" open="(" separator="," close=")">
                     #{reviewItemId,jdbcType=BIGINT}
                   </foreach>
@@ -133,13 +137,14 @@ public interface SupervisionAlertReviewSemanticIndexMapper extends BaseMapperX<S
                       AND (claim_expires_at IS NULL OR claim_expires_at &lt;= #{claimedAt,jdbcType=TIMESTAMP})
                     )
                   )
-                ORDER BY update_time ASC, id ASC
+                ORDER BY candidate.update_time ASC, candidate.id ASC
                 LIMIT #{limit,jdbcType=INTEGER}
                 FOR UPDATE SKIP LOCKED
             )
             </script>
             """)
-    int claimProcessable(@Param("reviewItemIds") List<Long> reviewItemIds,
+    int claimProcessable(@Param("tenantId") Long tenantId,
+                         @Param("reviewItemIds") List<Long> reviewItemIds,
                          @Param("limit") Integer limit,
                          @Param("claimToken") String claimToken,
                          @Param("claimedAt") LocalDateTime claimedAt,

@@ -613,7 +613,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + command.reviewItemId()));
         LocalDateTime happenedAt = command.happenedAt() == null ? LocalDateTime.now() : command.happenedAt();
         String state = normalizeReviewSegmentState(command.lifecycleState());
-        assertReviewSegmentTransitionAllowed(item, state, happenedAt);
+        Optional<ReviewSegmentView> persistedSegment = reviewItemStore.findPersistedReviewSegment(item.id());
+        assertReviewSegmentTransitionAllowed(item, persistedSegment, state, happenedAt);
         Map<String, Object> reviewData = new LinkedHashMap<>(item.reviewData() == null ? Map.of() : item.reviewData());
         Map<String, Object> lifecycle = new LinkedHashMap<>(toStringObjectMap(reviewData.get("lifecycle")));
         List<Map<String, Object>> events = new ArrayList<>(toMapList(lifecycle.get("events")));
@@ -654,7 +655,17 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (command.motionMetadata() != null && !command.motionMetadata().isEmpty()) {
             reviewData.put("motion", mergeMotionMetadata(reviewData.get("motion"), command.motionMetadata(), event));
         }
-        reviewData.put("reviewSegment", updateReviewSegmentLifecycle(item, reviewData, event, state, happenedAt));
+        String persistedSegmentId = persistedSegment
+                .map(ReviewSegmentView::segmentId)
+                .orElse(null);
+        reviewData.put("reviewSegment", updateReviewSegmentLifecycle(
+                item,
+                reviewData,
+                event,
+                state,
+                happenedAt,
+                persistedSegmentId
+        ));
         assertReviewSegmentDoesNotOverlapOtherItems(item.id(), toStringObjectMap(reviewData.get("reviewSegment")));
 
         List<ReviewEvidenceItem> evidenceItems = new ArrayList<>();
@@ -5095,19 +5106,26 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             normalized.put("detections", List.of(buildRuntimeRepairDetection(item, labels, zones, objectIds, confidence, bbox)));
         }
 
-        Map<String, Object> segment = normalizeReviewSegmentDoubleWrite(item, normalized.get("reviewSegment"), objectIds, zones);
+        Optional<ReviewSegmentView> persistedSegment = reviewItemStore.findPersistedReviewSegment(item.id());
+        Map<String, Object> segment = normalizeReviewSegmentDoubleWrite(
+                item,
+                normalized.get("reviewSegment"),
+                objectIds,
+                zones,
+                persistedSegment.map(ReviewSegmentView::segmentId).orElse(null)
+        );
         boolean segmentDoubleWriteDrift = reviewSegmentDoubleWriteDrift(
                 item,
                 toStringObjectMap(normalized.get("reviewSegment")),
                 segment
-        ) || persistedReviewSegmentDrift(item, segment);
+        ) || persistedReviewSegmentDrift(item, segment, persistedSegment);
         normalized.put("reviewSegment", segment);
         return new ReviewDataConsistency(Map.copyOf(normalized), schemaDrift, segmentDoubleWriteDrift);
     }
 
     private boolean persistedReviewSegmentDrift(ReviewItemAggregate item,
-                                                Map<String, Object> expectedSegment) {
-        Optional<ReviewSegmentView> persisted = reviewItemStore.findPersistedReviewSegment(item.id());
+                                                Map<String, Object> expectedSegment,
+                                                Optional<ReviewSegmentView> persisted) {
         if (persisted.isEmpty()) {
             return true;
         }
@@ -5165,9 +5183,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     private static Map<String, Object> normalizeReviewSegmentDoubleWrite(ReviewItemAggregate item,
                                                                          Object currentSegment,
                                                                          List<String> objectIds,
-                                                                         List<String> zones) {
+                                                                         List<String> zones,
+                                                                         String persistedSegmentId) {
         Map<String, Object> segment = new LinkedHashMap<>(toStringObjectMap(currentSegment));
-        segment.put("segmentId", firstText(segment.get("segmentId"), buildReviewSegmentId(item.cameraId(), item.firstAlertTime())));
+        segment.put("segmentId", firstText(
+                segment.get("segmentId"),
+                firstText(persistedSegmentId, buildRecoveryReviewSegmentId(item))
+        ));
         segment.put("cameraId", item.cameraId());
         String severity = firstText(segment.get("severity"), reviewSegmentSeverity(item.sourceAlertType()));
         segment.put("severity", Set.of("detection", "alert").contains(severity)
@@ -7845,12 +7867,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
         Map<String, Object> segment = new LinkedHashMap<>();
         String severity = reviewSegmentSeverity(command.sourceAlertType());
-        segment.put("segmentId", buildReviewSegmentId(
-                normalizeCameraId(command),
-                command.alertTime(),
-                command.sourceSystem(),
-                command.sourceAlertId()
-        ));
+        segment.put("segmentId", buildReviewSegmentId(command));
         segment.put("cameraId", normalizeCameraId(command));
         segment.put("severity", severity);
         segment.put("status", "alert".equals(severity) ? "alert" : "active");
@@ -7933,17 +7950,21 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
     }
 
     private static void assertReviewSegmentTransitionAllowed(ReviewItemAggregate item,
+                                                             Optional<ReviewSegmentView> persistedSegment,
                                                              String nextState,
                                                              LocalDateTime happenedAt) {
         Map<String, Object> segment = toStringObjectMap(item.reviewData() == null
                 ? null
                 : item.reviewData().get("reviewSegment"));
-        String currentState = firstText(segment.get("status"), "active");
-        if ("ended".equals(currentState) && !"ended".equals(nextState)) {
+        String persistedState = persistedSegment.map(ReviewSegmentView::status).orElse(null);
+        String currentState = firstText(segment.get("status"), firstText(persistedState, "active"));
+        if (("ended".equals(currentState) || "ended".equals(persistedState)) && !"ended".equals(nextState)) {
             throw new IllegalStateException("ended review segment cannot be reopened: " + item.id());
         }
         LocalDateTime startTime = toLocalDateTime(firstText(segment.get("startTime"),
-                item.firstAlertTime() == null ? null : item.firstAlertTime().toString()));
+                persistedSegment.map(ReviewSegmentView::startTime)
+                        .map(LocalDateTime::toString)
+                        .orElse(item.firstAlertTime() == null ? null : item.firstAlertTime().toString())));
         if (happenedAt != null && startTime != null && happenedAt.isBefore(startTime)) {
             throw new IllegalArgumentException("review segment lifecycle time cannot be before review segment start: " + item.id());
         }
@@ -7996,10 +8017,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                                     Map<String, Object> reviewData,
                                                                     Map<String, Object> lifecycleEvent,
                                                                     String state,
-                                                                    LocalDateTime happenedAt) {
+                                                                    LocalDateTime happenedAt,
+                                                                    String persistedSegmentId) {
         Map<String, Object> segment = new LinkedHashMap<>(toStringObjectMap(reviewData.get("reviewSegment")));
         if (segment.isEmpty()) {
-            segment.put("segmentId", buildReviewSegmentId(item.cameraId(), item.firstAlertTime()));
+            segment.put("segmentId", firstText(persistedSegmentId, buildRecoveryReviewSegmentId(item)));
             segment.put("cameraId", item.cameraId());
             segment.put("severity", reviewSegmentSeverity(item.sourceAlertType()));
             segment.put("startTime", item.firstAlertTime() == null ? null : item.firstAlertTime().toString());
@@ -8020,7 +8042,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private static ReviewSegmentView toReviewSegmentView(ReviewItemAggregate item) {
         Map<String, Object> segment = toStringObjectMap(item.reviewData() == null ? null : item.reviewData().get("reviewSegment"));
-        String segmentId = firstText(segment.get("segmentId"), buildReviewSegmentId(item.cameraId(), item.firstAlertTime()));
+        String segmentId = firstText(segment.get("segmentId"), buildRecoveryReviewSegmentId(item));
         LocalDateTime startTime = toLocalDateTime(firstText(segment.get("startTime"),
                 item.firstAlertTime() == null ? null : item.firstAlertTime().toString()));
         LocalDateTime endTime = toLocalDateTime(firstText(segment.get("endTime"),
@@ -8042,19 +8064,38 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         );
     }
 
-    private static String buildReviewSegmentId(String cameraId, LocalDateTime startTime) {
-        String camera = hasText(cameraId) ? cameraId : "unknown-camera";
-        String time = startTime == null ? "unknown-time" : startTime.toString().replace(":", "").replace("-", "");
-        return camera + "-" + time;
+    private static String buildReviewSegmentId(AlertClueCommand command) {
+        return buildReviewSegmentId(
+                normalizeCameraId(command),
+                command.alertTime(),
+                command.sourceSystem(),
+                command.sourceAlertId()
+        );
+    }
+
+    private static String buildRecoveryReviewSegmentId(ReviewItemAggregate item) {
+        String identity = firstText(
+                item.reviewItemNo(),
+                firstText(item.id(), "unknown-review-item")
+        );
+        return "seg-" + sha256Hex(identity.length() + ":" + identity);
     }
 
     private static String buildReviewSegmentId(String cameraId,
                                                LocalDateTime startTime,
                                                String sourceSystem,
                                                String sourceAlertId) {
-        String baseId = buildReviewSegmentId(cameraId, startTime);
-        String ingestIdentity = firstText(sourceSystem, "unknown-source") + ":" + sourceAlertId;
-        return baseId + "-" + sha256Hex(ingestIdentity).substring(0, 16);
+        List<String> identityParts = List.of(
+                firstText(cameraId, "unknown-camera"),
+                startTime == null ? "unknown-time" : startTime.toString(),
+                firstText(sourceSystem, "unknown-source"),
+                firstText(sourceAlertId, "unknown-alert")
+        );
+        StringBuilder identity = new StringBuilder();
+        for (String part : identityParts) {
+            identity.append(part.length()).append(':').append(part);
+        }
+        return "seg-" + sha256Hex(identity.toString());
     }
 
     private static String reviewSegmentSeverity(String sourceAlertType) {

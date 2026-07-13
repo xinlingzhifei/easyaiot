@@ -458,6 +458,33 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void segmentIdsStayWithinDatabaseLimitForMaximumCameraIdLength() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        String cameraId = "c".repeat(128);
+
+        ReviewItemAggregate item = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-maximum-camera-id",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                LocalDateTime.of(2026, 7, 13, 14, 0),
+                cameraId,
+                cameraId,
+                "zone-a",
+                "person",
+                15,
+                "maximum-camera-id.jpg",
+                "maximum-camera-id.mp4",
+                null
+        ));
+
+        String segmentId = service.getReviewSegment(item.id()).segmentId();
+        assertEquals(68, segmentId.length());
+        assertTrue(segmentId.matches("seg-[0-9a-f]{64}"));
+    }
+
+    @Test
     void detectionOutsideMergeWindowEndsPreviousOpenSegmentAtCutoffBeforeSplit() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
@@ -6987,6 +7014,7 @@ class SupervisionAlertReviewServiceTest {
                 List.of(0.11D, 0.21D, 0.31D, 0.41D),
                 "corr-reviewdata-repair"
         ));
+        String originalSegmentId = service.getReviewSegment(item.id()).segmentId();
         Map<String, Object> legacyReviewData = new LinkedHashMap<>(item.reviewData());
         legacyReviewData.remove("reviewDataVersion");
         legacyReviewData.remove("reviewSegment");
@@ -7021,12 +7049,102 @@ class SupervisionAlertReviewServiceTest {
         assertEquals(1, repaired.reviewData().get("reviewDataVersion"));
         assertEquals("corr-reviewdata-repair", repaired.reviewData().get("correlationId"));
         assertEquals("camera-01", segment.get("cameraId"));
+        assertEquals(originalSegmentId, segment.get("segmentId"));
         assertEquals(alertTime.toString(), segment.get("startTime"));
         assertEquals(alertTime.toString(), segment.get("endTime"));
         assertEquals(List.of("obj-reviewdata"), segment.get("objectIds"));
         assertEquals(List.of("zone-a"), segment.get("zones"));
         assertFalse(result.healthReport().alerts().contains("review_data_schema_drift"));
         assertFalse(result.healthReport().alerts().contains("review_segment_double_write_drift"));
+    }
+
+    @Test
+    void reviewReconciliationKeepsPersistedSegmentIdAfterOutOfOrderMerge() {
+        LocalDateTime originalTime = LocalDateTime.of(2026, 7, 13, 10, 0);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate original = service.ingestClue(newClue(
+                "alert-original",
+                originalTime,
+                "original.jpg",
+                "original.mp4"
+        ));
+        String originalSegmentId = service.getReviewSegment(original.id()).segmentId();
+        ReviewItemAggregate merged = service.ingestClue(newClue(
+                "alert-earlier",
+                originalTime.minusSeconds(10),
+                "earlier.jpg",
+                "earlier.mp4"
+        ));
+        Map<String, Object> legacyReviewData = new LinkedHashMap<>(merged.reviewData());
+        legacyReviewData.remove("reviewSegment");
+        itemStore.updateReviewLifecycle(
+                merged.id(),
+                Map.copyOf(legacyReviewData),
+                merged.firstAlertTime(),
+                merged.lastAlertTime(),
+                List.of(),
+                merged.recordEvidenceStatus(),
+                merged.recordEvidenceCheckedAt(),
+                merged.recordEvidenceMessage()
+        );
+
+        service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9303L,
+                true
+        ));
+
+        ReviewItemAggregate repaired = service.listWorkbench(new ReviewQuery(null, null, null, null)).get(0);
+        Map<?, ?> repairedSegment = (Map<?, ?>) repaired.reviewData().get("reviewSegment");
+        assertEquals(originalSegmentId, repairedSegment.get("segmentId"));
+        assertEquals(originalTime.minusSeconds(10), repaired.firstAlertTime());
+    }
+
+    @Test
+    void reviewReconciliationKeepsPersistedSegmentIdAfterTimestampPrecisionRoundTrip() {
+        LocalDateTime originalTime = LocalDateTime.of(2026, 7, 13, 10, 30, 0, 123_456_789);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate original = service.ingestClue(newClue(
+                "alert-nanosecond",
+                originalTime,
+                "nanosecond.jpg",
+                "nanosecond.mp4"
+        ));
+        String originalSegmentId = service.getReviewSegment(original.id()).segmentId();
+        Map<String, Object> legacyReviewData = new LinkedHashMap<>(original.reviewData());
+        legacyReviewData.remove("reviewSegment");
+        LocalDateTime databaseTime = originalTime.withNano(123_456_000);
+        itemStore.updateReviewLifecycle(
+                original.id(),
+                Map.copyOf(legacyReviewData),
+                databaseTime,
+                databaseTime,
+                List.of(),
+                original.recordEvidenceStatus(),
+                original.recordEvidenceCheckedAt(),
+                original.recordEvidenceMessage()
+        );
+
+        service.reconcileReviewRuntime(new ReviewReconciliationCommand(
+                new ReviewQuery(null, null, null, null),
+                9304L,
+                true
+        ));
+
+        ReviewItemAggregate repaired = service.listWorkbench(new ReviewQuery(null, null, null, null)).get(0);
+        Map<?, ?> repairedSegment = (Map<?, ?>) repaired.reviewData().get("reviewSegment");
+        assertEquals(originalSegmentId, repairedSegment.get("segmentId"));
+        assertEquals(databaseTime, repaired.firstAlertTime());
     }
 
     @Test
@@ -8145,6 +8263,62 @@ class SupervisionAlertReviewServiceTest {
 
         assertTrue(invalid.getMessage().contains("review segment state"));
         assertTrue(reopen.getMessage().contains("ended review segment"));
+    }
+
+    @Test
+    void reviewSegmentLifecycleRejectsReopenWhenJsonSegmentIsMissingButPersistedSegmentEnded() {
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 10, 45);
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-segment-persisted-ended",
+                alertTime,
+                "segment-persisted-ended.jpg",
+                null
+        ));
+        ReviewItemAggregate ended = service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                item.id(),
+                "ended",
+                alertTime.plusSeconds(30),
+                List.of("obj-persisted-ended"),
+                List.of("person"),
+                List.of("zone-a"),
+                List.of(),
+                Map.of(),
+                null
+        ));
+        Map<String, Object> damagedReviewData = new LinkedHashMap<>(ended.reviewData());
+        damagedReviewData.remove("reviewSegment");
+        itemStore.updateReviewLifecycle(
+                ended.id(),
+                Map.copyOf(damagedReviewData),
+                ended.firstAlertTime(),
+                ended.lastAlertTime(),
+                List.of(),
+                ended.recordEvidenceStatus(),
+                ended.recordEvidenceCheckedAt(),
+                ended.recordEvidenceMessage()
+        );
+
+        IllegalStateException reopen = assertThrows(IllegalStateException.class,
+                () -> service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                        ended.id(),
+                        "active",
+                        alertTime.plusSeconds(40),
+                        List.of("obj-persisted-ended"),
+                        List.of("person"),
+                        List.of("zone-a"),
+                        List.of(),
+                        Map.of(),
+                        null
+                )));
+
+        assertTrue(reopen.getMessage().contains("ended review segment"));
+        assertEquals("ended", itemStore.findPersistedReviewSegment(ended.id()).orElseThrow().status());
     }
 
     @Test
