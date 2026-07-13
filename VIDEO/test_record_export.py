@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -2539,6 +2540,122 @@ class TestRecordExportService(unittest.TestCase):
                 camera_id='camera-01', action='manifest_verify')
 
         self.assertEqual([('sync', True), ('commit', True)], observed)
+
+    def test_ready_commit_check_waits_for_access_audit_metadata_commit(self):
+        import app.services.record_export_service as export_service
+
+        class MemoryStorage:
+            def __init__(self):
+                self.objects = {}
+
+            def put_file(self, key, path, content_type=None):
+                with open(path, 'rb') as handle:
+                    self.objects[key] = handle.read()
+
+            def stat(self, key):
+                return {'size': len(self.objects[key])}
+
+            def open(self, key):
+                return io.BytesIO(self.objects[key])
+
+            def delete(self, key):
+                self.objects.pop(key, None)
+
+            def uri(self, key):
+                return 's3://evidence/' + key
+
+        adapter = MemoryStorage()
+        export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+        audit_sync_started = threading.Event()
+        release_audit_sync = threading.Event()
+        audit_errors = []
+        check_errors = []
+        check_results = []
+        check_started = threading.Event()
+        try:
+            with mock.patch.dict(os.environ, {
+                'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE': 's3',
+                'YFEIEYE_RECORD_EXPORT_STORAGE_URI': 's3://evidence/exports',
+            }, clear=False):
+                started = export_service.create_record_export({
+                    'review_case_id': 'ready-audit-race',
+                    'review_item_id': 'item',
+                    'camera_id': 'camera-01',
+                    'device_id': 'camera-01',
+                    'tenant_id': '7',
+                    'record_uri': (
+                        '/video/record/space/7/video/live/camera-01/race.mp4'),
+                }, record_resolver=_trusted_record_resolver, async_worker=True,
+                   worker_runner=lambda job: _provenance_worker_result(
+                       job, b'object-storage-export'))
+                ready = export_service.poll_record_export(started['export_id'])
+                self.assertEqual('ready', ready['status'])
+
+                original_sync = export_service._sync_object_storage_artifacts
+
+                def pause_access_audit_sync(job, *args, **kwargs):
+                    if kwargs.get('metadata_only'):
+                        audit_sync_started.set()
+                        if not release_audit_sync.wait(2):
+                            raise RuntimeError('test timed out releasing access audit sync')
+                    return original_sync(job, *args, **kwargs)
+
+                def append_access_audit():
+                    try:
+                        export_service.append_record_export_access_audit(
+                            started['export_id'], 'allowed', user_id='operator',
+                            tenant_id='7', camera_id='camera-01', action='export')
+                    except Exception as exc:  # pragma: no cover - asserted below
+                        audit_errors.append(exc)
+
+                def check_ready_commit():
+                    try:
+                        check_started.set()
+                        job = export_service._reload_export_job(started['export_id'])
+                        check_results.append(export_service._ready_job_is_committed(job))
+                    except Exception as exc:  # pragma: no cover - asserted below
+                        check_errors.append(exc)
+
+                with mock.patch.object(
+                        export_service, '_sync_object_storage_artifacts',
+                        side_effect=pause_access_audit_sync):
+                    audit_thread = threading.Thread(
+                        target=append_access_audit, name='access-audit')
+                    audit_thread.start()
+                    self.assertTrue(audit_sync_started.wait(2))
+
+                    check_thread = threading.Thread(
+                        target=check_ready_commit, name='ready-commit-check')
+                    check_thread.start()
+                    self.assertTrue(check_started.wait(2))
+                    check_thread.join(timeout=0.2)
+                    check_waited_for_commit = check_thread.is_alive()
+
+                    release_audit_sync.set()
+                    audit_thread.join(timeout=2)
+                    check_thread.join(timeout=2)
+
+                self.assertTrue(check_waited_for_commit)
+                self.assertFalse(audit_thread.is_alive())
+                self.assertFalse(check_thread.is_alive())
+                self.assertEqual([], audit_errors)
+                self.assertEqual([], check_errors)
+                self.assertEqual([True], check_results)
+        finally:
+            release_audit_sync.set()
+            export_service.configure_record_export_storage_adapter(None)
+
+    def test_ready_commit_check_treats_unavailable_audit_lock_as_uncommitted(self):
+        import app.services.record_export_service as export_service
+
+        with mock.patch.object(
+                export_service,
+                '_acquire_audit_lock',
+                side_effect=RuntimeError('audit lock unavailable')):
+            self.assertFalse(export_service._ready_job_is_committed({
+                'export_id': 'ready-lock-unavailable',
+                'storage_type': 's3',
+            }))
 
     def test_manifest_and_audit_gets_share_the_cross_process_metadata_lock(self):
         import app.services.record_export_service as export_service

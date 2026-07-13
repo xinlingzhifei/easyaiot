@@ -2938,13 +2938,19 @@ def _verify_object_commit_marker(job: dict, manifest: dict):
 def _ready_job_is_committed(job: dict) -> bool:
     if not _uses_object_storage(job):
         return True
+    export_id = job['export_id']
+    lock_token = None
     try:
-        manifest = _read_json(_manifest_path(job['export_id']), {})
+        lock_token = _acquire_audit_lock(export_id)
+        manifest = _read_json(_manifest_path(export_id), {})
         _validate_manifest_integrity(manifest)
         _verify_object_commit_marker(job, manifest)
         return True
     except Exception:
         return False
+    finally:
+        if lock_token:
+            _release_named_claim(_audit_lock_path(export_id), lock_token)
 
 
 def _verify_object_file_copy(job: dict, name: str, local_path: str):
