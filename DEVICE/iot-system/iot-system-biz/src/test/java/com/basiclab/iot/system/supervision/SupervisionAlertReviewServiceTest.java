@@ -417,6 +417,47 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void endedSegmentsRestartingAtSameInstantUseDistinctStableSegmentIds() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());
+        LocalDateTime startTime = LocalDateTime.of(2026, 7, 13, 13, 45, 16);
+
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-same-instant-a",
+                startTime,
+                "same-instant-a.jpg",
+                "same-instant-a.mp4"
+        ));
+        service.updateReviewLifecycle(new ReviewLifecycleCommand(
+                first.id(),
+                "ended",
+                startTime,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                null
+        ));
+
+        AlertClueCommand secondClue = newClue(
+                "alert-same-instant-b",
+                startTime,
+                "same-instant-b.jpg",
+                "same-instant-b.mp4"
+        );
+        ReviewItemAggregate second = service.ingestClue(secondClue);
+        ReviewItemAggregate retry = service.ingestClue(secondClue);
+
+        assertNotEquals(first.id(), second.id());
+        assertNotEquals(service.getReviewSegment(first.id()).segmentId(),
+                service.getReviewSegment(second.id()).segmentId());
+        assertEquals(second.id(), retry.id());
+        assertEquals(service.getReviewSegment(second.id()).segmentId(),
+                service.getReviewSegment(retry.id()).segmentId());
+    }
+
+    @Test
     void detectionOutsideMergeWindowEndsPreviousOpenSegmentAtCutoffBeforeSplit() {
         InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
         SupervisionAlertReviewService service = newService(itemStore, new InMemoryRuleStore(), unusedEventService());

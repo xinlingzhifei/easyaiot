@@ -7845,7 +7845,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         }
         Map<String, Object> segment = new LinkedHashMap<>();
         String severity = reviewSegmentSeverity(command.sourceAlertType());
-        segment.put("segmentId", buildReviewSegmentId(normalizeCameraId(command), command.alertTime()));
+        segment.put("segmentId", buildReviewSegmentId(
+                normalizeCameraId(command),
+                command.alertTime(),
+                command.sourceSystem(),
+                command.sourceAlertId()
+        ));
         segment.put("cameraId", normalizeCameraId(command));
         segment.put("severity", severity);
         segment.put("status", "alert".equals(severity) ? "alert" : "active");
@@ -8041,6 +8046,15 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         String camera = hasText(cameraId) ? cameraId : "unknown-camera";
         String time = startTime == null ? "unknown-time" : startTime.toString().replace(":", "").replace("-", "");
         return camera + "-" + time;
+    }
+
+    private static String buildReviewSegmentId(String cameraId,
+                                               LocalDateTime startTime,
+                                               String sourceSystem,
+                                               String sourceAlertId) {
+        String baseId = buildReviewSegmentId(cameraId, startTime);
+        String ingestIdentity = firstText(sourceSystem, "unknown-source") + ":" + sourceAlertId;
+        return baseId + "-" + sha256Hex(ingestIdentity).substring(0, 16);
     }
 
     private static String reviewSegmentSeverity(String sourceAlertType) {
