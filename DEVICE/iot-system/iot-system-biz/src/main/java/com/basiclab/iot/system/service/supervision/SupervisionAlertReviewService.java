@@ -1372,9 +1372,19 @@ public interface SupervisionAlertReviewService {
     record ReviewEvidenceVideoSegmentRequest(Long reviewItemId,
                                              String sourceAlertId,
                                              String recordUri,
+                                             LocalDateTime segmentStartTime,
+                                             LocalDateTime segmentEndTime,
                                              LocalDateTime clipStartTime,
                                              LocalDateTime clipEndTime,
                                              Integer stitchOrder) {
+        public ReviewEvidenceVideoSegmentRequest(Long reviewItemId,
+                                                 String sourceAlertId,
+                                                 String recordUri,
+                                                 LocalDateTime clipStartTime,
+                                                 LocalDateTime clipEndTime,
+                                                 Integer stitchOrder) {
+            this(reviewItemId, sourceAlertId, recordUri, null, null, clipStartTime, clipEndTime, stitchOrder);
+        }
     }
 
     record ReviewEvidenceVideoExportRequest(Long reviewCaseId,

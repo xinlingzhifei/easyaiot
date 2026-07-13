@@ -57,6 +57,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVerificationReport;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoSegmentRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditEntry;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceAuditQuery;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewDetailStreamItem;
@@ -146,6 +147,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -5518,6 +5520,597 @@ class SupervisionAlertReviewServiceTest {
                 .toList());
         assertEquals(SupervisionAlertReviewService.EXPORT_JOB_READY,
                 itemStore.findExportJobByNo(job.jobNo()).orElseThrow().status());
+    }
+
+    @Test
+    void evidenceExportWorkerClipsRecordSegmentsToTheirCoverageWindows() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 13, 45, 16);
+        List<RecordCoverageSegment> coverage = List.of(
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.minusSeconds(15),
+                        alertTime.plusSeconds(14),
+                        0,
+                        "segment-before.flv"
+                ),
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.plusSeconds(14),
+                        alertTime.plusSeconds(44),
+                        0,
+                        "segment-middle.flv"
+                ),
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.plusSeconds(44),
+                        alertTime.plusSeconds(74),
+                        0,
+                        "segment-after.flv"
+                ),
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.plusSeconds(74),
+                        alertTime.plusSeconds(104),
+                        0,
+                        "segment-outside.flv"
+                )
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> coverage,
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-coverage-window",
+                alertTime,
+                "coverage-window.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(item.id(), 9202L, coverage));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "coverage bounded video export",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9203L,
+                "mp4",
+                "clip each physical recording only inside the review window"
+        ));
+
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9204L));
+
+        assertEquals(1, videoExportProvider.requests().size());
+        List<ReviewEvidenceVideoSegmentRequest> segments = videoExportProvider.requests().get(0).recordSegments();
+        assertEquals(List.of("segment-before.flv", "segment-middle.flv", "segment-after.flv"), segments.stream()
+                .map(ReviewEvidenceVideoSegmentRequest::recordUri)
+                .toList());
+        assertEquals(List.of(
+                        alertTime.minusSeconds(15),
+                        alertTime.plusSeconds(14),
+                        alertTime.plusSeconds(44)
+                ), segments.stream().map(ReviewEvidenceVideoSegmentRequest::segmentStartTime).toList());
+        assertEquals(List.of(
+                        alertTime.plusSeconds(14),
+                        alertTime.plusSeconds(44),
+                        alertTime.plusSeconds(74)
+                ), segments.stream().map(ReviewEvidenceVideoSegmentRequest::segmentEndTime).toList());
+        assertEquals(List.of(alertTime, alertTime.plusSeconds(14), alertTime.plusSeconds(44)), segments.stream()
+                .map(ReviewEvidenceVideoSegmentRequest::clipStartTime)
+                .toList());
+        assertEquals(List.of(alertTime.plusSeconds(14), alertTime.plusSeconds(44), alertTime.plusSeconds(60)),
+                segments.stream().map(ReviewEvidenceVideoSegmentRequest::clipEndTime).toList());
+        assertEquals(List.of(0, 1, 2), segments.stream()
+                .map(ReviewEvidenceVideoSegmentRequest::stitchOrder)
+                .toList());
+    }
+
+    @Test
+    void evidenceExportWorkerUsesOneCoverageSnapshotPerReviewItem() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        AtomicInteger coverageCalls = new AtomicInteger();
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 14, 0);
+        RecordCoverageSegment firstSnapshot = new RecordCoverageSegment(
+                "available",
+                alertTime.minusSeconds(10),
+                alertTime.plusSeconds(20),
+                0,
+                "snapshot-record.flv"
+        );
+        RecordCoverageSegment driftingSecondSnapshot = new RecordCoverageSegment(
+                "available",
+                alertTime.minusSeconds(5),
+                alertTime.plusSeconds(40),
+                0,
+                "snapshot-record.flv"
+        );
+        RecordCoverageResolver coverageResolver = request -> coverageCalls.incrementAndGet() == 1
+                ? List.of(firstSnapshot)
+                : List.of(driftingSecondSnapshot);
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                coverageResolver,
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-single-coverage-snapshot",
+                alertTime,
+                "single-coverage-snapshot.jpg",
+                "snapshot-record.flv"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "single coverage snapshot",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9205L,
+                "mp4",
+                "reuse one coverage snapshot throughout export"
+        ));
+
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9206L));
+
+        assertEquals(1, videoExportProvider.requests().size());
+        ReviewEvidenceVideoSegmentRequest segment = videoExportProvider.requests().get(0).recordSegments().get(0);
+        assertAll(
+                () -> assertEquals(1, coverageCalls.get()),
+                () -> assertEquals(firstSnapshot.startTime(), segment.segmentStartTime()),
+                () -> assertEquals(firstSnapshot.endTime(), segment.segmentEndTime()),
+                () -> assertEquals(alertTime, segment.clipStartTime()),
+                () -> assertEquals(firstSnapshot.endTime(), segment.clipEndTime())
+        );
+    }
+
+    @Test
+    void evidenceExportWorkerFallsBackToManualRecordWhenCoverageDoesNotMatch() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 14, 10);
+        List<RecordCoverageSegment> unrelatedCoverage = List.of(
+                new RecordCoverageSegment(
+                        "missing",
+                        alertTime.minusSeconds(30),
+                        alertTime,
+                        0,
+                        null
+                ),
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime,
+                        alertTime.plusSeconds(30),
+                        0,
+                        "other-record.flv"
+                )
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> unrelatedCoverage,
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-manual-record",
+                alertTime,
+                "manual-record.jpg",
+                "manual-record.flv"
+        ));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "manual record fallback",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9205L,
+                "mp4",
+                "retain explicitly attached recording"
+        ));
+
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9206L));
+
+        assertEquals(1, videoExportProvider.requests().size());
+        List<ReviewEvidenceVideoSegmentRequest> segments = videoExportProvider.requests().get(0).recordSegments();
+        assertEquals(1, segments.size());
+        assertEquals("manual-record.flv", segments.get(0).recordUri());
+        assertNull(segments.get(0).segmentStartTime());
+        assertNull(segments.get(0).segmentEndTime());
+        assertEquals(alertTime, segments.get(0).clipStartTime());
+        assertEquals(alertTime.plusSeconds(60), segments.get(0).clipEndTime());
+        assertEquals(0, segments.get(0).stitchOrder());
+    }
+
+    @Test
+    void evidenceExportWorkerFailsBeforeVideoWhenAnyReviewItemHasNoSegment() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime firstAlertTime = LocalDateTime.of(2026, 7, 13, 15, 0);
+        LocalDateTime secondAlertTime = firstAlertTime.plusHours(2);
+        RecordCoverageSegment firstCoverage = new RecordCoverageSegment(
+                "available",
+                firstAlertTime,
+                firstAlertTime.plusSeconds(30),
+                0,
+                "segment-a.flv"
+        );
+        RecordCoverageSegment secondStoredCoverage = new RecordCoverageSegment(
+                "available",
+                secondAlertTime,
+                secondAlertTime.plusSeconds(30),
+                0,
+                "segment-b.flv"
+        );
+        RecordCoverageSegment secondUnrelatedCoverage = new RecordCoverageSegment(
+                "available",
+                secondAlertTime,
+                secondAlertTime.plusSeconds(30),
+                0,
+                "other-segment.flv"
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> request.beginTime().isBefore(firstAlertTime.plusHours(1))
+                        ? List.of(firstCoverage)
+                        : List.of(secondUnrelatedCoverage),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-export-complete-a",
+                firstAlertTime,
+                "complete-a.jpg",
+                null
+        ));
+        ReviewItemAggregate second = service.ingestClue(newClue(
+                "alert-export-complete-b",
+                secondAlertTime,
+                "complete-b.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(first.id(), 9207L, List.of(firstCoverage)));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(second.id(), 9207L,
+                List.of(secondStoredCoverage)));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "complete multi-item export",
+                first.id(),
+                List.of(first.id(), second.id())
+        ));
+        ReviewEvidenceExportJob job = service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(first.id(), second.id()),
+                9208L,
+                "mp4",
+                "every review item must have video evidence"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9209L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
+        assertEquals(SupervisionAlertReviewService.EXPORT_JOB_FAILED,
+                itemStore.findExportJobByNo(job.jobNo()).orElseThrow().status());
+    }
+
+    @Test
+    void evidenceExportWorkerRejectsPartiallyOverlappingSegmentsForOneReviewItem() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 16, 0);
+        List<RecordCoverageSegment> overlappingCoverage = List.of(
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.minusSeconds(10),
+                        alertTime.plusSeconds(35),
+                        0,
+                        "overlap-a.flv"
+                ),
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.plusSeconds(25),
+                        alertTime.plusSeconds(55),
+                        0,
+                        "overlap-b.flv"
+                )
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> overlappingCoverage,
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-overlap",
+                alertTime,
+                "overlap.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(item.id(), 9210L, overlappingCoverage));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "overlapping record segments",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9211L,
+                "mp4",
+                "overlap must fail closed"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9212L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
+    }
+
+    @Test
+    void evidenceExportWorkerRejectsDifferentPhysicalWindowsForSameRecordUri() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime alertTime = LocalDateTime.of(2026, 7, 13, 16, 30);
+        List<RecordCoverageSegment> conflictingCoverage = List.of(
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.minusSeconds(10),
+                        alertTime.plusSeconds(30),
+                        0,
+                        "same-record.flv"
+                ),
+                new RecordCoverageSegment(
+                        "available",
+                        alertTime.plusSeconds(30),
+                        alertTime.plusSeconds(60),
+                        0,
+                        "same-record.flv"
+                )
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> conflictingCoverage,
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-export-same-record-bounds",
+                alertTime,
+                "same-record.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(item.id(), 9213L, conflictingCoverage));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "same record conflicting windows",
+                item.id(),
+                List.of(item.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(item.id()),
+                9214L,
+                "mp4",
+                "same record must have one physical window"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9215L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
+    }
+
+    @Test
+    void evidenceExportWorkerSortsSegmentsAndAlignsTopLevelIdentityToFirstSegment() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime laterAlertTime = LocalDateTime.of(2026, 7, 13, 10, 20);
+        LocalDateTime earlierAlertTime = LocalDateTime.of(2026, 7, 13, 10, 9);
+        RecordCoverageSegment laterCoverage = new RecordCoverageSegment(
+                "available",
+                LocalDateTime.of(2026, 7, 13, 10, 0),
+                LocalDateTime.of(2026, 7, 13, 10, 21),
+                0,
+                "sort-later.flv"
+        );
+        RecordCoverageSegment earlierCoverage = new RecordCoverageSegment(
+                "available",
+                LocalDateTime.of(2026, 7, 13, 10, 5),
+                LocalDateTime.of(2026, 7, 13, 10, 10),
+                0,
+                "sort-earlier.flv"
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> "device-01".equals(request.deviceId())
+                        ? List.of(laterCoverage)
+                        : List.of(earlierCoverage),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate earlier = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-export-sort-earlier",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                earlierAlertTime,
+                "device-02",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "sort-earlier.jpg",
+                null,
+                null
+        ));
+        ReviewItemAggregate later = service.ingestClue(newClue(
+                "alert-export-sort-later",
+                laterAlertTime,
+                "sort-later.jpg",
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(later.id(), 9216L, List.of(laterCoverage)));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(earlier.id(), 9216L, List.of(earlierCoverage)));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "sorted cross-item video export",
+                later.id(),
+                List.of(later.id(), earlier.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(later.id(), earlier.id()),
+                9217L,
+                "mp4",
+                "stable chronological stitch"
+        ));
+
+        service.processEvidenceExportQueue(new ReviewEvidenceExportWorkerCommand(10, 9218L));
+
+        assertEquals(1, videoExportProvider.requests().size());
+        ReviewEvidenceVideoExportRequest request = videoExportProvider.requests().get(0);
+        assertEquals(List.of("sort-earlier.flv", "sort-later.flv"), request.recordSegments().stream()
+                .map(ReviewEvidenceVideoSegmentRequest::recordUri)
+                .toList());
+        assertEquals(List.of(0, 1), request.recordSegments().stream()
+                .map(ReviewEvidenceVideoSegmentRequest::stitchOrder)
+                .toList());
+        assertEquals(earlier.id(), request.reviewItemId());
+        assertEquals("device-02", request.deviceId());
+        assertEquals("alert-export-sort-earlier", request.sourceAlertId());
+        assertEquals("sort-earlier.flv", request.recordUri());
+    }
+
+    @Test
+    void evidenceExportWorkerRejectsConflictingPhysicalWindowsForSameUriAcrossItems() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        CapturingVideoEvidenceExportProvider videoExportProvider = new CapturingVideoEvidenceExportProvider(
+                Optional.empty()
+        );
+        LocalDateTime firstAlertTime = LocalDateTime.of(2026, 7, 13, 17, 0);
+        LocalDateTime secondAlertTime = firstAlertTime.plusHours(2);
+        RecordCoverageSegment firstCoverage = new RecordCoverageSegment(
+                "available",
+                firstAlertTime,
+                firstAlertTime.plusSeconds(30),
+                0,
+                "shared-record.flv"
+        );
+        RecordCoverageSegment secondCoverage = new RecordCoverageSegment(
+                "available",
+                secondAlertTime,
+                secondAlertTime.plusSeconds(30),
+                0,
+                "shared-record.flv"
+        );
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> "device-01".equals(request.deviceId())
+                        ? List.of(firstCoverage)
+                        : List.of(secondCoverage),
+                ReviewIntelligenceProvider.unavailable(),
+                videoExportProvider
+        );
+        ReviewItemAggregate first = service.ingestClue(newClue(
+                "alert-export-shared-uri-a",
+                firstAlertTime,
+                "shared-a.jpg",
+                null
+        ));
+        ReviewItemAggregate second = service.ingestClue(new AlertClueCommand(
+                "video",
+                "alert-export-shared-uri-b",
+                SupervisionRuleSeeds.RULE_RESTRICTED_AREA,
+                "restricted_area",
+                secondAlertTime,
+                "device-02",
+                "camera-01",
+                "zone-a",
+                "person",
+                15,
+                "shared-b.jpg",
+                null,
+                null
+        ));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(first.id(), 9219L, List.of(firstCoverage)));
+        service.syncRecordStorage(new ReviewRecordStorageSyncCommand(second.id(), 9219L, List.of(secondCoverage)));
+        ReviewCaseView reviewCase = service.createReviewCase(new ReviewCaseCommand(
+                "shared URI conflicting physical windows",
+                first.id(),
+                List.of(first.id(), second.id())
+        ));
+        service.createReviewEvidenceExportJob(new ReviewEvidenceExportCommand(
+                reviewCase.id(),
+                List.of(first.id(), second.id()),
+                9220L,
+                "mp4",
+                "shared URI must identify one physical file window"
+        ));
+
+        ReviewEvidenceExportWorkerRun run = service.processEvidenceExportQueue(
+                new ReviewEvidenceExportWorkerCommand(10, 9221L)
+        );
+
+        assertEquals(1, run.failedCount());
+        assertTrue(videoExportProvider.requests().isEmpty());
     }
 
     @Test

@@ -1238,9 +1238,21 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     @Override
     public List<ReviewCaseTimelineItem> getReviewCaseTimeline(Long reviewCaseId) {
+        return getReviewCaseTimeline(reviewCaseId, new LinkedHashMap<>(), true);
+    }
+
+    private List<ReviewCaseTimelineItem> getReviewCaseTimeline(
+            Long reviewCaseId,
+            Map<Long, List<RecordCoverageSegment>> coverageByReviewItemId,
+            boolean includeRecordCoverage) {
         requirePositive(reviewCaseId, "reviewCaseId");
         List<ReviewCaseTimelineItem> timeline = new ArrayList<>(reviewItemStore.listCaseTimeline(reviewCaseId));
-        timeline.addAll(buildCaseDerivedTimeline(reviewCaseId, timeline));
+        timeline.addAll(buildCaseDerivedTimeline(
+                reviewCaseId,
+                timeline,
+                coverageByReviewItemId,
+                includeRecordCoverage
+        ));
         return timeline.stream()
                 .map(this::withCaseTimelinePlaybackContext)
                 .sorted(Comparator
@@ -3990,7 +4002,12 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                                           LocalDateTime requestedExpiresAt) {
         Objects.requireNonNull(command, "command");
         requirePositive(command.reviewCaseId(), "reviewCaseId");
-        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(command.reviewCaseId());
+        Map<Long, List<RecordCoverageSegment>> coverageByReviewItemId = new LinkedHashMap<>();
+        List<ReviewCaseTimelineItem> timeline = getReviewCaseTimeline(
+                command.reviewCaseId(),
+                coverageByReviewItemId,
+                requestVideoExport
+        );
         List<Long> caseReviewItemIds = reviewItemIdsFromTimeline(timeline);
         List<Long> reviewItemIds = command.reviewItemIds() == null || command.reviewItemIds().isEmpty()
                 ? caseReviewItemIds
@@ -4027,7 +4044,8 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 ? generatedAt.plusDays(DEFAULT_EXPORT_JOB_EXPIRES_DAYS)
                 : requestedExpiresAt;
         List<ReviewEvidenceVideoExportResult> videoExports = requestVideoExport
-                ? requestVideoExports(command.reviewCaseId(), reviewItemIds, scopedTimeline, format, expiresAt)
+                ? requestVideoExports(command.reviewCaseId(), reviewItemIds, scopedTimeline, format, expiresAt,
+                coverageByReviewItemId)
                 : List.of();
         List<String> evidenceUris = scopedTimeline.stream()
                 .filter(item -> MATERIAL_SNAPSHOT.equals(item.materialType()) || MATERIAL_RECORD.equals(item.materialType()))
@@ -7190,7 +7208,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                                       List<Long> reviewItemIds,
                                                                       List<ReviewCaseTimelineItem> timeline,
                                                                       String format,
-                                                                      LocalDateTime expiresAt) {
+                                                                      LocalDateTime expiresAt,
+                                                                      Map<Long, List<RecordCoverageSegment>>
+                                                                              coverageByReviewItemId) {
         if (timeline.isEmpty()) {
             if (requiresVideoArtifact(format)) {
                 throw new IllegalStateException("video export requested but case timeline is empty");
@@ -7198,6 +7218,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             return List.of();
         }
         List<ReviewEvidenceVideoExportResult> results = new ArrayList<>();
+        List<VideoExportCameraRequestPlan> requestPlans = new ArrayList<>();
         Set<String> requestedSegments = new LinkedHashSet<>();
         Map<String, List<VideoExportSegmentContext>> segmentsByCamera = new LinkedHashMap<>();
         boolean videoArtifactRequired = requiresVideoArtifact(format);
@@ -7232,31 +7253,127 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             }
             Map<String, Set<String>> canonicalUrisByObjectName = canonicalRecordUrisByObjectName(contexts);
             List<ReviewEvidenceVideoSegmentRequest> segmentRequests = new ArrayList<>(contexts.size());
-            VideoExportSegmentContext first = null;
             for (VideoExportSegmentContext context : contexts) {
                 String normalizedRecordUri = normalizeVideoExportRecordUri(
                         context.timelineItem().materialUri(),
                         canonicalUrisByObjectName
                 );
-                String requestKey = entry.getKey() + "|" + context.item().id() + "|" + normalizedRecordUri;
-                if (!requestedSegments.add(requestKey)) {
+                LocalDateTime itemStartTime = exportStartTime(context.item(), context.timelineItem());
+                LocalDateTime itemEndTime = exportEndTime(context.item(), context.timelineItem());
+                if (itemStartTime == null || itemEndTime == null || !itemEndTime.isAfter(itemStartTime)) {
                     continue;
                 }
-                if (first == null) {
-                    first = context;
-                }
-                segmentRequests.add(new ReviewEvidenceVideoSegmentRequest(
+                int segmentCountBeforeCoverage = segmentRequests.size();
+                boolean hasPhysicalCoverageMatch = false;
+                List<RecordCoverageSegment> coverage = coverageByReviewItemId.computeIfAbsent(
                         context.item().id(),
-                        context.timelineItem().sourceAlertId(),
-                        normalizedRecordUri,
-                        exportStartTime(context.item(), context.timelineItem()),
-                        exportEndTime(context.item(), context.timelineItem()),
-                        segmentRequests.size()
-                ));
+                        ignored -> getRecordCoverage(context.item().id())
+                );
+                for (RecordCoverageSegment coverageSegment : coverage) {
+                    if (coverageSegment == null
+                            || !hasText(coverageSegment.recordUri())) {
+                        continue;
+                    }
+                    String normalizedCoverageRecordUri = normalizeVideoExportRecordUri(
+                            coverageSegment.recordUri(),
+                            canonicalUrisByObjectName
+                    );
+                    if (!normalizedRecordUri.equals(normalizedCoverageRecordUri)) {
+                        continue;
+                    }
+                    if (RECORD_COVERAGE_MISSING.equals(coverageSegment.status())) {
+                        continue;
+                    }
+                    hasPhysicalCoverageMatch = true;
+                    if (coverageSegment.startTime() == null
+                            || coverageSegment.endTime() == null
+                            || !coverageSegment.endTime().isAfter(coverageSegment.startTime())) {
+                        continue;
+                    }
+                    LocalDateTime clipStartTime = max(itemStartTime, coverageSegment.startTime());
+                    LocalDateTime clipEndTime = min(itemEndTime, coverageSegment.endTime());
+                    if (!clipEndTime.isAfter(clipStartTime)) {
+                        continue;
+                    }
+                    String requestKey = entry.getKey()
+                            + "|" + context.item().id()
+                            + "|" + normalizedRecordUri
+                            + "|" + coverageSegment.startTime()
+                            + "|" + coverageSegment.endTime()
+                            + "|" + clipStartTime
+                            + "|" + clipEndTime;
+                    if (!requestedSegments.add(requestKey)) {
+                        continue;
+                    }
+                    segmentRequests.add(new ReviewEvidenceVideoSegmentRequest(
+                            context.item().id(),
+                            context.timelineItem().sourceAlertId(),
+                            normalizedRecordUri,
+                            coverageSegment.startTime(),
+                            coverageSegment.endTime(),
+                            clipStartTime,
+                            clipEndTime,
+                            segmentRequests.size()
+                    ));
+                }
+                if (segmentRequests.size() == segmentCountBeforeCoverage
+                        && !hasPhysicalCoverageMatch
+                        && context.timelineItem().recordStartTime() == null
+                        && minioRecordObjectName(context.timelineItem().materialUri()).isEmpty()) {
+                    String requestKey = entry.getKey()
+                            + "|" + context.item().id()
+                            + "|" + normalizedRecordUri
+                            + "|<manual>|<manual>"
+                            + "|" + itemStartTime
+                            + "|" + itemEndTime;
+                    if (requestedSegments.add(requestKey)) {
+                        segmentRequests.add(new ReviewEvidenceVideoSegmentRequest(
+                                context.item().id(),
+                                context.timelineItem().sourceAlertId(),
+                                normalizedRecordUri,
+                                itemStartTime,
+                                itemEndTime,
+                                segmentRequests.size()
+                        ));
+                    }
+                }
             }
             if (segmentRequests.isEmpty()) {
                 continue;
             }
+            List<ReviewEvidenceVideoSegmentRequest> orderedSegmentRequests = orderAndNumberVideoSegments(
+                    segmentRequests);
+            assertReviewItemVideoSegmentsDoNotOverlap(orderedSegmentRequests);
+            requestPlans.add(new VideoExportCameraRequestPlan(
+                    entry.getKey(),
+                    orderedSegmentRequests
+            ));
+        }
+        if (videoArtifactRequired) {
+            Set<Long> expectedReviewItemIds = reviewItemIds.stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            Set<Long> segmentedReviewItemIds = requestPlans.stream()
+                    .flatMap(plan -> plan.segmentRequests().stream())
+                    .map(ReviewEvidenceVideoSegmentRequest::reviewItemId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            expectedReviewItemIds.removeAll(segmentedReviewItemIds);
+            if (!expectedReviewItemIds.isEmpty()) {
+                throw new IllegalStateException(
+                        "video export requested but review items have no exportable recording segment: "
+                                + expectedReviewItemIds);
+            }
+            if (requestedSegments.isEmpty()) {
+                throw new IllegalStateException("video export requested but case has no recording evidence");
+            }
+        }
+        for (VideoExportCameraRequestPlan plan : requestPlans) {
+            List<ReviewEvidenceVideoSegmentRequest> segmentRequests = plan.segmentRequests();
+            ReviewEvidenceVideoSegmentRequest firstSegment = segmentRequests.get(0);
+            ReviewItemAggregate firstItem = reviewItemStore.findById(firstSegment.reviewItemId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "review item missing for VIDEO export: " + firstSegment.reviewItemId()));
             LocalDateTime startTime = segmentRequests.stream()
                     .map(ReviewEvidenceVideoSegmentRequest::clipStartTime)
                     .filter(Objects::nonNull)
@@ -7271,13 +7388,13 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 Optional<ReviewEvidenceVideoExportResult> exportResult = videoEvidenceExportProvider.export(
                         new ReviewEvidenceVideoExportRequest(
                                 reviewCaseId,
-                                first.item().id(),
-                                first.item().deviceId(),
-                                entry.getKey(),
-                                first.timelineItem().sourceAlertId(),
+                                firstSegment.reviewItemId(),
+                                firstItem.deviceId(),
+                                plan.cameraId(),
+                                firstSegment.sourceAlertId(),
                                 startTime,
                                 endTime,
-                                segmentRequests.get(0).recordUri(),
+                                firstSegment.recordUri(),
                                 format,
                                 segmentRequests,
                                 expiresAt
@@ -7296,10 +7413,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                 }
             }
         }
-        if (videoArtifactRequired && requestedSegments.isEmpty()) {
-            throw new IllegalStateException("video export requested but case has no recording evidence");
-        }
-        if (videoArtifactRequired && results.size() != segmentsByCamera.size()) {
+        if (videoArtifactRequired && results.size() != requestPlans.size()) {
             throw new IllegalStateException("VIDEO export did not complete every requested camera timeline");
         }
         return List.copyOf(results);
@@ -7307,6 +7421,68 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
 
     private record VideoExportSegmentContext(ReviewItemAggregate item,
                                              ReviewCaseTimelineItem timelineItem) {
+    }
+
+    private record VideoExportCameraRequestPlan(String cameraId,
+                                                List<ReviewEvidenceVideoSegmentRequest> segmentRequests) {
+    }
+
+    private static List<ReviewEvidenceVideoSegmentRequest> orderAndNumberVideoSegments(
+            List<ReviewEvidenceVideoSegmentRequest> segmentRequests) {
+        List<ReviewEvidenceVideoSegmentRequest> ordered = segmentRequests.stream()
+                .sorted(Comparator
+                        .comparing(ReviewEvidenceVideoSegmentRequest::clipStartTime,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewEvidenceVideoSegmentRequest::segmentStartTime,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewEvidenceVideoSegmentRequest::reviewItemId,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ReviewEvidenceVideoSegmentRequest::recordUri,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        List<ReviewEvidenceVideoSegmentRequest> numbered = new ArrayList<>(ordered.size());
+        for (int index = 0; index < ordered.size(); index++) {
+            ReviewEvidenceVideoSegmentRequest segment = ordered.get(index);
+            numbered.add(new ReviewEvidenceVideoSegmentRequest(
+                    segment.reviewItemId(),
+                    segment.sourceAlertId(),
+                    segment.recordUri(),
+                    segment.segmentStartTime(),
+                    segment.segmentEndTime(),
+                    segment.clipStartTime(),
+                    segment.clipEndTime(),
+                    index
+            ));
+        }
+        return List.copyOf(numbered);
+    }
+
+    private static void assertReviewItemVideoSegmentsDoNotOverlap(
+            List<ReviewEvidenceVideoSegmentRequest> segmentRequests) {
+        for (int leftIndex = 0; leftIndex < segmentRequests.size(); leftIndex++) {
+            ReviewEvidenceVideoSegmentRequest left = segmentRequests.get(leftIndex);
+            for (int rightIndex = leftIndex + 1; rightIndex < segmentRequests.size(); rightIndex++) {
+                ReviewEvidenceVideoSegmentRequest right = segmentRequests.get(rightIndex);
+                if (Objects.equals(left.recordUri(), right.recordUri())
+                        && (!Objects.equals(left.segmentStartTime(), right.segmentStartTime())
+                        || !Objects.equals(left.segmentEndTime(), right.segmentEndTime()))) {
+                    throw new IllegalStateException(
+                            "record URI has conflicting physical windows: " + left.recordUri());
+                }
+                if (!Objects.equals(left.reviewItemId(), right.reviewItemId())
+                        || left.clipStartTime() == null
+                        || left.clipEndTime() == null
+                        || right.clipStartTime() == null
+                        || right.clipEndTime() == null) {
+                    continue;
+                }
+                if (left.clipStartTime().isBefore(right.clipEndTime())
+                        && right.clipStartTime().isBefore(left.clipEndTime())) {
+                    throw new IllegalStateException(
+                            "review item video segments overlap: " + left.reviewItemId());
+                }
+            }
+        }
     }
 
     private static Map<String, Set<String>> canonicalRecordUrisByObjectName(
@@ -8430,8 +8606,11 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         return merged;
     }
 
-    private List<ReviewCaseTimelineItem> buildCaseDerivedTimeline(Long reviewCaseId,
-                                                                  List<ReviewCaseTimelineItem> storedTimeline) {
+    private List<ReviewCaseTimelineItem> buildCaseDerivedTimeline(
+            Long reviewCaseId,
+            List<ReviewCaseTimelineItem> storedTimeline,
+            Map<Long, List<RecordCoverageSegment>> coverageByReviewItemId,
+            boolean includeRecordCoverage) {
         Set<Long> reviewItemIds = new LinkedHashSet<>();
         for (ReviewCaseTimelineItem item : storedTimeline) {
             if (item.reviewItemId() != null) {
@@ -8444,19 +8623,25 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             if (item == null) {
                 continue;
             }
-            for (RecordCoverageSegment segment : getRecordCoverage(reviewItemId)) {
-                derived.add(new ReviewCaseTimelineItem(
-                        reviewCaseId,
-                        item.id(),
-                        item.cameraId(),
-                        firstSourceAlertId(item),
-                        MATERIAL_RECORD_COVERAGE,
-                        segment.recordUri(),
-                        segment.startTime(),
-                        segment.status(),
-                        segment.startTime(),
-                        0
-                ));
+            if (includeRecordCoverage) {
+                List<RecordCoverageSegment> coverage = coverageByReviewItemId.computeIfAbsent(
+                        reviewItemId,
+                        this::getRecordCoverage
+                );
+                for (RecordCoverageSegment segment : coverage) {
+                    derived.add(new ReviewCaseTimelineItem(
+                            reviewCaseId,
+                            item.id(),
+                            item.cameraId(),
+                            firstSourceAlertId(item),
+                            MATERIAL_RECORD_COVERAGE,
+                            segment.recordUri(),
+                            segment.startTime(),
+                            segment.status(),
+                            segment.startTime(),
+                            0
+                    ));
+                }
             }
             if (STATUS_FALSE_POSITIVE.equals(item.reviewStatus())) {
                 derived.add(new ReviewCaseTimelineItem(

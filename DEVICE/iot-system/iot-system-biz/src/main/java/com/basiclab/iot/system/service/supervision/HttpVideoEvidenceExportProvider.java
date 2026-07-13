@@ -2,6 +2,7 @@ package com.basiclab.iot.system.service.supervision;
 
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoExportResult;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoSegmentRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceDownloadArtifact;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewEvidenceVideoDownloadRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.VideoEvidenceExportProvider;
@@ -425,10 +426,28 @@ public class HttpVideoEvidenceExportProvider implements VideoEvidenceExportProvi
                     clipParameters.get("clipEndTime"),
                     clipParameters.get("clip_end_time")
             ));
+            LocalDateTime segmentStartTime = parseClipTime(firstText(
+                    returned.get("segmentStartTime"),
+                    returned.get("segment_start_time"),
+                    clipParameters.get("segmentStartTime"),
+                    clipParameters.get("segment_start_time")
+            ));
+            LocalDateTime segmentEndTime = parseClipTime(firstText(
+                    returned.get("segmentEndTime"),
+                    returned.get("segment_end_time"),
+                    clipParameters.get("segmentEndTime"),
+                    clipParameters.get("segment_end_time")
+            ));
             if (!Objects.equals(requested.stitchOrder(), stitchOrder)
                     || !Objects.equals(requested.recordUri(), recordUri)) {
                 throw new IllegalStateException(
                         "ready VIDEO export record segments do not reconcile: order or URI mismatch"
+                );
+            }
+            if (!Objects.equals(requested.segmentStartTime(), segmentStartTime)
+                    || !Objects.equals(requested.segmentEndTime(), segmentEndTime)) {
+                throw new IllegalStateException(
+                        "ready VIDEO export record segments do not reconcile: physical window mismatch"
                 );
             }
             if (!Objects.equals(requested.clipStartTime(), clipStartTime)
@@ -436,6 +455,30 @@ public class HttpVideoEvidenceExportProvider implements VideoEvidenceExportProvi
                 throw new IllegalStateException(
                         "ready VIDEO export record segments do not reconcile: clip window mismatch"
                 );
+            }
+            if (requested.segmentStartTime() != null && requested.segmentEndTime() != null
+                    && requested.clipStartTime() != null && requested.clipEndTime() != null) {
+                double expectedOffset = Duration.between(
+                        requested.segmentStartTime(),
+                        requested.clipStartTime()
+                ).toMillis() / 1000D;
+                Object offsetValue = returned.get("offsetSeconds");
+                if (offsetValue == null) {
+                    offsetValue = returned.get("offset_seconds");
+                }
+                if (offsetValue == null) {
+                    offsetValue = clipParameters.get("offsetSeconds");
+                }
+                if (offsetValue == null) {
+                    offsetValue = clipParameters.get("offset_seconds");
+                }
+                if (!(offsetValue instanceof Number offset)
+                        || !Double.isFinite(offset.doubleValue())
+                        || Math.abs(offset.doubleValue() - expectedOffset) > 0.001D) {
+                    throw new IllegalStateException(
+                            "ready VIDEO export record segments do not reconcile: clip offset mismatch"
+                    );
+                }
             }
             if (requested.clipStartTime() != null && requested.clipEndTime() != null) {
                 double expectedDuration = Duration.between(
@@ -607,12 +650,26 @@ public class HttpVideoEvidenceExportProvider implements VideoEvidenceExportProvi
         body.put("format", request.format());
         body.put("expires_at", request.expiresAt() == null ? null : request.expiresAt().toString());
         if (!request.recordSegments().isEmpty()) {
+            List<Long> reviewItemIds = request.recordSegments().stream()
+                    .map(ReviewEvidenceVideoSegmentRequest::reviewItemId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            if (!reviewItemIds.isEmpty()) {
+                body.put("review_item_ids", reviewItemIds);
+            }
             body.put("record_segments", request.recordSegments().stream()
                     .map(segment -> {
                         Map<String, Object> value = new LinkedHashMap<>();
                         value.put("review_item_id", segment.reviewItemId());
                         value.put("source_alert_id", segment.sourceAlertId());
                         value.put("record_uri", segment.recordUri());
+                        value.put("segment_start_time", segment.segmentStartTime() == null
+                                ? null
+                                : segment.segmentStartTime().toString());
+                        value.put("segment_end_time", segment.segmentEndTime() == null
+                                ? null
+                                : segment.segmentEndTime().toString());
                         value.put("clip_start_time", segment.clipStartTime() == null
                                 ? null
                                 : segment.clipStartTime().toString());

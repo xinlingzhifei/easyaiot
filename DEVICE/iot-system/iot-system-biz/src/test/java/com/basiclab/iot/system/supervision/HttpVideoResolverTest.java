@@ -755,6 +755,9 @@ class HttpVideoResolverTest {
                     assertTrue(body.contains("2026-06-30T10:10"));
                     assertTrue(body.contains("2026-06-30T10:12"));
                     assertTrue(body.contains("\"record_segments\""));
+                    assertTrue(body.contains("\"review_item_ids\":[1000]"));
+                    assertTrue(body.contains("\"segment_start_time\":\"2026-06-30T10:09:30\""));
+                    assertTrue(body.contains("\"segment_end_time\":\"2026-06-30T10:12:30\""));
                     assertTrue(body.contains("\"stitch_order\":0"));
                     assertTrue(body.contains("\"async_worker\":true"));
                     assertEquals("iot-system", request.getHeaders().getFirst("X-YFeiEye-Service-Id"));
@@ -804,12 +807,14 @@ class HttpVideoResolverTest {
                                 "sourceHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
                                 "ffmpegCommandHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
                                 "stitchOrder": 0,
+                                "segmentStartTime": "2026-06-30T10:09:30",
+                                "segmentEndTime": "2026-06-30T10:12:30",
                                 "clipStartTime": "2026-06-30T10:10:00",
                                 "clipEndTime": "2026-06-30T10:12:00",
                                 "clipParameters": {
                                   "clipStartTime": "2026-06-30T10:10:00",
                                   "clipEndTime": "2026-06-30T10:12:00",
-                                  "offsetSeconds": 0.0,
+                                  "offsetSeconds": 30.0,
                                   "durationSeconds": 120.0
                                 }
                               }
@@ -835,7 +840,17 @@ class HttpVideoResolverTest {
                 LocalDateTime.of(2026, 6, 30, 10, 10),
                 LocalDateTime.of(2026, 6, 30, 10, 12),
                 "record.mp4",
-                "mp4"
+                "mp4",
+                List.of(new ReviewEvidenceVideoSegmentRequest(
+                        1000L,
+                        "alert-export-001",
+                        "record.mp4",
+                        LocalDateTime.of(2026, 6, 30, 10, 9, 30),
+                        LocalDateTime.of(2026, 6, 30, 10, 12, 30),
+                        LocalDateTime.of(2026, 6, 30, 10, 10),
+                        LocalDateTime.of(2026, 6, 30, 10, 12),
+                        0
+                ))
         ));
 
         assertTrue(result.isPresent());
@@ -980,6 +995,146 @@ class HttpVideoResolverTest {
         ));
 
         assertTrue(rejected.getMessage().contains("clip window"), rejected.getMessage());
+        server.verify();
+    }
+
+    @Test
+    void videoEvidenceExportProviderRejectsReadyResultWithDifferentPhysicalWindow() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertEquals(
+                        "http://video.local/video/record/export",
+                        request.getURI().toString()))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "code": 0,
+                          "data": {
+                            "export_id": "exp-physical-window-mismatch",
+                            "download_url": "/video/record/export/exp-physical-window-mismatch/download",
+                            "manifest_url": "/video/record/export/exp-physical-window-mismatch/manifest",
+                            "file_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                            "ffmpeg_command_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                            "record_segments": [{
+                              "originalRecordUri": "segment-a.mp4",
+                              "sourceHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+                              "ffmpegCommandHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+                              "stitchOrder": 0,
+                              "segmentStartTime": "2026-06-30T10:09:31",
+                              "segmentEndTime": "2026-06-30T10:12:30",
+                              "clipStartTime": "2026-06-30T10:10:00",
+                              "clipEndTime": "2026-06-30T10:11:00",
+                              "clipParameters": {
+                                "offsetSeconds": 29.0,
+                                "durationSeconds": 60.0
+                              }
+                            }],
+                            "status": "ready"
+                          }
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        HttpVideoEvidenceExportProvider provider = new HttpVideoEvidenceExportProvider(
+                restTemplate,
+                "http://video.local/video/record/export",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
+        IllegalStateException rejected = assertThrows(IllegalStateException.class, () -> provider.export(
+                new ReviewEvidenceVideoExportRequest(
+                        3000L,
+                        1000L,
+                        "device-01",
+                        "camera-01",
+                        "alert-segment-a",
+                        LocalDateTime.of(2026, 6, 30, 10, 10),
+                        LocalDateTime.of(2026, 6, 30, 10, 11),
+                        "segment-a.mp4",
+                        "mp4",
+                        List.of(new ReviewEvidenceVideoSegmentRequest(
+                                1000L,
+                                "alert-segment-a",
+                                "segment-a.mp4",
+                                LocalDateTime.of(2026, 6, 30, 10, 9, 30),
+                                LocalDateTime.of(2026, 6, 30, 10, 12, 30),
+                                LocalDateTime.of(2026, 6, 30, 10, 10),
+                                LocalDateTime.of(2026, 6, 30, 10, 11),
+                                0
+                        ))
+                )
+        ));
+
+        assertTrue(rejected.getMessage().contains("physical window"), rejected.getMessage());
+        server.verify();
+    }
+
+    @Test
+    void videoEvidenceExportProviderRejectsReadyResultWithDifferentClipOffset() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertEquals(
+                        "http://video.local/video/record/export",
+                        request.getURI().toString()))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "code": 0,
+                          "data": {
+                            "export_id": "exp-clip-offset-mismatch",
+                            "download_url": "/video/record/export/exp-clip-offset-mismatch/download",
+                            "manifest_url": "/video/record/export/exp-clip-offset-mismatch/manifest",
+                            "file_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                            "ffmpeg_command_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                            "record_segments": [{
+                              "originalRecordUri": "segment-a.mp4",
+                              "sourceHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+                              "ffmpegCommandHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+                              "stitchOrder": 0,
+                              "segmentStartTime": "2026-06-30T10:09:30",
+                              "segmentEndTime": "2026-06-30T10:12:30",
+                              "clipStartTime": "2026-06-30T10:10:00",
+                              "clipEndTime": "2026-06-30T10:11:00",
+                              "clipParameters": {
+                                "offsetSeconds": 31.0,
+                                "durationSeconds": 60.0
+                              }
+                            }],
+                            "status": "ready"
+                          }
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        HttpVideoEvidenceExportProvider provider = new HttpVideoEvidenceExportProvider(
+                restTemplate,
+                "http://video.local/video/record/export",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
+        IllegalStateException rejected = assertThrows(IllegalStateException.class, () -> provider.export(
+                new ReviewEvidenceVideoExportRequest(
+                        3000L,
+                        1000L,
+                        "device-01",
+                        "camera-01",
+                        "alert-segment-a",
+                        LocalDateTime.of(2026, 6, 30, 10, 10),
+                        LocalDateTime.of(2026, 6, 30, 10, 11),
+                        "segment-a.mp4",
+                        "mp4",
+                        List.of(new ReviewEvidenceVideoSegmentRequest(
+                                1000L,
+                                "alert-segment-a",
+                                "segment-a.mp4",
+                                LocalDateTime.of(2026, 6, 30, 10, 9, 30),
+                                LocalDateTime.of(2026, 6, 30, 10, 12, 30),
+                                LocalDateTime.of(2026, 6, 30, 10, 10),
+                                LocalDateTime.of(2026, 6, 30, 10, 11),
+                                0
+                        ))
+                )
+        ));
+
+        assertTrue(rejected.getMessage().contains("clip offset"), rejected.getMessage());
         server.verify();
     }
 
