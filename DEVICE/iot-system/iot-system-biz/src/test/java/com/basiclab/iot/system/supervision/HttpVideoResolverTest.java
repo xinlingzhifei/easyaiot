@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class HttpVideoResolverTest {
@@ -204,8 +205,13 @@ class HttpVideoResolverTest {
     void alertRecordResolverAcceptsRecordStartTimeAliasFromVideoContract() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(request -> assertTrue(request.getURI().toString()
-                        .startsWith("http://video.local/video/alert/record/query?")))
+        server.expect(request -> {
+                    assertTrue(request.getURI().toString()
+                            .startsWith("http://video.local/video/alert/record/query?"));
+                    assertTrue(request.getURI().toString().contains("device_id=device-01"));
+                    assertEquals("device-01",
+                            request.getHeaders().getFirst("X-YFeiEye-Service-Camera-Id"));
+                })
                 .andRespond(withSuccess("""
                         {
                           "code": 200,
@@ -226,12 +232,32 @@ class HttpVideoResolverTest {
         RecordEvidenceResult result = resolver.resolve(new RecordEvidenceRequest(
                 "alert-alias",
                 "device-01",
-                "camera-01",
+                "device-01",
                 LocalDateTime.of(2026, 6, 30, 10, 15)
         )).orElseThrow();
 
         assertEquals(LocalDateTime.of(2026, 6, 30, 10, 13, 45), result.recordStartTime());
         server.verify();
+    }
+
+    @Test
+    void alertRecordResolverRejectsDeviceCameraScopeMismatch() {
+        HttpAlertRecordEvidenceResolver resolver = new HttpAlertRecordEvidenceResolver(
+                new RestTemplate(),
+                "http://video.local/video/alert/record/query",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> resolver.resolve(
+                new RecordEvidenceRequest(
+                        "alert-scope-mismatch",
+                        "device-01",
+                        "camera-01",
+                        LocalDateTime.of(2026, 6, 30, 10, 15)
+                )));
+
+        assertEquals("permission_denied", failure.getMessage());
     }
 
     @Test
@@ -248,14 +274,108 @@ class HttpVideoResolverTest {
                 testSigner()
         );
 
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> resolver.resolve(
+                new RecordEvidenceRequest(
+                        "alert-500",
+                        "camera-01",
+                        "camera-01",
+                        LocalDateTime.of(2026, 6, 30, 10, 18)
+                )));
+
+        assertEquals("probe_failed", failure.getMessage());
+        server.verify();
+    }
+
+    @Test
+    void alertRecordResolverClassifiesVideoPermissionDenial() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertTrue(request.getURI().toString()
+                        .startsWith("http://video.local/video/alert/record/query?")))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.FORBIDDEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"code":403,"reason":"camera_scope_denied"}
+                                """));
+        HttpAlertRecordEvidenceResolver resolver = new HttpAlertRecordEvidenceResolver(
+                restTemplate,
+                "http://video.local/video/alert/record/query",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> resolver.resolve(
+                new RecordEvidenceRequest(
+                        "alert-denied",
+                        null,
+                        "camera-01",
+                        LocalDateTime.of(2026, 6, 30, 10, 15)
+                )));
+
+        assertEquals("permission_denied", failure.getMessage());
+        server.verify();
+    }
+
+    @Test
+    void alertRecordResolverKeepsExplicitVideoRecordMissAsEmpty() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertTrue(request.getURI().toString()
+                        .startsWith("http://video.local/video/alert/record/query?")))
+                .andRespond(withSuccess("""
+                        {"code":400,"reason":"record_not_found","message":"record not found","data":null}
+                        """, MediaType.APPLICATION_JSON));
+        HttpAlertRecordEvidenceResolver resolver = new HttpAlertRecordEvidenceResolver(
+                restTemplate,
+                "http://video.local/video/alert/record/query",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
         Optional<RecordEvidenceResult> result = resolver.resolve(new RecordEvidenceRequest(
-                "alert-500",
-                "device-01",
+                "alert-missing",
+                null,
                 "camera-01",
-                LocalDateTime.of(2026, 6, 30, 10, 18)
+                LocalDateTime.of(2026, 6, 30, 10, 15)
         ));
 
         assertTrue(result.isEmpty());
+        server.verify();
+    }
+
+    @Test
+    void alertRecordResolverRejectsAmbiguousBusinessFailures() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(request -> assertTrue(request.getURI().toString().contains("alert_id=alert-code-500")))
+                .andRespond(withSuccess("""
+                        {"code":500,"message":"query failed","data":null}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(request -> assertTrue(request.getURI().toString().contains("alert_id=alert-invalid")))
+                .andRespond(withSuccess("""
+                        {"code":400,"reason":"invalid_request","message":"bad alert time","data":null}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(request -> assertTrue(request.getURI().toString().contains("alert_id=alert-no-url")))
+                .andRespond(withSuccess("""
+                        {"code":0,"message":"success","data":{"source":"playback_match"}}
+                        """, MediaType.APPLICATION_JSON));
+        HttpAlertRecordEvidenceResolver resolver = new HttpAlertRecordEvidenceResolver(
+                restTemplate,
+                "http://video.local/video/alert/record/query",
+                "https://eye.yfeiai.com",
+                testSigner()
+        );
+
+        for (String alertId : List.of("alert-code-500", "alert-invalid", "alert-no-url")) {
+            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> resolver.resolve(
+                    new RecordEvidenceRequest(
+                            alertId,
+                            null,
+                            "camera-01",
+                            LocalDateTime.of(2026, 6, 30, 10, 15)
+                    )));
+            assertEquals("probe_failed", failure.getMessage());
+        }
         server.verify();
     }
 

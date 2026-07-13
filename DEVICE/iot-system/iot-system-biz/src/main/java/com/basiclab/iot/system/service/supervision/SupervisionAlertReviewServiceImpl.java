@@ -3149,6 +3149,10 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
             requireText(command.deviceId(), "deviceId");
             requireText(command.cameraId(), "cameraId");
             requireText(command.zoneCode(), "zoneCode");
+            if (!command.deviceId().equals(command.cameraId())) {
+                throw new IllegalArgumentException(
+                        "real integration smoke requires deviceId and cameraId to identify the same VIDEO camera");
+            }
             if (!includeVideoExport) {
                 throw new IllegalArgumentException("real integration smoke requires video export");
             }

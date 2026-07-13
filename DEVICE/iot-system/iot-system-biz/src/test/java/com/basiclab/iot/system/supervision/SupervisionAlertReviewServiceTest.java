@@ -7264,6 +7264,30 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void realIntegrationSmokeRejectsDeviceCameraScopeMismatchBeforeIngest() {
+        SupervisionAlertReviewService service = newService(
+                new InMemoryReviewItemStore(),
+                new InMemoryRuleStore(),
+                eventServiceReturning(7602L)
+        );
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.runIntegrationSmoke(new ReviewIntegrationSmokeCommand(
+                        9202L,
+                        true,
+                        LocalDateTime.of(2026, 7, 10, 6, 12),
+                        "release",
+                        "device-real",
+                        "camera-real",
+                        "zone-real",
+                        "alert-scope-mismatch",
+                        List.of("camera-real")
+                )));
+
+        assertTrue(error.getMessage().contains("same VIDEO camera"));
+    }
+
+    @Test
     void realIntegrationSmokeFailsWhenVideoExportDoesNotReturnAnArtifact() {
         LocalDateTime smokeTime = LocalDateTime.of(2026, 7, 10, 6, 12);
         SupervisionAlertReviewService service = newService(
@@ -7287,7 +7311,7 @@ class SupervisionAlertReviewServiceTest {
                 true,
                 smokeTime,
                 "release",
-                "device-real",
+                "camera-real",
                 "camera-real",
                 "zone-real",
                 "alert-real-002",

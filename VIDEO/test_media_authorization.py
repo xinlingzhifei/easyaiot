@@ -3393,6 +3393,10 @@ class TestAlertMediaAuthorization(_ModuleIsolationTestCase):
         from app.services.media_authorization_service import canonical_service_signature
 
         alert_module = self._alert_blueprint()
+        tenant_lookup = []
+        alert_module._resolve_alert_media_tenant = lambda path, media_type, alert_id=None: (
+            tenant_lookup.append((path, media_type, alert_id)) or '7'
+        )
         alert_module._do_query_alert_record = lambda *args, **kwargs: (
             alert_module.jsonify({'code': 0, 'data': {'device_id': 'camera-01'}}),
             200,
@@ -3400,7 +3404,7 @@ class TestAlertMediaAuthorization(_ModuleIsolationTestCase):
         os.environ['YFEIEYE_MEDIA_SERVICE_HMAC_SECRET'] = 'unit-test-service-secret-at-least-32-bytes'
         os.environ['YFEIEYE_MEDIA_SERVICE_IDS'] = 'iot-system'
         path = '/video/alert/record/query'
-        query = 'device_id=camera-01&alert_time=2026-07-10T10:00:00'
+        query = 'device_id=camera-01&alert_time=2026-07-10T10:00:00&alert_id=123'
         timestamp = str(time.time())
         nonce = 'alert-query-nonce-1'
         signature = canonical_service_signature(
@@ -3423,12 +3427,73 @@ class TestAlertMediaAuthorization(_ModuleIsolationTestCase):
         )
 
         self.assertEqual(200, response.status_code, response.get_json())
+        self.assertEqual([(None, 'record', '123')], tenant_lookup)
         self.assertTrue(any(
             entry['decision'] == 'allowed'
             and entry['action'] == 'coverage'
             and entry['cameraId'] == 'camera-01'
             for entry in self._audit_entries()
         ))
+
+    def test_alert_record_miss_has_stable_reason(self):
+        alert_module = self._alert_blueprint()
+        app = self._app(alert_module)
+        with patch(
+                'app.services.alert_service.resolve_alert_record_video',
+                return_value=None):
+            with app.app_context():
+                response, status = alert_module._do_query_alert_record(
+                    'camera-01', '2026-07-10 10:00:00', 300,
+                    tenant_id='7')
+
+        self.assertEqual(200, status)
+        self.assertEqual(400, response.get_json()['code'])
+        self.assertEqual('record_not_found', response.get_json()['reason'])
+
+    def test_alert_tenant_lookup_does_not_query_empty_media_paths(self):
+        alert_module = self._alert_blueprint()
+        path_lookups = []
+        alert_module._metadata_first = lambda *args, **kwargs: path_lookups.append(
+            (args, kwargs))
+        alert_module._metadata_get = lambda model, identity: (
+            types.SimpleNamespace(tenant_id=7) if identity == 'known-alert' else None
+        )
+
+        self.assertEqual(
+            '7',
+            alert_module._resolve_alert_media_tenant(
+                None, 'record', alert_id='known-alert'),
+        )
+        self.assertIsNone(alert_module._resolve_alert_media_tenant(
+            None, 'record', alert_id='external-alert'))
+        self.assertEqual([], path_lookups)
+
+    def test_alert_tenant_lookup_does_not_trust_mismatched_alert_path(self):
+        alert_module = self._alert_blueprint()
+        alert = types.SimpleNamespace(
+            tenant_id=7,
+            record_path='/records/owned.mp4',
+        )
+        foreign_record = types.SimpleNamespace(tenant_id=8)
+        alert_module._metadata_get = lambda model, identity: (
+            alert if identity == 'known-alert' else None
+        )
+        alert_module._metadata_first = lambda model, **filters: (
+            foreign_record
+            if filters == {'url': '/records/foreign.mp4'}
+            else None
+        )
+
+        self.assertEqual(
+            '8',
+            alert_module._resolve_alert_media_tenant(
+                '/records/foreign.mp4', 'record', alert_id='known-alert'),
+        )
+        self.assertEqual(
+            '7',
+            alert_module._resolve_alert_media_tenant(
+                '/records/owned.mp4', 'record', alert_id='known-alert'),
+        )
 
     def test_authorized_camera_cannot_read_unowned_absolute_alert_record(self):
         alert_module = self._alert_blueprint()

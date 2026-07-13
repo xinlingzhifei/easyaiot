@@ -118,6 +118,10 @@ export function requiredOptionErrors(options) {
     if (!hasText(options.deviceId)) {
       errors.push('missing --device-id or YFEIEYE_DEVICE_SMOKE_DEVICE_ID for real profile');
     }
+    if (hasText(options.deviceId) && hasText(options.cameraId)
+      && options.deviceId !== options.cameraId) {
+      errors.push('real profile requires deviceId and cameraId to identify the same VIDEO camera');
+    }
     if (!hasText(options.zoneCode)) {
       errors.push('missing --zone-code or YFEIEYE_DEVICE_SMOKE_ZONE_CODE for real profile');
     }
@@ -139,7 +143,7 @@ export function buildSmokeBody(options) {
   return {
     operatorUserId: options.operatorUserId,
     includeVideoExport: options.includeVideoExport,
-    alertTime: options.alertTime,
+    alertTime: deviceEpochMillis(options.alertTime),
     profile: options.profile,
     deviceId: options.deviceId,
     cameraId: options.cameraId,
@@ -147,6 +151,26 @@ export function buildSmokeBody(options) {
     sourceAlertId: options.sourceAlertId,
     allowedCameraIds: options.allowedCameraIds,
   };
+}
+
+function deviceEpochMillis(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  const text = String(value || '').trim();
+  if (/^\d+$/.test(text)) {
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  const iso = text.replace(' ', 'T');
+  const zoned = /(?:Z|[+-]\d{2}:\d{2})$/i.test(iso) ? iso : `${iso}+08:00`;
+  const epochMillis = Date.parse(zoned);
+  if (!Number.isFinite(epochMillis)) {
+    throw new Error('DEVICE integration smoke requires a valid alert time');
+  }
+  return epochMillis;
 }
 
 export async function runSmoke(options, dependencies = {}) {
@@ -541,7 +565,7 @@ function printHelp() {
   --tenant-id=TENANT_ID \\
   --operator-user-id=9200 \\
   --alert-time="2026-07-05T10:00:00" [--profile=release] \\
-  --device-id=REAL_DEVICE_ID --camera-id=REAL_CAMERA_ID --zone-code=REAL_ZONE \\
+  --device-id=REAL_CAMERA_ID --camera-id=REAL_CAMERA_ID --zone-code=REAL_ZONE \\
   --allowed-camera-ids=REAL_CAMERA_ID [--source-alert-id=REAL_ALERT_ID] \\
   [--playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02]
 

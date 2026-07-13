@@ -24,7 +24,7 @@ const parsed = parseArgs([
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
   '--profile=device-video-web',
-  '--device-id=device-real-01',
+  '--device-id=camera-real-01',
   '--camera-id=camera-real-01',
   '--zone-code=zone-real-01',
   '--source-alert-id=alert-real-01',
@@ -43,7 +43,7 @@ assert.equal(parsed.tenantId, 42);
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.alertTime, '2026-07-05T10:00:00');
 assert.equal(parsed.profile, 'device-video-web');
-assert.equal(parsed.deviceId, 'device-real-01');
+assert.equal(parsed.deviceId, 'camera-real-01');
 assert.equal(parsed.cameraId, 'camera-real-01');
 assert.equal(parsed.zoneCode, 'zone-real-01');
 assert.equal(parsed.sourceAlertId, 'alert-real-01');
@@ -63,7 +63,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_DEVICE_TENANT_ID: '84',
   YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID: '9200',
   YFEIEYE_DEVICE_SMOKE_ALERT_TIME: '2026-07-05T11:00:00',
-  YFEIEYE_DEVICE_SMOKE_DEVICE_ID: 'device-env-01',
+  YFEIEYE_DEVICE_SMOKE_DEVICE_ID: 'camera-env-01',
   YFEIEYE_DEVICE_SMOKE_CAMERA_ID: 'camera-env-01',
   YFEIEYE_DEVICE_SMOKE_ZONE_CODE: 'zone-env-01',
   YFEIEYE_DEVICE_SMOKE_SOURCE_ALERT_ID: 'alert-env-01',
@@ -77,7 +77,7 @@ assert.equal(fromEnv.tenantId, 84);
 assert.equal(fromEnv.operatorUserId, 9200);
 assert.equal(fromEnv.profile, 'release');
 assert.equal(fromEnv.includeVideoExport, true);
-assert.equal(fromEnv.deviceId, 'device-env-01');
+assert.equal(fromEnv.deviceId, 'camera-env-01');
 assert.equal(fromEnv.cameraId, 'camera-env-01');
 assert.equal(fromEnv.zoneCode, 'zone-env-01');
 assert.equal(fromEnv.sourceAlertId, 'alert-env-01');
@@ -103,14 +103,24 @@ assert.equal(
 assert.deepEqual(buildSmokeBody(parsed), {
   operatorUserId: 9001,
   includeVideoExport: true,
-  alertTime: '2026-07-05T10:00:00',
+  alertTime: 1783216800000,
   profile: 'device-video-web',
-  deviceId: 'device-real-01',
+  deviceId: 'camera-real-01',
   cameraId: 'camera-real-01',
   zoneCode: 'zone-real-01',
   sourceAlertId: 'alert-real-01',
   allowedCameraIds: ['camera-real-01'],
 });
+
+assert.throws(
+  () => buildSmokeBody({ ...parsed, alertTime: 'not-a-real-alert-time' }),
+  /valid alert time/i,
+);
+
+assert.deepEqual(
+  requiredOptionErrors({ ...parsed, deviceId: 'different-video-device' }),
+  ['real profile requires deviceId and cameraId to identify the same VIDEO camera'],
+);
 
 const validPayload = {
   status: 'passed',

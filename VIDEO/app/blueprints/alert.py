@@ -287,14 +287,18 @@ def _resolve_alert_media_tenant(path, media_type, alert_id=None):
         return None
     candidates = []
     if alert_id:
-        candidates.append(_metadata_get(Alert, alert_id))
-    if media_type == 'image':
+        alert = _metadata_get(Alert, alert_id)
+        if not path or (
+                alert is not None
+                and path in _alert_media_paths(alert, media_type)):
+            candidates.append(alert)
+    if path and media_type == 'image':
         candidates.extend([
             _metadata_first(Alert, image_path=path),
             _metadata_first(Alert, image_url=path),
             _metadata_first(Image, path=path),
         ])
-    else:
+    elif path:
         candidates.extend([
             _metadata_first(Alert, record_path=path),
             _metadata_first(Playback, file_path=path),
@@ -694,7 +698,8 @@ def query_alert_record():
         alert_time_str = request.args.get('alert_time')
         alert_id = request.args.get('alert_id')
         scoped_camera_id = _resolve_alert_query_camera(device_id, alert_id) or _request_camera_hint()
-        owner_tenant_id = _resolve_alert_media_tenant(None, alert_id)
+        owner_tenant_id = _resolve_alert_media_tenant(
+            None, 'record', alert_id=alert_id)
         decision = authorize_media_request(
             request,
             action='coverage',
@@ -809,6 +814,7 @@ def _do_query_alert_record(device_id, alert_time_str, time_range, alert_id=None,
         )
         return jsonify({
             "code": 400,
+            "reason": "record_not_found",
             "message": f'该设备在告警时间前后{time_range}秒内暂无录像记录，请稍后再试',
             "data": None
         }), 200

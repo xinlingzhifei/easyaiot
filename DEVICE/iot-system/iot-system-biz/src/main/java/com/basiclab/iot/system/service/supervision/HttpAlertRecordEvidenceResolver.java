@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -45,6 +46,10 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
             return Optional.empty();
         }
         String deviceId = hasText(request.deviceId()) ? request.deviceId() : request.cameraId();
+        if (hasText(request.deviceId()) && hasText(request.cameraId())
+                && !request.deviceId().equals(request.cameraId())) {
+            throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PERMISSION_DENIED);
+        }
         String url = UriComponentsBuilder.fromHttpUrl(alertRecordQueryUrl)
                 .queryParam("device_id", deviceId)
                 .queryParam("alert_time", request.alertTime().format(ALERT_TIME_FORMATTER))
@@ -60,19 +65,30 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
                     HttpMethod.GET,
                     requestUri,
                     "coverage",
-                    hasText(request.cameraId()) ? request.cameraId() : deviceId,
+                    deviceId,
                     ""
             ));
             Map<?, ?> response = restTemplate.exchange(
                     requestUri, HttpMethod.GET, entity, Map.class).getBody();
+            Integer businessCode = responseCode(response);
+            if (businessCode != null && (businessCode == 401 || businessCode == 403)) {
+                throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PERMISSION_DENIED);
+            }
+            if (isExplicitRecordMiss(response, businessCode)) {
+                return Optional.empty();
+            }
+            if ((response != null && response.containsKey("code") && businessCode == null)
+                    || (businessCode != null && businessCode != 0 && businessCode != 200)) {
+                throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PROBE_FAILED);
+            }
             Map<?, ?> data = responseData(response);
             if (data == null) {
-                return Optional.empty();
+                throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PROBE_FAILED);
             }
             String recordUri = rewritePublicUri(firstText(data.get("video_url"), data.get("record_url"),
                     data.get("play_url"), data.get("url"), data.get("file_path")));
             if (!hasText(recordUri)) {
-                return Optional.empty();
+                throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PROBE_FAILED);
             }
             String message = firstText(data.get("source"), data.get("message"), data.get("msg"));
             LocalDateTime recordStartTime = parseRecordStartTime(firstText(
@@ -82,8 +98,20 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
                     data.get("eventTime")
             ));
             return Optional.of(new RecordEvidenceResult(recordUri, message, recordStartTime));
-        } catch (RuntimeException ignored) {
-            return Optional.empty();
+        } catch (HttpStatusCodeException exception) {
+            int status = exception.getStatusCode().value();
+            String reason = status == 401 || status == 403
+                    ? SupervisionAlertReviewService.RECORD_GAP_PERMISSION_DENIED
+                    : SupervisionAlertReviewService.RECORD_GAP_PROBE_FAILED;
+            throw new IllegalStateException(reason, exception);
+        } catch (SecurityException exception) {
+            throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PERMISSION_DENIED, exception);
+        } catch (RuntimeException exception) {
+            if (SupervisionAlertReviewService.RECORD_GAP_PROBE_FAILED.equals(exception.getMessage())
+                    || SupervisionAlertReviewService.RECORD_GAP_PERMISSION_DENIED.equals(exception.getMessage())) {
+                throw exception;
+            }
+            throw new IllegalStateException(SupervisionAlertReviewService.RECORD_GAP_PROBE_FAILED, exception);
         }
     }
 
@@ -98,11 +126,35 @@ public class HttpAlertRecordEvidenceResolver implements RecordEvidenceResolver {
         if (response == null || response.isEmpty()) {
             return null;
         }
-        Object data = response.get("data");
-        if (data instanceof Map<?, ?> dataMap) {
-            return dataMap;
+        if (response.containsKey("data")) {
+            Object data = response.get("data");
+            return data instanceof Map<?, ?> dataMap ? dataMap : null;
         }
         return response;
+    }
+
+    private static boolean isExplicitRecordMiss(Map<?, ?> response, Integer businessCode) {
+        if (response == null || businessCode == null || businessCode != 400) {
+            return false;
+        }
+        return response.get("data") == null
+                && SupervisionAlertReviewService.RECORD_GAP_RECORD_NOT_FOUND.equals(
+                firstText(response.get("reason")));
+    }
+
+    private static Integer responseCode(Map<?, ?> response) {
+        if (response == null || !response.containsKey("code")) {
+            return null;
+        }
+        Object value = response.get("code");
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private String rewritePublicUri(String uri) {
