@@ -2135,7 +2135,8 @@ export function scanLiveVideoEvidenceGate(files) {
       && !productionSmokeMissingAuditChainGate
       && !containsAll(productionSmoke.content, [
         'firstAuditScalar',
-        'firstAuditIdList',
+        'resolveExactAuditIdList',
+        'normalizeAuditIdList',
         'normalizeAuditScalar',
       ])) {
     blockers.push({
