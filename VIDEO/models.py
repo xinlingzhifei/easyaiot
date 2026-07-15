@@ -2201,6 +2201,31 @@ def ensure_algorithm_task_detect_conf_column(engine):
         log.warning('ensure_algorithm_task_detect_conf_column: %s', e)
 
 
+def ensure_algorithm_task_motion_gate_columns(engine):
+    """Backfill motion gate columns for older algorithm_task tables."""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'motion_gate_enabled': 'BOOLEAN NOT NULL DEFAULT FALSE',
+        'motion_gate_config': 'TEXT',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'algorithm_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('algorithm_task')}
+        for col, ddl in columns.items():
+            if col in col_names:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE algorithm_task ADD COLUMN {col} {ddl}'))
+            log.info('Added algorithm_task.%s column', col)
+    except Exception as e:
+        log.warning('ensure_algorithm_task_motion_gate_columns: %s', e)
+
+
 def ensure_algorithm_task_alert_class_columns(engine):
     """老库 algorithm_task 表补告警触发类别标签列。"""
     import logging

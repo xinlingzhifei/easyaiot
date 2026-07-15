@@ -224,11 +224,13 @@ def create_app(start_background_tasks=None):
             from models import (
                 ensure_algorithm_task_sam_columns,
                 ensure_algorithm_task_post_process_columns,
+                ensure_algorithm_task_motion_gate_columns,
                 ensure_algorithm_task_alert_class_columns,
                 ensure_algorithm_task_detect_conf_column,
             )
             ensure_algorithm_task_sam_columns(db.engine)
             ensure_algorithm_task_post_process_columns(db.engine)
+            ensure_algorithm_task_motion_gate_columns(db.engine)
             ensure_algorithm_task_alert_class_columns(db.engine)
             ensure_algorithm_task_detect_conf_column(db.engine)
             
