@@ -166,6 +166,37 @@ function apiCall(name: string) {
   return (window.__alertReviewE2EApiCalls || []).find(call => call.name === name)
 }
 
+function assertMediaReadScope(
+  name: string,
+  reviewItemId: number,
+  expectedReviewCaseId?: number,
+) {
+  const call = [...(window.__alertReviewE2EApiCalls || [])].reverse().find(candidate => {
+    const payload = candidate.payload as { reviewItemId?: number } | undefined
+    return candidate.name === name && payload?.reviewItemId === reviewItemId
+  })
+  const payload = call?.payload as {
+    reviewItemId?: number
+    params?: {
+      reviewCaseId?: number
+      operatorUserId?: number
+      allowedCameraIds?: string[]
+    }
+  } | undefined
+  if (payload?.params?.reviewCaseId !== expectedReviewCaseId) {
+    throw new Error(
+      `${name} expected reviewCaseId ${String(expectedReviewCaseId)}, got ${String(payload?.params?.reviewCaseId)}`,
+    )
+  }
+  if (payload?.params?.operatorUserId !== 9001)
+    throw new Error(`${name} expected operatorUserId 9001, got ${String(payload?.params?.operatorUserId)}`)
+  if (JSON.stringify(payload?.params?.allowedCameraIds) !== JSON.stringify(['cam-east-gate'])) {
+    throw new Error(
+      `${name} expected allowedCameraIds [cam-east-gate], got ${JSON.stringify(payload?.params?.allowedCameraIds)}`,
+    )
+  }
+}
+
 function assertCaseMutationConcurrency(
   name: string,
   versionField: string,
@@ -325,6 +356,7 @@ async function runE2E() {
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-record-coverage"]'), 'record coverage')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-candidate"]'), 'topology candidate')
 
+  setInputValue('.reviewer-input', '9001')
   clickReviewRowByNo('RV-20260702-003')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-panel"]'), 'existing review case panel')
   await waitFor(() => !!document.querySelector('[data-testid="alert-review-case-timeline-seek"]'), 'existing case timeline seek button')
@@ -334,6 +366,9 @@ async function runE2E() {
     ),
     'existing review item case lookup',
   )
+  assertMediaReadScope('getAlertReviewTimeline', 103, 501)
+  assertMediaReadScope('getAlertReviewDetailStream', 103, 501)
+  assertMediaReadScope('getAlertReviewRecordCoverage', 103, 501)
 
   clickReviewRow()
   await waitFor(() => !document.querySelector('[data-testid="alert-review-case-panel"]'), 'non-case review item clears active case')
@@ -348,6 +383,9 @@ async function runE2E() {
   await waitFor(() => text().includes('risk low_sample_requires_more_review'), 'rule suggestion risk note')
   await waitFor(() => text().includes('impact cam-east-gate / gate-zone / person'), 'rule suggestion impact scope')
   await waitFor(() => text().includes('hits 4 -> 0'), 'rule suggestion before-after hit comparison')
+  assertMediaReadScope('getAlertReviewTimeline', 101)
+  assertMediaReadScope('getAlertReviewDetailStream', 101)
+  assertMediaReadScope('getAlertReviewRecordCoverage', 101)
   if (hasButtonByText('accept'))
     throw new Error('low-sample rule suggestion should hide accept action')
   if (hasButtonByText('applied'))

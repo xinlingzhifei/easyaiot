@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
 import {
+  buildStepEnvironment,
   buildSmokeSteps,
   formatStepCommand,
   parseArgs,
   requiredOptionErrors,
   runProductionSmoke,
+  sanitizeChildOutputForDisplay,
 } from './alert-review-production-smoke.mjs';
 import {
   evaluateStatus,
@@ -22,7 +24,6 @@ const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
 
 const parsed = parseArgs([
   '--device-base-url=https://device.release.example/api',
-  '--token=token-1',
   '--operator-user-id=9001',
   '--device-alert-time=2026-07-05T10:00:00',
   '--device-profile=device-video-web',
@@ -55,10 +56,15 @@ const parsed = parseArgs([
   '--player-case-timeline-expected-offset-seconds=0',
   '--evidence-output-file=artifacts/review-production-smoke.json',
   '--player-wait-text=线索复核工作台',
-], {});
+], {
+  YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'session=local-storage-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'session=cookie-secret',
+});
 
 assert.equal(parsed.deviceBaseUrl, 'https://device.release.example/api');
 assert.equal(parsed.token, 'token-1');
+assert.equal(parsed.tokenSource, 'environment');
 assert.equal(parsed.operatorUserId, 9001);
 assert.equal(parsed.deviceAlertTime, '2026-07-05T10:00:00');
 assert.equal(parsed.deviceId, 'device-01');
@@ -75,6 +81,8 @@ assert.equal(parsed.videoCameraId, 'camera-01');
 assert.equal(parsed.videoRecordDriftRetentionHours, 24);
 assert.equal(parsed.videoManifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
 assert.equal(parsed.playerWorkbenchUrl, 'https://web.release.example/yfeieye/alert/review?token=command-secret&signature=cmd#frag');
+assert.equal(parsed.playerLocalStorage, 'session=local-storage-secret');
+assert.equal(parsed.playerCookies, 'session=cookie-secret');
 assert.equal(parsed.tenantId, 42);
 assert.equal(parsed.playerExpectedOffsetSeconds, 30);
 assert.equal(parsed.playerCoverageExpectedOffsetSeconds, 0);
@@ -126,7 +134,39 @@ const localEndpointsAllowed = parseArgs([
   '--allow-local-endpoints',
 ], {});
 assert.equal(localEndpointsAllowed.allowLocalEndpoints, true);
+assert.equal(localEndpointsAllowed.tokenSource, 'cli');
 assert.deepEqual(requiredOptionErrors(localEndpointsAllowed), []);
+
+for (const unsafeEndpoint of [
+  'https://api.public.example/mock/device',
+  'https://api.public.example/device?redirect=/mock',
+  'https://mock-api.public.example/device',
+]) {
+  assert.ok(requiredOptionErrors({
+    ...localEndpointsAllowed,
+    deviceBaseUrl: unsafeEndpoint,
+  }).includes(
+    'production smoke release token must come from YFEIEYE_DEVICE_AUTH_TOKEN; --token requires --allow-local-endpoints and local/mock endpoints only',
+  ), unsafeEndpoint);
+}
+assert.deepEqual(requiredOptionErrors({
+  ...localEndpointsAllowed,
+  deviceBaseUrl: 'https://device.mock.test/api',
+  videoRecordBaseUrl: 'https://video.mock.invalid/record',
+}), []);
+
+const releaseCliToken = parseArgs(['--token=release-cli-secret'], {});
+assert.equal(releaseCliToken.tokenSource, 'cli');
+assert.ok(requiredOptionErrors(releaseCliToken).includes(
+  'production smoke release token must come from YFEIEYE_DEVICE_AUTH_TOKEN; --token requires --allow-local-endpoints and local/mock endpoints only',
+));
+assert.ok(requiredOptionErrors({
+  ...parsed,
+  tokenSource: 'cli',
+  allowLocalEndpoints: true,
+}).includes(
+  'production smoke release token must come from YFEIEYE_DEVICE_AUTH_TOKEN; --token requires --allow-local-endpoints and local/mock endpoints only',
+));
 assert.ok(
   buildSmokeSteps(localEndpointsAllowed, { nodePath: 'node', scriptDir: '.scripts' })[3].args.includes('--allow-local-endpoints'),
 );
@@ -214,7 +254,6 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
   '--device-base-url=http://localhost:48080/admin-api',
-  '--token=token-1',
   '--operator-user-id=9001',
   '--device-alert-time=2026-07-05T10:00:00',
   '--device-playback-allowed-camera-ids=camera-01',
@@ -240,7 +279,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--player-case-timeline-expected-record-path-contains=device-01',
   '--player-case-timeline-expected-offset-seconds=0',
   '--evidence-output-file=artifacts/local-endpoint-rejection.json',
-], {})), [
+], { YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1' })), [
   'production smoke endpoint --device-base-url must not use a local/mock URL without --allow-local-endpoints',
   'production smoke endpoint --video-alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
   'production smoke endpoint --video-record-coverage-query-url must not use a local/mock URL without --allow-local-endpoints',
@@ -269,10 +308,11 @@ assert.deepEqual(steps.map((step) => step.timeoutMs), [900000, 900000, 900000, 9
 assert.deepEqual(steps[2].args.slice(0, 5), [
   '.scripts/alert-review-device-integration-smoke.mjs',
   '--device-base-url=https://device.release.example/api',
-  '--token=token-1',
   '--tenant-id=42',
   '--operator-user-id=9001',
+  '--alert-time=2026-07-05T10:00:00',
 ]);
+assert.equal(steps[2].env.YFEIEYE_DEVICE_AUTH_TOKEN, 'token-1');
 assert.ok(steps[2].args.includes('--playback-allowed-camera-ids=camera-01'));
 assert.ok(steps[2].args.includes('--device-id=device-01'));
 assert.ok(steps[2].args.includes('--camera-id=camera-01'));
@@ -284,7 +324,7 @@ assert.ok(steps[2].args.includes('--playback-review-case-id=2001'));
 assert.ok(steps[2].args.includes('--playback-material-uri=playback-url.mp4'));
 assert.ok(steps[2].args.includes('--timeout-ms=900000'));
 assert.ok(steps[3].args.includes('--record-export-url=https://video.release.example/video/record/export'));
-assert.ok(steps[3].args.includes('--token=token-1'));
+assert.equal(steps[3].env.YFEIEYE_VIDEO_SMOKE_TOKEN, 'token-1');
 assert.ok(steps[3].args.includes('--camera-id=camera-01'));
 assert.ok(steps[3].args.includes('--record-drift-retention-hours=24'));
 assert.ok(steps[3].args.includes('--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs'));
@@ -295,6 +335,10 @@ assert.ok(steps[4].args.includes('--timeout-ms=900000'));
 assert.ok(steps[4].args.includes('--assert-native-current-time'));
 assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN, 'token-1');
 assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID, '42');
+assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_URL, parsed.playerWorkbenchUrl);
+assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE, 'session=local-storage-secret');
+assert.equal(steps[4].env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES, 'session=cookie-secret');
+assert.equal(steps[4].args.some((arg) => String(arg).startsWith('--workbench-url=')), false);
 assert.ok(steps[5].args.includes('--action-testid=alert-review-coverage-seek'));
 assert.ok(steps[5].args.includes('--expected-offset-seconds=0'));
 assert.ok(steps[5].args.includes('--timeout-ms=900000'));
@@ -306,9 +350,81 @@ assert.ok(steps[6].args.includes('--timeout-ms=900000'));
 assert.ok(steps[6].args.includes('--assert-native-current-time'));
 assert.equal(steps[6].env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID, '42');
 assert.equal(
-  formatStepCommand(steps[2]),
-  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --token=*** --tenant-id=42 --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --device-id=device-01 --camera-id=camera-01 --zone-code=production-smoke --allowed-camera-ids=camera-01 --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
+  steps.some((step) => step.args.some((arg) => String(arg).includes('token-1'))),
+  false,
 );
+assert.equal(
+  formatStepCommand(steps[2]),
+  'node .scripts/alert-review-device-integration-smoke.mjs --device-base-url=https://device.release.example/api --tenant-id=42 --operator-user-id=9001 --alert-time=2026-07-05T10:00:00 --profile=device-video-web --device-id=device-01 --camera-id=camera-01 --zone-code=production-smoke --allowed-camera-ids=camera-01 --playback-review-item-id=1001 --playback-review-case-id=2001 --playback-material-uri=playback-url.mp4 --playback-allowed-camera-ids=camera-01 --playback-denied-camera-ids=camera-02 --timeout-ms=900000',
+);
+assert.equal(formatStepCommand(steps[2]).includes('token-1'), false);
+assert.equal(formatStepCommand(steps[3]).includes('token-1'), false);
+assert.equal(
+  formatStepCommand({
+    command: 'node',
+    args: [
+      'child.mjs',
+      '--playback-material-uri=/video/record/device-01.mp4?token=relative-arg-secret#relative-arg-fragment',
+    ],
+  }),
+  'node child.mjs --playback-material-uri=/video/record/device-01.mp4',
+);
+
+const parentEnvironment = {
+  KEEP_ME: 'kept',
+  YFEIEYE_DEVICE_AUTH_TOKEN: 'parent-device-secret',
+  YFEIEYE_VIDEO_SMOKE_TOKEN: 'parent-video-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: 'parent-player-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://parent.example.test/review?token=parent-url-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'parent-local-storage-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'parent-cookie-secret',
+};
+assert.deepEqual(buildStepEnvironment(steps[0], parentEnvironment), {
+  KEEP_ME: 'kept',
+});
+assert.deepEqual(buildStepEnvironment(steps[1], parentEnvironment), {
+  KEEP_ME: 'kept',
+});
+assert.deepEqual(buildStepEnvironment(steps[2], parentEnvironment), {
+  KEEP_ME: 'kept',
+  YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1',
+});
+assert.deepEqual(buildStepEnvironment(steps[3], parentEnvironment), {
+  KEEP_ME: 'kept',
+  YFEIEYE_VIDEO_SMOKE_TOKEN: 'token-1',
+});
+assert.deepEqual(buildStepEnvironment(steps[4], parentEnvironment), {
+  KEEP_ME: 'kept',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: 'token-1',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID: '42',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_URL: parsed.playerWorkbenchUrl,
+  YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'session=local-storage-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'session=cookie-secret',
+});
+
+const signedPlayerStdout = [
+  'alert review player live smoke passed',
+  JSON.stringify({
+    recordPath: '/video/record/device-01.mp4?token=record-secret#record-fragment',
+    currentUrl: 'https://media.example.test/video/device-01.mp4?token=current-secret&signature=abc#current-fragment',
+    nativeCurrentSrc: 'https://media.example.test/video/device-01.mp4?token=native-secret#native-fragment',
+  }, null, 2),
+  'loaded https://media.example.test/video/device-01.mp4?token=log-secret#log-fragment',
+  'relative /video/record/device-02.mp4?token=relative-output-secret#relative-output-fragment',
+  'bare record.mp4?token=bare-output-secret#bare-output-fragment',
+].join('\n');
+const sanitizedPlayerStdout = sanitizeChildOutputForDisplay(signedPlayerStdout);
+assert.equal(sanitizedPlayerStdout.includes('record-secret'), false);
+assert.equal(sanitizedPlayerStdout.includes('current-secret'), false);
+assert.equal(sanitizedPlayerStdout.includes('native-secret'), false);
+assert.equal(sanitizedPlayerStdout.includes('log-secret'), false);
+assert.equal(sanitizedPlayerStdout.includes('relative-output-secret'), false);
+assert.equal(sanitizedPlayerStdout.includes('bare-output-secret'), false);
+assert.match(sanitizedPlayerStdout, /"recordPath": "\/video\/record\/device-01\.mp4"/);
+assert.match(sanitizedPlayerStdout, /"currentUrl": "https:\/\/media\.example\.test\/video\/device-01\.mp4"/);
+assert.match(sanitizedPlayerStdout, /loaded https:\/\/media\.example\.test\/video\/device-01\.mp4$/m);
+assert.match(sanitizedPlayerStdout, /relative \/video\/record\/device-02\.mp4$/m);
+assert.match(sanitizedPlayerStdout, /bare record\.mp4$/);
 
 const help = spawnSync(process.execPath, ['.scripts/alert-review-production-smoke.mjs', '--help'], {
   encoding: 'utf8',
@@ -318,6 +434,16 @@ assert.match(help.stdout, /W4:visible-copy -> W2:typecheck -> LiveDevice -> Live
 assert.match(help.stdout, /visible-copy files for replacement characters/);
 assert.match(help.stdout, /full frontend typecheck/);
 assert.match(help.stdout, /--pm-on-fail=ignore/);
+assert.match(help.stdout, /YFEIEYE_DEVICE_AUTH_TOKEN/);
+assert.doesNotMatch(help.stdout, /--token=JWT_TOKEN/);
+
+const signedCliFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-production-smoke.mjs',
+  '--bogus=record.mp4?token=production-failure-secret#production-failure-fragment',
+], { encoding: 'utf8' });
+assert.equal(signedCliFailure.status, 1);
+assert.equal(signedCliFailure.stderr.includes('production-failure-secret'), false);
+assert.match(signedCliFailure.stderr, /--bogus=record\.mp4/);
 
 const calls = [];
 const smoke = await runProductionSmoke(parsed, {
@@ -684,8 +810,10 @@ assert.equal(evidenceReport.steps[0].name, 'W4:visible-copy');
 assert.match(evidenceReport.steps[0].command, /^node \.scripts\/alert-review-visible-copy-scan\.mjs$/);
 assert.equal(evidenceReport.steps[1].name, 'W2:typecheck');
 assert.match(evidenceReport.steps[1].command, /^pnpm(\.cmd)? --dir WEB run type:check$/);
-assert.equal(evidenceReport.steps[2].command.includes('--token=***'), true);
-assert.equal(evidenceReport.steps[4].command.includes('--workbench-url=https://web.release.example/yfeieye/alert/review '), true);
+assert.equal(evidenceReport.steps[2].command.includes('--token='), false);
+assert.equal(evidenceReport.steps[3].command.includes('--token='), false);
+assert.equal(evidenceReport.steps[4].command.includes('--workbench-url='), false);
+assert.equal(evidenceReport.steps[4].command.includes('command-secret'), false);
 assert.deepEqual(evidenceReport.steps[2].summary, {
   timeout: { timeoutMs: 12345 },
   checkpoints: [

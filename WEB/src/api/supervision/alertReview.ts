@@ -135,6 +135,12 @@ export interface AlertReviewOperation {
   reason?: string
 }
 
+export interface AlertReviewMediaReadQuery {
+  reviewCaseId?: number
+  operatorUserId?: number
+  allowedCameraIds?: string[]
+}
+
 export interface AlertReviewUserStatusInput {
   userId: number
   hasBeenReviewed: boolean
@@ -707,20 +713,20 @@ export function ingestAlertReviewClue(data: AlertReviewClueIngest) {
   return defHttp.post<AlertReviewItem>({ url: Api.Ingest, data })
 }
 
-export function getAlertReviewTimeline(reviewItemId: number) {
-  return defHttp.get<AlertReviewEvidence[]>({ url: `${Api.Items}/${reviewItemId}/timeline` })
+export function getAlertReviewTimeline(reviewItemId: number, params?: AlertReviewMediaReadQuery) {
+  return defHttp.get<AlertReviewEvidence[]>({ url: `${Api.Items}/${reviewItemId}/timeline`, params: params ?? {} })
 }
 
-export function getAlertReviewDetailStream(reviewItemId: number) {
-  return defHttp.get<AlertReviewDetailStreamItem[]>({ url: `${Api.Items}/${reviewItemId}/detail-stream` })
+export function getAlertReviewDetailStream(reviewItemId: number, params?: AlertReviewMediaReadQuery) {
+  return defHttp.get<AlertReviewDetailStreamItem[]>({ url: `${Api.Items}/${reviewItemId}/detail-stream`, params: params ?? {} })
 }
 
 export function getAlertReviewSegment(reviewItemId: number) {
   return defHttp.get<AlertReviewSegment>({ url: `${Api.Items}/${reviewItemId}/review-segment` })
 }
 
-export function getAlertReviewRecordCoverage(reviewItemId: number) {
-  return defHttp.get<AlertReviewCoverageSegment[]>({ url: `${Api.Items}/${reviewItemId}/record-coverage` })
+export function getAlertReviewRecordCoverage(reviewItemId: number, params?: AlertReviewMediaReadQuery) {
+  return defHttp.get<AlertReviewCoverageSegment[]>({ url: `${Api.Items}/${reviewItemId}/record-coverage`, params: params ?? {} })
 }
 
 export function updateAlertReviewLifecycle(reviewItemId: number, data: AlertReviewLifecycleUpdate) {

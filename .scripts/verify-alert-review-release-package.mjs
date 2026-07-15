@@ -1574,6 +1574,7 @@ export function scanLiveVideoEvidenceGate(files) {
   const blockers = [];
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
   const deviceSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-device-integration-smoke.mjs');
+  const playerSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-player-live-smoke.mjs');
   const recordVideoService = files.find((file) => normalizePath(file.path || '') === 'VIDEO/app/services/record_video_service.py');
   if (deviceSmoke && !containsAll(deviceSmoke.content, [
     'const auditChain = await runEvidenceAuditSmoke(options, result, fetchImpl)',
@@ -1639,15 +1640,92 @@ export function scanLiveVideoEvidenceGate(files) {
   }
   if (liveVideo && liveVideo.content.includes('parseArgs') && !containsAll(liveVideo.content, [
     'token: env.YFEIEYE_VIDEO_SMOKE_TOKEN',
-    "arg.startsWith('--token=')",
+    'VIDEO smoke token must be provided through YFEIEYE_VIDEO_SMOKE_TOKEN',
     '!options.allowLocalEndpoints && !hasText(options.token)',
-    'missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN',
+    'missing YFEIEYE_VIDEO_SMOKE_TOKEN',
   ])) {
     blockers.push({
       path: '.scripts/alert-review-video-live-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
       reason: 'live_video_release_token_required_missing',
     });
+  }
+  if (liveVideo?.content.includes("parsed.token = arg.slice('--token='.length)")) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_cli_token_acceptance_forbidden',
+    });
+  }
+  if (deviceSmoke && deviceSmoke.content.includes('parseArgs') && !containsAll(deviceSmoke.content, [
+    'token: env.YFEIEYE_DEVICE_AUTH_TOKEN',
+    'DEVICE smoke token must be provided through YFEIEYE_DEVICE_AUTH_TOKEN',
+    'missing YFEIEYE_DEVICE_AUTH_TOKEN',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-device-integration-smoke.mjs'),
+      reason: 'device_smoke_environment_token_required_missing',
+    });
+  }
+  if (deviceSmoke?.content.includes("parsed.token = arg.slice('--token='.length)")) {
+    blockers.push({
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-device-integration-smoke.mjs'),
+      reason: 'device_smoke_cli_token_acceptance_forbidden',
+    });
+  }
+  if (deviceSmoke && deviceSmoke.content.includes('parseArgs') && !containsAll(deviceSmoke.content, [
+    'function sanitizeCliOutputText',
+    'stripUrlSecrets',
+    'console.error(sanitizeCliOutputText',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-device-integration-smoke.mjs'),
+      reason: 'device_smoke_cli_output_sanitizer_missing',
+    });
+  }
+  if (liveVideo && liveVideo.content.includes('parseArgs') && !containsAll(liveVideo.content, [
+    'function sanitizeCliOutputText',
+    'stripUrlSecrets',
+    'console.error(sanitizeCliOutputText',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_cli_output_sanitizer_missing',
+    });
+  }
+  if (playerSmoke && playerSmoke.content.includes('parseArgs') && !containsAll(playerSmoke.content, [
+    'function sanitizeOutputText',
+    'stripUrlSecrets',
+    'console.error(sanitizeOutputText',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-player-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-player-live-smoke.mjs'),
+      reason: 'player_smoke_cli_output_sanitizer_missing',
+    });
+  }
+  for (const [path, reason] of [
+    ['.scripts/alert-review-device-integration-smoke.test.mjs', 'device_smoke_signed_relative_cli_regression_test_missing'],
+    ['.scripts/alert-review-video-live-smoke.test.mjs', 'live_video_signed_relative_cli_regression_test_missing'],
+    ['.scripts/alert-review-player-live-smoke.test.mjs', 'player_smoke_signed_relative_cli_regression_test_missing'],
+    ['.scripts/alert-review-production-smoke.test.mjs', 'production_smoke_signed_relative_cli_regression_test_missing'],
+  ]) {
+    const smokeTest = files.find((file) => normalizePath(file.path || '') === path);
+    if (smokeTest && !containsAll(smokeTest.content, [
+      'spawnSync',
+      'record.mp4?token=',
+      'signedCliFailure.stderr.includes',
+    ])) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason,
+      });
+    }
   }
   if (liveVideo && liveVideo.content.includes('runSmoke') && !containsAll(liveVideo.content, [
     'withBearerAuthorization',
@@ -1843,11 +1921,88 @@ export function scanLiveVideoEvidenceGate(files) {
   }
   const productionSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-production-smoke.mjs');
   if (productionSmoke && productionSmoke.content.includes('formatStepCommand')
-      && !productionSmoke.content.includes('--token=${options.token}')) {
+      && !containsAll(productionSmoke.content, [
+        'YFEIEYE_DEVICE_AUTH_TOKEN: options.token',
+        'YFEIEYE_VIDEO_SMOKE_TOKEN: options.token',
+        'buildStepEnvironment',
+      ])) {
     blockers.push({
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
       reason: 'production_smoke_live_video_token_wiring_missing',
+    });
+  }
+  if (productionSmoke?.content.includes('--token=${options.token}')) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_token_argv_wiring_forbidden',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
+    'tokenSource',
+    "parsed.tokenSource = 'cli'",
+    "options.tokenSource === 'cli'",
+    'cliTokenAllowedForLocalEndpoints',
+    'isExplicitLocalOrMockEndpoint',
+    '--token requires --allow-local-endpoints and local/mock endpoints only',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_release_token_source_gate_missing',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand')) {
+    const explicitEndpointClassifier = productionSmoke.content.match(
+      /function isExplicitLocalOrMockEndpoint\([^)]*\)\s*\{[\s\S]*?\r?\n\}/,
+    )?.[0] || productionSmoke.content;
+    if (!containsAll(explicitEndpointClassifier, [
+      "hostname.endsWith('.localhost')",
+      "hostname.endsWith('.test')",
+      "hostname.endsWith('.invalid')",
+    ]) || [
+      "hostname.includes('mock')",
+      "includes('/mock')",
+    ].some((anchor) => explicitEndpointClassifier.includes(anchor))) {
+      blockers.push({
+        path: '.scripts/alert-review-production-smoke.mjs',
+        group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+        reason: 'production_smoke_release_token_endpoint_classification_unsafe',
+      });
+    }
+  }
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
+    'YFEIEYE_REVIEW_PLAYER_SMOKE_URL: options.playerWorkbenchUrl',
+    "'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',",
+    'CHILD_SENSITIVE_ENV_KEYS',
+    'playerLocalStorage: env.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+    'playerCookies: env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+    'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: options.playerLocalStorage',
+    'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: options.playerCookies',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_player_auth_environment_isolation_missing',
+    });
+  }
+  if (productionSmoke?.content.includes('--workbench-url=${options.playerWorkbenchUrl}')) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_player_url_argv_wiring_forbidden',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
+    'function sanitizeChildOutputForDisplay',
+    'stripUrlSecrets',
+    'console.error(sanitizeChildOutputForDisplay',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_cli_output_sanitizer_missing',
     });
   }
   if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
@@ -2255,7 +2410,7 @@ export function scanReleaseTraceabilityGate(files) {
   const blockers = [];
   const checks = [
     ['--device-base-url=', 'fr38_prod_smoke_device_base_command_missing'],
-    ['--token=', 'fr38_prod_smoke_token_command_missing'],
+    ['YFEIEYE_DEVICE_AUTH_TOKEN', 'fr38_prod_smoke_token_env_missing'],
     ['--tenant-id=', 'fr38_prod_smoke_tenant_command_missing'],
     ['--operator-user-id=', 'fr38_prod_smoke_operator_command_missing'],
     ['--device-alert-time=', 'fr38_prod_smoke_device_alert_time_command_missing'],

@@ -457,13 +457,13 @@ export async function evaluateAlertReviewSemanticIndex(payload?: unknown) {
   }
 }
 
-export async function getAlertReviewTimeline(reviewItemId: number) {
-  record('getAlertReviewTimeline', reviewItemId)
+export async function getAlertReviewTimeline(reviewItemId: number, params?: unknown) {
+  record('getAlertReviewTimeline', { reviewItemId, params })
   return timeline
 }
 
-export async function getAlertReviewDetailStream(reviewItemId: number) {
-  record('getAlertReviewDetailStream', reviewItemId)
+export async function getAlertReviewDetailStream(reviewItemId: number, params?: unknown) {
+  record('getAlertReviewDetailStream', { reviewItemId, params })
   return detailStream
 }
 
@@ -472,8 +472,8 @@ export async function getAlertReviewSegment(reviewItemId: number) {
   return reviewSegment
 }
 
-export async function getAlertReviewRecordCoverage(reviewItemId: number) {
-  record('getAlertReviewRecordCoverage', reviewItemId)
+export async function getAlertReviewRecordCoverage(reviewItemId: number, params?: unknown) {
+  record('getAlertReviewRecordCoverage', { reviewItemId, params })
   return coverage
 }
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 
 import {
   REQUIRED_CHECKPOINTS,
@@ -7,6 +8,7 @@ import {
   parseArgs,
   requiredOptionErrors,
   runSmoke,
+  sanitizeCliOutputText,
   validateSmokeResult,
 } from './alert-review-device-integration-smoke.mjs';
 import {
@@ -16,10 +18,26 @@ import {
 
 assert.ok(REQUIRED_CHECKPOINTS.includes('review_rule_saved'));
 assert.ok(REQUIRED_CHECKPOINTS.includes('review_event_bound_without_task_dispatch'));
+assert.throws(
+  () => parseArgs(['--token=standalone-device-secret'], {}),
+  /DEVICE smoke token must be provided through YFEIEYE_DEVICE_AUTH_TOKEN/,
+);
+
+const signedCliFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-device-integration-smoke.mjs',
+  '--bogus=/video/record/device-01.mp4?token=device-leading-secret#device-leading-fragment record.mp4?token=device-relative-secret#device-relative-fragment',
+], { encoding: 'utf8' });
+assert.equal(signedCliFailure.status, 1);
+assert.equal(signedCliFailure.stderr.includes('device-leading-secret'), false);
+assert.equal(signedCliFailure.stderr.includes('device-relative-secret'), false);
+assert.match(signedCliFailure.stderr, /--bogus=\/video\/record\/device-01\.mp4 record\.mp4/);
+assert.equal(
+  sanitizeCliOutputText('/video/record/device-01.mp4?token=leading record.mp4?token=relative'),
+  '/video/record/device-01.mp4 record.mp4',
+);
 
 const parsed = parseArgs([
   '--device-base-url=http://device.local/api',
-  '--token=token-1',
   '--tenant-id=42',
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
@@ -36,7 +54,7 @@ const parsed = parseArgs([
   '--playback-allowed-camera-ids=camera-01',
   '--playback-denied-camera-ids=camera-02',
   '--playback-reason=release-smoke-playback',
-], {});
+], { YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1' });
 assert.equal(parsed.deviceBaseUrl, 'http://device.local/api');
 assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.tenantId, 42);
@@ -89,7 +107,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {
   YFEIEYE_DEVICE_SMOKE_PROFILE: 'service-synthetic',
 })), [
   'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL',
-  'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN',
+  'missing YFEIEYE_DEVICE_AUTH_TOKEN',
   'missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID',
   'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID',
   'missing --alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME',
@@ -176,12 +194,11 @@ assert.throws(
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
   '--device-base-url=http://device.local/api',
-  '--token=token-1',
   '--tenant-id=42',
   '--operator-user-id=9001',
   '--alert-time=2026-07-05T10:00:00',
   '--profile=device-video-web',
-], {})), [
+], { YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1' })), [
   'missing --camera-id or YFEIEYE_DEVICE_SMOKE_CAMERA_ID for real profile',
   'missing --device-id or YFEIEYE_DEVICE_SMOKE_DEVICE_ID for real profile',
   'missing --zone-code or YFEIEYE_DEVICE_SMOKE_ZONE_CODE for real profile',
@@ -338,12 +355,11 @@ for (const [label, entry] of [
 await assert.rejects(
   () => runSmoke(parseArgs([
     '--device-base-url=http://device.local/api',
-    '--token=token-1',
     '--tenant-id=42',
     '--operator-user-id=9001',
     '--alert-time=2026-07-05T10:00:00',
     '--playback-allowed-camera-ids=camera-01',
-  ], {}), { fetchImpl: async () => jsonResponse({}) }),
+  ], { YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1' }), { fetchImpl: async () => jsonResponse({}) }),
   /missing --playback-denied-camera-ids or YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS/,
 );
 

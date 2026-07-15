@@ -641,7 +641,7 @@ async function loadTimeline() {
     return
   timelineLoading.value = true
   try {
-    timeline.value = await getAlertReviewTimeline(selectedItem.value.id)
+    timeline.value = await getAlertReviewTimeline(selectedItem.value.id, mediaReadScope(selectedItem.value))
   }
   catch (error: any) {
     createMessage.error(error?.message || '加载证据时间轴失败')
@@ -657,7 +657,7 @@ async function loadDetailStream(item?: AlertReviewItem | null) {
     return
   detailStreamLoading.value = true
   try {
-    detailStream.value = await getAlertReviewDetailStream(target.id)
+    detailStream.value = await getAlertReviewDetailStream(target.id, mediaReadScope(target))
   }
   catch (error: any) {
     createMessage.error(error?.message || 'detail stream load failed')
@@ -689,13 +689,22 @@ async function loadRecordCoverage(item?: AlertReviewItem | null) {
   selectedItem.value = item
   coverageLoading.value = true
   try {
-    coverage.value = await getAlertReviewRecordCoverage(item.id)
+    coverage.value = await getAlertReviewRecordCoverage(item.id, mediaReadScope(item))
   }
   catch (error: any) {
     createMessage.error(error?.message || '加载录像覆盖度失败')
   }
   finally {
     coverageLoading.value = false
+  }
+}
+
+function mediaReadScope(item: AlertReviewItem) {
+  const cameraId = item.cameraId || item.deviceId
+  return {
+    reviewCaseId: activeCase.value?.id,
+    operatorUserId: filters.reviewerUserId || undefined,
+    allowedCameraIds: cameraId ? [cameraId] : undefined,
   }
 }
 

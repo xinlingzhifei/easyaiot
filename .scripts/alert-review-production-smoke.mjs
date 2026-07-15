@@ -10,11 +10,20 @@ const REQUIRED_STORAGE_DRIFT_REASON_KEYS = [
   'cache_flush_failed',
 ];
 const DEFAULT_STEP_TIMEOUT_MS = 900000;
+const CHILD_SENSITIVE_ENV_KEYS = [
+  'YFEIEYE_DEVICE_AUTH_TOKEN',
+  'YFEIEYE_VIDEO_SMOKE_TOKEN',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+];
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
     deviceBaseUrl: env.YFEIEYE_DEVICE_BASE_URL || '',
     token: env.YFEIEYE_DEVICE_AUTH_TOKEN || '',
+    tokenSource: hasText(env.YFEIEYE_DEVICE_AUTH_TOKEN) ? 'environment' : '',
     tenantId: numberOrNaN(env.YFEIEYE_DEVICE_TENANT_ID || env.YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID),
     operatorUserId: numberOrNaN(env.YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID),
     deviceAlertTime: env.YFEIEYE_DEVICE_SMOKE_ALERT_TIME || '',
@@ -40,6 +49,8 @@ export function parseArgs(args, env = process.env) {
     videoRecordDriftRetentionHours: numberOrNaN(env.YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS),
     videoManifestVerifierScript: env.YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT || '',
     playerWorkbenchUrl: env.YFEIEYE_REVIEW_PLAYER_SMOKE_URL || '',
+    playerLocalStorage: env.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE || '',
+    playerCookies: env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES || '',
     playerReviewRowText: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT || '',
     playerActionTestId: env.YFEIEYE_REVIEW_PLAYER_SMOKE_ACTION_TESTID || 'alert-review-detail-seek',
     playerExpectedSeekTime: env.YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME || '',
@@ -73,6 +84,7 @@ export function parseArgs(args, env = process.env) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
       parsed.token = arg.slice('--token='.length);
+      parsed.tokenSource = 'cli';
     } else if (arg.startsWith('--tenant-id=')) {
       parsed.tenantId = numberOrNaN(arg.slice('--tenant-id='.length));
     } else if (arg.startsWith('--operator-user-id=')) {
@@ -171,6 +183,9 @@ export function requiredOptionErrors(options) {
   const errors = [];
   requireText(errors, options.deviceBaseUrl, 'missing --device-base-url or YFEIEYE_DEVICE_BASE_URL');
   requireText(errors, options.token, 'missing --token or YFEIEYE_DEVICE_AUTH_TOKEN');
+  if (options.tokenSource === 'cli' && !cliTokenAllowedForLocalEndpoints(options)) {
+    errors.push('production smoke release token must come from YFEIEYE_DEVICE_AUTH_TOKEN; --token requires --allow-local-endpoints and local/mock endpoints only');
+  }
   requirePositiveNumber(errors, options.tenantId, 'missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID');
   requirePositiveNumber(errors, options.operatorUserId, 'missing --operator-user-id or YFEIEYE_DEVICE_SMOKE_OPERATOR_USER_ID');
   requireText(errors, options.deviceAlertTime, 'missing --device-alert-time or YFEIEYE_DEVICE_SMOKE_ALERT_TIME');
@@ -229,11 +244,13 @@ export function buildSmokeSteps(options, runtime = {}) {
     {
       name: 'LiveDevice',
       command: nodePath,
+      env: {
+        YFEIEYE_DEVICE_AUTH_TOKEN: options.token,
+      },
       timeoutMs: options.stepTimeoutMs,
       args: compact([
         `${scriptDir}/alert-review-device-integration-smoke.mjs`,
         `--device-base-url=${options.deviceBaseUrl}`,
-        `--token=${options.token}`,
         `--tenant-id=${options.tenantId}`,
         `--operator-user-id=${options.operatorUserId}`,
         `--alert-time=${options.deviceAlertTime}`,
@@ -255,10 +272,12 @@ export function buildSmokeSteps(options, runtime = {}) {
     {
       name: 'LiveVideo',
       command: nodePath,
+      env: {
+        YFEIEYE_VIDEO_SMOKE_TOKEN: options.token,
+      },
       timeoutMs: options.stepTimeoutMs,
       args: compact([
         `${scriptDir}/alert-review-video-live-smoke.mjs`,
-        `--token=${options.token}`,
         `--alert-record-query-url=${options.videoAlertRecordQueryUrl}`,
         `--record-coverage-query-url=${options.videoRecordCoverageQueryUrl}`,
         `--record-base-url=${options.videoRecordBaseUrl}`,
@@ -291,12 +310,18 @@ function playerSmokeStep(name, actionTestId, expectedSeekTime, expectedRecordPat
     env: {
       YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: options.token,
       YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID: String(options.tenantId),
+      YFEIEYE_REVIEW_PLAYER_SMOKE_URL: options.playerWorkbenchUrl,
+      ...(hasText(options.playerLocalStorage) ? {
+        YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: options.playerLocalStorage,
+      } : {}),
+      ...(hasText(options.playerCookies) ? {
+        YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: options.playerCookies,
+      } : {}),
     },
     allowLocalEndpoints: options.allowLocalEndpoints === true,
     timeoutMs: options.stepTimeoutMs,
     args: compact([
       `${scriptDir}/alert-review-player-live-smoke.mjs`,
-      `--workbench-url=${options.playerWorkbenchUrl}`,
       `--review-row-text=${options.playerReviewRowText}`,
       `--action-testid=${actionTestId}`,
       `--expected-seek-time=${expectedSeekTime}`,
@@ -709,7 +734,7 @@ function defaultRunCommand(step) {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     timeout: step.timeoutMs,
-    env: { ...process.env, ...(step.env || {}) },
+    env: buildStepEnvironment(step),
   });
   const timedOut = result.error?.code === 'ETIMEDOUT';
   const normalized = timedOut
@@ -722,12 +747,23 @@ function defaultRunCommand(step) {
       }
     : result;
   if (normalized.stdout) {
-    process.stdout.write(normalized.stdout);
+    process.stdout.write(sanitizeChildOutputForDisplay(normalized.stdout));
   }
   if (normalized.stderr) {
-    process.stderr.write(normalized.stderr);
+    process.stderr.write(sanitizeChildOutputForDisplay(normalized.stderr));
   }
   return normalized;
+}
+
+export function buildStepEnvironment(step, parentEnv = process.env) {
+  const env = { ...parentEnv };
+  const sensitiveKeys = new Set(CHILD_SENSITIVE_ENV_KEYS.map(key => key.toLowerCase()));
+  for (const key of Object.keys(env)) {
+    if (sensitiveKeys.has(key.toLowerCase())) {
+      delete env[key];
+    }
+  }
+  return { ...env, ...(step?.env || {}) };
 }
 
 function maskSensitiveArg(arg) {
@@ -735,15 +771,31 @@ function maskSensitiveArg(arg) {
   if (value.startsWith('--token=')) {
     return '--token=***';
   }
-  const match = value.match(/^(--[^=]+=)(https?:\/\/.+)$/);
-  if (!match) {
+  const match = value.match(/^(--[^=]+=)(.+)$/);
+  if (!match || !looksLikeUriValue(match[2]) || !/[?#]/.test(match[2])) {
     return arg;
   }
   return `${match[1]}${stripUrlSecrets(match[2])}`;
 }
 
+function looksLikeUriValue(value) {
+  return String(value).includes('/') || /^[a-z][a-z0-9+.-]*:/i.test(String(value));
+}
+
 function stripUrlSecrets(value) {
   return String(value).replace(/[?#].*$/, '');
+}
+
+export function sanitizeChildOutputForDisplay(output) {
+  return String(output ?? '')
+    .replace(
+      /("(?:recordPath|currentUrl|nativeCurrentSrc)"\s*:\s*")([^"]*)(")/g,
+      (_match, prefix, value, suffix) => `${prefix}${stripUrlSecrets(value)}${suffix}`,
+    )
+    .replace(/https?:\/\/[^\s"'<>]+/g, value => stripUrlSecrets(value))
+    .replace(/\/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, value => stripUrlSecrets(value))
+    .replace(/(^|[\s"'=])([^\s"'<>/?#[\]{}]+[?#][^\s"'<>]*)/gm,
+      (_match, prefix, value) => `${prefix}${stripUrlSecrets(value)}`);
 }
 
 function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error, result) {
@@ -1299,9 +1351,46 @@ function looksLocalOrMockEndpoint(value) {
     || raw.toLowerCase().includes('/mock');
 }
 
+function cliTokenAllowedForLocalEndpoints(options) {
+  if (options.allowLocalEndpoints !== true) {
+    return false;
+  }
+  return [
+    options.deviceBaseUrl,
+    options.videoAlertRecordQueryUrl,
+    options.videoRecordCoverageQueryUrl,
+    options.videoRecordBaseUrl,
+    options.videoRecordExportUrl,
+    options.playerWorkbenchUrl,
+  ].every(isExplicitLocalOrMockEndpoint);
+}
+
+function isExplicitLocalOrMockEndpoint(value) {
+  if (!hasText(value)) {
+    return false;
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const hostname = String(url.hostname || '').toLowerCase();
+  return url.protocol === 'file:'
+    || url.protocol === 'mock:'
+    || hostname === 'localhost'
+    || hostname.endsWith('.localhost')
+    || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+    || hostname === '::1'
+    || hostname === '[::1]'
+    || hostname === '0.0.0.0'
+    || hostname.endsWith('.test')
+    || hostname.endsWith('.invalid');
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-production-smoke.mjs \\
-  --device-base-url=http://DEVICE/admin-api --token=JWT_TOKEN --tenant-id=TENANT_ID \\
+  --device-base-url=http://DEVICE/admin-api --tenant-id=TENANT_ID \\
   --operator-user-id=9200 --device-alert-time="2026-07-05T10:00:00" \\
   --device-playback-allowed-camera-ids=camera-01 --device-playback-denied-camera-ids=camera-02 \\
   --video-alert-record-query-url=http://VIDEO/video/alert/record/query \\
@@ -1341,9 +1430,11 @@ their internal HTTP/browser waits align with the parent step boundary.
 Release smoke requires a video manifest verifier script so the fetched
 manifest is verified against reachable manifest-referenced evidence files, and
 requires an evidence output path so every release run leaves a sanitized JSON
-report with masked token-bearing step commands. Localhost/mock/file endpoints are
+report with token-free child step commands. Localhost/mock/file endpoints are
 rejected unless --allow-local-endpoints is supplied for co-located real-service
-smoke.`);
+smoke. Set YFEIEYE_DEVICE_AUTH_TOKEN in the parent environment for release runs;
+--token remains available only when --allow-local-endpoints is set and every configured
+endpoint is local/mock.`);
 }
 
 async function runCli() {
@@ -1359,7 +1450,7 @@ async function runCli() {
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {
   runCli().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(sanitizeChildOutputForDisplay(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
   });
 }

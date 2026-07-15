@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,13 +29,16 @@ const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
   'disk_full',
   'cache_flush_failed',
 ];
+assert.throws(
+  () => parseArgs(['--token=standalone-video-secret'], {}),
+  /VIDEO smoke token must be provided through YFEIEYE_VIDEO_SMOKE_TOKEN/,
+);
 
 function urlPathEndsWith(url, suffix) {
   return new URL(String(url)).pathname.endsWith(suffix);
 }
 
 const parsed = parseArgs([
-  '--token=token-1',
   '--alert-record-query-url=http://video.local/video/record/availability',
   '--record-coverage-query-url=http://video.local/video/record/availability',
   '--record-base-url=http://video.local/video/record',
@@ -46,10 +50,9 @@ const parsed = parseArgs([
   '--source-alert-id=alert-001',
   '--record-drift-retention-hours=24',
   '--allow-local-endpoints',
-]);
+], { YFEIEYE_VIDEO_SMOKE_TOKEN: 'token-1' });
 
 const releaseParsed = parseArgs([
-  '--token=token-1',
   '--alert-record-query-url=https://video.release.example/video/record/availability',
   '--record-coverage-query-url=https://video.release.example/video/record/coverage',
   '--record-base-url=https://video.release.example/video/record',
@@ -61,7 +64,7 @@ const releaseParsed = parseArgs([
   '--source-alert-id=alert-001',
   '--record-drift-retention-hours=24',
   '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
-]);
+], { YFEIEYE_VIDEO_SMOKE_TOKEN: 'token-1' });
 assert.equal(parsed.alertRecordQueryUrl, 'http://video.local/video/record/availability');
 assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.recordCoverageQueryUrl, 'http://video.local/video/record/availability');
@@ -122,7 +125,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
   'missing --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
   'missing --record-base-url or YFEIEYE_VIDEO_RECORD_BASE_URL',
   'missing --record-export-url or YFEIEYE_VIDEO_RECORD_EXPORT_URL',
-  'missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN',
+  'missing YFEIEYE_VIDEO_SMOKE_TOKEN',
   'missing --device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID',
   'missing --alert-time or YFEIEYE_VIDEO_SMOKE_ALERT_TIME',
   'missing --record-drift-retention-hours or YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS',
@@ -130,20 +133,18 @@ assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
-  '--token=token-1',
   '--alert-record-query-url=https://video.release.example/video/record/availability',
   '--record-base-url=https://video.release.example/video/record',
   '--record-export-url=https://video.release.example/video/record/export',
   '--device-id=device-01',
   '--alert-time=2026-07-05 10:00:00',
   '--record-drift-retention-hours=24',
-], {})), [
+], { YFEIEYE_VIDEO_SMOKE_TOKEN: 'token-1' })), [
   'missing --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
   'missing --manifest-verifier-script or YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
-  '--token=token-1',
   '--alert-record-query-url=https://video.release.example/video/record/availability',
   '--record-coverage-query-url=https://video.release.example/video/record/availability',
   '--record-base-url=https://video.release.example/video/record',
@@ -152,12 +153,11 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--alert-time=2026-07-05 10:00:00',
   '--record-drift-retention-hours=24',
   '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
-], {})), [
+], { YFEIEYE_VIDEO_SMOKE_TOKEN: 'token-1' })), [
   'record coverage URL must not equal alert record query URL; configure dedicated --record-coverage-query-url or YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL',
 ]);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([
-  '--token=token-1',
   '--alert-record-query-url=http://127.0.0.1:6000/video/record/availability',
   '--record-coverage-query-url=http://video.mock/video/record/availability',
   '--record-base-url=file:///tmp/video/record',
@@ -166,7 +166,7 @@ assert.deepEqual(requiredOptionErrors(parseArgs([
   '--alert-time=2026-07-05 10:00:00',
   '--record-drift-retention-hours=24',
   '--manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs',
-], {})), [
+], { YFEIEYE_VIDEO_SMOKE_TOKEN: 'token-1' })), [
   'VIDEO live smoke endpoint --alert-record-query-url must not use a local/mock URL without --allow-local-endpoints',
   'VIDEO live smoke endpoint --record-coverage-query-url must not use a local/mock URL without --allow-local-endpoints',
   'VIDEO live smoke endpoint --record-base-url must not use a local/mock URL without --allow-local-endpoints',
@@ -384,6 +384,29 @@ for (const pathname of [
   assert.equal(new URL(scopedCall.url).searchParams.get('camera_id'), 'camera-01');
 }
 const cliSummary = summarizeCliResult(smoke);
+const signedExportResult = {
+  ...smoke.exportResult,
+  downloadUrl: 'record.mp4?token=download-secret#download-fragment',
+  manifestUrl: '/manifests/review-export-1.json?token=manifest-secret#manifest-fragment',
+};
+const signedExportCliSummary = summarizeCliResult({
+  ...smoke,
+  exportResult: signedExportResult,
+});
+assert.deepEqual(signedExportCliSummary.exportResult, {
+  ...signedExportResult,
+  downloadUrl: 'record.mp4',
+  manifestUrl: '/manifests/review-export-1.json',
+});
+assert.match(signedExportResult.downloadUrl, /download-secret/);
+assert.match(signedExportResult.manifestUrl, /manifest-secret/);
+const signedCliFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-video-live-smoke.mjs',
+  '--bogus=record.mp4?token=video-failure-secret#video-failure-fragment',
+], { encoding: 'utf8' });
+assert.equal(signedCliFailure.status, 1);
+assert.equal(signedCliFailure.stderr.includes('video-failure-secret'), false);
+assert.match(signedCliFailure.stderr, /--bogus=record\.mp4/);
 assert.deepEqual(cliSummary.coverageSummary, {
   status: 'available',
   retainMode: 'motion',

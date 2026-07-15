@@ -48,7 +48,7 @@ export function parseArgs(args, env = process.env) {
     } else if (arg.startsWith('--device-base-url=')) {
       parsed.deviceBaseUrl = arg.slice('--device-base-url='.length);
     } else if (arg.startsWith('--token=')) {
-      parsed.token = arg.slice('--token='.length);
+      throw new Error('DEVICE smoke token must be provided through YFEIEYE_DEVICE_AUTH_TOKEN');
     } else if (arg.startsWith('--tenant-id=')) {
       parsed.tenantId = numberOrNaN(arg.slice('--tenant-id='.length));
     } else if (arg.startsWith('--operator-user-id=')) {
@@ -100,7 +100,7 @@ export function requiredOptionErrors(options) {
     errors.push('missing --device-base-url or YFEIEYE_DEVICE_BASE_URL');
   }
   if (!hasText(options.token)) {
-    errors.push('missing --token or YFEIEYE_DEVICE_AUTH_TOKEN');
+    errors.push('missing YFEIEYE_DEVICE_AUTH_TOKEN');
   }
   if (!Number.isFinite(options.tenantId) || options.tenantId <= 0) {
     errors.push('missing --tenant-id or YFEIEYE_DEVICE_TENANT_ID');
@@ -558,10 +558,18 @@ function summarizePayload(payload) {
   return text.length > 500 ? `${text.slice(0, 500)}...` : text;
 }
 
+function stripUrlSecrets(value) {
+  return String(value).replace(/[?#].*$/, '');
+}
+
+export function sanitizeCliOutputText(value) {
+  return String(value ?? '')
+    .replace(/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri));
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-device-integration-smoke.mjs \\
   --device-base-url=http://DEVICE/admin-api \\
-  --token=JWT_TOKEN \\
   --tenant-id=TENANT_ID \\
   --operator-user-id=9200 \\
   --alert-time="2026-07-05T10:00:00" [--profile=release] \\
@@ -573,7 +581,8 @@ Runs the deployed FR-32 DEVICE smoke endpoint and requires the full review loop:
 ingest -> review rule save -> record coverage sync -> review case -> export ->
 manifest verify -> download audit. It expects the release DEVICE service to be connected to real
 VIDEO record/export configuration before this can pass. When playback camera
-ids are provided, it also checks audited playback-url allow/deny decisions.`);
+ids are provided, it also checks audited playback-url allow/deny decisions. Set
+YFEIEYE_DEVICE_AUTH_TOKEN in the parent environment; CLI token arguments are rejected.`);
 }
 
 async function runCli() {
@@ -608,7 +617,7 @@ async function runCli() {
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {
   runCli().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(sanitizeCliOutputText(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
   });
 }

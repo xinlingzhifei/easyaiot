@@ -46,7 +46,7 @@ export function parseArgs(args, env = process.env) {
     } else if (arg === '--allow-local-endpoints') {
       parsed.allowLocalEndpoints = true;
     } else if (arg.startsWith('--token=')) {
-      parsed.token = arg.slice('--token='.length);
+      throw new Error('VIDEO smoke token must be provided through YFEIEYE_VIDEO_SMOKE_TOKEN');
     } else if (arg.startsWith('--alert-record-query-url=')) {
       parsed.alertRecordQueryUrl = arg.slice('--alert-record-query-url='.length);
     } else if (arg.startsWith('--record-coverage-query-url=')) {
@@ -123,7 +123,7 @@ export function requiredOptionErrors(options) {
     errors.push('missing --record-export-url or YFEIEYE_VIDEO_RECORD_EXPORT_URL');
   }
   if (!options.allowLocalEndpoints && !hasText(options.token)) {
-    errors.push('missing --token or YFEIEYE_VIDEO_SMOKE_TOKEN');
+    errors.push('missing YFEIEYE_VIDEO_SMOKE_TOKEN');
   }
   if (!hasText(options.deviceId)) {
     errors.push('missing --device-id or YFEIEYE_VIDEO_SMOKE_DEVICE_ID');
@@ -412,11 +412,24 @@ export function summarizeCliResult(result) {
       issueReasons: summary.issue_reasons || summary.issueReasons || {},
       standardReasonKeys: storageDriftReasonKeys(result?.storageDrift, summary),
     },
-    exportResult: result?.exportResult || {},
+    exportResult: sanitizeExportResultForOutput(result?.exportResult),
     ...(result?.manifestSignature ? { manifestSignature: result.manifestSignature } : {}),
     ...(result?.manifestStorageLifecycle ? { manifestStorageLifecycle: result.manifestStorageLifecycle } : {}),
     ...(result?.manifestVerification ? { manifestVerification: result.manifestVerification } : {}),
   };
+}
+
+function sanitizeExportResultForOutput(exportResult) {
+  if (!exportResult || typeof exportResult !== 'object') {
+    return {};
+  }
+  const sanitized = { ...exportResult };
+  for (const key of ['downloadUrl', 'manifestUrl']) {
+    if (typeof sanitized[key] === 'string') {
+      sanitized[key] = stripUrlSecrets(sanitized[key]);
+    }
+  }
+  return sanitized;
 }
 
 function validateCoverageClassification(segment) {
@@ -1337,9 +1350,19 @@ function summarizePayload(payload) {
   return text.length > 500 ? `${text.slice(0, 500)}...` : text;
 }
 
+function stripUrlSecrets(value) {
+  return String(value).replace(/[?#].*$/, '');
+}
+
+function sanitizeCliOutputText(value) {
+  return String(value ?? '')
+    .replace(/https?:\/\/[^\s"'<>]+/g, url => stripUrlSecrets(url))
+    .replace(/\/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri))
+    .replace(/(?:^|\s)[^/\s"'<>?#[\]{}][^\s"'<>?#[\]{}]*[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri));
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-video-live-smoke.mjs \\
-  --token=JWT_TOKEN \\
   --alert-record-query-url=http://VIDEO/video/alert/record/query \\
   --record-coverage-query-url=http://VIDEO/video/record/availability \\
   --record-base-url=http://VIDEO/video/record \\
@@ -1357,7 +1380,8 @@ Release smoke requires --manifest-verifier-script so the fetched manifest is als
 checked by the record export verifier where manifest-referenced files are accessible.
 The smoke must use a real device with real recording metadata; no mock server is
 started. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
-is supplied for co-located real-service smoke.`);
+is supplied for co-located real-service smoke. Set YFEIEYE_VIDEO_SMOKE_TOKEN in
+the parent environment instead of placing release credentials in argv.`);
 }
 
 async function runCli() {
@@ -1373,7 +1397,7 @@ async function runCli() {
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {
   runCli().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(sanitizeCliOutputText(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
   });
 }

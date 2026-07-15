@@ -29,6 +29,27 @@ assert.match(workbenchSource, /device_id: selectedItem\.value\?\.cameraId \|\| s
 assert.match(workbenchSource, /device_id: item\.cameraId \|\| item\.deviceId/)
 assert.match(alertReviewApiSource, /recordStartTime\?: string \| null/)
 assert.match(alertReviewApiSource, /playbackOffsetSeconds\?: number \| null/)
+assert.match(
+  alertReviewApiSource,
+  /export interface AlertReviewMediaReadQuery \{[\s\S]*?reviewCaseId\?: number[\s\S]*?operatorUserId\?: number[\s\S]*?allowedCameraIds\?: string\[\][\s\S]*?\}/,
+)
+for (const functionName of [
+  'getAlertReviewTimeline',
+  'getAlertReviewDetailStream',
+  'getAlertReviewRecordCoverage',
+]) {
+  const mediaReadApi = alertReviewApiSource.match(
+    new RegExp(`export function ${functionName}\\(reviewItemId: number, params\\?: AlertReviewMediaReadQuery\\) \\{[\\s\\S]*?\\n\\}`),
+  )?.[0] || ''
+  assert.match(mediaReadApi, /params: params \?\? \{\}/, `${functionName} must forward the complete media-read scope`)
+}
+assert.match(workbenchSource, /function mediaReadScope\(item: AlertReviewItem\)/)
+assert.match(workbenchSource, /reviewCaseId: activeCase\.value\?\.id/)
+assert.match(workbenchSource, /operatorUserId: filters\.reviewerUserId \|\| undefined/)
+assert.match(workbenchSource, /allowedCameraIds: cameraId \? \[cameraId\] : undefined/)
+assert.match(workbenchSource, /getAlertReviewTimeline\(selectedItem\.value\.id, mediaReadScope\(selectedItem\.value\)\)/)
+assert.match(workbenchSource, /getAlertReviewDetailStream\(target\.id, mediaReadScope\(target\)\)/)
+assert.match(workbenchSource, /getAlertReviewRecordCoverage\(item\.id, mediaReadScope\(item\)\)/)
 const caseTimelinePlayback = workbenchSource.match(
   /async function openCaseTimelineEntry[\s\S]*?\n}\n\nasync function guardCaseTimelineMediaAccess/,
 )?.[0] || ''

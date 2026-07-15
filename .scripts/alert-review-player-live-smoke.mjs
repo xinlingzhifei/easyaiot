@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_NAVIGATION_TIMEOUT_MS = 300_000;
 const DEFAULT_AUTH_STORAGE_PREFIX = 'IOT_ADMIN__PRODUCTION__2.1.0-SNAPSHOT__';
 const AUTH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const AUTH_CACHE_KEY = '_11111000001111@';
@@ -150,14 +151,19 @@ export function assertSmokeResult(result, options) {
     throw new Error(`review row not clicked: ${options.reviewRowText}`);
   }
   if (!result?.clickedAction) {
-    throw new Error(`seek action not clicked: ${options.actionTestId}`);
+    const availableActionTestIds = Array.isArray(result?.availableActionTestIds)
+      ? result.availableActionTestIds.slice(0, 20).join(',')
+      : '-';
+    throw new Error(
+      `seek action not clicked: ${options.actionTestId}; selectedRows=${Number(result?.selectedRowCount || 0)}; detailEntries=${Number(result?.detailStreamEntryCount || 0)}; availableActions=${availableActionTestIds || '-'}`,
+    );
   }
   if (result.seekTime !== options.expectedSeekTime) {
     throw new Error(`expected seek_time ${options.expectedSeekTime}, got ${String(result.seekTime)}`);
   }
   const pathText = `${result.recordPath || ''} ${result.currentUrl || ''}`;
   if (!pathText.includes(options.expectedRecordPathContains)) {
-    throw new Error(`expected record path/url to include ${options.expectedRecordPathContains}, got ${pathText.trim() || '-'}`);
+    throw new Error(`expected record path/url to include ${options.expectedRecordPathContains}, got ${sanitizeOutputText(pathText).trim() || '-'}`);
   }
   if (!options.allowLocalEndpoints && hasLocalOrMockMediaEvidence(result.recordPath, result.currentUrl)) {
     throw new Error('player live smoke result used local/mock media evidence');
@@ -189,6 +195,19 @@ export function assertSmokeResult(result, options) {
       throw new Error(`native video did not enter playing state: observed=${String(result.nativePlayingObserved)}, paused=${String(result.nativePaused)}`);
     }
   }
+}
+
+export function sanitizeSmokeResultForOutput(result) {
+  if (!result || typeof result !== 'object') {
+    return result;
+  }
+  const sanitized = { ...result };
+  for (const key of ['recordPath', 'currentUrl', 'nativeCurrentSrc']) {
+    if (typeof sanitized[key] === 'string') {
+      sanitized[key] = stripUrlSecrets(sanitized[key]);
+    }
+  }
+  return sanitized;
 }
 
 export async function runSmoke(options, dependencies = {}) {
@@ -225,9 +244,9 @@ export async function runSmoke(options, dependencies = {}) {
     await cdp.send('Network.enable');
 
     await seedCookies(cdp, options);
-    await navigate(cdp, new URL(options.workbenchUrl).origin);
+    await navigate(cdp, new URL(options.workbenchUrl).origin, options.timeoutMs);
     await seedStorage(cdp, options);
-    await navigate(cdp, options.workbenchUrl);
+    await navigate(cdp, options.workbenchUrl, options.timeoutMs);
     const result = await runPageAssertions(cdp, options);
     assertSmokeResult(result, options);
     return result;
@@ -268,9 +287,22 @@ async function seedStorage(cdp, options) {
   await cdp.send('Runtime.evaluate', { expression, returnByValue: true });
 }
 
-async function navigate(cdp, url) {
+export async function navigate(cdp, url, timeoutMs, dependencies = {}) {
+  const waitForNavigationExpression = dependencies.waitForExpression || waitForExpression;
   await cdp.send('Page.navigate', { url });
-  await waitForExpression(cdp, 'document.readyState === "complete" || document.readyState === "interactive"', 15_000);
+  await waitForNavigationExpression(
+    cdp,
+    'document.readyState === "complete" || document.readyState === "interactive"',
+    resolveNavigationTimeoutMs(timeoutMs),
+  );
+}
+
+export function resolveNavigationTimeoutMs(value) {
+  const timeoutMs = Number(value);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  return Math.min(timeoutMs, MAX_NAVIGATION_TIMEOUT_MS);
 }
 
 async function runPageAssertions(cdp, options) {
@@ -303,6 +335,11 @@ function buildClickAndInspectExpression(options) {
       return {
         clickedRow,
         clickedAction,
+        selectedRowCount: document.querySelectorAll('tbody tr.selected, .ant-table-row-selected, .review-item-row.selected').length,
+        detailStreamEntryCount: document.querySelectorAll('[data-testid="alert-review-detail-stream"] .timeline-item').length,
+        availableActionTestIds: Array.from(document.querySelectorAll('[data-testid^="alert-review-"]'))
+          .map((element) => element.getAttribute('data-testid') || '')
+          .filter((value, index, values) => value && values.indexOf(value) === index),
         seekTime: stage?.dataset.seekTime || '',
         recordPath: stage?.dataset.recordPath || '',
         currentUrl: stage?.dataset.currentUrl || '',
@@ -496,6 +533,17 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function stripUrlSecrets(value) {
+  return String(value).replace(/[?#].*$/, '');
+}
+
+function sanitizeOutputText(value) {
+  return String(value ?? '')
+    .replace(/https?:\/\/[^\s"'<>]+/g, url => stripUrlSecrets(url))
+    .replace(/\/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri))
+    .replace(/(?:^|\s)[^/\s"'<>?#[\]{}][^\s"'<>?#[\]{}]*[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri));
+}
+
 function parseBoolean(value, fallback) {
   if (value === undefined || value === null || String(value).trim() === '') {
     return fallback;
@@ -582,12 +630,12 @@ async function runCli() {
   }
   const result = await runSmoke(options);
   console.log('alert review player live smoke passed');
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(sanitizeSmokeResultForOutput(result), null, 2));
 }
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {
   runCli().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(sanitizeOutputText(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
   });
 }

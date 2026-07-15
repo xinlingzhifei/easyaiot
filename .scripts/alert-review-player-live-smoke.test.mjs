@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createDecipheriv } from 'node:crypto';
+import * as playerLiveSmokeModule from './alert-review-player-live-smoke.mjs';
 
 import {
   assertSmokeResult,
   buildProductionAuthStoragePairs,
   parseArgs,
   requiredOptionErrors,
+  sanitizeSmokeResultForOutput,
 } from './alert-review-player-live-smoke.mjs';
 
 const parsed = parseArgs([
@@ -202,5 +205,80 @@ assert.throws(
   () => assertSmokeResult({ clickedRow: true, clickedAction: true, seekTime: 'wrong', currentUrl: 'x', playbackOffsetSeconds: 2 }, parsed),
   /expected seek_time/,
 );
+
+const rawSignedResult = {
+  clickedRow: true,
+  clickedAction: true,
+  seekTime: '2026-07-02T08:00:02',
+  recordPath: 'record.mp4?token=record-secret#record-fragment',
+  currentUrl: 'https://media.example.test/video/east-gate-080000.mp4?token=current-secret&signature=abc#current-fragment',
+  nativeCurrentSrc: 'https://media.example.test/video/east-gate-080000.mp4?token=native-secret#native-fragment',
+  playbackOffsetSeconds: 2,
+};
+assert.deepEqual(sanitizeSmokeResultForOutput(rawSignedResult), {
+  ...rawSignedResult,
+  recordPath: 'record.mp4',
+  currentUrl: 'https://media.example.test/video/east-gate-080000.mp4',
+  nativeCurrentSrc: 'https://media.example.test/video/east-gate-080000.mp4',
+});
+assert.match(rawSignedResult.recordPath, /record-secret/);
+assert.match(rawSignedResult.currentUrl, /current-secret/);
+assert.match(rawSignedResult.nativeCurrentSrc, /native-secret/);
+
+let signedPathError;
+try {
+  assertSmokeResult({
+    clickedRow: true,
+    clickedAction: true,
+    seekTime: '2026-07-02T08:00:02',
+    recordPath: 'record.mp4?token=failure-record-secret#failure-record-fragment',
+    currentUrl: 'https://media.example.test/video/wrong.mp4?token=failure-current-secret#failure-current-fragment',
+    playbackOffsetSeconds: 2,
+  }, parsed);
+} catch (error) {
+  signedPathError = error;
+}
+assert.ok(signedPathError instanceof Error);
+assert.equal(signedPathError.message.includes('failure-record-secret'), false);
+assert.equal(signedPathError.message.includes('failure-current-secret'), false);
+assert.match(signedPathError.message, /record\.mp4/);
+assert.match(signedPathError.message, /https:\/\/media\.example\.test\/video\/wrong\.mp4/);
+
+const signedCliFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-player-live-smoke.mjs',
+  '--bogus=record.mp4?token=player-cli-failure-secret#player-cli-failure-fragment',
+], { encoding: 'utf8' });
+assert.equal(signedCliFailure.status, 1);
+assert.equal(signedCliFailure.stderr.includes('player-cli-failure-secret'), false);
+assert.match(signedCliFailure.stderr, /--bogus=record\.mp4/);
+
+assert.equal(typeof playerLiveSmokeModule.navigate, 'function');
+assert.equal(typeof playerLiveSmokeModule.resolveNavigationTimeoutMs, 'function');
+assert.equal(playerLiveSmokeModule.resolveNavigationTimeoutMs(120_000), 120_000);
+assert.equal(playerLiveSmokeModule.resolveNavigationTimeoutMs(undefined), 30_000);
+assert.equal(playerLiveSmokeModule.resolveNavigationTimeoutMs(900_000), 300_000);
+const navigationCalls = [];
+const navigationCdp = {
+  async send(method, params) {
+    navigationCalls.push({ method, params });
+    return {};
+  },
+};
+let waitedNavigationTimeoutMs;
+await playerLiveSmokeModule.navigate(
+  navigationCdp,
+  'https://release.example/review',
+  120_000,
+  {
+    waitForExpression: async (_cdp, _expression, timeoutMs) => {
+      waitedNavigationTimeoutMs = timeoutMs;
+    },
+  },
+);
+assert.deepEqual(navigationCalls, [{
+  method: 'Page.navigate',
+  params: { url: 'https://release.example/review' },
+}]);
+assert.equal(waitedNavigationTimeoutMs, 120_000);
 
 console.log('alert review player live smoke tests OK');
