@@ -1505,6 +1505,66 @@ class TestRecordExportService(unittest.TestCase):
             export_service.configure_record_export_storage_adapter(None)
             storage_env.stop()
 
+    def test_object_storage_ready_manifest_ignores_stale_status_cache(self):
+        import app.services.record_export_service as export_service
+
+        class CacheReplacingStorage:
+            def __init__(self):
+                self.objects = {}
+                self.replaced = False
+
+            def put_file(self, object_key, path, content_type=None):
+                del content_type
+                with open(path, 'rb') as file_obj:
+                    self.objects[object_key] = file_obj.read()
+                if self.replaced or not object_key.endswith('/content.bin'):
+                    return
+                export_id = object_key.split('/exports/', 1)[1].split('/', 1)[0]
+                stale = dict(export_service._EXPORT_JOBS[export_id])
+                stale['status'] = 'verifying'
+                export_service._EXPORT_JOBS[export_id] = stale
+                self.replaced = True
+
+            def stat(self, object_key):
+                return {'size': len(self.objects[object_key])}
+
+            def open(self, object_key):
+                return io.BytesIO(self.objects[object_key])
+
+            def delete(self, object_key):
+                self.objects.pop(object_key, None)
+
+            def uri(self, object_key):
+                return 's3://review-evidence/' + object_key
+
+        adapter = CacheReplacingStorage()
+        with mock.patch.dict(os.environ, {
+            'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE': 'minio',
+            'YFEIEYE_RECORD_EXPORT_STORAGE_URI': 's3://review-evidence/cases',
+        }, clear=False):
+            export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+            try:
+                started = export_service.create_record_export({
+                    'review_case_id': 3011,
+                    'review_item_id': 1011,
+                    'device_id': 'camera-01',
+                    'camera_id': 'camera-01',
+                    'tenant_id': '7',
+                    'record_uri': '/video/record/space/7/video/live/camera-01/race.mp4',
+                }, record_resolver=_trusted_record_resolver, async_worker=True,
+                   worker_runner=lambda job: _provenance_worker_result(
+                       job, b'cache-race-export'))
+
+                ready = export_service.poll_record_export(started['export_id'])
+                manifest = export_service.get_record_export_manifest(
+                    started['export_id'])
+
+                self.assertTrue(adapter.replaced)
+                self.assertEqual('ready', ready['status'])
+                self.assertEqual('ready', manifest['status'])
+            finally:
+                export_service.configure_record_export_storage_adapter(None)
+
     def test_object_storage_export_without_authorized_tenant_fails_closed(self):
         import app.services.record_export_service as export_service
 

@@ -424,7 +424,7 @@ def poll_record_export(export_id: str) -> dict:
                 'artifact_count': 0,
             }
             _persist_job(job)
-            _persist_manifest(export_id)
+            _persist_manifest(export_id, job)
             verified = _sync_object_storage_artifacts(job, claim_token=claim_token)
             heartbeat.assert_owned()
             job['storage_verification'] = {
@@ -436,7 +436,7 @@ def poll_record_export(export_id: str) -> dict:
         heartbeat.assert_owned()
         job['status'] = 'ready'
         _persist_job(job)
-        manifest = _persist_manifest(export_id)
+        manifest = _persist_manifest(export_id, job)
         _validate_ready_manifest(job, manifest)
         _append_export_audit(export_id, 'ready', None, None, {
             'attempt': job['retry_count'],
@@ -2045,8 +2045,9 @@ def _append_export_audit(export_id: str, action: str, operator_user_id=None,
         existing.append(entry)
         _EXPORT_AUDIT[export_id] = list(existing)
         _write_json(audit_path, existing)
-        _persist_manifest(export_id)
-        job = _EXPORT_JOBS.get(export_id) or _read_json(_job_path(export_id), {})
+        job = _read_json(_job_path(export_id), None) \
+            or _EXPORT_JOBS.get(export_id) or {}
+        _persist_manifest(export_id, job)
         if isinstance(job, dict) and job.get('status') == 'ready' and _uses_object_storage(job):
             try:
                 _sync_object_storage_artifacts(
@@ -2057,7 +2058,7 @@ def _append_export_audit(export_id: str, action: str, operator_user_id=None,
                 # object generation so a concurrent GET cannot observe a mixed audit.
                 _EXPORT_AUDIT[export_id] = list(previous_audit)
                 _write_json(audit_path, previous_audit)
-                _persist_manifest(export_id)
+                _persist_manifest(export_id, job)
                 try:
                     _sync_object_storage_artifacts(
                         job, metadata_only=True, claim_token=claim_token)
@@ -2072,14 +2073,14 @@ def _append_export_audit(export_id: str, action: str, operator_user_id=None,
 
 
 def _get_export_job(export_id: str):
-    job = _EXPORT_JOBS.get(export_id)
-    if job:
-        return job
     stored = _read_json(_job_path(export_id), None)
-    if not isinstance(stored, dict):
-        return None
-    _EXPORT_JOBS[export_id] = stored
-    return stored
+    if isinstance(stored, dict):
+        existing = _EXPORT_JOBS.get(export_id) or {}
+        if existing.get('_worker_runner') is not None:
+            stored['_worker_runner'] = existing['_worker_runner']
+        _EXPORT_JOBS[export_id] = stored
+        return stored
+    return _EXPORT_JOBS.get(export_id)
 
 
 def _reload_export_job(export_id: str):
@@ -2397,10 +2398,12 @@ def _get_export_audit(export_id: str) -> list:
     return list(stored)
 
 
-def _persist_manifest(export_id: str) -> dict:
-    job = _EXPORT_JOBS.get(export_id) or _read_json(_job_path(export_id), {})
+def _persist_manifest(export_id: str, job: dict = None) -> dict:
+    job = job or _read_json(_job_path(export_id), None) \
+        or _EXPORT_JOBS.get(export_id) or {}
     if not isinstance(job, dict) or not job:
         return {}
+    job = _public_job(job)
     audit = _get_export_audit(export_id)
     manifest = _build_manifest(job, audit)
     _write_json(_manifest_path(export_id), manifest)

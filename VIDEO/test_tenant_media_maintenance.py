@@ -41,6 +41,19 @@ class _DeleteQuery:
 
 class TenantMaintenanceTest(unittest.TestCase):
 
+    def test_disk_guard_float_environment_values_fall_back_safely(self):
+        from app.services import playback_disk_guard_service as guard
+
+        with mock.patch.dict(os.environ, {
+            'PLAYBACK_KEEP_RATIO': '0.25',
+            'PLAYBACK_DISK_CRITICAL_PERCENT': 'invalid',
+        }, clear=True):
+            self.assertEqual(0.25, guard._env_float('PLAYBACK_KEEP_RATIO', 0.2))
+            self.assertEqual(
+                90.0,
+                guard._env_float('PLAYBACK_DISK_CRITICAL_PERCENT', 90.0),
+            )
+
     def test_production_runtime_rejects_missing_or_weak_application_secret(self):
         from app.utils.video_env import validate_production_runtime_secrets
 

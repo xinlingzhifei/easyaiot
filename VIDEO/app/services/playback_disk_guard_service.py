@@ -43,6 +43,10 @@ def _env_float(name: str, default: float) -> float:
     raw = os.getenv(name)
     if raw is None or not str(raw).strip():
         return default
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        return default
 
 
 def _required_dvr_tenant_id() -> int:
@@ -50,10 +54,6 @@ def _required_dvr_tenant_id() -> int:
     if not value.isdigit() or int(value) <= 0:
         raise ValueError('YFEIEYE_DVR_TENANT_ID must be a positive tenant id')
     return int(value)
-    try:
-        return float(str(raw).strip())
-    except ValueError:
-        return default
 
 
 def get_srs_record_dir() -> str:
