@@ -1,4 +1,4 @@
-"""Create the final competition workbook with a relative link to BP V6 PDF."""
+"""Create the final competition workbook with a relative BP V6 material link."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 
 
 DEFAULT_PDF_NAME = "逸飞AI智眼系统_创业大赛BP_V6.pdf"
+DEFAULT_PPTX_NAME = "逸飞AI智眼系统_创业大赛BP_V6.pptx"
 
 
 def _validate_pdf_name(pdf_name: str) -> None:
@@ -24,14 +25,19 @@ def _validate_pdf_name(pdf_name: str) -> None:
         raise ValueError("pdf_name must be a relative PDF filename")
 
 
-def update_pdf_link(
-    source: str | Path,
-    destination: str | Path,
-    pdf_name: str = DEFAULT_PDF_NAME,
-) -> Path:
-    """Copy a workbook and update only first-sheet J3 value and hyperlink."""
+def _validate_pptx_name(pptx_name: str) -> None:
+    if (
+        not pptx_name
+        or Path(pptx_name).is_absolute()
+        or "/" in pptx_name
+        or "\\" in pptx_name
+        or PurePath(pptx_name).name != pptx_name
+        or not pptx_name.lower().endswith(".pptx")
+    ):
+        raise ValueError("pptx_name must be a relative PPTX filename")
 
-    _validate_pdf_name(pdf_name)
+
+def _update_link(source: str | Path, destination: str | Path, filename: str) -> Path:
     source_path = Path(source)
     destination_path = Path(destination)
     if not source_path.is_file():
@@ -44,12 +50,34 @@ def update_pdf_link(
     workbook = load_workbook(destination_path, data_only=False, keep_links=True)
     try:
         cell = workbook.worksheets[0]["J3"]
-        cell.value = pdf_name
-        cell.hyperlink = pdf_name
+        cell.value = filename
+        cell.hyperlink = filename
         workbook.save(destination_path)
     finally:
         workbook.close()
     return destination_path
+
+
+def update_pdf_link(
+    source: str | Path,
+    destination: str | Path,
+    pdf_name: str = DEFAULT_PDF_NAME,
+) -> Path:
+    """Copy a workbook and update only first-sheet J3 value and hyperlink."""
+
+    _validate_pdf_name(pdf_name)
+    return _update_link(source, destination, pdf_name)
+
+
+def update_pptx_link(
+    source: str | Path,
+    destination: str | Path,
+    pptx_name: str = DEFAULT_PPTX_NAME,
+) -> Path:
+    """Copy a workbook and update only first-sheet J3 to a PPTX link."""
+
+    _validate_pptx_name(pptx_name)
+    return _update_link(source, destination, pptx_name)
 
 
 def main() -> int:

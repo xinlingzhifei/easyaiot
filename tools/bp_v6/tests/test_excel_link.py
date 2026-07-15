@@ -3,10 +3,11 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from tools.bp_v6.excel_link import update_pdf_link
+from tools.bp_v6.excel_link import update_pdf_link, update_pptx_link
 
 
 PDF_NAME = "逸飞AI智眼系统_创业大赛BP_V6.pdf"
+PPTX_NAME = "逸飞AI智眼系统_创业大赛BP_V6.pptx"
 
 
 def _sha256(path: Path) -> str:
@@ -60,6 +61,24 @@ def test_copies_workbook_and_only_changes_first_sheet_pdf_link(tmp_path):
     after = _snapshot(destination)
     assert before["sheets"] == after["sheets"]
     assert after["cells"]["项目模板"][-1] == ("J3", PDF_NAME, PDF_NAME)
+    assert before["cells"]["项目模板"][:-1] == after["cells"]["项目模板"][:-1]
+    for sheet_name in before["sheets"][1:]:
+        assert before["cells"][sheet_name] == after["cells"][sheet_name]
+
+
+def test_copies_workbook_and_only_changes_first_sheet_pptx_link(tmp_path):
+    source = tmp_path / "source.xlsx"
+    destination = tmp_path / "final.xlsx"
+    _workbook(source)
+    before_hash = _sha256(source)
+    before = _snapshot(source)
+
+    update_pptx_link(source, destination, PPTX_NAME)
+
+    assert _sha256(source) == before_hash
+    after = _snapshot(destination)
+    assert before["sheets"] == after["sheets"]
+    assert after["cells"]["项目模板"][-1] == ("J3", PPTX_NAME, PPTX_NAME)
     assert before["cells"]["项目模板"][:-1] == after["cells"]["项目模板"][:-1]
     for sheet_name in before["sheets"][1:]:
         assert before["cells"][sheet_name] == after["cells"][sheet_name]

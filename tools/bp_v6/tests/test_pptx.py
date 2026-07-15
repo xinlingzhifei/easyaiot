@@ -51,10 +51,14 @@ def test_builds_sixteen_page_editable_deck(tmp_path):
     assert "融资需求\n500万元" in all_text
     assert "P95≤10秒" in all_text
     assert "确认前不会执行任何动作" in all_text
-    assert sum(
-        shape.shape_type == MSO_SHAPE_TYPE.PICTURE
+    screenshot_pictures = [
+        shape
         for shape in prs.slides[4].shapes
-    ) == 3
+        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE
+    ]
+    assert len(screenshot_pictures) == 3
+    assert screenshot_pictures[2].crop_top == 0
+    assert screenshot_pictures[2].crop_bottom >= 0.35
     footer_pages = [
         shape
         for slide in prs.slides

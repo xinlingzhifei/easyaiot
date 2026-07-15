@@ -296,7 +296,10 @@ def _screenshots(prs, spec, assets, contact):
         add_card(slide, x, 1.37, 4.02, 4.48, fill=WHITE)
         add_text(slide, title, x + 0.2, 1.58, 2.15, 0.32, size=14, color=NAVY, bold=True)
         add_badge(slide, "真实界面 · 已脱敏", x + 2.4, 1.55, 1.34, fill=CYAN_LIGHT, color=CYAN)
-        _picture_crop(slide, assets / filename, x + 0.16, 2.06, 3.7, 2.08)
+        picture = _picture_crop(slide, assets / filename, x + 0.16, 2.06, 3.7, 2.08)
+        if filename == EXPECTED_ASSETS[2]:
+            picture.crop_top = 0
+            picture.crop_bottom = 0.46
         add_text(slide, caption, x + 0.2, 4.36, 3.62, 0.32, size=10, color=NAVY, bold=True)
         add_text(slide, spec.body[index], x + 0.2, 4.84, 3.58, 0.66, size=8, color=MUTED, line_spacing=1.05)
     add_card(slide, 0.65, 6.08, 12.05, 0.55, fill=AMBER_LIGHT, line=AMBER_LIGHT)
