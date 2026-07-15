@@ -195,7 +195,7 @@ def _cover(prs, spec, assets, contact):
     add_text(slide, COMPANY["name"], 0.7, 6.55, 5.4, 0.3, size=10, color=LIGHT_NAVY)
     add_text(slide, "创业大赛商业计划书 · V6", 9.25, 5.72, 3.1, 0.36, size=13, color=WHITE, bold=True)
     add_text(slide, "2026.07", 9.25, 6.18, 2.0, 0.28, size=10, color=CYAN, bold=True)
-    add_text(slide, "01/16", 11.95, 7.13, 0.8, 0.2, size=8, color=LIGHT_NAVY, align=PP_ALIGN.RIGHT, margin=0)
+    add_text(slide, "01/16", 10.75, 7.13, 2.0, 0.2, size=8, color=LIGHT_NAVY, align=PP_ALIGN.RIGHT, margin=0)
 
 
 def _pain(prs, spec, assets, contact):
@@ -406,7 +406,8 @@ def _market(prs, spec, assets, contact):
         x = 6.55 + (index % 2) * 3.05
         y = 1.96 + (index // 2) * 1.56
         add_card(slide, x, y, 2.78, 1.27, fill=WHITE)
-        add_text(slide, amount, x + 0.18, y + 0.17, 1.4, 0.34, size=17, color=CYAN, bold=True)
+        amount_size = 17 if len(amount) <= 6 else 14
+        add_text(slide, amount, x + 0.18, y + 0.17, 2.35, 0.34, size=amount_size, color=CYAN, bold=True)
         add_text(slide, name, x + 0.18, y + 0.59, 2.35, 0.27, size=9, color=NAVY, bold=True)
         add_text(slide, note, x + 0.18, y + 0.91, 2.2, 0.18, size=7, color=MUTED)
     add_card(slide, 0.65, 5.3, 12.05, 0.88, fill=AMBER_LIGHT, line=AMBER_LIGHT)
@@ -436,7 +437,8 @@ def _founder(prs, spec, assets, contact):
     add_card(slide, 0.65, 1.38, 3.4, 4.92, fill=NAVY, line=NAVY)
     _shape(slide, MSO_SHAPE.OVAL, 1.66, 1.83, 1.38, 1.38, CYAN)
     add_text(slide, "刘飞", 1.66, 2.24, 1.38, 0.45, size=22, color=WHITE, bold=True, align=PP_ALIGN.CENTER)
-    add_text(slide, FOUNDER["education"], 0.98, 3.55, 2.75, 0.72, size=11, color=WHITE, bold=True, align=PP_ALIGN.CENTER)
+    education = FOUNDER["education"].replace("｜计算机科学与技术", "\n计算机科学与技术")
+    add_text(slide, education, 0.98, 3.55, 2.75, 0.72, size=11, color=WHITE, bold=True, align=PP_ALIGN.CENTER)
     add_rule(slide, 1.05, 4.48, 2.6, color=MID_BLUE)
     add_text(slide, "7年", 1.0, 4.8, 0.8, 0.34, size=18, color=CYAN, bold=True, align=PP_ALIGN.CENTER)
     add_text(slide, "5年", 1.95, 4.8, 0.8, 0.34, size=18, color=CYAN, bold=True, align=PP_ALIGN.CENTER)
@@ -536,7 +538,7 @@ def _cta(prs, spec, assets, contact):
     if contact_text:
         add_text(slide, f"联系：{contact_text}", 0.72, 6.55, 9.6, 0.28, size=10, color=WHITE, bold=True)
     add_text(slide, COMPANY["name"], 9.45, 6.55, 3.18, 0.28, size=9, color=LIGHT_NAVY, align=PP_ALIGN.RIGHT)
-    add_text(slide, "16/16", 11.95, 7.13, 0.8, 0.2, size=8, color=LIGHT_NAVY, align=PP_ALIGN.RIGHT, margin=0)
+    add_text(slide, "16/16", 10.75, 7.13, 2.0, 0.2, size=8, color=LIGHT_NAVY, align=PP_ALIGN.RIGHT, margin=0)
 
 
 BUILDERS: dict[int, Callable] = {

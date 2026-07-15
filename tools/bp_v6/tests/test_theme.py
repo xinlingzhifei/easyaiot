@@ -1,3 +1,5 @@
+from pptx.util import Inches
+
 from tools.bp_v6.theme import (
     FONT_BOLD,
     FONT_REGULAR,
@@ -26,3 +28,8 @@ def test_title_and_footer_are_editable_text():
     assert "测试标题" in text
     assert "03" in text
     assert "逸飞AI智眼系统｜创业大赛 BP V6" in text
+
+    page_marker = next(shape for shape in slide.shapes if getattr(shape, "text", "") == "03")
+    footer_page = next(shape for shape in slide.shapes if getattr(shape, "text", "") == "03/16")
+    assert page_marker.width >= Inches(0.65)
+    assert footer_page.width >= Inches(1.75)

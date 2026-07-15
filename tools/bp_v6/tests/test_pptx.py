@@ -3,6 +3,7 @@ from pathlib import Path
 from PIL import Image
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.util import Inches
 
 from tools.bp_v6.assets import EXPECTED_ASSETS
 from tools.bp_v6.build_pptx import build_presentation
@@ -54,6 +55,23 @@ def test_builds_sixteen_page_editable_deck(tmp_path):
         shape.shape_type == MSO_SHAPE_TYPE.PICTURE
         for shape in prs.slides[4].shapes
     ) == 3
+    footer_pages = [
+        shape
+        for slide in prs.slides
+        for shape in slide.shapes
+        if getattr(shape, "text", "").endswith("/16")
+    ]
+    assert len(footer_pages) == 16
+    assert all(shape.width >= Inches(1.75) for shape in footer_pages)
+
+    market_amounts = {
+        shape.text: shape
+        for shape in prs.slides[9].shapes
+        if getattr(shape, "text", "") in {"209.6334万元", "2836.89万元"}
+    }
+    assert set(market_amounts) == {"209.6334万元", "2836.89万元"}
+    assert all(shape.width >= Inches(2.0) for shape in market_amounts.values())
+    assert "上海理工大学｜本科\n计算机科学与技术" in all_text
 
 
 def test_deck_avoids_unapproved_claims(tmp_path):

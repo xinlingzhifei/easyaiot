@@ -118,13 +118,15 @@ def add_title(slide, title: str, page: int):
     add_text(
         slide,
         f"{page:02d}",
-        0.55,
+        0.5,
         0.42,
-        0.55,
+        0.7,
         0.35,
         size=12,
         color=CYAN,
         bold=True,
+        align=PP_ALIGN.CENTER,
+        margin=0,
     )
     return add_text(
         slide,
@@ -203,9 +205,9 @@ def add_footer(slide, page: int):
     add_text(
         slide,
         f"{page:02d}/16",
-        11.95,
+        10.75,
         7.13,
-        0.8,
+        2.0,
         0.2,
         size=8,
         color=MUTED,
