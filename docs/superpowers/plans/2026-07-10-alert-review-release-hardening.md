@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: completed and superseded execution record (2026-07-15).** The unchecked boxes, dirty-worktree baseline, and static staging/commit commands below describe the original 2026-07-10 pass; they are not the current repository or release state and must not be executed as a final-release recipe. Reusable verification commands have been corrected to their current CLI/cwd contracts. Final implementation, production evidence, component hashes, residual operations, and recurring gates live in `docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md`.
+
 **Goal:** Close the FR-01~FR-38 P0/P1/P2 release gates on top of the existing alert-review implementation, prove every local gate with fresh evidence, and preserve explicit blockers for unavailable real environments.
 
 **Architecture:** Keep DEVICE as the review/supervision coordinator and VIDEO as the recording/export authority. Extend existing contracts only where an open risk is still unverified: module-safe migration tests, release-package tracking, real-service smoke inputs, permissions/audit evidence, scheduler/runtime checks, and frontend baseline/workbench checks. Do not introduce a parallel media or event lifecycle.
@@ -29,11 +31,12 @@ Expected: only the two module-path test changes are dirty; do not reset or overw
 - [ ] **Step 2: Run the focused Java baseline**
 
 ```powershell
-cd DEVICE
+Push-Location DEVICE
 mvn -pl iot-system/iot-system-biz -am "-Dtest=HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test
+Pop-Location
 ```
 
-Expected: 33 tests pass with exit code 0.
+Historical expectation: the original focused baseline had 33 tests. Use the current test output as the source of truth; do not treat this old count as a final gate.
 
 ### Task 2: Finish ReviewSegment and ReviewData release proof
 
@@ -51,8 +54,9 @@ Expected: 33 tests pass with exit code 0.
 - [ ] **Step 1: Run the ReviewSegment lifecycle regression**
 
 ```powershell
-cd DEVICE
+Push-Location DEVICE
 mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test
+Pop-Location
 ```
 
 Expected: lifecycle, overlap, status migration, and schema tests pass.
@@ -72,7 +76,7 @@ Expected: migration smoke and release-package self-tests pass; if a required mig
 node .scripts/alert-review-postgres-migration-smoke.mjs --database-url="$env:ALERT_REVIEW_PG_URL"
 ```
 
-Expected: active same-camera overlap rejects, adjacent half-open boundaries pass, duplicate active `review_item_id` rejects, soft-deleted duplicates pass, invalid status/end-time/severity transitions reject, and concurrent overlap leaves exactly one winner. If the variable is absent, record `BLOCKED: no PostgreSQL 16 endpoint` without weakening the test.
+Expected: active same-camera overlap rejects, adjacent half-open boundaries pass, duplicate active `review_item_id` rejects, soft-deleted duplicates pass, invalid status/end-time/severity transitions reject, and concurrent overlap leaves exactly one winner. The current migration set runs through `V20260713_4__alert_review_local_scheduler_ownership.sql` and must also leave shared Quartz rows paused while protecting operations-report outbox idempotency. If the variable is absent, record `BLOCKED: no PostgreSQL 16 endpoint` without weakening the test.
 
 ### Task 3: Verify VIDEO configuration, real export evidence, and recording drift
 
@@ -87,8 +91,9 @@ Expected: active same-camera overlap rejects, adjacent half-open boundaries pass
 - [ ] **Step 1: Run VIDEO unit and local ffmpeg tests**
 
 ```powershell
-cd VIDEO
+Push-Location VIDEO
 python -m pytest test_record_export.py test_record_availability.py test_alert_record_query.py -q
+Pop-Location
 ```
 
 Expected: coverage reason catalog, real ffmpeg manifest hashes, async worker lifecycle, download audit, and drift patrol tests pass.
@@ -96,7 +101,6 @@ Expected: coverage reason catalog, real ffmpeg manifest hashes, async worker lif
 - [ ] **Step 2: Run smoke script self-tests**
 
 ```powershell
-cd ..
 node .scripts/alert-review-video-live-smoke.test.mjs
 node .scripts/alert-review-production-smoke.test.mjs
 ```
@@ -107,16 +111,19 @@ Expected: scripts reject aliased/local/mock/file URLs, require all four explicit
 
 Keep the release origins split: set DEVICE `YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=https://eye.yfeiai.com/yfeieye/dev-api`, keep DEVICE query/coverage/base/export URLs on the private VIDEO endpoint, and keep VIDEO `MEDIA_HTTP_PLAY_HOST=https://eye.yfeiai.com` for `/live`, `/ai`, and `/rtp` stream URLs.
 
+Set `YFEIEYE_VIDEO_SMOKE_TOKEN` in the process environment, then run the following command from the packaged repository/release root. The CLI rejects token arguments so credentials do not enter process argv. Do not copy only `.scripts/record-export-manifest-verifier.mjs` elsewhere: the wrapper resolves `VIDEO/app/services/record_export_manifest_verifier.py` relative to its own packaged tree. `LiveVideo` does not accept `--evidence-output-file`; archive its sanitized stdout separately after preserving the native exit code.
+
 ```powershell
 node .scripts/alert-review-video-live-smoke.mjs `
   --alert-record-query-url="$env:YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL" `
   --record-coverage-query-url="$env:YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL" `
   --record-base-url="$env:YFEIEYE_VIDEO_RECORD_BASE_URL" `
   --record-export-url="$env:YFEIEYE_VIDEO_RECORD_EXPORT_URL" `
-  --device-id="$env:ALERT_REVIEW_VIDEO_DEVICE_ID" `
-  --alert-time="$env:ALERT_REVIEW_VIDEO_ALERT_TIME" `
-  --manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs `
-  --evidence-output-file=artifacts/live-video.json
+  --device-id="$env:YFEIEYE_VIDEO_SMOKE_DEVICE_ID" `
+  --camera-id="$env:YFEIEYE_VIDEO_SMOKE_CAMERA_ID" `
+  --alert-time="$env:YFEIEYE_VIDEO_SMOKE_ALERT_TIME" `
+  --record-drift-retention-hours=24 `
+  --manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs
 ```
 
 Expected: a real camera recording is queried, coverage is classified, ffmpeg export is persisted, manifest is verified offline, download URL returns video bytes, and storage drift is healthy. Missing variables must produce a non-zero exit plus the exact missing-configuration reason.
@@ -130,22 +137,23 @@ Expected: a real camera recording is queried, coverage is classified, ffmpeg exp
 - Inspect/modify only if regression exposes a gap: `DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/job/supervision/SupervisionAlertReviewRuntimeOutboxJob.java`
 - Inspect/modify only if regression exposes a gap: `DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/job/supervision/SupervisionAlertReviewEventReconcileJob.java`
 - Inspect/modify only if regression exposes a gap: `DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260708_2__alert_review_scheduler_jobs.sql`
+- Inspect/modify only if regression exposes a gap: `DEVICE/iot-system/iot-system-biz/src/main/resources/sql/migrations/V20260713_4__alert_review_local_scheduler_ownership.sql`
 
 - [ ] **Step 1: Run the complete DEVICE alert-review regression**
 
 ```powershell
-cd DEVICE
+Push-Location DEVICE
 mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewControllerTest,SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test
+Pop-Location
 ```
 
-Expected: permissions fail closed, allow/deny audit rows carry user/tenant/camera, review cases and rule state transitions are idempotent, runtime patrol/outbox/reconcile jobs produce retryable summaries, and export/manifest audit metadata is reversible.
+Expected: permissions fail closed, allow/deny audit rows carry user/tenant/camera, review cases and rule state transitions are idempotent, runtime patrol/outbox/reconcile jobs produce retryable summaries, export/manifest audit metadata is reversible, and V4 leaves shared Quartz paused while the explicitly enabled local scheduler owns execution under distributed locks.
 
 - [ ] **Step 2: Verify browser rule/workbench contracts**
 
 ```powershell
-cd ..
-pnpm test:alert-review-workbench:contract
-pnpm test:alert-review-workbench:dev-api-mock
+corepack pnpm@11.3.0 --dir WEB run test:alert-review-workbench:contract
+corepack pnpm@11.3.0 --dir WEB run test:alert-review-workbench:dev-api-mock
 node .scripts/alert-review-visible-copy-scan.mjs
 ```
 
@@ -164,15 +172,17 @@ Expected: `inertiaFrames`, `loiteringSeconds`, replay explanation, topology card
 - [ ] **Step 1: Run the full frontend type baseline**
 
 ```powershell
-pnpm --dir WEB --pm-on-fail=ignore run type:check
+corepack pnpm@11.3.0 --dir WEB run type:check
 ```
 
-Expected: `vue-tsc --noEmit --skipLibCheck` exits 0. The retry flag is only for Corepack/pnpm version-guard noise; compiler errors remain failures.
+Expected: `vue-tsc --noEmit --skipLibCheck` exits 0. The pinned Corepack command avoids repository pnpm-version guard drift; compiler errors remain failures.
 
 - [ ] **Step 2: Run playback contract tests**
 
 ```powershell
-node .scripts/alert-review-playback-contract.test.mjs
+Push-Location WEB
+node scripts/alert-review-playback-contract.test.mjs
+Pop-Location
 node .scripts/alert-review-player-live-smoke.test.mjs
 ```
 
@@ -181,16 +191,38 @@ Expected: detail stream, coverage, and case timeline each preserve exact `seek_t
 - [ ] **Step 3: Run deployed player smoke when a real workbench URL is available**
 
 ```powershell
+$env:YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN = $env:YFEIEYE_DEVICE_AUTH_TOKEN
+$env:YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID = $env:YFEIEYE_DEVICE_TENANT_ID
+
 node .scripts/alert-review-player-live-smoke.mjs `
-  --workbench-url="$env:ALERT_REVIEW_PLAYER_WORKBENCH_URL" `
-  --review-row-text="$env:ALERT_REVIEW_PLAYER_ROW_TEXT" `
-  --expected-seek-time="$env:ALERT_REVIEW_PLAYER_SEEK_TIME" `
-  --coverage-expected-seek-time="$env:ALERT_REVIEW_PLAYER_COVERAGE_SEEK_TIME" `
-  --case-timeline-expected-seek-time="$env:ALERT_REVIEW_PLAYER_CASE_SEEK_TIME" `
+  --workbench-url="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_URL" `
+  --review-row-text="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT" `
+  --action-testid=alert-review-detail-seek `
+  --expected-seek-time="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME" `
+  --expected-record-path-contains="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS" `
+  --expected-offset-seconds="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS" `
+  --assert-native-current-time
+
+node .scripts/alert-review-player-live-smoke.mjs `
+  --workbench-url="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_URL" `
+  --review-row-text="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT" `
+  --action-testid=alert-review-coverage-seek `
+  --expected-seek-time="$env:YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_SEEK_TIME" `
+  --expected-record-path-contains="$env:YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_RECORD_PATH_CONTAINS" `
+  --expected-offset-seconds="$env:YFEIEYE_REVIEW_PLAYER_COVERAGE_EXPECTED_OFFSET_SECONDS" `
+  --assert-native-current-time
+
+node .scripts/alert-review-player-live-smoke.mjs `
+  --workbench-url="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_URL" `
+  --review-row-text="$env:YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT" `
+  --action-testid=alert-review-case-timeline-seek `
+  --expected-seek-time="$env:YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_SEEK_TIME" `
+  --expected-record-path-contains="$env:YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_RECORD_PATH_CONTAINS" `
+  --expected-offset-seconds="$env:YFEIEYE_REVIEW_PLAYER_CASE_TIMELINE_EXPECTED_OFFSET_SECONDS" `
   --assert-native-current-time
 ```
 
-Expected: all three real player entrances jump to their recording timestamps. Missing deployed URL/auth is a release blocker, not a pass.
+Expected: all three independent real player invocations jump to their recording timestamps. The standalone player parser accepts only the generic `--expected-*` options for one `--action-testid` at a time; the aggregated `--player-coverage-*` and `--player-case-timeline-*` options belong only to `alert-review-production-smoke.mjs`. Missing deployed URL/auth is a release blocker, not a pass.
 
 ### Task 6: Update the FR release table and package gate
 
@@ -213,23 +245,24 @@ git status --short
 
 Expected: no loose FR core files or untracked production migrations. Existing unrelated user changes must remain visible and must not be staged accidentally.
 
-- [ ] **Step 3: Commit only scoped changes**
+- [ ] **Step 3: Historical commit step — superseded, do not execute verbatim**
 
 ```powershell
-git add DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/HttpVideoResolverTest.java DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/SupervisionSchemaSqlTest.java docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md
-git commit -m "test: close alert review release gates"
+git diff --name-only
+git status --short --untracked-files=all
 ```
 
-Expected: commit contains only test/path and FR release documentation changes unless a failing regression required a narrowly scoped production fix.
+Expected: the final release owner stages only the files shown by the current verified diff after all live evidence is known. The original three-file `git add` and commit message are obsolete and would omit later production migrations, runtime fixes, VIDEO fixes, tests, and release documentation.
 
 ### Task 7: Final evidence and handoff
 
 - [ ] **Step 1: Re-run the full local release gate set**
 
 ```powershell
-cd DEVICE; mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewControllerTest,SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test
-cd ..\VIDEO; python -m pytest test_record_export.py test_record_availability.py test_alert_record_query.py -q
-cd ..; pnpm test:alert-review-workbench; pnpm --dir WEB --pm-on-fail=ignore run type:check
+Push-Location DEVICE; mvn -pl iot-system/iot-system-biz -am "-Dtest=SupervisionAlertReviewControllerTest,SupervisionAlertReviewServiceTest,SupervisionAlertReviewMapperStoreTest,HttpVideoResolverTest,SupervisionSchemaSqlTest" -DfailIfNoTests=false test; Pop-Location
+Push-Location VIDEO; python -m pytest test_record_export.py test_record_availability.py test_alert_record_query.py -q; Pop-Location
+corepack pnpm@11.3.0 --dir WEB run test:alert-review-workbench
+corepack pnpm@11.3.0 --dir WEB run type:check
 node .scripts/verify-alert-review-release-package.mjs --require-clean
 ```
 
@@ -239,4 +272,4 @@ If PG1, LiveVideo, LivePlayer, or deployed role smoke cannot run, record the exa
 
 - [ ] **Step 3: Do not claim release complete until all P0 real-environment gates are green**
 
-The local code/test/package result can be reported as complete only for the verified subset. Release readiness remains blocked while any required real VIDEO, PostgreSQL, object storage, permission-role, or player seek evidence is missing.
+This historical rule remains valid: report only the subset backed by fresh evidence. The deployed 4ac artifact and current outstanding DEVICE/VIDEO/semantic/player/`ProdSmoke` gates are tracked in the FR hardening review; this superseded plan does not itself declare any of them passed.

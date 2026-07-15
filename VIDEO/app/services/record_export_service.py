@@ -366,7 +366,7 @@ def poll_record_export(export_id: str) -> dict:
         return _public_job(job)
 
     next_attempt_at = _parse_time(job.get('next_attempt_at'))
-    if next_attempt_at and next_attempt_at > datetime.now():
+    if next_attempt_at and next_attempt_at > _current_local_time():
         return _public_job(job)
 
     claim_token = _acquire_export_claim(export_id)
@@ -425,7 +425,11 @@ def poll_record_export(export_id: str) -> dict:
             }
             _persist_job(job)
             _persist_manifest(export_id, job)
-            verified = _sync_object_storage_artifacts(job, claim_token=claim_token)
+            audit_lock_token = _acquire_audit_lock(export_id)
+            try:
+                verified = _sync_object_storage_artifacts(job, claim_token=claim_token)
+            finally:
+                _release_named_claim(_audit_lock_path(export_id), audit_lock_token)
             heartbeat.assert_owned()
             job['storage_verification'] = {
                 'status': 'verified',
@@ -497,6 +501,8 @@ def retry_record_export(export_id: str) -> dict:
             return _public_job(job)
         job['status'] = 'pending'
         job['message'] = 'retry queued'
+        job['last_error'] = None
+        job['next_attempt_at'] = None
         job['download_url'] = None
         job['file_hash'] = None
         job['finished_at'] = None
@@ -741,7 +747,7 @@ def _path_is_within(path: str, root: str) -> bool:
 def cleanup_expired_record_exports(now=None) -> list:
     """Expire persisted jobs and remove media/source artifacts after retention."""
     cleanup_record_export_resources()
-    cutoff = _normalize_datetime(now) if isinstance(now, datetime) else datetime.now()
+    cutoff = _normalize_datetime(now) if isinstance(now, datetime) else _current_local_time()
     root = _store_root()
     if not os.path.isdir(root):
         return []
@@ -819,7 +825,7 @@ def process_record_export_queue(limit=None) -> list:
     if normalized_limit is None:
         normalized_limit = _positive_int(os.environ.get(_WORKER_BATCH_SIZE_ENV)) or 10
     max_attempts = _positive_int(os.environ.get(_WORKER_MAX_ATTEMPTS_ENV)) or 3
-    now = datetime.now()
+    now = _current_local_time()
     candidates = []
     root = _store_root()
     if not os.path.isdir(root):
@@ -1011,9 +1017,6 @@ def download_record_export(export_id: str, operator_user_id=None, reason=None) -
         _append_export_audit(export_id, 'downloaded', operator_user_id, reason, {
             'file_hash': job.get('file_hash'),
         })
-        _persist_manifest(export_id)
-        if _uses_object_storage(job):
-            _sync_object_storage_artifacts(job, metadata_only=True)
         return {
             'export_id': export_id,
             'filename': f'{export_id}.{file_format}',
@@ -1822,7 +1825,9 @@ def _record_source_specs(job: dict) -> list:
             specs.append({
                 'index': raw.get('index', index),
                 'record_uri': _text(
-                    raw.get('record_uri')
+                    raw.get('original_record_uri')
+                    or raw.get('originalRecordUri')
+                    or raw.get('record_uri')
                     or raw.get('recordUri')
                     or raw.get('uri')
                 ),
@@ -2657,7 +2662,7 @@ def _manifest_expires_at(job: dict):
     retention_days = _positive_int(job.get('retention_days'))
     if not retention_days:
         return None
-    basis = _parse_time(job.get('created_at') or job.get('finished_at')) or datetime.now()
+    basis = _parse_time(job.get('created_at') or job.get('finished_at')) or _current_local_time()
     return (basis + timedelta(days=retention_days)).isoformat()
 
 
@@ -2809,7 +2814,7 @@ def _storage_object_key(job: dict, name: str) -> str:
 
 def _storage_lifecycle_status(expires_at: str) -> str:
     expires = _parse_time(expires_at)
-    if expires and expires <= datetime.now():
+    if expires and expires <= _current_local_time():
         return 'expired'
     return 'retained'
 
@@ -3544,6 +3549,10 @@ def _normalize_datetime(value):
     except Exception:
         SHANGHAI_TZ = timezone(timedelta(hours=8))
     return value.astimezone(SHANGHAI_TZ).replace(tzinfo=None)
+
+
+def _current_local_time() -> datetime:
+    return _normalize_datetime(datetime.now(timezone.utc))
 
 
 def _build_export_id(job: dict) -> str:

@@ -6,6 +6,7 @@ import {
   buildSmokeSteps,
   formatStepCommand,
   parseArgs,
+  prepareStepInvocation,
   requiredOptionErrors,
   runProductionSmoke,
   sanitizeChildOutputForDisplay,
@@ -312,6 +313,18 @@ const steps = buildSmokeSteps(parsed, {
   nodePath: 'node',
   pnpmPath: 'pnpm',
   scriptDir: '.scripts',
+});
+assert.deepEqual(prepareStepInvocation({ ...steps[1], command: 'pnpm.cmd' }, 'win32', 'C:\\Windows\\System32\\cmd.exe'), {
+  command: 'C:\\Windows\\System32\\cmd.exe',
+  args: ['/d', '/s', '/c', 'pnpm.cmd --dir WEB run type:check'],
+});
+assert.deepEqual(prepareStepInvocation(steps[1], 'linux', '/bin/sh'), {
+  command: 'pnpm',
+  args: ['--dir', 'WEB', 'run', 'type:check'],
+});
+assert.deepEqual(prepareStepInvocation(steps[0], 'win32', 'C:\\Windows\\System32\\cmd.exe'), {
+  command: 'node',
+  args: ['.scripts/alert-review-visible-copy-scan.mjs'],
 });
 assert.deepEqual(steps.map((step) => step.name), [
   'W4:visible-copy',
@@ -1751,6 +1764,23 @@ const trackedProductionSmokeEntries = releaseEntriesForTrackedPaths([
   '.scripts/alert-review-production-smoke.test.mjs',
 ]);
 assert.equal(trackedProductionSmokeEntries.length, 2);
+
+const retainedStorageSmoke = await runProductionSmoke(parsed, {
+  nodePath: 'node',
+  scriptDir: '.scripts',
+  writeFile: () => {},
+  runCommand: async (step) => {
+    if (step.name !== 'LiveVideo') {
+      return { status: 0, stdout: summaryStdoutForStep(step.name) };
+    }
+    const summary = JSON.parse(summaryStdoutForStep(step.name));
+    summary.manifestStorageLifecycle.status = 'retained';
+    summary.manifestStorageLifecycle.storageType = 'minio';
+    return { status: 0, stdout: JSON.stringify(summary) };
+  },
+});
+assert.equal(retainedStorageSmoke.ok, true);
+assert.equal(retainedStorageSmoke.steps.find((step) => step.name === 'LiveVideo')?.status, 'passed');
 
 console.log('alert review production smoke tests OK');
 

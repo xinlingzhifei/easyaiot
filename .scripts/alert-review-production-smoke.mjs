@@ -629,7 +629,8 @@ function liveVideoEvidenceError(stepName, summary) {
       || !hasText(summary.manifestSignature?.signatureVersion)) {
     return `production smoke step ${stepName} missing HMAC manifest signature evidence`;
   }
-  if (summary.manifestStorageLifecycle?.status !== 'persisted'
+  const storageLifecycleStatus = String(summary.manifestStorageLifecycle?.status || '').trim().toLowerCase();
+  if (!['persisted', 'retained'].includes(storageLifecycleStatus)
       || !hasText(summary.manifestStorageLifecycle?.storageType)
       || !hasText(summary.manifestStorageLifecycle?.expiresAt)
       || !hasText(summary.manifestStorageLifecycle?.exportPackageObjectKey)) {
@@ -742,7 +743,8 @@ function missingCheckpoints(actual, required) {
 
 function defaultRunCommand(step) {
   console.log(`running ${step.name}: ${formatStepCommand(step)}`);
-  const result = spawnSync(step.command, step.args, {
+  const invocation = prepareStepInvocation(step);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -767,6 +769,22 @@ function defaultRunCommand(step) {
     process.stderr.write(sanitizeChildOutputForDisplay(normalized.stderr));
   }
   return normalized;
+}
+
+export function prepareStepInvocation(step, platform = process.platform, commandShell = process.env.ComSpec) {
+  const command = String(step?.command || '');
+  const args = Array.isArray(step?.args) ? step.args.map(String) : [];
+  if (platform !== 'win32' || !command.toLowerCase().endsWith('.cmd')) {
+    return { command, args };
+  }
+  const tokens = [command, ...args];
+  if (!tokens.every(token => /^[A-Za-z0-9_./:\\=@+-]+$/.test(token))) {
+    throw new Error('production smoke Windows batch invocation contains an unsafe token');
+  }
+  return {
+    command: hasText(commandShell) ? commandShell : 'cmd.exe',
+    args: ['/d', '/s', '/c', tokens.join(' ')],
+  };
 }
 
 export function buildStepEnvironment(step, parentEnv = process.env) {

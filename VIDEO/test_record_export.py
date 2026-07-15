@@ -13,7 +13,7 @@ import threading
 import time
 import types
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from flask import Flask
@@ -710,6 +710,8 @@ class TestRecordExportService(unittest.TestCase):
         audit = get_record_export_audit(started['export_id'])
 
         self.assertEqual('pending', retrying['status'])
+        self.assertIsNone(retrying['last_error'])
+        self.assertIsNone(retrying['next_attempt_at'])
         self.assertEqual('ready', ready['status'])
         self.assertEqual(2, ready['retry_count'])
         self.assertTrue(ready['file_hash'].startswith('sha256:'))
@@ -718,6 +720,90 @@ class TestRecordExportService(unittest.TestCase):
                             and entry['operator_user_id'] == '9004'
                             and entry['reason'] == 'handoff'
                             for entry in audit))
+
+    def test_pending_retry_time_uses_shanghai_clock_in_utc_container(self):
+        import app.services.record_export_service as export_service
+
+        class FixedDatetime(datetime):
+            current = datetime(2026, 7, 15, 11, 10, 0, tzinfo=timezone.utc)
+
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return cls.current.replace(tzinfo=None)
+                return cls.current.astimezone(tz)
+
+        started = export_service.create_record_export({
+            'review_case_id': 3001,
+            'review_item_id': 1001,
+            'device_id': 'device-01',
+            'camera_id': 'device-01',
+            'record_uri': '/video/record/space/7/video/live/device-01/timezone.flv',
+        }, record_resolver=_trusted_record_resolver, async_worker=True,
+           worker_runner=lambda job: _provenance_worker_result(job, b'timezone-retry'))
+        pending = export_service._get_export_job(started['export_id'])
+        pending['next_attempt_at'] = (
+            FixedDatetime.current - timedelta(seconds=1)).isoformat()
+        export_service._persist_job(pending)
+
+        with mock.patch.object(export_service, 'datetime', FixedDatetime):
+            ready = export_service.poll_record_export(started['export_id'])
+
+        self.assertEqual('ready', ready['status'])
+
+    def test_retry_source_specs_restore_server_managed_original_record_uri(self):
+        import app.services.record_export_service as export_service
+
+        original_uri = (
+            '/video/record/space/7/video/tenants/7/camera-01/2026/07/15/input.flv')
+        specs = export_service._record_source_specs({
+            'record_segments': [{
+                'recordUri': '/data/yfeieye-record-exports/job/source-000.flv',
+                'originalRecordUri': original_uri,
+                'spaceId': '7',
+                'objectName': 'tenants/7/camera-01/2026/07/15/input.flv',
+                'segmentStartTime': '2026-07-15T18:43:00',
+                'segmentEndTime': '2026-07-15T18:43:31',
+                'clipStartTime': '2026-07-15T18:43:03',
+                'clipEndTime': '2026-07-15T18:43:31',
+            }],
+        })
+
+        self.assertEqual(original_uri, specs[0]['record_uri'])
+        self.assertEqual('7', specs[0]['space_id'])
+        self.assertEqual(
+            'tenants/7/camera-01/2026/07/15/input.flv', specs[0]['object_name'])
+
+    def test_expiration_scheduler_uses_shanghai_clock_in_utc_container(self):
+        import app.services.record_export_service as export_service
+
+        class FixedDatetime(datetime):
+            current = datetime(2026, 7, 15, 11, 10, 0, tzinfo=timezone.utc)
+
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return cls.current.replace(tzinfo=None)
+                return cls.current.astimezone(tz)
+
+        started = export_service.create_record_export({
+            'review_case_id': 3002,
+            'review_item_id': 1002,
+            'device_id': 'device-01',
+            'camera_id': 'device-01',
+            'record_uri': '/video/record/space/7/video/live/device-01/expiry-timezone.flv',
+            'expires_at': (FixedDatetime.current - timedelta(seconds=1)).isoformat(),
+        }, record_resolver=_trusted_record_resolver, async_worker=True)
+        expiring = export_service._get_export_job(started['export_id'])
+        expiring['expires_at'] = (
+            FixedDatetime.current - timedelta(seconds=1)).isoformat()
+        export_service._persist_job(expiring)
+
+        with mock.patch.object(export_service, 'datetime', FixedDatetime):
+            expired = export_service.cleanup_expired_record_exports()
+
+        self.assertEqual([started['export_id']], expired)
+        self.assertEqual('expired', export_service._get_export_job(started['export_id'])['status'])
 
     def test_async_record_export_persists_manifest_content_and_audit_across_restart(self):
         with tempfile.TemporaryDirectory() as store_dir:
@@ -1490,9 +1576,23 @@ class TestRecordExportService(unittest.TestCase):
                 package['storage']['uri'],
             )
 
-            downloaded = export_service.download_record_export(started['export_id'])
+            metadata_sync_lock_states = []
+            original_sync = export_service._sync_object_storage_artifacts
+
+            def track_metadata_sync(job, *args, **kwargs):
+                if kwargs.get('metadata_only'):
+                    metadata_sync_lock_states.append(os.path.exists(
+                        export_service._audit_lock_path(job['export_id'])))
+                return original_sync(job, *args, **kwargs)
+
+            with mock.patch.object(
+                    export_service, '_sync_object_storage_artifacts',
+                    side_effect=track_metadata_sync):
+                downloaded = export_service.download_record_export(started['export_id'])
             self.assertNotIn('content', downloaded)
             self.assertTrue(downloaded['temporary_path'])
+            self.assertTrue(metadata_sync_lock_states)
+            self.assertTrue(all(metadata_sync_lock_states))
             with open(downloaded['path'], 'rb') as handle:
                 self.assertEqual(b'object-storage-export', handle.read())
             manifest_key = prefix + 'manifest.json'
@@ -1502,6 +1602,96 @@ class TestRecordExportService(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'metadata hash mismatch'):
                 export_service.get_record_export_manifest(started['export_id'])
         finally:
+            export_service.configure_record_export_storage_adapter(None)
+            storage_env.stop()
+
+    def test_initial_object_storage_sync_serializes_concurrent_access_audit(self):
+        import app.services.record_export_service as export_service
+
+        audit_upload_started = threading.Event()
+        release_audit_upload = threading.Event()
+
+        class RacingObjectStorage:
+            def __init__(self):
+                self.objects = {}
+                self.blocked_once = False
+
+            def put_file(self, object_key, path, content_type=None):
+                if object_key.endswith('/audit.json') and not self.blocked_once:
+                    self.blocked_once = True
+                    audit_upload_started.set()
+                    if not release_audit_upload.wait(2):
+                        raise RuntimeError('test timed out releasing audit upload')
+                with open(path, 'rb') as file_obj:
+                    self.objects[object_key] = file_obj.read()
+
+            def stat(self, object_key):
+                return {'size': len(self.objects[object_key])}
+
+            def open(self, object_key):
+                return io.BytesIO(self.objects[object_key])
+
+            def delete(self, object_key):
+                self.objects.pop(object_key, None)
+
+            def uri(self, object_key):
+                return 's3://review-evidence/' + object_key
+
+        adapter = RacingObjectStorage()
+        export_errors = []
+        export_results = []
+        audit_errors = []
+        storage_env = mock.patch.dict(os.environ, {
+            'YFEIEYE_RECORD_EXPORT_STORAGE_TYPE': 'minio',
+            'YFEIEYE_RECORD_EXPORT_STORAGE_URI': 's3://review-evidence/cases',
+        }, clear=False)
+        storage_env.start()
+        export_service.configure_record_export_storage_adapter(lambda _job: adapter)
+        try:
+            started = export_service.create_record_export({
+                'review_case_id': 3011,
+                'review_item_id': 1011,
+                'device_id': 'camera-01',
+                'camera_id': 'camera-01',
+                'tenant_id': '7',
+                'record_uri': '/video/record/space/7/video/live/camera-01/race.mp4',
+            }, record_resolver=_trusted_record_resolver, async_worker=True,
+               worker_runner=lambda job: _provenance_worker_result(
+                   job, b'concurrent-audit-export'))
+
+            def run_export():
+                try:
+                    export_results.append(export_service.poll_record_export(started['export_id']))
+                except Exception as exc:  # pragma: no cover - asserted below
+                    export_errors.append(exc)
+
+            def append_access_audit():
+                try:
+                    export_service.append_record_export_access_audit(
+                        started['export_id'], 'allowed', user_id='operator',
+                        tenant_id='7', camera_id='camera-01', action='export')
+                except Exception as exc:  # pragma: no cover - asserted below
+                    audit_errors.append(exc)
+
+            export_thread = threading.Thread(target=run_export, name='record-export')
+            export_thread.start()
+            self.assertTrue(audit_upload_started.wait(2))
+            audit_thread = threading.Thread(target=append_access_audit, name='access-audit')
+            audit_thread.start()
+            audit_thread.join(timeout=0.2)
+            audit_waited_for_initial_sync = audit_thread.is_alive()
+            release_audit_upload.set()
+            export_thread.join(timeout=3)
+            audit_thread.join(timeout=3)
+
+            self.assertTrue(audit_waited_for_initial_sync)
+            self.assertFalse(export_thread.is_alive())
+            self.assertFalse(audit_thread.is_alive())
+            self.assertEqual([], export_errors)
+            self.assertEqual([], audit_errors)
+            self.assertEqual('ready', export_results[0]['status'])
+        finally:
+            release_audit_upload.set()
             export_service.configure_record_export_storage_adapter(None)
             storage_env.stop()
 
