@@ -17,6 +17,8 @@ const CHILD_SENSITIVE_ENV_KEYS = [
   'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
   'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
   'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+  'YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+  'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
 ];
 
 export function parseArgs(args, env = process.env) {
@@ -36,6 +38,7 @@ export function parseArgs(args, env = process.env) {
     devicePlaybackReviewItemId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_ITEM_ID),
     devicePlaybackReviewCaseId: numberOrNaN(env.YFEIEYE_DEVICE_PLAYBACK_REVIEW_CASE_ID),
     devicePlaybackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI || '',
+    videoPlaybackMaterialUri: env.YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI || '',
     devicePlaybackAllowedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_PLAYBACK_ALLOWED_CAMERA_IDS),
     devicePlaybackDeniedCameraIds: parseCsvList(env.YFEIEYE_DEVICE_PLAYBACK_DENIED_CAMERA_IDS),
     devicePlaybackReason: env.YFEIEYE_DEVICE_PLAYBACK_REASON || '',
@@ -108,7 +111,9 @@ export function parseArgs(args, env = process.env) {
     } else if (arg.startsWith('--device-playback-review-case-id=')) {
       parsed.devicePlaybackReviewCaseId = numberOrNaN(arg.slice('--device-playback-review-case-id='.length));
     } else if (arg.startsWith('--device-playback-material-uri=')) {
-      parsed.devicePlaybackMaterialUri = arg.slice('--device-playback-material-uri='.length);
+      throw new Error('device playback material URI must be provided through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI');
+    } else if (arg.startsWith('--video-playback-material-uri=')) {
+      throw new Error('VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI');
     } else if (arg.startsWith('--device-playback-allowed-camera-ids=')) {
       parsed.devicePlaybackAllowedCameraIds = parseCsvList(arg.slice('--device-playback-allowed-camera-ids='.length));
     } else if (arg.startsWith('--device-playback-denied-camera-ids=')) {
@@ -134,7 +139,11 @@ export function parseArgs(args, env = process.env) {
     } else if (arg.startsWith('--video-manifest-verifier-script=')) {
       parsed.videoManifestVerifierScript = arg.slice('--video-manifest-verifier-script='.length);
     } else if (arg.startsWith('--player-workbench-url=')) {
-      parsed.playerWorkbenchUrl = arg.slice('--player-workbench-url='.length);
+      const playerWorkbenchUrl = arg.slice('--player-workbench-url='.length);
+      if (hasSensitiveUrlQuery(playerWorkbenchUrl)) {
+        throw new Error('signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL');
+      }
+      parsed.playerWorkbenchUrl = playerWorkbenchUrl;
     } else if (arg.startsWith('--player-review-row-text=')) {
       parsed.playerReviewRowText = arg.slice('--player-review-row-text='.length);
     } else if (arg.startsWith('--player-action-testid=')) {
@@ -246,6 +255,9 @@ export function buildSmokeSteps(options, runtime = {}) {
       command: nodePath,
       env: {
         YFEIEYE_DEVICE_AUTH_TOKEN: options.token,
+        ...(hasText(options.devicePlaybackMaterialUri) ? {
+          YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI: options.devicePlaybackMaterialUri,
+        } : {}),
       },
       timeoutMs: options.stepTimeoutMs,
       args: compact([
@@ -262,7 +274,6 @@ export function buildSmokeSteps(options, runtime = {}) {
         cameraListArg('--allowed-camera-ids', options.deviceAllowedCameraIds),
         positiveNumberArg('--playback-review-item-id', options.devicePlaybackReviewItemId),
         positiveNumberArg('--playback-review-case-id', options.devicePlaybackReviewCaseId),
-        hasText(options.devicePlaybackMaterialUri) ? `--playback-material-uri=${options.devicePlaybackMaterialUri}` : '',
         cameraListArg('--playback-allowed-camera-ids', options.devicePlaybackAllowedCameraIds),
         cameraListArg('--playback-denied-camera-ids', options.devicePlaybackDeniedCameraIds),
         hasText(options.devicePlaybackReason) ? `--playback-reason=${options.devicePlaybackReason}` : '',
@@ -274,6 +285,9 @@ export function buildSmokeSteps(options, runtime = {}) {
       command: nodePath,
       env: {
         YFEIEYE_VIDEO_SMOKE_TOKEN: options.token,
+        ...(hasText(options.videoPlaybackMaterialUri) ? {
+          YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI: options.videoPlaybackMaterialUri,
+        } : {}),
       },
       timeoutMs: options.stepTimeoutMs,
       args: compact([
@@ -786,6 +800,20 @@ function stripUrlSecrets(value) {
   return String(value).replace(/[?#].*$/, '');
 }
 
+function hasSensitiveUrlQuery(value) {
+  try {
+    const url = new URL(String(value));
+    for (const key of url.searchParams.keys()) {
+      if (/(?:token|signature|credential|secret|api[-_]?key|authorization|auth)/i.test(key)) {
+        return true;
+      }
+    }
+    return /(?:token|signature|credential|secret|api[-_]?key|authorization|auth)\s*=/i.test(url.hash);
+  } catch {
+    return /[?&#][^\s=]*(?:token|signature|credential|secret|api[-_]?key|authorization|auth)[^\s=]*=/i.test(String(value));
+  }
+}
+
 export function sanitizeChildOutputForDisplay(output) {
   return String(output ?? '')
     .replace(
@@ -794,8 +822,22 @@ export function sanitizeChildOutputForDisplay(output) {
     )
     .replace(/https?:\/\/[^\s"'<>]+/g, value => stripUrlSecrets(value))
     .replace(/\/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, value => stripUrlSecrets(value))
-    .replace(/(^|[\s"'=])([^\s"'<>/?#[\]{}]+[?#][^\s"'<>]*)/gm,
-      (_match, prefix, value) => `${prefix}${stripUrlSecrets(value)}`);
+    .replace(/[^\s"'<>()[\]{},:?#]+[?#][^\s"'<>()[\]{},:]*/g, value => stripUrlSecrets(value));
+}
+
+export function sanitizeOutputValue(value) {
+  if (typeof value === 'string') {
+    return sanitizeChildOutputForDisplay(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeOutputValue);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizeOutputValue(entry)]),
+    );
+  }
+  return value;
 }
 
 function buildEvidenceStep(step, status, startedAt, finishedAt, exitCode, error, result) {
@@ -1224,7 +1266,7 @@ function writeEvidenceReport(options, report, dependencies) {
   if (!hasText(options.evidenceOutputFile)) {
     return;
   }
-  const content = JSON.stringify(report, null, 2);
+  const content = JSON.stringify(sanitizeOutputValue(report), null, 2);
   if (dependencies.writeFile) {
     dependencies.writeFile(options.evidenceOutputFile, content);
     return;
@@ -1400,7 +1442,7 @@ function printHelp() {
   --video-device-id=DEVICE_ID --video-alert-time="2026-07-05 10:00:00" \\
   --video-record-drift-retention-hours=24 \\
   --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs \\
-  --player-workbench-url=http://WEB/... --player-review-row-text=RV-... \\
+  --player-review-row-text=RV-... \\
   --player-expected-seek-time="2026-07-05T10:00:30" \\
   --player-expected-record-path-contains=DEVICE_ID \\
   --player-expected-offset-seconds=30 \\
@@ -1433,6 +1475,9 @@ requires an evidence output path so every release run leaves a sanitized JSON
 report with token-free child step commands. Localhost/mock/file endpoints are
 rejected unless --allow-local-endpoints is supplied for co-located real-service
 smoke. Set YFEIEYE_DEVICE_AUTH_TOKEN in the parent environment for release runs;
+set signed media/workbench values through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI,
+YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI, and YFEIEYE_REVIEW_PLAYER_SMOKE_URL.
+Their argv forms are rejected so child commands and process listings remain secret-free.
 --token remains available only when --allow-local-endpoints is set and every configured
 endpoint is local/mock.`);
 }
@@ -1445,7 +1490,7 @@ async function runCli() {
   }
   const result = await runProductionSmoke(options);
   console.log('alert review production smoke passed');
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(sanitizeOutputValue(result), null, 2));
 }
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {

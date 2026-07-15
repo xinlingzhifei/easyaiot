@@ -603,51 +603,86 @@ async function confirmSemanticTriggerPreview(confirmationStatus: 'confirmed' | '
 }
 
 async function openItem(item: AlertReviewItem) {
-  selectedItem.value = item
-  detailStream.value = []
-  coverage.value = []
-  caseCandidates.value = []
-  rulePreview.value = null
-  ruleReplay.value = null
-  reviewSegment.value = null
+  selectReviewItem(item)
+  const reviewItemId = item.id
   await loadItemCase(item)
-  await loadTimeline()
+  if (!isSelectedReviewItem(reviewItemId))
+    return
+  await loadTimeline(item)
   await loadDetailStream(item)
   await loadReviewSegment(item)
   await loadRecordCoverage(item)
   await loadCaseCandidates(item)
 }
 
-async function loadItemCase(item: AlertReviewItem) {
+function selectReviewItem(item: AlertReviewItem) {
+  const changed = selectedItem.value?.id !== item.id
+  selectedItem.value = item
+  if (!changed)
+    return
   activeCase.value = null
   caseTimeline.value = []
   evidenceAudit.value = []
+  timeline.value = []
+  detailStream.value = []
+  coverage.value = []
+  caseCandidates.value = []
+  rulePreview.value = null
+  ruleReplay.value = null
+  reviewSegment.value = null
+  timelineLoading.value = false
+  detailStreamLoading.value = false
+  coverageLoading.value = false
+  caseLoading.value = false
+  evidenceAuditLoading.value = false
+}
+
+function isSelectedReviewItem(reviewItemId: number) {
+  return selectedItem.value?.id === reviewItemId
+}
+
+async function loadItemCase(item: AlertReviewItem) {
+  const reviewItemId = item.id
+  if (isSelectedReviewItem(reviewItemId)) {
+    activeCase.value = null
+    caseTimeline.value = []
+    evidenceAudit.value = []
+  }
   if (!item.inReviewCase)
     return
   try {
-    const reviewCase = await getAlertReviewItemCase(item.id)
-    if (!reviewCase)
+    const reviewCase = await getAlertReviewItemCase(reviewItemId)
+    if (!reviewCase || !isSelectedReviewItem(reviewItemId))
       return
     applyActiveCase(reviewCase)
     await loadCaseTimeline()
   }
   catch (error: any) {
+    if (!isSelectedReviewItem(reviewItemId))
+      return
     createMessage.error(error?.message || '加载复盘组失败')
   }
 }
 
-async function loadTimeline() {
-  if (!selectedItem.value)
+async function loadTimeline(item: AlertReviewItem | null = selectedItem.value) {
+  const target = item
+  if (!target)
     return
+  const reviewItemId = target.id
   timelineLoading.value = true
   try {
-    timeline.value = await getAlertReviewTimeline(selectedItem.value.id, mediaReadScope(selectedItem.value))
+    const nextTimeline = await getAlertReviewTimeline(target.id, mediaReadScope(target))
+    if (isSelectedReviewItem(reviewItemId))
+      timeline.value = nextTimeline
   }
   catch (error: any) {
+    if (!isSelectedReviewItem(reviewItemId))
+      return
     createMessage.error(error?.message || '加载证据时间轴失败')
   }
   finally {
-    timelineLoading.value = false
+    if (isSelectedReviewItem(reviewItemId))
+      timelineLoading.value = false
   }
 }
 
@@ -655,15 +690,21 @@ async function loadDetailStream(item?: AlertReviewItem | null) {
   const target = item || selectedItem.value
   if (!target)
     return
+  const reviewItemId = target.id
   detailStreamLoading.value = true
   try {
-    detailStream.value = await getAlertReviewDetailStream(target.id, mediaReadScope(target))
+    const nextDetailStream = await getAlertReviewDetailStream(target.id, mediaReadScope(target))
+    if (isSelectedReviewItem(reviewItemId))
+      detailStream.value = nextDetailStream
   }
   catch (error: any) {
+    if (!isSelectedReviewItem(reviewItemId))
+      return
     createMessage.error(error?.message || 'detail stream load failed')
   }
   finally {
-    detailStreamLoading.value = false
+    if (isSelectedReviewItem(reviewItemId))
+      detailStreamLoading.value = false
   }
 }
 
@@ -684,19 +725,34 @@ async function loadReviewSegment(item?: AlertReviewItem | null) {
 }
 
 async function loadRecordCoverage(item?: AlertReviewItem | null) {
-  if (!item)
+  const target = item || selectedItem.value
+  if (!target)
     return
-  selectedItem.value = item
+  const reviewItemId = target.id
   coverageLoading.value = true
   try {
-    coverage.value = await getAlertReviewRecordCoverage(item.id, mediaReadScope(item))
+    const nextCoverage = await getAlertReviewRecordCoverage(target.id, mediaReadScope(target))
+    if (isSelectedReviewItem(reviewItemId))
+      coverage.value = nextCoverage
   }
   catch (error: any) {
+    if (!isSelectedReviewItem(reviewItemId))
+      return
     createMessage.error(error?.message || '加载录像覆盖度失败')
   }
   finally {
-    coverageLoading.value = false
+    if (isSelectedReviewItem(reviewItemId))
+      coverageLoading.value = false
   }
+}
+
+async function loadRecordCoverageForItem(item: AlertReviewItem) {
+  selectReviewItem(item)
+  const reviewItemId = item.id
+  await loadItemCase(item)
+  if (!isSelectedReviewItem(reviewItemId))
+    return
+  await loadRecordCoverage(item)
 }
 
 function mediaReadScope(item: AlertReviewItem) {
@@ -1024,31 +1080,43 @@ async function splitSelectedItemFromCase() {
 async function loadCaseTimeline() {
   if (!activeCase.value)
     return
+  const reviewCaseId = activeCase.value.id
   caseLoading.value = true
   try {
-    caseTimeline.value = await getAlertReviewCaseTimeline(activeCase.value.id)
-    await loadEvidenceAudit()
+    const nextCaseTimeline = await getAlertReviewCaseTimeline(reviewCaseId)
+    if (activeCase.value?.id !== reviewCaseId)
+      return
+    caseTimeline.value = nextCaseTimeline
+    await loadEvidenceAudit(reviewCaseId)
   }
   catch (error: any) {
+    if (activeCase.value?.id !== reviewCaseId)
+      return
     createMessage.error(error?.message || '加载复盘时间线失败')
   }
   finally {
-    caseLoading.value = false
+    if (activeCase.value?.id === reviewCaseId)
+      caseLoading.value = false
   }
 }
 
-async function loadEvidenceAudit() {
-  if (!activeCase.value)
+async function loadEvidenceAudit(reviewCaseId = activeCase.value?.id) {
+  if (!reviewCaseId)
     return
   evidenceAuditLoading.value = true
   try {
-    evidenceAudit.value = await getAlertReviewEvidenceAudit(activeCase.value.id)
+    const nextEvidenceAudit = await getAlertReviewEvidenceAudit(reviewCaseId)
+    if (activeCase.value?.id === reviewCaseId)
+      evidenceAudit.value = nextEvidenceAudit
   }
   catch (error: any) {
+    if (activeCase.value?.id !== reviewCaseId)
+      return
     createMessage.error(error?.message || 'evidence audit load failed')
   }
   finally {
-    evidenceAuditLoading.value = false
+    if (activeCase.value?.id === reviewCaseId)
+      evidenceAuditLoading.value = false
   }
 }
 
@@ -2200,7 +2268,12 @@ defineExpose({
                   <Button size="small" type="link" data-testid="alert-review-list-playback" @click="openListPlayback(item)">
                     录像
                   </Button>
-                  <Button size="small" type="link" @click="loadRecordCoverage(item)">
+                  <Button
+                    size="small"
+                    type="link"
+                    data-testid="alert-review-list-coverage"
+                    @click="loadRecordCoverageForItem(item)"
+                  >
                     覆盖度
                   </Button>
                   <Button size="small" type="link" @click="markReviewed(item)">
@@ -2327,7 +2400,7 @@ defineExpose({
             >
               补证
             </Button>
-            <Button size="small" pre-icon="ant-design:reload-outlined" :loading="timelineLoading" @click="loadTimeline">
+            <Button size="small" pre-icon="ant-design:reload-outlined" :loading="timelineLoading" @click="loadTimeline()">
               更新证据
             </Button>
             <Button size="small" :loading="coverageLoading" @click="loadRecordCoverage(selectedItem)">
@@ -2636,7 +2709,7 @@ defineExpose({
           <div v-if="evidenceAudit.length" class="export-panel" data-testid="alert-review-evidence-audit">
             <div class="panel-heading">
               <span>Evidence audit</span>
-              <Button size="small" type="link" :loading="evidenceAuditLoading" @click="loadEvidenceAudit">
+              <Button size="small" type="link" :loading="evidenceAuditLoading" @click="() => loadEvidenceAudit()">
                 Refresh
               </Button>
             </div>

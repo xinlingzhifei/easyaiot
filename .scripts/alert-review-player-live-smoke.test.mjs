@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createDecipheriv } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as playerLiveSmokeModule from './alert-review-player-live-smoke.mjs';
 
 import {
@@ -19,9 +22,10 @@ const parsed = parseArgs([
   '--expected-record-path-contains=east-gate-080000.mp4',
   '--expected-offset-seconds=2',
   '--wait-text=线索复核',
-  '--local-storage=token=abc',
-  '--cookie=session=xyz',
-], {});
+], {
+  YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'token=abc',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'session=xyz',
+});
 
 assert.equal(parsed.workbenchUrl, 'https://example.test/yfeieye/alert?tab=review');
 assert.equal(parsed.reviewRowText, 'RV-20260702-001');
@@ -64,14 +68,27 @@ const nativeParsed = parseArgs([
 assert.equal(nativeParsed.assertNativeCurrentTime, true);
 
 const envParsed = parseArgs([], {
-  YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://env.example/review',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://env.example/review?token=env-signed-secret&signature=env-signature',
   YFEIEYE_REVIEW_PLAYER_SMOKE_ROW_TEXT: 'RV-env',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_SEEK_TIME: '2026-07-02T08:00:02',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_RECORD_PATH_CONTAINS: 'record.mp4',
   YFEIEYE_REVIEW_PLAYER_SMOKE_EXPECTED_OFFSET_SECONDS: '2',
 });
-assert.equal(envParsed.workbenchUrl, 'https://env.example/review');
+assert.equal(envParsed.workbenchUrl, 'https://env.example/review?token=env-signed-secret&signature=env-signature');
 assert.equal(envParsed.expectedOffsetSeconds, 2);
+
+assert.throws(
+  () => parseArgs(['--local-storage=token=argv-secret'], {}),
+  /player local storage must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE/,
+);
+assert.throws(
+  () => parseArgs(['--cookie=session=argv-secret'], {}),
+  /player cookies must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES/,
+);
+assert.throws(
+  () => parseArgs(['--workbench-url=https://example.test/review?token=argv-secret&signature=argv-signature'], {}),
+  /signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL/,
+);
 
 function decryptAuthCache(ciphertext) {
   const decipher = createDecipheriv(
@@ -213,6 +230,16 @@ const rawSignedResult = {
   recordPath: 'record.mp4?token=record-secret#record-fragment',
   currentUrl: 'https://media.example.test/video/east-gate-080000.mp4?token=current-secret&signature=abc#current-fragment',
   nativeCurrentSrc: 'https://media.example.test/video/east-gate-080000.mp4?token=native-secret#native-fragment',
+  nativeError: {
+    code: 4,
+    message: 'record.mp4?token=native-error-secret#native-error-fragment',
+  },
+  ruleEvidence: [{
+    source: 'record.mp4?token=rule-secret#rule-fragment',
+    exportResult: {
+      message: 'exported record.mp4?token=export-message-secret#export-message-fragment',
+    },
+  }],
   playbackOffsetSeconds: 2,
 };
 assert.deepEqual(sanitizeSmokeResultForOutput(rawSignedResult), {
@@ -220,6 +247,16 @@ assert.deepEqual(sanitizeSmokeResultForOutput(rawSignedResult), {
   recordPath: 'record.mp4',
   currentUrl: 'https://media.example.test/video/east-gate-080000.mp4',
   nativeCurrentSrc: 'https://media.example.test/video/east-gate-080000.mp4',
+  nativeError: {
+    code: 4,
+    message: 'record.mp4',
+  },
+  ruleEvidence: [{
+    source: 'record.mp4',
+    exportResult: {
+      message: 'exported record.mp4',
+    },
+  }],
 });
 assert.match(rawSignedResult.recordPath, /record-secret/);
 assert.match(rawSignedResult.currentUrl, /current-secret/);
@@ -246,11 +283,79 @@ assert.match(signedPathError.message, /https:\/\/media\.example\.test\/video\/wr
 
 const signedCliFailure = spawnSync(process.execPath, [
   '.scripts/alert-review-player-live-smoke.mjs',
-  '--bogus=record.mp4?token=player-cli-failure-secret#player-cli-failure-fragment',
+  '--bogus={"url":"record.mp4?token=player-cli-failure-secret#player-cli-failure-fragment"}',
 ], { encoding: 'utf8' });
 assert.equal(signedCliFailure.status, 1);
 assert.equal(signedCliFailure.stderr.includes('player-cli-failure-secret'), false);
-assert.match(signedCliFailure.stderr, /--bogus=record\.mp4/);
+assert.match(signedCliFailure.stderr, /--bogus=\{"url":"record\.mp4"\}/);
+
+const argvCredentialFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-player-live-smoke.mjs',
+  '--local-storage=session=player-argv-storage-secret',
+], { encoding: 'utf8' });
+assert.equal(argvCredentialFailure.status, 1);
+assert.equal(argvCredentialFailure.stderr.includes('player-argv-storage-secret'), false);
+assert.match(argvCredentialFailure.stderr, /YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE/);
+
+const signedWorkbenchArgvFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-player-live-smoke.mjs',
+  '--workbench-url=https://example.test/review?token=player-workbench-argv-secret&signature=signature',
+], { encoding: 'utf8' });
+assert.equal(signedWorkbenchArgvFailure.status, 1);
+assert.equal(signedWorkbenchArgvFailure.stderr.includes('player-workbench-argv-secret'), false);
+assert.match(signedWorkbenchArgvFailure.stderr, /YFEIEYE_REVIEW_PLAYER_SMOKE_URL/);
+
+const playerHelp = spawnSync(process.execPath, [
+  '.scripts/alert-review-player-live-smoke.mjs',
+  '--help',
+], { encoding: 'utf8' });
+assert.equal(playerHelp.status, 0);
+assert.match(playerHelp.stdout, /YFEIEYE_REVIEW_PLAYER_SMOKE_URL/);
+assert.match(playerHelp.stdout, /YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE/);
+assert.match(playerHelp.stdout, /YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES/);
+assert.doesNotMatch(playerHelp.stdout, /Use --cookie and --local-storage/);
+
+const browserParentEnv = {
+  PATH: process.env.PATH || '',
+  SAFE_PROBE_VALUE: 'safe-value',
+  YFEIEYE_DEVICE_AUTH_TOKEN: 'device-secret',
+  YFEIEYE_VIDEO_SMOKE_TOKEN: 'video-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: 'player-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'session=cookie-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'session=storage-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://example.test/review?token=url-secret',
+  THIRD_PARTY_API_KEY: 'api-key-secret',
+};
+const browserChildEnv = playerLiveSmokeModule.buildBrowserEnvironment(browserParentEnv);
+assert.equal(browserChildEnv.SAFE_PROBE_VALUE, 'safe-value');
+for (const key of Object.keys(browserParentEnv).filter(key => key !== 'PATH' && key !== 'SAFE_PROBE_VALUE')) {
+  assert.equal(Object.hasOwn(browserChildEnv, key), false, `browser child env leaked ${key}`);
+}
+
+const browserProbeDir = mkdtempSync(join(tmpdir(), 'yfeieye-player-env-probe-'));
+try {
+  const browserProbeScript = join(browserProbeDir, 'probe.mjs');
+  const browserProbeOutput = join(browserProbeDir, 'env.json');
+  writeFileSync(
+    browserProbeScript,
+    "import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[2], JSON.stringify(process.env));",
+    'utf8',
+  );
+  const browserProbe = spawnSync(process.execPath, [browserProbeScript, browserProbeOutput], {
+    encoding: 'utf8',
+    env: browserChildEnv,
+  });
+  assert.equal(browserProbe.status, 0, browserProbe.stderr);
+  const spawnedBrowserEnv = JSON.parse(readFileSync(browserProbeOutput, 'utf8'));
+  assert.equal(spawnedBrowserEnv.SAFE_PROBE_VALUE, 'safe-value');
+  assert.equal(spawnedBrowserEnv.YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN, undefined);
+  assert.equal(spawnedBrowserEnv.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES, undefined);
+  assert.equal(spawnedBrowserEnv.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE, undefined);
+  assert.equal(spawnedBrowserEnv.YFEIEYE_REVIEW_PLAYER_SMOKE_URL, undefined);
+  assert.equal(spawnedBrowserEnv.THIRD_PARTY_API_KEY, undefined);
+} finally {
+  rmSync(browserProbeDir, { recursive: true, force: true });
+}
 
 assert.equal(typeof playerLiveSmokeModule.navigate, 'function');
 assert.equal(typeof playerLiveSmokeModule.resolveNavigationTimeoutMs, 'function');

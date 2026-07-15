@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   buildAvailabilityUrl,
   buildExportBody,
+  buildManifestVerifierEnvironment,
   parseArgs,
   requiredOptionErrors,
   resolveDownloadUrl,
@@ -32,6 +33,10 @@ const STANDARD_STORAGE_DRIFT_REASON_KEYS = [
 assert.throws(
   () => parseArgs(['--token=standalone-video-secret'], {}),
   /VIDEO smoke token must be provided through YFEIEYE_VIDEO_SMOKE_TOKEN/,
+);
+assert.throws(
+  () => parseArgs(['--playback-material-uri=record.mp4?token=standalone-uri-secret'], {}),
+  /VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI/,
 );
 
 function urlPathEndsWith(url, suffix) {
@@ -111,6 +116,7 @@ const fromEnv = parseArgs([], {
   YFEIEYE_VIDEO_SMOKE_ALERT_TIME: '2026-07-05 11:00:00',
   YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS: '72',
   YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT: '.scripts/record-export-manifest-verifier.mjs',
+  YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI: 'env-record.mp4?token=env-playback-secret#env-playback-fragment',
 });
 assert.equal(fromEnv.deviceId, 'env-device');
 assert.equal(fromEnv.token, 'env-token');
@@ -118,6 +124,7 @@ assert.equal(fromEnv.cameraId, 'env-device');
 assert.equal(fromEnv.timeRangeSeconds, 300);
 assert.equal(fromEnv.recordDriftRetentionHours, 72);
 assert.equal(fromEnv.manifestVerifierScript, '.scripts/record-export-manifest-verifier.mjs');
+assert.equal(fromEnv.playbackMaterialUri, 'env-record.mp4?token=env-playback-secret#env-playback-fragment');
 assert.equal(fromEnv.allowLocalEndpoints, false);
 
 assert.deepEqual(requiredOptionErrors(parseArgs([], {})), [
@@ -383,30 +390,83 @@ for (const pathname of [
   const scopedCall = calls.find(({ url }) => new URL(url).pathname === pathname);
   assert.equal(new URL(scopedCall.url).searchParams.get('camera_id'), 'camera-01');
 }
+const playbackOverrideUri = '/video/record/device-01/override.mp4?token=playback-override-secret#playback-override-fragment';
+let exportedPlaybackMaterialUri;
+const playbackOverrideFetch = async (url, init = {}) => {
+  if (init.method === 'POST') {
+    const body = JSON.parse(init.body);
+    exportedPlaybackMaterialUri = body.record_uri;
+    const originalRecordUri = '/video/record/space/7/video/live/device-01/clip.mp4';
+    return fakeFetch(url, {
+      ...init,
+      body: JSON.stringify({
+        ...body,
+        record_uri: originalRecordUri,
+        record_segments: Array.isArray(body.record_segments)
+          ? body.record_segments.map(segment => ({ ...segment, record_uri: originalRecordUri }))
+          : body.record_segments,
+      }),
+    });
+  }
+  return fakeFetch(url, init);
+};
+await runSmoke({
+  ...parsed,
+  playbackMaterialUri: playbackOverrideUri,
+}, { fetchImpl: playbackOverrideFetch });
+assert.equal(exportedPlaybackMaterialUri, playbackOverrideUri);
 const cliSummary = summarizeCliResult(smoke);
 const signedExportResult = {
   ...smoke.exportResult,
   downloadUrl: 'record.mp4?token=download-secret#download-fragment',
   manifestUrl: '/manifests/review-export-1.json?token=manifest-secret#manifest-fragment',
+  message: 'exported record.mp4?token=message-secret#message-fragment',
+  ruleEvidence: [{
+    source: 'record.mp4?token=rule-secret#rule-fragment',
+  }],
 };
 const signedExportCliSummary = summarizeCliResult({
   ...smoke,
   exportResult: signedExportResult,
+  manifestVerification: {
+    valid: true,
+    violations: ['checked record.mp4?token=violation-secret#violation-fragment'],
+  },
 });
 assert.deepEqual(signedExportCliSummary.exportResult, {
   ...signedExportResult,
   downloadUrl: 'record.mp4',
   manifestUrl: '/manifests/review-export-1.json',
+  message: 'exported record.mp4',
+  ruleEvidence: [{ source: 'record.mp4' }],
+});
+assert.deepEqual(signedExportCliSummary.manifestVerification, {
+  valid: true,
+  violations: ['checked record.mp4'],
 });
 assert.match(signedExportResult.downloadUrl, /download-secret/);
 assert.match(signedExportResult.manifestUrl, /manifest-secret/);
 const signedCliFailure = spawnSync(process.execPath, [
   '.scripts/alert-review-video-live-smoke.mjs',
-  '--bogus=record.mp4?token=video-failure-secret#video-failure-fragment',
+  '--bogus={"url":"record.mp4?token=video-failure-secret#video-failure-fragment"}',
 ], { encoding: 'utf8' });
 assert.equal(signedCliFailure.status, 1);
 assert.equal(signedCliFailure.stderr.includes('video-failure-secret'), false);
-assert.match(signedCliFailure.stderr, /--bogus=record\.mp4/);
+assert.match(signedCliFailure.stderr, /--bogus=\{"url":"record\.mp4"\}/);
+const videoHelp = spawnSync(process.execPath, [
+  '.scripts/alert-review-video-live-smoke.mjs',
+  '--help',
+], { encoding: 'utf8' });
+assert.equal(videoHelp.status, 0);
+assert.match(videoHelp.stdout, /YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI/);
+assert.doesNotMatch(videoHelp.stdout, /--playback-material-uri=/);
+const playbackMaterialArgvFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-video-live-smoke.mjs',
+  '--playback-material-uri=record.mp4?token=video-playback-argv-secret#fragment',
+], { encoding: 'utf8' });
+assert.equal(playbackMaterialArgvFailure.status, 1);
+assert.equal(playbackMaterialArgvFailure.stderr.includes('video-playback-argv-secret'), false);
+assert.match(playbackMaterialArgvFailure.stderr, /YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI/);
 assert.deepEqual(cliSummary.coverageSummary, {
   status: 'available',
   retainMode: 'motion',
@@ -851,6 +911,24 @@ const lexicalManifestVerifierPath = join(
 );
 writeFileSync(lexicalManifestVerifierPath, `
 import { readFileSync } from 'node:fs';
+for (const key of [
+  'YFEIEYE_DEVICE_AUTH_TOKEN',
+  'YFEIEYE_VIDEO_SMOKE_TOKEN',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+  'THIRD_PARTY_API_KEY',
+]) {
+  if (process.env[key]) {
+    console.error('manifest verifier inherited unrelated sensitive environment');
+    process.exit(7);
+  }
+}
+if (process.env.YFEIEYE_RECORD_EXPORT_HMAC_SECRET !== 'manifest-allowed-secret') {
+  console.error('manifest verifier did not receive its required HMAC environment');
+  process.exit(6);
+}
 const manifestIndex = process.argv.indexOf('--manifest');
 const rawManifest = readFileSync(process.argv[manifestIndex + 1], 'utf8');
 if (JSON.parse(rawManifest).manifestVersion !== 2) {
@@ -881,14 +959,111 @@ const lexicalManifestFetch = async (url, init = {}) => {
   }
   return fakeFetch(url, init);
 };
+const manifestVerifierParentEnv = {
+  SAFE_PROBE_VALUE: 'safe-value',
+  YFEIEYE_DEVICE_AUTH_TOKEN: 'device-secret',
+  YFEIEYE_VIDEO_SMOKE_TOKEN: 'video-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: 'player-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'session=cookie-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'session=storage-secret',
+  YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://example.test/review?token=url-secret',
+  THIRD_PARTY_API_KEY: 'api-key-secret',
+  YFEIEYE_RECORD_EXPORT_HMAC_SECRET: 'manifest-allowed-secret',
+};
+const manifestVerifierChildEnv = buildManifestVerifierEnvironment(manifestVerifierParentEnv);
+assert.equal(manifestVerifierChildEnv.SAFE_PROBE_VALUE, 'safe-value');
+assert.equal(manifestVerifierChildEnv.YFEIEYE_RECORD_EXPORT_HMAC_SECRET, 'manifest-allowed-secret');
+for (const key of Object.keys(manifestVerifierParentEnv).filter(key => ![
+  'SAFE_PROBE_VALUE',
+  'YFEIEYE_RECORD_EXPORT_HMAC_SECRET',
+].includes(key))) {
+  assert.equal(Object.hasOwn(manifestVerifierChildEnv, key), false, `manifest verifier child env leaked ${key}`);
+}
+const manifestVerifierEnvKeys = Object.keys(manifestVerifierParentEnv).filter(key => key !== 'SAFE_PROBE_VALUE');
+const previousManifestVerifierEnv = new Map(
+  manifestVerifierEnvKeys.map(key => [key, Object.hasOwn(process.env, key) ? process.env[key] : undefined]),
+);
 try {
+  Object.assign(process.env, manifestVerifierParentEnv);
   const lexicalManifestSmoke = await runSmoke({
     ...parsedWithVerifier,
     manifestVerifierScript: lexicalManifestVerifierPath,
   }, { fetchImpl: lexicalManifestFetch });
   assert.equal(lexicalManifestSmoke.manifestVerification.valid, true);
 } finally {
+  for (const [key, value] of previousManifestVerifierEnv) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
   rmSync(lexicalManifestVerifierTempDir, { recursive: true, force: true });
+}
+
+const wrapperProbeDir = mkdtempSync(join(tmpdir(), 'yfeieye-manifest-wrapper-env-probe-'));
+try {
+  const wrapperProbeOutput = join(wrapperProbeDir, 'env.json');
+  const wrapperProbeScript = join(wrapperProbeDir, 'python-probe.cjs');
+  writeFileSync(wrapperProbeScript, `
+const { writeFileSync } = require('node:fs');
+const forbiddenKeys = [
+  'YFEIEYE_DEVICE_AUTH_TOKEN',
+  'YFEIEYE_VIDEO_SMOKE_TOKEN',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+  'THIRD_PARTY_API_KEY',
+];
+writeFileSync(process.env.ENV_PROBE_OUTPUT, JSON.stringify({
+  forbidden: Object.fromEntries(forbiddenKeys.map(key => [key, process.env[key] ?? null])),
+  hmacSecret: process.env.YFEIEYE_RECORD_EXPORT_HMAC_SECRET ?? null,
+  safeValue: process.env.SAFE_PROBE_VALUE ?? null,
+}));
+process.exit(0);
+`, 'utf8');
+  const wrapperLauncher = join(wrapperProbeDir, 'wrapper-launcher.mjs');
+  writeFileSync(wrapperLauncher, `
+process.env.PYTHON = process.execPath;
+process.env.NODE_OPTIONS = '--require=' + ${JSON.stringify(JSON.stringify(wrapperProbeScript))};
+await import(${JSON.stringify(new URL('./record-export-manifest-verifier.mjs', import.meta.url).href)});
+`, 'utf8');
+  const wrapperProbe = spawnSync(process.execPath, [
+    wrapperLauncher,
+    '--manifest',
+    join(wrapperProbeDir, 'unused-manifest.json'),
+  ], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ENV_PROBE_OUTPUT: wrapperProbeOutput,
+      SAFE_PROBE_VALUE: 'safe-value',
+      YFEIEYE_DEVICE_AUTH_TOKEN: 'device-secret',
+      YFEIEYE_VIDEO_SMOKE_TOKEN: 'video-secret',
+      YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: 'player-secret',
+      YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: 'session=cookie-secret',
+      YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: 'session=storage-secret',
+      YFEIEYE_REVIEW_PLAYER_SMOKE_URL: 'https://example.test/review?token=url-secret',
+      THIRD_PARTY_API_KEY: 'api-key-secret',
+      YFEIEYE_RECORD_EXPORT_HMAC_SECRET: 'manifest-allowed-secret',
+    },
+  });
+  assert.equal(wrapperProbe.status, 0, wrapperProbe.stderr);
+  const wrapperPythonEnv = JSON.parse(readFileSync(wrapperProbeOutput, 'utf8'));
+  assert.deepEqual(wrapperPythonEnv.forbidden, {
+    YFEIEYE_DEVICE_AUTH_TOKEN: null,
+    YFEIEYE_VIDEO_SMOKE_TOKEN: null,
+    YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN: null,
+    YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: null,
+    YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: null,
+    YFEIEYE_REVIEW_PLAYER_SMOKE_URL: null,
+    THIRD_PARTY_API_KEY: null,
+  });
+  assert.equal(wrapperPythonEnv.hmacSecret, 'manifest-allowed-secret');
+  assert.equal(wrapperPythonEnv.safeValue, 'safe-value');
+} finally {
+  rmSync(wrapperProbeDir, { recursive: true, force: true });
 }
 
 const duplicateTopLevelDataManifestFetch = async (url, init = {}) => {

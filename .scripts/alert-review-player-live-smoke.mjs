@@ -13,6 +13,13 @@ const DEFAULT_AUTH_STORAGE_PREFIX = 'IOT_ADMIN__PRODUCTION__2.1.0-SNAPSHOT__';
 const AUTH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const AUTH_CACHE_KEY = '_11111000001111@';
 const AUTH_CACHE_IV = '@11111000001111_';
+const BROWSER_SENSITIVE_ENV_KEYS = new Set([
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+  'YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+  'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
+]);
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -39,7 +46,11 @@ export function parseArgs(args, env = process.env) {
     if (arg === '--help' || arg === '-h') {
       parsed.help = true;
     } else if (arg.startsWith('--workbench-url=')) {
-      parsed.workbenchUrl = arg.slice('--workbench-url='.length);
+      const workbenchUrl = arg.slice('--workbench-url='.length);
+      if (hasSensitiveUrlQuery(workbenchUrl)) {
+        throw new Error('signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL');
+      }
+      parsed.workbenchUrl = workbenchUrl;
     } else if (arg.startsWith('--review-row-text=')) {
       parsed.reviewRowText = arg.slice('--review-row-text='.length);
     } else if (arg.startsWith('--action-testid=')) {
@@ -55,9 +66,9 @@ export function parseArgs(args, env = process.env) {
     } else if (arg.startsWith('--timeout-ms=')) {
       parsed.timeoutMs = Number(arg.slice('--timeout-ms='.length));
     } else if (arg.startsWith('--local-storage=')) {
-      parsed.localStoragePairs.push(parsePair(arg.slice('--local-storage='.length), '='));
+      throw new Error('player local storage must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE');
     } else if (arg.startsWith('--cookie=')) {
-      parsed.cookiePairs.push(parseCookiePair(arg.slice('--cookie='.length)));
+      throw new Error('player cookies must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES');
     } else if (arg.startsWith('--chrome-path=')) {
       parsed.chromePath = arg.slice('--chrome-path='.length);
     } else if (arg === '--assert-native-current-time') {
@@ -198,16 +209,7 @@ export function assertSmokeResult(result, options) {
 }
 
 export function sanitizeSmokeResultForOutput(result) {
-  if (!result || typeof result !== 'object') {
-    return result;
-  }
-  const sanitized = { ...result };
-  for (const key of ['recordPath', 'currentUrl', 'nativeCurrentSrc']) {
-    if (typeof sanitized[key] === 'string') {
-      sanitized[key] = stripUrlSecrets(sanitized[key]);
-    }
-  }
-  return sanitized;
+  return sanitizeOutputValue(result);
 }
 
 export async function runSmoke(options, dependencies = {}) {
@@ -235,7 +237,10 @@ export async function runSmoke(options, dependencies = {}) {
       `--remote-debugging-port=${debugPort}`,
       `--user-data-dir=${userDataDir}`,
       'about:blank',
-    ], { windowsHide: true });
+    ], {
+      windowsHide: true,
+      env: buildBrowserEnvironment(),
+    });
 
     const target = await createBrowserTarget(debugPort, 'about:blank');
     cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
@@ -537,11 +542,53 @@ function stripUrlSecrets(value) {
   return String(value).replace(/[?#].*$/, '');
 }
 
+function hasSensitiveUrlQuery(value) {
+  try {
+    const url = new URL(String(value));
+    for (const key of url.searchParams.keys()) {
+      if (/(?:token|signature|credential|secret|api[-_]?key|authorization|auth)/i.test(key)) {
+        return true;
+      }
+    }
+    return /(?:token|signature|credential|secret|api[-_]?key|authorization|auth)\s*=/i.test(url.hash);
+  } catch {
+    return /[?&#][^\s=]*(?:token|signature|credential|secret|api[-_]?key|authorization|auth)[^\s=]*=/i.test(String(value));
+  }
+}
+
+export function buildBrowserEnvironment(parentEnv = process.env) {
+  const env = {};
+  for (const [key, value] of Object.entries(parentEnv || {})) {
+    const normalizedKey = key.toUpperCase();
+    if (BROWSER_SENSITIVE_ENV_KEYS.has(normalizedKey)
+        || /(?:^|_)(?:ACCESS_TOKEN|AUTH_TOKEN|TOKEN|COOKIE|COOKIES|LOCAL_STORAGE|PASSWORD|PASSWD|SECRET|SIGNATURE|API_KEY|PRIVATE_KEY)(?:_|$)/i.test(normalizedKey)) {
+      continue;
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
 function sanitizeOutputText(value) {
   return String(value ?? '')
     .replace(/https?:\/\/[^\s"'<>]+/g, url => stripUrlSecrets(url))
     .replace(/\/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri))
-    .replace(/(?:^|\s)[^/\s"'<>?#[\]{}][^\s"'<>?#[\]{}]*[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri));
+    .replace(/[^\s"'<>()[\]{},:?#]+[?#][^\s"'<>()[\]{},:]*/g, uri => stripUrlSecrets(uri));
+}
+
+function sanitizeOutputValue(value) {
+  if (typeof value === 'string') {
+    return sanitizeOutputText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeOutputValue);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizeOutputValue(entry)]),
+    );
+  }
+  return value;
 }
 
 function parseBoolean(value, fallback) {
@@ -616,10 +663,13 @@ function printHelp() {
 
 Runs a real FR-13/FR-36 browser smoke against a deployed workbench page.
 No mock API/server is started. Localhost/mock/file endpoints are rejected unless
---allow-local-endpoints is supplied for co-located real-service smoke. Use
---cookie and --local-storage for custom auth state. For production authentication,
-set YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN and YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID;
-the token is injected through the frontend's encrypted persistent cache.`);
+--allow-local-endpoints is supplied for co-located real-service smoke. Signed
+workbench URLs must use YFEIEYE_REVIEW_PLAYER_SMOKE_URL. Custom auth state must
+use YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE and YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES;
+--local-storage and --cookie are rejected to keep credentials out of argv. For
+production authentication, set YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN and
+YFEIEYE_REVIEW_PLAYER_SMOKE_TENANT_ID; the token is injected through the
+frontend's encrypted persistent cache.`);
 }
 
 async function runCli() {

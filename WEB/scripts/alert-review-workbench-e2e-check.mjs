@@ -139,6 +139,7 @@ const requiredTestIds = [
   'alert-review-unified-action',
   'alert-review-detail-seek',
   'alert-review-list-playback',
+  'alert-review-list-coverage',
   'alert-review-create-case',
   'alert-review-candidate-add',
   'alert-review-case-owner',

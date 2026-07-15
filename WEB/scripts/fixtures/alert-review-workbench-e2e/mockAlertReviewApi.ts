@@ -252,6 +252,23 @@ const coverage = [
   },
 ]
 
+const staleCaseTimeline = timeline.map(entry => ({
+  ...entry,
+  reviewItemId: existingCaseReviewItem.id,
+  materialUri: '/video/record/stale-case-103-timeline.mp4',
+}))
+
+const staleCaseDetailStream = detailStream.map(entry => ({
+  ...entry,
+  reviewItemId: existingCaseReviewItem.id,
+  materialUri: '/video/record/stale-case-103-detail.mp4',
+}))
+
+const staleCaseCoverage = coverage.map(entry => ({
+  ...entry,
+  recordUri: entry.recordUri ? '/video/record/stale-case-103-coverage.mp4' : undefined,
+}))
+
 const reviewCase = {
   id: 501,
   caseNo: 'RC-20260702-001',
@@ -326,6 +343,10 @@ const evidenceAudit = [
 function record(name: string, payload?: unknown) {
   window.__alertReviewE2EApiCalls ||= []
   window.__alertReviewE2EApiCalls.push({ name, payload })
+}
+
+function wait(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 export async function listAlertReviewItems(payload?: unknown) {
@@ -459,12 +480,12 @@ export async function evaluateAlertReviewSemanticIndex(payload?: unknown) {
 
 export async function getAlertReviewTimeline(reviewItemId: number, params?: unknown) {
   record('getAlertReviewTimeline', { reviewItemId, params })
-  return timeline
+  return reviewItemId === existingCaseReviewItem.id ? staleCaseTimeline : timeline
 }
 
 export async function getAlertReviewDetailStream(reviewItemId: number, params?: unknown) {
   record('getAlertReviewDetailStream', { reviewItemId, params })
-  return detailStream
+  return reviewItemId === existingCaseReviewItem.id ? staleCaseDetailStream : detailStream
 }
 
 export async function getAlertReviewSegment(reviewItemId: number) {
@@ -474,7 +495,7 @@ export async function getAlertReviewSegment(reviewItemId: number) {
 
 export async function getAlertReviewRecordCoverage(reviewItemId: number, params?: unknown) {
   record('getAlertReviewRecordCoverage', { reviewItemId, params })
-  return coverage
+  return reviewItemId === existingCaseReviewItem.id ? staleCaseCoverage : coverage
 }
 
 export async function suggestAlertReviewCaseCandidates(reviewItemId: number) {
@@ -489,6 +510,8 @@ export async function createAlertReviewCase(payload: unknown) {
 
 export async function getAlertReviewItemCase(reviewItemId: number) {
   record('getAlertReviewItemCase', reviewItemId)
+  if (reviewItemId === existingCaseReviewItem.id)
+    await wait(150)
   return reviewItemId === existingCaseReviewItem.id ? reviewCase : null
 }
 

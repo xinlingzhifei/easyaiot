@@ -76,7 +76,7 @@ export function parseArgs(args, env = process.env) {
     } else if (arg.startsWith('--playback-review-case-id=')) {
       parsed.playbackReviewCaseId = numberOrNaN(arg.slice('--playback-review-case-id='.length));
     } else if (arg.startsWith('--playback-material-uri=')) {
-      parsed.playbackMaterialUri = arg.slice('--playback-material-uri='.length);
+      throw new Error('DEVICE playback material URI must be provided through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI');
     } else if (arg.startsWith('--playback-allowed-camera-ids=')) {
       parsed.playbackAllowedCameraIds = parseCsvList(arg.slice('--playback-allowed-camera-ids='.length));
     } else if (arg.startsWith('--playback-denied-camera-ids=')) {
@@ -567,6 +567,21 @@ export function sanitizeCliOutputText(value) {
     .replace(/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri));
 }
 
+export function sanitizeCliOutputValue(value) {
+  if (typeof value === 'string') {
+    return sanitizeCliOutputText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeCliOutputValue);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizeCliOutputValue(entry)]),
+    );
+  }
+  return value;
+}
+
 function printHelp() {
   console.log(`Usage: node .scripts/alert-review-device-integration-smoke.mjs \\
   --device-base-url=http://DEVICE/admin-api \\
@@ -582,7 +597,9 @@ ingest -> review rule save -> record coverage sync -> review case -> export ->
 manifest verify -> download audit. It expects the release DEVICE service to be connected to real
 VIDEO record/export configuration before this can pass. When playback camera
 ids are provided, it also checks audited playback-url allow/deny decisions. Set
-YFEIEYE_DEVICE_AUTH_TOKEN in the parent environment; CLI token arguments are rejected.`);
+YFEIEYE_DEVICE_AUTH_TOKEN in the parent environment; CLI token arguments are rejected.
+If playback uses a signed recording URI, set YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI;
+--playback-material-uri is rejected so the URI cannot enter argv.`);
 }
 
 async function runCli() {
@@ -593,7 +610,7 @@ async function runCli() {
   }
   const smoke = await runSmoke(options);
   console.log('alert review DEVICE integration smoke passed');
-  console.log(JSON.stringify({
+  console.log(JSON.stringify(sanitizeCliOutputValue({
     status: smoke.result.status,
     profile: smoke.result.profile,
     reviewItemId: smoke.result.reviewItemId,
@@ -612,7 +629,7 @@ async function runCli() {
       deniedReasons: smoke.playback.denied.deniedReasons,
     } : undefined,
     checkpoints: smoke.checkpoints,
-  }, null, 2));
+  }), null, 2));
 }
 
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {

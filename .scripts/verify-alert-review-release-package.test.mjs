@@ -1848,12 +1848,13 @@ const requiredDeviceEvidenceAuditAnchors = [
   'review_event_bound_without_task_dispatch',
 ];
 const completeDeviceEvidenceAuditContent = requiredDeviceEvidenceAuditAnchors.join('; ');
-const completeDeviceTokenContent = `${completeDeviceEvidenceAuditContent}; parseArgs; token: env.YFEIEYE_DEVICE_AUTH_TOKEN; DEVICE smoke token must be provided through YFEIEYE_DEVICE_AUTH_TOKEN; missing YFEIEYE_DEVICE_AUTH_TOKEN; function sanitizeCliOutputText; stripUrlSecrets; console.error(sanitizeCliOutputText;`;
+const completeDeviceTokenContent = `${completeDeviceEvidenceAuditContent}; parseArgs; token: env.YFEIEYE_DEVICE_AUTH_TOKEN; DEVICE smoke token must be provided through YFEIEYE_DEVICE_AUTH_TOKEN; missing YFEIEYE_DEVICE_AUTH_TOKEN; function sanitizeCliOutputText; stripUrlSecrets; console.error(sanitizeCliOutputText; playbackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI; DEVICE playback material URI must be provided through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI; sanitizeCliOutputValue; value.map(sanitizeCliOutputValue); Object.entries(value).map; console.log(JSON.stringify(sanitizeCliOutputValue;`;
 const completeProductionSmokeContent = 'requiredOptionErrors; liveVideoEvidenceError; liveDeviceEvidenceError; livePlayerEvidenceError; buildSmokeSteps; W4:visible-copy; alert-review-visible-copy-scan.mjs; visible-copy files for replacement characters; playerSmokeStep; --assert-native-current-time; Number.isFinite(player.nativeCurrentTime); missing native currentTime evidence; W2:typecheck; --pm-on-fail=ignore; pnpm_version_guard; typecheckRetry; REQUIRED_STORAGE_DRIFT_REASON_KEYS; payload.coverageSummary; summary.coverageSummary = buildCoverageSummary(payload.coverageSummary); buildCoverageSummary(payload.coverageSummary); copyTextIfPresent(coverage, source, \'retainMode\'); copyTextIfPresent(coverage, source, \'coverageSource\'); summary.coverageSummary?.retainMode; summary.coverageSummary?.coverageSource; missing coverage retain/source evidence; payload.storageDriftSummary; summary.storageDriftSummary = buildStorageDriftSummary(payload.storageDriftSummary); copyBooleanIfPresent(storageDriftSummary, source, \'healthy\'); copyNumberIfPresent(storageDriftSummary, source, \'recordCount\'); copyNumberIfPresent(storageDriftSummary, source, \'issueCount\'); issueReasons; standardReasonKeys; summary.storageDriftSummary?.standardReasonKeys; missing standard storage drift reason evidence; file_missing; retention_expired; disk_full; cache_flush_failed; payload.exportResult; buildExportResultSummary(payload.exportResult); copyTextIfPresent(exportResult, source, \'exportId\'); copySanitizedUrlIfPresent(exportResult, source, \'downloadUrl\'); copySanitizedUrlIfPresent(exportResult, source, \'manifestUrl\'); payload.manifestSignature; summary.manifestSignature = buildManifestSignatureSummary(payload.manifestSignature); copyTextIfPresent(manifestSignature, source, \'algorithm\'); copyTextIfPresent(manifestSignature, source, \'keyId\'); copyTextIfPresent(manifestSignature, source, \'signatureVersion\'); payload.manifestStorageLifecycle; buildManifestStorageLifecycleSummary(payload.manifestStorageLifecycle); copyTextIfPresent(manifestStorageLifecycle, source, \'storageType\'); copyTextIfPresent(manifestStorageLifecycle, source, \'status\'); copyTextIfPresent(manifestStorageLifecycle, source, \'expiresAt\'); copyTextIfPresent(manifestStorageLifecycle, source, \'exportPackageObjectKey\'); summary.manifestStorageLifecycle?.status; missing persisted manifest storage lifecycle evidence; payload.manifestVerification; buildManifestVerificationSummary(payload.manifestVerification); copyBooleanIfPresent(manifestVerification, source, \'valid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureValid\'); copyBooleanIfPresent(manifestVerification, source, \'signatureKeyAvailable\'); copyTextIfPresent(manifestVerification, source, \'keyId\'); copyTextIfPresent(manifestVerification, source, \'signatureVersion\'); violations; summary.manifestVerification?.valid; summary.manifestVerification.signatureValid; summary.manifestVerification.signatureKeyAvailable; missing valid manifest verifier evidence; missing HMAC manifest verifier signature evidence; videoManifestVerifierScript; missing --video-manifest-verifier-script; YFEIEYE_VIDEO_MANIFEST_VERIFIER_SCRIPT; evidenceOutputFile; missing --evidence-output-file; YFEIEYE_PRODUCTION_SMOKE_EVIDENCE_FILE; stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs}; childSmokeSummary; buildPlaybackAccessSummary(payload.playback); copyTextIfPresent(playback, source, \'grantedDecision\'); copyTextIfPresent(playback, source, \'deniedDecision\'); deniedReasons; copySanitizedUrlIfPresent(player, payload, \'recordPath\'); stripUrlSecrets; evidence_download_audited; auditChain; firstAuditScalar; resolveExactAuditIdList; normalizeAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; missing auditChain exportJobNo evidence; liveDevicePlaybackEvidenceError; summary.playback; grantedDecision; deniedDecision; camera_not_allowed; missing playback URL allow/deny decision evidence; missing playback URL deny reason evidence; liveDeviceRuleEvidenceError; summary.ruleEvidence; buildRuleEvidenceSummary(payload); copyTextIfPresent(ruleEvidence, source, \'ruleCode\'); copyTextIfPresent(ruleEvidence, source, \'cameraId\'); copyTextIfPresent(ruleEvidence, source, \'zoneCode\'); copyTextIfPresent(ruleEvidence, source, \'objectLabel\'); copyNumberIfPresent(ruleEvidence, source, \'inertiaFrames\'); copyNumberIfPresent(ruleEvidence, source, \'loiteringSeconds\'); inertiaFrames; loiteringSeconds; missing rule inertia/loitering evidence; missing rule inertiaFrames=3 evidence; missing rule loiteringSeconds=20 evidence; evidence_audit_chain_verified; copyPositiveIdIfPresent(summary, payload, \'eventId\'); copyPositiveIdListIfPresent(summary, payload, \'eventIds\'); normalizePositiveId; Object.hasOwn(payload, \'eventIds\'); explicitEmptyEventIds; missing eventId evidence; missing eventIds evidence; eventIds do not exactly match eventId; auditChain reviewCaseId does not match reviewCaseId; auditChain reviewItemIds do not exactly match reviewItemId; auditChain eventIds do not exactly match eventId; auditChain exportJobNo does not match exportJobNo;';
-const completeLiveVideoTokenContent = `${completeLiveVideoSmokeContent} parseArgs; token: env.YFEIEYE_VIDEO_SMOKE_TOKEN; VIDEO smoke token must be provided through YFEIEYE_VIDEO_SMOKE_TOKEN; !options.allowLocalEndpoints && !hasText(options.token); missing YFEIEYE_VIDEO_SMOKE_TOKEN; runSmoke; withBearerAuthorization; const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token); function sanitizeCliOutputText; stripUrlSecrets; console.error(sanitizeCliOutputText;`;
-const completeProductionSmokeTokenContent = `${completeProductionSmokeContent} formatStepCommand; env: {; YFEIEYE_DEVICE_AUTH_TOKEN: options.token; YFEIEYE_VIDEO_SMOKE_TOKEN: options.token; buildStepEnvironment; tokenSource; parsed.tokenSource = 'cli'; options.tokenSource === 'cli'; cliTokenAllowedForLocalEndpoints; isExplicitLocalOrMockEndpoint; hostname.endsWith('.localhost'); hostname.endsWith('.test'); hostname.endsWith('.invalid'); --token requires --allow-local-endpoints and local/mock endpoints only; maskSensitiveArg; value.startsWith('--token='); return '--token=***'; 'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',; YFEIEYE_REVIEW_PLAYER_SMOKE_URL: options.playerWorkbenchUrl; CHILD_SENSITIVE_ENV_KEYS; playerLocalStorage: env.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE; playerCookies: env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES; YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: options.playerLocalStorage; YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: options.playerCookies; function sanitizeChildOutputForDisplay; stripUrlSecrets; console.error(sanitizeChildOutputForDisplay;`;
-const completePlayerSmokeSecurityContent = 'parseArgs; function sanitizeOutputText; stripUrlSecrets; console.error(sanitizeOutputText;';
-const completeSignedRelativeCliRegressionTestContent = 'spawnSync; record.mp4?token=; signedCliFailure.stderr.includes;';
+const completeLiveVideoTokenContent = `${completeLiveVideoSmokeContent} parseArgs; token: env.YFEIEYE_VIDEO_SMOKE_TOKEN; VIDEO smoke token must be provided through YFEIEYE_VIDEO_SMOKE_TOKEN; !options.allowLocalEndpoints && !hasText(options.token); missing YFEIEYE_VIDEO_SMOKE_TOKEN; runSmoke; withBearerAuthorization; const fetchImpl = withBearerAuthorization(rawFetchImpl, options.token); function sanitizeCliOutputText; stripUrlSecrets; console.error(sanitizeCliOutputText; playbackMaterialUri: env.YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI; VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI; recordUri: options.playbackMaterialUri; sanitizeCliOutputValue; value.map(sanitizeCliOutputValue); Object.entries(value).map; buildManifestVerifierEnvironment; env: buildManifestVerifierEnvironment(); YFEIEYE_RECORD_EXPORT_HMAC_SECRET; YFEIEYE_RECORD_EXPORT_HMAC_KEYS;`;
+const completeProductionSmokeTokenContent = `${completeProductionSmokeContent} formatStepCommand; env: {; YFEIEYE_DEVICE_AUTH_TOKEN: options.token; YFEIEYE_VIDEO_SMOKE_TOKEN: options.token; buildStepEnvironment; tokenSource; parsed.tokenSource = 'cli'; options.tokenSource === 'cli'; cliTokenAllowedForLocalEndpoints; isExplicitLocalOrMockEndpoint; hostname.endsWith('.localhost'); hostname.endsWith('.test'); hostname.endsWith('.invalid'); --token requires --allow-local-endpoints and local/mock endpoints only; maskSensitiveArg; value.startsWith('--token='); return '--token=***'; 'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',; YFEIEYE_REVIEW_PLAYER_SMOKE_URL: options.playerWorkbenchUrl; CHILD_SENSITIVE_ENV_KEYS; playerLocalStorage: env.YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE; playerCookies: env.YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES; YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE: options.playerLocalStorage; YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES: options.playerCookies; function sanitizeChildOutputForDisplay; stripUrlSecrets; console.error(sanitizeChildOutputForDisplay; devicePlaybackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI; videoPlaybackMaterialUri: env.YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI; YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI: options.devicePlaybackMaterialUri; YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI: options.videoPlaybackMaterialUri; 'YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',; 'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',; device playback material URI must be provided through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI; VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI; signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL; sanitizeOutputValue; value.map(sanitizeOutputValue); Object.entries(value).map;`;
+const completePlayerSmokeSecurityContent = 'parseArgs; function sanitizeOutputText; stripUrlSecrets; console.error(sanitizeOutputText; sanitizeSmokeResultForOutput; sanitizeOutputValue; value.map(sanitizeOutputValue); Object.entries(value).map; buildBrowserEnvironment; env: buildBrowserEnvironment(); BROWSER_SENSITIVE_ENV_KEYS; player local storage must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE; player cookies must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES; signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL;';
+const completeManifestVerifierWrapperSecurityContent = 'buildManifestVerifierEnvironment; env: buildManifestVerifierEnvironment(); ALLOWED_SENSITIVE_ENV_KEYS; UNRELATED_SENSITIVE_ENV_KEYS; YFEIEYE_RECORD_EXPORT_HMAC_SECRET; YFEIEYE_RECORD_EXPORT_HMAC_KEYS; YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN; YFEIEYE_VIDEO_SMOKE_TOKEN;';
+const completeSignedRelativeCliRegressionTestContent = 'spawnSync; record.mp4?token=; signedCliFailure.stderr.includes; native-error-secret; export-message-secret; message-secret; rule-secret; device-rule-secret; device-playback-argv-secret; browserProbe; player-argv-storage-secret; manifestVerifierChildEnv; wrapperProbe; playbackOverrideUri; YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI; YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI; sanitizeOutputValue; sanitizeCliOutputValue;';
 const productionSmokeTimeoutEvidenceContent = 'stepTimeoutMs; --step-timeout-ms; YFEIEYE_PRODUCTION_SMOKE_STEP_TIMEOUT_MS; timeout: step.timeoutMs; summary.timeout; timed out after; --timeout-ms=${options.stepTimeoutMs};';
 const productionSmokeAuditIdentityContent = "auditChain; firstAuditScalar; resolveExactAuditIdList; normalizeAuditIdList; normalizeAuditScalar; eventIds; reviewItemIds; export_downloaded; evidence_audit_chain_verified; copyPositiveIdIfPresent(summary, payload, 'eventId'); copyPositiveIdListIfPresent(summary, payload, 'eventIds'); normalizePositiveId; Object.hasOwn(payload, 'eventIds'); explicitEmptyEventIds; missing eventId evidence; missing eventIds evidence; eventIds do not exactly match eventId; auditChain reviewCaseId does not match reviewCaseId; auditChain reviewItemIds do not exactly match reviewItemId; auditChain eventIds do not exactly match eventId; auditChain exportJobNo does not match exportJobNo; missing auditChain exportJobNo evidence;";
 
@@ -1906,6 +1907,10 @@ const liveVideoTokenGateScan = scanLiveVideoEvidenceGate([
   {
     path: '.scripts/alert-review-player-live-smoke.mjs',
     content: completePlayerSmokeSecurityContent,
+  },
+  {
+    path: '.scripts/record-export-manifest-verifier.mjs',
+    content: completeManifestVerifierWrapperSecurityContent,
   },
   ...[
     '.scripts/alert-review-device-integration-smoke.test.mjs',
@@ -1969,6 +1974,65 @@ for (const playerEnvironmentAnchor of [
     (blocker) => blocker.reason === 'production_smoke_player_auth_environment_isolation_missing',
   ));
 }
+
+for (const [path, content, anchor, reason] of [
+  [
+    '.scripts/alert-review-device-integration-smoke.mjs',
+    completeDeviceTokenContent,
+    'console.log(JSON.stringify(sanitizeCliOutputValue;',
+    'device_smoke_recursive_output_and_playback_uri_env_guard_missing',
+  ],
+  [
+    '.scripts/alert-review-player-live-smoke.mjs',
+    completePlayerSmokeSecurityContent,
+    'env: buildBrowserEnvironment(); ',
+    'player_smoke_recursive_output_and_child_env_guard_missing',
+  ],
+  [
+    '.scripts/alert-review-video-live-smoke.mjs',
+    completeLiveVideoTokenContent,
+    'env: buildManifestVerifierEnvironment(); ',
+    'live_video_recursive_output_and_verifier_env_guard_missing',
+  ],
+  [
+    '.scripts/alert-review-production-smoke.mjs',
+    completeProductionSmokeTokenContent,
+    'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI: options.videoPlaybackMaterialUri; ',
+    'production_smoke_signed_uri_env_and_recursive_output_guard_missing',
+  ],
+  [
+    '.scripts/record-export-manifest-verifier.mjs',
+    completeManifestVerifierWrapperSecurityContent,
+    'env: buildManifestVerifierEnvironment(); ',
+    'manifest_verifier_python_child_env_guard_missing',
+  ],
+]) {
+  const missingHardenedCredentialBoundaryScan = scanLiveVideoEvidenceGate([{
+    path,
+    content: content.replace(anchor, ''),
+  }]);
+  assert.equal(missingHardenedCredentialBoundaryScan.ok, false, path);
+  assert.ok(
+    missingHardenedCredentialBoundaryScan.blockers.some((blocker) => blocker.reason === reason),
+    `${path}:${reason}`,
+  );
+}
+
+const forbiddenPlaybackMaterialArgvWiringScan = scanLiveVideoEvidenceGate([{
+  path: '.scripts/alert-review-production-smoke.mjs',
+  content: `${completeProductionSmokeTokenContent} --playback-material-uri=\${options.devicePlaybackMaterialUri};`,
+}]);
+assert.ok(forbiddenPlaybackMaterialArgvWiringScan.blockers.some(
+  (blocker) => blocker.reason === 'production_smoke_playback_material_uri_argv_wiring_forbidden',
+));
+
+const forbiddenStandaloneDevicePlaybackMaterialArgvScan = scanLiveVideoEvidenceGate([{
+  path: '.scripts/alert-review-device-integration-smoke.mjs',
+  content: `${completeDeviceTokenContent} parsed.playbackMaterialUri = arg.slice('--playback-material-uri='.length);`,
+}]);
+assert.ok(forbiddenStandaloneDevicePlaybackMaterialArgvScan.blockers.some(
+  (blocker) => blocker.reason === 'device_smoke_playback_material_uri_argv_acceptance_forbidden',
+));
 
 for (const [path, content, anchor, reason] of [
   ['.scripts/alert-review-device-integration-smoke.mjs', completeDeviceTokenContent, 'function sanitizeCliOutputText; ', 'device_smoke_cli_output_sanitizer_missing'],
@@ -3063,7 +3127,7 @@ assert.deepEqual(missingLiveVideoRootConcatOrderCoverageGateScan.blockers.map((b
   'live_video_media_evidence_gate_missing',
 ]);
 
-const completeProdSmokeTraceabilityCommand = '- Production smoke with real VIDEO URLs:\n  `YFEIEYE_DEVICE_AUTH_TOKEN=... node .scripts/alert-review-production-smoke.mjs --device-base-url=... --tenant-id=... --operator-user-id=... --device-alert-time=... --device-playback-allowed-camera-ids=... --device-playback-denied-camera-ids=... --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-device-id=... --video-alert-time=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --step-timeout-ms=900000 --player-workbench-url=... --player-review-row-text=... --player-expected-seek-time=... --player-expected-record-path-contains=... --player-expected-offset-seconds=... --player-coverage-expected-seek-time=... --player-coverage-expected-record-path-contains=... --player-coverage-expected-offset-seconds=0 --player-case-timeline-expected-seek-time=... --player-case-timeline-expected-record-path-contains=... --player-case-timeline-expected-offset-seconds=0 --evidence-output-file=artifacts/production-smoke.json`';
+const completeProdSmokeTraceabilityCommand = '- Production smoke with real VIDEO URLs:\n  `YFEIEYE_DEVICE_AUTH_TOKEN=... YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI=... YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI=... YFEIEYE_REVIEW_PLAYER_SMOKE_URL=... node .scripts/alert-review-production-smoke.mjs --device-base-url=... --tenant-id=... --operator-user-id=... --device-alert-time=... --device-playback-allowed-camera-ids=... --device-playback-denied-camera-ids=... --video-alert-record-query-url=... --video-record-coverage-query-url=... --video-record-base-url=... --video-record-export-url=... --video-device-id=... --video-alert-time=... --video-record-drift-retention-hours=24 --video-manifest-verifier-script=.scripts/record-export-manifest-verifier.mjs --step-timeout-ms=900000 --player-review-row-text=... --player-expected-seek-time=... --player-expected-record-path-contains=... --player-expected-offset-seconds=... --player-coverage-expected-seek-time=... --player-coverage-expected-record-path-contains=... --player-coverage-expected-offset-seconds=0 --player-case-timeline-expected-seek-time=... --player-case-timeline-expected-record-path-contains=... --player-case-timeline-expected-offset-seconds=0 --evidence-output-file=artifacts/production-smoke.json`';
 
 const missingProdSmokeTokenEnvTraceabilityGateScan = scanReleaseTraceabilityGate([
   {
@@ -3074,6 +3138,28 @@ const missingProdSmokeTokenEnvTraceabilityGateScan = scanReleaseTraceabilityGate
 assert.equal(missingProdSmokeTokenEnvTraceabilityGateScan.ok, false);
 assert.deepEqual(missingProdSmokeTokenEnvTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
   'fr38_prod_smoke_token_env_missing',
+]);
+
+const missingProdSmokeSignedUriEnvTraceabilityGateScan = scanReleaseTraceabilityGate([{
+  path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+  content: completeProdSmokeTraceabilityCommand
+    .replace('YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI=... ', '')
+    .replace('YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI=... ', '')
+    .replace('YFEIEYE_REVIEW_PLAYER_SMOKE_URL=... ', ''),
+}]);
+assert.deepEqual(missingProdSmokeSignedUriEnvTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
+  'fr38_prod_smoke_device_playback_material_env_missing',
+  'fr38_prod_smoke_video_playback_material_env_missing',
+  'fr38_prod_smoke_player_workbench_env_missing',
+]);
+
+const forbiddenProdSmokeSignedUriArgvTraceabilityGateScan = scanReleaseTraceabilityGate([{
+  path: 'docs/requirements/alert-review-frigate-fr01-fr38-hardening-review.md',
+  content: `${completeProdSmokeTraceabilityCommand} --device-playback-material-uri=... --video-playback-material-uri=...`,
+}]);
+assert.deepEqual(forbiddenProdSmokeSignedUriArgvTraceabilityGateScan.blockers.map((blocker) => blocker.reason), [
+  'fr38_prod_smoke_device_playback_material_argv_forbidden',
+  'fr38_prod_smoke_video_playback_material_argv_forbidden',
 ]);
 
 const missingProdSmokeTraceabilityGateScan = scanReleaseTraceabilityGate([

@@ -47,9 +47,19 @@ assert.match(workbenchSource, /function mediaReadScope\(item: AlertReviewItem\)/
 assert.match(workbenchSource, /reviewCaseId: activeCase\.value\?\.id/)
 assert.match(workbenchSource, /operatorUserId: filters\.reviewerUserId \|\| undefined/)
 assert.match(workbenchSource, /allowedCameraIds: cameraId \? \[cameraId\] : undefined/)
-assert.match(workbenchSource, /getAlertReviewTimeline\(selectedItem\.value\.id, mediaReadScope\(selectedItem\.value\)\)/)
+assert.match(workbenchSource, /function selectReviewItem\(item: AlertReviewItem\)/)
+assert.match(workbenchSource, /selectedItem\.value\?\.id !== item\.id/)
+assert.match(workbenchSource, /activeCase\.value = null/)
+assert.match(workbenchSource, /async function loadRecordCoverageForItem\(item: AlertReviewItem\)/)
+assert.match(workbenchSource, /await loadItemCase\(item\)[\s\S]*?await loadRecordCoverage\(item\)/)
+assert.match(workbenchSource, /getAlertReviewTimeline\(target\.id, mediaReadScope\(target\)\)/)
 assert.match(workbenchSource, /getAlertReviewDetailStream\(target\.id, mediaReadScope\(target\)\)/)
-assert.match(workbenchSource, /getAlertReviewRecordCoverage\(item\.id, mediaReadScope\(item\)\)/)
+assert.match(workbenchSource, /getAlertReviewRecordCoverage\(target\.id, mediaReadScope\(target\)\)/)
+assert.match(workbenchSource, /if \(isSelectedReviewItem\(reviewItemId\)\)\s+timeline\.value = nextTimeline/)
+assert.match(workbenchSource, /if \(isSelectedReviewItem\(reviewItemId\)\)\s+detailStream\.value = nextDetailStream/)
+assert.match(workbenchSource, /if \(isSelectedReviewItem\(reviewItemId\)\)\s+coverage\.value = nextCoverage/)
+assert.match(workbenchSource, /const reviewCaseId = activeCase\.value\.id[\s\S]*?if \(activeCase\.value\?\.id !== reviewCaseId\)\s+return[\s\S]*?caseTimeline\.value = nextCaseTimeline/)
+assert.match(workbenchSource, /async function loadEvidenceAudit\(reviewCaseId = activeCase\.value\?\.id\)[\s\S]*?if \(activeCase\.value\?\.id === reviewCaseId\)\s+evidenceAudit\.value = nextEvidenceAudit/)
 const caseTimelinePlayback = workbenchSource.match(
   /async function openCaseTimelineEntry[\s\S]*?\n}\n\nasync function guardCaseTimelineMediaAccess/,
 )?.[0] || ''

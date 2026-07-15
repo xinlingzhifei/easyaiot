@@ -144,12 +144,24 @@ function setInputValue(selector: string, value: string) {
   input.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-function clickReviewRowByNo(reviewItemNo: string) {
+function reviewRowByNo(reviewItemNo: string) {
   const row = Array.from(document.querySelectorAll<HTMLTableRowElement>('tbody tr'))
     .find(candidate => candidate.textContent?.includes(reviewItemNo))
   if (!row)
     throw new Error(`missing review item row ${reviewItemNo}`)
+  return row
+}
+
+function clickReviewRowByNo(reviewItemNo: string) {
+  const row = reviewRowByNo(reviewItemNo)
   row.click()
+}
+
+function clickReviewRowActionByNo(reviewItemNo: string, selector: string) {
+  const action = reviewRowByNo(reviewItemNo).querySelector<HTMLElement>(selector)
+  if (!action)
+    throw new Error(`missing ${selector} for review item ${reviewItemNo}`)
+  action.click()
 }
 
 function clickReviewRow() {
@@ -369,6 +381,54 @@ async function runE2E() {
   assertMediaReadScope('getAlertReviewTimeline', 103, 501)
   assertMediaReadScope('getAlertReviewDetailStream', 103, 501)
   assertMediaReadScope('getAlertReviewRecordCoverage', 103, 501)
+
+  const directCoverageCallCount = (window.__alertReviewE2EApiCalls || [])
+    .filter(call => call.name === 'getAlertReviewRecordCoverage' && (call.payload as any)?.reviewItemId === 101)
+    .length
+  clickReviewRowActionByNo('RV-20260702-001', '[data-testid="alert-review-list-coverage"]')
+  await waitFor(
+    () => (window.__alertReviewE2EApiCalls || []).filter(
+      call => call.name === 'getAlertReviewRecordCoverage' && (call.payload as any)?.reviewItemId === 101,
+    ).length > directCoverageCallCount,
+    'direct pre-case coverage request',
+  )
+  assertMediaReadScope('getAlertReviewRecordCoverage', 101)
+  await waitFor(() => !document.querySelector('[data-testid="alert-review-case-panel"]'), 'direct coverage clears previous row case')
+
+  const raceCallStart = (window.__alertReviewE2EApiCalls || []).length
+  clickReviewRowByNo('RV-20260702-003')
+  await waitFor(
+    () => (window.__alertReviewE2EApiCalls || []).slice(raceCallStart)
+      .some(call => call.name === 'getAlertReviewItemCase' && call.payload === 103),
+    'delayed existing case lookup starts',
+  )
+  clickReviewRow()
+  await wait(400)
+  if (!reviewRowByNo('RV-20260702-001').classList.contains('selected'))
+    throw new Error('delayed previous-row requests must not replace the current selected item')
+  if (document.querySelector('[data-testid="alert-review-case-panel"]'))
+    throw new Error('delayed previous-row case lookup must not restore a stale active case')
+  for (const call of (window.__alertReviewE2EApiCalls || []).slice(raceCallStart)) {
+    const payload = call.payload as { reviewItemId?: number, params?: { reviewCaseId?: number } } | undefined
+    if (
+      ['getAlertReviewTimeline', 'getAlertReviewDetailStream', 'getAlertReviewRecordCoverage'].includes(call.name)
+      && payload?.reviewItemId === 101
+      && payload.params?.reviewCaseId !== undefined
+    ) {
+      throw new Error(`${call.name} must not reuse stale reviewCaseId ${String(payload.params.reviewCaseId)} for pre-case item 101`)
+    }
+  }
+  for (const staleUri of [
+    '/video/record/stale-case-103-timeline.mp4',
+    '/video/record/stale-case-103-detail.mp4',
+    '/video/record/stale-case-103-coverage.mp4',
+  ]) {
+    if (text().includes(staleUri))
+      throw new Error(`delayed previous-row response leaked into current item: ${staleUri}`)
+  }
+  assertMediaReadScope('getAlertReviewTimeline', 101)
+  assertMediaReadScope('getAlertReviewDetailStream', 101)
+  assertMediaReadScope('getAlertReviewRecordCoverage', 101)
 
   clickReviewRow()
   await waitFor(() => !document.querySelector('[data-testid="alert-review-case-panel"]'), 'non-case review item clears active case')

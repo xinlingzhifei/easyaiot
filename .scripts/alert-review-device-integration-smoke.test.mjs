@@ -9,6 +9,7 @@ import {
   requiredOptionErrors,
   runSmoke,
   sanitizeCliOutputText,
+  sanitizeCliOutputValue,
   validateSmokeResult,
 } from './alert-review-device-integration-smoke.mjs';
 import {
@@ -35,6 +36,22 @@ assert.equal(
   sanitizeCliOutputText('/video/record/device-01.mp4?token=leading record.mp4?token=relative'),
   '/video/record/device-01.mp4 record.mp4',
 );
+assert.deepEqual(
+  sanitizeCliOutputValue({
+    ruleEvidence: {
+      message: 'record.mp4?token=device-rule-secret#device-rule-fragment',
+    },
+  }),
+  { ruleEvidence: { message: 'record.mp4' } },
+);
+
+const playbackMaterialCliFailure = spawnSync(process.execPath, [
+  '.scripts/alert-review-device-integration-smoke.mjs',
+  '--playback-material-uri=record.mp4?token=device-playback-argv-secret',
+], { encoding: 'utf8' });
+assert.equal(playbackMaterialCliFailure.status, 1);
+assert.equal(playbackMaterialCliFailure.stderr.includes('device-playback-argv-secret'), false);
+assert.match(playbackMaterialCliFailure.stderr, /YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI/);
 
 const parsed = parseArgs([
   '--device-base-url=http://device.local/api',
@@ -50,11 +67,13 @@ const parsed = parseArgs([
   '--timeout-ms=5000',
   '--playback-review-item-id=1001',
   '--playback-review-case-id=2001',
-  '--playback-material-uri=playback-url.mp4',
   '--playback-allowed-camera-ids=camera-01',
   '--playback-denied-camera-ids=camera-02',
   '--playback-reason=release-smoke-playback',
-], { YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1' });
+], {
+  YFEIEYE_DEVICE_AUTH_TOKEN: 'token-1',
+  YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI: 'playback-url.mp4',
+});
 assert.equal(parsed.deviceBaseUrl, 'http://device.local/api');
 assert.equal(parsed.token, 'token-1');
 assert.equal(parsed.tenantId, 42);

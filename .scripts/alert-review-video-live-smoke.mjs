@@ -15,6 +15,18 @@ const REQUIRED_STORAGE_DRIFT_REASON_KEYS = [
   'cache_flush_failed',
 ];
 const STANDARD_COVERAGE_CLASSIFICATIONS = ['continuous', 'motion', 'alert', 'detection'];
+const MANIFEST_VERIFIER_ALLOWED_SENSITIVE_ENV_KEYS = new Set([
+  'YFEIEYE_RECORD_EXPORT_HMAC_SECRET',
+  'YFEIEYE_RECORD_EXPORT_HMAC_KEYS',
+  'YFEIEYE_RECORD_EXPORT_KEY_ID',
+]);
+const MANIFEST_VERIFIER_UNRELATED_SENSITIVE_ENV_KEYS = new Set([
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+  'YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+  'YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+  'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
+]);
 
 export function parseArgs(args, env = process.env) {
   const parsed = {
@@ -23,6 +35,7 @@ export function parseArgs(args, env = process.env) {
     recordCoverageQueryUrl: env.YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL || '',
     recordBaseUrl: env.YFEIEYE_VIDEO_RECORD_BASE_URL || '',
     recordExportUrl: env.YFEIEYE_VIDEO_RECORD_EXPORT_URL || '',
+    playbackMaterialUri: env.YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI || '',
     deviceId: env.YFEIEYE_VIDEO_SMOKE_DEVICE_ID || '',
     cameraId: env.YFEIEYE_VIDEO_SMOKE_CAMERA_ID || '',
     alertTime: env.YFEIEYE_VIDEO_SMOKE_ALERT_TIME || '',
@@ -55,6 +68,8 @@ export function parseArgs(args, env = process.env) {
       parsed.recordBaseUrl = arg.slice('--record-base-url='.length);
     } else if (arg.startsWith('--record-export-url=')) {
       parsed.recordExportUrl = arg.slice('--record-export-url='.length);
+    } else if (arg.startsWith('--playback-material-uri=')) {
+      throw new Error('VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI');
     } else if (arg.startsWith('--device-id=')) {
       parsed.deviceId = arg.slice('--device-id='.length);
     } else if (arg.startsWith('--camera-id=')) {
@@ -337,6 +352,14 @@ export async function runSmoke(options, dependencies = {}) {
   assertReleaseSegmentMediaEvidence(options, coverageSegment);
   validateCoverageClassification(coverageSegment);
   checkpoints.push('record_coverage_query_ok');
+  const exportSegment = hasText(options.playbackMaterialUri)
+    ? {
+        ...coverageSegment,
+        recordUri: options.playbackMaterialUri,
+        recordUriSource: 'environment',
+      }
+    : coverageSegment;
+  assertReleaseSegmentMediaEvidence(options, exportSegment);
 
   const recordSpace = await fetchJson(fetchImpl, `${stripTrailingSlash(options.recordBaseUrl)}/space/device/${encodeURIComponent(options.deviceId)}`, {
     timeoutMs: options.timeoutMs,
@@ -358,7 +381,7 @@ export async function runSmoke(options, dependencies = {}) {
     timeoutMs: options.timeoutMs,
     label: 'record export',
     method: 'POST',
-    body: buildExportBody(options, coverageSegment),
+    body: buildExportBody(options, exportSegment),
   });
   const exportResult = normalizeExportResult(exportResponse);
   if (!hasText(exportResult.exportId) && !hasText(exportResult.downloadUrl)) {
@@ -402,7 +425,7 @@ export function summarizeCliResult(result) {
   const summary = result?.storageDrift?.summary && typeof result.storageDrift.summary === 'object'
     ? result.storageDrift.summary
     : {};
-  return {
+  return sanitizeCliOutputValue({
     checkpoints: Array.isArray(result?.checkpoints) ? result.checkpoints : [],
     ...(result?.coverage?.segment ? { coverageSummary: coverageSegmentSummary(result.coverage.segment) } : {}),
     storageDriftSummary: {
@@ -416,7 +439,7 @@ export function summarizeCliResult(result) {
     ...(result?.manifestSignature ? { manifestSignature: result.manifestSignature } : {}),
     ...(result?.manifestStorageLifecycle ? { manifestStorageLifecycle: result.manifestStorageLifecycle } : {}),
     ...(result?.manifestVerification ? { manifestVerification: result.manifestVerification } : {}),
-  };
+  });
 }
 
 function sanitizeExportResultForOutput(exportResult) {
@@ -877,7 +900,7 @@ function runManifestVerifierScript(scriptPath, manifestRawJson, timeoutMs) {
     writeFileSync(manifestPath, manifestRawJson, 'utf8');
     const result = spawnSync(process.execPath, [resolve(scriptPath), '--manifest', manifestPath], {
       encoding: 'utf8',
-      env: process.env,
+      env: buildManifestVerifierEnvironment(),
       timeout: timeoutMs,
     });
     if (result.error?.code === 'ETIMEDOUT') {
@@ -1354,11 +1377,43 @@ function stripUrlSecrets(value) {
   return String(value).replace(/[?#].*$/, '');
 }
 
+export function buildManifestVerifierEnvironment(parentEnv = process.env) {
+  const env = {};
+  for (const [key, value] of Object.entries(parentEnv || {})) {
+    const normalizedKey = key.toUpperCase();
+    if (MANIFEST_VERIFIER_ALLOWED_SENSITIVE_ENV_KEYS.has(normalizedKey)) {
+      env[key] = value;
+      continue;
+    }
+    if (MANIFEST_VERIFIER_UNRELATED_SENSITIVE_ENV_KEYS.has(normalizedKey)
+        || /(?:^|_)(?:ACCESS_TOKEN|AUTH_TOKEN|SESSION_TOKEN|TOKEN|ACCESS_KEY(?:_ID)?|COOKIE|COOKIES|LOCAL_STORAGE|PASSWORD|PASSWD|SECRET|SIGNATURE|API_KEY|PRIVATE_KEY)(?:_|$)/i.test(normalizedKey)) {
+      continue;
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
 function sanitizeCliOutputText(value) {
   return String(value ?? '')
     .replace(/https?:\/\/[^\s"'<>]+/g, url => stripUrlSecrets(url))
     .replace(/\/[^\s"'<>?#[\]{}]+[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri))
-    .replace(/(?:^|\s)[^/\s"'<>?#[\]{}][^\s"'<>?#[\]{}]*[?#][^\s"'<>]*/g, uri => stripUrlSecrets(uri));
+    .replace(/[^\s"'<>()[\]{},:?#]+[?#][^\s"'<>()[\]{},:]*/g, uri => stripUrlSecrets(uri));
+}
+
+function sanitizeCliOutputValue(value) {
+  if (typeof value === 'string') {
+    return sanitizeCliOutputText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeCliOutputValue);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizeCliOutputValue(entry)]),
+    );
+  }
+  return value;
 }
 
 function printHelp() {
@@ -1381,7 +1436,9 @@ checked by the record export verifier where manifest-referenced files are access
 The smoke must use a real device with real recording metadata; no mock server is
 started. Localhost/mock/file endpoints are rejected unless --allow-local-endpoints
 is supplied for co-located real-service smoke. Set YFEIEYE_VIDEO_SMOKE_TOKEN in
-the parent environment instead of placing release credentials in argv.`);
+the parent environment instead of placing release credentials in argv. If the
+export must use an explicit signed recording URI, set
+YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI; --playback-material-uri is rejected.`);
 }
 
 async function runCli() {

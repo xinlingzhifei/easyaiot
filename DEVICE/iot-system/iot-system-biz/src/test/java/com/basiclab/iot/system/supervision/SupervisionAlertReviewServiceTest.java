@@ -2290,6 +2290,144 @@ class SupervisionAlertReviewServiceTest {
     }
 
     @Test
+    void preCaseMediaReadEndpointsAllowAndAuditWithoutAttachingCoverageEvidence() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 7, 9, 45);
+        String coverageUri = "https://eye.yfeiai.com/records/pre-case-coverage.mp4";
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "available",
+                        request.beginTime(),
+                        request.endTime(),
+                        0,
+                        coverageUri,
+                        0,
+                        Map.of("source", "video-index")
+                ))
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-pre-case-media-read",
+                baseTime,
+                "pre-case-read.jpg",
+                "pre-case-read.mp4"
+        ));
+
+        List<ReviewEvidenceItem> timeline = service.getTimeline(
+                item.id(), null, 9211L, List.of("camera-01"));
+        List<ReviewDetailStreamItem> detail = service.getReviewDetailStream(
+                item.id(), null, 9211L, List.of("camera-01"));
+        List<RecordCoverageSegment> coverage = service.getRecordCoverage(
+                item.id(), null, 9211L, List.of("camera-01"));
+
+        assertEquals(List.of("snapshot", "record"),
+                timeline.stream().map(ReviewEvidenceItem::materialType).toList());
+        assertTrue(detail.stream().anyMatch(row -> "pre-case-read.mp4".equals(row.materialUri())));
+        assertTrue(coverage.stream().anyMatch(segment -> coverageUri.equals(segment.recordUri())));
+        assertFalse(service.getTimeline(item.id()).stream()
+                .anyMatch(evidence -> coverageUri.equals(evidence.materialUri())),
+                "pre-case coverage must not be attached to a case timeline");
+
+        List<ReviewEvidenceAuditEntry> auditTrail = service.getReviewItemEvidenceAuditTrail(item.id());
+        assertTrue(auditTrail.stream().allMatch(entry -> entry.metadata().get("reviewCaseId") == null));
+        assertTrue(auditTrail.stream().allMatch(entry -> "media_access_granted".equals(entry.actionType())));
+        assertTrue(auditTrail.stream().anyMatch(entry -> "playback".equals(entry.metadata().get("mediaAction"))));
+        assertTrue(auditTrail.stream().anyMatch(entry -> "snapshot".equals(entry.metadata().get("mediaAction"))));
+        assertTrue(auditTrail.stream().anyMatch(entry -> "coverage".equals(entry.metadata().get("mediaAction"))
+                && entry.evidenceUris().equals(List.of(coverageUri))));
+    }
+
+    @Test
+    void preCaseMediaReadEndpointsDenyUnauthorizedCameraAndAuditEachAttempt() {
+        InMemoryReviewItemStore itemStore = new InMemoryReviewItemStore();
+        LocalDateTime baseTime = LocalDateTime.of(2026, 7, 7, 9, 50);
+        String coverageUri = "https://eye.yfeiai.com/records/pre-case-denied-coverage.mp4";
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService(),
+                noRecordEvidenceResolver(),
+                noEventProjectionStore(),
+                request -> List.of(new RecordCoverageSegment(
+                        "available",
+                        request.beginTime(),
+                        request.endTime(),
+                        0,
+                        coverageUri,
+                        0,
+                        Map.of("source", "video-index")
+                ))
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-pre-case-media-denied",
+                baseTime,
+                "pre-case-denied.jpg",
+                "pre-case-denied.mp4"
+        ));
+
+        SecurityException timelineDenied = assertThrows(SecurityException.class,
+                () -> service.getTimeline(item.id(), null, 9212L, List.of("camera-02")));
+        SecurityException detailDenied = assertThrows(SecurityException.class,
+                () -> service.getReviewDetailStream(item.id(), null, 9212L, List.of("camera-02")));
+        SecurityException coverageDenied = assertThrows(SecurityException.class,
+                () -> service.getRecordCoverage(item.id(), null, 9212L, List.of("camera-02")));
+
+        assertAll(
+                () -> assertTrue(timelineDenied.getMessage().contains("camera_not_allowed")),
+                () -> assertTrue(detailDenied.getMessage().contains("camera_not_allowed")),
+                () -> assertTrue(coverageDenied.getMessage().contains("camera_not_allowed"))
+        );
+        List<ReviewEvidenceAuditEntry> deniedAudits = service.getReviewItemEvidenceAuditTrail(item.id()).stream()
+                .filter(entry -> "media_access_denied".equals(entry.actionType()))
+                .toList();
+        assertEquals(3, deniedAudits.size());
+        assertTrue(deniedAudits.stream().allMatch(entry -> entry.metadata().get("reviewCaseId") == null));
+        assertEquals(List.of("playback", "playback", "coverage"),
+                deniedAudits.stream().map(entry -> String.valueOf(entry.metadata().get("mediaAction"))).toList());
+        assertTrue(deniedAudits.stream().allMatch(entry ->
+                ((List<?>) entry.metadata().get("deniedReasons")).contains("camera_not_allowed")));
+    }
+
+    @Test
+    void detectionOnlyRecordUriIsDeniedAndAuditedAsPlaybackMedia() {
+        DetectionOnlyReviewItemStore itemStore = new DetectionOnlyReviewItemStore();
+        SupervisionAlertReviewService service = newService(
+                itemStore,
+                new InMemoryRuleStore(),
+                unusedEventService()
+        );
+        ReviewItemAggregate item = service.ingestClue(newClue(
+                "alert-detection-only-record",
+                LocalDateTime.of(2026, 7, 7, 9, 55),
+                null,
+                "detection-only.mp4"
+        ));
+
+        assertEquals(List.of(), service.getTimeline(item.id()));
+        ReviewDetailStreamItem detection = service.getReviewDetailStream(item.id()).stream()
+                .filter(row -> "detected".equals(row.lifecycleEvent()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("record", detection.materialType());
+        assertEquals("detection-only.mp4", detection.materialUri());
+
+        SecurityException denied = assertThrows(SecurityException.class,
+                () -> service.getReviewDetailStream(item.id(), null, 9213L, List.of("camera-02")));
+
+        assertTrue(denied.getMessage().contains("camera_not_allowed"));
+        List<ReviewEvidenceAuditEntry> auditTrail = service.getReviewItemEvidenceAuditTrail(item.id());
+        assertEquals(1, auditTrail.size());
+        assertEquals("media_access_denied", auditTrail.get(0).actionType());
+        assertEquals(List.of("detection-only.mp4"), auditTrail.get(0).evidenceUris());
+        assertEquals("playback", auditTrail.get(0).metadata().get("mediaAction"));
+        assertNull(auditTrail.get(0).metadata().get("reviewCaseId"));
+    }
+
+    @Test
     void playbackUrlPreparationEnforcesCameraScopeAndAuditsAllowDeny() {
         SupervisionAlertReviewServiceImpl service = (SupervisionAlertReviewServiceImpl) newService(
                 new InMemoryReviewItemStore(),
@@ -9927,6 +10065,16 @@ class SupervisionAlertReviewServiceTest {
             synchronized (this) {
                 return super.create(draft, evidenceItems);
             }
+        }
+    }
+
+    private static final class DetectionOnlyReviewItemStore extends InMemoryReviewItemStore {
+
+        @Override
+        public List<ReviewEvidenceItem> listTimeline(Long reviewItemId) {
+            return super.listTimeline(reviewItemId).stream()
+                    .filter(evidence -> !"record".equals(evidence.materialType()))
+                    .toList();
         }
     }
 

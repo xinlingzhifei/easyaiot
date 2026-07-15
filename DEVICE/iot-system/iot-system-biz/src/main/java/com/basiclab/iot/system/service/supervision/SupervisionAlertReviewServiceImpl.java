@@ -989,7 +989,6 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                          Long reviewCaseId,
                                                          Long operatorUserId,
                                                          List<String> allowedCameraIds) {
-        requirePositive(reviewCaseId, "reviewCaseId");
         List<RecordCoverageSegment> coverage = getRecordCoverage(reviewItemId);
         ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
@@ -1014,6 +1013,9 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                                                     ReviewItemAggregate item,
                                                     Long operatorUserId,
                                                     List<String> allowedCameraIds) {
+        if (reviewCaseId == null || reviewCaseId <= 0) {
+            return false;
+        }
         List<String> effectiveAllowedCameraIds = resolveEffectiveAllowedCameraIds(
                 reviewCaseId,
                 operatorUserId,
@@ -4128,7 +4130,6 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
         if (effectiveAllowedCameraIds == null) {
             return;
         }
-        requirePositive(reviewCaseId, "reviewCaseId");
         requirePositive(reviewItemId, "reviewItemId");
         ReviewItemAggregate item = reviewItemStore.findById(reviewItemId)
                 .orElseThrow(() -> new IllegalArgumentException("reviewItemId not found: " + reviewItemId));
@@ -5573,7 +5574,7 @@ public class SupervisionAlertReviewServiceImpl implements SupervisionAlertReview
                         happenedAt,
                         bbox,
                         List.of(),
-                        null,
+                        hasText(toText(detection.get("recordUri"))) ? MATERIAL_RECORD : null,
                         firstText(detection.get("recordUri"), null),
                         detection
                 ));

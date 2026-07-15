@@ -1575,6 +1575,7 @@ export function scanLiveVideoEvidenceGate(files) {
   const liveVideo = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-video-live-smoke.mjs');
   const deviceSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-device-integration-smoke.mjs');
   const playerSmoke = files.find((file) => normalizePath(file.path || '') === '.scripts/alert-review-player-live-smoke.mjs');
+  const manifestVerifierWrapper = files.find((file) => normalizePath(file.path || '') === '.scripts/record-export-manifest-verifier.mjs');
   const recordVideoService = files.find((file) => normalizePath(file.path || '') === 'VIDEO/app/services/record_video_service.py');
   if (deviceSmoke && !containsAll(deviceSmoke.content, [
     'const auditChain = await runEvidenceAuditSmoke(options, result, fetchImpl)',
@@ -1686,6 +1687,27 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'device_smoke_cli_output_sanitizer_missing',
     });
   }
+  if (deviceSmoke && deviceSmoke.content.includes('parseArgs') && !containsAll(deviceSmoke.content, [
+    'playbackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+    'DEVICE playback material URI must be provided through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+    'sanitizeCliOutputValue',
+    'value.map(sanitizeCliOutputValue)',
+    'Object.entries(value).map',
+    'console.log(JSON.stringify(sanitizeCliOutputValue',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-device-integration-smoke.mjs'),
+      reason: 'device_smoke_recursive_output_and_playback_uri_env_guard_missing',
+    });
+  }
+  if (deviceSmoke?.content.includes("parsed.playbackMaterialUri = arg.slice('--playback-material-uri='.length)")) {
+    blockers.push({
+      path: '.scripts/alert-review-device-integration-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-device-integration-smoke.mjs'),
+      reason: 'device_smoke_playback_material_uri_argv_acceptance_forbidden',
+    });
+  }
   if (liveVideo && liveVideo.content.includes('parseArgs') && !containsAll(liveVideo.content, [
     'function sanitizeCliOutputText',
     'stripUrlSecrets',
@@ -1708,6 +1730,58 @@ export function scanLiveVideoEvidenceGate(files) {
       reason: 'player_smoke_cli_output_sanitizer_missing',
     });
   }
+  if (playerSmoke && playerSmoke.content.includes('parseArgs') && !containsAll(playerSmoke.content, [
+    'sanitizeSmokeResultForOutput',
+    'sanitizeOutputValue',
+    'value.map(sanitizeOutputValue)',
+    'Object.entries(value).map',
+    'buildBrowserEnvironment',
+    'env: buildBrowserEnvironment()',
+    'BROWSER_SENSITIVE_ENV_KEYS',
+    'player local storage must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_LOCAL_STORAGE',
+    'player cookies must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_COOKIES',
+    'signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-player-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-player-live-smoke.mjs'),
+      reason: 'player_smoke_recursive_output_and_child_env_guard_missing',
+    });
+  }
+  if (liveVideo && liveVideo.content.includes('parseArgs') && !containsAll(liveVideo.content, [
+    'playbackMaterialUri: env.YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
+    'VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
+    'recordUri: options.playbackMaterialUri',
+    'sanitizeCliOutputValue',
+    'value.map(sanitizeCliOutputValue)',
+    'Object.entries(value).map',
+    'buildManifestVerifierEnvironment',
+    'env: buildManifestVerifierEnvironment()',
+    'YFEIEYE_RECORD_EXPORT_HMAC_SECRET',
+    'YFEIEYE_RECORD_EXPORT_HMAC_KEYS',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-video-live-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-video-live-smoke.mjs'),
+      reason: 'live_video_recursive_output_and_verifier_env_guard_missing',
+    });
+  }
+  if (manifestVerifierWrapper && !containsAll(manifestVerifierWrapper.content, [
+    'buildManifestVerifierEnvironment',
+    'env: buildManifestVerifierEnvironment()',
+    'ALLOWED_SENSITIVE_ENV_KEYS',
+    'UNRELATED_SENSITIVE_ENV_KEYS',
+    'YFEIEYE_RECORD_EXPORT_HMAC_SECRET',
+    'YFEIEYE_RECORD_EXPORT_HMAC_KEYS',
+    'YFEIEYE_REVIEW_PLAYER_SMOKE_ACCESS_TOKEN',
+    'YFEIEYE_VIDEO_SMOKE_TOKEN',
+  ])) {
+    blockers.push({
+      path: '.scripts/record-export-manifest-verifier.mjs',
+      group: releaseGroupFor('.scripts/record-export-manifest-verifier.mjs'),
+      reason: 'manifest_verifier_python_child_env_guard_missing',
+    });
+  }
   for (const [path, reason] of [
     ['.scripts/alert-review-device-integration-smoke.test.mjs', 'device_smoke_signed_relative_cli_regression_test_missing'],
     ['.scripts/alert-review-video-live-smoke.test.mjs', 'live_video_signed_relative_cli_regression_test_missing'],
@@ -1720,6 +1794,37 @@ export function scanLiveVideoEvidenceGate(files) {
       'record.mp4?token=',
       'signedCliFailure.stderr.includes',
     ])) {
+      blockers.push({
+        path,
+        group: releaseGroupFor(path),
+        reason,
+      });
+    }
+  }
+  for (const [path, anchors, reason] of [
+    [
+      '.scripts/alert-review-device-integration-smoke.test.mjs',
+      ['device-rule-secret', 'device-playback-argv-secret', 'sanitizeCliOutputValue'],
+      'device_smoke_recursive_output_and_playback_uri_env_regression_missing',
+    ],
+    [
+      '.scripts/alert-review-player-live-smoke.test.mjs',
+      ['native-error-secret', 'export-message-secret', 'rule-secret', 'browserProbe', 'player-argv-storage-secret'],
+      'player_smoke_recursive_output_and_real_child_env_regression_missing',
+    ],
+    [
+      '.scripts/alert-review-video-live-smoke.test.mjs',
+      ['message-secret', 'rule-secret', 'manifestVerifierChildEnv', 'wrapperProbe', 'playbackOverrideUri'],
+      'live_video_recursive_output_and_real_verifier_env_regression_missing',
+    ],
+    [
+      '.scripts/alert-review-production-smoke.test.mjs',
+      ['YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI', 'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI', 'sanitizeOutputValue', 'native-error-secret', 'rule-secret'],
+      'production_smoke_signed_uri_env_and_recursive_output_regression_missing',
+    ],
+  ]) {
+    const smokeTest = files.find((file) => normalizePath(file.path || '') === path);
+    if (smokeTest && !containsAll(smokeTest.content, anchors)) {
       blockers.push({
         path,
         group: releaseGroupFor(path),
@@ -1992,6 +2097,33 @@ export function scanLiveVideoEvidenceGate(files) {
       path: '.scripts/alert-review-production-smoke.mjs',
       group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
       reason: 'production_smoke_player_url_argv_wiring_forbidden',
+    });
+  }
+  if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
+    'devicePlaybackMaterialUri: env.YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+    'videoPlaybackMaterialUri: env.YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
+    'YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI: options.devicePlaybackMaterialUri',
+    'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI: options.videoPlaybackMaterialUri',
+    "'YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',",
+    "'YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',",
+    'device playback material URI must be provided through YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI',
+    'VIDEO playback material URI must be provided through YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI',
+    'signed player workbench URL must be provided through YFEIEYE_REVIEW_PLAYER_SMOKE_URL',
+    'sanitizeOutputValue',
+    'value.map(sanitizeOutputValue)',
+    'Object.entries(value).map',
+  ])) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_signed_uri_env_and_recursive_output_guard_missing',
+    });
+  }
+  if (productionSmoke?.content.includes('--playback-material-uri=${options.')) {
+    blockers.push({
+      path: '.scripts/alert-review-production-smoke.mjs',
+      group: releaseGroupFor('.scripts/alert-review-production-smoke.mjs'),
+      reason: 'production_smoke_playback_material_uri_argv_wiring_forbidden',
     });
   }
   if (productionSmoke && productionSmoke.content.includes('formatStepCommand') && !containsAll(productionSmoke.content, [
@@ -2416,6 +2548,7 @@ export function scanReleaseTraceabilityGate(files) {
     ['--device-alert-time=', 'fr38_prod_smoke_device_alert_time_command_missing'],
     ['--device-playback-allowed-camera-ids=', 'fr38_prod_smoke_playback_allow_command_missing'],
     ['--device-playback-denied-camera-ids=', 'fr38_prod_smoke_playback_deny_command_missing'],
+    ['YFEIEYE_DEVICE_PLAYBACK_MATERIAL_URI', 'fr38_prod_smoke_device_playback_material_env_missing'],
     ['--video-alert-record-query-url=', 'fr38_prod_smoke_alert_record_command_missing'],
     ['--video-record-coverage-query-url=', 'fr38_prod_smoke_coverage_command_missing'],
     ['--video-record-base-url=', 'fr38_prod_smoke_record_base_command_missing'],
@@ -2424,8 +2557,9 @@ export function scanReleaseTraceabilityGate(files) {
     ['--video-alert-time=', 'fr38_prod_smoke_video_alert_time_command_missing'],
     ['--video-record-drift-retention-hours=', 'fr38_prod_smoke_drift_retention_command_missing'],
     ['--video-manifest-verifier-script=', 'fr38_prod_smoke_manifest_verifier_command_missing'],
+    ['YFEIEYE_VIDEO_SMOKE_PLAYBACK_MATERIAL_URI', 'fr38_prod_smoke_video_playback_material_env_missing'],
     ['--step-timeout-ms=', 'fr38_prod_smoke_step_timeout_command_missing'],
-    ['--player-workbench-url=', 'fr38_prod_smoke_player_workbench_command_missing'],
+    ['YFEIEYE_REVIEW_PLAYER_SMOKE_URL', 'fr38_prod_smoke_player_workbench_env_missing'],
     ['--player-review-row-text=', 'fr38_prod_smoke_player_review_row_command_missing'],
     ['--player-expected-seek-time=', 'fr38_prod_smoke_detail_player_command_missing'],
     ['--player-expected-record-path-contains=', 'fr38_prod_smoke_detail_player_record_command_missing'],
@@ -2440,6 +2574,19 @@ export function scanReleaseTraceabilityGate(files) {
   ];
   for (const [fragment, reason] of checks) {
     if (!prodSmokeBlock.includes(fragment)) {
+      blockers.push({
+        path: docPath,
+        group: releaseGroupFor(docPath),
+        reason,
+        line: _lineNumberAt(content, prodSmokeIndex),
+      });
+    }
+  }
+  for (const [fragment, reason] of [
+    ['--device-playback-material-uri=', 'fr38_prod_smoke_device_playback_material_argv_forbidden'],
+    ['--video-playback-material-uri=', 'fr38_prod_smoke_video_playback_material_argv_forbidden'],
+  ]) {
+    if (prodSmokeBlock.includes(fragment)) {
       blockers.push({
         path: docPath,
         group: releaseGroupFor(docPath),
