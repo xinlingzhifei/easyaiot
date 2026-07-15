@@ -48,8 +48,8 @@ test('big-screen admin entry releases the overlay so normal navigation can be cl
   assert.match(topHeader, /@click="handleGoToAdmin"/)
   assert.match(topHeader, /adminEntryLabel/)
   assert.match(topHeader, /emit\('admin-entry'\)/)
-  assert.match(topHeader, /getAdminHomeRoute/)
-  assert.match(topHeader, /router\.push\(target\.query \? \{ path: target\.path, query: target\.query \} : target\.path\)/)
+  assert.match(topHeader, /resolveAdminEntryTarget\(router\)/)
+  assert.match(topHeader, /router\.push\(resolveAdminEntryTarget\(router\)\)/)
 })
 
 test('dashboard controls expose stable selectors and keep text rendering crisp', () => {

@@ -40,6 +40,9 @@
             >
               {{ getTaskTypeText(alarm) }}
             </span>
+            <span :class="['disposition-tag', getDispositionStatusClass(alarm)]">
+              {{ getDispositionStatusText(alarm) }}
+            </span>
             <span class="alarm-location">{{ alarm.device_name || alarm.location || '未知设备' }}</span>
           </div>
           <div class="alarm-time">{{ alarm.time }}</div>
@@ -147,6 +150,63 @@ const getTaskTypeClass = (alarm: any): string => {
   }
 }
 
+type DispositionStatus = 'unconfirmed' | 'confirmed' | 'processed' | 'false-positive'
+
+const normalizeStatusValue = (value: unknown) => String(value ?? '').trim().toLowerCase()
+
+const getDispositionStatus = (alarm: any): DispositionStatus => {
+  const rawStatus = [
+    alarm?.disposition_status,
+    alarm?.review_status,
+    alarm?.handle_status,
+    alarm?.status,
+    alarm?.state,
+  ].map(normalizeStatusValue).find(Boolean) || ''
+
+  if (
+    alarm?.is_false_positive === true ||
+    alarm?.false_positive === true ||
+    rawStatus.includes('false') ||
+    rawStatus.includes('误报')
+  ) {
+    return 'false-positive'
+  }
+
+  if (
+    alarm?.processed_at ||
+    alarm?.handled_at ||
+    alarm?.closed_at ||
+    ['processed', 'handled', 'closed', 'resolved', 'done', '已处理'].includes(rawStatus)
+  ) {
+    return 'processed'
+  }
+
+  if (
+    alarm?.confirmed_at ||
+    alarm?.ack_at ||
+    alarm?.acknowledged_at ||
+    ['confirmed', 'ack', 'acknowledged', 'reviewed', '已确认'].includes(rawStatus)
+  ) {
+    return 'confirmed'
+  }
+
+  return 'unconfirmed'
+}
+
+const getDispositionStatusText = (alarm: any): string => {
+  const textMap: Record<DispositionStatus, string> = {
+    unconfirmed: '未确认',
+    confirmed: '已确认',
+    processed: '已处理',
+    'false-positive': '误报',
+  }
+  return textMap[getDispositionStatus(alarm)]
+}
+
+const getDispositionStatusClass = (alarm: any): string => {
+  return `disposition-${getDispositionStatus(alarm)}`
+}
+
 // 获取图片展示 URL（与告警列表页一致，兼容 mini 本地路径 /video/alert/image）
 const getImageUrl = (alarm: any): string | null => {
   if (alarm.image) return alarm.image
@@ -174,64 +234,63 @@ const handleImageLoad = (alarm: any) => {
   width: 320px;
   height: 100%;
   padding: 0;
-  background: linear-gradient(135deg, rgba(15, 34, 73, 0.8), rgba(24, 46, 90, 0.6));
+  background: var(--dashboard-panel);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  border: 1px solid rgba(52, 134, 218, 0.3);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 0 30px rgba(52, 134, 218, 0.1);
-  border-radius: 8px;
+  border: 1px solid var(--dashboard-border);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: var(--dashboard-radius);
   padding: 3px;
-  
+
   &::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      linear-gradient(90deg, transparent 0%, rgba(52, 134, 218, 0.05) 50%, transparent 100%),
-      radial-gradient(circle at top left, rgba(52, 134, 218, 0.1), transparent 50%);
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
     pointer-events: none;
-    border-radius: 8px;
+    border-radius: var(--dashboard-radius);
   }
 }
 
 .panel-header {
-  text-align: center;
-  background: rgba(52, 134, 218, 0.08);
-  border-bottom: 1px solid rgba(52, 134, 218, 0.3);
-  color: #fff;
+  text-align: left;
+  background: rgba(8, 22, 39, 0.72);
+  border-bottom: 1px solid var(--dashboard-border);
+  color: var(--dashboard-text);
   font-size: 16px;
   height: 60px;
-  line-height: 40px;
-  letter-spacing: .05rem;
-  padding: 10px 16px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  padding: 10px 14px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 4px;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: center;
   position: relative;
   z-index: 1;
-  
+
   .header-title {
     font-size: 16px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--dashboard-text);
     line-height: 1.2;
   }
-  
+
   .header-count {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    color: var(--dashboard-muted);
     line-height: 1.2;
-    
+
     .count-number {
-      color: #ff4d4f;
-      font-weight: 600;
+      color: var(--dashboard-accent);
+      font-weight: 700;
       font-size: 18px;
+      font-variant-numeric: tabular-nums;
     }
   }
 }
@@ -240,22 +299,22 @@ const handleImageLoad = (alarm: any) => {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
     border-radius: 3px;
   }
-  
+
   &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(56, 189, 248, 0.36);
     border-radius: 3px;
-    
+
     &:hover {
-      background: rgba(255, 255, 255, 0.3);
+      background: rgba(56, 189, 248, 0.58);
     }
   }
 }
@@ -265,21 +324,21 @@ const handleImageLoad = (alarm: any) => {
   gap: 12px;
   padding: 12px;
   margin-bottom: 12px;
-  background: linear-gradient(135deg, rgba(52, 134, 218, 0.15), rgba(48, 82, 174, 0.1));
-  border: 1px solid rgba(52, 134, 218, 0.3);
-  border-radius: 6px;
-  border-left: 3px solid #ff4d4f;
-  transition: all 0.3s;
+  background: rgba(7, 19, 34, 0.76);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius);
+  border-left: 3px solid var(--dashboard-accent);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
   position: relative;
   cursor: pointer;
-  
+
   &:hover {
-    background: linear-gradient(135deg, rgba(52, 134, 218, 0.25), rgba(48, 82, 174, 0.15));
-    border-color: rgba(52, 134, 218, 0.6);
-    transform: translateX(4px);
-    box-shadow: 0 2px 8px rgba(52, 134, 218, 0.2);
+    background: rgba(12, 31, 55, 0.92);
+    border-color: var(--dashboard-border-strong);
+    transform: translateX(3px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
   }
-  
+
   &:last-child {
     margin-bottom: 0;
   }
@@ -289,20 +348,21 @@ const handleImageLoad = (alarm: any) => {
   width: 60px;
   height: 60px;
   flex-shrink: 0;
-  border-radius: 4px;
+  border-radius: var(--dashboard-radius);
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.16);
   display: flex;
   align-items: center;
   justify-content: center;
-  
+
   .alarm-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     cursor: pointer;
   }
-  
+
   .alarm-icon {
     display: flex;
     align-items: center;
@@ -320,8 +380,8 @@ const handleImageLoad = (alarm: any) => {
 
 .alarm-title {
   font-size: 14px;
-  font-weight: 500;
-  color: #ffffff;
+  font-weight: 600;
+  color: var(--dashboard-text);
   line-height: 1.4;
 }
 
@@ -338,42 +398,76 @@ const handleImageLoad = (alarm: any) => {
   align-items: center;
   justify-content: center;
   padding: 3px 10px;
-  border-radius: 4px;
+  border-radius: var(--dashboard-radius);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
-  transition: all 0.3s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+
   &.task-type-realtime {
-    background: #3B82F6;
-    color: #ffffff;
-    border: 1px solid #2563EB;
-    
+    background: rgba(56, 189, 248, 0.14);
+    color: #bdefff;
+    border: 1px solid rgba(56, 189, 248, 0.34);
+
     &:hover {
       transform: translateY(-1px);
-      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
-      background: #2563EB;
+      background: rgba(56, 189, 248, 0.22);
     }
   }
-  
+
   &.task-type-snap {
-    background: #10B981;
-    color: #ffffff;
-    border: 1px solid #059669;
-    
+    background: rgba(34, 197, 94, 0.14);
+    color: #bbf7d0;
+    border: 1px solid rgba(34, 197, 94, 0.32);
+
     &:hover {
       transform: translateY(-1px);
-      box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
-      background: #059669;
+      background: rgba(34, 197, 94, 0.22);
     }
+  }
+}
+
+.disposition-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 58px;
+  padding: 3px 8px;
+  border-radius: var(--dashboard-radius);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(184, 203, 224, 0.22);
+  background: rgba(184, 203, 224, 0.1);
+  color: rgba(230, 241, 255, 0.72);
+
+  &.disposition-confirmed {
+    color: #bdefff;
+    border-color: rgba(56, 189, 248, 0.34);
+    background: rgba(56, 189, 248, 0.14);
+  }
+
+  &.disposition-processed {
+    color: #bbf7d0;
+    border-color: rgba(34, 197, 94, 0.32);
+    background: rgba(34, 197, 94, 0.14);
+  }
+
+  &.disposition-false-positive {
+    color: #fed7aa;
+    border-color: rgba(245, 158, 11, 0.36);
+    background: rgba(245, 158, 11, 0.14);
   }
 }
 
 .alarm-location {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--dashboard-muted);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -382,7 +476,8 @@ const handleImageLoad = (alarm: any) => {
 
 .alarm-time {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(184, 203, 224, 0.56);
+  font-variant-numeric: tabular-nums;
 }
 
 .empty-state {
@@ -391,8 +486,8 @@ const handleImageLoad = (alarm: any) => {
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: rgba(255, 255, 255, 0.4);
-  
+  color: rgba(184, 203, 224, 0.52);
+
   .empty-text {
     margin-top: 16px;
     font-size: 14px;

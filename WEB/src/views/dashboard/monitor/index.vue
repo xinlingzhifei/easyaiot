@@ -5,13 +5,20 @@
     data-testid="monitor-dashboard"
   >
     <!-- 顶部头部 -->
-    <MonitorHeader :active-videos="activeVideos" @admin-entry="releaseDashboardOverlay" />
+    <MonitorHeader
+      :active-videos="activeVideos"
+      :today-alarm-count="todayAlarmCount"
+      :dashboard-health="dashboardHealth"
+      :last-updated-text="lastUpdatedText"
+      @admin-entry="releaseDashboardOverlay"
+    />
     
     <!-- 主体内容 -->
     <div class="monitor-content">
       <!-- 左侧导航 -->
       <MonitorSidebar 
         :selected-device="selectedDevice"
+        :statistics="statistics"
         @device-change="handleDeviceChange"
         @device-play="handleDevicePlay"
       />
@@ -22,6 +29,7 @@
           ref="videoMonitorRef"
           :device="selectedDevice"
           :video-list="videoList"
+          :alert-record-list="alarmList"
           @video-list-change="handleVideoListChange"
         />
       </div>
@@ -42,9 +50,7 @@ import MonitorHeader from './components/Header.vue'
 import MonitorSidebar from './components/Sidebar.vue'
 import VideoMonitor from './components/VideoMonitor.vue'
 import AlarmPanel from './components/AlarmPanel.vue'
-import { queryAlarmList, getDashboardStatistics } from '@/api/device/calculate'
-import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
-import { formatAlertListTitle } from '@/views/alert/alertDisplay'
+import { useDashboardData } from './useDashboardData'
 
 defineOptions({
   name: 'MonitorDashboard'
@@ -52,6 +58,13 @@ defineOptions({
 
 const videoMonitorRef = ref<InstanceType<typeof VideoMonitor> | null>(null)
 const dashboardOverlayReleased = ref(false)
+const {
+  alarmList,
+  dashboardHealth,
+  lastUpdatedText,
+  statistics,
+  todayAlarmCount,
+} = useDashboardData()
 
 function releaseDashboardOverlay() {
   dashboardOverlayReleased.value = true
@@ -84,104 +97,11 @@ const videoList = ref([
 // 正在播放的视频列表
 const activeVideos = ref<any[]>([])
 
-// 告警列表
-const alarmList = ref<any[]>([])
-
-// 今日告警次数
-const todayAlarmCount = ref(0)
-
-// 加载告警列表
-const loadAlarmList = async () => {
-  try {
-    const response = await queryAlarmList({
-      pageNo: 1,
-      pageSize: 7, // 只加载最近7条
-    }, { polling: true })
-    
-    if (response && response.alert_list) {
-      // 处理告警数据，确保格式正确
-      alarmList.value = response.alert_list.map((item: any) => {
-        let imageUrl = resolveAlertImageDisplayUrl(item.image_url) || null
-        
-        // 处理告警级别
-        let level = item.level || '告警'
-        if (!item.level) {
-          // 根据event类型设置默认级别
-          if (item.event && (item.event.includes('火') || item.event.includes('fire'))) {
-            level = '一级'
-          } else if (item.event && (item.event.includes('烟') || item.event.includes('smoke'))) {
-            level = '二级'
-          } else {
-            level = '三级'
-          }
-        }
-        
-        // 处理告警类型
-        let type = 'default'
-        if (item.event) {
-          if (item.event.includes('火') || item.event.includes('fire')) {
-            type = 'fire'
-          } else if (item.event.includes('烟') || item.event.includes('smoke')) {
-            type = 'smoke'
-          } else if (item.event.includes('入侵') || item.event.includes('intrusion')) {
-            type = 'intrusion'
-          }
-        }
-        
-        return {
-          id: item.id || item.alert_id,
-          type: type,
-          title: formatAlertListTitle(item),
-          event: item.event,
-          level: level,
-          location: item.device_name || item.location || '未知设备',
-          time: item.time || item.alert_time || item.created_at || '',
-          image: imageUrl,
-          image_url: item.image_url,
-          device_name: item.device_name,
-          device_id: item.device_id,
-          task_type: item.task_type,
-          information: item.information,
-          matched_person_name: item.matched_person_name,
-          source_event: item.source_event,
-        }
-      })
-    } else {
-      alarmList.value = []
-    }
-  } catch (error) {
-    console.error('加载告警列表失败', error)
-    alarmList.value = []
-  }
-}
-
-// 加载今日告警次数
-const loadTodayAlarmCount = async () => {
-  try {
-    const statsResponse = await getDashboardStatistics()
-    if (statsResponse) {
-      todayAlarmCount.value = statsResponse.today_alarm_count || 0
-    } else {
-      todayAlarmCount.value = 0
-    }
-  } catch (error) {
-    console.error('加载今日告警次数失败', error)
-    todayAlarmCount.value = 0
-  }
-}
-
-// 刷新定时器
-let refreshTimer: any = null
-let delayTimer: any = null
-let isMounted = false
-
 /** 大屏层 z-index 为 9999，需抬高挂载在 body 上的弹层，否则确认框/提示会被挡住 */
 const MONITOR_OVERLAY_Z_INDEX = 10050
 
 // 动态添加样式，隐藏顶部导航栏、标签页和左侧菜单，让大屏覆盖整个屏幕
 onMounted(() => {
-  isMounted = true
-  
   if (!document.getElementById('monitor-dashboard-style')) {
     const style = document.createElement('style')
     style.id = 'monitor-dashboard-style'
@@ -223,68 +143,12 @@ onMounted(() => {
     `
     document.head.appendChild(style)
   }
-  
-  // 初始加载告警列表和今日告警次数（使用 Promise.all 确保同时发起，但去重机制会确保只发送一次请求）
-  Promise.all([
-    loadAlarmList(),
-    loadTodayAlarmCount()
-  ]).catch(error => {
-    console.error('初始加载失败', error)
-  })
-  
-  // 错峰刷新：延迟3秒开始，每5秒刷新一次告警列表和今日告警次数（3秒、8秒、13秒...）
-  delayTimer = setTimeout(() => {
-    // 检查组件是否仍然挂载
-    if (!isMounted) return
-    
-    Promise.all([
-      loadAlarmList(),
-      loadTodayAlarmCount()
-    ]).catch(error => {
-      console.error('刷新数据失败', error)
-    })
-    
-    // 再次检查组件是否仍然挂载
-    if (!isMounted) return
-    
-    refreshTimer = setInterval(() => {
-      // 每次执行前检查组件是否仍然挂载
-      if (!isMounted) {
-        if (refreshTimer) {
-          clearInterval(refreshTimer)
-          refreshTimer = null
-        }
-        return
-      }
-      
-      Promise.all([
-        loadAlarmList(),
-        loadTodayAlarmCount()
-      ]).catch(error => {
-        console.error('定时刷新失败', error)
-      })
-    }, 5000)
-  }, 3000)
 })
 
 onUnmounted(() => {
-  isMounted = false
-  
   const style = document.getElementById('monitor-dashboard-style')
   if (style) {
     document.head.removeChild(style)
-  }
-  
-  // 清理延迟定时器
-  if (delayTimer) {
-    clearTimeout(delayTimer)
-    delayTimer = null
-  }
-  
-  // 清理定时器
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
   }
 })
 
@@ -317,17 +181,34 @@ const handleVideoListChange = (videos: any[]) => {
 
 <style lang="less">
 .monitor-dashboard {
+  --dashboard-bg: #07111f;
+  --dashboard-bg-soft: #0c1b2d;
+  --dashboard-panel: rgba(9, 25, 45, 0.86);
+  --dashboard-panel-strong: rgba(11, 30, 53, 0.94);
+  --dashboard-border: rgba(95, 174, 229, 0.24);
+  --dashboard-border-strong: rgba(116, 197, 242, 0.45);
+  --dashboard-accent: #f59e0b;
+  --dashboard-blue: #38bdf8;
+  --dashboard-green: #22c55e;
+  --dashboard-danger: #f97373;
+  --dashboard-text: #e6f1ff;
+  --dashboard-muted: rgba(184, 203, 224, 0.68);
+  --dashboard-radius: 6px;
+
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
   max-height: 100vh;
-  background: linear-gradient(25deg, #0f2249, #182e5a 20%, #0f2249 40%, #182e5a 60%, #0f2249 80%, #182e5a 100%);
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 30rem),
+    radial-gradient(circle at 86% 6%, rgba(245, 158, 11, 0.13), transparent 24rem),
+    linear-gradient(180deg, var(--dashboard-bg) 0%, var(--dashboard-bg-soft) 48%, #050d18 100%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: #ffffff;
+  color: var(--dashboard-text);
   font-size: 14px;
   box-sizing: border-box;
   margin: 0;
@@ -335,10 +216,34 @@ const handleVideoListChange = (videos: any[]) => {
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  isolation: isolate;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background:
+      linear-gradient(rgba(95, 174, 229, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(95, 174, 229, 0.045) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.35));
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      linear-gradient(90deg, rgba(0, 0, 0, 0.42), transparent 24%, transparent 76%, rgba(0, 0, 0, 0.38)),
+      radial-gradient(circle at center, transparent 42%, rgba(0, 0, 0, 0.36));
+    pointer-events: none;
+  }
 
   a {
     text-decoration: none;
-    color: #399bff;
+    color: var(--dashboard-blue);
   }
 }
 
@@ -352,10 +257,10 @@ const handleVideoListChange = (videos: any[]) => {
   min-height: 0;
   display: flex;
   overflow: hidden;
-  padding: 0 16px 16px 16px;
-  gap: 16px;
+  padding: 0 18px 18px;
+  gap: 14px;
   box-sizing: border-box;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .monitor-center {

@@ -81,7 +81,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Icon } from '@/components/Icon'
 import { BasicTree } from '@/components/Tree'
 import type { TreeItem } from '@/components/Tree'
@@ -103,9 +103,9 @@ import {
   enrichWvpChannelTreeNodes,
   resolveMonitorGbChannelDisplayName,
 } from '@/views/camera/utils/monitorGbDisplay'
-import { getDashboardStatistics } from '@/api/device/calculate'
 import { useMessage } from '@/hooks/web/useMessage'
 import type { TreeProps } from 'ant-design-vue'
+import type { DashboardStatistics } from '../useDashboardData'
 
 defineOptions({
   name: 'MonitorSidebar'
@@ -113,6 +113,7 @@ defineOptions({
 
 const props = defineProps<{
   selectedDevice?: any
+  statistics?: DashboardStatistics
 }>()
 
 const emit = defineEmits<{
@@ -127,13 +128,15 @@ const selectedKeys = ref<string[]>([])
 const treeData = ref<TreeItem[]>([])
 const loading = ref(false)
 
-// 统计数据
-const statistics = ref({
+const DEFAULT_STATISTICS: DashboardStatistics = {
   alarmCount: 0,
+  todayAlarmCount: 0,
   cameraCount: 0,
   algorithmCount: 0,
   modelCount: 0
-})
+}
+
+const statistics = computed(() => props.statistics ?? DEFAULT_STATISTICS)
 
 const playableLeafCount = computed(() => countMonitorTreePlayableLeaves(treeData.value))
 
@@ -205,27 +208,6 @@ const syncGbDevicesInBackground = async () => {
   if (created > 0) {
     invalidateMonitorDirectoryTreeCache()
     await loadTreeData({ force: true })
-  }
-}
-
-// 加载统计数据
-const loadStatistics = async () => {
-  try {
-    // 调用统一的统计接口
-    const statsResponse = await getDashboardStatistics()
-    if (statsResponse) {
-      statistics.value.alarmCount = statsResponse.alarm_count || 0
-      statistics.value.cameraCount = statsResponse.camera_count || 0
-      statistics.value.algorithmCount = statsResponse.algorithm_count || 0
-      statistics.value.modelCount = statsResponse.model_count || 0
-    }
-  } catch (error) {
-    console.error('加载统计数据失败', error)
-    // 发生错误时使用默认值
-    statistics.value.alarmCount = 0
-    statistics.value.cameraCount = 0
-    statistics.value.algorithmCount = 0
-    statistics.value.modelCount = 0
   }
 }
 
@@ -361,60 +343,10 @@ const getFullPath = (node: TreeItem, treeNodes: TreeItem[]): string => {
   return fullPath ? fullPath.join(' / ') : (node.title as string)
 }
 
-// 刷新定时器
-let statisticsTimer: any = null
-let delayTimer: any = null
-let isMounted = false
-
 // 组件挂载时加载数据
 onMounted(() => {
-  isMounted = true
-  
   loadTreeData()
   syncGbDevicesInBackground()
-  // 初始加载统计数据
-  loadStatistics()
-  
-  // 错峰刷新：延迟1秒开始，每5秒刷新一次统计数据（1秒、6秒、11秒...）
-  delayTimer = setTimeout(() => {
-    // 检查组件是否仍然挂载
-    if (!isMounted) return
-    
-    loadStatistics()
-    
-    // 再次检查组件是否仍然挂载
-    if (!isMounted) return
-    
-    statisticsTimer = setInterval(() => {
-      // 每次执行前检查组件是否仍然挂载
-      if (!isMounted) {
-        if (statisticsTimer) {
-          clearInterval(statisticsTimer)
-          statisticsTimer = null
-        }
-        return
-      }
-      
-      loadStatistics()
-    }, 5000)
-  }, 1000)
-})
-
-// 组件卸载时清理定时器
-onUnmounted(() => {
-  isMounted = false
-  
-  // 清理延迟定时器
-  if (delayTimer) {
-    clearTimeout(delayTimer)
-    delayTimer = null
-  }
-  
-  // 清理定时器
-  if (statisticsTimer) {
-    clearInterval(statisticsTimer)
-    statisticsTimer = null
-  }
 })
 </script>
 
@@ -425,15 +357,15 @@ onUnmounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   overflow: hidden;
 }
 
 .sidebar-section {
-  background: linear-gradient(135deg, rgba(15, 34, 73, 0.8), rgba(24, 46, 90, 0.6));
-  border-radius: 8px;
-  border: 1px solid rgba(52, 134, 218, 0.3);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 0 30px rgba(52, 134, 218, 0.1);
+  background: var(--dashboard-panel);
+  border-radius: var(--dashboard-radius);
+  border: 1px solid var(--dashboard-border);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -446,11 +378,11 @@ onUnmounted(() => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: 
-      linear-gradient(90deg, transparent 0%, rgba(52, 134, 218, 0.05) 50%, transparent 100%),
-      radial-gradient(circle at top left, rgba(52, 134, 218, 0.1), transparent 50%);
+    background:
+      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
     pointer-events: none;
-    border-radius: 8px;
+    border-radius: var(--dashboard-radius);
   }
 }
 
@@ -459,23 +391,22 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(52, 134, 218, 0.3);
-  background: rgba(52, 134, 218, 0.08);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--dashboard-border);
+  background: rgba(8, 22, 39, 0.72);
   position: relative;
   z-index: 1;
 
   .header-icon {
-    color: #3486da;
-    filter: drop-shadow(0 0 4px rgba(52, 134, 218, 0.6));
+    color: var(--dashboard-blue);
+    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.3));
   }
 
   .section-title {
     font-size: 15px;
     font-weight: 600;
-    color: #ffffff;
-    text-shadow: 0 0 8px rgba(52, 134, 218, 0.5);
-    letter-spacing: 0.5px;
+    color: var(--dashboard-text);
+    letter-spacing: 0;
     flex: 1;
   }
 
@@ -486,11 +417,11 @@ onUnmounted(() => {
 
     .device-count {
       font-size: 12px;
-      color: rgba(200, 220, 255, 0.7);
+      color: var(--dashboard-muted);
       padding: 2px 8px;
-      background: rgba(52, 134, 218, 0.15);
-      border-radius: 4px;
-      border: 1px solid rgba(52, 134, 218, 0.3);
+      background: rgba(56, 189, 248, 0.1);
+      border-radius: var(--dashboard-radius);
+      border: 1px solid var(--dashboard-border);
     }
   }
 }
@@ -517,16 +448,16 @@ onUnmounted(() => {
 }
 
 .stat-card {
-  background: linear-gradient(135deg, rgba(52, 134, 218, 0.15), rgba(48, 82, 174, 0.1));
-  border: 1px solid rgba(52, 134, 218, 0.3);
-  border-radius: 8px;
+  background: rgba(7, 19, 34, 0.72);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius);
   padding: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.3s;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
   position: relative;
   overflow: hidden;
   cursor: pointer;
@@ -538,15 +469,15 @@ onUnmounted(() => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(52, 134, 218, 0.1), transparent);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.11), transparent);
     opacity: 0;
     transition: opacity 0.3s;
   }
 
   &:hover {
-    border-color: rgba(52, 134, 218, 0.6);
+    border-color: var(--dashboard-border-strong);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(52, 134, 218, 0.2);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 
     &::before {
       opacity: 1;
@@ -558,9 +489,9 @@ onUnmounted(() => {
   }
 
   .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    border-radius: var(--dashboard-radius);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -569,27 +500,27 @@ onUnmounted(() => {
     z-index: 1;
 
     &.alarm {
-      background: linear-gradient(135deg, rgba(255, 77, 79, 0.2), rgba(255, 77, 79, 0.1));
-      color: #ff4d4f;
-      border: 1px solid rgba(255, 77, 79, 0.3);
+      background: rgba(249, 115, 115, 0.12);
+      color: var(--dashboard-danger);
+      border: 1px solid rgba(249, 115, 115, 0.3);
     }
 
     &.camera {
-      background: linear-gradient(135deg, rgba(52, 134, 218, 0.2), rgba(52, 134, 218, 0.1));
-      color: #3486da;
-      border: 1px solid rgba(52, 134, 218, 0.3);
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--dashboard-blue);
+      border: 1px solid rgba(56, 189, 248, 0.3);
     }
 
     &.algorithm {
-      background: linear-gradient(135deg, rgba(82, 196, 26, 0.2), rgba(82, 196, 26, 0.1));
-      color: #52c41a;
-      border: 1px solid rgba(82, 196, 26, 0.3);
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--dashboard-green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
     }
 
     &.model {
-      background: linear-gradient(135deg, rgba(250, 173, 20, 0.2), rgba(250, 173, 20, 0.1));
-      color: #faad14;
-      border: 1px solid rgba(250, 173, 20, 0.3);
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--dashboard-accent);
+      border: 1px solid rgba(245, 158, 11, 0.3);
     }
   }
 
@@ -603,16 +534,16 @@ onUnmounted(() => {
 
     .stat-label {
       font-size: 11px;
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--dashboard-muted);
       white-space: nowrap;
     }
 
     .stat-value {
       font-size: 20px;
       font-weight: 700;
-      color: #ffffff;
+      color: var(--dashboard-text);
       line-height: 1;
-      text-shadow: 0 0 8px rgba(52, 134, 218, 0.5);
+      font-variant-numeric: tabular-nums;
     }
   }
 }
@@ -626,7 +557,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: linear-gradient(to bottom, rgba(15, 34, 73, 0.4), rgba(24, 46, 90, 0.3));
+  background: rgba(5, 14, 26, 0.42);
 }
 
 .sidebar-tree-scroll {
@@ -704,7 +635,7 @@ onUnmounted(() => {
 
   :deep(.ant-tree) {
     background: transparent !important;
-    color: rgba(200, 220, 255, 0.9);
+    color: var(--dashboard-text);
   }
 
   /* 与分屏监控一致：叶子前占位更窄、行高更紧凑 */
@@ -759,20 +690,20 @@ onUnmounted(() => {
     transition: all 0.25s;
 
     &:hover {
-      background: rgba(52, 134, 218, 0.12) !important;
-      color: #ffffff;
+      background: rgba(56, 189, 248, 0.1) !important;
+      color: var(--dashboard-text);
     }
   }
 
   :deep(.ant-tree-node-selected) {
     .ant-tree-node-content-wrapper {
-      background: linear-gradient(90deg, rgba(52, 134, 218, 0.3), rgba(52, 134, 218, 0.15)) !important;
-      color: #6bb3ff !important;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(56, 189, 248, 0.1)) !important;
+      color: #7dd3fc !important;
     }
   }
 
   :deep(.ant-tree-switcher) {
-    color: rgba(52, 134, 218, 0.8);
+    color: var(--dashboard-blue);
     background: transparent !important;
   }
 
@@ -788,24 +719,24 @@ onUnmounted(() => {
   // 搜索框样式
   :deep(.tree-header-search) {
     .ant-input {
-      background: rgba(52, 134, 218, 0.15) !important;
-      border: 1px solid rgba(52, 134, 218, 0.4);
-      border-radius: 6px;
-      color: rgba(200, 220, 255, 0.95);
+      background: rgba(8, 22, 39, 0.8) !important;
+      border: 1px solid var(--dashboard-border);
+      border-radius: var(--dashboard-radius);
+      color: var(--dashboard-text);
 
       &::placeholder {
-        color: rgba(200, 220, 255, 0.5);
+        color: rgba(184, 203, 224, 0.48);
       }
 
       &:hover {
-        border-color: rgba(52, 134, 218, 0.6);
-        background: rgba(52, 134, 218, 0.2) !important;
+        border-color: var(--dashboard-border-strong);
+        background: rgba(56, 189, 248, 0.12) !important;
       }
 
       &:focus {
-        border-color: #3486da;
-        box-shadow: 0 0 12px rgba(52, 134, 218, 0.5);
-        background: rgba(52, 134, 218, 0.25) !important;
+        border-color: var(--dashboard-blue);
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
+        background: rgba(56, 189, 248, 0.14) !important;
       }
     }
   }
@@ -820,11 +751,11 @@ onUnmounted(() => {
   }
 
   :deep(.scrollbar__thumb) {
-    background-color: rgba(52, 134, 218, 0.45);
+    background-color: rgba(56, 189, 248, 0.45);
   }
 
   :deep(.scrollbar__thumb:hover) {
-    background-color: rgba(52, 134, 218, 0.7);
+    background-color: rgba(56, 189, 248, 0.7);
   }
 }
 </style>

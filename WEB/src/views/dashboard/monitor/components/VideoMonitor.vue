@@ -105,6 +105,12 @@
           >
             <Icon icon="ant-design:close-outlined" :size="14" />
           </button>
+          <div
+            v-if="hasVideoContent(video)"
+            :class="['ai-status-tag', getAiStatusClass(video)]"
+          >
+            {{ getAiStatusText(video) }}
+          </div>
           <div class="video-label" :title="displayVideoName(video, index)">
             {{ displayVideoName(video, index) }}
           </div>
@@ -176,14 +182,12 @@
 import { ref, computed, watch, onMounted, onUnmounted, onActivated, nextTick } from 'vue'
 import { Icon } from '@/components/Icon'
 import { Checkbox as ACheckbox } from 'ant-design-vue'
-import { queryAlarmList } from '@/api/device/calculate'
 import { playAlertRecordInModal } from '@/utils/alertRecordPlayback'
 import { useMessage } from '@/hooks/web/useMessage'
 import Jessibuca from '@/components/Player/module/jessibuca.vue'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
 import LayoutPresetPanel from './LayoutPresetPanel.vue'
 import { useModal } from '@/components/Modal'
-import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
 import { formatAlertListTitle, isSnapAlertTask } from '@/views/alert/alertDisplay'
 import { formatCameraDeviceLabel, formatCameraShortName, isGb28181Device } from '@/views/camera/utils/deviceLabel'
 import {
@@ -228,6 +232,7 @@ defineOptions({
 const props = defineProps<{
   device?: any
   videoList?: any[]
+  alertRecordList?: any[]
 }>()
 
 const emit = defineEmits<{
@@ -265,10 +270,13 @@ type PersistedDashboardVideoState = {
   videos: PersistedDashboardVideoSlot[]
 }
 
+type DashboardAiStatus = 'empty' | 'original' | 'ai' | 'fallback' | 'unavailable'
+
 type DashboardVideoSlot = {
   id: string
   name: string
   url: string
+  aiStatus?: DashboardAiStatus
   deviceId?: string
   location?: string
   device?: MonitorTreeDeviceNode
@@ -311,8 +319,7 @@ function readPersistedVideoState(): PersistedDashboardVideoState | null {
 
 const enableAi = ref(readPersistedEnableAi())
 const videoRefs = ref<(InstanceType<typeof Jessibuca> | null)[]>([])
-const alertRecordList = ref<any[]>([])
-const loadingRecords = ref(false)
+const alertRecordList = computed(() => props.alertRecordList ?? [])
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
@@ -334,7 +341,8 @@ function ensureVideoSlots(maxCount: number) {
     internalVideoList.value.push({
       id: `placeholder-${internalVideoList.value.length}`,
       url: '',
-      name: `视频${internalVideoList.value.length + 1}`
+      name: `视频${internalVideoList.value.length + 1}`,
+      aiStatus: 'empty',
     })
   }
 }
@@ -486,6 +494,7 @@ async function restorePersistedVideoState() {
       device: video.device,
       playerEngine: video.playerEngine || '',
       videoCodec: video.videoCodec || '',
+      aiStatus: 'original',
     }
     reloadIndexes.push(index)
   })
@@ -890,7 +899,8 @@ const videoListWithPlaceholder = computed(() => {
       ...v,
       id: v.id || `video-${i}`,
       url: v.url || '',
-      name: v.name || `视频${i + 1}`
+      name: v.name || `视频${i + 1}`,
+      aiStatus: v.url ? (v.aiStatus || 'original') : 'empty',
     }))
   }
   
@@ -1023,11 +1033,37 @@ function hasVideoContent(video: { url?: string } | null | undefined) {
   return !!(video?.url && video.url.trim())
 }
 
+function resolveAiStatus(preferAi?: boolean): DashboardAiStatus {
+  if (preferAi) return 'ai'
+  return enableAi.value ? 'unavailable' : 'original'
+}
+
+function getAiStatus(video: DashboardVideoSlot | null | undefined): DashboardAiStatus {
+  if (!hasVideoContent(video)) return 'empty'
+  return video?.aiStatus || 'original'
+}
+
+function getAiStatusText(video: DashboardVideoSlot | null | undefined) {
+  const textMap: Record<DashboardAiStatus, string> = {
+    empty: '',
+    original: '原始',
+    ai: 'AI',
+    fallback: '回退',
+    unavailable: '无 AI 流',
+  }
+  return textMap[getAiStatus(video)]
+}
+
+function getAiStatusClass(video: DashboardVideoSlot | null | undefined) {
+  return `ai-status-tag--${getAiStatus(video)}`
+}
+
 function createPlaceholderSlot(index: number) {
   return {
     id: `placeholder-${index}`,
     url: '',
     name: `视频${index + 1}`,
+    aiStatus: 'empty' as DashboardAiStatus,
   }
 }
 
@@ -1149,6 +1185,7 @@ async function startPlayAtScreen(
     device?: MonitorTreeDeviceNode
     fallbackUrl?: string | null
     preferAi?: boolean
+    aiStatus?: DashboardAiStatus
     playerEngine?: string | null
     videoCodec?: string | null
     playSources?: WvpPlaySourceOption[] | null
@@ -1173,6 +1210,7 @@ async function startPlayAtScreen(
   const hasFallback = !!(payload.preferAi && fallbackUrl && fallbackUrl !== payload.url)
   const pendingAi = payload.pendingAiUrl?.trim()
   const playSources = payload.playSources?.filter((source) => source.url?.trim()) ?? null
+  const aiStatus = payload.aiStatus ?? resolveAiStatus(payload.preferAi)
 
   internalVideoList.value[targetIndex] = {
     id: payload.id,
@@ -1185,6 +1223,7 @@ async function startPlayAtScreen(
     videoCodec: payload.videoCodec || '',
     fallbackUrl: hasFallback ? fallbackUrl : null,
     playSources,
+    aiStatus,
   }
   persistDashboardVideoState()
 
@@ -1220,7 +1259,7 @@ async function startPlayAtScreen(
     createMessage.warning(
       'AI 流暂不可用（请确认算法任务已启动且媒体服务器已收到 AI 推流），已切换为原始画面（无检测框）',
     )
-    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl, fallbackUrl: null }
+    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl, fallbackUrl: null, aiStatus: 'fallback' }
     persistDashboardVideoState()
   }, AI_PLAY_FALLBACK_MS)
   aiFallbackTimers.set(targetIndex, timerId)
@@ -1243,7 +1282,7 @@ function handleVideoStreamError(index: number) {
   const fallbackUrl = slot.fallbackUrl?.trim()
   if (fallbackUrl && fallbackUrl !== slot.url) {
     createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）')
-    internalVideoList.value[index] = { ...slot, url: fallbackUrl, fallbackUrl: null }
+    internalVideoList.value[index] = { ...slot, url: fallbackUrl, fallbackUrl: null, aiStatus: 'fallback' }
     persistDashboardVideoState()
     nextTick(() => videoRefs.value[index]?.play?.())
     return
@@ -1258,6 +1297,7 @@ function handleVideoStreamError(index: number) {
     fallbackUrl: null,
     playerEngine: nextSource.playerEngine,
     videoCodec: nextSource.videoCodec,
+    aiStatus: slot.aiStatus === 'ai' ? 'fallback' : slot.aiStatus,
   }
   persistDashboardVideoState()
   nextTick(() => videoRefs.value[index]?.play?.())
@@ -1540,45 +1580,6 @@ const handleScroll = () => {
   checkScrollStatus()
 }
 
-// 加载告警录像列表
-const loadAlertRecords = async () => {
-  try {
-    loadingRecords.value = true
-    const response = await queryAlarmList({
-      pageNo: 1,
-      pageSize: 20, // 显示最近20条
-    }, { polling: true })
-    if (response && response.alert_list) {
-      alertRecordList.value = response.alert_list.map((item: any) => {
-        let imageUrl = resolveAlertImageDisplayUrl(item.image_url) || null
-        
-        // 如果没有level字段，根据event类型设置默认级别
-        let level = item.level || '告警'
-        if (!item.level) {
-          // 可以根据event类型设置默认级别
-          if (item.event && (item.event.includes('火') || item.event.includes('fire'))) {
-            level = '一级'
-          } else if (item.event && (item.event.includes('烟') || item.event.includes('smoke'))) {
-            level = '二级'
-          }
-        }
-        
-        return {
-          ...item,
-          image: imageUrl,
-          level: level,
-          time: item.time || item.alert_time || item.created_at || '',
-        }
-      })
-    }
-  } catch (error) {
-    console.error('加载告警录像列表失败', error)
-    alertRecordList.value = []
-  } finally {
-    loadingRecords.value = false
-  }
-}
-
 // 格式化时间
 const formatTime = (timeStr: string) => {
   if (!timeStr) return ''
@@ -1634,8 +1635,6 @@ defineExpose({
 })
 
 let timeTimer: any = null
-let recordTimer: any = null
-let delayTimer: any = null
 let scrollCheckTimer: any = null
 let isMounted = false
 
@@ -1648,33 +1647,6 @@ onMounted(() => {
   if (internalVideoList.value.some((slot) => slot?.pendingRestore)) {
     restorePendingVideos()
   }
-  
-  // 初始加载告警录像列表
-  loadAlertRecords()
-  
-  // 错峰刷新：延迟2秒开始，每5秒刷新一次告警录像列表（2秒、7秒、12秒...）
-  delayTimer = setTimeout(() => {
-    // 检查组件是否仍然挂载
-    if (!isMounted) return
-    
-    loadAlertRecords()
-    
-    // 再次检查组件是否仍然挂载
-    if (!isMounted) return
-    
-    recordTimer = setInterval(() => {
-      // 每次执行前检查组件是否仍然挂载
-      if (!isMounted) {
-        if (recordTimer) {
-          clearInterval(recordTimer)
-          recordTimer = null
-        }
-        return
-      }
-      
-      loadAlertRecords()
-    }, 5000)
-  }, 2000)
   
   // 等待DOM渲染后检查滚动状态
   scrollCheckTimer = setTimeout(() => {
@@ -1696,12 +1668,6 @@ onActivated(() => {
 onUnmounted(() => {
   isMounted = false
   
-  // 清理延迟定时器
-  if (delayTimer) {
-    clearTimeout(delayTimer)
-    delayTimer = null
-  }
-  
   if (scrollCheckTimer) {
     clearTimeout(scrollCheckTimer)
     scrollCheckTimer = null
@@ -1710,11 +1676,6 @@ onUnmounted(() => {
   if (timeTimer) {
     clearInterval(timeTimer)
     timeTimer = null
-  }
-  
-  if (recordTimer) {
-    clearInterval(recordTimer)
-    recordTimer = null
   }
   
   window.removeEventListener('resize', checkScrollStatus)
@@ -1746,10 +1707,10 @@ watch(() => alertRecordList.value, () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, rgba(15, 34, 73, 0.8), rgba(24, 46, 90, 0.6));
-  border: 1px solid rgba(52, 134, 218, 0.3);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 0 30px rgba(52, 134, 218, 0.1);
-  border-radius: 8px;
+  background: var(--dashboard-panel);
+  border: 1px solid var(--dashboard-border);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: var(--dashboard-radius);
   padding: 3px;
   position: relative;
   z-index: 10;
@@ -1763,15 +1724,12 @@ watch(() => alertRecordList.value, () => {
   &::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: 
-      linear-gradient(90deg, transparent 0%, rgba(52, 134, 218, 0.05) 50%, transparent 100%),
-      radial-gradient(circle at top left, rgba(52, 134, 218, 0.1), transparent 50%);
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
+      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
     pointer-events: none;
-    border-radius: 8px;
+    border-radius: var(--dashboard-radius);
   }
 }
 
@@ -1779,9 +1737,9 @@ watch(() => alertRecordList.value, () => {
   flex-shrink: 0;
   height: auto;
   min-height: 52px;
-  background: rgba(52, 134, 218, 0.08);
-  border-bottom: 1px solid rgba(52, 134, 218, 0.3);
-  color: #fff;
+  background: rgba(8, 22, 39, 0.72);
+  border-bottom: 1px solid var(--dashboard-border);
+  color: var(--dashboard-text);
   font-size: 14px;
   padding: 8px clamp(12px, 1.2vw, 20px);
   display: flex;
@@ -1803,7 +1761,7 @@ watch(() => alertRecordList.value, () => {
     font-size: 14px;
     line-height: 32px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--dashboard-text);
     white-space: nowrap;
   }
 
@@ -1812,7 +1770,7 @@ watch(() => alertRecordList.value, () => {
     min-width: 152px;
     font-size: 14px;
     line-height: 32px;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--dashboard-muted);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -1823,7 +1781,7 @@ watch(() => alertRecordList.value, () => {
     max-width: 180px;
     font-size: 14px;
     line-height: 32px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--dashboard-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1835,31 +1793,31 @@ watch(() => alertRecordList.value, () => {
     align-items: center;
     height: 32px;
     padding: 0 12px;
-    background: rgba(52, 134, 218, 0.15);
-    border: 1px solid rgba(52, 134, 218, 0.3);
-    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid var(--dashboard-border);
+    border-radius: var(--dashboard-radius);
 
     :deep(.ant-checkbox-wrapper) {
-      color: rgba(200, 220, 255, 0.95) !important;
+      color: var(--dashboard-text) !important;
       font-size: 14px;
       line-height: 1;
       white-space: nowrap;
     }
 
     :deep(.ant-checkbox-wrapper:hover .ant-checkbox-inner) {
-      border-color: #3486da !important;
+      border-color: var(--dashboard-blue) !important;
     }
 
     :deep(.ant-checkbox .ant-checkbox-inner) {
       width: 16px;
       height: 16px;
-      background-color: rgba(15, 34, 73, 0.6) !important;
-      border-color: rgba(52, 134, 218, 0.6) !important;
+      background-color: rgba(7, 19, 34, 0.72) !important;
+      border-color: rgba(56, 189, 248, 0.48) !important;
     }
 
     :deep(.ant-checkbox-checked .ant-checkbox-inner) {
-      background-color: #3486da !important;
-      border-color: #3486da !important;
+      background-color: var(--dashboard-blue) !important;
+      border-color: var(--dashboard-blue) !important;
     }
 
     :deep(.ant-checkbox-checked .ant-checkbox-inner::after) {
@@ -1867,7 +1825,7 @@ watch(() => alertRecordList.value, () => {
     }
 
     :deep(.ant-checkbox + span) {
-      color: rgba(200, 220, 255, 0.95) !important;
+      color: var(--dashboard-text) !important;
       padding-inline-start: 8px;
     }
   }
@@ -1896,28 +1854,28 @@ watch(() => alertRecordList.value, () => {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(52, 134, 218, 0.15);
-      border: 1px solid rgba(52, 134, 218, 0.3);
-      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid var(--dashboard-border);
+      border-radius: var(--dashboard-radius);
       cursor: pointer;
-      transition: all 0.3s;
-      color: rgba(200, 220, 255, 0.9);
+      transition: background 0.2s, border-color 0.2s, transform 0.2s;
+      color: var(--dashboard-muted);
       font-size: 12px;
       padding: 0 8px;
       white-space: nowrap;
 
       &:hover {
-        background: rgba(52, 134, 218, 0.25);
-        border-color: rgba(52, 134, 218, 0.6);
-        color: #ffffff;
-        box-shadow: 0 0 8px rgba(52, 134, 218, 0.3);
+        background: rgba(56, 189, 248, 0.18);
+        border-color: var(--dashboard-border-strong);
+        color: var(--dashboard-text);
+        transform: translateY(-1px);
       }
 
       &.active {
-        background: linear-gradient(135deg, rgba(52, 134, 218, 0.3), rgba(48, 82, 174, 0.2));
-        border-color: #3486da;
-        color: #ffffff;
-        box-shadow: 0 0 12px rgba(52, 134, 218, 0.5);
+        background: rgba(56, 189, 248, 0.2);
+        border-color: var(--dashboard-blue);
+        color: var(--dashboard-text);
+        box-shadow: inset 0 -2px 0 var(--dashboard-blue);
       }
     }
   }
@@ -1928,23 +1886,23 @@ watch(() => alertRecordList.value, () => {
     gap: 6px;
     height: 32px;
     padding: 0 12px;
-    border-radius: 6px;
-    border: 1px solid rgba(52, 134, 218, 0.35);
-    background: rgba(52, 134, 218, 0.12);
-    color: rgba(214, 235, 255, 0.92);
+    border-radius: var(--dashboard-radius);
+    border: 1px solid var(--dashboard-border);
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--dashboard-text);
     font-size: 12px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
     white-space: nowrap;
     user-select: none;
     flex-shrink: 0;
 
     &:hover,
     &.open {
-      background: rgba(52, 134, 218, 0.28);
-      border-color: rgba(52, 134, 218, 0.6);
-      color: #fff;
-      box-shadow: 0 0 10px rgba(52, 134, 218, 0.25);
+      background: rgba(56, 189, 248, 0.18);
+      border-color: var(--dashboard-border-strong);
+      color: var(--dashboard-text);
+      transform: translateY(-1px);
     }
 
     .trigger-label {
@@ -1954,7 +1912,7 @@ watch(() => alertRecordList.value, () => {
 
   .layout-preset-trigger {
     &.has-active {
-      border-color: rgba(82, 196, 26, 0.45);
+      border-color: rgba(34, 197, 94, 0.42);
     }
 
     .trigger-badge {
@@ -1964,11 +1922,11 @@ watch(() => alertRecordList.value, () => {
       padding: 0 6px;
       height: 20px;
       line-height: 20px;
-      border-radius: 10px;
+      border-radius: var(--dashboard-radius);
       font-size: 11px;
-      color: #b7eb8f;
-      background: rgba(82, 196, 26, 0.15);
-      border: 1px solid rgba(82, 196, 26, 0.25);
+      color: #bbf7d0;
+      background: rgba(34, 197, 94, 0.14);
+      border: 1px solid rgba(34, 197, 94, 0.28);
     }
   }
 }
@@ -1978,7 +1936,7 @@ watch(() => alertRecordList.value, () => {
   inset: 0;
   top: 52px;
   z-index: 150;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.42);
   pointer-events: auto;
 }
 
@@ -2029,10 +1987,11 @@ watch(() => alertRecordList.value, () => {
   padding: 4px;
   overflow: hidden;
   background:
-    linear-gradient(rgba(52, 134, 218, 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(52, 134, 218, 0.1) 1px, transparent 1px);
-  background-size: 20px 20px;
-  background-color: #000;
+    linear-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.08), transparent 42%);
+  background-size: 24px 24px, 24px 24px, auto;
+  background-color: #02070f;
 
   // 1分屏 - 全屏单画面
   &.layout-1 {
@@ -2062,27 +2021,27 @@ watch(() => alertRecordList.value, () => {
 .video-window {
   position: relative;
   background: #000;
-  border: 2px solid rgba(52, 134, 218, 0.3);
-  border-radius: 2px;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 3px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 
   &:hover {
-    border-color: rgba(52, 134, 218, 0.6);
-    transform: scale(1.01);
+    border-color: var(--dashboard-border-strong);
+    transform: scale(1.003);
     z-index: 10;
   }
 
   &.active {
-    border-color: #3486da;
-    box-shadow: 0 0 10px rgba(52, 134, 218, 0.5);
+    border-color: var(--dashboard-blue);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.24), 0 0 18px rgba(56, 189, 248, 0.18);
     z-index: 5;
   }
 
   &.drag-over {
-    border-color: #52c41a;
-    box-shadow: 0 0 12px rgba(82, 196, 26, 0.55);
+    border-color: var(--dashboard-green);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.42);
     z-index: 12;
   }
 
@@ -2104,25 +2063,25 @@ watch(() => alertRecordList.value, () => {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      color: rgba(255, 255, 255, 0.4);
+      color: rgba(184, 203, 224, 0.48);
 
       .camera-icon {
-        width: 72px;
-        height: 72px;
-        opacity: 0.7;
-        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 8px rgba(74, 144, 226, 0.2));
-        transition: all 0.3s ease;
+        width: 64px;
+        height: 64px;
+        opacity: 0.58;
+        filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.46));
+        transition: opacity 0.2s, transform 0.2s;
       }
 
       &:hover .camera-icon {
-        opacity: 0.95;
-        transform: scale(1.08);
-        filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 12px rgba(74, 144, 226, 0.4));
+        opacity: 0.78;
+        transform: scale(1.04);
       }
 
       .placeholder-text {
         margin-top: 8px;
         font-size: 12px;
+        color: var(--dashboard-muted);
       }
     }
 
@@ -2142,7 +2101,7 @@ watch(() => alertRecordList.value, () => {
       max-height: 28%;
       z-index: 1;
       cursor: grab;
-      border-radius: 4px;
+      border-radius: var(--dashboard-radius);
 
       &:active {
         cursor: grabbing;
@@ -2153,17 +2112,66 @@ watch(() => alertRecordList.value, () => {
       position: absolute;
       top: 0;
       left: 0;
-      right: 32px;
-      color: #ffffff;
+      right: 112px;
+      color: var(--dashboard-text);
       font-size: 12px;
       padding: 4px 8px;
       text-align: left;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.78), transparent);
       z-index: 2;
       pointer-events: none;
+    }
+
+    .ai-status-tag {
+      position: absolute;
+      top: 4px;
+      right: 32px;
+      z-index: 3;
+      min-width: 42px;
+      max-width: 74px;
+      height: 22px;
+      padding: 0 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--dashboard-radius);
+      border: 1px solid rgba(56, 189, 248, 0.34);
+      background: rgba(5, 14, 26, 0.74);
+      color: var(--dashboard-text);
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24);
+    }
+
+    .ai-status-tag--original {
+      color: #bdefff;
+      border-color: rgba(56, 189, 248, 0.36);
+      background: rgba(56, 189, 248, 0.14);
+    }
+
+    .ai-status-tag--ai {
+      color: #bbf7d0;
+      border-color: rgba(34, 197, 94, 0.38);
+      background: rgba(34, 197, 94, 0.16);
+    }
+
+    .ai-status-tag--fallback {
+      color: #fed7aa;
+      border-color: rgba(245, 158, 11, 0.42);
+      background: rgba(245, 158, 11, 0.16);
+    }
+
+    .ai-status-tag--unavailable {
+      color: rgba(230, 241, 255, 0.72);
+      border-color: rgba(184, 203, 224, 0.28);
+      background: rgba(184, 203, 224, 0.12);
     }
 
     .video-close-btn {
@@ -2178,16 +2186,16 @@ watch(() => alertRecordList.value, () => {
       height: 22px;
       padding: 0;
       border: none;
-      border-radius: 2px;
+      border-radius: var(--dashboard-radius);
       color: #fff;
-      background: rgba(255, 77, 79, 0.55);
+      background: rgba(249, 115, 115, 0.58);
       cursor: pointer;
       opacity: 0.75;
       transition: opacity 0.2s, background 0.2s;
 
       &:hover {
         opacity: 1;
-        background: rgba(255, 77, 79, 0.85);
+        background: rgba(249, 115, 115, 0.85);
       }
     }
 
@@ -2197,9 +2205,9 @@ watch(() => alertRecordList.value, () => {
       left: 4px;
       width: 8px;
       height: 8px;
-      background: #3486da;
+      background: var(--dashboard-blue);
       border-radius: 50%;
-      box-shadow: 0 0 6px rgba(52, 134, 218, 0.8);
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.78);
     }
   }
 }
@@ -2208,8 +2216,8 @@ watch(() => alertRecordList.value, () => {
   flex-shrink: 0;
   height: 140px;
   min-height: 140px;
-  background: linear-gradient(to bottom, rgba(48, 82, 174, 0.35), rgba(52, 134, 218, 0.25));
-  border-top: 1px solid rgba(52, 134, 218, 0.3);
+  background: rgba(5, 14, 26, 0.52);
+  border-top: 1px solid var(--dashboard-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2223,18 +2231,18 @@ watch(() => alertRecordList.value, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(12, 40, 84, 0.8);
-  border-bottom: 1px solid rgba(52, 134, 218, 0.2);
+  background: rgba(8, 22, 39, 0.78);
+  border-bottom: 1px solid var(--dashboard-border);
 
   .header-title {
     font-size: 14px;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--dashboard-text);
   }
 
   .header-count {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--dashboard-muted);
   }
 }
 
@@ -2253,18 +2261,18 @@ watch(() => alertRecordList.value, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(52, 134, 218, 0.3);
-  border: 1px solid rgba(52, 134, 218, 0.5);
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid var(--dashboard-border-strong);
   border-radius: 50%;
   cursor: pointer;
   z-index: 10;
-  transition: all 0.3s;
-  color: #ffffff;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  color: var(--dashboard-text);
   backdrop-filter: blur(4px);
 
   &:hover {
-    background: rgba(52, 134, 218, 0.5);
-    border-color: #3486da;
+    background: rgba(56, 189, 248, 0.3);
+    border-color: var(--dashboard-blue);
     transform: translateY(-50%) scale(1.1);
   }
 
@@ -2297,16 +2305,16 @@ watch(() => alertRecordList.value, () => {
   }
 
   &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
     border-radius: 3px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(52, 134, 218, 0.5);
+    background: rgba(56, 189, 248, 0.48);
     border-radius: 3px;
 
     &:hover {
-      background: rgba(52, 134, 218, 0.7);
+      background: rgba(56, 189, 248, 0.66);
     }
   }
 }
@@ -2315,21 +2323,21 @@ watch(() => alertRecordList.value, () => {
   flex-shrink: 0;
   width: 200px;
   height: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(52, 134, 218, 0.3);
-  border-radius: 6px;
+  background: rgba(7, 19, 34, 0.76);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius);
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: #3486da;
+    background: rgba(12, 31, 55, 0.92);
+    border-color: var(--dashboard-border-strong);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(52, 134, 218, 0.3);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
   }
 }
 
@@ -2337,7 +2345,7 @@ watch(() => alertRecordList.value, () => {
   position: relative;
   width: 100%;
   height: 80px;
-  border-radius: 4px;
+  border-radius: var(--dashboard-radius);
   overflow: hidden;
   background: rgba(0, 0, 0, 0.3);
 
@@ -2353,7 +2361,7 @@ watch(() => alertRecordList.value, () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(184, 203, 224, 0.5);
   }
 
   .record-badge {
@@ -2361,12 +2369,12 @@ watch(() => alertRecordList.value, () => {
     top: 4px;
     right: 4px;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--dashboard-radius);
     font-size: 10px;
     font-weight: 500;
-    background: rgba(52, 134, 218, 0.8);
+    background: rgba(56, 189, 248, 0.82);
     color: #ffffff;
-    border: 1px solid #3486da;
+    border: 1px solid var(--dashboard-blue);
   }
 }
 
@@ -2382,7 +2390,7 @@ watch(() => alertRecordList.value, () => {
 .record-title {
   font-size: 14px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--dashboard-text);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2395,7 +2403,7 @@ watch(() => alertRecordList.value, () => {
   align-items: center;
   gap: 0;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--dashboard-muted);
 
   .record-device {
     flex: 0 1 auto;
@@ -2410,14 +2418,14 @@ watch(() => alertRecordList.value, () => {
     flex-shrink: 0;
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--dashboard-text);
     margin-left: 8px;
     white-space: nowrap;
   }
 
   .play-icon {
     flex-shrink: 0;
-    color: rgba(52, 134, 218, 0.9);
+    color: var(--dashboard-blue);
     margin-left: 8px;
     cursor: pointer;
     transition: all 0.3s;
@@ -2426,7 +2434,7 @@ watch(() => alertRecordList.value, () => {
     justify-content: center;
 
     &:hover {
-      color: #3486da;
+      color: #7dd3fc;
       transform: scale(1.1);
     }
   }
@@ -2440,7 +2448,7 @@ watch(() => alertRecordList.value, () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(184, 203, 224, 0.52);
   font-size: 12px;
 }
 
@@ -2456,17 +2464,17 @@ watch(() => alertRecordList.value, () => {
     width: 17px;
     height: 17px;
     content: "";
-    border-bottom: 3px solid #3486da;
+    border-bottom: 2px solid var(--dashboard-border-strong);
     bottom: -2px;
   }
 
   &:before {
-    border-left: 3px solid #3486da;
+    border-left: 2px solid var(--dashboard-border-strong);
     left: -2px;
   }
 
   &:after {
-    border-right: 3px solid #3486da;
+    border-right: 2px solid var(--dashboard-border-strong);
     right: -2px;
   }
 }
