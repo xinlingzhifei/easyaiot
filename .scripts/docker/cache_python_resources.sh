@@ -104,7 +104,7 @@ prepare_flattened_requirements() {
     req_file="$(module_req_docker_file "$module")"
     # ★ 使用确定性文件名（按模块），避免 mktemp 随机后缀在 Docker 挂载时产生隐式竞态
     #    路径固定在 .build-cache/tmp/ 下，确保 Docker Daemon 可访问
-    out_dir="$(easyaiot_build_cache_base "$EASYAIOT_ROOT")/tmp"
+    out_dir="$(yfeieye_build_cache_base "$EASYAIOT_ROOT")/tmp"
     mkdir -p "$out_dir"
     out_file="${out_dir}/requirements-${module}-docker-flat.txt"
     echo "--index-url https://pypi.tuna.tsinghua.edu.cn/simple" > "$out_file"

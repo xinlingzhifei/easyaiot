@@ -266,7 +266,7 @@ ARM_FFMPEG_MIN_BYTES=1048576
 arm_ffmpeg_cache_dir_for() {
     local root="${1:-${EASYAIOT_ROOT:-.}}"
     local dir
-    dir="$(easyaiot_build_cache_base "$root")/arm/video/ffmpeg"
+    dir="$(yfeieye_build_cache_base "$root")/arm/video/ffmpeg"
     mkdir -p "$dir"
     echo "$dir"
 }
@@ -318,7 +318,7 @@ ensure_arm_ffmpeg_cached() {
     local root="${1:-${EASYAIOT_ROOT:-.}}"
     local cache_dir export_script
 
-    init_easyaiot_build_cache_dirs "$root"
+    init_yfeieye_build_cache_dirs "$root"
     migrate_legacy_arm_ffmpeg_cache_if_needed "$root"
 
     if arm_ffmpeg_ready_for "$root"; then
@@ -335,7 +335,7 @@ ensure_arm_ffmpeg_cached() {
     cache_dir="$(arm_ffmpeg_cache_dir_for "$root")"
     echo "[build-cache] ARM ffmpeg 缺失，下载到 ${cache_dir} ..."
     FFMPEG_CACHE_DIR="$cache_dir" FFMPEG_ARCH=arm64 /bin/bash "$export_script" || return 1
-    easyaiot_chown_build_cache "$(easyaiot_build_cache_base "$root")"
+    yfeieye_chown_build_cache "$(yfeieye_build_cache_base "$root")"
 }
 
 # 将 .build-cache 中的 ffmpeg 包链入 VIDEO 构建上下文（供 Dockerfile.arm COPY）
@@ -411,11 +411,11 @@ arm_pip_wheels_ready_for() {
 ensure_arm_python_wheels_cached() {
     local root="${1:-${EASYAIOT_ROOT:-.}}"
     local module cache_script base
-    base="$(easyaiot_build_cache_base "$root")"
+    base="$(yfeieye_build_cache_base "$root")"
 
-    init_easyaiot_build_cache_dirs "$root"
+    init_yfeieye_build_cache_dirs "$root"
 
-    for module in "${EASYAIOT_PYTHON_CACHE_MODULES[@]}"; do
+    for module in "${YFEIEYE_PYTHON_CACHE_MODULES[@]}"; do
         if arm_pip_wheels_ready_for "$root" "$module"; then
             echo "[build-cache] [${module}] ARM pip-wheels 已就绪: $(arm_pip_wheels_build_context_dir_for "$root" "$module")"
             continue
@@ -437,5 +437,5 @@ ensure_arm_python_wheels_cached() {
         fi
     done
 
-    easyaiot_chown_build_cache "$base"
+    yfeieye_chown_build_cache "$base"
 }
