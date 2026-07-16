@@ -473,6 +473,20 @@ check_dist() {
 }
 
 # 按部署形态写入 WEB compose 使用的 nginx 配置路径
+configure_stream_ticket_secret() {
+    local configurator="${YFEIEYE_ROOT}/.scripts/configure-nginx-stream-secret.mjs"
+    local video_env="${YFEIEYE_ROOT}/VIDEO/.env.docker"
+    if ! command -v node >/dev/null 2>&1; then
+        print_error "Node.js 未安装，无法生成播放器流地址签名密钥配置"
+        exit 1
+    fi
+    if [ ! -f "$video_env" ]; then
+        print_error "VIDEO/.env.docker 不存在，无法生成播放器流地址签名密钥配置"
+        exit 1
+    fi
+    node "$configurator" "--env-file=$video_env" --skip-nginx-check
+}
+
 ensure_nginx_conf_for_profile() {
     ensure_deploy_profile
     local conf="./conf/nginx.conf"
@@ -487,6 +501,8 @@ ensure_nginx_conf_for_profile() {
             echo "NGINX_CONF=${conf}" >> .env
         fi
     fi
+    # The nginx container validates this generated include when Compose starts it.
+    configure_stream_ticket_secret
     print_info "nginx 配置: ${conf} (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
 }
 
@@ -961,6 +977,9 @@ update_service() {
     local rev_after=""
     rev_after="$(git rev-parse HEAD 2>/dev/null || echo "")"
 
+    # update 的无构建快速路径也会重新创建容器，必须先生成并校验流地址签名密钥 include。
+    ensure_nginx_conf_for_profile
+
     # 无变更快速路径：提交号未变 + 本地无未提交改动 + 镜像已存在 + 部署形态未变 → 跳过前端重建
     # 说明1：clean 会删除镜像并刷新构建戳，故 clean 后镜像不存在 → 此处不会误跳过
     # 说明2：git diff --quiet HEAD 捕获「已跟踪文件的本地未提交修改」，避免改了代码没 commit
@@ -1066,4 +1085,3 @@ main() {
 
 # 运行主函数
 main "$@"
-

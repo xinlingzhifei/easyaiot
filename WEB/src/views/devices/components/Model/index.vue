@@ -100,7 +100,7 @@ const activeKey = ref<string>('card');
 const searchParams = reactive({});
 
 // 共享的搜索表单
-const [registerForm, { validate, getFieldsValue, resetFields }] = useForm({
+const [registerForm, { validate }] = useForm({
   schemas: [
     {
       field: `name`,
@@ -285,4 +285,3 @@ function handleTabChange(key: string) {
   }
 }
 </style>
-

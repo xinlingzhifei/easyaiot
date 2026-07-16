@@ -7,7 +7,6 @@ import {
   type NvrInfo,
 } from '@/api/device/camera';
 import { queryAllVideoList } from '@/api/device/gb28181';
-import type { TreeItem } from '@/components/Tree';
 import { buildGbSipNameMap, buildGbSipNameMapFromDirectoryTree } from './monitorGbDisplay';
 import {
   buildMonitorDirectoryTreeNodes,
@@ -186,7 +185,7 @@ export function monitorTreeDeviceToDeviceInfo(d: MonitorTreeDeviceNode): DeviceI
     rtmp_stream: d.rtmp_stream,
     ai_http_stream: d.ai_http_stream,
     ai_rtmp_stream: d.ai_rtmp_stream,
-  } as DeviceInfo;
+  } as unknown as DeviceInfo;
 }
 
 /** 目录下设备列表（含默认分组下 WVP 未入库的国标 SIP 行） */

@@ -206,7 +206,7 @@ export default defineComponent({
         return params;
       },
       afterFetch: (data) => {
-        let list = [];
+        let list: any[] = [];
         data.forEach((element) => {
           if (element.type == 'tab') {
             list.push(element);
@@ -236,7 +236,7 @@ export default defineComponent({
       },
       rowSelection: {
         type: 'checkbox',
-        selectedRowKeys: checkedKeys,
+        selectedRowKeys: checkedKeys.value,
         onSelect: onSelect,
         onSelectAll: onSelectAll,
         getCheckboxProps(record) {
@@ -346,7 +346,7 @@ export default defineComponent({
       // 使用代理路径访问 NodeRed，避免跨域问题
       const nodeRedPath = '/dev-api/nodeRed/#flow/';
       go({
-        path: `/rulechains/index/${encodeURIComponent(record.label || '规则链')}`,
+        path: `/rulechains/index/${encodeURIComponent(record.label || '规则链')}` as any,
         query: {code: record.id, path: nodeRedPath}
       });
     }

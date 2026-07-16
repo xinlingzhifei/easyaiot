@@ -112,7 +112,7 @@
 </template>
 
 <script lang="ts" setup name="PhysicalModal">
-import {BasicTable, TableAction, useTable} from '@/components/Table';
+import {BasicTable, TableAction, useTable, type ActionItem} from '@/components/Table';
 import {getBasicColumns, getFormConfig} from '../data/ProductData';
 import PhysicalModalTitle from './PhysicalModalTitle.vue';
 import {useModal} from '@/components/Modal';
@@ -126,10 +126,10 @@ import {
   getPropertiesList,
   getServicesList,
   releasePhsyical,
-  savePhsyicalEvent, savePhsyicalEventResponse,
+  savePhsyicalEvent,
   savePhsyicalProperties,
   savePhsyicalService,
-  updatePhsyicalEvent, updatePhsyicalEventResponse,
+  updatePhsyicalEvent,
   updatePhsyicalProperties,
   updatePhsyicalService,
 } from '@/api/device/phsyicalModal';
@@ -210,7 +210,7 @@ interface Props {
   });
 
   const [registerEditModal, { openModal: openEditModal }] = useModal();
-  const actionsBtn = (record: { id: string }) => {
+  const actionsBtn = (record: { id: string }): ActionItem[] => {
     if (isEdit.value) {
       return [
         {

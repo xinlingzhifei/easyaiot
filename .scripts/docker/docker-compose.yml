@@ -25,7 +25,8 @@ services:
       - JVM_MS=128m
       - JVM_MMS=320m
     volumes:
-      - ./standalone-logs/:/home/nacos/logs:rw
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/nacos_data/data:/home/nacos/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/nacos_data/logs:/home/nacos/logs:rw"
     ports:
       - "0.0.0.0:8848:8848"
       - "0.0.0.0:9848:9848"
@@ -51,8 +52,8 @@ services:
     container_name: postgres-init
     user: "0:0"
     volumes:
-      - ./db_data/data:/var/lib/postgresql/data:rw
-      - ./db_data/log:/var/log/postgresql:rw
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/db_data/data:/var/lib/postgresql/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/db_data/log:/var/log/postgresql:rw"
     command:
       [
         "/bin/bash",
@@ -77,8 +78,8 @@ services:
       - POSTGRES_DB=postgres
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - ./db_data/data:/var/lib/postgresql/data:rw
-      - ./db_data/log:/var/log/postgresql:rw
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/db_data/data:/var/lib/postgresql/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/db_data/log:/var/log/postgresql:rw"
       # SQL 文件挂载（按字母顺序执行）
       # 注意：确保 ../postgresql 目录存在，否则挂载会失败
       - ../postgresql:/docker-entrypoint-initdb.d:rw
@@ -126,8 +127,8 @@ services:
       - "0.0.0.0:6043-6049:6043-6049/tcp"
       - "0.0.0.0:6043-6049:6043-6049/udp"
     volumes:
-      - "./taos_data/data:/var/lib/taos:rw"
-      - "./taos_data/log:/var/log/taos:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/taos_data/data:/var/lib/taos:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/taos_data/log:/var/log/taos:rw"
       # TDengine entrypoint 脚本（自动修复权限）
       # 注意：确保 ./tdengine-entrypoint.sh 文件存在，否则挂载会失败
       - ./tdengine-entrypoint.sh:/tdengine-entrypoint.sh:rw
@@ -284,12 +285,12 @@ services:
     container_name: minio-server
     restart: always
     ports:
-      - "0.0.0.0:9000:9000"
-      - "0.0.0.0:9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       - TZ=Asia/Shanghai
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=basiclab@iot975248395
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
     command: server /data --console-address ":9001"
     volumes:
       - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/minio_data/data:/data:rw"
@@ -320,7 +321,7 @@ services:
       - "0.0.0.0:19530:19530"
       - "0.0.0.0:9091:9091"
     volumes:
-      - "./milvus_data:/var/lib/milvus:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/milvus_data:/var/lib/milvus:rw"
       - "./milvus_config/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro"
       - "./milvus_config/user.yaml:/milvus/configs/user.yaml:ro"
     healthcheck:
@@ -341,10 +342,10 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - "./srs_data/conf:/usr/local/srs/conf:rw"
-      - "./srs_data/conf:/opt/srs/trunk/conf:rw"
-      # 宿主机数据目录映射为容器内录像与日志目录（统一 ~/easyaiot/data）
-      - "~/easyaiot/data:/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/srs_data/conf:/usr/local/srs/conf:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/srs_data/conf:/opt/srs/trunk/conf:rw"
+      # 宿主机数据目录映射为容器内录像与日志目录
+      - "/data:/data:rw"
       - "./srs-entrypoint.sh:/usr/local/bin/srs-entrypoint.sh:ro"
       - "./srs-healthcheck.sh:/usr/local/bin/srs-healthcheck.sh:ro"
     entrypoint: ["/bin/bash", "/usr/local/bin/srs-entrypoint.sh"]
@@ -369,7 +370,7 @@ services:
       - NODE_OPTIONS=--max-old-space-size=512
     user: "1000:1000"
     volumes:
-      - "./nodered_data/data:/data:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/nodered_data/data:/data:rw"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:1880/ || exit 1"]
       interval: 30s
@@ -443,11 +444,11 @@ services:
 
     environment:
       - TZ=Asia/Shanghai
-    # 数据目录：.scripts/zlmediakit（相对本文件为 ../zlmediakit）
+    # 可变数据统一落到 release 之外的共享根。
     volumes:
-      - "../zlmediakit/www:/opt/media/bin/www:rw"
-      - "../zlmediakit/log:/opt/media/log:rw"
-      - "../zlmediakit/conf:/conf:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/zlmediakit/www:/opt/media/bin/www:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/zlmediakit/log:/opt/media/log:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/zlmediakit/conf:/conf:rw"
     command:
       [
         "MediaServer",
@@ -484,7 +485,7 @@ services:
       # 默认 admin 初始密码（bootstrap 仅在首次创建数据目录时生效）
       - GPUSTACK_BOOTSTRAP_PASSWORD=${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}
     volumes:
-      - "./gpustack_data:/var/lib/gpustack:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/gpustack_data:/var/lib/gpustack:rw"
       # 用于在本机注册 Worker、管理推理容器
       - /var/run/docker.sock:/var/run/docker.sock
     ports:

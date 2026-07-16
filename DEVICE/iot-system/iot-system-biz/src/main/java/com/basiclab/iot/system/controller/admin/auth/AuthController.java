@@ -20,6 +20,8 @@ import com.basiclab.iot.system.service.permission.MenuService;
 import com.basiclab.iot.system.service.permission.PermissionService;
 import com.basiclab.iot.system.service.permission.RoleService;
 import com.basiclab.iot.system.service.user.AdminUserService;
+import com.basiclab.iot.system.service.supervision.ConfiguredReviewCameraPermissionResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
@@ -35,6 +37,7 @@ import javax.validation.Valid;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.Locale;
 
 import static com.basiclab.iot.common.domain.CommonResult.success;
 import static com.basiclab.iot.common.utils.collection.CollectionUtils.convertSet;
@@ -53,6 +56,10 @@ import static com.basiclab.iot.common.utils.SecurityFrameworkUtils.getLoginUserI
 @Slf4j
 public class AuthController {
 
+    private static final Set<String> MEDIA_ACTIONS = Set.of(
+            "playback", "snapshot", "coverage", "export", "download", "manifest_verify", "record_manage"
+    );
+
     @Resource
     private AdminAuthService authService;
     @Resource
@@ -63,6 +70,8 @@ public class AuthController {
     private MenuService menuService;
     @Resource
     private PermissionService permissionService;
+    @Resource
+    private ConfiguredReviewCameraPermissionResolver reviewCameraPermissionResolver;
 
     @Resource
     private SecurityProperties securityProperties;
@@ -118,6 +127,59 @@ public class AuthController {
 
         // 2. 拼接结果返回
         return success(AuthConvert.INSTANCE.convert(user, roles, menuList));
+    }
+
+    @PostMapping("/media-permission-check")
+    @Operation(summary = "Resolve authenticated tenant, action permission and camera scope for VIDEO")
+    public CommonResult<MediaPermissionCheckRespVO> checkMediaPermission(
+            @RequestBody(required = false) MediaPermissionCheckReqVO reqVO) {
+        MediaPermissionCheckReqVO request = reqVO == null ? new MediaPermissionCheckReqVO() : reqVO;
+        Long userId = getLoginUserId();
+        AdminUserDO user = userId == null ? null : userService.getUser(userId);
+        Long tenantId = user == null ? null : user.getTenantId();
+        String action = normalizeMediaValue(request.getAction()).toLowerCase(Locale.ROOT);
+        String cameraId = normalizeMediaValue(request.getCameraId());
+        if (userId == null || user == null) {
+            return success(mediaPermissionDecision(false, userId, tenantId, cameraId, action,
+                    "authentication_required"));
+        }
+        if (tenantId == null) {
+            return success(mediaPermissionDecision(false, userId, null, cameraId, action,
+                    "tenant_required"));
+        }
+        if (!MEDIA_ACTIONS.contains(action)) {
+            return success(mediaPermissionDecision(false, userId, tenantId, cameraId, action,
+                    "action_permission_denied"));
+        }
+        if (cameraId.isEmpty()) {
+            return success(mediaPermissionDecision(false, userId, tenantId, null, action,
+                    "camera_scope_required"));
+        }
+        List<String> allowedCameraIds = reviewCameraPermissionResolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(null, userId, tenantId, action, List.of(cameraId))
+        );
+        boolean allowed = allowedCameraIds != null && allowedCameraIds.stream().anyMatch(cameraId::equals);
+        return success(mediaPermissionDecision(
+                allowed,
+                userId,
+                tenantId,
+                cameraId,
+                action,
+                allowed ? "granted" : "camera_scope_denied"
+        ));
+    }
+
+    private static MediaPermissionCheckRespVO mediaPermissionDecision(boolean allowed,
+                                                                       Long userId,
+                                                                       Long tenantId,
+                                                                       String cameraId,
+                                                                       String action,
+                                                                       String reason) {
+        return new MediaPermissionCheckRespVO(allowed, userId, tenantId, cameraId, action, reason);
+    }
+
+    private static String normalizeMediaValue(String value) {
+        return value == null ? "" : value.trim();
     }
 
     // ========== 短信登录相关 ==========

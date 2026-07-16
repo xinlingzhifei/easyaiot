@@ -46,7 +46,7 @@
             <div class="header-toolbar">
               <a-radio-group
                 v-model:value="state.splitMode"
-                size="middle"
+                size="default"
                 button-style="solid"
                 class="split-mode-group"
                 @change="handleSplitModeChange"

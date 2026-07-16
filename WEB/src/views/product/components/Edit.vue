@@ -199,7 +199,7 @@ import {throttle} from 'lodash-es';
     length: '10240',
   };
 
-  const handleTabsChange = (key, datatype) => {
+  const handleTabsChange = (key, datatype = 'INT') => {
     emit('update:editFunctionType', key);
     let schemas: Array<(e) => FormSchema[]> = [];
     let field = '';

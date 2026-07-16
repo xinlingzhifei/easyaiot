@@ -20,7 +20,7 @@ from nacos import NacosClient
 from sqlalchemy import text
 
 from app.utils.nacos_registration import NacosRegistrationConfig, NacosRegistrationLoop
-from app.utils.video_env import load_video_env
+from app.utils.video_env import load_video_env, validate_production_runtime_secrets
 
 from app.blueprints import camera, alert, snap, playback, record, algorithm_task, stream_forward, face
 
@@ -124,6 +124,9 @@ def send_heartbeat(client, ip, port, stop_event):
 
 
 def create_app(start_background_tasks=None):
+    validate_production_runtime_secrets()
+    from app.services.record_export_service import validate_record_export_signing_configuration
+    validate_record_export_signing_configuration()
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
     
@@ -977,6 +980,9 @@ def create_app(start_background_tasks=None):
 
     if not start_background_tasks:
         return app
+
+    from app.services.record_export_service import start_record_export_worker
+    app.record_export_worker_thread = start_record_export_worker(app)
 
     # Nacos registration must survive slow Nacos startup after host reboots.
     nacos_server = os.getenv('NACOS_SERVER', 'Nacos:8848')

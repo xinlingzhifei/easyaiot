@@ -51,6 +51,9 @@ public class TenantJobAspect {
                 }
             });
         });
+        if (!results.isEmpty()) {
+            throw new IllegalStateException("tenant job failed: " + JsonUtils.toJsonString(results));
+        }
         return JsonUtils.toJsonString(results);
     }
 

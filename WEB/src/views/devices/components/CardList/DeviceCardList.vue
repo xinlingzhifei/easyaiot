@@ -83,7 +83,6 @@ import DEVICE_IMAGE from "@/assets/images/device/device.png";
 import GATEWAY_IMAGE from "@/assets/images/device/gateway.png";
 import SUBDEVICE_IMAGE from "@/assets/images/device/subDevice.png";
 import VIDEO_IMAGE from "@/assets/images/device/video.png";
-import {useMessage} from "@/hooks/web/useMessage";
 
 const ListItem = List.Item;
 
@@ -94,8 +93,6 @@ const props = defineProps({
   //api
   api: propTypes.func,
 });
-const { createMessage } = useMessage();
-
 //暴露内部方法
 const emit = defineEmits(['getMethod', 'delete', 'edit', 'view']);
 

@@ -32,6 +32,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 YFEIEYE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+AI_COMPOSE_ENV_FILE="${YFEIEYE_AI_COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env.docker}"
 # shellcheck source=../.scripts/docker/init-build-cache-dirs.sh
 source "${YFEIEYE_ROOT}/.scripts/docker/init-build-cache-dirs.sh"
 # shellcheck source=../.scripts/docker/gpu_compose_helpers.sh
@@ -54,6 +55,16 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Compose `env_file` injects variables into the container only.  Use an
+# explicit CLI env file as well so host-side volume interpolation is stable.
+ai_compose() {
+    if [ ! -f "$AI_COMPOSE_ENV_FILE" ]; then
+        print_error "Compose 环境文件不存在: $AI_COMPOSE_ENV_FILE"
+        return 1
+    fi
+    $COMPOSE_CMD --env-file "$AI_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"
 }
 
 # 清理 compose recreate 被中断后遗留的「改名孤儿容器」（形如 <12位hex>_ai-service）。
@@ -530,16 +541,38 @@ check_network() {
     fi
 }
 
+# Resolve the host-side state root without sourcing the secrets file.
+resolve_ai_state_root() {
+    local state_root="${YFEIEYE_AI_STATE_ROOT:-}"
+    if [ -z "$state_root" ] && [ -f "$AI_COMPOSE_ENV_FILE" ]; then
+        state_root=$(sed -n 's/^[[:space:]]*YFEIEYE_AI_STATE_ROOT=//p' "$AI_COMPOSE_ENV_FILE" | tail -n 1 | tr -d '\r')
+    fi
+    state_root="${state_root#\"}"
+    state_root="${state_root%\"}"
+    state_root="${state_root#\'}"
+    state_root="${state_root%\'}"
+    state_root="${state_root:-/opt/yfeieye-source/shared/ai}"
+    if [[ "$state_root" != /* ]] || [[ "$state_root" == *$'\n'* ]]; then
+        print_error "YFEIEYE_AI_STATE_ROOT 必须是绝对路径"
+        return 1
+    fi
+    printf '%s' "${state_root%/}"
+}
+
 # 创建必要的目录
 create_directories() {
+    local state_root
+    state_root=$(resolve_ai_state_root) || return 1
     print_info "创建必要的目录..."
-    mkdir -p data/uploads
-    mkdir -p data/datasets
-    mkdir -p data/models
-    mkdir -p data/inference_results
-    mkdir -p static/models
-    mkdir -p temp_uploads
-    mkdir -p model
+    mkdir -p "${state_root}/data/uploads"
+    mkdir -p "${state_root}/data/datasets"
+    mkdir -p "${state_root}/data/models"
+    mkdir -p "${state_root}/data/inference_results"
+    mkdir -p "${state_root}/static/models"
+    mkdir -p "${state_root}/temp_uploads"
+    mkdir -p "${state_root}/model"
+    mkdir -p "${state_root}/logs/app"
+    mkdir -p "${state_root}/logs/services"
     print_success "目录创建完成"
 }
 
@@ -657,8 +690,8 @@ install_service() {
     check_network
     check_gpu
     configure_gpu
-    create_directories
     create_env_file
+    create_directories
 
     if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect ai-service:latest >/dev/null 2>&1; then
         print_success "镜像已从远程拉取 (ai-service:latest)，跳过 pip 离线包下载与 Docker 构建"
@@ -679,7 +712,7 @@ install_service() {
     
     print_info "启动服务..."
     cleanup_renamed_containers
-    $COMPOSE_CMD up -d --remove-orphans --quiet-pull 2>&1 | grep -v "^Creating\|^Starting\|^Pulling\|^Waiting\|^Container" || true
+    ai_compose up -d --remove-orphans --quiet-pull
 
     print_success "服务安装完成！"
     print_info "等待服务启动..."
@@ -707,8 +740,9 @@ start_service() {
     else
         ensure_deploy_profile
     fi
+    create_directories
     cleanup_renamed_containers
-    $COMPOSE_CMD up -d --force-recreate --remove-orphans --quiet-pull 2>&1 | grep -v "^Creating\|^Starting\|^Pulling\|^Waiting\|^Container" || true
+    ai_compose up -d --force-recreate --remove-orphans --quiet-pull
     print_success "服务已启动"
     check_status
 }
@@ -719,7 +753,14 @@ stop_service() {
     check_docker
     check_docker_compose
     
-    $COMPOSE_CMD down --remove-orphans 2>&1 | grep -v "^Stopping\|^Removing\|^Network" || true
+    local down_rc
+    if ai_compose down --remove-orphans; then
+        down_rc=0
+    else
+        down_rc=$?
+        print_error "停止服务失败（Docker Compose 返回码: $down_rc）"
+        return "$down_rc"
+    fi
     print_success "服务已停止"
 }
 
@@ -730,7 +771,8 @@ restart_service() {
     check_docker_compose
 
     ensure_deploy_profile
-    $COMPOSE_CMD up -d --force-recreate --remove-orphans --quiet-pull 2>&1 | grep -v "^Creating\|^Starting\|^Pulling\|^Waiting\|^Container" || true
+    create_directories
+    ai_compose up -d --force-recreate --remove-orphans --quiet-pull
     print_success "服务已重启"
     check_status
 }
@@ -741,7 +783,7 @@ check_status() {
     check_docker
     check_docker_compose
     
-    $COMPOSE_CMD ps 2>/dev/null | head -20
+    ai_compose ps 2>/dev/null | head -20
     
     echo ""
     print_info "容器健康状态:"
@@ -770,10 +812,10 @@ view_logs() {
     
     if [ "$1" == "-f" ] || [ "$1" == "--follow" ]; then
         print_info "实时查看日志（按 Ctrl+C 退出）..."
-        $COMPOSE_CMD logs -f
+        ai_compose logs -f
     else
         print_info "查看最近日志..."
-        $COMPOSE_CMD logs --tail=100
+        ai_compose logs --tail=100
     fi
 }
 
@@ -826,7 +868,7 @@ clean_service() {
     check_docker
     check_docker_compose
     print_info "停止并删除容器..."
-        $COMPOSE_CMD down -v --remove-orphans 2>&1 | grep -v "^Stopping\|^Removing\|^Network" || true
+        ai_compose down -v --remove-orphans 2>&1 | grep -v "^Stopping\|^Removing\|^Network" || true
         
         print_info "删除镜像..."
         docker rmi ai-service:latest >/dev/null 2>&1 || true
@@ -848,6 +890,7 @@ update_service() {
     detect_architecture
     configure_architecture
     check_network
+    create_directories
 
     # 记录更新前代码版本，用于判断依赖/构建文件是否变化
     local rev_before=""
@@ -902,12 +945,12 @@ update_service() {
         print_success "AI 服务镜像构建完成！"
         print_info "应用新镜像（仅重建变更服务，最小化停机）..."
         cleanup_renamed_containers
-        $COMPOSE_CMD up -d --remove-orphans --no-deps --quiet-pull ai-service 2>&1 | grep -v "^Creating\|^Starting\|^Pulling\|^Waiting\|^Container" || true
+        ai_compose up -d --force-recreate --remove-orphans --no-deps --quiet-pull ai-service
     else
         print_success "依赖未变，跳过镜像构建（业务代码经卷挂载，重启进程即可生效）"
         # 确保容器存在并应用任何 compose 配置变更（首次启用源码挂载时会在此处重建一次）
         cleanup_renamed_containers
-        $COMPOSE_CMD up -d --remove-orphans --no-deps --quiet-pull ai-service 2>&1 | grep -v "^Creating\|^Starting\|^Pulling\|^Waiting\|^Container" || true
+        ai_compose up -d --force-recreate --remove-orphans --no-deps --quiet-pull ai-service
 
         # 是否需要重启进程以加载新源码：有新提交，或本地有未提交改动（git diff 脏）。
         # git diff --quiet HEAD 仅在出错或有已跟踪改动时返回非 0，用于捕获“改了代码没 commit”的场景；
@@ -921,7 +964,7 @@ update_service() {
 
         if [ "$code_changed" = "1" ]; then
             print_info "重启容器进程以加载最新源码（秒级）..."
-            $COMPOSE_CMD restart ai-service 2>&1 | grep -v "^Restarting" || true
+            ai_compose up -d --force-recreate --remove-orphans --no-deps --quiet-pull ai-service
         else
             print_info "代码无变更，无需重启"
         fi
@@ -1000,4 +1043,3 @@ main() {
 
 # 运行主函数
 main "$@"
-

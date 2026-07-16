@@ -20,7 +20,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import requests
-from flask import Blueprint, current_app, request, jsonify
+from flask import Blueprint, Response, current_app, request, jsonify, stream_with_context
 from minio import Minio
 from minio.error import S3Error
 from urllib.parse import quote, urlparse, parse_qs, urlencode, urlunparse
@@ -39,6 +39,13 @@ from app.utils.ffmpeg_compat import (
 )
 from app.utils.gb28181_source import resolve_gb28181_source
 from app.utils.node_client import resolve_java_backend_url
+from app.utils.minio_bucket_policy import ensure_bucket_private
+from app.utils.video_env import authorize_srs_hook_token
+from app.services.media_authorization_service import (
+    audit_media_response,
+    authorization_error,
+    authorize_media_request,
+)
 from models import Device, db, Image, DeviceDirectory, DetectionRegion, StreamForwardTask, AlgorithmTask
 from sqlalchemy import and_
 
@@ -48,6 +55,26 @@ logger = logging.getLogger(__name__)
 # 受保护的流路径前缀（SRS http-flv: /ai /live；ZLMediaKit ws-flv: /rtp）
 _STREAM_PATH_RE = re.compile(r'^/(ai|live|rtp)/')
 _AUTH_CHECK_PATH = '/admin-api/system/auth/get-permission-info'
+
+
+def _authorize_camera_action(action: str, camera_id):
+    _decision, denied = _camera_authorization(action, camera_id)
+    return denied
+
+
+def _camera_authorization(action: str, camera_id):
+    decision = authorize_media_request(
+        request,
+        action=action,
+        camera_id=str(camera_id),
+        resource=request.path,
+        defer_audit=True,
+    )
+    audit_media_response(decision, resource=request.path)
+    if decision.allowed:
+        return decision, None
+    payload, status = authorization_error(decision)
+    return decision, (jsonify(payload), status)
 
 
 def _resolve_auth_check_url() -> str:
@@ -85,6 +112,56 @@ def _check_login(req) -> bool:
         return False
 
 
+def _stream_url_path(value) -> Optional[str]:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        path = urlparse(raw).path
+    except Exception:
+        return None
+    return path if _STREAM_PATH_RE.match(path or '') else None
+
+
+def _device_stream_paths(device) -> set[str]:
+    paths = {
+        path
+        for path in (
+            _stream_url_path(getattr(device, field, None))
+            for field in (
+                'source', 'rtmp_stream', 'http_stream',
+                'ai_rtmp_stream', 'ai_http_stream',
+            )
+        )
+        if path
+    }
+    device_id = str(getattr(device, 'id', '') or '').strip()
+    if device_id:
+        paths.update({
+            f'/live/{device_id}',
+            f'/live/{device_id}.flv',
+            f'/ai/{device_id}',
+            f'/ai/{device_id}.flv',
+        })
+        if device_id.startswith('gb28181_'):
+            stream_id = device_id[len('gb28181_'):]
+            paths.add(f'/rtp/{stream_id}.live.flv')
+    return paths
+
+
+def _camera_ids_for_stream_path(path: str) -> list[str]:
+    try:
+        devices = Device.query.all()
+    except Exception as exc:
+        logger.error('failed to resolve stream camera scope: %s', exc, exc_info=True)
+        return []
+    return [
+        str(device.id)
+        for device in devices
+        if path in _device_stream_paths(device)
+    ]
+
+
 @camera_bp.route('/stream/ticket/sign', methods=['POST'])
 def sign_stream_ticket():
     """为流地址签发短期 secure_link 票据（需登录）。
@@ -100,8 +177,24 @@ def sign_stream_ticket():
         return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
     data = request.get_json(silent=True) or {}
     path = (data.get('path') or '').strip()
-    if not _STREAM_PATH_RE.match(path):
+    parsed_path = _stream_url_path(path)
+    if not parsed_path or parsed_path != path:
         return jsonify({'code': 400, 'msg': 'invalid stream path'}), 400
+    camera_ids = _camera_ids_for_stream_path(path)
+    if not camera_ids:
+        return jsonify({
+            'code': 403,
+            'msg': 'stream camera scope is unknown',
+            'reason': 'stream_camera_scope_unknown',
+        }), 403
+    last_denied = None
+    for camera_id in camera_ids:
+        _decision, denied = _camera_authorization('playback', camera_id)
+        if denied is None:
+            break
+        last_denied = denied
+    else:
+        return last_denied
     secret = os.environ.get('STREAM_TICKET_SECRET', '')
     if not secret:
         logger.error('STREAM_TICKET_SECRET 未配置，无法签发流票据')
@@ -1006,23 +1099,13 @@ def get_minio_client():
     return Minio(minio_endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
 
 
-def _public_read_policy(bucket_name):
-    """生成匿名只读(download)策略：允许前端经 MinIO 下载接口加载该桶图片。
-
-    截图桶仅供前端展示，只读即可（不开放匿名写），与 alert-images 等显示用桶一致。
-    """
-    import json
-    return json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [
-            {"Effect": "Allow", "Principal": {"AWS": ["*"]},
-             "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
-             "Resource": [f"arn:aws:s3:::{bucket_name}"]},
-            {"Effect": "Allow", "Principal": {"AWS": ["*"]},
-             "Action": ["s3:GetObject"],
-             "Resource": [f"arn:aws:s3:::{bucket_name}/*"]},
-        ],
-    })
+def _snapshot_tenant_id(value=None) -> str:
+    tenant_id = str(value or os.environ.get('YFEIEYE_SNAPSHOT_TENANT_ID') or '').strip()
+    if not tenant_id:
+        raise ValueError('snapshot tenant id is required')
+    if not tenant_id.isdigit() or int(tenant_id) <= 0:
+        raise ValueError('snapshot tenant id must be a positive integer')
+    return tenant_id
 
 
 def _persist_screenshot_record(
@@ -1033,10 +1116,12 @@ def _persist_screenshot_record(
     image_format,
     width,
     height,
+    tenant_id,
 ):
     """将截图元数据写入数据库。"""
     try:
         image_record = Image(
+            tenant_id=int(_snapshot_tenant_id(tenant_id)),
             filename=unique_filename,
             original_filename=f"{camera_id}_{timestamp}.{image_format}",
             path=download_url,
@@ -1052,7 +1137,7 @@ def _persist_screenshot_record(
         logger.error(f"数据库存储失败: {str(db_error)}")
 
 
-def _upload_screenshot_to_local(camera_id, image_data, image_format="jpg"):
+def _upload_screenshot_to_local(camera_id, image_data, image_format="jpg", tenant_id=None):
     """mini 形态：截图落本地磁盘，经 /video/alert/image 对外提供访问。"""
     from datetime import datetime as _dt
 
@@ -1067,8 +1152,9 @@ def _upload_screenshot_to_local(camera_id, image_data, image_format="jpg"):
         raise RuntimeError("图像编码失败")
 
     height, width = image_data.shape[:2]
+    tenant_id = _snapshot_tenant_id(tenant_id)
     screenshot_root = get_camera_screenshot_dir()
-    device_dir = os.path.join(screenshot_root, str(camera_id))
+    device_dir = os.path.join(screenshot_root, 'tenants', tenant_id, str(camera_id))
     os.makedirs(device_dir, exist_ok=True)
     local_path = os.path.join(device_dir, unique_filename)
     with open(local_path, 'wb') as handle:
@@ -1076,19 +1162,27 @@ def _upload_screenshot_to_local(camera_id, image_data, image_format="jpg"):
 
     download_url = build_alert_image_api_url(local_path)
     _persist_screenshot_record(
-        camera_id, download_url, unique_filename, timestamp, image_format, width, height
+        camera_id, download_url, unique_filename, timestamp, image_format, width, height, tenant_id
     )
     logger.info(f"截图本地保存成功: {local_path}")
     return download_url
 
 
-def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
+def _protected_camera_snapshot_url(camera_id: str, object_name: str) -> str:
+    return (
+        f'/video/camera/device/{quote(str(camera_id), safe="")}'
+        f'/snapshot-image/{quote(object_name, safe="/")}'
+    )
+
+
+def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg", tenant_id=None):
     """上传摄像头截图（MinIO 或 mini 本地）并存入数据库。"""
     from app.utils.service_urls import minio_storage_enabled
 
+    tenant_id = _snapshot_tenant_id(tenant_id)
     if not minio_storage_enabled():
         try:
-            return _upload_screenshot_to_local(camera_id, image_data, image_format)
+            return _upload_screenshot_to_local(camera_id, image_data, image_format, tenant_id)
         except Exception as e:
             logger.error(f"截图本地保存失败: {str(e)}")
             return None
@@ -1099,12 +1193,8 @@ def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
 
         if not minio_client.bucket_exists(bucket_name):
             minio_client.make_bucket(bucket_name)
-            # 新建桶设为匿名只读，否则前端无法经 MinIO 下载接口加载截图（画布会空白）
-            try:
-                minio_client.set_bucket_policy(bucket_name, _public_read_policy(bucket_name))
-            except Exception as e:
-                logger.warning(f"设置截图桶 {bucket_name} 匿名只读策略失败(不影响上传，但前端可能加载不出图片): {e}")
             logger.info(f"创建截图存储桶: {bucket_name}")
+        ensure_bucket_private(minio_client, bucket_name)
 
         # 本模块顶部的 `from app.services.camera_service import *` 会用 datetime 类覆盖
         # 模块名 datetime，导致 datetime.datetime 不可用，这里用局部别名规避
@@ -1112,7 +1202,11 @@ def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
         timestamp = _dt.now().strftime("%Y%m%d_%H%M%S")
         # 生成唯一文件名
         unique_filename = f"{uuid.uuid4().hex}.{image_format}"
-        object_name = f"{camera_id}/{unique_filename}"
+        tenant_id = _snapshot_tenant_id(tenant_id)
+        object_name = (
+            f"tenants/{tenant_id}/cameras/{camera_id}/"
+            f"{_dt.now().strftime('%Y/%m/%d')}/{unique_filename}"
+        )
 
         success, encoded_image = cv2.imencode(f'.{image_format}', image_data)
         if not success:
@@ -1130,10 +1224,9 @@ def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
             content_type=f"image/{image_format}"
         )
 
-        # 使用统一的URL格式
-        download_url = f"/api/v1/buckets/{bucket_name}/objects/download?prefix={object_name}"
+        download_url = _protected_camera_snapshot_url(camera_id, object_name)
         _persist_screenshot_record(
-            camera_id, download_url, unique_filename, timestamp, image_format, width, height
+            camera_id, download_url, unique_filename, timestamp, image_format, width, height, tenant_id
         )
         logger.info(f"截图上传成功: {bucket_name}/{object_name}")
         return download_url
@@ -1143,6 +1236,39 @@ def upload_screenshot_to_minio(camera_id, image_data, image_format="jpg"):
     except Exception as e:
         logger.error(f"截图上传未知错误: {str(e)}")
         return None
+
+
+@camera_bp.route('/device/<string:device_id>/snapshot-image/<path:object_name>', methods=['GET'])
+def get_camera_snapshot_image(device_id, object_name):
+    """Stream a persisted camera snapshot after camera-scoped authorization."""
+    decision, denied = _camera_authorization('snapshot', device_id)
+    if denied:
+        return denied
+    protected_path = _protected_camera_snapshot_url(device_id, object_name)
+    image_record = Image.query.filter_by(
+        tenant_id=int(decision.tenant_id),
+        device_id=device_id,
+        path=protected_path,
+    ).first()
+    if image_record is None:
+        return jsonify({
+            'code': 404,
+            'msg': 'snapshot object is not owned by the authorized camera',
+            'reason': 'snapshot_object_scope_denied',
+        }), 404
+    response = get_minio_client().get_object('camera-screenshots', object_name)
+
+    def chunks():
+        try:
+            for chunk in response.stream(64 * 1024):
+                if chunk:
+                    yield chunk
+        finally:
+            response.close()
+            response.release_conn()
+
+    content_type = getattr(image_record, 'content_type', None) or 'image/jpeg'
+    return Response(stream_with_context(chunks()), mimetype=content_type)
 
 
 # ------------------------- RTSP截图功能 -------------------------
@@ -1177,6 +1303,9 @@ def rtsp_capture_task(device_id, rtsp_url, interval, max_count):
 @camera_bp.route('/device/<int:device_id>/rtsp/start', methods=['POST'])
 def start_rtsp_capture(device_id):
     """启动RTSP截图"""
+    denied = _authorize_camera_action('snapshot', device_id)
+    if denied:
+        return denied
     try:
         device = Device.query.get(device_id)
         if not device:
@@ -1216,6 +1345,9 @@ def start_rtsp_capture(device_id):
 @camera_bp.route('/device/<int:device_id>/rtsp/stop', methods=['POST'])
 def stop_rtsp_capture(device_id):
     """停止RTSP截图任务"""
+    denied = _authorize_camera_action('snapshot', device_id)
+    if denied:
+        return denied
     try:
         if device_id in rtsp_tasks:
             rtsp_tasks[device_id]['running'] = False
@@ -1231,6 +1363,9 @@ def stop_rtsp_capture(device_id):
 @camera_bp.route('/device/<int:device_id>/rtsp/status', methods=['GET'])
 def rtsp_status(device_id):
     """获取RTSP截图状态"""
+    denied = _authorize_camera_action('snapshot', device_id)
+    if denied:
+        return denied
     try:
         status = "stopped"
         if device_id in rtsp_tasks:
@@ -1282,6 +1417,9 @@ def onvif_capture_task(device_id, snapshot_uri, username, password, interval, ma
 @camera_bp.route('/device/<int:device_id>/onvif/start', methods=['POST'])
 def start_onvif_capture(device_id):
     """启动ONVIF截图"""
+    denied = _authorize_camera_action('snapshot', device_id)
+    if denied:
+        return denied
     try:
         device = Device.query.get(device_id)
         if not device:
@@ -1323,6 +1461,9 @@ def start_onvif_capture(device_id):
 @camera_bp.route('/device/<int:device_id>/onvif/stop', methods=['POST'])
 def stop_onvif_capture(device_id):
     """停止ONVIF截图"""
+    denied = _authorize_camera_action('snapshot', device_id)
+    if denied:
+        return denied
     try:
         if device_id in onvif_tasks:
             onvif_tasks[device_id]['running'] = False
@@ -1338,6 +1479,9 @@ def stop_onvif_capture(device_id):
 @camera_bp.route('/device/<int:device_id>/onvif/status', methods=['GET'])
 def onvif_status(device_id):
     """获取ONVIF截图状态"""
+    denied = _authorize_camera_action('snapshot', device_id)
+    if denied:
+        return denied
     try:
         status = "stopped"
         if device_id in onvif_tasks:
@@ -1512,6 +1656,9 @@ def grab_frame_for_snapshot(device):
 @camera_bp.route('/device/<string:device_id>/snapshot', methods=['POST'])
 def capture_snapshot(device_id):
     """从RTSP/RTMP流抓取一帧图片并存入数据库"""
+    authorization, denied = _camera_authorization('snapshot', device_id)
+    if denied:
+        return denied
     try:
         device = Device.query.get(device_id)
         if not device:
@@ -1528,13 +1675,17 @@ def capture_snapshot(device_id):
             return jsonify({'code': 500, 'msg': capture_err})
 
         # 上传到MinIO并存入数据库
-        image_url = upload_screenshot_to_minio(device_id, frame, 'jpg')
+        image_url = upload_screenshot_to_minio(
+            device_id, frame, 'jpg', authorization.tenant_id)
 
         if not image_url:
             return jsonify({'code': 500, 'msg': '图片上传失败'})
 
         # 获取图片信息
-        image_record = Image.query.filter_by(device_id=device_id).order_by(Image.created_at.desc()).first()
+        image_record = Image.query.filter_by(
+            tenant_id=int(authorization.tenant_id),
+            device_id=device_id,
+        ).order_by(Image.created_at.desc()).first()
 
         return jsonify({
             'code': 0,
@@ -1867,6 +2018,18 @@ def on_publish_callback():
     
     注意：此回调必须快速响应（建议<1秒），否则SRS可能会超时并拒绝推流
     """
+    hook_token = (
+        request.args.get('hook_token')
+        or request.headers.get('X-YFeiEye-Hook-Token')
+    )
+    if not authorize_srs_hook_token(hook_token):
+        logger.warning('on_publish callback rejected: invalid SRS hook token')
+        return jsonify({'code': 403, 'msg': 'forbidden'}), 403
+    return _handle_authorized_on_publish_callback()
+
+
+def _handle_authorized_on_publish_callback():
+    """Handle an on_publish callback after the private hook token is verified."""
     import threading
     
     # 立即返回允许推流，避免阻塞
@@ -2209,6 +2372,14 @@ def on_dvr_callback():
     MEDIA_UPLOAD_MODE=kafka 时仅入队 Kafka；否则同步走 dvr_upload_service。
     集群 Hook 推荐使用 /video/media/hook/srs/on_dvr。
     """
+    hook_token = (
+        request.args.get('hook_token')
+        or request.headers.get('X-YFeiEye-Hook-Token')
+    )
+    if not authorize_srs_hook_token(hook_token):
+        logger.warning('on_dvr callback rejected: invalid SRS hook token')
+        return jsonify({'code': 403, 'msg': 'forbidden'}), 403
+
     from app.services.dvr_device_resolver import resolve_device_from_hook
     from app.services.dvr_upload_service import process_dvr_event
     from app.services.media_kafka_service import (

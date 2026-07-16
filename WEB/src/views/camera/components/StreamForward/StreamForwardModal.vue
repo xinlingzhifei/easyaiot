@@ -122,7 +122,6 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
 });
 
 const [registerForm, { setFieldsValue, resetFields, validate, updateSchema }] = useForm({
-  transformDateToString: false,
   labelWidth: 150,
   baseColProps: { span: 24 },
   schemas: [
@@ -352,7 +351,7 @@ const handleSubmit = async () => {
     
     if (taskId.value) {
       // 更新
-      const response = await updateStreamForwardTask(taskId.value, values);
+      const response = await updateStreamForwardTask(taskId.value, values as any);
       const syncAction = (response as any)?.sync_action;
       const successMsg =
         syncAction === 'full_restart'
@@ -377,7 +376,7 @@ const handleSubmit = async () => {
       }
     } else {
       // 创建
-      const response = await createStreamForwardTask(values);
+      const response = await createStreamForwardTask(values as any);
       if (response && (response as any).id) {
         createMessage.success('创建成功');
         emit('success');
@@ -486,4 +485,3 @@ const handleSubmit = async () => {
   line-height: 1.5;
 }
 </style>
-

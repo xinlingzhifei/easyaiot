@@ -39,6 +39,10 @@ export interface AlgorithmTask {
   device_names?: string[];
   pusher_id?: number;
   pusher_name?: string;
+  extractor_id?: number | null;
+  extractor_name?: string;
+  sorter_id?: number | null;
+  sorter_name?: string;
   // 模型配置（直接选择模型列表，不再依赖模型服务接口）
   model_ids?: number[]; // 关联的模型ID列表
   model_names?: string; // 关联的模型名称列表（逗号分隔，冗余字段，用于快速显示）
@@ -542,6 +546,8 @@ export interface TaskServicesStatus {
   sorter: Sorter | null;
   pusher: Pusher | null;
   realtime_service: RealtimeServiceStatus | null;
+  snap_service?: RealtimeServiceStatus | null;
+  patrol_service?: RealtimeServiceStatus | null;
 }
 
 export interface TaskServicesStatusResponse {

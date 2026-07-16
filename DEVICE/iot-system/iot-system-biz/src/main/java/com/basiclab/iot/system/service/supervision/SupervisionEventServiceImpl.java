@@ -59,6 +59,9 @@ public class SupervisionEventServiceImpl implements SupervisionEventService {
                 SupervisionEventStatusEnum.CREATED.getCode()
         );
         AlertToEventResult result = eventStore.create(draft);
+        if (!command.dispatchTasks()) {
+            return result;
+        }
         taskDispatcher.dispatchForNewEvent(new TaskDispatchCommand(
                 result.eventId(),
                 ruleCode,

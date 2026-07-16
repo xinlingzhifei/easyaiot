@@ -101,6 +101,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { getEventList } from '@/api/device/entity-views';
+import type { Dayjs } from 'dayjs';
 import moment from 'moment';
 import { Input, Select, SelectOption, Tag, DatePicker } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
@@ -112,12 +113,19 @@ defineOptions({ name: 'DeviceEvent' });
 
 const route = useRoute();
 const { createMessage } = useMessage();
+const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+const formatRangeValue = (value: string | Dayjs) =>
+  typeof value === 'string' ? moment(value).format(DATE_TIME_FORMAT) : value.format(DATE_TIME_FORMAT);
 
 // 获取设备ID
 const deviceId = computed(() => route.params?.id as string);
 
 // 筛选表单
-const filterForm = reactive({
+const filterForm = reactive<{
+  eventType?: string;
+  eventName?: string;
+  timeRange?: [string, string] | [Dayjs, Dayjs];
+}>({
   eventType: undefined,
   eventName: undefined,
   timeRange: undefined,
@@ -145,12 +153,12 @@ const fetchEventData = async () => {
       params.eventName = filterForm.eventName;
     }
     if (filterForm.timeRange && filterForm.timeRange.length === 2) {
-      params.startTime = moment(filterForm.timeRange[0]).format('YYYY-MM-DD HH:mm:ss');
-      params.endTime = moment(filterForm.timeRange[1]).format('YYYY-MM-DD HH:mm:ss');
+      params.startTime = formatRangeValue(filterForm.timeRange[0]);
+      params.endTime = formatRangeValue(filterForm.timeRange[1]);
     }
 
     const response = await getEventList(params);
-    const data = response?.data || response?.list || [];
+    const data: any[] = response?.data || response?.list || [];
     
     // 按时间倒序排序（最新的在第一条）
     logList.value = data.sort((a, b) => {

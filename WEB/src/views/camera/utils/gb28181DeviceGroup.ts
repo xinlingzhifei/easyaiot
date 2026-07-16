@@ -10,7 +10,17 @@ import {
 } from './nvrDeviceGroup';
 import { formatGb28181DeviceDisplayName } from './gb28181DeviceLabel';
 import { filterValidWvpDevices, resolveWvpSipDeviceId } from './gb28181DeviceId';
-import type { Gb28181CardItem } from '@/views/camera/components/Gb28181DeviceCard/index.vue';
+
+export interface Gb28181CardItem {
+  onLine: boolean;
+  name: string;
+  deviceIdentification: string;
+  ip?: string;
+  mediaServerId?: string;
+  manufacturer?: string;
+  _summary: GbSipDeviceSummary;
+  _wvpRaw: Record<string, any>;
+}
 
 /** 国标 SIP 设备（WVP 或本地聚合） */
 export interface GbSipDeviceSummary {
@@ -84,7 +94,7 @@ export function wvpDeviceToTableRow(wvp: Record<string, any>): DeviceInfo & {
     ip: wvp.ip || wvp.localIp || '',
     source: '',
     _isGbSip: true,
-  } as DeviceInfo & { _isGbSip: boolean; sip_device_id: string };
+  } as unknown as DeviceInfo & { _isGbSip: boolean; sip_device_id: string };
 }
 
 /** 合并直连（device 表）+ 国标（WVP）列表 */
@@ -97,7 +107,6 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
       pageNo: 1,
       pageSize: 10000,
       search: search || undefined,
-      online: online !== undefined && online !== '' ? online : undefined,
     }),
     queryAllVideoList({
       query: search || undefined,
@@ -111,8 +120,13 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
   const nvrs = nvrResult.status === 'fulfilled' ? nvrResult.value : [];
 
   const allDevices = devRes?.data ?? [];
+  const onlineFilter = online === true || online === 'true' ? true : online === false || online === 'false' ? false : undefined;
   const direct = filterStandaloneDirectDevices(
-    allDevices.filter((d) => !isGb28181ChannelRecord(d) && !isGb28181SipListRow(d)),
+    allDevices.filter((d) =>
+      !isGb28181ChannelRecord(d) &&
+      !isGb28181SipListRow(d) &&
+      (onlineFilter === undefined || !!d.online === onlineFilter),
+    ),
     nvrs,
   );
   const gbRows = filterValidWvpDevices(gbRes?.data ?? []).map((wvp) => wvpDeviceToTableRow(wvp));

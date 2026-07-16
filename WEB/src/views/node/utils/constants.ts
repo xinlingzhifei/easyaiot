@@ -1336,6 +1336,8 @@ export const SETUP_COPY = {
   verifyDiagnosticHint: `${NODE_TERM.agent}启动后会向平台上报心跳；若长时间未上线，通常是 CONTROL_PLANE_URL 配置错误或网络不通。`,
   verifyIntro: `进入本步骤后将自动轮询平台节点状态（最多 15 次，约 1 分钟）；也可随时运行 ${NODE_TERM.accessDiagnostic} 排查问题。`,
   remoteDeploy: NODE_TERM.remoteDeploy,
+  deployCheck: NODE_TERM.deployCheck,
+  ops: NODE_TERM.ops,
   deployMediaBtn: `部署${NODE_TERM.mediaService}`,
   mediaDeployCheck: NODE_TERM.deployCheck,
   checkMediaDeployBtn: '检测部署状态',

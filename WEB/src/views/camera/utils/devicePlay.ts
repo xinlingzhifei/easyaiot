@@ -27,7 +27,7 @@ export function isGb28181DeviceRecord(record: { source?: string | null; device_k
   return isGb28181Device(record.source, record.device_kind);
 }
 
-export function hasDirectPlayStream(record: DeviceInfo, ai = false): boolean {
+export function hasDirectPlayStream(record: Record<string, any>, ai = false): boolean {
   if (isGb28181DeviceRecord(record)) return false;
   if ((record as { device_kind?: string }).device_kind === 'gb28181_sip') return false;
   if (ai) {
@@ -42,10 +42,10 @@ export function hasPlayableStream(record: DeviceInfo): boolean {
   return hasDirectPlayStream(record) || hasDirectPlayStream(record, true);
 }
 
-type DirectStreamFields = Pick<
+type DirectStreamFields = Partial<Pick<
   DeviceInfo,
   'http_stream' | 'rtmp_stream' | 'ai_http_stream' | 'ai_rtmp_stream'
->;
+>>;
 
 export interface DirectPlayUrlResult {
   url: string | null;
@@ -290,7 +290,7 @@ export function schedulePendingAiStreamUpgrade(
   });
 }
 
-export function supportsRtspForward(record: DeviceInfo): boolean {
+export function supportsRtspForward(record: Record<string, any>): boolean {
   return !isGb28181DeviceRecord(record);
 }
 

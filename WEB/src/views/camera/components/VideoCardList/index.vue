@@ -134,8 +134,8 @@
   </div>
 </template>
 <script lang="ts" setup>
-import {onMounted, reactive, ref, watch} from 'vue';
-import {List, Popconfirm, Spin, Tag} from 'ant-design-vue';
+import {onMounted, reactive, ref} from 'vue';
+import {List, Popconfirm, Spin} from 'ant-design-vue';
 import {BasicForm, useForm} from '@/components/Form';
 import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
@@ -301,6 +301,10 @@ onMounted(() => {
   emit('getMethod', fetch);
 });
 
+void getStreamStatusText;
+void getStreamStatusColor;
+void checkAllDevicesStreamStatus;
+
 // 监听数据变化，自动检查流状态
 // 已禁用自动检查流状态
 // watch(() => data.value, (newData) => {
@@ -309,7 +313,7 @@ onMounted(() => {
 //   }
 // }, { immediate: true });
 
-async function fetch(p = {}) {
+async function fetch(p: Record<string, any> = {}) {
   const {api, params} = props;
   if (api && isFunction(api)) {
     try {

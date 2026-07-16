@@ -24,7 +24,8 @@ video_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, video_root)
 
 # 加载环境变量
-load_dotenv()
+if __name__ == '__main__':
+    load_dotenv()
 
 # 配置日志
 logging.basicConfig(

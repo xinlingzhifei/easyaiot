@@ -193,6 +193,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    seekOffsetSeconds: {
+      type: Number,
+      default: 0,
+    },
   },
   data() {
     return {
@@ -648,6 +652,7 @@ export default {
     playNativeVideo() {
       const video = this.$refs.nativeVideo;
       if (!video) return;
+      this.applyNativeSeek();
       const promise = video.play?.();
       if (promise?.catch) {
         promise.catch((error) => {
@@ -661,6 +666,20 @@ export default {
           });
         });
       }
+    },
+    applyNativeSeek() {
+      const video = this.$refs.nativeVideo;
+      const offset = Number(this.seekOffsetSeconds);
+      if (!video || !Number.isFinite(offset) || offset < 0) return;
+
+      const apply = () => {
+        video.currentTime = offset;
+      };
+      if (video.readyState >= 1) {
+        apply();
+        return;
+      }
+      video.addEventListener('loadedmetadata', apply, { once: true });
     },
     resetNativeVideo() {
       const video = this.$refs.nativeVideo;
@@ -676,6 +695,7 @@ export default {
       this.webRtcUrl = '';
     },
     onNativeVideoPlaying() {
+      this.applyNativeSeek();
       this.markPlaying();
     },
     onWebRtcPlaying() {

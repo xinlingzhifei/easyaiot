@@ -19,6 +19,7 @@ from app.services.media_kafka_service import (
     publish_snap_event,
 )
 from app.services.snap_upload_service import build_snap_event, process_snap_event
+from app.utils.video_env import authorize_srs_hook_token
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,22 @@ def _hook_ok():
     return jsonify({'code': 0, 'msg': None})
 
 
+def _require_internal_hook_token():
+    provided_token = (
+        request.args.get('hook_token')
+        or request.headers.get('X-YFeiEye-Hook-Token')
+    )
+    if authorize_srs_hook_token(provided_token):
+        return None
+    logger.warning('internal media hook rejected: invalid hook token')
+    return jsonify({'code': 403, 'msg': 'forbidden'}), 403
+
+
 @media_hook_bp.route('/hook/srs/on_dvr', methods=['POST'])
 def srs_on_dvr():
+    denied = _require_internal_hook_token()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     if not data.get('stream') and not data.get('file'):
         return _hook_ok()
@@ -47,18 +62,27 @@ def srs_on_dvr():
 
 @media_hook_bp.route('/hook/srs/on_publish', methods=['POST'])
 def srs_on_publish():
+    denied = _require_internal_hook_token()
+    if denied:
+        return denied
     """转发至现有 on_publish 逻辑（流冲突检测）。"""
-    from app.blueprints.camera import on_publish_callback
-    return on_publish_callback()
+    from app.blueprints.camera import _handle_authorized_on_publish_callback
+    return _handle_authorized_on_publish_callback()
 
 
 @media_hook_bp.route('/hook/srs/on_unpublish', methods=['POST'])
 def srs_on_unpublish():
+    denied = _require_internal_hook_token()
+    if denied:
+        return denied
     return _hook_ok()
 
 
 @media_hook_bp.route('/hook/snap/completed', methods=['POST'])
 def snap_completed():
+    denied = _require_internal_hook_token()
+    if denied:
+        return denied
     """抓拍完成通知：本地文件已落盘，请求上传 MinIO。"""
     data = request.get_json(silent=True) or {}
     device_id = (data.get('device_id') or '').strip()
@@ -82,6 +106,9 @@ def snap_completed():
 @media_hook_bp.route('/hook/zlm/on_record_mp4', methods=['POST'])
 @media_hook_bp.route('/hook/zlm/on_record_ts', methods=['POST'])
 def zlm_on_record():
+    denied = _require_internal_hook_token()
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     file_path = data.get('file_path', '') or data.get('file_name', '')
     stream = data.get('stream', '') or ''

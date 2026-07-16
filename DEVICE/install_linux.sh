@@ -37,6 +37,12 @@ device_compose() {
     $DOCKER_COMPOSE -f "$COMPOSE_FILE" ${DEVICE_COMPOSE_PROFILE_ARGS[@]+"${DEVICE_COMPOSE_PROFILE_ARGS[@]}"} "$@"
 }
 
+prepare_device_state_dirs() {
+    local state_root="${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}"
+    mkdir -p "$state_root/logs" "$state_root/node-logs"
+    chmod 0777 "$state_root/logs" "$state_root/node-logs"
+}
+
 # 按部署形态收集应启动的 DEVICE 服务名
 collect_device_up_services() {
     local -a up_services=()
@@ -169,6 +175,7 @@ apply_device_profile_env() {
 
 compose_up_detached() {
     local count
+    prepare_device_state_dirs
     refresh_device_compose_profile_args
     apply_device_profile_env
     count=$(device_compose config --services 2>/dev/null | wc -l | tr -d '[:space:]')
@@ -1132,7 +1139,7 @@ build_and_start() {
 start_services() {
     print_info "启动所有服务..."
     cd "$SCRIPT_DIR"
-    compose_up_detached --quiet-pull 2>&1 | grep -E "(Creating|Starting|Started|Healthy|ERROR|WARNING|Recreate)" || true
+    compose_up_detached --quiet-pull
     print_success "服务启动完成"
     ensure_platform_agent_after_device_stack
 }
@@ -1149,7 +1156,7 @@ stop_services() {
 restart_services() {
     print_info "重启所有服务..."
     cd "$SCRIPT_DIR"
-    $DOCKER_COMPOSE restart
+    compose_up_detached --force-recreate
     print_success "服务重启完成"
     ensure_platform_agent_after_device_stack
 }
@@ -1201,7 +1208,7 @@ restart_service() {
     fi
     print_info "重启服务: $service"
     cd "$SCRIPT_DIR"
-    $DOCKER_COMPOSE restart "$service"
+    compose_up_detached --force-recreate --no-deps "$service"
     print_success "服务 $service 重启完成"
 }
 

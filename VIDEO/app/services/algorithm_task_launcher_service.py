@@ -242,6 +242,8 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
         'MEDIA_UPLOAD_MODE', 'MEDIA_SNAP_UPLOAD_MODE', 'ALERT_IMAGES_DIR',
         'IOT_SINK_API_URL', 'IOT_SINK_USE_GATEWAY', 'IOT_SINK_HOST', 'IOT_SINK_PORT',
         'EASYAIOT_DEPLOY_PROFILE', 'ALERT_HOOK_URL', 'ALERT_KEEP_LATEST',
+        'YFEIEYE_MEDIA_SERVICE_HMAC_SECRET', 'YFEIEYE_ALERT_INGEST_SERVICE_ID',
+        'YFEIEYE_ALERT_INGEST_TENANT_ID', 'YFEIEYE_ALERT_INGEST_ALLOW_UNSIGNED',
         'VIDEO_SERVICE_HOST', 'VIDEO_SERVICE_URL', 'VIDEO_API_USE_GATEWAY',
         'FFMPEG_HWACCEL', 'FFMPEG_THREADS', 'FFMPEG_PRESET', 'FFMPEG_VIDEO_BITRATE', 'FFMPEG_GOP_SIZE',
         'AI_RTSP_TRANSPORT', 'OPENCV_FFMPEG_RTSP_TRANSPORT', 'FFMPEG_RTSP_TRANSPORT',
@@ -256,6 +258,9 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
         val = os.getenv(key)
         if val is not None and val != '':
             env[key] = val
+
+    from app.services.media_authorization_service import build_alert_ingest_process_env
+    env.update(build_alert_ingest_process_env())
 
     video_control_url = _resolve_video_control_url()
     video_service_port = os.getenv('FLASK_RUN_PORT', '6000')

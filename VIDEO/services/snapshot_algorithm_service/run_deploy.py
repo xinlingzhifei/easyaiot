@@ -48,6 +48,7 @@ import app.utils.nvidia_lib_path  # noqa: F401  须在 import onnxruntime 之前
 
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
+from app.services.media_authorization_service import post_alert_ingest
 from app.utils.gb28181_source import resolve_gb28181_alternate_pull_url, resolve_gb28181_source
 from app.utils.alert_images_paths import resolve_alert_images_root
 from app.utils.decode.stream_adapter import is_async_stream, open_device_stream, stream_mode_label
@@ -513,6 +514,13 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
     """将帧上传到设备抓拍空间（MinIO），不产生告警记录。"""
     import os
     try:
+        tenant_id = int(os.getenv('YFEIEYE_SNAPSHOT_TENANT_ID', ''))
+        if tenant_id <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        logger.warning('抓拍算法租户未配置或非法')
+        return False
+    try:
         from app.utils.snap_media_client import stage_snap_frame
         from app.services.media_kafka_service import is_snap_kafka_mode
         staging = os.getenv('MEDIA_SNAP_STAGING_ENABLED', '').lower() in ('1', 'true', 'yes')
@@ -536,7 +544,8 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
         app = get_flask_app()
         with app.app_context():
             from models import SnapSpace
-            snap_space = SnapSpace.query.filter_by(device_id=device_id).first()
+            snap_space = SnapSpace.query.filter_by(
+                tenant_id=tenant_id, device_id=device_id).first()
             if snap_space and snap_space.bucket_name:
                 bucket_name = snap_space.bucket_name
     except Exception as e:
@@ -554,7 +563,9 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
         return False
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    object_name = f"{device_id}/{_uuid.uuid4().hex[:8]}_{ts}.jpg"
+    object_name = (
+        f"tenants/{tenant_id}/cameras/{device_id}/"
+        f"{_uuid.uuid4().hex[:8]}_{ts}.jpg")
     data = encoded.tobytes()
     try:
         client.put_object(
@@ -569,9 +580,11 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
             _app = get_flask_app()
             with _app.app_context():
                 from models import SnapSpace
-                snap_space = SnapSpace.query.filter_by(device_id=device_id).first()
+                snap_space = SnapSpace.query.filter_by(
+                    tenant_id=tenant_id, device_id=device_id).first()
                 if snap_space:
                     upsert_snap_image(
+                        tenant_id=tenant_id,
                         space_id=snap_space.id,
                         device_id=device_id,
                         object_name=object_name,
@@ -1487,12 +1500,7 @@ def _post_snapshot_alert(alert_data: Dict) -> None:
             alert_data['plate_detection_enabled'] = bool(
                 getattr(task_config, 'plate_detection_enabled', False)
             )
-        response = requests.post(
-            ALERT_HOOK_URL,
-            json=alert_data,
-            timeout=5,
-            headers={'Content-Type': 'application/json'},
-        )
+        response = post_alert_ingest(ALERT_HOOK_URL, alert_data, timeout=5)
         if response.status_code != 200:
             logger.warning(
                 f"发送抓拍/告警到 hook 失败: status={response.status_code}, "
@@ -1544,12 +1552,7 @@ def send_alert_event_async(alert_data: Dict):
                 # 如果information是字典，也添加task_type
                 if 'information' in alert_data and isinstance(alert_data['information'], dict):
                     alert_data['information']['task_type'] = 'snapshot'
-                response = requests.post(
-                    ALERT_HOOK_URL,
-                    json=alert_data,
-                    timeout=5,
-                    headers={'Content-Type': 'application/json'}
-                )
+                response = post_alert_ingest(ALERT_HOOK_URL, alert_data, timeout=5)
                 hook_result = {}
                 try:
                     body = response.json()

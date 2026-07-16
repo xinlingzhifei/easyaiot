@@ -78,7 +78,7 @@ async function getTenantId() {
     formData.tenantName = formData.tenantName || 'Admin-IoT'
 }
 
-async function handleLogin(params = {}) {
+async function handleLogin(params: { captchaVerification?: string } = {}) {
   await getTenantId()
   const data = await validForm()
   if (!data)
@@ -88,7 +88,7 @@ async function handleLogin(params = {}) {
     const userInfo = await userStore.login({
       password: data.password,
       username: data.username,
-      captchaVerification: params.captchaVerification,
+      captchaVerification: params.captchaVerification || '',
       mode: 'none', // 不要默认的错误提示
     })
     if (userInfo) {

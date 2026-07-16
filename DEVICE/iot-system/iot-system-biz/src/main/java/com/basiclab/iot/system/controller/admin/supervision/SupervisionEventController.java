@@ -8,6 +8,7 @@ import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicatio
 import com.basiclab.iot.system.service.supervision.SupervisionWorkflowApplicationService.AlertEventResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,6 +32,7 @@ public class SupervisionEventController {
     }
 
     @PostMapping("/from-alert")
+    @PreAuthorize("@ss.hasPermission('supervision:event:create')")
     @Operation(summary = "告警转监管事件")
     public CommonResult<AlertEventRespVO> createEventFromAlert(@Valid @RequestBody AlertEventCreateReqVO reqVO) {
         AlertEventResponse response = supervisionWorkflowApplicationService.createEventFromAlert(new AlertEventRequest(

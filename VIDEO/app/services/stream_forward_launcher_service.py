@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from models import db, StreamForwardTask
 from app.utils.node_remote_python import resolve_video_bundle_python
+from app.utils.video_env import build_unprivileged_process_env
 from .stream_forward_daemon import StreamForwardDaemon
 
 logger = logging.getLogger(__name__)
@@ -121,8 +122,9 @@ def _deploy_shard_locally(
     os.makedirs(log_dir, exist_ok=True)
 
     _stop_local_shard(workload_id)
-    env = os.environ.copy()
-    env.update(_build_stream_forward_deploy_env(task_id, log_dir, host, device_ids, workload_id))
+    env = build_unprivileged_process_env(
+        _build_stream_forward_deploy_env(
+            task_id, log_dir, host, device_ids, workload_id))
     env['VIDEO_ROOT'] = video_root
     deploy_script = os.path.join(video_root, 'services', 'stream_forward_service', 'run_deploy.py')
 

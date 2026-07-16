@@ -461,14 +461,14 @@
       @success="onBatchAiSuccess"
     />
     <SamAutoLabelDrawer
-      @register="registerSamDrawer"
+      @register="handleRegisterSamDrawer"
       :dataset-id="datasetId"
       @success="onBatchAiSuccess"
       @open-frame-tasks="openManageDrawer('frame')"
       @open-auto-label="openAiBatchModal"
     />
     <UnattendedLabelDrawer
-      @register="registerUnattendedDrawer"
+      @register="handleRegisterUnattendedDrawer"
       :dataset-id="datasetId"
       @success="onUnattendedLabelSuccess"
       @open-frame-tasks="openManageDrawer('frame')"
@@ -598,6 +598,14 @@ async function refreshSyncCheck() {
 const aiLabelModalRef = ref<InstanceType<typeof AILabelModal> | null>(null);
 const [registerSamDrawer, { openDrawer: openSamDrawer }] = useDrawer();
 const [registerUnattendedDrawer, { openDrawer: openUnattendedDrawer }] = useDrawer();
+
+function handleRegisterSamDrawer(...args: any[]) {
+  (registerSamDrawer as (...innerArgs: any[]) => void)(...args);
+}
+
+function handleRegisterUnattendedDrawer(...args: any[]) {
+  (registerUnattendedDrawer as (...innerArgs: any[]) => void)(...args);
+}
 const samModelChecked = ref(false);
 const samModelReady = ref(false);
 const importModalRef = ref<InstanceType<typeof ImportDatasetModal> | null>(null);
@@ -1310,7 +1318,7 @@ const undo = () => {
 // 从后端获取标签（无默认占位标签）
 const fetchLabels = async (): Promise<void> => {
   try {
-    const list: DatasetTagItem[] = await fetchDatasetTags(route.params['id']);
+    const list: DatasetTagItem[] = await fetchDatasetTags(datasetId.value);
     labels.value = list.map((tag) => ({
       id: tag.id,
       name: tag.name,
@@ -1341,7 +1349,7 @@ async function syncTagsAfterImport(importResult?: DatasetAnnotationImportResult)
     return;
   }
 
-  const created = await syncTagsFromImport(route.params['id'], {classNames});
+  const created = await syncTagsFromImport(datasetId.value, {classNames});
   await fetchLabels();
   if (created > 0) {
     createMessage.success(`已从导入数据创建 ${created} 个标签`);
@@ -1702,6 +1710,7 @@ const drawAnnotation = (annotation: Annotation): void => {
 const drawCurrentAnnotation = (): void => {
   if (!ctx.value || !imageDisplaySize.value || currentPoints.value.length === 0) return;
 
+  const canvasCtx = ctx.value;
   const {x: imgX, y: imgY, width: imgWidth, height: imgHeight} = imageDisplaySize.value;
 
   // 转换归一化坐标为实际canvas坐标
@@ -1711,10 +1720,10 @@ const drawCurrentAnnotation = (): void => {
   });
 
   const draftColor = currentLabel.value?.color ?? '#4361ee';
-  ctx.value.save();
-  ctx.value.strokeStyle = draftColor;
-  ctx.value.lineWidth = ANNOTATION_STROKE_WIDTH;
-  ctx.value.fillStyle = colorWithAlpha(draftColor, ANNOTATION_FILL_ALPHA);
+  canvasCtx.save();
+  canvasCtx.strokeStyle = draftColor;
+  canvasCtx.lineWidth = ANNOTATION_STROKE_WIDTH;
+  canvasCtx.fillStyle = colorWithAlpha(draftColor, ANNOTATION_FILL_ALPHA);
 
   switch (activeTool.value) {
     case ToolType.RECTANGLE:
@@ -1723,10 +1732,10 @@ const drawCurrentAnnotation = (): void => {
       const width = rectEnd.x - rectStart.x;
       const height = rectEnd.y - rectStart.y;
 
-      ctx.value.beginPath();
-      ctx.value.rect(rectStart.x, rectStart.y, width, height);
-      ctx.value.fill();
-      ctx.value.stroke();
+      canvasCtx.beginPath();
+      canvasCtx.rect(rectStart.x, rectStart.y, width, height);
+      canvasCtx.fill();
+      canvasCtx.stroke();
 
       drawAnnotationLabel({
         id: 0,
@@ -1747,31 +1756,31 @@ const drawCurrentAnnotation = (): void => {
 
     case ToolType.POLYGON:
       if (currentPoints.value.length > 0) {
-        ctx.value.beginPath();
+        canvasCtx.beginPath();
         const firstPoint = toCanvasCoords(currentPoints.value[0]);
-        ctx.value.moveTo(firstPoint.x, firstPoint.y);
+        canvasCtx.moveTo(firstPoint.x, firstPoint.y);
 
         for (let i = 1; i < currentPoints.value.length; i++) {
           const point = toCanvasCoords(currentPoints.value[i]);
-          ctx.value.lineTo(point.x, point.y);
+          canvasCtx.lineTo(point.x, point.y);
         }
 
         const currentPoint = toCanvasCoords({x: startX.value, y: startY.value});
-        ctx.value.lineTo(currentPoint.x, currentPoint.y);
-        ctx.value.stroke();
+        canvasCtx.lineTo(currentPoint.x, currentPoint.y);
+        canvasCtx.stroke();
 
-        ctx.value.fillStyle = draftColor;
+        canvasCtx.fillStyle = draftColor;
         currentPoints.value.forEach(point => {
           const canvasPoint = toCanvasCoords(point);
-          ctx.value.beginPath();
-          ctx.value.arc(canvasPoint.x, canvasPoint.y, 4, 0, Math.PI * 2);
-          ctx.value.fill();
+          canvasCtx.beginPath();
+          canvasCtx.arc(canvasPoint.x, canvasPoint.y, 4, 0, Math.PI * 2);
+          canvasCtx.fill();
         });
       }
       break;
   }
 
-  ctx.value.restore();
+  canvasCtx.restore();
 };
 
 // 绘制标注名称标签
@@ -1790,7 +1799,6 @@ const drawAnnotationLabel = (
   ctx.value.font = '12px Inter, sans-serif';
   const textWidth = ctx.value.measureText(labelName).width;
   const padX = 4;
-  const padY = 2;
   const boxH = 16;
   const boxW = textWidth + padX * 2;
 
@@ -2233,8 +2241,8 @@ function onTipAction(action: TipAction): void {
   }
 }
 
-function onAddMenuClick({key}: { key: string }): void {
-  switch (key) {
+function onAddMenuClick({key}: { key: string | number }): void {
+  switch (String(key)) {
     case 'import':
       openImportModal();
       break;
@@ -2253,8 +2261,8 @@ function onAddMenuClick({key}: { key: string }): void {
   }
 }
 
-function onTrainMenuClick({key}: { key: string }): void {
-  switch (key) {
+function onTrainMenuClick({key}: { key: string | number }): void {
+  switch (String(key)) {
     case 'split':
       handleSplitDataset();
       break;

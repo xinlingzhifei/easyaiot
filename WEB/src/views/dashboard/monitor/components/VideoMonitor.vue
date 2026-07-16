@@ -431,7 +431,7 @@ function persistDashboardVideoState() {
   if (typeof window === 'undefined') return
 
   const videos = internalVideoList.value
-    .map((video, index) => {
+    .map<PersistedDashboardVideoSlot | null>((video, index) => {
       if (!video?.url || !video.deviceId) return null
       return {
         index,
@@ -445,7 +445,7 @@ function persistDashboardVideoState() {
         videoCodec: video.videoCodec || '',
       } satisfies PersistedDashboardVideoSlot
     })
-    .filter((video): video is PersistedDashboardVideoSlot => !!video)
+    .filter((video): video is PersistedDashboardVideoSlot => video !== null)
 
   try {
     if (!videos.length) {
@@ -840,6 +840,7 @@ const getVideoUrl = (videoUrl: string): string => {
   // 其他情况直接返回
   return videoUrl
 }
+void getVideoUrl
 
 // 防重复提示函数：3秒内相同错误只提示一次
 function showVideoErrorOnce(message: string) {

@@ -299,7 +299,7 @@ const [registerTable, {reload}] = useTable({
   },
   rowSelection: {
     type: 'checkbox',
-    selectedRowKeys: checkedKeys,
+    selectedRowKeys: checkedKeys.value,
     onSelect: onSelect,
     onSelectAll: onSelectAll,
     getCheckboxProps(record) {
@@ -341,7 +341,7 @@ function handleView(record) {
 }
 
 //编辑按钮事件
-function handleEdit(record) {
+function handleEdit(_record) {
   openAddModal(true, {datasetId: route.params['id']});
 }
 

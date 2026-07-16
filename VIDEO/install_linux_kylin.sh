@@ -34,6 +34,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 YFEIEYE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VIDEO_COMPOSE_ENV_FILE="${YFEIEYE_VIDEO_COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env.docker}"
 # shellcheck source=../.scripts/docker/init-build-cache-dirs.sh
 source "${YFEIEYE_ROOT}/.scripts/docker/init-build-cache-dirs.sh"
 
@@ -57,6 +58,16 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Compose `env_file` only injects container variables; host-side interpolation
+# (ports and bind roots) must use the same explicit file.
+video_compose() {
+    if [ ! -f "$VIDEO_COMPOSE_ENV_FILE" ]; then
+        print_error "Compose 环境文件不存在: $VIDEO_COMPOSE_ENV_FILE"
+        return 1
+    fi
+    $COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"
 }
 
 prepare_cached_resources() {
@@ -349,7 +360,7 @@ clean_compose_cache() {
     # 1. 停止并清理容器和网络连接
     print_info "执行 docker-compose down 清理容器和网络连接..."
     # 使用 eval 来正确处理包含空格的 COMPOSE_CMD
-    if eval "$COMPOSE_CMD down" 2>/dev/null; then
+    if video_compose down 2>/dev/null; then
         print_success "容器和网络连接已清理"
     else
         print_info "docker-compose down 执行完成（可能没有运行的容器）"
@@ -358,7 +369,7 @@ clean_compose_cache() {
     
     # 2. 强制重新读取配置（这会清除 docker-compose 的配置缓存）
     print_info "强制重新读取配置以清除缓存..."
-    if eval "$COMPOSE_CMD config" > /dev/null 2>&1; then
+    if video_compose config > /dev/null 2>&1; then
         print_success "配置已重新验证"
     else
         print_warning "配置验证失败，但继续执行"
@@ -507,7 +518,7 @@ install_service() {
     fi
     
     print_info "启动服务..."
-    $COMPOSE_CMD up -d
+    video_compose up -d
     
     print_success "服务安装完成！"
     print_info "等待服务启动..."
@@ -536,7 +547,7 @@ start_service() {
         create_env_file
     fi
     
-    $COMPOSE_CMD up -d
+    video_compose up -d
     print_success "服务已启动"
     check_status
 }
@@ -547,7 +558,7 @@ stop_service() {
     check_docker
     check_docker_compose
     
-    $COMPOSE_CMD down
+    video_compose down
     print_success "服务已停止"
 }
 
@@ -560,7 +571,7 @@ restart_service() {
     configure_kylin_dockerfile
     clean_compose_cache
     
-    $COMPOSE_CMD restart
+    video_compose up -d --force-recreate --no-deps video-service
     print_success "服务已重启"
     check_status
 }
@@ -571,7 +582,7 @@ check_status() {
     check_docker
     check_docker_compose
     
-    $COMPOSE_CMD ps
+    video_compose ps
     
     echo ""
     print_info "容器健康状态:"
@@ -595,10 +606,10 @@ view_logs() {
     
     if [ "$1" == "-f" ] || [ "$1" == "--follow" ]; then
         print_info "实时查看日志（按 Ctrl+C 退出）..."
-        $COMPOSE_CMD logs -f --tail=50
+        video_compose logs -f --tail=50
     else
         print_info "查看最近日志（最近50行）..."
-        $COMPOSE_CMD logs --tail=50
+        video_compose logs --tail=50
     fi
 }
 
@@ -638,7 +649,7 @@ clean_service() {
         check_docker
         check_docker_compose
         print_info "停止并删除容器..."
-        $COMPOSE_CMD down -v
+        video_compose down -v
         
         print_info "删除镜像..."
         docker rmi video-service:latest 2>/dev/null || true
@@ -680,7 +691,7 @@ update_service() {
     print_success "镜像构建完成！"
     
     print_info "重启服务..."
-    $COMPOSE_CMD up -d
+    video_compose up -d --force-recreate --no-deps video-service
     
     print_success "服务更新完成"
     check_status

@@ -49,7 +49,7 @@
 </template>
 <script lang="ts" setup>
 import {onMounted, reactive, ref, watch} from 'vue';
-import {List, Spin, Button, ButtonGroup} from 'ant-design-vue';
+import {List, Spin} from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
@@ -75,6 +75,7 @@ const emit = defineEmits(['getMethod', 'refresh', 'view', 'tabChange']);
 function handleTabChange(key: string) {
   emit('tabChange', key);
 }
+void handleTabChange;
 
 //数据
 const data = ref([]);
@@ -374,4 +375,3 @@ async function handleView(record: object) {
   }
 }
 </style>
-

@@ -459,6 +459,17 @@ class AlgorithmTaskDaemon:
         
         # 准备环境变量（使用传入的参数）
         env = os.environ.copy()
+        from app.services.media_authorization_service import build_alert_ingest_process_env
+        for key in (
+            'YFEIEYE_MEDIA_SERVICE_HMAC_SECRET',
+            'YFEIEYE_MEDIA_SERVICE_HMAC_KEYS',
+            'YFEIEYE_MEDIA_SERVICE_POLICIES',
+            'YFEIEYE_MEDIA_SERVICE_IDS',
+            'YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS',
+            'YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS',
+        ):
+            env.pop(key, None)
+        env.update(build_alert_ingest_process_env())
         # 子进程必须继承 VIDEO_ENV，run_deploy 内 load_video_env 会加载 .env.prod
         video_env = os.getenv('VIDEO_ENV', '').strip()
         if video_env:

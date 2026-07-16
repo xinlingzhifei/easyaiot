@@ -9,7 +9,14 @@
     <div class="monitor-dialog" :class="{ 'monitor-dialog--vod': state.vodMode }">
       <template v-if="state.vodMode">
         <div class="monitor-dialog__vod-viewer">
-          <div class="monitor-dialog__video-body">
+          <div
+            class="monitor-dialog__video-body"
+            data-testid="alert-review-dialog-player-stage"
+            :data-current-url="state.currentUrl"
+            :data-record-path="state.recordPath"
+            :data-seek-time="state.seekTime"
+            :data-playback-offset-seconds="state.seekOffsetSeconds"
+          >
             <Jessibuca
               v-if="state.currentUrl"
               :key="`${playerKey}-${state.currentUrl}`"
@@ -19,6 +26,7 @@
               :playerEngine="state.playerEngine"
               :videoCodec="state.videoCodec"
               :vodMode="true"
+              :seekOffsetSeconds="state.seekOffsetSeconds"
             />
             <div v-else-if="state.playLoading" class="monitor-dialog__loading">
               <Spin size="large" />
@@ -75,7 +83,14 @@
               <span class="monitor-dialog__status-chip" :class="playStatusClass">{{ playStatusText }}</span>
             </div>
           </div>
-          <div class="monitor-dialog__video-body">
+          <div
+            class="monitor-dialog__video-body"
+            data-testid="alert-review-dialog-player-stage"
+            :data-current-url="state.currentUrl"
+            :data-record-path="state.recordPath"
+            :data-seek-time="state.seekTime"
+            :data-playback-offset-seconds="state.seekOffsetSeconds"
+          >
             <RtcPlayer
               v-if="state.currentUrl && state.playerEngine === 'webrtc'"
               :key="`${playerKey}-${state.currentUrl}`"
@@ -94,6 +109,7 @@
               :vodMode="state.vodMode"
               :fill-video="!state.vodMode"
               :ai-with-fallback="!state.vodMode && !!state.fallbackUrl"
+              :seekOffsetSeconds="state.seekOffsetSeconds"
               @stream-error="handleStreamError"
             />
             <div v-else-if="state.playLoading" class="monitor-dialog__loading">
@@ -186,6 +202,9 @@ const state = reactive({
   presets: [] as PresetItem[],
   presetLoading: false,
   record: null as Record<string, any> | null,
+  seekOffsetSeconds: -1,
+  seekTime: '',
+  recordPath: '',
 });
 
 let aiFallbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -413,6 +432,14 @@ async function loadStream(record: Record<string, any>) {
   state.playerEngine = '';
   state.videoCodec = '';
   state.playSources = [];
+  state.playLoading = false;
+  state.vodMode = false;
+  state.seekOffsetSeconds = -1;
+  state.seekTime = String(record['seek_time'] ?? '');
+  state.recordPath = String(record['record_path'] ?? record['http_stream'] ?? '');
+  const hasSeekOffset = record['playback_offset_seconds'] != null;
+  const rawSeekOffset = hasSeekOffset ? Number(record['playback_offset_seconds']) : Number.NaN;
+  state.seekOffsetSeconds = Number.isFinite(rawSeekOffset) && rawSeekOffset >= 0 ? rawSeekOffset : -1;
 
   const preResolvedUrl = String(record.http_stream ?? '').trim();
   const recordFallback = String(record._fallbackUrl ?? '').trim() || null;
@@ -436,7 +463,8 @@ async function loadStream(record: Record<string, any>) {
     state.vodMode = isVodPlaybackUrl(preResolvedUrl);
     state.fallbackUrl = recordFallback;
     state.preferAi = recordPreferAi;
-    state.playerEngine = String(record._playerEngine ?? '');
+    state.playerEngine = String(record._playerEngine ?? '').trim()
+      || (shouldUseNativeSeekPlayback(preResolvedUrl, state.seekOffsetSeconds, state.seekTime) ? 'native' : '');
     state.videoCodec = String(record._videoCodec ?? '');
     state.playSources = Array.isArray(record._playSources) ? record._playSources : [];
     await nextTick();
@@ -495,6 +523,7 @@ async function loadStream(record: Record<string, any>) {
   state.playSources = [];
   await nextTick();
   state.currentUrl = streamUrl;
+  state.playerEngine = shouldUseNativeSeekPlayback(streamUrl, state.seekOffsetSeconds, state.seekTime) ? 'native' : '';
   if (streamUrl) playerKey.value += 1;
 }
 
@@ -635,6 +664,21 @@ const gbCommandMap: Record<string, string> = {
   ZOOM_OUT: 'zoomout',
   STOP: 'stop',
 };
+
+function shouldUseNativeSeekPlayback(url: string, _seekOffsetSeconds: number, _seekTime: string): boolean {
+  if (!url) return false;
+  const normalized = safeDecode(url).toLowerCase();
+  return /\.mp4(?:[?#]|$)/.test(normalized)
+    || /[?&]playback_format=mp4(?:[&#]|$)/.test(normalized);
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 async function handlePtzCamera(command: string, speed: number) {
   if (state.deviceIdentification && state.presetPos) {

@@ -17,7 +17,17 @@ public interface SupervisionEventService {
                                String ruleCode,
                                String sourceAlertType,
                                LocalDateTime sourceAlertTime,
-                               String sourcePayloadHash) {
+                               String sourcePayloadHash,
+                               boolean dispatchTasks) {
+
+        public AlertToEventCommand(String sourceSystem,
+                                   String sourceAlertId,
+                                   String ruleCode,
+                                   String sourceAlertType,
+                                   LocalDateTime sourceAlertTime,
+                                   String sourcePayloadHash) {
+            this(sourceSystem, sourceAlertId, ruleCode, sourceAlertType, sourceAlertTime, sourcePayloadHash, true);
+        }
     }
 
     record AlertToEventResult(Long eventId,

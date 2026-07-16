@@ -65,7 +65,7 @@ defineOptions({
   name: 'MonitorHeader'
 })
 
-const props = defineProps<{
+defineProps<{
   activeVideos?: any[]
   todayAlarmCount?: number
   dashboardHealth?: DashboardHealth

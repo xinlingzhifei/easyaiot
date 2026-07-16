@@ -9,13 +9,19 @@ const devicePlaySource = readFileSync(
 
 assert.match(
   devicePlaySource,
-  /const aiPlayable = await probeStreamPlayable\(aiUrl\);[\s\S]*if \(!aiPlayable\) \{\s*return \{ url: videoUrl \};\s*\}/,
-  'AI playback should probe for real media bytes and immediately use the original stream when the AI stream is empty.',
+  /return \{ url: videoUrl, pendingAiUrl: aiUrl \};/,
+  'AI playback should start the original stream immediately while the AI stream is still pending.',
 )
 
 assert.match(
   devicePlaySource,
-  /export const AI_PLAY_FALLBACK_MS = 10000;/,
+  /export function schedulePendingAiStreamUpgrade[\s\S]*probeStreamPlayable\(ai, AI_STREAM_PROBE_MS\)[\s\S]*onUpgrade\(\)/,
+  'AI playback should probe in the background and upgrade only after the AI stream becomes playable.',
+)
+
+assert.match(
+  devicePlaySource,
+  /export const AI_PLAY_FALLBACK_MS = 2500;/,
   'AI playback fallback should not leave monitor cells loading for a full minute.',
 )
 
@@ -27,7 +33,7 @@ assert.match(
 
 assert.match(
   devicePlaySource,
-  /if \(!isAiStreamPlayUrl\(url\) && wvpSource\.url\) \{\s*return wvpSource;\s*\}/,
+  /if \(!isAiStreamPlayUrl\(url\) && !pendingAiUrl && wvpSource\.url\) \{\s*return wvpSource;\s*\}/,
   'GB28181 AI fallback should use the fresh WVP play/start source instead of stale synced device http_stream values.',
 )
 

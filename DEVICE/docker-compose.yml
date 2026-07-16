@@ -20,7 +20,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48080/favicon.ico"]
@@ -47,14 +47,40 @@ services:
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL=jdbc:postgresql://PostgresSQL:5432/ruoyi-vue-pro20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&createDatabaseIfNotExist=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified # PostgreSQL数据库地址（使用Docker服务名）
       - SPRING_REDIS_HOST=Redis # Redis地址（使用Docker服务名）
       - IOT_CAPTCHA_ENABLE=${IOT_CAPTCHA_ENABLE:-true} # 默认开启验证码；本地可通过环境变量覆盖
+      - YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL=${YFEIEYE_VIDEO_ALERT_RECORD_QUERY_URL:-http://host.docker.internal:6000/video/alert/record/query} # 线索复核录像自动补证查询地址；未配置时降级为缺录像/待手动补证
+      - YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL=${YFEIEYE_VIDEO_RECORD_COVERAGE_QUERY_URL:-http://host.docker.internal:6000/video/record/availability} # 线索复核录像覆盖度查询地址；未配置时返回缺录像覆盖
+      - YFEIEYE_VIDEO_RECORD_BASE_URL=${YFEIEYE_VIDEO_RECORD_BASE_URL:-http://host.docker.internal:6000/video/record} # VIDEO录像基础地址；用于录像空间发现和覆盖度兜底
+      - YFEIEYE_VIDEO_RECORD_EXPORT_URL=${YFEIEYE_VIDEO_RECORD_EXPORT_URL:-http://host.docker.internal:6000/video/record/export} # 线索复核证据录像导出地址；未配置时导出任务保留待补证状态
+      - YFEIEYE_VIDEO_PUBLIC_PLAY_HOST=${YFEIEYE_VIDEO_PUBLIC_PLAY_HOST:-} # 浏览器公开 VIDEO 代理基址；生产示例 https://eye.yfeiai.com/yfeieye/dev-api
+      - YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_CONNECT_TIMEOUT_MS:-5000}
+      - YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_READ_TIMEOUT_MS:-30000}
+      - YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS=${YFEIEYE_VIDEO_RECORD_EXPORT_POLL_TIMEOUT_MS:-300000}
+      - YFEIEYE_VIDEO_RECORD_EXPORT_DOWNLOAD_MAX_BYTES=${YFEIEYE_VIDEO_RECORD_EXPORT_DOWNLOAD_MAX_BYTES:-536870912}
+      - YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS=${YFEIEYE_VIDEO_RECORD_DRIFT_RETENTION_HOURS:-24}
+      - YFEIEYE_MEDIA_SERVICE_ID=${YFEIEYE_MEDIA_SERVICE_ID:-iot-system}
+      - YFEIEYE_MEDIA_SERVICE_HMAC_SECRET=${YFEIEYE_MEDIA_SERVICE_HMAC_SECRET:-} # DEVICE->VIDEO HMAC；生产必须配置且与 VIDEO 一致
+      - YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS=${YFEIEYE_MEDIA_SERVICE_ALLOWED_ACTIONS:-coverage,export,download,playback,manifest_verify}
+      - YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS=${YFEIEYE_MEDIA_SERVICE_ALLOWED_CAMERA_IDS:-} # 后台无用户上下文时显式摄像头范围；空值 fail-closed
+      - YFEIEYE_REVIEW_CAMERA_PERMISSION_USERS_1=${YFEIEYE_REVIEW_CAMERA_PERMISSION_USERS_1:-}
+      - YFEIEYE_EVIDENCE_MANIFEST_ACTIVE_KEY_ID=${YFEIEYE_EVIDENCE_MANIFEST_ACTIVE_KEY_ID:-}
+      - YFEIEYE_EVIDENCE_MANIFEST_HMAC_KEYS=${YFEIEYE_EVIDENCE_MANIFEST_HMAC_KEYS:-} # keyId=base64(>=32 bytes), comma-separated; production required
+      - YFEIEYE_EVIDENCE_MANIFEST_SIGNATURE_VERSION=${YFEIEYE_EVIDENCE_MANIFEST_SIGNATURE_VERSION:-hmac-sha256-v1}
+      - YFEIEYE_REVIEW_LOCAL_SCHEDULER_ENABLED=${YFEIEYE_REVIEW_LOCAL_SCHEDULER_ENABLED:-false}
+      - YFEIEYE_REVIEW_LOCAL_SCHEDULER_POOL_SIZE=${YFEIEYE_REVIEW_LOCAL_SCHEDULER_POOL_SIZE:-4}
+      - YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_ENABLED:-false}
+      - YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES=${YFEIEYE_REVIEW_RUNTIME_OUTBOX_NOTIFY_TENANT_ADMIN_USER_ROUTES:-}
+      - YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE=${YFEIEYE_REVIEW_RUNTIME_ALERT_TEMPLATE_CODE:-YFEIEYE_REVIEW_RUNTIME_ALERT}
+      - YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE=${YFEIEYE_REVIEW_OPERATIONS_REPORT_TEMPLATE_CODE:-YFEIEYE_REVIEW_OPERATIONS_REPORT}
       # SkyWalking配置（如需要，请取消注释并配置）
       # - JAVA_TOOL_OPTIONS=-javaagent:/data/skywalking/skywalking-agent/skywalking-agent.jar
       # - SW_AGENT_NAME=iot-system
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48099/actuator/health"]
       interval: 30s
@@ -89,7 +115,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48082"]
@@ -127,7 +153,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48083/actuator/health"]
@@ -164,7 +190,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48087/actuator/health"]
@@ -197,7 +223,7 @@ services:
       - EASYAIOT_PLATFORM_HOST=${EASYAIOT_PLATFORM_HOST:-}
       - EASYAIOT_AGENT_CONTROL_PLANE_URL=${EASYAIOT_AGENT_CONTROL_PLANE_URL:-}
     volumes:
-      - ../.build-cache/device/node-logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/node-logs:/root/logs/
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48094/actuator/health"]
       interval: 30s
@@ -233,7 +259,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48091"]
@@ -270,7 +296,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48090"]
@@ -313,7 +339,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     # 配置hosts映射，将kafka-server映射到宿主机IP
     # 使用host-gateway自动解析为宿主机IP（Docker 20.10+支持）
@@ -348,28 +374,34 @@ services:
       - SPRING_CLOUD_NACOS_SERVER_ADDR=Nacos:8848 # 注册中心地址（使用Docker服务名）
       - SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE= # 使用默认命名空间（public）
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL=jdbc:postgresql://PostgresSQL:5432/iot-device20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&createDatabaseIfNotExist=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified # PostgreSQL数据库地址（使用Docker服务名）
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME=${POSTGRES_USER:?POSTGRES_USER is required}
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_TDENGINE_URL=jdbc:TAOS-RS://TDengine:6041/iot_device?user=root&password=taosdata&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8 # TDengine数据库地址（使用Docker服务名）
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_VIDEO_URL=jdbc:postgresql://PostgresSQL:5432/iot-video20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified # VIDEO数据库地址（使用Docker服务名）
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_VIDEO_USERNAME=${POSTGRES_USER:?POSTGRES_USER is required}
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_VIDEO_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_NODE_URL=jdbc:postgresql://PostgresSQL:5432/iot-node20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified # iot-node 数据库（后处理 Worker 地址解析）
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_NODE_USERNAME=${POSTGRES_USER:?POSTGRES_USER is required}
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_NODE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SPRING_REDIS_HOST=Redis # Redis地址（使用Docker服务名）
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=Kafka:9092 # Kafka地址（使用Docker服务名，用于标准配置）
       - SPRING_KAFKA_IOT_PRODUCER_BOOTSTRAP_SERVERS=Kafka:9092 # Kafka生产者地址（使用Docker服务名，用于自定义iot配置）
       - SPRING_KAFKA_IOT_CONSUMER_BOOTSTRAP_SERVERS=Kafka:9092 # Kafka消费者地址（使用Docker服务名，用于自定义iot配置）
       - MINIO_URL=http://MinIO:9000 # Minio地址（使用Docker服务名）
       - MINIO_DOWNLOAD_URL=http://MinIO:9001 # Minio下载地址（使用Docker服务名）
-      - MINIO_ACCESS_KEY=minioadmin # Minio访问密钥
-      - MINIO_SECRET_KEY=basiclab@iot975248395 # Minio秘密密钥
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required} # Minio访问密钥
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required} # Minio秘密密钥
       # SkyWalking配置（如需要，请取消注释并配置）
       # - JAVA_TOOL_OPTIONS=-javaagent:/data/skywalking/skywalking-agent/skywalking-agent.jar
       # - SW_AGENT_NAME=iot-sink
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # 告警图片目录（与VIDEO/算法进程共享，用于读取告警 JPG 并上传 MinIO）
       # 算法侧须挂载同一宿主机目录且设置 ALERT_IMAGES_DIR=/app/alert_images（见 VIDEO/app/utils/alert_images_paths.py）
-      # 注意：使用相对路径，从DEVICE目录指向VIDEO目录下的alert_images
-      - ../VIDEO/alert_images:/app/alert_images
+      # 使用与 VIDEO 相同的 release 外状态根，发布切换后仍共享同一落盘目录
+      - ${YFEIEYE_VIDEO_STATE_ROOT:-/data/yfeieye-video}/alert_images:/app/alert_images
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     # 配置hosts映射，将kafka-server映射到宿主机IP
     # 使用host-gateway自动解析为宿主机IP（Docker 20.10+支持）
@@ -412,7 +444,7 @@ services:
       # - SW_AGENT_TRACE_IGNORE_PATH=Redisson/PING,/actuator/**,/admin/**
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
-      - ../.build-cache/device/logs:/root/logs/
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     # 配置hosts映射，将PostgresSQL和Redis映射到宿主机IP（使用host-gateway自动解析为宿主机IP）
     # 这样使用host网络模式的服务可以通过服务名访问Docker网络中的服务

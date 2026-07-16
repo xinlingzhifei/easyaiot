@@ -111,7 +111,7 @@ defineOptions({
   name: 'MonitorSidebar'
 })
 
-const props = defineProps<{
+defineProps<{
   selectedDevice?: any
   statistics?: DashboardStatistics
 }>()
@@ -320,8 +320,6 @@ const handleTreeSelect = async (keys: string[], _info?: unknown) => {
 
 // 获取完整路径
 const getFullPath = (node: TreeItem, treeNodes: TreeItem[]): string => {
-  const path: string[] = [node.title as string]
-
   // 递归查找父节点路径
   const findPath = (nodes: TreeItem[], targetKey: string, currentPath: string[] = []): string[] | null => {
     for (const n of nodes) {

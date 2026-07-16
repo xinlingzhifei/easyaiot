@@ -5,16 +5,36 @@ import types
 import unittest
 from pathlib import Path
 
+import app.services as app_services
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-sys.modules.setdefault(
-    "models",
-    types.SimpleNamespace(Device=object, StreamForwardTask=object, db=object()),
-)
-
+_previous_models = sys.modules.get("models")
+_previous_service = sys.modules.get("app.services.stream_url_sync_service")
+_missing = object()
+_previous_service_attribute = getattr(
+    app_services, "stream_url_sync_service", _missing)
+sys.modules["models"] = types.SimpleNamespace(
+    Device=object, StreamForwardTask=object, db=object())
+sys.modules.pop("app.services.stream_url_sync_service", None)
 stream_url_sync_service = importlib.import_module("app.services.stream_url_sync_service")
+if _previous_models is None:
+    sys.modules.pop("models", None)
+else:
+    sys.modules["models"] = _previous_models
+if _previous_service is None:
+    sys.modules.pop("app.services.stream_url_sync_service", None)
+else:
+    sys.modules["app.services.stream_url_sync_service"] = _previous_service
+if _previous_service_attribute is _missing:
+    try:
+        delattr(app_services, "stream_url_sync_service")
+    except AttributeError:
+        pass
+else:
+    app_services.stream_url_sync_service = _previous_service_attribute
 
 GB_DEVICE_ID = "gb28181_44010200493432381460_34020000001320000001"
 GB_RAW_HTTP = (
