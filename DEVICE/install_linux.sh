@@ -821,7 +821,7 @@ build_base_jars() {
     # 卷挂载编译入口：$1=1 离线(+--network none)，$1=0 联网。
     # 源码 RW（target 写回宿主机 → 增量）、m2 RW（直接持久，无 cp/导出）、settings RO。
     # --user：以宿主机用户身份写产物，避免 root 属主污染。HOME/MAVEN_CONFIG 指向容器内 /tmp（非 root 可写）。
-    # -ntp 静默传输进度；bf 收集器加速依赖图；artifact.threads 并行解析/下载。
+    # -ntp 静默传输进度；C1 使用串行 reactor 避免共享本地仓库锁竞争；artifact.threads 并行解析/下载。
     _run_build_container() {
         local offline="$1"
         local net=() off=""
@@ -836,7 +836,7 @@ build_base_jars() {
             -v "${MAVEN_SETTINGS_FILE}:/m2/settings.xml:ro" \
             -w /build \
             maven:3.9.11-eclipse-temurin-21-alpine \
-            mvn -s /m2/settings.xml -B -ntp -T 1C \
+            mvn -s /m2/settings.xml -B -ntp \
                 -Dmaven.artifact.threads=8 \
                 install ${maven_build_args} ${off} \
                 -Dmaven.repo.local=/m2/repository \

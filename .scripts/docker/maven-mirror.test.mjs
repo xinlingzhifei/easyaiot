@@ -22,3 +22,9 @@ test('device build scripts default to the reachable Maven mirror', () => {
     );
   }
 });
+
+test('device C1 build avoids parallel reactor repository lock contention', () => {
+  const source = readFileSync(join(rootDir, 'DEVICE', 'install_linux.sh'), 'utf8');
+
+  assert.doesNotMatch(source, /mvn -s \/m2\/settings\.xml -B -ntp -T 1C/);
+});
