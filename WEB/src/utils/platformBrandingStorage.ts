@@ -1,10 +1,14 @@
 import defaultLogo from '@/assets/images/logo.png'
-import defaultLightBg from '@/assets/images/light-bg.png'
-import defaultDarkBg from '@/assets/images/dark-bg.png'
+import legacyDefaultDarkBg from '@/assets/images/dark-bg.png'
+import legacyDefaultLightBg from '@/assets/images/light-bg.png'
+import defaultLoginBg from '@/assets/svg/login-yfeiEye.svg'
+import { resolveLoginBrandingValues } from '@/utils/loginBrandingDefaults'
 import { clearLocalStorage, getLocalStorage, setLocalStorage } from '@/utils/storage'
 
 export const PLATFORM_BRANDING_STORAGE_KEY = 'PLATFORM_BRANDING_CONFIG'
 export const PLATFORM_BRANDING_FAB_HIDDEN_KEY = 'PLATFORM_BRANDING_FAB_HIDDEN'
+export const DEFAULT_LOGIN_NAME = '逸飞 AI 智眼管控平台'
+const LEGACY_DEFAULT_LOGIN_NAME = '逸飞AI智眼系统'
 
 export interface PlatformBrandingConfig {
   /** 管理后台平台名称（侧边栏、浏览器标题等） */
@@ -31,11 +35,11 @@ export function getDefaultPlatformBranding(): PlatformBrandingConfig {
     platformName: envTitle,
     platformLogo: defaultLogo,
     dashboardTitle: '云边端一体算法预警监控平台',
-    loginName: envTitle,
+    loginName: DEFAULT_LOGIN_NAME,
     loginLogo: defaultLogo,
     loginFormTitle: '',
-    loginBgLight: defaultLightBg,
-    loginBgDark: defaultDarkBg,
+    loginBgLight: defaultLoginBg,
+    loginBgDark: defaultLoginBg,
   }
 }
 
@@ -46,15 +50,27 @@ export function loadPlatformBrandingConfig(): PlatformBrandingConfig {
     return { ...defaults }
   }
   const data = raw as Partial<PlatformBrandingConfig>
+  const loginBranding = resolveLoginBrandingValues(data, {
+    current: {
+      loginName: defaults.loginName,
+      loginBgLight: defaults.loginBgLight,
+      loginBgDark: defaults.loginBgDark,
+    },
+    legacy: {
+      loginName: LEGACY_DEFAULT_LOGIN_NAME,
+      loginBgLight: legacyDefaultLightBg,
+      loginBgDark: legacyDefaultDarkBg,
+    },
+  })
   return {
     platformName: pickString(data.platformName, defaults.platformName),
     platformLogo: pickString(data.platformLogo, defaults.platformLogo),
     dashboardTitle: pickString(data.dashboardTitle, defaults.dashboardTitle),
-    loginName: pickString(data.loginName, defaults.loginName),
+    loginName: loginBranding.loginName,
     loginLogo: pickString(data.loginLogo, defaults.loginLogo),
     loginFormTitle: pickString(data.loginFormTitle, defaults.loginFormTitle),
-    loginBgLight: pickString(data.loginBgLight, defaults.loginBgLight),
-    loginBgDark: pickString(data.loginBgDark, defaults.loginBgDark),
+    loginBgLight: loginBranding.loginBgLight,
+    loginBgDark: loginBranding.loginBgDark,
   }
 }
 

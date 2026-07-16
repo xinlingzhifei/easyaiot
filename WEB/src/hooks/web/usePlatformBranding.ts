@@ -34,12 +34,10 @@ function applyBrandingToDom(config: PlatformBrandingConfig): void {
 
   el.textContent = `
     html:not([data-theme='dark']) .xingyuv-login {
-      background: url("${lightBg}") no-repeat !important;
-      background-size: 100% 100% !important;
+      background: url("${lightBg}") center center / cover no-repeat !important;
     }
     html[data-theme='dark'] .xingyuv-login {
-      background: url("${darkBg}") no-repeat !important;
-      background-size: 100% 100% !important;
+      background: url("${darkBg}") center center / cover no-repeat !important;
     }
   `
 }
