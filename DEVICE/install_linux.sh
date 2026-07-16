@@ -1134,7 +1134,7 @@ build_and_start() {
 start_services() {
     print_info "启动所有服务..."
     cd "$SCRIPT_DIR"
-    compose_up_detached --quiet-pull
+    compose_up_detached
     print_success "服务启动完成"
     ensure_platform_agent_after_device_stack
 }

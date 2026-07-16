@@ -34,3 +34,9 @@ test('device runtime images avoid concurrent build contexts', () => {
 
   assert.doesNotMatch(source, /\( docker build [^\n]+\) >"\$log" 2>&1 &/);
 });
+
+test('device start does not pass a Compose flag as a service name', () => {
+  const source = readFileSync(join(rootDir, 'DEVICE', 'install_linux.sh'), 'utf8');
+
+  assert.doesNotMatch(source, /compose_up_detached --quiet-pull/);
+});
