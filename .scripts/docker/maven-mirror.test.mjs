@@ -40,3 +40,17 @@ test('device start does not pass a Compose flag as a service name', () => {
 
   assert.doesNotMatch(source, /compose_up_detached --quiet-pull/);
 });
+
+test('device compose loads shared credentials and device overrides explicitly', () => {
+  const installer = readFileSync(join(rootDir, 'DEVICE', 'install_linux.sh'), 'utf8');
+  const compose = readFileSync(join(rootDir, 'DEVICE', 'docker-compose.yml'), 'utf8');
+
+  assert.match(installer, /MIDDLEWARE_ENV_FILE=/);
+  assert.match(installer, /DEVICE_COMPOSE_ENV_FILE=/);
+  assert.match(
+    installer,
+    /\$DOCKER_COMPOSE --env-file "\$MIDDLEWARE_ENV_FILE" --env-file "\$DEVICE_COMPOSE_ENV_FILE" -f "\$COMPOSE_FILE"/,
+  );
+  assert.doesNotMatch(compose, /\$\{POSTGRES_USER:\?POSTGRES_USER is required\}/);
+  assert.match(compose, /\$\{POSTGRES_USER:-postgres\}/);
+});

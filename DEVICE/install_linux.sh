@@ -18,6 +18,8 @@ YFEIEYE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=../.scripts/docker/init-build-cache-dirs.sh
 source "${YFEIEYE_ROOT}/.scripts/docker/init-build-cache-dirs.sh"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+MIDDLEWARE_ENV_FILE="${YFEIEYE_MIDDLEWARE_ENV_FILE:-${YFEIEYE_ROOT}/.scripts/docker/.env.docker}"
+DEVICE_COMPOSE_ENV_FILE="${YFEIEYE_DEVICE_COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env}"
 # shellcheck source=../.scripts/docker/deploy_profile.sh
 source "${EASYAIOT_ROOT}/.scripts/docker/deploy_profile.sh"
 DEVICE_COMPOSE_PROFILE_ARGS=()
@@ -34,7 +36,7 @@ refresh_device_compose_profile_args() {
 }
 
 device_compose() {
-    $DOCKER_COMPOSE -f "$COMPOSE_FILE" ${DEVICE_COMPOSE_PROFILE_ARGS[@]+"${DEVICE_COMPOSE_PROFILE_ARGS[@]}"} "$@"
+    $DOCKER_COMPOSE --env-file "$MIDDLEWARE_ENV_FILE" --env-file "$DEVICE_COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" ${DEVICE_COMPOSE_PROFILE_ARGS[@]+"${DEVICE_COMPOSE_PROFILE_ARGS[@]}"} "$@"
 }
 
 prepare_device_state_dirs() {
