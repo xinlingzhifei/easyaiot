@@ -12,6 +12,10 @@ const dashboardData = readSource('src/views/dashboard/monitor/useDashboardData.t
 const indexView = readSource('src/views/dashboard/monitor/index.vue')
 const guardTask = readSource('src/views/dashboard/monitor/dashboardGuardTask.ts')
 const videoMonitor = readSource('src/views/dashboard/monitor/components/VideoMonitor.vue')
+const videoTemplate = videoMonitor.slice(0, videoMonitor.indexOf('</template>'))
+const header = readSource('src/views/dashboard/monitor/components/Header.vue')
+const sidebar = readSource('src/views/dashboard/monitor/components/Sidebar.vue')
+const alarmPanel = readSource('src/views/dashboard/monitor/components/AlarmPanel.vue')
 
 assert.match(
   calculateApi,
@@ -84,3 +88,22 @@ assert.match(
   /getModelPage\(\s*\{\s*pageNo:\s*1,\s*pageSize:\s*1000\s*\},\s*\{\s*errorMessageMode:\s*['"]none['"]\s*\},?\s*\)/,
   'The command center must supply a locally handled available-model loader to dashboard AI startup.',
 )
+
+assert.match(
+  indexView,
+  /data-testid="command-center-metrics"/,
+  'The command center must expose the approved compact metric strip.',
+)
+assert.match(
+  indexView,
+  /class="command-center-grid"/,
+  'The main command center must use the approved three-column grid.',
+)
+assert.match(header, /data-testid="monitor-admin-entry"/, 'The admin entry must remain visible in the header.')
+assert.match(header, /const adminEntryLabel = ['"]管理后台['"]/, 'The admin entry label must remain 管理后台.')
+assert.doesNotMatch(sidebar, /statistics-cards/, 'Duplicate overview cards must be removed from the device rail.')
+assert.match(videoTemplate, /single-focus/, 'The homepage video surface must be explicitly single-focus.')
+assert.doesNotMatch(videoTemplate, /monitor-split-toolbar|LayoutPresetPanel/, 'Split and preset controls must not render on the homepage.')
+assert.match(videoTemplate, /data-testid="monitor-ai-toggle"/, 'The single-focus header must retain the AI switch.')
+assert.match(alarmPanel, /dashboardHealth/, 'The alert rail must receive scoped interface health.')
+assert.match(alarmPanel, /refreshDashboardData|emit\(['"]retry['"]\)/, 'The alert rail must expose a manual retry action.')

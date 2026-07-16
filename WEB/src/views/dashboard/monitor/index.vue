@@ -12,35 +12,49 @@
       :last-updated-text="lastUpdatedText"
       @admin-entry="releaseDashboardOverlay"
     />
-    
-    <!-- 主体内容 -->
-    <div class="monitor-content">
-      <!-- 左侧导航 -->
-      <MonitorSidebar 
+
+    <section class="command-center-metrics" data-testid="command-center-metrics">
+      <article
+        v-for="metric in commandMetrics"
+        :key="metric.key"
+        class="command-metric"
+        :class="{ 'command-metric--alert': metric.key === 'alerts' }"
+      >
+        <span class="command-metric__label">{{ metric.label }}</span>
+        <span class="command-metric__reading">
+          <strong>{{ metric.value }}</strong>
+          <small>{{ metric.unit }}</small>
+        </span>
+      </article>
+    </section>
+
+    <main class="command-center-grid">
+      <MonitorSidebar
+        class="command-center-devices"
         :selected-device="selectedDevice"
-        :statistics="statistics"
         @device-change="handleDeviceChange"
         @device-play="handleDevicePlay"
       />
-      
-      <!-- 中央视频监控区域 -->
-      <div class="monitor-center">
-        <VideoMonitor 
-          ref="videoMonitorRef"
-          :device="selectedDevice"
-          :video-list="videoList"
-          :alert-record-list="alarmList"
-          @video-list-change="handleVideoListChange"
-        />
-      </div>
-      
-      <!-- 右侧告警信息 -->
-      <AlarmPanel 
+
+      <VideoMonitor
+        ref="videoMonitorRef"
+        class="command-center-video"
+        :device="selectedDevice"
+        :video-list="videoList"
+        :alert-record-list="alarmList"
+        @video-list-change="handleVideoListChange"
+      />
+
+      <AlarmPanel
+        class="command-center-alerts"
         :alarm-list="alarmList"
         :today-alarm-count="todayAlarmCount"
+        :dashboard-health="dashboardHealth"
+        :refreshing="refreshing"
         @play-alarm="handlePlayAlarm"
+        @retry="refreshDashboardData"
       />
-    </div>
+    </main>
   </div>
 </template>
 
@@ -71,6 +85,8 @@ const {
   alarmList,
   dashboardHealth,
   lastUpdatedText,
+  refreshDashboardData,
+  refreshing,
   statistics,
   todayAlarmCount,
 } = useDashboardData(activeDeviceId)
@@ -98,6 +114,36 @@ const videoList = ref([
 
 // 正在播放的视频列表
 const activeVideos = ref<any[]>([])
+
+const commandMetrics = computed(() => {
+  const hasDeviceScope = !!activeDeviceId.value
+  return [
+    {
+      key: 'devices',
+      label: '在线设备',
+      value: hasDeviceScope ? statistics.value.cameraCount : '—',
+      unit: '路',
+    },
+    {
+      key: 'playing',
+      label: '播放中',
+      value: activeVideos.value.length,
+      unit: '路',
+    },
+    {
+      key: 'models',
+      label: 'AI 模型',
+      value: hasDeviceScope ? statistics.value.modelCount : '—',
+      unit: '个',
+    },
+    {
+      key: 'alerts',
+      label: '今日告警',
+      value: hasDeviceScope ? todayAlarmCount.value : '—',
+      unit: '次',
+    },
+  ]
+})
 
 /** 大屏层 z-index 为 9999，需抬高挂载在 body 上的弹层，否则确认框/提示会被挡住 */
 const MONITOR_OVERLAY_Z_INDEX = 10050
@@ -183,14 +229,14 @@ const handleVideoListChange = (videos: any[]) => {
 
 <style lang="less">
 .monitor-dashboard {
-  --dashboard-bg: #07111f;
-  --dashboard-bg-soft: #0c1b2d;
-  --dashboard-panel: rgba(9, 25, 45, 0.86);
-  --dashboard-panel-strong: rgba(11, 30, 53, 0.94);
-  --dashboard-border: rgba(95, 174, 229, 0.24);
-  --dashboard-border-strong: rgba(116, 197, 242, 0.45);
-  --dashboard-accent: #f59e0b;
-  --dashboard-blue: #38bdf8;
+  --dashboard-bg: #070b11;
+  --dashboard-bg-soft: #0b111a;
+  --dashboard-panel: rgba(13, 20, 30, 0.96);
+  --dashboard-panel-strong: rgba(16, 25, 37, 0.98);
+  --dashboard-border: rgba(199, 169, 102, 0.2);
+  --dashboard-border-strong: rgba(199, 169, 102, 0.46);
+  --dashboard-accent: #c7a966;
+  --dashboard-blue: #c7a966;
   --dashboard-green: #22c55e;
   --dashboard-danger: #f97373;
   --dashboard-text: #e6f1ff;
@@ -203,10 +249,7 @@ const handleVideoListChange = (videos: any[]) => {
   width: 100vw;
   height: 100vh;
   max-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 30rem),
-    radial-gradient(circle at 86% 6%, rgba(245, 158, 11, 0.13), transparent 24rem),
-    linear-gradient(180deg, var(--dashboard-bg) 0%, var(--dashboard-bg-soft) 48%, #050d18 100%);
+  background: var(--dashboard-bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -226,21 +269,9 @@ const handleVideoListChange = (videos: any[]) => {
     inset: 0;
     z-index: -2;
     background:
-      linear-gradient(rgba(95, 174, 229, 0.055) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(95, 174, 229, 0.045) 1px, transparent 1px);
+      linear-gradient(rgba(199, 169, 102, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(199, 169, 102, 0.03) 1px, transparent 1px);
     background-size: 48px 48px;
-    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.35));
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background:
-      linear-gradient(90deg, rgba(0, 0, 0, 0.42), transparent 24%, transparent 76%, rgba(0, 0, 0, 0.38)),
-      radial-gradient(circle at center, transparent 42%, rgba(0, 0, 0, 0.36));
-    pointer-events: none;
   }
 
   a {
@@ -254,22 +285,93 @@ const handleVideoListChange = (videos: any[]) => {
   opacity: 0;
 }
 
-.monitor-content {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-  padding: 0 18px 18px;
-  gap: 14px;
-  box-sizing: border-box;
-  margin-top: 10px;
+.command-center-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 18px 10px;
 }
 
-.monitor-center {
+.command-metric {
+  min-height: 64px;
+  padding: 11px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--dashboard-panel);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.command-metric__label {
+  color: var(--dashboard-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.command-metric__reading {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+
+  strong {
+    color: var(--dashboard-text);
+    font-size: 25px;
+    line-height: 1;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+
+  small {
+    color: var(--dashboard-muted);
+    font-size: 11px;
+  }
+}
+
+.command-metric--alert .command-metric__reading strong {
+  color: var(--dashboard-accent);
+}
+
+.command-center-grid {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(280px, 340px);
+  gap: 12px;
+  padding: 0 18px 18px;
   overflow: hidden;
+  box-sizing: border-box;
+}
+
+.command-center-devices,
+.command-center-video,
+.command-center-alerts {
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 1366px) {
+  .command-center-grid {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(260px, 300px);
+  }
+}
+
+@media (max-width: 1100px) {
+  .monitor-dashboard {
+    overflow-y: auto;
+  }
+
+  .command-center-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .command-center-grid {
+    flex: none;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(560px, 70vh) minmax(360px, 48vh) minmax(360px, 48vh);
+    overflow: visible;
+  }
 }
 </style>

@@ -7,7 +7,7 @@
           <h1 class="platform-title" data-testid="monitor-platform-title">{{ dashboardTitle }}</h1>
           <PlatformBrandingFab />
         </div>
-        <div class="platform-subtitle">实时监控运维中心</div>
+        <div class="platform-subtitle">实时监控 · AI 识别 · 告警联动</div>
       </div>
     </div>
 
@@ -65,7 +65,7 @@ defineOptions({
   name: 'MonitorHeader'
 })
 
-defineProps<{
+const props = defineProps<{
   activeVideos?: any[]
   todayAlarmCount?: number
   dashboardHealth?: DashboardHealth

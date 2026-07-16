@@ -9,6 +9,21 @@
     
     <div class="panel-content">
       <div
+        v-if="dashboardHealth.status === 'offline' || dashboardHealth.status === 'degraded'"
+        class="panel-error-state"
+        role="alert"
+      >
+        <Icon icon="ant-design:disconnect-outlined" :size="22" />
+        <div class="panel-error-copy">
+          <strong>告警接口异常</strong>
+          <span>{{ dashboardHealth.detail }}</span>
+        </div>
+        <button type="button" class="panel-retry" :disabled="refreshing" @click="handleRetry">
+          {{ refreshing ? '重试中' : '重新加载' }}
+        </button>
+      </div>
+
+      <div
         v-for="alarm in alarmList"
         :key="alarm.id"
         class="alarm-item"
@@ -49,9 +64,12 @@
         </div>
       </div>
       
-      <div v-if="alarmList.length === 0" class="empty-state">
+      <div
+        v-if="alarmList.length === 0 && dashboardHealth.status !== 'offline' && dashboardHealth.status !== 'degraded'"
+        class="empty-state"
+      >
         <Icon icon="ant-design:inbox-outlined" :size="48" />
-        <div class="empty-text">暂无告警信息</div>
+        <div class="empty-text">当前设备暂无告警</div>
       </div>
     </div>
     <div class="boxfoot"></div>
@@ -61,6 +79,7 @@
 <script lang="ts" setup>
 import { Icon } from '@/components/Icon'
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
+import type { DashboardHealth } from '../useDashboardData'
 
 defineOptions({
   name: 'AlarmPanel'
@@ -69,14 +88,26 @@ defineOptions({
 withDefaults(defineProps<{
   alarmList?: any[]
   todayAlarmCount?: number
+  dashboardHealth?: DashboardHealth
+  refreshing?: boolean
 }>(), {
   alarmList: () => [],
   todayAlarmCount: 0,
+  dashboardHealth: () => ({
+    status: 'loading',
+    label: '检查中',
+    detail: '等待接口刷新',
+    lastUpdatedAt: null,
+  }),
+  refreshing: false,
 })
 
 const emit = defineEmits<{
   'play-alarm': [alarm: any]
+  retry: []
 }>()
+
+const handleRetry = () => emit('retry')
 
 const handleAlarmClick = (alarm: any) => {
   emit('play-alarm', alarm)
@@ -234,7 +265,8 @@ const handleImageLoad = (alarm: any) => {
 
 <style lang="less" scoped>
 .alarm-panel {
-  width: 320px;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   padding: 0;
   background: var(--dashboard-panel);
@@ -251,9 +283,7 @@ const handleImageLoad = (alarm: any) => {
     content: '';
     position: absolute;
     inset: 0;
-    background:
-      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
-      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
+    background: rgba(199, 169, 102, 0.025);
     pointer-events: none;
     border-radius: var(--dashboard-radius);
   }
@@ -319,6 +349,59 @@ const handleImageLoad = (alarm: any) => {
     &:hover {
       background: rgba(56, 189, 248, 0.58);
     }
+  }
+}
+
+.panel-error-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 12px;
+  padding: 12px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.22);
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: var(--dashboard-radius);
+}
+
+.panel-error-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  strong {
+    color: #fee2e2;
+    font-size: 13px;
+  }
+
+  span {
+    color: rgba(254, 226, 226, 0.72);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+}
+
+.panel-retry {
+  grid-column: 2;
+  width: fit-content;
+  padding: 5px 10px;
+  color: var(--dashboard-text);
+  background: transparent;
+  border: 1px solid rgba(199, 169, 102, 0.42);
+  border-radius: var(--dashboard-radius);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--dashboard-accent);
+    color: var(--dashboard-accent);
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.55;
   }
 }
 

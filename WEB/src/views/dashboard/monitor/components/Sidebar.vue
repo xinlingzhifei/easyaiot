@@ -1,51 +1,5 @@
 <template>
   <div class="monitor-sidebar" data-testid="monitor-sidebar">
-    <!-- 全局总览 -->
-    <div class="sidebar-section overview-section">
-      <div class="section-header">
-        <Icon icon="ant-design:dashboard-outlined" :size="16" class="header-icon" />
-        <span class="section-title">全局总览</span>
-      </div>
-      <div class="statistics-cards">
-        <div class="stat-card">
-          <div class="stat-icon alarm">
-            <Icon icon="ant-design:warning-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">告警数量</div>
-            <div class="stat-value">{{ statistics.alarmCount }}</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon camera">
-            <Icon icon="ant-design:video-camera-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">摄像头数量</div>
-            <div class="stat-value">{{ statistics.cameraCount }}</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon algorithm">
-            <Icon icon="ant-design:code-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">算法数量</div>
-            <div class="stat-value">{{ statistics.algorithmCount }}</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon model">
-            <Icon icon="ant-design:database-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">模型数量</div>
-            <div class="stat-value">{{ statistics.modelCount }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 设备目录 -->
     <div class="sidebar-section directory-section">
       <div class="section-header">
@@ -105,7 +59,6 @@ import {
 } from '@/views/camera/utils/monitorGbDisplay'
 import { useMessage } from '@/hooks/web/useMessage'
 import type { TreeProps } from 'ant-design-vue'
-import type { DashboardStatistics } from '../useDashboardData'
 
 defineOptions({
   name: 'MonitorSidebar'
@@ -113,7 +66,6 @@ defineOptions({
 
 defineProps<{
   selectedDevice?: any
-  statistics?: DashboardStatistics
 }>()
 
 const emit = defineEmits<{
@@ -127,16 +79,6 @@ const expandedKeys = ref<string[]>([])
 const selectedKeys = ref<string[]>([])
 const treeData = ref<TreeItem[]>([])
 const loading = ref(false)
-
-const DEFAULT_STATISTICS: DashboardStatistics = {
-  alarmCount: 0,
-  todayAlarmCount: 0,
-  cameraCount: 0,
-  algorithmCount: 0,
-  modelCount: 0
-}
-
-const statistics = computed(() => props.statistics ?? DEFAULT_STATISTICS)
 
 const playableLeafCount = computed(() => countMonitorTreePlayableLeaves(treeData.value))
 
@@ -350,7 +292,7 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .monitor-sidebar {
-  width: 350px;
+  width: 100%;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -424,126 +366,11 @@ onMounted(() => {
   }
 }
 
-.overview-section {
-  flex-shrink: 0;
-}
-
 .directory-section {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.statistics-cards {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 8px;
-  padding: 12px;
-  position: relative;
-  z-index: 1;
-}
-
-.stat-card {
-  background: rgba(7, 19, 34, 0.72);
-  border: 1px solid var(--dashboard-border);
-  border-radius: var(--dashboard-radius);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: border-color 0.2s, background 0.2s, transform 0.2s;
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.11), transparent);
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  &:hover {
-    border-color: var(--dashboard-border-strong);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-
-    &::before {
-      opacity: 1;
-    }
-
-    .stat-icon {
-      transform: scale(1.1);
-    }
-  }
-
-  .stat-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: var(--dashboard-radius);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s;
-    position: relative;
-    z-index: 1;
-
-    &.alarm {
-      background: rgba(249, 115, 115, 0.12);
-      color: var(--dashboard-danger);
-      border: 1px solid rgba(249, 115, 115, 0.3);
-    }
-
-    &.camera {
-      background: rgba(56, 189, 248, 0.12);
-      color: var(--dashboard-blue);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-
-    &.algorithm {
-      background: rgba(34, 197, 94, 0.12);
-      color: var(--dashboard-green);
-      border: 1px solid rgba(34, 197, 94, 0.3);
-    }
-
-    &.model {
-      background: rgba(245, 158, 11, 0.12);
-      color: var(--dashboard-accent);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-    }
-  }
-
-  .stat-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    position: relative;
-    z-index: 1;
-
-    .stat-label {
-      font-size: 11px;
-      color: var(--dashboard-muted);
-      white-space: nowrap;
-    }
-
-    .stat-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--dashboard-text);
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-    }
-  }
 }
 
 .sidebar-tree {

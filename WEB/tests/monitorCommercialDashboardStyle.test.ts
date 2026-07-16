@@ -15,7 +15,7 @@ assert.match(dashboard, /<VideoMonitor/)
 assert.match(dashboard, /<AlarmPanel/)
 
 assert.match(dashboard, /:today-alarm-count="todayAlarmCount"/)
-assert.match(header, /实时监控运维中心/)
+assert.match(header, /实时监控 · AI 识别 · 告警联动/)
 assert.match(header, /播放中/)
 assert.match(header, /今日告警/)
 assert.match(header, /activeVideoCount/)

@@ -76,7 +76,7 @@ assert.match(
 
 assert.match(
   videoMonitor,
-  /internalVideoList\.value\[index\] = \{[\s\S]*name: `[^`]*\$\{index \+ 1\}`[\s\S]*persistDashboardVideoState\(\)/,
+  /function createPlaceholderSlot\(index: number\)[\s\S]*name: `[^`]*\$\{index \+ 1\}`[\s\S]*function removeVideoAtIndex\(index: number\)[\s\S]*internalVideoList\.value\[index\] = createPlaceholderSlot\(index\)[\s\S]*persistDashboardVideoState\(\)/,
   'Dashboard live video should update persisted state when a stream is removed from a screen.',
 )
 

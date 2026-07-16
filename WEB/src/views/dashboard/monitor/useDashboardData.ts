@@ -85,8 +85,16 @@ function mapDashboardAlarm(item: any) {
 }
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === 'string' && error.trim()) return error
+  const status = (error as any)?.response?.status ?? (error as any)?.response?.data?.code
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : ''
+  if (status === 403 || /\b403\b|forbidden|无权|没有权限/i.test(message)) {
+    return '当前账号无权读取该设备告警'
+  }
+  if (message.trim()) return message
   return '接口刷新失败'
 }
 

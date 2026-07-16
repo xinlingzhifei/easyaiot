@@ -1,54 +1,15 @@
 <template>
-  <div class="video-monitor" :class="{ 'preset-panel-open': presetPanelOpen }" data-testid="monitor-video">
-    <div class="monitor-header" :class="{ 'panel-open': presetPanelOpen }">
+  <div class="video-monitor single-focus" data-testid="monitor-video">
+    <div class="monitor-header">
       <div class="header-title">实时监控</div>
       <div class="enable-ai-wrap" data-testid="monitor-ai-toggle">
         <a-checkbox v-model:checked="enableAi">启用 AI</a-checkbox>
       </div>
       <div class="header-time">{{ currentTime }}</div>
       <div class="header-location">{{ currentLocation }}</div>
-      <div class="header-toolbar">
-        <!-- 分屏切换 -->
-        <div class="split-toolbar" data-testid="monitor-split-toolbar">
-          <div
-            v-for="layout in splitLayouts"
-            :key="layout.value"
-            :class="['split-btn', { active: currentLayout === layout.value }]"
-            :data-testid="`monitor-split-${layout.value}`"
-            :title="layout.label"
-            @click="switchLayout(layout.value)"
-          >
-            {{ layout.label }}
-          </div>
-        </div>
-        <!-- 布局方案入口 -->
-        <div
-          :class="['toolbar-trigger', 'layout-preset-trigger', { open: presetPanelOpen, 'has-active': !!activePresetId }]"
-          @click="presetPanelOpen = !presetPanelOpen"
-        >
-          <Icon icon="ant-design:layout-outlined" :size="15" />
-          <span class="trigger-label">布局方案</span>
-          <span v-if="activePresetSummary" class="trigger-badge">{{ activePresetSummary }}</span>
-          <Icon :icon="presetPanelOpen ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="12" />
-        </div>
-      </div>
-      <LayoutPresetPanel
-        :open="presetPanelOpen"
-        :presets="layoutPresets"
-        :active-preset-id="activePresetId"
-        :current-layout="currentLayout"
-        :current-camera-count="currentCameraCount"
-        :can-save-current="canSaveCurrentLayout"
-        @close="presetPanelOpen = false"
-        @apply="handleApplyPreset"
-        @save="handleSavePreset"
-        @delete="handleDeletePreset"
-      />
     </div>
 
-    <div v-if="presetPanelOpen" class="preset-panel-backdrop" @click="presetPanelOpen = false"></div>
-
-    <div class="monitor-content" :class="`layout-${currentLayout}`">
+    <div class="monitor-content layout-1">
       <!-- 根据当前布局渲染视频窗口 -->
       <div
         v-for="(video, index) in displayVideos"
@@ -82,7 +43,7 @@
             :playerEngine="video.playerEngine || ''"
             :videoCodec="video.videoCodec || ''"
             :fill-video="true"
-            :multi-view="getMaxVideoCount(currentLayout) > 1"
+            :multi-view="false"
             :ai-with-fallback="!!video.fallbackUrl"
             :ref="el => setVideoRef(el, index)"
             class="video-player"
@@ -186,7 +147,6 @@ import { playAlertRecordInModal } from '@/utils/alertRecordPlayback'
 import { useMessage } from '@/hooks/web/useMessage'
 import Jessibuca from '@/components/Player/module/jessibuca.vue'
 import DialogPlayer from '@/components/VideoPlayer/DialogPlayer.vue'
-import LayoutPresetPanel from './LayoutPresetPanel.vue'
 import { useModal } from '@/components/Modal'
 import { formatAlertListTitle, isSnapAlertTask } from '@/views/alert/alertDisplay'
 import { formatCameraDeviceLabel, formatCameraShortName, isGb28181Device } from '@/views/camera/utils/deviceLabel'
@@ -337,10 +297,6 @@ const dashboardGuardApi: DashboardGuardTaskApi = {
   stopAlgorithmTask: (taskId) => stopAlgorithmTask(taskId, { errorMessageMode: 'none' }),
 }
 
-function isKnownLayout(layout: string | undefined) {
-  return !!layout && splitLayouts.some(item => item.value === layout)
-}
-
 function ensureVideoSlots(maxCount: number) {
   while (internalVideoList.value.length < maxCount) {
     internalVideoList.value.push({
@@ -473,36 +429,29 @@ async function restorePersistedVideoState() {
   const state = readPersistedVideoState()
   if (!state?.videos.length) return
 
-  if (isKnownLayout(state.layout)) {
-    currentLayout.value = state.layout
-  }
+  const preferredVideo = state.videos.find(
+    (video) => Number(video.index) === state.activeVideoIndex,
+  ) ?? state.videos[0]
 
-  const maxCount = getMaxVideoCount(currentLayout.value)
-  ensureVideoSlots(maxCount)
-
-  if (Number.isInteger(state.activeVideoIndex)) {
-    activeVideoIndex.value = Math.max(0, Math.min(state.activeVideoIndex, maxCount - 1))
-  }
+  currentLayout.value = '1'
+  activeVideoIndex.value = 0
+  ensureVideoSlots(1)
 
   const reloadIndexes: number[] = []
-  state.videos.forEach((video) => {
-    const index = Number(video.index)
-    if (!Number.isInteger(index) || index < 0 || index >= maxCount) return
-    if (!video.url || !video.deviceId) return
-
-    internalVideoList.value[index] = {
-      id: video.id,
-      url: video.url,
-      name: video.name,
-      deviceId: video.deviceId,
-      location: video.location || '',
-      device: video.device,
-      playerEngine: video.playerEngine || '',
-      videoCodec: video.videoCodec || '',
+  if (preferredVideo?.url && preferredVideo.deviceId) {
+    internalVideoList.value[0] = {
+      id: preferredVideo.id,
+      url: preferredVideo.url,
+      name: preferredVideo.name,
+      deviceId: preferredVideo.deviceId,
+      location: preferredVideo.location || '',
+      device: preferredVideo.device,
+      playerEngine: preferredVideo.playerEngine || '',
+      videoCodec: preferredVideo.videoCodec || '',
       aiStatus: 'original',
     }
-    reloadIndexes.push(index)
-  })
+    reloadIndexes.push(0)
+  }
 
   if (enableAi.value) {
     const recognitionReady = await ensureDashboardAiRecognitionForVisibleDevices()
@@ -568,14 +517,6 @@ const currentCameraCount = computed(() =>
 )
 
 const canSaveCurrentLayout = computed(() => currentCameraCount.value > 0)
-
-const activePresetSummary = computed(() => {
-  if (!activePresetId.value) return ''
-  const preset = layoutPresets.value[activePresetId.value]
-  if (!preset) return `方案 ${activePresetId.value}`
-  const count = preset.slots.filter((s) => s.deviceId).length
-  return `${getPresetDisplayName(preset, activePresetId.value)} · ${count}路`
-})
 
 function initLayoutPresetsFromStorage() {
   const storage = loadMonitorLayoutStorage()
@@ -1638,6 +1579,10 @@ const handleRecordClick = playAlertRecord
 defineExpose({
   playDeviceStream,
   playAlertRecord,
+  switchLayout,
+  handleApplyPreset,
+  handleSavePreset,
+  handleDeletePreset,
 })
 
 let timeTimer: any = null
@@ -1723,17 +1668,11 @@ watch(() => alertRecordList.value, () => {
   min-height: 0;
   overflow: hidden;
 
-  &.preset-panel-open {
-    overflow: visible;
-  }
-
   &::before {
     content: '';
     position: absolute;
     inset: 0;
-    background:
-      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
-      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
+    background: rgba(199, 169, 102, 0.025);
     pointer-events: none;
     border-radius: var(--dashboard-radius);
   }
@@ -1993,10 +1932,9 @@ watch(() => alertRecordList.value, () => {
   padding: 4px;
   overflow: hidden;
   background:
-    linear-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(56, 189, 248, 0.08) 1px, transparent 1px),
-    radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.08), transparent 42%);
-  background-size: 24px 24px, 24px 24px, auto;
+    linear-gradient(rgba(199, 169, 102, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(199, 169, 102, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
   background-color: #02070f;
 
   // 1分屏 - 全屏单画面
@@ -2220,8 +2158,8 @@ watch(() => alertRecordList.value, () => {
 
 .alert-record-list {
   flex-shrink: 0;
-  height: 140px;
-  min-height: 140px;
+  height: 116px;
+  min-height: 116px;
   background: rgba(5, 14, 26, 0.52);
   border-top: 1px solid var(--dashboard-border);
   display: flex;
@@ -2232,7 +2170,7 @@ watch(() => alertRecordList.value, () => {
 }
 
 .alert-record-header {
-  height: 36px;
+  height: 32px;
   padding: 0 16px;
   display: flex;
   align-items: center;
