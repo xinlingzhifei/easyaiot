@@ -1,6 +1,19 @@
 from dataclasses import dataclass
 
 
+def resolve_registration_ip(bind_host, pod_ip, local_ip_factory):
+    """Return an address reachable wherever the service is actually bound."""
+    explicit_ip = (pod_ip or '').strip()
+    if explicit_ip:
+        return explicit_ip
+
+    concrete_bind_host = (bind_host or '').strip()
+    if concrete_bind_host not in ('', '0.0.0.0', '::', '[::]'):
+        return concrete_bind_host
+
+    return local_ip_factory()
+
+
 @dataclass(frozen=True)
 class NacosRegistrationConfig:
     server_addresses: str

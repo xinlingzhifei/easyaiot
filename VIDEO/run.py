@@ -19,7 +19,11 @@ from healthcheck import HealthCheck, EnvironmentDump
 from nacos import NacosClient
 from sqlalchemy import text
 
-from app.utils.nacos_registration import NacosRegistrationConfig, NacosRegistrationLoop
+from app.utils.nacos_registration import (
+    NacosRegistrationConfig,
+    NacosRegistrationLoop,
+    resolve_registration_ip,
+)
 from app.utils.video_env import load_video_env, validate_production_runtime_secrets
 
 from app.blueprints import camera, alert, snap, playback, record, algorithm_task, stream_forward, face
@@ -991,7 +995,11 @@ def create_app(start_background_tasks=None):
     port = int(os.getenv('FLASK_RUN_PORT', 6000))
     username = os.getenv('NACOS_USERNAME', 'nacos')
     password = os.getenv('NACOS_PASSWORD', 'basiclab@iot78475418754')
-    ip = os.getenv('POD_IP') or get_local_ip()
+    ip = resolve_registration_ip(
+        bind_host=os.getenv('FLASK_RUN_HOST', '0.0.0.0'),
+        pod_ip=os.getenv('POD_IP'),
+        local_ip_factory=get_local_ip,
+    )
 
     app.nacos_client = None
     app.registered_ip = ip

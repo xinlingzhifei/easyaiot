@@ -362,7 +362,7 @@ class TenantMaintenanceTest(unittest.TestCase):
         self.assertIn('MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?', device_compose)
         self.assertNotIn('MINIO_ACCESS_KEY=minioadmin', device_compose)
 
-    def test_iot_sink_compose_requires_explicit_postgres_credentials(self):
+    def test_iot_sink_compose_defaults_postgres_user_and_requires_password(self):
         root = Path(__file__).resolve().parents[1]
         compose = (root / 'DEVICE' / 'docker-compose.yml').read_text(encoding='utf-8')
         iot_sink = compose.split('\n  iot-sink:\n', 1)[1].split('\n  iot-gb28181:\n', 1)[0]
@@ -370,7 +370,7 @@ class TenantMaintenanceTest(unittest.TestCase):
         for datasource in ('MASTER', 'VIDEO', 'NODE'):
             self.assertIn(
                 f'SPRING_DATASOURCE_DYNAMIC_DATASOURCE_{datasource}_USERNAME='
-                '${POSTGRES_USER:?POSTGRES_USER is required}',
+                '${POSTGRES_USER:-postgres}',
                 iot_sink,
             )
             self.assertIn(

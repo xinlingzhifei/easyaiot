@@ -5,7 +5,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.utils.nacos_registration import NacosRegistrationConfig, NacosRegistrationLoop
+from app.utils.nacos_registration import (
+    NacosRegistrationConfig,
+    NacosRegistrationLoop,
+    resolve_registration_ip,
+)
 
 
 class FakeClient:
@@ -89,3 +93,27 @@ def test_heartbeat_failure_returns_loop_to_registration_mode():
 
     assert loop.tick() is False
     assert loop.registered is False
+
+
+def test_registration_uses_concrete_flask_bind_address():
+    assert resolve_registration_ip(
+        bind_host="172.17.0.1",
+        pod_ip="",
+        local_ip_factory=lambda: "192.168.0.88",
+    ) == "172.17.0.1"
+
+
+def test_registration_uses_detected_ip_for_wildcard_bind_address():
+    assert resolve_registration_ip(
+        bind_host="0.0.0.0",
+        pod_ip="",
+        local_ip_factory=lambda: "192.168.0.88",
+    ) == "192.168.0.88"
+
+
+def test_registration_keeps_explicit_pod_ip_override():
+    assert resolve_registration_ip(
+        bind_host="172.17.0.1",
+        pod_ip="10.7.7.23",
+        local_ip_factory=lambda: "192.168.0.88",
+    ) == "10.7.7.23"
