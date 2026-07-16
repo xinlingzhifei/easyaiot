@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, type ComputedRef } from 'vue'
 import { getDashboardStatistics, queryAlarmList } from '@/api/device/calculate'
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
 import { formatAlertListTitle } from '@/views/alert/alertDisplay'
@@ -99,7 +99,7 @@ function formatLastUpdatedAt(timestamp: number | null) {
   return `${hours}:${minutes}:${seconds}`
 }
 
-export function useDashboardData() {
+export function useDashboardData(activeDeviceId: ComputedRef<string>) {
   const statistics = ref<DashboardStatistics>({ ...EMPTY_STATISTICS })
   const alarmList = ref<any[]>([])
   const refreshing = ref(false)
@@ -111,6 +111,15 @@ export function useDashboardData() {
   let disposed = false
 
   const dashboardHealth = computed<DashboardHealth>(() => {
+    if (!activeDeviceId.value.trim()) {
+      return {
+        status: 'loading',
+        label: '待选择',
+        detail: '请选择监控设备',
+        lastUpdatedAt: null,
+      }
+    }
+
     if (!lastUpdatedAt.value && refreshing.value) {
       return {
         status: 'loading',
@@ -150,17 +159,22 @@ export function useDashboardData() {
   const lastUpdatedText = computed(() => formatLastUpdatedAt(lastUpdatedAt.value))
 
   async function refreshDashboardData() {
-    if (refreshing.value) return
+    const deviceId = activeDeviceId.value.trim()
+    if (!deviceId || refreshing.value) return
     refreshing.value = true
     const [statisticsResult, alarmResult] = await Promise.allSettled([
-      getDashboardStatistics(),
+      getDashboardStatistics({ device_id: deviceId }),
       queryAlarmList({
         pageNo: 1,
         pageSize: DASHBOARD_ALARM_PAGE_SIZE,
-      }),
+        device_id: deviceId,
+      }, { polling: true }),
     ])
 
-    if (disposed) return
+    if (disposed || deviceId !== activeDeviceId.value.trim()) {
+      refreshing.value = false
+      return
+    }
 
     const now = Date.now()
     const errors: string[] = []
@@ -202,6 +216,16 @@ export function useDashboardData() {
     refreshDashboardData()
     refreshTimer = setInterval(refreshDashboardData, DASHBOARD_REFRESH_INTERVAL_MS)
   })
+
+  watch(activeDeviceId, () => {
+    statistics.value = { ...EMPTY_STATISTICS }
+    alarmList.value = []
+    lastUpdatedAt.value = null
+    lastErrorAt.value = null
+    lastErrorMessage.value = ''
+    lastRefreshHadError.value = false
+    refreshDashboardData()
+  }, { flush: 'post' })
 
   onUnmounted(() => {
     disposed = true

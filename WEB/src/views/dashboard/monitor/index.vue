@@ -45,7 +45,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import MonitorHeader from './components/Header.vue'
 import MonitorSidebar from './components/Sidebar.vue'
 import VideoMonitor from './components/VideoMonitor.vue'
@@ -58,13 +58,22 @@ defineOptions({
 
 const videoMonitorRef = ref<InstanceType<typeof VideoMonitor> | null>(null)
 const dashboardOverlayReleased = ref(false)
+
+// 选中的设备；国标树节点的 gb_ch_* 仅用于播放，接口授权必须使用同步后的真实设备 ID。
+const selectedDevice = ref<any>(null)
+const activeDeviceId = computed(() => {
+  const candidate = selectedDevice.value?.device?.id ?? selectedDevice.value?.id
+  const deviceId = String(candidate ?? '').trim()
+  return !deviceId || deviceId.startsWith('gb_ch_') ? '' : deviceId
+})
+
 const {
   alarmList,
   dashboardHealth,
   lastUpdatedText,
   statistics,
   todayAlarmCount,
-} = useDashboardData()
+} = useDashboardData(activeDeviceId)
 
 function releaseDashboardOverlay() {
   dashboardOverlayReleased.value = true
@@ -75,13 +84,6 @@ function releaseDashboardOverlay() {
 }
 
 defineExpose({ releaseDashboardOverlay })
-
-// 选中的设备
-const selectedDevice = ref<any>({
-  id: '1',
-  name: '',
-  location: ''
-})
 
 // 视频列表
 const videoList = ref([
