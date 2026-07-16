@@ -8,28 +8,38 @@ enum Api {
   DeployService = '/model/deploy_service',
 }
 
-const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params = {}, headers = {}, isTransformResponse = true) => {
-  // 设置认证头
-  const authHeader = {'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')};
+type ModelRequestOptions = {
+  errorMessageMode?: 'none' | 'message' | 'modal';
+};
 
+const commonApi = (
+  method: 'get' | 'post' | 'delete' | 'put',
+  url,
+  params = {},
+  headers = {},
+  isTransformResponse = true,
+  requestOptions: ModelRequestOptions = {},
+) => {
   return defHttp[method](
     {
       url,
       headers: {
-        ...authHeader,
         ...headers,
       },
       ...params,
     },
     {
       isTransformResponse: isTransformResponse,
+      ...(requestOptions.errorMessageMode
+        ? { errorMessageMode: requestOptions.errorMessageMode }
+        : {}),
     },
   );
 };
 
 // ================= 模型管理接口 =================
-export const getModelPage = (params) => {
-  return commonApi('get', `${Api.Model}/list`, {params});
+export const getModelPage = (params, options: ModelRequestOptions = {}) => {
+  return commonApi('get', `${Api.Model}/list`, {params}, {}, true, options);
 };
 
 export const createModel = (params) => {

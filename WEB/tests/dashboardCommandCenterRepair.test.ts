@@ -6,8 +6,12 @@ const readSource = (relativePath: string) =>
   readFileSync(fileURLToPath(new URL(`../${relativePath}`, import.meta.url)), 'utf8')
 
 const calculateApi = readSource('src/api/device/calculate.ts')
+const modelApi = readSource('src/api/device/model.ts')
+const modelListApi = modelApi.slice(0, modelApi.indexOf('export const createModel'))
 const dashboardData = readSource('src/views/dashboard/monitor/useDashboardData.ts')
 const indexView = readSource('src/views/dashboard/monitor/index.vue')
+const guardTask = readSource('src/views/dashboard/monitor/dashboardGuardTask.ts')
+const videoMonitor = readSource('src/views/dashboard/monitor/components/VideoMonitor.vue')
 
 assert.match(
   calculateApi,
@@ -18,6 +22,11 @@ assert.doesNotMatch(
   calculateApi,
   /localStorage\.getItem\(['"]jwt_token['"]\)/,
   'Dashboard API calls must rely on the shared Authorization interceptor.',
+)
+assert.doesNotMatch(
+  modelListApi,
+  /localStorage\.getItem\(['"]jwt_token['"]\)/,
+  'AI model loading must rely on the shared Authorization interceptor.',
 )
 assert.match(
   calculateApi,
@@ -48,4 +57,30 @@ assert.match(
   indexView,
   /useDashboardData\(activeDeviceId\)/,
   'The command center must pass its selected device scope to the shared data source.',
+)
+
+assert.match(
+  guardTask,
+  /listAvailableModels/,
+  'Dashboard AI startup must be able to load models when no task template exists.',
+)
+assert.match(
+  guardTask,
+  /buildBootstrapTemplate/,
+  'Dashboard AI startup must build an in-memory task template from available models.',
+)
+assert.match(
+  guardTask,
+  /alert_class_names:\s*\[\]/,
+  'The bootstrap task must use the documented empty alert-class contract.',
+)
+assert.match(
+  guardTask,
+  /startRequestsByScope/,
+  'Concurrent AI starts for one scope must share the same request.',
+)
+assert.match(
+  videoMonitor,
+  /getModelPage\(\s*\{\s*pageNo:\s*1,\s*pageSize:\s*1000\s*\},\s*\{\s*errorMessageMode:\s*['"]none['"]\s*\},?\s*\)/,
+  'The command center must supply a locally handled available-model loader to dashboard AI startup.',
 )

@@ -19,6 +19,7 @@ export interface DashboardGuardTask {
   tracking_smooth_alpha?: number
   alert_event_enabled?: boolean | number
   alert_event_suppress_time?: number
+  alert_class_names?: string[] | string
   face_detection_enabled?: boolean
   plate_detection_enabled?: boolean
   alert_notification_enabled?: boolean
@@ -44,6 +45,7 @@ export interface DashboardGuardTaskPayload {
   tracking_smooth_alpha?: number
   alert_event_enabled: true
   alert_event_suppress_time?: number
+  alert_class_names: string[]
   face_detection_enabled: true
   plate_detection_enabled: true
   alert_notification_enabled?: boolean
@@ -58,6 +60,7 @@ export interface DashboardGuardTaskPayload {
 
 export interface DashboardGuardTaskApi {
   listAlgorithmTasks: (params?: Record<string, unknown>) => Promise<unknown>
+  listAvailableModels: () => Promise<unknown>
   createAlgorithmTask: (payload: DashboardGuardTaskPayload) => Promise<unknown>
   startAlgorithmTask: (taskId: number) => Promise<unknown>
   stopAlgorithmTask: (taskId: number) => Promise<unknown>
@@ -102,20 +105,46 @@ async function listRealtimeTasks(api: DashboardGuardTaskApi): Promise<DashboardG
 }
 
 function normalizeNumberIds(value: DashboardGuardTask['model_ids']): number[] {
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite)
+  if (Array.isArray(value)) return value.map(Number).filter((id) => Number.isInteger(id) && id > 0)
   if (typeof value !== 'string') return []
   const trimmed = value.trim()
   if (!trimmed) return []
   try {
     const parsed = JSON.parse(trimmed)
-    if (Array.isArray(parsed)) return parsed.map(Number).filter(Number.isFinite)
+    if (Array.isArray(parsed)) {
+      return parsed.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+    }
   } catch {
     // Some legacy responses use comma-separated ids instead of JSON.
   }
   return trimmed
     .split(',')
     .map((item) => Number(item.trim()))
-    .filter(Number.isFinite)
+    .filter((id) => Number.isInteger(id) && id > 0)
+}
+
+function normalizeAvailableModelIds(response: unknown): number[] {
+  const record = response && typeof response === 'object'
+    ? response as Record<string, unknown>
+    : null
+  const data = record?.data && typeof record.data === 'object'
+    ? record.data as Record<string, unknown>
+    : null
+  const candidates = [
+    response,
+    record?.data,
+    record?.list,
+    record?.records,
+    data?.data,
+    data?.list,
+    data?.records,
+  ]
+  const models = candidates.find(Array.isArray) as unknown[] | undefined
+  if (!models) return []
+  return [...new Set(models
+    .map((model) => model && typeof model === 'object' ? (model as { id?: unknown }).id : model)
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0))]
 }
 
 function normalizeStringIds(value: DashboardGuardTask['device_ids']): string[] {
@@ -133,6 +162,10 @@ function normalizeStringIds(value: DashboardGuardTask['device_ids']): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function normalizeAlertClassNames(value: DashboardGuardTask['alert_class_names']): string[] {
+  return normalizeStringIds(value)
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -210,6 +243,28 @@ function formatConflictMessage(conflicts: DashboardGuardTask[]) {
   return `Selected devices are already used by running algorithm tasks: ${names}`
 }
 
+async function buildBootstrapTemplate(api: DashboardGuardTaskApi): Promise<DashboardGuardTask> {
+  const modelIds = normalizeAvailableModelIds(await api.listAvailableModels())
+  if (!modelIds.length) {
+    throw new Error('No available AI models were found for dashboard recognition.')
+  }
+  return {
+    id: 0,
+    task_type: 'realtime',
+    model_ids: modelIds,
+    extract_interval: 12,
+    tracking_enabled: false,
+    alert_event_enabled: true,
+    alert_event_suppress_time: 5,
+    alert_class_names: [],
+    face_detection_enabled: true,
+    plate_detection_enabled: true,
+    alarm_suppress_time: 300,
+    defense_mode: 'full',
+    schedule_policy: 'local',
+  }
+}
+
 export function buildDashboardGuardTaskPayload(
   scope: DashboardGuardScope,
   template: DashboardGuardTask,
@@ -231,6 +286,7 @@ export function buildDashboardGuardTaskPayload(
     tracking_smooth_alpha: template.tracking_smooth_alpha,
     alert_event_enabled: true,
     alert_event_suppress_time: template.alert_event_suppress_time,
+    alert_class_names: normalizeAlertClassNames(template.alert_class_names),
     face_detection_enabled: true,
     plate_detection_enabled: true,
     alert_notification_enabled: template.alert_notification_enabled,
@@ -267,7 +323,7 @@ async function stopOtherDashboardGuardTasks(
   await Promise.all(otherEnabledTasks.map((task) => api.stopAlgorithmTask(task.id)))
 }
 
-export async function startDashboardGuardTask(options: StartDashboardGuardTaskOptions) {
+async function startDashboardGuardTaskOnce(options: StartDashboardGuardTaskOptions) {
   const { scope, api } = options
   const deviceIds = uniqueStrings(scope.deviceIds)
   if (!deviceIds.length) {
@@ -277,10 +333,8 @@ export async function startDashboardGuardTask(options: StartDashboardGuardTaskOp
   const tasks = await listRealtimeTasks(api)
   const reusableTask = findReusableDashboardTask(tasks, { ...scope, deviceIds })
   const runningCoveringTask = findRunningAlertTaskCoveringScope(tasks, deviceIds)
-  const templateTask = selectTemplateTask(tasks) || reusableTask || runningCoveringTask
-  if (!templateTask) {
-    throw new Error('No realtime algorithm task with models is available for dashboard guard recognition.')
-  }
+  const templateTask = selectTemplateTask(tasks) || reusableTask || runningCoveringTask ||
+    await buildBootstrapTemplate(api)
 
   const conflicts = runningCoveringTask
     ? []
@@ -311,6 +365,27 @@ export async function startDashboardGuardTask(options: StartDashboardGuardTaskOp
   }
   await api.startAlgorithmTask(taskId)
   return { taskId }
+}
+
+const startRequestsByScope = new Map<
+  string,
+  Promise<{ taskId: number; reusedExistingTask?: boolean }>
+>()
+
+export function startDashboardGuardTask(options: StartDashboardGuardTaskOptions) {
+  const deviceIds = uniqueStrings(options.scope.deviceIds)
+  const scope = { ...options.scope, deviceIds }
+  const scopeKey = `${scope.key}:${[...deviceIds].sort().join(',')}`
+  const existingRequest = startRequestsByScope.get(scopeKey)
+  if (existingRequest) return existingRequest
+
+  const request = startDashboardGuardTaskOnce({ ...options, scope }).finally(() => {
+    if (startRequestsByScope.get(scopeKey) === request) {
+      startRequestsByScope.delete(scopeKey)
+    }
+  })
+  startRequestsByScope.set(scopeKey, request)
+  return request
 }
 
 export async function stopDashboardGuardTask(options: StartDashboardGuardTaskOptions) {
