@@ -970,8 +970,8 @@ build_runtime_images() {
         return 0
     fi
 
-    # 并行构建待更新镜像（E）：各镜像仅 COPY 一个 Jar + chown，互相独立，
-    # 并行可把「串行累加」缩短为「最慢的一个」。成功后写哈希戳，失败时打印末尾日志。
+    # 串行构建待更新镜像（E）：各镜像仅 COPY 一个 Jar + chown。
+    # 逐个释放构建上下文可避免低磁盘服务器同时写入多个大 Jar；成功后写哈希戳，失败时打印末尾日志。
     local tmp_log_dir ctx_base
     tmp_log_dir="$(mktemp -d 2>/dev/null || echo "/tmp/device-runtime-$$")"
     mkdir -p "$tmp_log_dir"
@@ -982,7 +982,7 @@ build_runtime_images() {
     rm -rf "$ctx_base" 2>/dev/null || true
 
     local log jarname ctx
-    local pids=() tags=() logs=() dfs=() hashes=()
+    local fail=0
     for idx in "${build_idx[@]}"; do
         spec="${RUNTIME_IMAGE_SPECS[$idx]}"
         dockerfile="${spec%%|*}"
@@ -993,25 +993,20 @@ build_runtime_images() {
         ln "${JARS_DIR}/${jarname}" "${ctx}/target/jars/${jarname}" 2>/dev/null \
             || cp -f "${JARS_DIR}/${jarname}" "${ctx}/target/jars/${jarname}"
         log="${tmp_log_dir}/$(echo "$tag" | tr '/:' '__').log"
-        print_info "并行构建运行时镜像: $tag ($dockerfile)"
-        ( docker build ${DOCKER_PLATFORM:+--platform "$DOCKER_PLATFORM"} -f "$dockerfile" -t "$tag" "$ctx" ) >"$log" 2>&1 &
-        pids+=("$!"); tags+=("$tag"); logs+=("$log"); dfs+=("$dockerfile")
-        hashes+=("${img_hashes[$idx]}")
-    done
-
-    local fail=0 i
-    for i in "${!pids[@]}"; do
-        if wait "${pids[$i]}"; then
-            print_success "  ✓ ${tags[$i]}"
-            if [ -n "${hashes[$i]}" ]; then
-                printf '%s\n' "${hashes[$i]}" > "$(runtime_stamp_file "${tags[$i]}")" 2>/dev/null || true
+        print_info "构建运行时镜像: $tag ($dockerfile)"
+        if docker build ${DOCKER_PLATFORM:+--platform "$DOCKER_PLATFORM"} \
+            -f "$dockerfile" -t "$tag" "$ctx" >"$log" 2>&1; then
+            print_success "  ✓ $tag"
+            if [ -n "${img_hashes[$idx]}" ]; then
+                printf '%s\n' "${img_hashes[$idx]}" > "$(runtime_stamp_file "$tag")" 2>/dev/null || true
             fi
         else
             fail=1
-            print_error "构建失败: ${tags[$i]} (${dfs[$i]})"
-            print_info "----- ${tags[$i]} 构建日志（末尾 30 行）-----"
-            tail -n 30 "${logs[$i]}" 2>/dev/null | sed 's/^/    /'
+            print_error "构建失败: $tag ($dockerfile)"
+            print_info "----- $tag 构建日志（末尾 30 行）-----"
+            tail -n 30 "$log" 2>/dev/null | sed 's/^/    /'
         fi
+        rm -rf "$ctx" 2>/dev/null || true
     done
     rm -rf "$tmp_log_dir" "$ctx_base" 2>/dev/null || true
 

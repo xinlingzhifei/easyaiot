@@ -28,3 +28,9 @@ test('device C1 build avoids parallel reactor repository lock contention', () =>
 
   assert.doesNotMatch(source, /mvn -s \/m2\/settings\.xml -B -ntp -T 1C/);
 });
+
+test('device runtime images avoid concurrent build contexts', () => {
+  const source = readFileSync(join(rootDir, 'DEVICE', 'install_linux.sh'), 'utf8');
+
+  assert.doesNotMatch(source, /\( docker build [^\n]+\) >"\$log" 2>&1 &/);
+});
