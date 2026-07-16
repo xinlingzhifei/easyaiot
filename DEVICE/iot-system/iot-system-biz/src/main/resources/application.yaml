@@ -172,6 +172,8 @@ yfeieye:
           - system:supervision-alert-review:media:snapshot
         coverage:
           - system:supervision-alert-review:media:playback
+        alert_read:
+          - system:supervision-alert-review:media:playback
         export:
           - system:supervision-alert-review:media:export
         download:

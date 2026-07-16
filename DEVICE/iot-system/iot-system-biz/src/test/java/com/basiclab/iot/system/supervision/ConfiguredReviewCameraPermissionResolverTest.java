@@ -36,6 +36,10 @@ class ConfiguredReviewCameraPermissionResolverTest {
                             List.of("system:supervision-alert-review:media:manage"),
                             resolver.getActionPermissions().get("record_manage")
                     );
+                    assertEquals(
+                            List.of("system:supervision-alert-review:media:playback"),
+                            resolver.getActionPermissions().get("alert_read")
+                    );
                 });
     }
 

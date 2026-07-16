@@ -57,7 +57,7 @@ import static com.basiclab.iot.common.utils.SecurityFrameworkUtils.getLoginUserI
 public class AuthController {
 
     private static final Set<String> MEDIA_ACTIONS = Set.of(
-            "playback", "snapshot", "coverage", "export", "download", "manifest_verify", "record_manage"
+            "playback", "snapshot", "coverage", "alert_read", "export", "download", "manifest_verify", "record_manage"
     );
 
     @Resource

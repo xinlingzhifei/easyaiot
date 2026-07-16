@@ -21,7 +21,7 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
 
     private Map<Long, List<String>> users = new LinkedHashMap<>();
     private Map<Long, List<String>> tenants = new LinkedHashMap<>();
-    private Map<String, List<String>> actionPermissions = new LinkedHashMap<>();
+    private Map<String, List<String>> actionPermissions = defaultActionPermissions();
     private List<String> defaultAllowedCameraIds = List.of();
     // Retained for configuration compatibility. Persisted fallback scope is always fail-closed.
     private boolean failClosed = true;
@@ -86,6 +86,19 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
 
     private static String normalizeActionType(String actionType) {
         return actionType == null ? "" : actionType.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static Map<String, List<String>> defaultActionPermissions() {
+        Map<String, List<String>> defaults = new LinkedHashMap<>();
+        defaults.put("playback", List.of("system:supervision-alert-review:media:playback"));
+        defaults.put("snapshot", List.of("system:supervision-alert-review:media:snapshot"));
+        defaults.put("coverage", List.of("system:supervision-alert-review:media:playback"));
+        defaults.put("alert_read", List.of("system:supervision-alert-review:media:playback"));
+        defaults.put("export", List.of("system:supervision-alert-review:media:export"));
+        defaults.put("download", List.of("system:supervision-alert-review:media:download"));
+        defaults.put("manifest_verify", List.of("system:supervision-alert-review:media:manifest"));
+        defaults.put("record_manage", List.of("system:supervision-alert-review:media:manage"));
+        return defaults;
     }
 
     private static List<String> normalizeValues(List<String> values) {
