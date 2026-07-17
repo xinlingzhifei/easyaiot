@@ -40,9 +40,6 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
     }
 
     private List<String> resolveExplicitUserCameraIds(ReviewCameraPermissionRequest request) {
-        if (reviewItemMapper == null) {
-            return List.of();
-        }
         List<String> grantedCameraIds = normalizeValues(users.get(request.operatorUserId()));
         if (grantedCameraIds == null || grantedCameraIds.isEmpty()) {
             return List.of();
@@ -58,6 +55,12 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
                     .toList();
         }
         if (candidateCameraIds.isEmpty()) {
+            return List.of();
+        }
+        if ("alert_read".equals(normalizeActionType(request.actionType()))) {
+            return candidateCameraIds;
+        }
+        if (reviewItemMapper == null) {
             return List.of();
         }
         List<String> persistedCameraIds = normalizeValues(
