@@ -2938,11 +2938,15 @@ def _normalize_srs_api_host(host: str) -> str:
 def _resolve_ai_rtmp_push_url(device_id: str, device_ai_rtmp_stream: Optional[str] = None) -> Optional[str]:
     """解析 AI 推流 FFmpeg 地址。
 
-    远程分片在节点本机推 SRS，固定走 127.0.0.1（避免外网 IP 回环/on_publish 误判）；
+    远程分片或本机 SRS 可用时固定走 127.0.0.1（避免外网 IP 回环/on_publish 误判）；
     播放地址仍由 stream_url_sync_service 写入 device.ai_rtmp_stream（外网 IP）。
     """
     pod_ip = os.getenv('POD_IP', '').strip()
     if pod_ip:
+        rtmp_port = _srs_rtmp_port()
+        return f'rtmp://127.0.0.1:{rtmp_port}/ai/{device_id}'
+
+    if _check_srs_api_ready('127.0.0.1', _srs_api_port(), timeout=1.0):
         rtmp_port = _srs_rtmp_port()
         return f'rtmp://127.0.0.1:{rtmp_port}/ai/{device_id}'
 
