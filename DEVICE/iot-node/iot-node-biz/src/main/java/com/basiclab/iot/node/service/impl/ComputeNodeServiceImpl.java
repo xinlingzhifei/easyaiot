@@ -960,6 +960,10 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
             caps.put("ceph_osd", true);
             caps.put("media_storage", true);
         }
+        if (NodeRoleEnum.MQTT.getRole().equals(nodeRole)) {
+            caps.put("emqx", true);
+            caps.put("mqtt_gateway", true);
+        }
         return caps;
     }
 
@@ -969,7 +973,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     private void applyRoleGpuDefaults(ComputeNodeDO node, Integer requestedMaxGpuCount) {
         String role = node.getNodeRole();
         if (NodeRoleEnum.COMPUTE.getRole().equals(role)
-                || NodeRoleEnum.STORAGE.getRole().equals(role)) {
+                || NodeRoleEnum.STORAGE.getRole().equals(role)
+                || NodeRoleEnum.MQTT.getRole().equals(role)) {
             node.setMaxGpuCount(0);
             return;
         }

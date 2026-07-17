@@ -40,6 +40,9 @@ source "${YFEIEYE_ROOT}/.scripts/docker/gpu_compose_helpers.sh"
 # shellcheck source=../.scripts/docker/deploy_profile.sh
 source "${YFEIEYE_ROOT}/.scripts/docker/deploy_profile.sh"
 
+GPU_COMPOSE_OVERRIDE=".docker-compose.gpu.override.yaml"
+GPU_LOCAL_ENV=".env.local"
+
 # 打印带颜色的消息
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -176,18 +179,35 @@ check_docker_compose() {
         print_success "Docker Compose 已安装: $(docker-compose --version)"
         return 0
     fi
-    
+
     # 再检查 docker compose 插件
     if docker compose version &> /dev/null; then
         COMPOSE_CMD="docker compose"
         print_success "Docker Compose 已安装: $(docker compose version)"
         return 0
     fi
-    
+
     # 如果都不存在，报错
     print_error "Docker Compose 未安装，请先安装 Docker Compose"
     echo "安装指南: https://docs.docker.com/compose/install/"
     exit 1
+}
+
+compose_up_or_fail() {
+    local compose_log
+    local -a compose_args=()
+    if [ -f "$GPU_COMPOSE_OVERRIDE" ]; then
+        compose_args=(-f docker-compose.yaml -f "$GPU_COMPOSE_OVERRIDE")
+    fi
+    compose_log=$(mktemp)
+    if ! $COMPOSE_CMD "${compose_args[@]}" up "$@" >"$compose_log" 2>&1; then
+        cat "$compose_log"
+        rm -f "$compose_log"
+        print_error "Docker Compose 创建/更新容器失败"
+        return 1
+    fi
+    grep -v "^Creating\|^Starting\|^Pulling\|^Waiting\|^Container" "$compose_log" || true
+    rm -f "$compose_log"
 }
 
 # 检查 GPU 支持
@@ -244,7 +264,7 @@ detect_architecture() {
             exit 1
             ;;
     esac
-    
+
     # 导出环境变量供docker-compose使用
     export DOCKER_PLATFORM
     export BASE_IMAGE
@@ -253,7 +273,7 @@ detect_architecture() {
 # 配置架构相关的docker-compose设置
 configure_architecture() {
     print_info "配置 Docker Compose 架构设置..."
-    
+
     # 创建或更新 .env.arch 文件来存储架构配置
     if [ ! -f .env.arch ] || ! grep -q "DOCKER_PLATFORM=" .env.arch 2>/dev/null; then
         echo "# 架构配置（由install_linux.sh自动生成）" > .env.arch
@@ -266,7 +286,7 @@ configure_architecture() {
         sed -i "s|^BASE_IMAGE=.*|BASE_IMAGE=$BASE_IMAGE|" .env.arch
         print_info "已更新架构配置文件 .env.arch"
     fi
-    
+
     print_success "架构配置完成: $ARCH -> $DOCKER_PLATFORM"
 }
 
@@ -282,7 +302,7 @@ check_nvidia_container_toolkit() {
 # 安装 NVIDIA Container Toolkit
 install_nvidia_container_toolkit() {
     print_info "开始安装 NVIDIA Container Toolkit..."
-    
+
     # 检查是否有 sudo 权限
     if ! sudo -n true 2>/dev/null; then
         print_error "需要 sudo 权限来安装 NVIDIA Container Toolkit"
@@ -298,41 +318,41 @@ install_nvidia_container_toolkit() {
         echo ""
         return 1
     fi
-    
+
     # 添加 NVIDIA Docker 仓库
     print_info "添加 NVIDIA Docker 仓库..."
     distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
         && curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - \
         && curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-    
+
     if [ $? -ne 0 ]; then
         print_error "添加 NVIDIA Docker 仓库失败"
         return 1
     fi
-    
+
     # 更新软件包列表
     print_info "更新软件包列表..."
     sudo apt update -qq > /dev/null 2>&1
-    
+
     # 安装 nvidia-container-toolkit
     print_info "安装 nvidia-container-toolkit..."
     sudo apt install -qq -y nvidia-container-toolkit > /dev/null 2>&1
-    
+
     if [ $? -ne 0 ]; then
         print_error "安装 nvidia-container-toolkit 失败"
         return 1
     fi
-    
+
     # 配置 Docker daemon.json
     print_info "配置 Docker daemon.json..."
     DOCKER_DAEMON_JSON="/etc/docker/daemon.json"
-    
+
     # 检查文件是否存在
     if [ -f "$DOCKER_DAEMON_JSON" ]; then
         # 备份原文件
         sudo cp "$DOCKER_DAEMON_JSON" "${DOCKER_DAEMON_JSON}.bak"
         print_info "已备份原 daemon.json 为 ${DOCKER_DAEMON_JSON}.bak"
-        
+
         # 检查是否已有 nvidia runtime 配置
         if grep -q "nvidia" "$DOCKER_DAEMON_JSON"; then
             print_info "daemon.json 中已存在 nvidia 配置"
@@ -398,11 +418,11 @@ EOF
 }
 EOF
     fi
-    
+
     # 重启 Docker 服务
     print_info "重启 Docker 服务..."
     sudo systemctl restart docker
-    
+
     if [ $? -eq 0 ]; then
         print_success "NVIDIA Container Toolkit 安装完成"
         return 0
@@ -419,10 +439,10 @@ check_gpu() {
         nvidia-smi --query-gpu=name,driver_version --format=csv,noheader,nounits 2>/dev/null | while IFS=, read -r name version; do
             echo "  - GPU: $name (驱动版本: $version)"
         done
-        
+
         # 检查 nvidia-container-toolkit 是否安装
         print_info "检查 NVIDIA Container Toolkit..."
-        
+
         if check_nvidia_container_toolkit; then
             print_success "NVIDIA Container Toolkit 已安装"
         else
@@ -433,7 +453,7 @@ check_gpu() {
             echo ""
             print_info "是否自动安装 NVIDIA Container Toolkit？(Y/n)"
             read -t 15 -r response || response="Y"
-            
+
             if [[ ! "$response" =~ ^([nN][oO]|[nN])$ ]]; then
                 if install_nvidia_container_toolkit; then
                     print_success "NVIDIA Container Toolkit 安装成功"
@@ -448,7 +468,7 @@ check_gpu() {
                 return
             fi
         fi
-        
+
         # 检查 docker info 中是否有 nvidia runtime
         print_info "检查 Docker NVIDIA runtime 配置..."
         if docker info --format '{{.Runtimes}}' 2>/dev/null | grep -q "nvidia"; then
@@ -488,25 +508,154 @@ check_gpu() {
 }
 
 # 配置 GPU 支持（如果可用）
+resolve_gpu_override_devices() {
+    local configured="${EASYAIOT_CUDA_VISIBLE_DEVICES:-}"
+    if [ -z "$configured" ] && [ -f "$GPU_LOCAL_ENV" ]; then
+        configured=$(sed -n 's/^EASYAIOT_CUDA_VISIBLE_DEVICES=//p' "$GPU_LOCAL_ENV" | tail -1)
+    fi
+    if [ -z "$configured" ] && [ -f .env.docker ]; then
+        configured=$(sed -n 's/^EASYAIOT_CUDA_VISIBLE_DEVICES=//p' .env.docker | tail -1)
+    fi
+    printf '%s' "$configured"
+}
+
+write_gpu_compose_override() {
+    local override_devices="$1"
+    local temp_file="${GPU_COMPOSE_OVERRIDE}.tmp"
+    {
+        echo 'services:'
+        echo '  ai-service:'
+        echo '    runtime: nvidia'
+        echo '    environment:'
+        echo '      USE_GPU: "True"'
+        echo '      NVIDIA_VISIBLE_DEVICES: "all"'
+        if [ -n "$override_devices" ]; then
+            echo "      EASYAIOT_CUDA_VISIBLE_DEVICES: \"${override_devices}\""
+        fi
+        echo '    deploy:'
+        echo '      resources:'
+        echo '        reservations:'
+        echo '          devices:'
+        echo '            - driver: nvidia'
+        echo '              count: all'
+        echo '              capabilities: [gpu]'
+    } > "$temp_file"
+    mv "$temp_file" "$GPU_COMPOSE_OVERRIDE"
+}
+
 configure_gpu() {
-    configure_compose_gpu "docker-compose.yaml" ".env.docker"
+
+    if [ "$GPU_AVAILABLE" != true ]; then
+        rm -f "$GPU_COMPOSE_OVERRIDE"
+        print_success "未启用 GPU，容器将使用 CPU 模式"
+        return 0
+    fi
+
+    local host_devices override_devices gpu_id seen_ids
+    host_devices=$(nvidia-smi --query-gpu=index --format=csv,noheader,nounits 2>/dev/null \
+        | awk '{$1=$1; print}' | paste -sd, -)
+    if ! echo "$host_devices" | grep -qE '^[0-9]+(,[0-9]+)*$'; then
+        print_error "无法读取有效的宿主机 GPU 列表: ${host_devices:-空}"
+        return 1
+    fi
+
+    override_devices=$(resolve_gpu_override_devices)
+    if [ -z "$override_devices" ]; then
+        write_gpu_compose_override ""
+        print_success "容器 GPU 将按服务器自动探测: ${host_devices}"
+        return 0
+    fi
+    if ! echo "$override_devices" | grep -qE '^[0-9]+(,[0-9]+)*$'; then
+        print_error "EASYAIOT_CUDA_VISIBLE_DEVICES 格式无效: ${override_devices}"
+        return 1
+    fi
+
+    seen_ids=" "
+    for gpu_id in ${override_devices//,/ }; do
+        if ! printf '%s\n' ",${host_devices}," | grep -q ",${gpu_id},"; then
+            print_error "指定 GPU ${gpu_id} 不存在，宿主机可用 GPU: ${host_devices}"
+            return 1
+        fi
+        if [[ "$seen_ids" == *" ${gpu_id} "* ]]; then
+            print_error "EASYAIOT_CUDA_VISIBLE_DEVICES 包含重复 GPU: ${gpu_id}"
+            return 1
+        fi
+        seen_ids+="${gpu_id} "
+    done
+    write_gpu_compose_override "$override_devices"
+    print_success "容器 GPU 已按配置限制为: ${override_devices}（宿主机: ${host_devices}）"
+}
+
+verify_container_gpu_visibility() {
+    if [ "$GPU_AVAILABLE" != true ]; then
+        return 0
+    fi
+
+    local host_gpu_count expected_gpu_count override_devices container_gpu_count attempt gpu_status_json
+    host_gpu_count=$(nvidia-smi --query-gpu=index --format=csv,noheader,nounits 2>/dev/null \
+        | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+    if [ -z "$host_gpu_count" ] || [ "$host_gpu_count" -le 0 ]; then
+        print_warning "无法读取宿主机 GPU 数量，跳过容器 GPU 数量校验"
+        return 0
+    fi
+
+    expected_gpu_count="$host_gpu_count"
+    override_devices=$(resolve_gpu_override_devices)
+    if [ -n "$override_devices" ]; then
+        expected_gpu_count=$(printf '%s\n' "$override_devices" | tr ',' '\n' \
+            | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+    fi
+
+    container_gpu_count=""
+    gpu_status_json=""
+    for attempt in $(seq 1 45); do
+        gpu_status_json=$(curl -fsS --max-time 3 \
+            http://127.0.0.1:5000/model/train_task/gpu/status 2>/dev/null || true)
+        if [ -n "$gpu_status_json" ]; then
+            container_gpu_count=$(printf '%s' "$gpu_status_json" | python3 -c \
+                'import json,sys; print(json.load(sys.stdin).get("data", {}).get("device_count", ""))' \
+                2>/dev/null || true)
+        fi
+        if echo "$container_gpu_count" | grep -qE '^[0-9]+$'; then
+            break
+        fi
+        sleep 2
+    done
+
+    if ! echo "$container_gpu_count" | grep -qE '^[0-9]+$'; then
+        print_error "无法通过应用接口读取 ai-service GPU 数量"
+        return 1
+    fi
+    if [ "$container_gpu_count" -ne "$expected_gpu_count" ]; then
+        print_error "GPU 可见数量不符合预期: 期望=${expected_gpu_count} 张，宿主机=${host_gpu_count} 张，ai-service=${container_gpu_count} 张"
+        print_info "容器设备申请: $(docker inspect ai-service --format '{{json .HostConfig.DeviceRequests}}' 2>/dev/null || echo '读取失败')"
+        print_info "容器配置环境: $(docker inspect ai-service --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E 'CUDA_VISIBLE_DEVICES|EASYAIOT_CUDA_VISIBLE_DEVICES|NVIDIA_VISIBLE_DEVICES|GPU_IDS' | tr '\n' ' ')"
+        print_info "应用 GPU 接口: ${gpu_status_json:-无响应}"
+        return 1
+    fi
+
+    if [ -n "$override_devices" ]; then
+        print_success "GPU 暴露校验通过: ai-service 按配置可见 ${container_gpu_count} 张 GPU [${override_devices}]（宿主机 ${host_gpu_count} 张）"
+    else
+        print_success "GPU 暴露校验通过: ai-service 可见 ${container_gpu_count}/${host_gpu_count} 张 GPU"
+    fi
 }
 
 # 检查并创建 Docker 网络
 check_network() {
     print_info "检查 Docker 网络 yfeieye-network..."
-    
+
     # 检查网络是否已存在（使用网络名称而不是ID）
     if docker network ls --format "{{.Name}}" 2>/dev/null | grep -q "^yfeieye-network$"; then
         print_info "网络 yfeieye-network 已存在"
         return 0
     fi
-    
+
     # 网络不存在，尝试创建
     print_info "网络 yfeieye-network 不存在，正在创建..."
     local create_output=$(docker network create yfeieye-network 2>&1)
     local create_exit_code=$?
-    
+
     if [ $create_exit_code -eq 0 ]; then
         print_success "网络 yfeieye-network 已创建"
         return 0
@@ -583,26 +732,26 @@ create_env_file() {
         if [ -f env.example ]; then
             cp env.example .env.docker
             print_success ".env.docker 文件已从 env.example 创建"
-            
+
             # 自动配置中间件连接信息（使用localhost，因为docker-compose.yaml使用host网络模式）
             print_info "自动配置中间件连接信息..."
-            
+
             # 更新数据库连接（使用localhost，因为使用host网络模式，中间件端口已映射到宿主机）
             sed -i 's|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:iot45722414822@localhost:15432/iot-ai20|' .env.docker
-            
+
             # 更新Nacos配置（使用localhost，因为使用host网络模式）
             sed -i 's|^NACOS_SERVER=.*|NACOS_SERVER=localhost:8848|' .env.docker
-            
+
             # 更新MinIO配置（使用localhost，因为使用host网络模式）
             sed -i 's|^MINIO_ENDPOINT=.*|MINIO_ENDPOINT=localhost:9000|' .env.docker
             sed -i 's|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=basiclab@iot975248395|' .env.docker
-            
+
             # 更新Nacos密码
             sed -i 's|^NACOS_PASSWORD=.*|NACOS_PASSWORD=basiclab@iot78475418754|' .env.docker
-            
+
             # 确保Nacos命名空间为空（使用默认命名空间）
             sed -i 's|^NACOS_NAMESPACE=.*|NACOS_NAMESPACE=|' .env.docker
-            
+
             print_success "中间件连接信息已自动配置"
             print_info "如需修改其他配置，请编辑 .env.docker 文件"
         else
@@ -612,25 +761,25 @@ create_env_file() {
     else
         print_info ".env.docker 文件已存在"
         print_info "检查并更新中间件连接信息..."
-        
+
         # 检查并更新数据库连接（如果使用Docker服务名，改为localhost，因为使用host网络模式）
         if grep -q "DATABASE_URL=.*PostgresSQL" .env.docker || grep -q "DATABASE_URL=.*postgres-server" .env.docker; then
             sed -i 's|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:iot45722414822@localhost:15432/iot-ai20|' .env.docker
             print_info "已更新数据库连接为 localhost:15432（host网络模式）"
         fi
-        
+
         # 检查并更新Nacos配置（如果使用Docker服务名或IP地址，改为localhost，因为使用host网络模式）
         if grep -q "NACOS_SERVER=.*Nacos" .env.docker || grep -q "NACOS_SERVER=.*14\.18\.122\.2" .env.docker || grep -q "NACOS_SERVER=.*nacos-server" .env.docker; then
             sed -i 's|^NACOS_SERVER=.*|NACOS_SERVER=localhost:8848|' .env.docker
             print_info "已更新Nacos连接为 localhost:8848（host网络模式）"
         fi
-        
+
         # 检查并更新MinIO配置（如果使用Docker服务名，改为localhost，因为使用host网络模式）
         if grep -q "MINIO_ENDPOINT=.*MinIO" .env.docker || grep -q "MINIO_ENDPOINT=.*minio-server" .env.docker; then
             sed -i 's|^MINIO_ENDPOINT=.*|MINIO_ENDPOINT=localhost:9000|' .env.docker
             print_info "已更新MinIO连接为 localhost:9000（host网络模式）"
         fi
-        
+
         # 检查并更新Nacos命名空间（如果设置为local或其他非空值，则重置为空，使用默认命名空间）
         if grep -q "^NACOS_NAMESPACE=.*" .env.docker && ! grep -q "^NACOS_NAMESPACE=$" .env.docker; then
             sed -i 's|^NACOS_NAMESPACE=.*|NACOS_NAMESPACE=|' .env.docker
@@ -709,7 +858,7 @@ install_service() {
         echo ""
         print_success "AI 服务镜像构建完成！"
     fi
-    
+
     print_info "启动服务..."
     cleanup_renamed_containers
     ai_compose up -d --remove-orphans --quiet-pull
@@ -717,10 +866,11 @@ install_service() {
     print_success "服务安装完成！"
     print_info "等待服务启动..."
     sleep 5
-    
+
     # 检查服务状态
     check_status
-    
+    verify_container_gpu_visibility
+
     print_info "AI 服务访问地址: http://localhost:5000"
     print_info "AI 健康检查: http://localhost:5000/actuator/health"
     print_info "数据集标注: WEB 数据集详情 → 图像数据集标注"
@@ -733,18 +883,21 @@ start_service() {
     check_docker
     check_docker_compose
     check_network
-    
+
     if [ ! -f .env.docker ]; then
         print_warning ".env.docker 文件不存在，正在创建..."
         create_env_file
     else
         ensure_deploy_profile
     fi
+    check_gpu
+    configure_gpu
     create_directories
     cleanup_renamed_containers
     ai_compose up -d --force-recreate --remove-orphans --quiet-pull
     print_success "服务已启动"
     check_status
+    verify_container_gpu_visibility
 }
 
 # 停止服务
@@ -752,7 +905,7 @@ stop_service() {
     print_info "停止服务..."
     check_docker
     check_docker_compose
-    
+
     local down_rc
     if ai_compose down --remove-orphans; then
         down_rc=0
@@ -771,10 +924,13 @@ restart_service() {
     check_docker_compose
 
     ensure_deploy_profile
+    check_gpu
+    configure_gpu
     create_directories
     ai_compose up -d --force-recreate --remove-orphans --quiet-pull
     print_success "服务已重启"
     check_status
+    verify_container_gpu_visibility
 }
 
 # 查看服务状态
@@ -782,9 +938,9 @@ check_status() {
     print_info "服务状态:"
     check_docker
     check_docker_compose
-    
+
     ai_compose ps 2>/dev/null | head -20
-    
+
     echo ""
     print_info "容器健康状态:"
     local any_running=false
@@ -809,7 +965,7 @@ check_status() {
 view_logs() {
     check_docker
     check_docker_compose
-    
+
     if [ "$1" == "-f" ] || [ "$1" == "--follow" ]; then
         print_info "实时查看日志（按 Ctrl+C 退出）..."
         ai_compose logs -f
@@ -869,7 +1025,7 @@ clean_service() {
     check_docker_compose
     print_info "停止并删除容器..."
         ai_compose down -v --remove-orphans 2>&1 | grep -v "^Stopping\|^Removing\|^Network" || true
-        
+
         print_info "删除镜像..."
         docker rmi ai-service:latest >/dev/null 2>&1 || true
     print_success "清理完成"
@@ -898,10 +1054,16 @@ update_service() {
 
     print_info "拉取最新代码..."
     # --ff-only：快进失败立即返回，不产生意外合并提交，比默认 pull 更快更安全
-    git pull --ff-only || print_warning "Git pull 失败，继续使用当前代码"
+    if ! git pull --ff-only; then
+        print_error "Git pull 失败，已停止更新，未重建旧版本容器"
+        return 1
+    fi
 
     local rev_after=""
     rev_after="$(git rev-parse HEAD 2>/dev/null || echo "")"
+
+    check_gpu
+    configure_gpu
 
     # ---- 判断是否需要重建镜像 ----
     local needs_build=0
@@ -947,8 +1109,9 @@ update_service() {
         cleanup_renamed_containers
         ai_compose up -d --force-recreate --remove-orphans --no-deps --quiet-pull ai-service
     else
-        print_success "依赖未变，跳过镜像构建（业务代码经卷挂载，重启进程即可生效）"
-        # 确保容器存在并应用任何 compose 配置变更（首次启用源码挂载时会在此处重建一次）
+        print_success "依赖未变，跳过镜像构建（业务代码经卷挂载，重建容器即可生效）"
+        # update 必须重建容器：docker restart 不会刷新 env_file/environment，
+        # 否则 CUDA_VISIBLE_DEVICES 等本地配置修改会继续沿用旧容器环境。
         cleanup_renamed_containers
         ai_compose up -d --force-recreate --remove-orphans --no-deps --quiet-pull ai-service
 
@@ -972,6 +1135,7 @@ update_service() {
 
     print_success "服务更新完成"
     check_status
+    verify_container_gpu_visibility
 }
 
 # 显示帮助信息

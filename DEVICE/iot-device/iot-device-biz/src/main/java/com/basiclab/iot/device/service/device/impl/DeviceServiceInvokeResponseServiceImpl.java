@@ -39,5 +39,15 @@ public class DeviceServiceInvokeResponseServiceImpl implements DeviceServiceInvo
     public DeviceServiceInvokeResponse getByMessageId(String messageId) {
         return mapper.selectByMessageId(messageId);
     }
+
+    @Override
+    public DeviceServiceInvokeResponse getByRequestId(String requestId) {
+        return mapper.selectByRequestId(requestId);
+    }
+
+    @Override
+    public int updateResponse(DeviceServiceInvokeResponse response) {
+        return mapper.updateResponse(response);
+    }
 }
 

@@ -1,9 +1,12 @@
 package com.basiclab.iot.sink.dal.mapper;
 
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.basiclab.iot.sink.dal.dataobject.DeviceDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
 
 /**
  * DeviceMapper
@@ -51,7 +54,26 @@ public interface DeviceMapper extends BaseMapper<DeviceDO> {
             @Param("protocolType") String protocolType);
 
     /**
-     * 更新设备连接状态和最后在线时间
+     * 查询需要由网关主动采集的工业协议设备。
+     */
+    @InterceptorIgnore(tenantLine = "true")
+    List<DeviceDO> selectPollingDevices(@Param("protocolType") String protocolType);
+
+    @InterceptorIgnore(tenantLine = "true")
+    DeviceDO selectDeviceForAuth(@Param("clientId") String clientId,
+                                 @Param("productIdentification") String productIdentification,
+                                 @Param("deviceIdentification") String deviceIdentification,
+                                 @Param("deviceStatus") String deviceStatus,
+                                 @Param("protocolType") String protocolType);
+
+    @InterceptorIgnore(tenantLine = "true")
+    int updatePollingDeviceStatus(@Param("deviceId") Long deviceId,
+                                  @Param("tenantId") Long tenantId,
+                                  @Param("connectStatus") String connectStatus,
+                                  @Param("lastOnlineTime") java.time.LocalDateTime lastOnlineTime);
+
+    /**
+     * 更新设备在线状态，并在首次有效上报时激活设备
      *
      * @param deviceId 设备ID
      * @param connectStatus 连接状态
@@ -101,6 +123,11 @@ public interface DeviceMapper extends BaseMapper<DeviceDO> {
      */
     int updateDeviceShadow(@Param("deviceId") Long deviceId,
                            @Param("shadow") String shadow);
+
+    @InterceptorIgnore(tenantLine = "true")
+    int appendDeviceLog(@Param("deviceId") Long deviceId,
+                        @Param("tenantId") Long tenantId,
+                        @Param("logEntry") String logEntry);
 
     /**
      * 更新设备配置信息

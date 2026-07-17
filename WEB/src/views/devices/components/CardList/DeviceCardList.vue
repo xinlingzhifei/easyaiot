@@ -204,7 +204,7 @@ async function fetch(p = {}) {
   if (api && isFunction(api)) {
     try {
       state.loading = true;
-      const res = await api({...params, pageNo: page.value, pageSize: pageSize.value, ...p});
+      const res = await api({...params, pageNum: page.value, pageSize: pageSize.value, ...p});
       // 根据表格配置，返回格式为 { data: [...], total: ... }
       data.value = res.data || [];
       total.value = res.total || 0;

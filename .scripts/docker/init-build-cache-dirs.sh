@@ -243,11 +243,84 @@ yfeieye_chown_build_cache() {
         || print_build_cache_chown_hint "$base" 2>/dev/null || true
 }
 
+# 确保 docker-buildx 可用。Docker 23+ 默认启用 BuildKit，但缺 buildx 插件时
+# docker build 会报: BuildKit is enabled but the buildx component is missing
+ensure_docker_buildx() {
+    if docker buildx version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local arch
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        *)
+            echo "[build-cache] 警告: 未知架构 $(uname -m)，无法自动安装 buildx" >&2
+            return 1
+            ;;
+    esac
+
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get install -y -qq docker-buildx-plugin >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y -q docker-buildx-plugin >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q docker-buildx-plugin >/dev/null 2>&1 || true
+    fi
+    docker buildx version >/dev/null 2>&1 && return 0
+
+    local ver="${DOCKER_BUILDX_VERSION:-v0.19.3}"
+    local dest_dirs=(
+        "/usr/local/lib/docker/cli-plugins"
+        "/usr/libexec/docker/cli-plugins"
+        "${HOME}/.docker/cli-plugins"
+    )
+    local urls=(
+        "https://github.com/docker/buildx/releases/download/${ver}/buildx-${ver}.linux-${arch}"
+        "https://ghproxy.net/https://github.com/docker/buildx/releases/download/${ver}/buildx-${ver}.linux-${arch}"
+        "https://mirror.ghproxy.com/https://github.com/docker/buildx/releases/download/${ver}/buildx-${ver}.linux-${arch}"
+        "https://ghfast.top/https://github.com/docker/buildx/releases/download/${ver}/buildx-${ver}.linux-${arch}"
+    )
+    local dest url tmpf
+    tmpf=$(mktemp 2>/dev/null || echo "/tmp/docker-buildx.$$")
+    for dest in "${dest_dirs[@]}"; do
+        mkdir -p "$dest" 2>/dev/null || continue
+        for url in "${urls[@]}"; do
+            if command -v curl >/dev/null 2>&1 \
+                && curl -fsSL --connect-timeout 15 --max-time 120 "$url" -o "$tmpf" 2>/dev/null \
+                && [ -s "$tmpf" ]; then
+                # ELF magic
+                if head -c 4 "$tmpf" 2>/dev/null | grep -q $'\x7fELF'; then
+                    install -m 0755 "$tmpf" "${dest}/docker-buildx" 2>/dev/null \
+                        || cp "$tmpf" "${dest}/docker-buildx" && chmod +x "${dest}/docker-buildx"
+                    rm -f "$tmpf"
+                    docker buildx version >/dev/null 2>&1 && return 0
+                fi
+            fi
+        done
+    done
+    rm -f "$tmpf"
+    return 1
+}
+
 enable_docker_buildkit() {
-    export DOCKER_BUILDKIT=1
-    export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
     # 使用 BuildKit 内置 Dockerfile 前端，不依赖 docker.io/docker/dockerfile 镜像
     # （部分 registry 镜像站缺少该镜像，会导致 # syntax=docker/dockerfile:1.4 构建失败）
+    if ! docker buildx version >/dev/null 2>&1; then
+        echo "[build-cache] 未检测到 docker-buildx，尝试自动安装..." >&2
+        ensure_docker_buildx || true
+    fi
+    if docker buildx version >/dev/null 2>&1; then
+        export DOCKER_BUILDKIT=1
+        export BUILDKIT_PROGRESS="${BUILDKIT_PROGRESS:-plain}"
+        return 0
+    fi
+    # 无 buildx 时禁用 BuildKit，避免报 "buildx component is missing"
+    # 注意：含 --build-context / cache-from=type=local 的构建仍会失败，需先装 buildx
+    echo "[build-cache] 警告: docker-buildx 不可用，已设置 DOCKER_BUILDKIT=0；请安装 docker-buildx-plugin 后重试" >&2
+    export DOCKER_BUILDKIT=0
+    unset BUILDKIT_PROGRESS
 }
 
 # 可选：仍使用外部 Dockerfile 语法镜像时预拉（export DOCKERFILE_FRONTEND_IMAGE=docker/dockerfile:1.4）
@@ -408,14 +481,23 @@ arm_pip_wheels_ready_for() {
 }
 
 # build-runtime 跨架构构建前：缺失则预下载 .build-cache/arm/{ai,video}/pip-wheels
+# 用法: ensure_arm_python_wheels_cached [root] [module...]
+#   未传 module 时默认 ai + video；可传 ai / video 限定范围（单模块 build-runtime 用）
 ensure_arm_python_wheels_cached() {
     local root="${1:-${EASYAIOT_ROOT:-.}}"
+    shift || true
+    local -a modules=()
+    if [ "$#" -gt 0 ]; then
+        modules=("$@")
+    else
+        modules=("${YFEIEYE_PYTHON_CACHE_MODULES[@]}")
+    fi
     local module cache_script base
     base="$(yfeieye_build_cache_base "$root")"
 
     init_yfeieye_build_cache_dirs "$root"
 
-    for module in "${YFEIEYE_PYTHON_CACHE_MODULES[@]}"; do
+    for module in "${modules[@]}"; do
         if arm_pip_wheels_ready_for "$root" "$module"; then
             echo "[build-cache] [${module}] ARM pip-wheels 已就绪: $(arm_pip_wheels_build_context_dir_for "$root" "$module")"
             continue

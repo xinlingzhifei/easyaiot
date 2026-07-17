@@ -2,7 +2,7 @@
   <div class="device-wrapper">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
-        <Button type="primary" @click="handleOpenProductMolal(true, { type: true })"
+        <Button type="primary" @click="handleOpenProductDrawer(true, { isEdit: false })"
                   preIcon="ant-design:plus-outlined">
           添加产品
         </Button>
@@ -39,7 +39,7 @@
                   title: '编辑',
                   placement: 'top',
                 },
-                onClick: handleOpenProductMolal.bind(null, true, { type: false, record }),
+                onClick: handleOpenProductDrawer.bind(null, true, { isEdit: true, record }),
               },
               {
                 tooltip: {
@@ -63,7 +63,7 @@
       <ProductCardList :params="params" :api="getDeviceProfiles" @get-method="getMethod"
                        @delete="handleDel" @edit="handleEdit" @view="handleView">
         <template #header>
-          <Button type="primary" @click="handleOpenProductMolal(true, { type: true })"
+          <Button type="primary" @click="handleOpenProductDrawer(true, { isEdit: false })"
                     preIcon="ant-design:plus-outlined">
             添加产品
           </Button>
@@ -83,19 +83,19 @@
         </template>
       </ProductCardList>
     </div>
-    <ProductModal @register="productModalRegister" @update="reloadList"/>
+    <ProductModal @register="productDrawerRegister" @success="reloadList"/>
   </div>
 </template>
 
 <script lang="ts" setup name="productPage">
 import {reactive, ref} from 'vue';
 import {BasicTable, TableAction, useTable} from '@/components/Table';
-import {PopConfirmButton} from '@/components/Button';
+import {Button, PopConfirmButton} from '@/components/Button';
 import {getBasicColumns, getFormConfig} from './Data';
 import {deleteDeviceProfile, getDeviceProfiles,} from '@/api/device/product';
 import {useMessage} from '@/hooks/web/useMessage';
 import moment from 'moment';
-import {useModal} from '@/components/Modal';
+import {useDrawer} from '@/components/Drawer';
 import ProductModal from './components/ProductModal.vue';
 import {useRouter} from 'vue-router';
 import ProductCardList from "@/views/product/components/CardList/ProductCardList.vue";
@@ -104,7 +104,7 @@ defineOptions({name: 'Product'})
 
 const checkedKeys = ref<Array<string | number>>([]);
 const {createMessage} = useMessage();
-const [productModalRegister, {openModal: handleOpenProductMolal}] = useModal();
+const [productDrawerRegister, {openDrawer: handleOpenProductDrawer}] = useDrawer();
 const router = useRouter();
 
 const state = reactive({
@@ -133,24 +133,23 @@ const [
   title: '产品模型列表',
   api: getDeviceProfiles,
   beforeFetch: (data) => {
-    const {productName, model, manufacturerName, pageSize, page, order} = data;
-    let params = {
-      page,
+    const {productName, model, manufacturerName, pageSize, pageNo, order} = data;
+    return {
+      pageNum: pageNo,
       pageSize,
-      productName, model, manufacturerName,
+      productName,
+      model,
+      manufacturerName,
       sortOrder: order == 'descend' ? 'DESC' : 'ASC',
     };
-    return params;
   },
   afterFetch: (data) => {
-    // alert(data);
-    console.info("data...", data);
-    const list = data.map((res) => {
-      let newDate = new Date(res.createdTime);
-      res.createdTime = moment(newDate)?.format?.('YYYY-MM-DD HH:mm:ss') ?? res.createdTime;
+    return data.map((res) => {
+      if (res.createTime) {
+        res.createdTime = moment(res.createTime)?.format?.('YYYY-MM-DD HH:mm:ss') ?? res.createTime;
+      }
       return res;
     });
-    return list;
   },
   columns: getBasicColumns(),
   useSearchForm: true,
@@ -189,14 +188,14 @@ function handleClickSwap() {
 }
 
 function goProductDrawer(record) {
-  // alert(JSON.stringify(record));
   const params = {
     id: record.id,
-    templateIdentification: (record.templateIdentification == '' ? "xxx" : record.templateIdentification),
-    productIdentification: record.productIdentification
+    productIdentification: record.productIdentification,
+    // 兼容旧菜单 path: detail/:id/:templateIdentification/:productIdentification
+    // 执行 migrate_product_detail_route.sql 后可忽略该参数
+    templateIdentification: record.templateIdentification || 'none',
   };
-  // alert(JSON.stringify(params))
-  router.push({name: 'ProductDetail', params});
+  router.push({ name: 'ProductDetail', params });
 }
 
 function onSelect(record, selected) {
@@ -274,8 +273,7 @@ function handleView(record) {
 
 //编辑按钮事件
 function handleEdit(record) {
-  handleOpenProductMolal(true, {record});
-  cardListReload();
+  handleOpenProductDrawer(true, { isEdit: true, record });
 }
 
 //删除按钮事件

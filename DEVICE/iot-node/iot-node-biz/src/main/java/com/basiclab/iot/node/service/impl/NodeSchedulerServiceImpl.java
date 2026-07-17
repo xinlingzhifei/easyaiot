@@ -197,6 +197,9 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
         if (isMediaWorkload(workloadType)) {
             return NodeRoleEnum.MEDIA.getRole().equals(role) || NodeRoleEnum.HYBRID.getRole().equals(role);
         }
+        if (isMqttWorkload(workloadType)) {
+            return NodeRoleEnum.MQTT.getRole().equals(role);
+        }
         if (isComputeWorkload(workloadType)) {
             return NodeRoleEnum.COMPUTE.getRole().equals(role)
                     || NodeRoleEnum.GPU.getRole().equals(role)
@@ -207,6 +210,10 @@ public class NodeSchedulerServiceImpl implements NodeSchedulerService {
 
     private boolean isMediaWorkload(String workloadType) {
         return "srs_live".equals(workloadType) || "srs_ai".equals(workloadType) || "zlm".equals(workloadType);
+    }
+
+    private boolean isMqttWorkload(String workloadType) {
+        return "emqx".equals(workloadType) || "mqtt_gateway".equals(workloadType);
     }
 
     private boolean isComputeWorkload(String workloadType) {

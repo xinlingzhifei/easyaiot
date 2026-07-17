@@ -1,66 +1,146 @@
 package com.basiclab.iot.sink.util;
 
 import cn.hutool.core.util.StrUtil;
+import com.basiclab.iot.sink.enums.IotDeviceMessageMethodEnum;
+import com.basiclab.iot.sink.enums.IotDeviceTopicEnum;
 
 /**
  * IotMqttTopicUtils
  *
+ * 下行主题统一使用 /iot/{product}/{device}/... 标准（与 IotDeviceTopicEnum、EMQX 订阅对齐）。
+ *
  * @author reese
  * @email reese
  */
-
 public final class IotMqttTopicUtils {
 
-    // ========== 静态常量 ==========
-
-    /**
-     * 系统主题前缀
-     */
-    private static final String SYS_TOPIC_PREFIX = "/sys/";
-
-    /**
-     * 回复主题后缀
-     */
-    private static final String REPLY_TOPIC_SUFFIX = "_reply";
-
-    // ========== MQTT HTTP 接口路径常量 ==========
-
-    /**
-     * MQTT 认证接口路径
-     * 对应 EMQX HTTP 认证插件的认证请求接口
-     */
     public static final String MQTT_AUTH_PATH = "/mqtt/auth";
 
-    /**
-     * MQTT 统一事件处理接口路径
-     * 对应 EMQX Webhook 的统一事件处理接口，支持所有客户端事件
-     * 包括：client.connected、client.disconnected、message.publish 等
-     */
     public static final String MQTT_EVENT_PATH = "/mqtt/event";
 
-    // ========== 工具方法 ==========
-
-    /**
-     * 根据消息方法构建对应的主题
-     *
-     * @param method 消息方法，例如 thing.property.post
-     * @param productIdentification 产品唯一标识
-     * @param deviceIdentification 设备唯一标识
-     * @param isReply 是否为回复消息
-     * @return 完整的主题路径
-     */
-    public static String buildTopicByMethod(String method, String productIdentification, String deviceIdentification, boolean isReply) {
-        if (StrUtil.isBlank(method)) {
-            return null;
-        }
-        // 1. 将点分隔符转换为斜杠
-        String topicSuffix = method.replace('.', '/');
-        // 2. 对于回复消息，添加 _reply 后缀
-        if (isReply) {
-            topicSuffix += REPLY_TOPIC_SUFFIX;
-        }
-        // 3. 构建完整主题
-        return SYS_TOPIC_PREFIX + productIdentification + "/" + deviceIdentification + "/" + topicSuffix;
+    private IotMqttTopicUtils() {
     }
 
+    /**
+     * 根据消息方法构建对应的主题（标准 /iot 体系）
+     */
+    public static String buildTopicByMethod(String method, String productIdentification,
+                                            String deviceIdentification, boolean isReply) {
+        if (StrUtil.isBlank(method) || StrUtil.hasBlank(productIdentification, deviceIdentification)) {
+            return null;
+        }
+
+        IotDeviceMessageMethodEnum methodEnum = IotDeviceMessageMethodEnum.of(method);
+        if (methodEnum == null) {
+            return null;
+        }
+
+        IotDeviceTopicEnum topicEnum;
+        switch (methodEnum) {
+            case PROPERTY_SET:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.PROPERTY_UPSTREAM_DESIRED_SET_ACK
+                        : IotDeviceTopicEnum.PROPERTY_DOWNSTREAM_DESIRED_SET;
+                break;
+            case PROPERTY_POST:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.PROPERTY_DOWNSTREAM_REPORT_ACK
+                        : IotDeviceTopicEnum.PROPERTY_UPSTREAM_REPORT;
+                break;
+            case SERVICE_INVOKE:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.SERVICE_UPSTREAM_INVOKE_RESPONSE
+                        : IotDeviceTopicEnum.SERVICE_DOWNSTREAM_INVOKE;
+                break;
+            case EVENT_POST:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.EVENT_DOWNSTREAM_REPORT_ACK
+                        : IotDeviceTopicEnum.EVENT_UPSTREAM_REPORT;
+                break;
+            case CONFIG_PUSH:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.CONFIG_DOWNSTREAM_QUERY_ACK
+                        : IotDeviceTopicEnum.CONFIG_DOWNSTREAM_PUSH;
+                break;
+            case OTA_UPGRADE:
+                topicEnum = IotDeviceTopicEnum.OTA_DOWNSTREAM_UPGRADE_TASK;
+                break;
+            case OTA_PROGRESS:
+                topicEnum = IotDeviceTopicEnum.OTA_UPSTREAM_PROGRESS_REPORT;
+                break;
+            case LOG_POST:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.LOG_DOWNSTREAM_REPORT_ACK
+                        : IotDeviceTopicEnum.LOG_UPSTREAM_REPORT;
+                break;
+            case TOPOLOGY_ADD:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.TOPO_DOWNSTREAM_ADD_ACK
+                        : IotDeviceTopicEnum.TOPO_UPSTREAM_ADD;
+                break;
+            case TOPOLOGY_DELETE:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.TOPO_DOWNSTREAM_DELETE_ACK
+                        : IotDeviceTopicEnum.TOPO_UPSTREAM_DELETE;
+                break;
+            case TOPOLOGY_UPDATE:
+                topicEnum = IotDeviceTopicEnum.TOPO_UPSTREAM_STATUS;
+                break;
+            default:
+                return null;
+        }
+        return topicEnum.buildTopic(productIdentification, deviceIdentification);
+    }
+
+    /**
+     * 经网关代理的子设备下行 Topic（路径使用网关 product/device）
+     */
+    public static String buildSubDownstreamTopic(String method, String gatewayProductIdentification,
+                                                 String gatewayDeviceIdentification, String identifier,
+                                                 boolean isReply) {
+        if (StrUtil.isBlank(method) || StrUtil.hasBlank(gatewayProductIdentification, gatewayDeviceIdentification)) {
+            return null;
+        }
+        IotDeviceMessageMethodEnum methodEnum = IotDeviceMessageMethodEnum.of(method);
+        if (methodEnum == null) {
+            return null;
+        }
+        IotDeviceTopicEnum topicEnum;
+        switch (methodEnum) {
+            case SERVICE_INVOKE:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.SUB_SERVICE_UPSTREAM_INVOKE_RESPONSE
+                        : IotDeviceTopicEnum.SUB_SERVICE_DOWNSTREAM_INVOKE;
+                break;
+            case PROPERTY_SET:
+                topicEnum = isReply
+                        ? IotDeviceTopicEnum.SUB_PROPERTY_UPSTREAM_DESIRED_SET_ACK
+                        : IotDeviceTopicEnum.SUB_PROPERTY_DOWNSTREAM_DESIRED_SET;
+                break;
+            default:
+                return null;
+        }
+        return topicEnum.buildTopic(gatewayProductIdentification, gatewayDeviceIdentification, identifier);
+    }
+
+    /**
+     * 判断是否为经网关代理的子设备 Topic
+     */
+    public static boolean isGatewaySubProxyTopic(String topic) {
+        if (StrUtil.isBlank(topic)) {
+            return false;
+        }
+        IotDeviceTopicEnum topicEnum = IotDeviceTopicEnum.matchTopic(topic);
+        return topicEnum == IotDeviceTopicEnum.SUB_PROPERTY_UPSTREAM_REPORT
+                || topicEnum == IotDeviceTopicEnum.SUB_EVENT_UPSTREAM_REPORT
+                || topicEnum == IotDeviceTopicEnum.SUB_SERVICE_DOWNSTREAM_INVOKE
+                || topicEnum == IotDeviceTopicEnum.SUB_SERVICE_UPSTREAM_INVOKE_RESPONSE
+                || topicEnum == IotDeviceTopicEnum.SUB_PROPERTY_DOWNSTREAM_DESIRED_SET
+                || topicEnum == IotDeviceTopicEnum.SUB_PROPERTY_UPSTREAM_DESIRED_SET_ACK
+                || topicEnum == IotDeviceTopicEnum.TOPO_UPSTREAM_ADD
+                || topicEnum == IotDeviceTopicEnum.TOPO_UPSTREAM_DELETE
+                || topicEnum == IotDeviceTopicEnum.TOPO_UPSTREAM_STATUS
+                || topicEnum == IotDeviceTopicEnum.TOPO_DOWNSTREAM_ADD_ACK
+                || topicEnum == IotDeviceTopicEnum.TOPO_DOWNSTREAM_DELETE_ACK;
+    }
 }

@@ -84,5 +84,19 @@ public class DeviceEvent implements Serializable {
     @ApiModelProperty(value = "租户编号")
     private Long tenantId;
 
+    /**
+     * 查询起始时间（非表字段）
+     */
+    @ApiModelProperty(value = "查询起始时间")
+    @TableField(exist = false)
+    private LocalDateTime startTime;
+
+    /**
+     * 查询结束时间（非表字段）
+     */
+    @ApiModelProperty(value = "查询结束时间")
+    @TableField(exist = false)
+    private LocalDateTime endTime;
+
     private static final long serialVersionUID = 1L;
 }

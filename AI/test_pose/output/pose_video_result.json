@@ -1,0 +1,10 @@
+{
+  "frames": 75,
+  "totalFrames": 75,
+  "totalPersons": 300,
+  "fps": 25.0,
+  "width": 640,
+  "height": 480,
+  "keypointCount": 17,
+  "poseType": "body17"
+}

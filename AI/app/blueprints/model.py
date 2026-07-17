@@ -106,11 +106,19 @@ def models():
         page_no = int(request.args.get('pageNo', 1))
         page_size = int(request.args.get('pageSize', 10))
         search = request.args.get('search', '').strip()
+        name = request.args.get('name', '').strip()
+        version = request.args.get('version', '').strip()
+        if version.lower().startswith('v'):
+            version = version[1:].lstrip()
 
         if page_no < 1 or page_size < 1:
             return jsonify({'code': 400, 'msg': '参数错误：pageNo和pageSize必须为正整数'}), 400
 
         query = Model.query
+        if name:
+            query = query.filter(Model.name.ilike(f'%{name}%'))
+        if version:
+            query = query.filter(Model.version.ilike(f'%{version}%'))
         if search:
             query = query.filter(
                 or_(
@@ -137,7 +145,7 @@ def models():
                 )
             )
 
-        pagination = query.paginate(
+        pagination = query.order_by(Model.created_at.desc()).paginate(
             page=page_no,
             per_page=page_size,
             error_out=False

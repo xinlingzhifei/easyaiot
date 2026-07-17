@@ -14,6 +14,13 @@ from flask import current_app
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 from models import db, AlgorithmTask, Device
+from app.utils.service_urls import (
+    SHANGHAI_TZ,
+    now_shanghai_time_str,
+    parse_alert_time_str,
+    shanghai_isoformat,
+    shanghai_time_str_from_epoch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +217,29 @@ def _query_alert_event_task(device_id: str, task_type: str = None) -> Optional[D
         return None
 
 
+def _normalize_alert_wall_time_str(raw_time) -> str:
+    """统一告警时间为东八区墙钟字符串（与 iot-sink parseAlertEventTime 一致）。"""
+    if raw_time is None or (isinstance(raw_time, str) and not str(raw_time).strip()):
+        return now_shanghai_time_str()
+    if isinstance(raw_time, (int, float)):
+        return shanghai_time_str_from_epoch(float(raw_time))
+    if isinstance(raw_time, datetime):
+        if raw_time.tzinfo is None:
+            aware = raw_time.replace(tzinfo=SHANGHAI_TZ)
+        else:
+            aware = raw_time.astimezone(SHANGHAI_TZ)
+        return aware.strftime('%Y-%m-%d %H:%M:%S')
+    if isinstance(raw_time, str):
+        parsed, _err = parse_alert_time_str(raw_time)
+        if parsed is not None:
+            return parsed.strftime('%Y-%m-%d %H:%M:%S')
+    return now_shanghai_time_str()
+
+
+def _shanghai_message_timestamp() -> str:
+    return shanghai_isoformat(datetime.now(SHANGHAI_TZ))
+
+
 def _build_minimal_alert_kafka_message(
         alert_data: Dict,
         detection_switches: Optional[Dict],
@@ -239,7 +269,7 @@ def _build_minimal_alert_kafka_message(
             'information': alert_data.get('information'),
             'imagePath': alert_data.get('image_path'),
             'recordPath': alert_data.get('record_path'),
-            'time': alert_data.get('time', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+            'time': _normalize_alert_wall_time_str(alert_data.get('time')),
             'taskType': task_type,
         },
         'notifyUsers': None,
@@ -248,7 +278,7 @@ def _build_minimal_alert_kafka_message(
         'faceDetectionEnabled': bool(sw.get('face_detection_enabled', False)),
         'plateDetectionEnabled': bool(sw.get('plate_detection_enabled', False)),
         'shouldNotify': False,
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': _shanghai_message_timestamp(),
     }
     correlation_id = alert_data.get('correlation_id') or alert_data.get('correlationId')
     if correlation_id:
@@ -751,6 +781,9 @@ def process_alert_hook(alert_data: Dict) -> Dict:
     """
     global _producer, _last_kafka_unavailable_warning_time, _kafka_unavailable_warning_interval
     try:
+        if 'time' in alert_data:
+            alert_data['time'] = _normalize_alert_wall_time_str(alert_data.get('time'))
+
         # 查询告警通知配置
         device_id = alert_data.get('device_id')
         task_type = alert_data.get('task_type', 'realtime')  # 默认为实时算法任务
@@ -1151,20 +1184,7 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
                 )
             return None
     
-    # 处理告警时间格式
-    alert_time = alert_data.get('time')
-    if alert_time:
-        if isinstance(alert_time, datetime):
-            alert_time = alert_time.strftime('%Y-%m-%d %H:%M:%S')
-        elif isinstance(alert_time, str):
-            # 如果已经是字符串，尝试格式化
-            try:
-                dt = datetime.strptime(alert_time, '%Y-%m-%d %H:%M:%S')
-                alert_time = dt.strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                pass
-    else:
-        alert_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    alert_time = _normalize_alert_wall_time_str(alert_data.get('time'))
     
     # 构建通知消息（使用驼峰命名以匹配 Java 端的 AlertNotificationMessage）
     face_enabled = bool(
@@ -1195,7 +1215,7 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
         'faceDetectionEnabled': face_enabled,
         'plateDetectionEnabled': plate_enabled,
         'shouldNotify': should_notify,  # 是否需要发送通知
-        'timestamp': datetime.now().isoformat()
+        'timestamp': _shanghai_message_timestamp(),
     }
     correlation_id = alert_data.get('correlation_id') or alert_data.get('correlationId')
     if correlation_id:

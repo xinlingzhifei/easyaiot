@@ -210,28 +210,40 @@ def collect_metrics() -> Dict[str, Any]:
     return metrics
 
 
-def post_json(path: str, payload: Dict[str, Any], *, allow_refresh: bool = True) -> bool:
+def post_json(path: str, payload: Dict[str, Any], *, allow_refresh: bool = True) -> tuple:
+    """返回 (成功?, 错误文案)。错误文案用于识别主机名/容量冲突，避免无效重注册。"""
     url = f'{CONTROL_PLANE_URL}{path}'
     try:
         resp = requests.post(url, json=payload, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             if data.get('code') == 0:
-                return True
-            msg = data.get('msg', data)
-            if allow_refresh and is_credential_error(str(msg)):
-                node_missing = '节点不存在' in str(msg)
+                return True, ''
+            msg = str(data.get('msg', data))
+            if allow_refresh and is_credential_error(msg):
+                node_missing = '节点不存在' in msg
                 if try_refresh_credentials(
                     allow_node_id_change=node_missing or PLATFORM_AGENT,
                 ):
                     payload = {**payload, 'nodeId': NODE_ID, 'agentToken': AGENT_TOKEN}
                     return post_json(path, payload, allow_refresh=False)
             logger.warning('请求失败 %s: %s', url, msg)
-        else:
-            logger.warning('HTTP %s: %s', resp.status_code, url)
+            return False, msg
+        logger.warning('HTTP %s: %s', resp.status_code, url)
+        return False, f'HTTP {resp.status_code}'
     except Exception as e:
         logger.warning('请求异常 %s: %s', url, e)
-    return False
+        return False, str(e)
+
+
+def is_identity_conflict(msg: str) -> bool:
+    if not msg:
+        return False
+    return (
+        '主机名与节点已绑定主机不一致' in msg
+        or '内存/磁盘容量与已绑定指纹不一致' in msg
+        or 'NODE_ID' in msg and '多个 Agent' in msg
+    )
 
 
 def register() -> bool:
@@ -243,24 +255,36 @@ def register() -> bool:
         'agentVersion': AGENT_VERSION,
     }
     logger.info('注册节点 nodeId=%s -> %s', NODE_ID, CONTROL_PLANE_URL)
-    return post_json('/register', payload)
+    ok, _ = post_json('/register', payload)
+    return ok
 
 
-def heartbeat() -> bool:
+def heartbeat() -> tuple:
     metrics = collect_metrics()
-    payload = {'nodeId': NODE_ID, 'agentToken': AGENT_TOKEN, **metrics}
+    payload = {
+        'nodeId': NODE_ID,
+        'agentToken': AGENT_TOKEN,
+        # 与 register 一致上报主机名，控制面可拦截多 Agent 共用同一 NODE_ID 的冲突心跳
+        'hostname': socket.gethostname(),
+        **metrics,
+    }
     return post_json('/heartbeat', payload)
 
 
 def heartbeat_loop():
-    while not register():
-        logger.info('注册失败，5 秒后重试...')
-        time.sleep(5)
-    logger.info('注册成功，开始心跳 (interval=%ss)', HEARTBEAT_INTERVAL)
+    # 注册失败也不阻塞：hostname 换绑靠心跳（带容量指纹）更可靠，避免卡死写不进 metric
+    if register():
+        logger.info('注册成功，开始心跳 (interval=%ss)', HEARTBEAT_INTERVAL)
+    else:
+        logger.warning('注册未成功，仍将尝试心跳 (interval=%ss)', HEARTBEAT_INTERVAL)
     while True:
-        if not heartbeat():
-            logger.warning('心跳失败，尝试重新注册...')
-            register()
+        ok, msg = heartbeat()
+        if not ok:
+            if is_identity_conflict(msg):
+                logger.warning('心跳因身份/容量冲突被拒，跳过重新注册（请检查是否多个 Agent 共用 NODE_ID）: %s', msg)
+            else:
+                logger.warning('心跳失败，尝试重新注册...')
+                register()
         time.sleep(HEARTBEAT_INTERVAL)
 
 

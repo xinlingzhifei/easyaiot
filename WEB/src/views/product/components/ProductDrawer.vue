@@ -1,48 +1,89 @@
 <!-- eslint-disable vue/v-on-event-hyphenation -->
 <template>
-  <div class="product-drawer-warpper" style="height: 100%">
-    <Card class="detail-info">
-      <div class="ant-card">
-        <div class="ant-card-body">
-          <div class="device_title">
-            <div><span>{{ state.record.productName }}</span></div>
-          </div>
-          <div class="base_data">
-            <div class="item"><span>状态：</span><span
-              :class="state.record.status == '0'? 'green' : 'red'">{{
-                state.record.status == '0' ? "启用" : "禁用"
-              }}</span>
-            </div>
-            <div class="item"><span>应用场景：</span><span>{{ state.record.appId }}</span></div>
-            <div class="item"><span>产品名称：</span><span>{{ state.record.productName }}</span>
-            </div>
-            <div class="item">
-              <span>产品标识：</span><span>{{ state.record.productIdentification }}</span></div>
-            <div class="item">
-              <span>模板标识：</span><span>{{ state.record.templateIdentification }}</span></div>
-            <div class="item"><span>用户名：</span><span>{{ state.record.userName }}</span></div>
-            <div class="item"><span>密码：</span><span>{{ state.record.password }}</span></div>
-            <div class="item"><span>厂商名称：</span><span>{{ state.record.manufacturerName }}</span>
-            </div>
-          </div>
+  <div class="product-drawer-warpper">
+    <Card class="detail-info" size="small">
+      <div class="device_title">
+        <span class="name">{{ state.record.productName }}</span>
+        <span :class="state.record.status == '0' ? 'green' : 'red'">
+          {{ state.record.status == '0' ? '启用' : '禁用' }}
+        </span>
+      </div>
+      <div class="base_data">
+        <div class="item">
+          <span>状态：</span>
+          <span :class="state.record.status == '0' ? 'green' : 'red'">
+            {{ state.record.status == '0' ? '启用' : '禁用' }}
+          </span>
+        </div>
+        <div class="item">
+          <span>应用场景：</span>
+          <span>{{ state.record.appId }}</span>
+        </div>
+        <div class="item">
+          <span>产品名称：</span>
+          <span>{{ state.record.productName }}</span>
+        </div>
+        <div class="item">
+          <span>产品标识：</span>
+          <span>{{ state.record.productIdentification }}</span>
+        </div>
+        <div class="item">
+          <span>用户名：</span>
+          <span>{{ state.record.userName }}</span>
+        </div>
+        <div class="item">
+          <span>密码：</span>
+          <span>{{ state.record.password }}</span>
+        </div>
+        <div class="item">
+          <span>厂商名称：</span>
+          <span>{{ state.record.manufacturerName }}</span>
         </div>
       </div>
     </Card>
+
     <Card class="product-tabs" ref="cardRef">
       <Tabs
-        :animated="{ inkBar: true, tabPane: true }"
+        :animated="{ inkBar: true, tabPane: false }"
         :activeKey="state.activeKey"
-        :tabBarGutter="80"
+        :tabBarGutter="40"
         @tabClick="handleTabClick"
       >
         <TabPane key="1" tab="基础信息">
-          <ProductDetail :detail="state.record"/>
+          <ProductDetail :detail="state.record" />
+        </TabPane>
+        <TabPane key="guide" tab="接入指引">
+          <AccessGuide
+            v-if="state.activeKey === 'guide'"
+            scope="product"
+            :node-type="state.record.productType"
+            :product-identification="state.record.productIdentification"
+            :product-name="state.record.productName"
+            :password="state.record.password"
+            :user-name="state.record.userName"
+            :connector="state.record.connector"
+            :protocol-type="state.record.protocolType"
+          />
         </TabPane>
         <TabPane key="3" tab="模型定义">
           <PhysicalModal
             :product-identification="state.record.productIdentification"
             :device-profile-name="state.record.productName"
-            :template-identification="state.record.templateIdentification"
+          />
+        </TabPane>
+        <TabPane key="script" tab="协议脚本">
+          <ProductScript
+            v-if="state.activeKey === 'script'"
+            :product-id="state.record.id"
+            :product-identification="state.record.productIdentification"
+          />
+        </TabPane>
+        <TabPane key="2" tab="关联设备">
+          <RelatedDevices
+            v-if="state.activeKey === '2'"
+            :product-identification="state.record.productIdentification"
+            :product-name="state.record.productName"
+            :app-id="state.record.appId"
           />
         </TabPane>
       </Tabs>
@@ -50,39 +91,37 @@
   </div>
 </template>
 <script lang="ts" setup>
-import {onMounted, reactive} from 'vue';
-import {TabPane, Tabs} from 'ant-design-vue';
+import { onMounted, reactive } from 'vue';
+import { Card, TabPane, Tabs } from 'ant-design-vue';
 import ProductDetail from './ProductDetail.vue';
 import PhysicalModal from './PhysicalModal.vue';
-import {productModel} from "@/views/product/Data";
-import {getDeviceProfileDetail} from "@/api/device/product";
-import {useRoute} from 'vue-router'
+import ProductScript from './ProductScript.vue';
+import RelatedDevices from './RelatedDevices.vue';
+import AccessGuide from '@/views/devices/components/AccessGuide/index.vue';
+import { productModel } from '@/views/product/Data';
+import { getDeviceProfileDetail } from '@/api/device/product';
+import { useRoute } from 'vue-router';
 
-defineOptions({name: 'ProductDetail'})
+defineOptions({ name: 'ProductDetail' });
 
-const route = useRoute()
+const route = useRoute();
 
 const emits = defineEmits(['upload:list']);
 
 const state = reactive({
   id: '',
   activeKey: '1',
-  record: productModel
+  record: productModel,
 });
 
 async function initProductDetail(record) {
   try {
     state.record.id = record.id;
-    state.record.templateIdentification = record.templateIdentification
-    state.record.productIdentification = record.productIdentification
+    state.record.productIdentification = record.productIdentification;
     const ret = await getDeviceProfileDetail(record.id);
     state.record = ret;
-    //console.log("state.record...", record);
-    // getProductImage(ret.image);
-    // //console.log('state.record.imageData ...', state.record.imageData);
   } catch (error) {
-    console.error(error)
-    //console.log('getProductDetail ...', error);
+    console.error(error);
   }
 }
 
@@ -92,7 +131,7 @@ const handleTabClick = (activeKey) => {
 
 onMounted(() => {
   initProductDetail(route.params);
-})
+});
 </script>
 
 <style lang="less" scoped>
@@ -105,157 +144,87 @@ onMounted(() => {
 }
 
 .product-drawer-warpper {
-  overflow-y: auto;
-  background: #f5f7fa;
-  padding: 24px;
   height: 100%;
+  overflow: hidden;
+  background: #f5f7fa;
+  padding: 16px 20px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 
   .detail-info {
-    margin-bottom: 24px;
-  }
+    margin-bottom: 16px;
+    flex-shrink: 0;
 
-  .ant-card {
-    box-sizing: border-box;
-    padding: 0;
-    color: #000000d9;
-    font-size: 14px;
-    font-variant: tabular-nums;
-    line-height: 1.5715;
-    list-style: none;
-    font-feature-settings: tnum;
-    position: relative;
-    background: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
-    border-radius: 12px;
-    margin: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    transition: all 0.3s ease;
-
-    &:hover {
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    :deep(.ant-card-body) {
+      padding: 16px 20px;
     }
 
-    .ant-card-body {
-      padding: 28px;
+    .device_title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
 
-      .device_title {
-        min-height: 32px;
-        font-size: 16px;
+      .name {
+        font-size: 15px;
         font-weight: 600;
         color: #1a1a1a;
-        line-height: 1.5;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #f0f0f0;
-
-        span {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .ant-btn {
-          line-height: 1.5715;
-          position: relative;
-          display: inline-block;
-          font-weight: 500;
-          white-space: nowrap;
-          text-align: center;
-          background-image: none;
-          border: 1px solid transparent;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          -webkit-user-select: none;
-          -moz-user-select: none;
-          user-select: none;
-          touch-action: manipulation;
-          height: 36px;
-          padding: 4px 20px;
-          font-size: 14px;
-          border-radius: 8px;
-          color: #000000d9;
-          border-color: #d9d9d9;
-          background: #fff;
-
-          &:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-          }
-        }
-
-        .ant-btn-primary {
-          color: #fff;
-          background: #1890ff;
-          border-color: #1890ff;
-
-          &:hover {
-            background: #40a9ff;
-            border-color: #40a9ff;
-          }
-        }
-
-        .ant-btn-dangerous.ant-btn-primary {
-          border-color: #ff4d4f;
-          background: #ff4d4f;
-          text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
-          box-shadow: 0 2px 4px rgba(255, 77, 79, 0.3);
-
-          &:hover {
-            background: #ff7875;
-            border-color: #ff7875;
-          }
-        }
+        line-height: 24px;
       }
 
-      .base_data {
-        display: flex;
-        align-items: center;
-        flex-wrap: nowrap;
-        gap: 0;
+      .green {
+        color: #52c41a;
+        font-weight: 500;
         font-size: 13px;
-        color: #666;
-        line-height: 1.6;
-        overflow-x: auto;
-        padding-bottom: 4px;
+      }
 
-        .item:first-child {
-          border-left: none;
-          padding-left: 0;
+      .red {
+        color: #ff4d4f;
+        font-weight: 500;
+        font-size: 13px;
+      }
+    }
+
+    .base_data {
+      display: flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      font-size: 13px;
+      color: #666;
+      line-height: 22px;
+
+      .item:first-child {
+        border-left: none;
+        padding-left: 0;
+      }
+
+      .item {
+        padding-left: 16px;
+        padding-right: 16px;
+        border-left: 1px solid #e8e8e8;
+        flex: 0 0 auto;
+        white-space: nowrap;
+
+        span:first-child {
+          color: #999;
+          margin-right: 4px;
         }
 
-        .item {
-          padding-left: 20px;
-          padding-right: 20px;
-          border-left: 1px solid #e8e8e8;
-          flex: 0 0 auto;
-          white-space: nowrap;
+        span:last-child {
+          color: #1a1a1a;
+          font-weight: 500;
+        }
 
-          span:first-child {
-            color: #999;
-            font-weight: 400;
-            margin-right: 6px;
-            font-size: 13px;
-          }
+        .red {
+          color: #ff4d4f;
+          font-weight: 500;
+        }
 
-          span:last-child {
-            color: #1a1a1a;
-            font-weight: 500;
-            font-size: 13px;
-          }
-
-          .red {
-            color: #ff4d4f;
-            font-weight: 500;
-          }
-
-          .green {
-            color: #52c41a;
-            font-weight: 500;
-          }
+        .green {
+          color: #52c41a;
+          font-weight: 500;
         }
       }
     }
@@ -268,30 +237,81 @@ onMounted(() => {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     border: 1px solid rgba(0, 0, 0, 0.06);
     overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 
-    .ant-tabs {
+    :deep(.ant-card-body) {
+      padding: 0;
+      background: #ffffff;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    :deep(.ant-tabs) {
       background-color: #ffffff;
-      padding: 20px 24px;
-      padding-top: 16px;
+      padding: 12px 20px 12px;
       margin: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     :deep(.ant-tabs-nav) {
-      margin-bottom: 24px;
+      margin-bottom: 12px;
       padding: 0;
+      flex-shrink: 0;
     }
 
     :deep(.ant-tabs-content-holder) {
-      padding: 0 24px 24px;
+      padding: 0;
+      background: #ffffff;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    :deep(.ant-tabs-content) {
+      height: 100%;
+    }
+
+    :deep(.ant-tabs-tabpane) {
+      height: 100%;
+      padding: 0;
+      outline: none;
+
+      > * {
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+      }
+
+      > .product-script,
+      > .access-guide {
+        overflow: hidden;
+      }
+    }
+
+    :deep(.ant-tabs-tabpane-active) {
+      display: flex !important;
+      flex-direction: column;
+
+      > * {
+        flex: 1 1 0;
+        min-height: 0;
+      }
     }
 
     :deep(.ant-tabs-tab) {
-      padding: 12px 24px;
-      font-size: 15px;
+      padding: 12px 8px;
+      font-size: 14px;
       font-weight: 500;
       color: #666;
       transition: all 0.3s ease;
-      margin-right: 8px;
 
       &:hover {
         color: #1890ff;

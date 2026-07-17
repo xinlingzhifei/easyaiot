@@ -205,7 +205,7 @@ sudo .scripts/docker/install_linux.sh         # 1 Deploy → 1 Install → 7 Ver
 
 **standard**
 
-- Не запускаются: TDengine, EMQX, Node-RED, `iot-device`, `iot-tdengine`
+- Не запускаются: TDengine, Node-RED, `iot-device`, `iot-tdengine` (включая EMQX)
 - Все остальные запускаются
 
 **full**
@@ -263,7 +263,7 @@ df -h / && docker system df
 | Порт | Сервис | Примечания |
 |------|--------|------------|
 | 1880 | Node-RED | full/standard |
-| 1883 | EMQX | full |
+| 1883 | EMQX | full/standard |
 | 1935 | SRS | RTMP |
 | 5432 | PostgreSQL | Основная база данных |
 | 6000 | VIDEO | Обработка видео |
@@ -331,7 +331,7 @@ cd .scripts/docker && ./install_middleware_linux.sh install
 | MinIO | 9000/9001 | Объектное хранилище |
 | Milvus | 19530/9091 | Векторная БД |
 | SRS | 1935 | Стриминг |
-| EMQX | 1883 | MQTT (full) |
+| EMQX | 1883 | MQTT (full/standard) |
 | ZLMediaKit | 6080 | Медиасервер |
 | TDengine | 6030 | БД временных рядов (full) |
 | Node-RED | 1880 | Движок правил |

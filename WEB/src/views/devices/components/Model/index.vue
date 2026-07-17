@@ -8,47 +8,37 @@
 
       <!-- 统一的标题和工具栏 -->
       <div class="view-header">
-        <div class="view-title">设备运行状态</div>
+        <div class="view-title">
+          设备属性
+          <span class="count">({{ propertyTotal }})</span>
+        </div>
         <div class="view-actions">
-          <ButtonGroup>
-            <Button
-              :type="activeKey === 'card' ? 'primary' : 'default'"
-              @click="handleTabChange('card')"
-            >
-              <template #icon>
-                <Icon icon="ant-design:appstore-outlined" />
-              </template>
-              卡片视图
-            </Button>
-            <Button
-              :type="activeKey === 'table' ? 'primary' : 'default'"
-              @click="handleTabChange('table')"
-            >
-              <template #icon>
-                <Icon icon="ant-design:table-outlined" />
-              </template>
-              表格视图
-            </Button>
-          </ButtonGroup>
+          <Button @click="handleRefresh" preIcon="ant-design:reload-outlined">
+            刷新
+          </Button>
+          <Button type="default" preIcon="ant-design:swap-outlined" @click="handleViewSwap">
+            切换视图
+          </Button>
         </div>
       </div>
 
-      <!-- 卡片视图 -->
-      <div v-show="activeKey === 'card'">
+      <!-- 卡片视图：v-if 避免与表格同时挂载导致重复请求 -->
+      <div v-if="activeKey === 'card'">
         <TingModelCardList 
           :params="params" 
-          :api="getDevicethingModels" 
+          :api="fetchThingModels" 
           :active-key="activeKey"
           :search-params="searchParams"
           @get-method="getMethod"
           @refresh="handleRefresh" 
           @view="handleView"
           @tab-change="handleTabChange"
+          @loaded="onCardLoaded"
         />
       </div>
 
       <!-- 表格视图 -->
-      <div v-show="activeKey === 'table'">
+      <div v-if="activeKey === 'table'">
         <BasicTable @register="registerTable">
           <template #action="{ record }">
             <TableAction
@@ -80,9 +70,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive } from "vue";
-import { ButtonGroup } from 'ant-design-vue';
-import { Icon } from '@/components/Icon';
+import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated } from "vue";
 import { BasicTable, TableAction, useTable } from '@/components/Table';
 import { BasicForm, useForm } from '@/components/Form';
 import { getBasicColumns, getFormConfig } from './tableData';
@@ -93,18 +81,26 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { useRoute } from "vue-router";
 import TingModelCardList from "./components/CardList/TingModelCardList.vue";
 import { Button } from '@/components/Button'
+
+const AUTO_REFRESH_MS = 5000;
+
 const route = useRoute();
 const { createMessage } = useMessage();
 
 const activeKey = ref<string>('card');
 const searchParams = reactive({});
+const propertyTotal = ref(0);
+
+function onCardLoaded(total: number) {
+  propertyTotal.value = total ?? 0;
+}
 
 // 共享的搜索表单
 const [registerForm, { validate }] = useForm({
   schemas: [
     {
       field: `name`,
-      label: `健/名称`,
+      label: `键/名称`,
       component: 'Input',
     }
   ],
@@ -127,12 +123,17 @@ async function handleSearchSubmit() {
   }
 }
 
+async function fetchThingModels(params) {
+  const res = await getDevicethingModels(params);
+  propertyTotal.value = res?.total ?? 0;
+  return res;
+}
+
 const [registerTable, { reload }] = useTable({
   resizeHeightOffset: 16,
-  api: getDevicethingModels,
+  api: fetchThingModels,
   beforeFetch: (data) => {
     data['id'] = route.params.id;
-    // 合并搜索参数
     return {
       ...data,
       ...searchParams,
@@ -140,7 +141,7 @@ const [registerTable, { reload }] = useTable({
   },
   columns: getBasicColumns(),
   formConfig: getFormConfig(),
-  useSearchForm: false, // 禁用表格内置的搜索表单，使用共享的表单
+  useSearchForm: false,
   showIndexColumn: false,
   showTableSetting: false,
   tableSetting: { fullScreen: true },
@@ -163,20 +164,24 @@ const params = {
   id: route.params.id,
 };
 
-let cardListReload = () => {};
+type CardReload = (p?: Record<string, any>, options?: { silent?: boolean }) => Promise<void> | void;
+let cardListReload: CardReload = () => {};
 
 // 获取内部fetch方法;
-function getMethod(m: any) {
+function getMethod(m: CardReload) {
   cardListReload = m;
 }
 
-//详情刷新事件
-const handleRefresh = () => {
+function refreshData(options: { silent?: boolean } = {}) {
   if (activeKey.value === 'table') {
-    reload();
-  } else {
-    cardListReload();
+    return reload();
   }
+  return cardListReload({}, { silent: !!options.silent });
+}
+
+// 手动刷新
+const handleRefresh = () => {
+  refreshData();
   createMessage.success('刷新成功');
 };
 
@@ -187,16 +192,70 @@ function handleView(record) {
   });
 }
 
-// 切换标签页
+// 切换卡片/表格视图
 function handleTabChange(key: string) {
   activeKey.value = key;
-  // 切换视图后，使用当前搜索参数刷新数据
-  if (key === 'table') {
-    reload();
-  } else {
-    cardListReload();
+}
+
+function handleViewSwap() {
+  handleTabChange(activeKey.value === 'card' ? 'table' : 'card');
+}
+
+// ---- 5s 自动刷新：仅当前 Tab 可见时运行 ----
+let autoTimer: ReturnType<typeof setInterval> | null = null;
+let autoRefreshing = false;
+
+async function silentAutoRefresh() {
+  if (autoRefreshing || document.hidden) return;
+  autoRefreshing = true;
+  try {
+    await refreshData({ silent: true });
+  } catch {
+    // 轮询失败不打断后续周期
+  } finally {
+    autoRefreshing = false;
   }
 }
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  autoTimer = setInterval(() => {
+    silentAutoRefresh();
+  }, AUTO_REFRESH_MS);
+}
+
+function stopAutoRefresh() {
+  if (autoTimer != null) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+}
+
+function onVisibilityChange() {
+  if (document.hidden) {
+    stopAutoRefresh();
+  } else {
+    startAutoRefresh();
+  }
+}
+
+onMounted(() => {
+  startAutoRefresh();
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+
+onActivated(() => {
+  startAutoRefresh();
+});
+
+onDeactivated(() => {
+  stopAutoRefresh();
+});
+
+onUnmounted(() => {
+  stopAutoRefresh();
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+});
 </script>
 
 <style lang="less" scoped>
@@ -207,68 +266,40 @@ function handleTabChange(key: string) {
   min-height: 100%;
 
   .tab-content {
-    padding: 28px;
+    padding: 8px 4px 16px;
     background: #ffffff;
     min-height: 400px;
     animation: fadeIn 0.3s ease-in-out;
 
     .search-form-wrapper {
-      padding: 16px;
-      background: #ffffff;
-      margin-bottom: 16px;
-      border-radius: 8px;
+      margin-bottom: 8px;
     }
 
     .view-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 8px;
-      margin-bottom: 20px;
+      gap: 12px;
+      margin-bottom: 16px;
 
       .view-title {
         font-size: 16px;
-        font-weight: 600;
+        font-weight: 500;
         line-height: 24px;
         color: #262626;
+
+        .count {
+          margin-left: 4px;
+          color: #8c8c8c;
+          font-weight: 400;
+        }
       }
 
       .view-actions {
-        :deep(.ant-btn-group) {
-          .ant-btn {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 14px;
-            font-size: 13px;
-            font-weight: 500;
-            border-radius: 6px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            height: 32px;
-
-            &:first-child {
-              border-top-right-radius: 0;
-              border-bottom-right-radius: 0;
-            }
-
-            &:last-child {
-              border-top-left-radius: 0;
-              border-bottom-left-radius: 0;
-            }
-
-            &:hover:not(.ant-btn-primary) {
-              color: #1890ff;
-              border-color: #1890ff;
-              background: rgba(24, 144, 255, 0.06);
-            }
-
-            &.ant-btn-primary {
-              background: #1890ff;
-              border-color: #1890ff;
-              box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
-            }
-          }
-        }
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
       }
     }
   }

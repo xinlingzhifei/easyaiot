@@ -205,7 +205,7 @@ Enregistré dans `.scripts/docker/.deploy_profile`, réutilisé par `start` / `s
 
 **standard**
 
-- Non démarrés : TDengine, EMQX, Node-RED, `iot-device`, `iot-tdengine`
+- Non démarrés : TDengine, Node-RED, `iot-device`, `iot-tdengine` (inclut EMQX)
 - Tous les autres démarrés
 
 **full**
@@ -263,7 +263,7 @@ df -h / && docker system df
 | Port | Service | Notes |
 |------|---------|-------|
 | 1880 | Node-RED | full/standard |
-| 1883 | EMQX | full |
+| 1883 | EMQX | full/standard |
 | 1935 | SRS | RTMP |
 | 5432 | PostgreSQL | Base de données principale |
 | 6000 | VIDEO | Traitement vidéo |
@@ -331,7 +331,7 @@ cd .scripts/docker && ./install_middleware_linux.sh install
 | MinIO | 9000/9001 | Stockage objet |
 | Milvus | 19530/9091 | Base vectorielle |
 | SRS | 1935 | Streaming |
-| EMQX | 1883 | MQTT (full) |
+| EMQX | 1883 | MQTT (full/standard) |
 | ZLMediaKit | 6080 | Serveur média |
 | TDengine | 6030 | BD séries temporelles (full) |
 | Node-RED | 1880 | Moteur de règles |

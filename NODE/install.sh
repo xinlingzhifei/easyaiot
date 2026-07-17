@@ -132,9 +132,9 @@ sync_agent_sources() {
     return 0
   fi
   echo "==> 同步 Agent 源码: ${resolved_script_dir} -> ${resolved_install_dir}"
-  sudo mkdir -p "$resolved_install_dir"
   sudo cp "$resolved_script_dir/run_agent.py" "$resolved_script_dir/agent_server.py" \
-    "$resolved_script_dir/media_manager.py" "$resolved_script_dir/workload_manager.py" \
+    "$resolved_script_dir/media_manager.py" "$resolved_script_dir/mqtt_manager.py" \
+    "$resolved_script_dir/workload_manager.py" \
     "$resolved_script_dir/requirements.txt" "$resolved_script_dir/agent.env.example" \
     "$resolved_script_dir/install.sh" "$resolved_install_dir/"
   sudo chmod +x "$resolved_install_dir/install.sh"
@@ -240,6 +240,9 @@ do_install() {
     cat <<WRAP | sudo tee "$launcher" > /dev/null
 #!/bin/bash
 export PYTHONPATH="${SITE_PKG}\${PYTHONPATH:+:\$PYTHONPATH}"
+if [ "\$#" -gt 0 ]; then
+  exec ${PYTHON} "\$@"
+fi
 exec ${PYTHON} "${resolved_install_dir}/run_agent.py" "\$@"
 WRAP
     sudo chmod +x "$launcher"
@@ -248,11 +251,12 @@ WRAP
 
   verify_agent_imports() {
     if [ -d "$SITE_PKG" ]; then
-      sudo env PYTHONPATH="$SITE_PKG" $PYTHON -c "import flask, psutil, requests, minio" 2>/dev/null \
+      sudo env PYTHONPATH="$SITE_PKG" $PYTHON -c \
+        "import flask, psutil, requests, minio, mqtt_manager" 2>/dev/null \
         && return 0
     fi
     if [ -n "$RUN_PYTHON" ] && [ -x "$RUN_PYTHON" ]; then
-      sudo "$RUN_PYTHON" -c "import flask, psutil, requests, minio" 2>/dev/null \
+      sudo "$RUN_PYTHON" -c "import flask, psutil, requests, minio, mqtt_manager" 2>/dev/null \
         && return 0
     fi
     return 1

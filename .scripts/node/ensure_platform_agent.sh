@@ -43,6 +43,42 @@ is_port_listening() {
   return 1
 }
 
+agent_health_ready() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --connect-timeout 2 "http://127.0.0.1:${AGENT_PORT}/health" >/dev/null 2>&1
+    return $?
+  fi
+  is_port_listening "$AGENT_PORT"
+}
+
+wait_for_agent_ready() {
+  local deadline=$((SECONDS + 20))
+  while [[ $SECONDS -lt $deadline ]]; do
+    if agent_health_ready; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+verify_agent_python() {
+  local runner="$1"
+  "$runner" -c 'import flask, psutil, requests' >/dev/null 2>&1
+}
+
+resolve_python_with_pip() {
+  local candidate
+  for candidate in "$PYTHON" "${HOME:-/root}"/.pyenv/versions/*/bin/python /root/.pyenv/versions/*/bin/python; do
+    [[ -x "$candidate" ]] || continue
+    if "$candidate" -m pip --version >/dev/null 2>&1; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 resolve_work_dir() {
   if [[ -f "$INSTALL_DIR/run_agent.py" ]]; then
     echo "$INSTALL_DIR"
@@ -206,7 +242,7 @@ sync_agent_runtime_files() {
     return 0
   fi
   local f
-  for f in run_agent.py agent_server.py media_manager.py workload_manager.py; do
+  for f in run_agent.py agent_server.py media_manager.py mqtt_manager.py workload_manager.py; do
     if [[ ! -f "${SOURCE_DIR}/${f}" ]]; then
       continue
     fi
@@ -248,7 +284,6 @@ install_agent_runtime_if_needed() {
 restart_agent_service() {
   local work_dir="$1"
   sync_agent_runtime_files "$work_dir"
-  stop_running_agent
   if [[ -f /etc/systemd/system/easyaiot-node-agent.service ]]; then
     if [[ -x "${INSTALL_DIR}/install.sh" ]]; then
       sudo bash "${INSTALL_DIR}/install.sh" restart
@@ -258,20 +293,54 @@ restart_agent_service() {
       sudo systemctl restart easyaiot-node-agent
     fi
     echo "[platform-agent] 已通过 systemd 重启 easyaiot-node-agent"
-    return 0
+    if wait_for_agent_ready; then
+      return 0
+    fi
+    echo "[platform-agent] systemd 服务未在 ${AGENT_PORT} 端口就绪" >&2
+    sudo systemctl status easyaiot-node-agent --no-pager -l 2>&1 | tail -30 >&2 || true
+    return 1
   fi
 
   mkdir -p "${HOME}/logs"
+  local log_file="${HOME}/logs/platform-node-agent.log"
   if [[ -x "${work_dir}/agent-python.sh" ]]; then
-    nohup "${work_dir}/agent-python.sh" >>"${HOME}/logs/platform-node-agent.log" 2>&1 &
+    if ! verify_agent_python "${work_dir}/agent-python.sh"; then
+      echo "[platform-agent] Agent 独立 Python 环境缺少 flask/psutil/requests" >&2
+      echo "[platform-agent] 请执行: sudo bash ${SOURCE_DIR}/install.sh install" >&2
+      return 1
+    fi
+    stop_running_agent
+    nohup "${work_dir}/agent-python.sh" >>"$log_file" 2>&1 &
   else
+    if ! verify_agent_python "$PYTHON"; then
+      local repo_root target_python pip_python
+      repo_root="$(cd "${SOURCE_DIR}/.." && pwd)"
+      target_python="$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo '3.12')"
+      pip_python="$(resolve_python_with_pip || true)"
+      echo "[platform-agent] 宿主机 ${PYTHON} 缺少 Agent 依赖（flask/psutil/requests）" >&2
+      if [[ -n "$pip_python" ]]; then
+        echo "[platform-agent] 检测到带 pip 的 Python: ${pip_python}" >&2
+        echo "[platform-agent] sudo -H env AGENT_TARGET_PYTHON=${target_python} PYTHON=${pip_python} bash ${SOURCE_DIR}/export_pip_wheels.sh" >&2
+      fi
+      echo "[platform-agent] 无宿主机 pip 时可使用 AI 镜像生成离线依赖:" >&2
+      echo "[platform-agent] sudo docker run --rm --entrypoint bash -v \"${repo_root}:/repo\" -w /repo/NODE ai-service:latest -lc 'AGENT_TARGET_PYTHON=${target_python} PYTHON=python bash export_pip_wheels.sh'" >&2
+      echo "[platform-agent] 然后执行: sudo bash ${SOURCE_DIR}/install.sh install" >&2
+      return 1
+    fi
+    stop_running_agent
     set -a
     # shellcheck source=/dev/null
     source "${work_dir}/agent.env"
     set +a
-    nohup "$PYTHON" "${work_dir}/run_agent.py" >>"${HOME}/logs/platform-node-agent.log" 2>&1 &
+    nohup "$PYTHON" "${work_dir}/run_agent.py" >>"$log_file" 2>&1 &
   fi
-  echo "[platform-agent] 已后台启动 Agent，日志: ${HOME}/logs/platform-node-agent.log"
+  echo "[platform-agent] 已后台启动 Agent，日志: ${log_file}"
+  if wait_for_agent_ready; then
+    return 0
+  fi
+  echo "[platform-agent] Agent 启动后未在 ${AGENT_PORT} 端口就绪，最近日志:" >&2
+  tail -30 "$log_file" >&2 || true
+  return 1
 }
 
 main() {
@@ -289,6 +358,7 @@ main() {
     exit 1
   }
   IFS='|' read -r node_id agent_token port <<<"$creds"
+  AGENT_PORT="${port:-$AGENT_PORT}"
 
   local cached="" creds_changed=0
   cached="$(read_env_credentials "${work_dir}/agent.env" 2>/dev/null || true)"
@@ -302,7 +372,15 @@ main() {
     creds_changed=1
   fi
 
-  if is_port_listening "$AGENT_PORT" && [[ "$creds_changed" -eq 0 ]] && ! agent_code_stale; then
+  local agent_running=0 code_stale=0
+  if agent_health_ready; then
+    agent_running=1
+  fi
+  if agent_code_stale; then
+    code_stale=1
+  fi
+
+  if [[ "$agent_running" -eq 1 ]] && [[ "$creds_changed" -eq 0 ]] && [[ "$code_stale" -eq 0 ]]; then
     if [[ -f "${work_dir}/agent.env" ]] && grep -q '^PLATFORM_AGENT=1' "${work_dir}/agent.env" 2>/dev/null; then
       echo "[platform-agent] 端口 ${AGENT_PORT} 已有 Agent 监听且凭据一致，跳过"
       exit 0
@@ -311,12 +389,16 @@ main() {
     creds_changed=1
   fi
 
-  if is_port_listening "$AGENT_PORT" && [[ "$creds_changed" -eq 1 ]]; then
+  if [[ "$agent_running" -eq 1 ]] && [[ "$creds_changed" -eq 1 ]]; then
     echo "[platform-agent] 检测到凭据变更，重启 Agent (nodeId=${node_id})"
   fi
 
-  if is_port_listening "$AGENT_PORT" && agent_code_stale; then
+  if [[ "$agent_running" -eq 1 ]] && [[ "$code_stale" -eq 1 ]]; then
     echo "[platform-agent] 检测到 Agent 代码更新，将同步并重启"
+  fi
+
+  if [[ "$agent_running" -eq 0 ]]; then
+    echo "[platform-agent] 端口 ${AGENT_PORT} 未监听，将启动 Agent"
   fi
 
   local needs_env_write=0
@@ -334,8 +416,13 @@ main() {
 
   work_dir="$(install_agent_runtime_if_needed "$work_dir")"
 
-  if [[ "$needs_env_write" -eq 1 ]] || agent_code_stale; then
+  if [[ "$needs_env_write" -eq 1 ]] || [[ "$code_stale" -eq 1 ]] || [[ "$agent_running" -eq 0 ]]; then
     restart_agent_service "$work_dir"
+  fi
+
+  if ! agent_health_ready; then
+    echo "[platform-agent] Agent 健康检查失败: http://127.0.0.1:${AGENT_PORT}/health" >&2
+    exit 1
   fi
 }
 

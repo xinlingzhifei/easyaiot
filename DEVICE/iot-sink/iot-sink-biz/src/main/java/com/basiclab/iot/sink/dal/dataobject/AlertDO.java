@@ -98,5 +98,19 @@ public class AlertDO {
      * 关联事件ID（同一帧算法告警/人脸/车牌）
      */
     private String correlationId;
+
+    private Integer taskId;
+
+    private String taskName;
+
+    /** 边缘节点 edge_node.id */
+    private Long edgeNodeId;
+
+    private String edgeNodeName;
+
+    private String edgeNodeHost;
+
+    /** 运行 compute_node.id */
+    private Long nodeId;
 }
 

@@ -65,5 +65,26 @@
         where device_id = #{deviceId,jdbcType=BIGINT}
         order by create_time desc
     </select>
+
+    <select id="selectByRequestId" parameterType="java.lang.String" resultMap="BaseResultMap">
+        select
+        <include refid="Base_Column_List"/>
+        from device_service_invoke_response
+        where request_id = #{requestId,jdbcType=VARCHAR}
+        order by create_time desc
+        limit 1
+    </select>
+
+    <update id="updateResponse"
+            parameterType="com.basiclab.iot.device.domain.device.vo.DeviceServiceInvokeResponse">
+        update device_service_invoke_response
+        set message_id = #{messageId,jdbcType=VARCHAR},
+            response_data = #{responseData,jdbcType=LONGVARCHAR},
+            response_code = #{responseCode,jdbcType=INTEGER},
+            response_msg = #{responseMsg,jdbcType=VARCHAR},
+            topic = #{topic,jdbcType=VARCHAR},
+            report_time = #{reportTime,jdbcType=TIMESTAMP}
+        where id = #{id,jdbcType=BIGINT}
+    </update>
 </mapper>
 

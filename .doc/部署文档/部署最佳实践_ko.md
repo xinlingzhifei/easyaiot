@@ -205,7 +205,7 @@ sudo .scripts/docker/install_linux.sh         # 1 Deploy → 1 Install → 7 Ver
 
 **standard**
 
-- 미시작: TDengine, EMQX, Node-RED, `iot-device`, `iot-tdengine`
+- 미시작: TDengine, Node-RED, `iot-device`, `iot-tdengine`（EMQX 포함）
 - 나머지 모두 시작
 
 **full**
@@ -263,7 +263,7 @@ df -h / && docker system df
 | 포트 | 서비스 | 비고 |
 |------|--------|------|
 | 1880 | Node-RED | full/standard |
-| 1883 | EMQX | full |
+| 1883 | EMQX | full/standard |
 | 1935 | SRS | RTMP |
 | 5432 | PostgreSQL | 기본 데이터베이스 |
 | 6000 | VIDEO | 비디오 처리 |
@@ -331,7 +331,7 @@ cd .scripts/docker && ./install_middleware_linux.sh install
 | MinIO | 9000/9001 | 객체 스토리지 |
 | Milvus | 19530/9091 | 벡터 DB |
 | SRS | 1935 | 스트리밍 |
-| EMQX | 1883 | MQTT (full) |
+| EMQX | 1883 | MQTT (full/standard) |
 | ZLMediaKit | 6080 | 미디어 서버 |
 | TDengine | 6030 | 시계열 DB (full) |
 | Node-RED | 1880 | 규칙 엔진 |

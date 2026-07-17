@@ -263,9 +263,13 @@ init_deploy_profile_for_logs() {
     EASYAIOT_DEPLOY_PROFILE="$(_resolve_deploy_profile_raw)"
     export EASYAIOT_DEPLOY_PROFILE
     case "$EASYAIOT_DEPLOY_PROFILE" in
-        mini|standard)
+        mini)
             export EASYAIOT_ENABLE_TDENGINE=0
             export EASYAIOT_ENABLE_EMQX=0
+            ;;
+        standard)
+            export EASYAIOT_ENABLE_TDENGINE=0
+            export EASYAIOT_ENABLE_EMQX=1
             ;;
         full)
             export EASYAIOT_ENABLE_TDENGINE=1

@@ -39,7 +39,14 @@ public class NodeAgentController {
     @PostMapping("/heartbeat")
     @Operation(summary = "Agent 心跳")
     @TenantIgnore
-    public CommonResult<Boolean> heartbeat(@Valid @RequestBody NodeAgentHeartbeatReqVO reqVO) {
+    public CommonResult<Boolean> heartbeat(
+            @Valid @RequestBody NodeAgentHeartbeatReqVO reqVO,
+            javax.servlet.http.HttpServletRequest request) {
+        if (log.isDebugEnabled()) {
+            log.debug("Agent heartbeat nodeId={}, memTotal={}, diskTotal={}, remote={}",
+                    reqVO.getNodeId(), reqVO.getMemTotalBytes(), reqVO.getDiskTotalBytes(),
+                    request.getRemoteAddr());
+        }
         nodeAgentService.heartbeat(reqVO);
         return success(true);
     }

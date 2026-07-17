@@ -6,12 +6,11 @@ import com.basiclab.iot.sink.messagebus.subscriber.handler.IotDownstreamMessageH
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 import com.basiclab.iot.sink.util.IotDeviceMessageUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
-import org.springframework.beans.factory.annotation.Autowired;
-
-import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.util.List;
 
@@ -21,60 +20,56 @@ import java.util.List;
  * @author reese
  * @email reese
  */
-
 @Slf4j
 @Component
-@ConditionalOnBean(IotMessageBus.class)
-public class IotDownstreamMessageSubscriber implements IotMessageSubscriber<IotDeviceMessage> {
+public class IotDownstreamMessageSubscriber
+        implements IotMessageSubscriber<IotDeviceMessage>, SmartInitializingSingleton {
 
     @Resource
+    @Lazy
     private IotMessageBus messageBus;
 
     @Autowired(required = false)
     private List<IotDownstreamMessageHandler> downstreamMessageHandlers;
 
-    @PostConstruct
-    public void subscribe() {
+    @Override
+    public void afterSingletonsInstantiated() {
         messageBus.register(this);
-        log.info("[subscribe][IoT 网关下行消息订阅成功，主题：{}]", getTopic());
+        log.info("[afterSingletonsInstantiated][IoT 网关下行消息订阅成功，主题：{}]", getTopic());
     }
 
     @Override
     public String getTopic() {
-        // 订阅通用设备消息主题，用于处理所有下行消息
-        // 注意：此订阅器主要用于通用的下行消息处理，具体的协议实现应该订阅各自网关特定的主题
         return IotDeviceMessage.MESSAGE_BUS_DEVICE_MESSAGE_TOPIC;
     }
 
     @Override
     public String getGroup() {
-        // 使用固定的 Group，确保所有网关实例共享消费
         return "iot-gateway-downstream-subscriber";
     }
 
     @Override
     public void onMessage(IotDeviceMessage message) {
+        if (message == null) {
+            log.warn("[onMessage][接收到空的下行消息]");
+            return;
+        }
         log.debug("[onMessage][接收到下行消息, messageId: {}, method: {}, deviceId: {}, serverId: {}]",
                 message.getId(), message.getMethod(), message.getDeviceId(), message.getServerId());
 
         try {
-            // 1. 校验消息
-            if (message == null || message.getMethod() == null) {
+            if (message.getMethod() == null) {
                 log.warn("[onMessage][消息或方法为空, messageId: {}, deviceId: {}]",
-                        message != null ? message.getId() : null,
-                        message != null ? message.getDeviceId() : null);
+                        message.getId(), message.getDeviceId());
                 return;
             }
 
-            // 2. 只处理下行消息（通过 method 判断是否为下行消息）
-            // 注意：这里可以根据实际需求添加更精确的过滤逻辑
             if (!isDownstreamMessage(message)) {
                 log.debug("[onMessage][消息不是下行消息，跳过处理, messageId: {}, method: {}]",
                         message.getId(), message.getMethod());
                 return;
             }
 
-            // 3. 委托给下行消息处理器处理业务逻辑
             if (downstreamMessageHandlers != null && !downstreamMessageHandlers.isEmpty()) {
                 for (IotDownstreamMessageHandler handler : downstreamMessageHandlers) {
                     try {
@@ -103,19 +98,7 @@ public class IotDownstreamMessageSubscriber implements IotMessageSubscriber<IotD
         }
     }
 
-    /**
-     * 判断是否为下行消息
-     * <p>
-     * 下行消息：从平台发送到设备的消息
-     * 上行消息：从设备发送到平台的消息
-     *
-     * @param message 设备消息
-     * @return 是否为下行消息
-     */
     private boolean isDownstreamMessage(IotDeviceMessage message) {
-        // 通过工具类判断是否为上行消息，取反即为下行消息
         return !IotDeviceMessageUtils.isUpstreamMessage(message);
     }
-
 }
-

@@ -242,12 +242,12 @@ verify_service "SRS" "srs-server" "1935,1985,8080" \
 verify_service "NodeRED" "nodered-server" "1880" \
     "curl -f http://127.0.0.1:1880/ > /dev/null 2>&1"
 
-# EMQX（默认不启用）
-if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'emqx-server'; then
+# EMQX（mini 不启用；standard/full 启用）
+if middleware_service_enabled "EMQX" && [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ]; then
     verify_service "EMQX" "emqx-server" "1883,8883,8083,8084,18083" \
         "docker exec emqx-server /opt/emqx/bin/emqx ctl status > /dev/null 2>&1"
 else
-    print_info "EMQX 未启用，跳过验证"
+    print_info "EMQX 未启用（当前部署形态），跳过验证"
 fi
 
 # ZLMediaKit

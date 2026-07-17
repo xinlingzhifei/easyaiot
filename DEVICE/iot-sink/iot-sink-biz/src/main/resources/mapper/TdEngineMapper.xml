@@ -3,25 +3,26 @@
 <mapper namespace="com.basiclab.iot.sink.dal.mapper.TdEngineMapper">
 
     <insert id="insertTableData">
-        insert into #{dataBaseName}.#{tableName}
+        insert into ${dataBaseName}.${tableName}
         <foreach item="item" collection="schemaFieldValues" separator=","
                  open="(" close=")" index="">
             ${item.fieldName}
         </foreach>
-        using #{dataBaseName}.#{superTableName}
+        using ${dataBaseName}.${superTableName}
         tags
         <foreach item="item" collection="tagsFieldValues" separator=","
                  open="(" close=")" index="">
             <choose>
-                <!-- Check if dataType is not null and needs quoting -->
-                <when test="item.dataType != null and item.dataType.quoted">
+                <when test="item.fieldValue == null">
+                    NULL
+                </when>
+                <!-- boolean 用 isQuoted()，避免 OGNL 取不到 quoted 导致 NCHAR 未加引号、JSON 双引号被吃掉 -->
+                <when test="item.dataType != null and item.dataType.isQuoted()">
                     '${item.fieldValue}'
                 </when>
-                <!-- Default behavior if dataType is null (no quotes in this case) -->
                 <when test="item.dataType == null">
                     ${item.fieldValue}
                 </when>
-                <!-- If dataType doesn't require quotes -->
                 <otherwise>
                     ${item.fieldValue}
                 </otherwise>
@@ -31,15 +32,15 @@
         <foreach item="item" collection="schemaFieldValues" separator=","
                  open="(" close=")" index="">
             <choose>
-                <!-- Check if dataType is not null and needs quoting -->
-                <when test="item.dataType != null and item.dataType.quoted">
+                <when test="item.fieldValue == null">
+                    NULL
+                </when>
+                <when test="item.dataType != null and item.dataType.isQuoted()">
                     '${item.fieldValue}'
                 </when>
-                <!-- Default behavior if dataType is null (no quotes in this case) -->
                 <when test="item.dataType == null">
                     ${item.fieldValue}
                 </when>
-                <!-- If dataType doesn't require quotes -->
                 <otherwise>
                     ${item.fieldValue}
                 </otherwise>

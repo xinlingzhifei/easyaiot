@@ -28,17 +28,119 @@ const commonApi = (method: 'get' | 'post' | 'delete' | 'put', url, params) => {
   );
 };
 
-// 在线调试
+// 在线调试：命令下发（真实接口在 deviceCommand）
 export const issueCommands = (data) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
   return defHttp.post(
     {
-      url: `${Api.DeviceProfile}/issueCommands`,
+      url: `/deviceCommand/issueCommands`,
       data,
       headers: {
         // @ts-ignore
         ignoreCancelToken: true,
       },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+// 自定义 MQTT 下行
+export const sendCustomMessage = (data) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `/deviceCommand/sendCustomMessage`,
+      data,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+// 产品协议脚本（iot-sink 编解码）
+export const getProductScript = (productIdentification: string) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    {
+      url: `/sink/product-script/${productIdentification}`,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export const saveProductScript = (data) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `/sink/product-script`,
+      data,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export const checkProductScript = (scriptContent: string) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `/sink/product-script/check`,
+      data: { scriptContent },
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export const simulateProductScript = (data: {
+  scriptContent: string;
+  direction: 'uplink' | 'downlink' | string;
+  topic?: string;
+  payloadText?: string;
+  payloadHex?: string;
+  message?: Record<string, any>;
+}) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `/sink/product-script/simulate`,
+      data,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export const getProductScriptTemplates = () => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    {
+      url: `/sink/product-script/meta/templates`,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export const deleteProductScript = (productId: number, productIdentification?: string) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  const q = productIdentification
+    ? `?productIdentification=${encodeURIComponent(productIdentification)}`
+    : '';
+  return defHttp.delete(
+    {
+      url: `/sink/product-script/${productId}${q}`,
     },
     { isTransformResponse: true },
   );
@@ -124,6 +226,22 @@ export const getDeviceProfileDetail = (id) => {
   return defHttp.get(
     {
       url: `${Api.DeviceProfile}/${id}`,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+// 分页查询产品关联设备
+export const getProductRelatedDevices = (productIdentification: string, params?) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    {
+      url: `${Api.DeviceProfile}/devices/${productIdentification}`,
+      params,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
     },
     { isTransformResponse: true },
   );

@@ -10,8 +10,10 @@ import com.basiclab.iot.common.service.RedisService;
 import com.basiclab.iot.common.utils.StringUtils;
 import com.basiclab.iot.common.web.controller.BaseController;
 import com.basiclab.iot.device.domain.device.vo.CommandWrapperParamReq;
+import com.basiclab.iot.device.domain.device.vo.Device;
 import com.basiclab.iot.device.domain.device.vo.Product;
 import com.basiclab.iot.device.domain.product.model.ProductModel;
+import com.basiclab.iot.device.service.device.DeviceService;
 import com.basiclab.iot.device.service.product.ProductService;
 import com.basiclab.iot.file.RemoteFileService;
 import io.swagger.annotations.ApiImplicitParam;
@@ -49,6 +51,8 @@ public class ProductController extends BaseController {
     @Resource
     private ProductService productService;
     @Resource
+    private DeviceService deviceService;
+    @Resource
     private RemoteFileService remoteFileService;
     @Autowired
     private RedisService redisService;
@@ -73,6 +77,34 @@ public class ProductController extends BaseController {
     @GetMapping("/selectByProductIdentification/{productIdentification}")
     public R<?> selectByProductIdentification(@PathVariable(value = "productIdentification") String productIdentification) {
         return R.ok(productService.selectByProductIdentification(productIdentification));
+    }
+
+    /**
+     * 分页查询产品关联设备列表
+     *
+     * @param productIdentification 产品标识
+     * @param device                可选筛选条件（设备名称、设备标识、连接状态、SN 等）
+     * @return 分页设备列表
+     */
+    @ApiOperation("查询产品关联设备列表")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "pageNum", value = "页码", dataType = "int", dataTypeClass = Integer.class, paramType = "query", example = "1", required = true),
+            @ApiImplicitParam(name = "pageSize", value = "每页显示记录数", dataType = "int", dataTypeClass = Integer.class, paramType = "query", example = "10", required = true),
+            @ApiImplicitParam(name = "deviceName", value = "设备名称", dataType = "string", dataTypeClass = String.class, paramType = "query"),
+            @ApiImplicitParam(name = "deviceIdentification", value = "设备标识", dataType = "string", dataTypeClass = String.class, paramType = "query"),
+            @ApiImplicitParam(name = "connectStatus", value = "连接状态", dataType = "string", dataTypeClass = String.class, paramType = "query"),
+            @ApiImplicitParam(name = "deviceSn", value = "设备SN号", dataType = "string", dataTypeClass = String.class, paramType = "query")
+    })
+    @GetMapping("/devices/{productIdentification}")
+    public Object listDevicesByProduct(@PathVariable("productIdentification") String productIdentification, Device device) {
+        Product product = productService.selectByProductIdentification(productIdentification);
+        if (StringUtils.isNull(product)) {
+            return AjaxResult.error("产品不存在");
+        }
+        device.setProductIdentification(productIdentification);
+        startPage();
+        List<Device> list = deviceService.selectDeviceList(device);
+        return getDataTable(list);
     }
 
     /**

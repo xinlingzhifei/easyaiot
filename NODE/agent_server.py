@@ -7,6 +7,7 @@ from flask import Flask, jsonify, request
 
 from workload_manager import WorkloadManager, find_available_port
 from media_manager import MediaStackManager
+from mqtt_manager import MqttStackManager
 
 logger = logging.getLogger('easyaiot-node-agent.server')
 
@@ -17,6 +18,7 @@ AGENT_LISTEN_PORT = int(os.environ.get('AGENT_LISTEN_PORT', '9100'))
 app = Flask(__name__)
 manager = WorkloadManager()
 media_manager = MediaStackManager()
+mqtt_manager = MqttStackManager()
 
 
 def _ok(data=None):
@@ -110,6 +112,29 @@ def stop_media_stack():
         return _ok({'stopped': True})
     except Exception as e:
         logger.exception('媒体栈停止失败')
+        return _err(str(e))
+
+
+@app.post('/mqtt/deploy')
+def deploy_mqtt_stack():
+    try:
+        spec = request.get_json(force=True) or {}
+        data = mqtt_manager.deploy(spec)
+        return _ok(data)
+    except Exception as e:
+        logger.exception('MQTT 网关部署失败')
+        return _err(str(e))
+
+
+@app.post('/mqtt/stop')
+def stop_mqtt_stack():
+    try:
+        body = request.get_json(force=True) or {}
+        stack_type = body.get('stackType') or 'emqx'
+        mqtt_manager.stop(stack_type)
+        return _ok({'stopped': True})
+    except Exception as e:
+        logger.exception('MQTT 网关停止失败')
         return _err(str(e))
 
 

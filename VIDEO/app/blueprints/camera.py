@@ -37,6 +37,15 @@ from app.utils.ffmpeg_compat import (
     ffmpeg_rtsp_timeout_args as _ffmpeg_rtsp_timeout_args,
     ffmpeg_supports_rw_timeout as _ffmpeg_supports_rw_timeout,
 )
+from app.utils.flighthub_source import (
+    build_register_info as build_flighthub_register_info,
+    flighthub_env,
+    get_flighthub_public_config,
+    model_for_device_type,
+    resolve_camera_index,
+    resolve_device_type_from_record,
+    start_flighthub_live,
+)
 from app.utils.gb28181_source import resolve_gb28181_source
 from app.utils.node_client import resolve_java_backend_url
 from app.utils.minio_bucket_policy import ensure_bucket_private
@@ -905,6 +914,130 @@ def register_device():
     except RuntimeError as e:
         logger.error(f'注册新设备失败: {str(e)}')
         return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/flighthub/config', methods=['GET'])
+def get_flighthub_config():
+    """返回司空 FlightHub 配置（机场/无人机共用同一套 OpenAPI）。"""
+    return jsonify({'code': 0, 'msg': 'success', 'data': get_flighthub_public_config()})
+
+
+@camera_bp.route('/register/device/dji-live', methods=['POST'])
+def register_dji_live_device():
+    """登记大疆直播设备（机场 dock / 无人机 drone，协议相同，仅元数据区分）。"""
+    data = request.get_json(silent=True) or {}
+    source = (data.get('source') or '').strip()
+    if not source:
+        return jsonify({'code': 400, 'msg': 'source is required'}), 400
+    try:
+        register_info = build_flighthub_register_info(data, source)
+        device_id = register_camera(register_info)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': {
+                'id': device_id,
+                'device_type': register_info.get('device_type'),
+                'model': register_info.get('model'),
+            },
+        })
+    except Exception as e:
+        logger.error(f'DJI live device register failed: {e}', exc_info=True)
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/flighthub/live-stream/start', methods=['POST'])
+def start_flighthub_live_stream():
+    """调用司空开启直播；直拉地址自动登记为本地自定义设备。"""
+    data = request.get_json(silent=True) or {}
+    try:
+        result = start_flighthub_live(data)
+        if not result.get('ok'):
+            code = int(result.get('code') or 500)
+            payload = {
+                'provider': result.get('provider'),
+                'url_type': result.get('url_type'),
+                'suggestion': result.get('suggestion'),
+                'raw': result.get('raw'),
+            }
+            # 保留 provider 细节给前端做 SDK / volc 分支登记
+            if result.get('provider') is not None:
+                payload['provider'] = result.get('provider')
+            return jsonify({
+                'code': code,
+                'msg': result.get('msg') or 'FlightHub live start failed',
+                'data': payload if any(payload.values()) else result.get('raw'),
+            }), 200
+
+        register_info = build_flighthub_register_info(data, result['url'])
+        # 直拉供应商默认允许走现有 SRS 转发
+        if data.get('enable_forward') is None:
+            register_info['enable_forward'] = True
+        device_id = register_camera(register_info)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': {
+                'id': device_id,
+                'source': result['url'],
+                'provider': result.get('provider'),
+                'device_type': register_info.get('device_type'),
+                'model': register_info.get('model'),
+                'raw': result.get('raw'),
+            },
+        })
+    except Exception as e:
+        logger.error(f'FlightHub live start failed: {e}', exc_info=True)
+        db.session.rollback()
+        return jsonify({'code': 500, 'msg': str(e)}), 200
+
+
+@camera_bp.route('/flighthub/live-stream/refresh-device/<string:device_id>', methods=['POST'])
+def refresh_flighthub_live_by_device(device_id: str):
+    """按已登记大疆设备刷新司空直播地址（鉴权过期时用）。"""
+    device = Device.query.get(device_id)
+    if not device:
+        return jsonify({'code': 404, 'msg': 'device not found'}), 404
+    data = request.get_json(silent=True) or {}
+    device_type = resolve_device_type_from_record(
+        data.get('device_type'),
+        model=device.model or '',
+        name=device.name or '',
+        connection_status=device.connection_status or '',
+    )
+    camera_index = resolve_camera_index(
+        data,
+        source=device.source or '',
+        connection_status=device.connection_status or '',
+    )
+    data.setdefault('name', device.name)
+    data.setdefault('serial_number', device.serial_number)
+    data.setdefault(
+        'project_uuid',
+        (device.hardware_id or '').replace('flighthub:', '').split('|')[0] or device.username or '',
+    )
+    data.setdefault(
+        'user_token',
+        getattr(device, 'skylink_token', None)
+        or data.get('user_token')
+        or data.get('skylink_token')
+        or flighthub_env('FLIGHTHUB_USER_TOKEN')
+        or device.password
+        or '',
+    )
+    data.setdefault('api_host', device.firmware_version or flighthub_env('FLIGHTHUB_OPENAPI_HOST'))
+    data.setdefault('sn', device.serial_number or '')
+    data.setdefault('camera_index', camera_index)
+    data.setdefault('device_type', device_type)
+    data.setdefault('model', device.model or model_for_device_type(device_type))
+    data.setdefault('enable_forward', bool(device.enable_forward))
+    data.setdefault('address', device.address)
+    data.setdefault('longitude', device.longitude)
+    data.setdefault('latitude', device.latitude)
+    data.setdefault('altitude', device.altitude)
+    with current_app.test_request_context(json=data):
+        return start_flighthub_live_stream()
 
 
 @camera_bp.route('/register/device/onvif', methods=['POST'])

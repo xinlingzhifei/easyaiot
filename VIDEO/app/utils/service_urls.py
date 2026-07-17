@@ -156,6 +156,16 @@ def now_shanghai_naive() -> datetime:
     return datetime.now(SHANGHAI_TZ).replace(tzinfo=None)
 
 
+def shanghai_time_str_from_epoch(ts: float) -> str:
+    """Unix 时间戳格式化为东八区墙钟字符串（YYYY-MM-DD HH:MM:SS）。"""
+    return epoch_to_shanghai_datetime(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def now_shanghai_time_str() -> str:
+    """当前东八区墙钟字符串（YYYY-MM-DD HH:MM:SS）。"""
+    return now_shanghai_naive().strftime('%Y-%m-%d %H:%M:%S')
+
+
 def shanghai_isoformat(dt) -> str | None:
     """东八区墙钟序列化为 ISO-8601（+08:00），便于前端按本地时间展示。"""
     if dt is None:

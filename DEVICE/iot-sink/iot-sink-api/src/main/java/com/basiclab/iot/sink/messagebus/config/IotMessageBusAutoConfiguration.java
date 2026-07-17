@@ -13,6 +13,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.kafka.core.KafkaTemplate;
 
@@ -58,11 +59,12 @@ public class IotMessageBusAutoConfiguration {
     public static class IotKafkaMessageBusConfiguration {
 
         @Bean
+        @DependsOn("jsonUtils")
         public IotKafkaMessageBus iotKafkaMessageBus(
                 @org.springframework.beans.factory.annotation.Qualifier("iotKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
                 @org.springframework.beans.factory.annotation.Qualifier("iotKafkaConsumerBootstrapServers") String consumerBootstrapServers,
                 @org.springframework.beans.factory.annotation.Qualifier("iotKafkaDefaultGroupId") String defaultGroupId,
-                Map<String, Object> consumerConfigs) {
+                @org.springframework.beans.factory.annotation.Qualifier("consumerConfigs") Map<String, Object> consumerConfigs) {
             log.info("[iotKafkaMessageBus][创建 IoT Kafka 消息总线]");
             return new IotKafkaMessageBus(kafkaTemplate, consumerBootstrapServers, defaultGroupId, consumerConfigs);
         }

@@ -160,9 +160,9 @@ public class Device extends BaseEntity implements Serializable{
     @ApiModelProperty(value = "支持以下两种产品类型•COMMON：普通产品，需直连设备。,•GATEWAY：网关产品，可挂载子设备。,•SUBSET：子设备。")
     private String deviceType;
 
-    @ApiModelProperty(value = "是否已关联网关")
+    @ApiModelProperty(value = "是否已关联网关（查询条件，null 表示不筛选）")
     @TableField(exist = false)
-    private Boolean isAssociated = false;
+    private Boolean isAssociated;
 
     @ApiModelProperty(value = "备注")
     private String remark;

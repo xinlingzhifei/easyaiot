@@ -25,6 +25,8 @@
         <result column="auth_mode" jdbcType="VARCHAR" property="authMode"/>
         <result column="user_name" jdbcType="VARCHAR" property="userName"/>
         <result column="password" jdbcType="VARCHAR" property="password"/>
+        <result column="public_key" jdbcType="VARCHAR" property="publicKey"/>
+        <result column="private_key" jdbcType="VARCHAR" property="privateKey"/>
         <result column="connector" jdbcType="VARCHAR" property="connector"/>
         <result column="sign_key" jdbcType="VARCHAR" property="signKey"/>
         <result column="encrypt_method" jdbcType="VARCHAR" property="encryptMethod"/>
@@ -55,6 +57,8 @@
         auth_mode,
         user_name,
         "password",
+        public_key,
+        private_key,
         connector,
         sign_key,
         encrypt_method,
@@ -832,6 +836,12 @@
             <if test="password != null">
                 "password",
             </if>
+            <if test="publicKey != null">
+                public_key,
+            </if>
+            <if test="privateKey != null">
+                private_key,
+            </if>
             <if test="connector != null">
                 connector,
             </if>
@@ -900,6 +910,12 @@
             </if>
             <if test="password != null">
                 #{password},
+            </if>
+            <if test="publicKey != null">
+                #{publicKey},
+            </if>
+            <if test="privateKey != null">
+                #{privateKey},
             </if>
             <if test="connector != null">
                 #{connector},
@@ -977,6 +993,12 @@
             </if>
             <if test="password != null">
                 "password" = #{password},
+            </if>
+            <if test="publicKey != null">
+                public_key = #{publicKey},
+            </if>
+            <if test="privateKey != null">
+                private_key = #{privateKey},
             </if>
             <if test="connector != null">
                 connector = #{connector},

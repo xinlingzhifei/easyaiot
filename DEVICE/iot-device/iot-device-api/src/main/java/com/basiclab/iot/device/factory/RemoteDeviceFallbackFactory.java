@@ -4,6 +4,8 @@ import com.basiclab.iot.common.domain.AjaxResult;
 import com.basiclab.iot.common.domain.R;
 import com.basiclab.iot.device.RemoteDeviceService;
 import com.basiclab.iot.device.domain.device.vo.Device;
+import com.basiclab.iot.device.domain.device.vo.EnsureDeviceOnUplinkParam;
+import com.basiclab.iot.device.domain.device.vo.EnsureGatewaySubDeviceParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.openfeign.FallbackFactory;
@@ -76,6 +78,26 @@ public class RemoteDeviceFallbackFactory implements FallbackFactory<RemoteDevice
             @Override
             public AjaxResult findOneByDeviceIdentification(String deviceIdentification) {
                 return AjaxResult.error("通过设备标识查询设备失败: " + deviceIdentification);
+            }
+
+            @Override
+            public R<Device> ensureDeviceOnUplink(EnsureDeviceOnUplinkParam param) {
+                return R.fail("上行自动创建设备失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<Device> ensureGatewaySubDevice(EnsureGatewaySubDeviceParam param) {
+                return R.fail("确保网关子设备失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<Integer> detachGatewaySubDevices(String gatewayIdentification, List<String> subDeviceIdentifications) {
+                return R.fail("解绑网关子设备失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<Integer> updateGatewaySubDeviceStatus(String gatewayIdentification, List<Map<String, Object>> statusItems) {
+                return R.fail("更新网关子设备状态失败:" + throwable.getMessage());
             }
         };
     }

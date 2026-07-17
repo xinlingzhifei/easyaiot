@@ -34,9 +34,9 @@
                   <div
                     v-show="hoverId === item.id"
                     class="model-card-overlay"
-                    @click.stop
+                    @click="handleView(item)"
                   >
-                    <div class="overlay-actions">
+                    <div class="overlay-actions" @click.stop>
                       <Tooltip title="查看详情">
                         <button class="overlay-btn" @click="handleView(item)">
                           <EyeOutlined />
@@ -129,26 +129,39 @@ const [registerForm, {validate}] = useForm({
 
 onMounted(() => {
   fetch();
-  emit('getMethod', fetch);
+  emit('getMethod', reload);
 });
 
 async function handleSubmit() {
   const formData = await validate();
+  page.value = 1;
   await fetch(formData);
+}
+
+async function reload(opts?: { resetPage?: boolean }) {
+  if (opts?.resetPage) {
+    page.value = 1;
+  }
+  state.loading = true;
+  await fetch();
 }
 
 async function fetch(p = {}) {
   const {api, params} = props;
   if (api && isFunction(api)) {
-    const res = await api({...params, pageNo: page.value, pageSize: pageSize.value, ...p});
-    data.value = res.data;
-    total.value = res.total;
-    hideLoading();
+    try {
+      state.loading = true;
+      const res = await api({...params, pageNo: page.value, pageSize: pageSize.value, ...p});
+      data.value = res?.data ?? [];
+      total.value = res?.total ?? 0;
+    } catch (error) {
+      console.error('获取模型列表失败:', error);
+      data.value = [];
+      total.value = 0;
+    } finally {
+      state.loading = false;
+    }
   }
-}
-
-function hideLoading() {
-  state.loading = false;
 }
 
 const page = ref(1);
@@ -173,6 +186,7 @@ function pageChange(p: number, pz: number) {
 
 function pageSizeChange(_current: number, size: number) {
   pageSize.value = size;
+  page.value = 1;
   fetch();
 }
 
@@ -238,18 +252,25 @@ function handleDownload(record: object) {
 <style lang="less" scoped>
 .model-card-list-wrapper {
   background: #fff;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .search-bar {
   padding: 16px 16px 0;
   margin-bottom: 10px;
   background: #fff;
+  flex-shrink: 0;
 }
 
 .list-panel {
   background: #fff;
   padding: 0 8px 16px;
+  flex: 1;
+  min-height: 0;
 
   :deep(.ant-list-header) {
     border: 0;

@@ -1,5 +1,6 @@
 package com.basiclab.iot.tdengine.mapper;
 
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.basiclab.iot.device.domain.device.vo.TDDeviceDataResp;
 import com.basiclab.iot.tdengine.domain.DeviceData;
 import com.basiclab.iot.tdengine.domain.Fields;
@@ -23,6 +24,7 @@ import java.util.Map;
  * @email reese
  */
 @Mapper
+@InterceptorIgnore(tenantLine = "true")
 public interface TdEngineMapper {
 
     /**

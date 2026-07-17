@@ -28,3 +28,5 @@ pydub==0.25.1
 modelscope>=1.20.0
 # OpenAI CLIP（ultralytics SAM3 内部的 tokenizer 依赖；SimpleTokenizer monkey-patch 需要）
 openai-clip>=1.0
+# SAM3 视觉骨干（ultralytics SAM3 构建依赖）
+timm>=1.0.0

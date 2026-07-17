@@ -58,6 +58,12 @@ public class DeviceDO {
      */
     private String password;
 
+    private String authMode;
+
+    private String publicKey;
+
+    private String privateKey;
+
     /**
      * 产品标识
      */
@@ -79,9 +85,29 @@ public class DeviceDO {
     private String protocolType;
 
     /**
+     * 设备 IP 地址
+     */
+    private String ipAddress;
+
+    /**
+     * 设备扩展配置 JSON
+     */
+    private String extension;
+
+    /**
      * 租户编号
      */
     private Long tenantId;
+
+    /**
+     * 设备类型：COMMON / GATEWAY / SUBSET / VIDEO_COMMON
+     */
+    private String deviceType;
+
+    /**
+     * 所属网关设备标识（子设备时有值）
+     */
+    private String parentIdentification;
 
     /**
      * 创建者

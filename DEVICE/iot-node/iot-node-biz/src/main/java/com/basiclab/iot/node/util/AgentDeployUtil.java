@@ -11,6 +11,7 @@ public final class AgentDeployUtil {
             "run_agent.py",
             "agent_server.py",
             "media_manager.py",
+            "mqtt_manager.py",
             "workload_manager.py",
             "requirements.txt",
             "agent.env.example",
@@ -32,6 +33,7 @@ public final class AgentDeployUtil {
                 + "AI_ROOT=/opt/easyaiot/AI\n"
                 + "VIDEO_ROOT=/opt/easyaiot/VIDEO\n"
                 + "MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster\n"
+                + "MQTT_CLUSTER_ROOT=/opt/easyaiot/mqtt-cluster\n"
                 + "MINIO_ENDPOINT=http://localhost:9000\n"
                 + "MINIO_ACCESS_KEY=minioadmin\n"
                 + "MINIO_SECRET_KEY=your-secret\n";

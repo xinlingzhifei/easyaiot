@@ -111,6 +111,19 @@ const markSize = computed(() => SIZE_MAP[props.size].mark);
     }
   }
 
+  &--mqtt {
+    color: @node-mqtt-server;
+
+    .node-server-icon__body {
+      color: @node-mqtt-server;
+      filter: drop-shadow(0 4px 8px @node-mqtt-shadow);
+    }
+
+    .node-server-icon__role-mark {
+      background: @node-mqtt-badge;
+    }
+  }
+
   &--hybrid {
     color: @node-hybrid-server;
 

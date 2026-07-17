@@ -2,6 +2,7 @@ import {defHttp} from '@/utils/http/axios';
 import type { ResponseType } from 'axios';
 import { dedupeRequest } from '@/utils/requestDedupe';
 import { getDeviceList } from '@/api/device/camera';
+import { getJwtToken } from '@/utils/auth';
 
 enum Api {
   Alarm = '/video/alert',
@@ -27,7 +28,7 @@ const commonApi = (
     retryRequest?: { isOpenRetry: boolean; count: number; waitTime: number };
   } = {},
 ) => {
-  defHttp.setHeader({'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')});
+  defHttp.setHeader({'X-Authorization': 'Bearer ' + getJwtToken()});
 
   return defHttp[method](
     {

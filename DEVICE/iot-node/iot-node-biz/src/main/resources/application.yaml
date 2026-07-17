@@ -72,12 +72,14 @@ iot:
     enable: true
     ignore-urls:
       - /node/agent/**
+      - /node/edge/**
       - /node/ws/**
       - /node/platform-agent-bootstrap
       - /node/control-plane/snapshot
       - /node/control-plane/peer/register
     ignore-tables:
       - compute_node
+      - edge_node
       - node_ssh_credential
       - node_metric_snapshot
       - node_workload_binding
@@ -109,5 +111,13 @@ easyaiot:
     source-path: ${EASYAIOT_AGENT_SOURCE_PATH:}
     # 可选：显式指定控制面 URL；留空则与 media.hook-host 同样自动探测
     control-plane-url: ${EASYAIOT_AGENT_CONTROL_PLANE_URL:}
+  edge:
+    # EDGE 模块自助纳管：生产请设置 join-token，并关闭开放纳管
+    join-token: ${EASYAIOT_EDGE_JOIN_TOKEN:}
+    allow-open-enroll: ${EASYAIOT_EDGE_ALLOW_OPEN_ENROLL:true}
+    mqtt-algo-tenant: ${EASYAIOT_EDGE_MQTT_TENANT:default}
+    media-host-data-root: ${EASYAIOT_EDGE_MEDIA_ROOT:/mnt/easyaiot-media}
+    # 下发给 EDGE 的控制面公网/内网可达地址；留空则用本机 server.port
+    control-plane-public-url: ${EASYAIOT_EDGE_CONTROL_PLANE_URL:}
 
 debug: false

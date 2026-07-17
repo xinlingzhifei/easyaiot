@@ -335,7 +335,19 @@ public class IotEmqxUpstreamProtocol {
                 log.error("[exceptionHandler][MQTT 客户端异常]", exception));
 
         // 3. 设置消息处理器
-        mqttClient.publishHandler(upstreamHandler::handle);
+        mqttClient.publishHandler(message -> vertx.executeBlocking(promise -> {
+            try {
+                upstreamHandler.handle(message);
+                promise.complete();
+            } catch (Exception e) {
+                promise.fail(e);
+            }
+        }, false, result -> {
+            if (result.failed()) {
+                log.error("[publishHandler][异步处理 MQTT 上行消息失败, topic: {}]",
+                        message.topicName(), result.cause());
+            }
+        }));
     }
 
     /**

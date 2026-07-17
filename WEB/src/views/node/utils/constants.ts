@@ -42,7 +42,7 @@ export const NODE_THEME = {
  * - 接入诊断（连通性排查，与纳管前检查区分）
  *
  * 页面 Tab 命名（按部署链路排序，不写 VIDEO / AI 等模块代号）：
- * 集群概览 → 节点管理 → 监测代理 → 分布式存储 → 流媒体引擎
+ * 集群概览 → 节点管理 → 监测代理 → 分布式存储 → 流媒体引擎 → MQTT 网关
  * → 音视频转码 → 视频分析运行时 → 模型推理与训练
  */
 export const NODE_TERM = {
@@ -50,8 +50,10 @@ export const NODE_TERM = {
   agentToken: '代理令牌',
   agentPort: '监测代理端口',
   mediaService: '流媒体引擎',
+  mqttService: 'MQTT 网关',
   storageService: 'Ceph 存储',
   mediaPort: '流媒体端口',
+  mqttPort: 'MQTT 端口',
   platformUrl: '平台接入地址',
   remotePlatformUrl: '目标机平台接入地址',
   onboard: '纳管',
@@ -71,6 +73,7 @@ export const NODE_TERM = {
   clusterEnvAgent: '监测代理',
   clusterEnvStorage: '分布式存储',
   clusterEnvMedia: '流媒体引擎',
+  clusterEnvMqtt: 'MQTT 网关',
   clusterEnvFfmpeg: '音视频转码',
   clusterEnvVideo: '视频分析运行时',
   clusterEnvAi: '模型推理与训练',
@@ -107,6 +110,7 @@ export const NODE_TERM = {
   laneBatchAgent: '批量部署监测代理',
   laneBatchStorage: '批量部署分布式存储',
   laneBatchMedia: '批量部署流媒体引擎',
+  laneBatchMqtt: '批量部署 MQTT 网关',
   laneBatchFfmpeg: '批量分发音视频转码',
   laneBatchVideo: '批量分发视频分析',
   laneBatchAi: '批量分发模型训练',
@@ -135,6 +139,7 @@ export const NODE_ROLE_MAP: Record<string, string> = {
   compute: '计算节点',
   gpu: 'GPU 节点',
   media: '媒体节点',
+  mqtt: 'MQTT网关节点',
   storage: '存储节点',
   hybrid: '混合节点',
 };
@@ -143,6 +148,7 @@ export const NODE_ROLE_DESC: Record<string, string> = {
   compute: '无 GPU，用于 CPU 推理、轻量算法或推流转发',
   gpu: '配备 GPU，用于模型推理、深度学习算法等算力密集型任务',
   media: '用于 SRS/ZLM 流媒体集群，设备拉流/推流',
+  mqtt: '用于 EMQX MQTT 集群，设备物联网协议接入',
   storage: 'Ceph OSD 节点，承载录像/抓拍分布式存储',
   hybrid: '同时承担计算与媒体调度',
 };
@@ -177,8 +183,8 @@ export const NODE_METRIC = {
   runningTasks: '运行任务',
 } as const;
 
-/** 集群概览「查看节点」下拉中表示全部节点的 sentinel 值 */
-export const OVERVIEW_ALL_NODES_ID = 0;
+/** 集群概览「查看节点」下拉中表示全部节点的 sentinel 值（避免与真实 nodeId=0 冲突） */
+export const OVERVIEW_ALL_NODES_ID = -1;
 
 /** 折线图采样间隔（秒） */
 export const TREND_SAMPLE_INTERVAL_DEFAULT = 5;
@@ -255,6 +261,7 @@ export const NODE_DETAIL = {
   tabConfig: NODE_TERM.nodeConfig,
   tabAccess: NODE_TERM.preCheck,
   tabMediaDeploy: NODE_TERM.mediaService,
+  tabMqttDeploy: NODE_TERM.mqttService,
   tabStorageDeploy: NODE_TERM.storageService,
   tabAgentDeploy: NODE_TERM.agent,
   sectionStorage: 'Ceph 存储',
@@ -263,6 +270,7 @@ export const NODE_DETAIL = {
   sectionConfig: NODE_TERM.nodeConfig,
   sectionAccess: NODE_TERM.preCheck,
   sectionMedia: NODE_TERM.mediaService,
+  sectionMqtt: NODE_TERM.mqttService,
   sectionAgent: NODE_TERM.agent,
   sectionVerify: NODE_TERM.verifyOnline,
   gpuSection: 'GPU 算力与显存',
@@ -294,6 +302,7 @@ export const NODE_PAGE = {
   clusterEnvAgent: NODE_TERM.clusterEnvAgent,
   clusterEnvStorage: NODE_TERM.clusterEnvStorage,
   clusterEnvMedia: NODE_TERM.clusterEnvMedia,
+  clusterEnvMqtt: NODE_TERM.clusterEnvMqtt,
   clusterEnvFfmpeg: NODE_TERM.clusterEnvFfmpeg,
   clusterEnvVideo: NODE_TERM.clusterEnvVideo,
   clusterEnvAi: NODE_TERM.clusterEnvAi,
@@ -309,6 +318,7 @@ export const NODE_SERVICE_TAB = {
   video: '7',
   ai: '8',
   llm: '9',
+  mqtt: '10',
 } as const;
 
 /** 泳道批量「组件分发」跳转（按部署链路排序） */
@@ -316,6 +326,7 @@ export const LANE_BATCH_DEPLOY_ACTIONS = [
   { tab: NODE_SERVICE_TAB.agent, label: NODE_TERM.laneBatchAgent, icon: 'ant-design:cloud-upload-outlined' },
   { tab: NODE_SERVICE_TAB.storage, label: NODE_TERM.laneBatchStorage, icon: 'ant-design:database-outlined' },
   { tab: NODE_SERVICE_TAB.media, label: NODE_TERM.laneBatchMedia, icon: 'ant-design:play-circle-outlined' },
+  { tab: NODE_SERVICE_TAB.mqtt, label: NODE_TERM.laneBatchMqtt, icon: 'ant-design:api-outlined' },
   { tab: NODE_SERVICE_TAB.ffmpeg, label: NODE_TERM.laneBatchFfmpeg, icon: 'ant-design:video-camera-outlined' },
   { tab: NODE_SERVICE_TAB.video, label: NODE_TERM.laneBatchVideo, icon: 'ant-design:deployment-unit-outlined' },
   { tab: NODE_SERVICE_TAB.ai, label: NODE_TERM.laneBatchAi, icon: 'ant-design:experiment-outlined' },
@@ -328,6 +339,7 @@ export type NodeServiceTabKey = keyof typeof NODE_SERVICE_TAB;
 export function resolveOnboardServiceTab(nodeRole?: string | null): string {
   if (nodeRole === 'storage') return NODE_SERVICE_TAB.storage;
   if (nodeRole === 'media' || nodeRole === 'hybrid') return NODE_SERVICE_TAB.media;
+  if (nodeRole === 'mqtt') return NODE_SERVICE_TAB.mqtt;
   return NODE_SERVICE_TAB.agent;
 }
 
@@ -338,9 +350,11 @@ export const CLUSTER_NODE_ROLE_FILTERS = {
   /** GPU 大模型推理节点 */
   gpuWorkload: ['gpu', 'hybrid'] as const,
   /** 需部署监测代理的全部角色（不含平台节点） */
-  allManaged: ['compute', 'gpu', 'hybrid', 'media', 'storage'] as const,
+  allManaged: ['compute', 'gpu', 'hybrid', 'media', 'mqtt', 'storage'] as const,
   /** 流媒体引擎节点 */
   media: ['media', 'hybrid'] as const,
+  /** MQTT 网关节点 */
+  mqtt: ['mqtt'] as const,
   /** Ceph 存储/MON 节点 */
   storage: ['storage'] as const,
   /** 需挂载 CephFS 的节点 */
@@ -1065,6 +1079,199 @@ export const MEDIA_CLUSTER_REMOTE_DIR = '/opt/easyaiot/media-cluster';
 
 export const MEDIA_CLUSTER_DIR = '.scripts/media-cluster';
 
+/** MQTT 网关节点端口默认值（与 iot-node tags、install_mqtt_stack.sh 一致） */
+export const MQTT_PORT_DEFAULTS = {
+  mqttTcpPort: 1883,
+  mqttSslPort: 8883,
+  mqttWsPort: 8083,
+  mqttWssPort: 8084,
+  emqxDashboardPort: 18083,
+} as const;
+
+export const MQTT_TAG_DEFAULTS = {
+  emqxCookie: 'emqxsecretcookie',
+  emqxClusterSeeds: '',
+  mqttAuthPort: 8090,
+  mqttAuthPath: '/mqtt/auth',
+} as const;
+
+export interface MqttPortFields {
+  mqttTcpPort: number;
+  mqttSslPort: number;
+  mqttWsPort: number;
+  mqttWssPort: number;
+  emqxDashboardPort: number;
+  emqxCookie: string;
+  emqxClusterSeeds: string;
+}
+
+/** 从节点 tags 解析 MQTT 端口与集群配置 */
+export function readMqttPortsFromTags(tags?: Record<string, string | undefined>): MqttPortFields {
+  return {
+    mqttTcpPort: tagPort(tags, 'mqtt_tcp_port', MQTT_PORT_DEFAULTS.mqttTcpPort),
+    mqttSslPort: tagPort(tags, 'mqtt_ssl_port', MQTT_PORT_DEFAULTS.mqttSslPort),
+    mqttWsPort: tagPort(tags, 'mqtt_ws_port', MQTT_PORT_DEFAULTS.mqttWsPort),
+    mqttWssPort: tagPort(tags, 'mqtt_wss_port', MQTT_PORT_DEFAULTS.mqttWssPort),
+    emqxDashboardPort: tagPort(tags, 'emqx_dashboard_port', MQTT_PORT_DEFAULTS.emqxDashboardPort),
+    emqxCookie: tagString(tags, 'emqx_cookie', MQTT_TAG_DEFAULTS.emqxCookie),
+    emqxClusterSeeds: tagString(tags, 'emqx_cluster_seeds', MQTT_TAG_DEFAULTS.emqxClusterSeeds),
+  };
+}
+
+/** 将表单 MQTT 配置写入节点 tags */
+export function buildMqttPortTags(values: Record<string, unknown>): Record<string, string> {
+  const d = MQTT_PORT_DEFAULTS;
+  const t = MQTT_TAG_DEFAULTS;
+  return {
+    mqtt_tcp_port: String(values.mqttTcpPort ?? d.mqttTcpPort),
+    mqtt_ssl_port: String(values.mqttSslPort ?? d.mqttSslPort),
+    mqtt_ws_port: String(values.mqttWsPort ?? d.mqttWsPort),
+    mqtt_wss_port: String(values.mqttWssPort ?? d.mqttWssPort),
+    emqx_dashboard_port: String(values.emqxDashboardPort ?? d.emqxDashboardPort),
+    emqx_cookie: String(values.emqxCookie ?? t.emqxCookie),
+    emqx_cluster_seeds: String(values.emqxClusterSeeds ?? t.emqxClusterSeeds),
+  };
+}
+
+export interface MqttStackScriptParams {
+  name?: string;
+  host?: string;
+  mqttTcpPort?: number;
+  mqttSslPort?: number;
+  mqttWsPort?: number;
+  mqttWssPort?: number;
+  emqxDashboardPort?: number;
+  emqxCookie?: string;
+  emqxClusterSeeds?: string;
+}
+
+function areMqttPortsValid(params?: MqttStackScriptParams): boolean {
+  if (!params) return false;
+  return [params.mqttTcpPort, params.mqttSslPort, params.mqttWsPort, params.mqttWssPort, params.emqxDashboardPort].every(
+    isValidPort,
+  );
+}
+
+export function isMqttStackScriptReady(
+  params: (MqttStackScriptParams & { nodeRole?: string }) | undefined,
+): boolean {
+  if (!params || params.nodeRole !== 'mqtt') return false;
+  return isValidHost(params.host) && areMqttPortsValid(params);
+}
+
+export interface MqttStackGuideState {
+  isMqttRole: boolean;
+  isReady: boolean;
+  pendingItems: MediaStackGuideItem[];
+  readySummary: string;
+}
+
+export function getMqttStackGuideState(
+  params: (MqttStackScriptParams & { nodeRole?: string }) | undefined,
+): MqttStackGuideState {
+  const isMqttRole = params?.nodeRole === 'mqtt';
+  const hostDone = isValidHost(params?.host);
+  const portsDone = areMqttPortsValid(params);
+  const pendingItems: MediaStackGuideItem[] = [
+    { key: 'host', label: '主机地址', done: hostDone, hint: '目标节点 IP 或主机名' },
+    { key: 'ports', label: 'MQTT 端口', done: portsDone, hint: 'EMQX 监听端口，默认配置适用于空闲节点' },
+  ];
+  const isReady = isMqttStackScriptReady(params);
+  let readySummary = '';
+  if (isReady && params?.host) {
+    readySummary =
+      `目标机 ${params.host}：` +
+      `MQTT ${params.mqttTcpPort} / SSL ${params.mqttSslPort} / WS ${params.mqttWsPort} / WSS ${params.mqttWssPort}，` +
+      `Dashboard ${params.emqxDashboardPort}` +
+      (params.emqxClusterSeeds ? `，集群 seeds ${params.emqxClusterSeeds}` : '（单节点）');
+  }
+  return { isMqttRole, isReady, pendingItems, readySummary };
+}
+
+export const MQTT_STACK_DEPLOY_PENDING_STEPS = [
+  '准备离线镜像',
+  'SSH 连接',
+  '端口占用检测',
+  '检测已有服务',
+  'Docker',
+  '清理旧目录',
+  '同步 mqtt-cluster',
+  'Docker Compose',
+  '导入镜像',
+  '启动服务',
+  '服务验证',
+] as const;
+
+export const MQTT_CLUSTER_REMOTE_DIR = '/opt/easyaiot/mqtt-cluster';
+export const MQTT_CLUSTER_DIR = '.scripts/mqtt-cluster';
+
+export function buildMqttStackExportImagesCommand(): string {
+  return `bash ${MQTT_CLUSTER_DIR}/export_mqtt_images.sh`;
+}
+
+export function buildMqttStackManualContent(params: MqttStackScriptParams = {}): string {
+  const host = params.host?.trim() || '<目标服务器>';
+  const exportCmd = buildMqttStackExportImagesCommand();
+  const cleanRemote = `ssh root@${host} 'rm -rf ${MQTT_CLUSTER_REMOTE_DIR}/emqx; rm -f ${MQTT_CLUSTER_REMOTE_DIR}/install_mqtt_stack.sh ${MQTT_CLUSTER_REMOTE_DIR}/install_docker.sh ${MQTT_CLUSTER_REMOTE_DIR}/docker-compose.mqtt-node.yml; mkdir -p ${MQTT_CLUSTER_REMOTE_DIR}/images'`;
+  const rsync = `rsync -avz --progress ${MQTT_CLUSTER_DIR}/ root@${host}:${MQTT_CLUSTER_REMOTE_DIR}/`;
+  const deployScript = buildMqttStackInstallScript(params);
+  return `# ========== 步骤 1：在本机（平台服务器）拉取并导出 EMQX 离线镜像 ==========
+${exportCmd}
+
+# ========== 步骤 2：清理目标机旧配置并增量同步 ==========
+${cleanRemote}
+${rsync}
+
+# ========== 步骤 3：SSH 登录目标主机，docker load 导入并启动 EMQX ==========
+${deployScript}`;
+}
+
+export function buildMqttStackInstallScript(params: MqttStackScriptParams = {}): string {
+  const hook = getControlPlaneHookEndpoint();
+  const nodeName = sanitizeNodeName(params.name || params.host).replace('media-node', 'mqtt-node');
+  const host = params.host?.trim() || '';
+  const mqttTcp = params.mqttTcpPort ?? MQTT_PORT_DEFAULTS.mqttTcpPort;
+  const mqttSsl = params.mqttSslPort ?? MQTT_PORT_DEFAULTS.mqttSslPort;
+  const mqttWs = params.mqttWsPort ?? MQTT_PORT_DEFAULTS.mqttWsPort;
+  const mqttWss = params.mqttWssPort ?? MQTT_PORT_DEFAULTS.mqttWssPort;
+  const dashboard = params.emqxDashboardPort ?? MQTT_PORT_DEFAULTS.emqxDashboardPort;
+  const cookie = params.emqxCookie || MQTT_TAG_DEFAULTS.emqxCookie;
+  const seeds = params.emqxClusterSeeds || '';
+
+  return `#!/usr/bin/env bash
+# EasyAIoT MQTT 网关节点 — EMQX 一键部署
+set -euo pipefail
+
+export MQTT_CLUSTER_ROOT="/opt/easyaiot/mqtt-cluster"
+export MQTT_NODE_NAME="${nodeName}"
+export MQTT_NODE_HOST="${host}"
+export MQTT_AUTH_HOST="${hook.host}"
+export MQTT_AUTH_PORT="${MQTT_TAG_DEFAULTS.mqttAuthPort}"
+export MQTT_AUTH_PATH="${MQTT_TAG_DEFAULTS.mqttAuthPath}"
+export MQTT_TCP_PORT=${mqttTcp}
+export MQTT_SSL_PORT=${mqttSsl}
+export MQTT_WS_PORT=${mqttWs}
+export MQTT_WSS_PORT=${mqttWss}
+export EMQX_DASHBOARD_PORT=${dashboard}
+export EMQX_NODE_COOKIE="${cookie}"
+export EMQX_CLUSTER_SEEDS="${seeds}"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[ERROR] 未安装 Docker"
+  exit 1
+fi
+if [[ ! -f "\${MQTT_CLUSTER_ROOT}/install_mqtt_stack.sh" ]]; then
+  echo "[ERROR] 未找到 \${MQTT_CLUSTER_ROOT}/install_mqtt_stack.sh"
+  echo "请先将仓库 .scripts/mqtt-cluster 同步到目标机"
+  exit 1
+fi
+
+bash "\${MQTT_CLUSTER_ROOT}/install_mqtt_stack.sh"
+echo "[OK] MQTT 网关部署完成"
+echo "  MQTT: mqtt://\${MQTT_NODE_HOST}:\${MQTT_TCP_PORT}"
+echo "  Dashboard: http://\${MQTT_NODE_HOST}:\${EMQX_DASHBOARD_PORT}"`;
+}
+
 /** 在本机导出 SRS/ZLM 离线镜像 */
 export function buildMediaStackExportImagesCommand(): string {
   return `bash ${MEDIA_CLUSTER_DIR}/export_media_images.sh`;
@@ -1250,6 +1457,7 @@ AGENT_LISTEN_PORT=${port}
 AI_ROOT=/opt/easyaiot/AI
 VIDEO_ROOT=/opt/easyaiot/VIDEO
 MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster
+MQTT_CLUSTER_ROOT=/opt/easyaiot/mqtt-cluster
 MINIO_ENDPOINT=http://localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=your-secret
@@ -1305,6 +1513,7 @@ export const SETUP_STEP_LABELS = {
   overview: { title: '确认配置', description: '检查信息' },
   storage: { title: NODE_TERM.storageService, description: 'Ceph OSD / CephFS' },
   media: { title: NODE_TERM.mediaService, description: 'SRS / ZLM' },
+  mqtt: { title: NODE_TERM.mqttService, description: 'EMQX 集群' },
   agent: { title: NODE_TERM.agent, description: NODE_TERM.remoteDeploy },
   verify: { title: NODE_TERM.verifyOnline, description: '心跳确认' },
 } as const;
@@ -1316,6 +1525,7 @@ export const VERIFY_STATUS_POLL_MAX_ATTEMPTS = 15;
 export const SETUP_COPY = {
   agentName: NODE_TERM.agent,
   mediaService: NODE_TERM.mediaService,
+  mqttService: NODE_TERM.mqttService,
   deployMode: '部署方式',
   deployModeAuto: `${NODE_TERM.remoteDeploy}（推荐）`,
   deployModeManual: '手动部署',
@@ -1339,13 +1549,20 @@ export const SETUP_COPY = {
   deployCheck: NODE_TERM.deployCheck,
   ops: NODE_TERM.ops,
   deployMediaBtn: `部署${NODE_TERM.mediaService}`,
+  deployMqttBtn: `部署${NODE_TERM.mqttService}`,
   mediaDeployCheck: NODE_TERM.deployCheck,
+  mqttDeployCheck: NODE_TERM.deployCheck,
   checkMediaDeployBtn: '检测部署状态',
+  checkMqttDeployBtn: '检测部署状态',
   mediaPortCheck: '端口占用检测',
+  mqttPortCheck: '端口占用检测',
   checkMediaPortBtn: '检测端口占用',
+  checkMqttPortBtn: '检测端口占用',
   mediaOps: NODE_TERM.ops,
+  mqttOps: NODE_TERM.ops,
   stopSrsBtn: '停止 SRS',
   stopZlmBtn: '停止 ZLMediaKit',
+  stopEmqxBtn: '停止 EMQX',
   removeContainerBtn: '删除容器',
   removeImageBtn: '删除镜像',
   agentDeployCheck: NODE_TERM.deployCheck,
@@ -1361,6 +1578,7 @@ export const SETUP_COPY = {
   redeployAgentBtn: `${NODE_TERM.redeploy}${NODE_TERM.agent}`,
   redeployAgentHint: `检测到目标机已有${NODE_TERM.agent}，将依次执行：停止 → 删除 → ${NODE_TERM.redeploy}`,
   flowMedia: `部署${NODE_TERM.mediaService} → 部署${NODE_TERM.agent} → ${NODE_TERM.verifyOnline}`,
+  flowMqtt: `部署${NODE_TERM.mqttService} → 部署${NODE_TERM.agent} → ${NODE_TERM.verifyOnline}`,
   flowStorage: `部署${NODE_TERM.storageService} → 部署${NODE_TERM.agent} → ${NODE_TERM.verifyOnline}`,
   flowCompute: `部署${NODE_TERM.agent} → ${NODE_TERM.verifyOnline}`,
   readinessReady: '可以开始部署',
@@ -1368,6 +1586,7 @@ export const SETUP_COPY = {
   nodeInfo: '节点信息',
   sshConnectivity: NODE_TERM.sshCheck,
   mediaPortConfigured: `${NODE_TERM.mediaService}${NODE_TERM.mediaPort}已配置`,
+  mqttPortConfigured: `${NODE_TERM.mqttService}${NODE_TERM.mqttPort}已配置`,
   completeOnboard: NODE_TERM.completeOnboard,
   editNode: NODE_TERM.editNode,
 } as const;

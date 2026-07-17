@@ -7,7 +7,7 @@ import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { Button } from '@/components/Button';
 import { createNode, updateNode, type ComputeNodeVO } from '@/api/device/node';
-import { generateDefaultAgentPort, generateRandomDeployPorts, SETUP_COPY, readMediaPortsFromTags, buildMediaPortTags, readStorageTagsFromTags, buildStorageTags } from '../../utils/constants';
+import { generateDefaultAgentPort, generateRandomDeployPorts, SETUP_COPY, readMediaPortsFromTags, buildMediaPortTags, readStorageTagsFromTags, buildStorageTags, readMqttPortsFromTags, buildMqttPortTags } from '../../utils/constants';
 import {
   nodeFormHistoryToFields,
   saveNodeFormHistory,
@@ -41,7 +41,7 @@ function handleGenerateRandomPorts(model: Record<string, unknown>) {
 }
 
 function isComputeRole(role: unknown) {
-  return role !== 'media' && role !== 'hybrid';
+  return role !== 'media' && role !== 'hybrid' && role !== 'mqtt' && role !== 'storage';
 }
 
 function flattenNodeTags(record: ComputeNodeVO) {
@@ -49,6 +49,7 @@ function flattenNodeTags(record: ComputeNodeVO) {
     ...record,
     ...readMediaPortsFromTags(record.tags),
     ...readStorageTagsFromTags(record.tags),
+    ...readMqttPortsFromTags(record.tags),
   };
 }
 
@@ -59,6 +60,9 @@ function buildNodeTags(values: Record<string, unknown>) {
   }
   if (values.nodeRole === 'storage') {
     return { ...base, ...buildStorageTags(values) };
+  }
+  if (values.nodeRole === 'mqtt') {
+    return { ...base, ...buildMqttPortTags(values) };
   }
   return base;
 }
@@ -102,7 +106,7 @@ async function handleSubmit() {
     ...raw,
     tags: buildNodeTags(raw),
   };
-  if (values.nodeRole === 'compute' || values.nodeRole === 'storage') {
+  if (values.nodeRole === 'compute' || values.nodeRole === 'storage' || values.nodeRole === 'mqtt') {
     values.maxGpuCount = 0;
   } else if (values.nodeRole === 'gpu') {
     values.maxGpuCount = Number(values.maxGpuCount) > 0 ? Number(values.maxGpuCount) : 1;
@@ -110,7 +114,7 @@ async function handleSubmit() {
   if (unref(isUpdate) && editRecord.value) {
     if (values.nodeRole !== 'gpu') {
       values.maxGpuCount =
-        values.nodeRole === 'compute' || values.nodeRole === 'storage'
+        values.nodeRole === 'compute' || values.nodeRole === 'storage' || values.nodeRole === 'mqtt'
           ? 0
           : (editRecord.value.maxGpuCount ?? 0);
     }

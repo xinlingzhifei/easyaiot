@@ -109,6 +109,8 @@ build_with_cache() {
         print_info "构建目标平台: ${DOCKER_PLATFORM}"
     fi
 
+    # 与 AI 一致：build/install/build-runtime 均先准备 pip-wheels，避免空缓存走在线下载
+    prepare_cached_resources
     print_info "docker build（.build-cache/video pip-cache/pip-wheels）..."
     set +e
     docker build \
@@ -698,7 +700,6 @@ update_service() {
     fi
 
     if [ "$needs_build" = "1" ]; then
-        prepare_cached_resources
         print_info "重新构建镜像（复用 BuildKit 层缓存 + 离线 pip 缓存）..."
         if ! build_with_cache ""; then
             exit 1

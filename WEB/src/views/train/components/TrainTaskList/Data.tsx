@@ -91,8 +91,16 @@ export function getBasicColumns(): BasicColumn[] {
             icon: 'pause-circle',
           },
           stopping: { color: '#8c8c8c', text: '停止中', icon: 'pause-circle' },
-          error: { color: '#f5222d', text: '失败', icon: 'close-circle' },
-          failed: { color: '#f5222d', text: '失败', icon: 'close-circle' },
+          error: {
+            color: '#f5222d',
+            text: record.can_resume ? '失败(可续训)' : '失败',
+            icon: 'close-circle',
+          },
+          failed: {
+            color: '#f5222d',
+            text: record.can_resume ? '失败(可续训)' : '失败',
+            icon: 'close-circle',
+          },
         };
 
         const config = statusConfig[record.status] || {

@@ -176,8 +176,8 @@ public class DmDevicePackagePo extends BaseEntity2 implements Serializable {
     private String deviceType;
 
 
-    @ApiModelProperty(value = "是否已关联网关")
-    private Boolean isAssociated = false;
+    @ApiModelProperty(value = "是否已关联网关（查询条件，null 表示不筛选）")
+    private Boolean isAssociated;
 
 
     /**

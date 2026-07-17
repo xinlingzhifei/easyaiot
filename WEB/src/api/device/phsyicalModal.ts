@@ -60,6 +60,21 @@ export const savePhsyicalService = (params) => {
   return commonApi('post', API.PRODUCT_SERVICE, params);
 };
 
+/** 保存服务及入参/出参（自动同步默认命令） */
+export const savePhsyicalServiceWithParams = (params) => {
+  return commonApi('post', API.PRODUCT_SERVICE + '/saveWithParams', params);
+};
+
+/** 更新服务及入参/出参 */
+export const updatePhsyicalServiceWithParams = (params) => {
+  return commonApi('put', API.PRODUCT_SERVICE + '/saveWithParams', params);
+};
+
+/** 查询服务详情（含入参/出参） */
+export const getPhsyicalServiceDetail = (id) => {
+  return commonApi('get', `${API.PRODUCT_SERVICE}/${id}/detail`, {});
+};
+
 // 保存物模型-事件
 export const savePhsyicalEvent = (params) => {
   return commonApi('post', API.PRODUCT_EVENTS, params);

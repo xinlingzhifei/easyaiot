@@ -129,6 +129,7 @@ export const registerDevice = (data: {
   port?: number;
   username?: string;
   password?: string;
+  skylink_token?: string;
   source?: string;
   cameraType?: string;
   stream?: number;
@@ -141,6 +142,7 @@ export const registerDevice = (data: {
   model?: string;
   serial_number?: string;
   hardware_id?: string;
+  firmware_version?: string;
   nvr_id?: number | null;
   nvr_channel?: number;
   nvr?: NvrInfo;
@@ -154,6 +156,66 @@ export const registerDevice = (data: {
   address?: string | null;
 }) => {
   return commonApi('post', `${CAMERA_PREFIX}/register/device`, data);
+};
+
+export interface FlighthubConfig {
+  allowed_ips: string[];
+  workspace_id: string;
+  workspace_name: string;
+  platform_name: string;
+  platform_host: string;
+  openapi_host?: string;
+  live_start_path?: string;
+  mqtt_enabled: boolean;
+  mqtt_broker_uri: string;
+  mqtt_client_id: string;
+  mqtt_username: string;
+}
+
+export const getFlighthubConfig = (): Promise<FlighthubConfig> => {
+  return commonApi('get', `${CAMERA_PREFIX}/flighthub/config`) as Promise<FlighthubConfig>;
+};
+
+/** 大疆机场 / 无人机共用司空 OpenAPI，仅 device_type 元数据不同 */
+export interface DjiLiveRegisterPayload {
+  name: string;
+  source: string;
+  device_type: 'dock' | 'drone';
+  serial_number?: string;
+  dock_sn?: string;
+  drone_sn?: string;
+  workspace_id?: string;
+  workspace_name?: string;
+  platform_name?: string;
+  platform_host?: string;
+  enable_forward?: boolean;
+  longitude?: number | null;
+  latitude?: number | null;
+  altitude?: number | null;
+  address?: string | null;
+}
+
+export const registerDjiLiveDevice = (data: DjiLiveRegisterPayload) => {
+  return commonApi('post', `${CAMERA_PREFIX}/register/device/dji-live`, data);
+};
+
+export interface DjiSkylinkStartPayload extends Omit<DjiLiveRegisterPayload, 'source'> {
+  user_token: string;
+  project_uuid: string;
+  api_host: string;
+  api_path?: string;
+  sn: string;
+  camera_index: string;
+  video_expire: number;
+  quality_type: 'adaptive' | 'smooth' | 'ultra_high_definition';
+}
+
+export const startDjiSkylinkLive = (data: DjiSkylinkStartPayload) => {
+  return commonApi('post', `${CAMERA_PREFIX}/flighthub/live-stream/start`, data, {}, false);
+};
+
+export const refreshDjiSkylinkLiveByDevice = (deviceId: string, data?: Partial<DjiSkylinkStartPayload>) => {
+  return commonApi('post', `${CAMERA_PREFIX}/flighthub/live-stream/refresh-device/${deviceId}`, data || {}, {}, false);
 };
 
 export const getNvrList = (includeCameras = false) => {

@@ -7,12 +7,19 @@ import re
 from datetime import datetime
 from typing import Optional, Tuple
 
+from app.utils.service_urls import epoch_to_shanghai_datetime, now_shanghai_naive
+
 try:
     from croniter import croniter
 except ImportError:  # pragma: no cover
     croniter = None  # type: ignore
 
 MIN_SNAP_CRON_INTERVAL_SECONDS = 30
+
+
+def _shanghai_naive_from_epoch(ts: float) -> datetime:
+    """Unix 时间戳转为东八区 naive 墙钟，供 croniter 按业务时区匹配。"""
+    return epoch_to_shanghai_datetime(float(ts)).replace(tzinfo=None)
 
 
 def _cron_field_count(expression: str) -> int:
@@ -48,7 +55,7 @@ def snap_cron_interval_seconds(
     ref_time: Optional[datetime] = None,
 ) -> float:
     """相邻两次触发间隔（秒）。"""
-    ref = ref_time or datetime.now()
+    ref = ref_time or now_shanghai_naive()
     it = make_snap_croniter(expression, ref)
     t0 = it.get_prev(float)
     t1 = it.get_next(float)
@@ -82,7 +89,7 @@ def cron_slot_for_time(expression: str, current_time: float) -> Tuple[bool, Opti
     Returns:
         (in_window, fire_time, offset_sec)
     """
-    current_dt = datetime.fromtimestamp(current_time)
+    current_dt = _shanghai_naive_from_epoch(current_time)
     it = make_snap_croniter(expression, current_dt)
     prev_time = it.get_prev(datetime)
     next_time = it.get_next(datetime)
@@ -107,7 +114,7 @@ def cron_slot_for_time(expression: str, current_time: float) -> Tuple[bool, Opti
 def _min_interval_seconds(cron_expr: str, samples: int = 5) -> float:
     if croniter is None:
         raise RuntimeError("croniter 未安装")
-    ref = datetime.now()
+    ref = now_shanghai_naive()
     it = make_snap_croniter(cron_expr, ref)
     times = [it.get_next(float) for _ in range(samples)]
     deltas = [times[i + 1] - times[i] for i in range(len(times) - 1)]
@@ -135,7 +142,7 @@ def validate_snap_cron_min_interval(
         return normalized
 
     try:
-        make_snap_croniter(normalized, datetime.now())
+        make_snap_croniter(normalized, now_shanghai_naive())
     except Exception as e:
         raise ValueError(f"Cron 表达式错误：{e}") from e
 

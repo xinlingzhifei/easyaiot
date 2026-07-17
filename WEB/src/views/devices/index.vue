@@ -50,7 +50,7 @@
                   title: '编辑',
                   placement: 'top',
                 },
-                onClick: openAddModal.bind(null, true, { record }),
+                onClick: openAddModal.bind(null, true, { isEdit: true, record }),
               },
               {
                 icon: 'material-symbols:delete-outline-rounded',
@@ -92,7 +92,7 @@
         </template>
       </DeviceCardList>
     </div>
-    <DeviceModal title="添加设备" @register="registerAddModel" @success="handleSuccess"/>
+    <DeviceModal @register="registerAddModel" @success="handleSuccess"/>
   </div>
 </template>
 
@@ -105,10 +105,10 @@ import {
 } from '@/api/device/devices';
 import {Tag} from 'ant-design-vue';
 import {getBasicColumns, getFormConfig} from './Data';
-import {PopConfirmButton} from '@/components/Button';
+import {Button, PopConfirmButton} from '@/components/Button';
 import {useMessage} from '@/hooks/web/useMessage';
 import {BasicTable, TableAction, useTable} from '@/components/Table';
-import {useModal} from '@/components/Modal';
+import {useDrawer} from '@/components/Drawer';
 import DeviceModal from "@/views/devices/components/DeviceModalForm/DeviceModal.vue";
 import {useRouter} from "vue-router";
 import {getDeviceProfiles} from "@/api/device/product";
@@ -117,13 +117,13 @@ import DeviceCardList from "@/views/devices/components/CardList/DeviceCardList.v
 defineOptions({name: 'Devices'})
 
 const {createMessage} = useMessage();
-const [registerAddModel, {openModal: openAddModal}] = useModal();
+const [registerAddModel, {openDrawer: openAddModal}] = useDrawer();
 const selectDevices = ref<string>('');
 const checkedKeys = ref<Array<string | number>>([]);
 
 const state = reactive({
   isTableMode: false,
-  productMap: {},
+  productMap: {} as Record<string, { productName: string; protocolType: string }>,
 });
 
 // 请求api时附带参数
@@ -144,8 +144,7 @@ function handleView(record) {
 
 //编辑按钮事件
 function handleEdit(record) {
-  openAddModal(true, {record});
-  handleSuccess();
+  openAddModal(true, { isEdit: true, record });
 }
 
 //删除按钮事件
@@ -158,22 +157,18 @@ const [registerTable, {reload}] = useTable({
   title: '设备信息档案列表',
   api: getDevicesList,
   beforeFetch: (data) => {
-    // 接口请求前 参数处理
-    //console.log('beforeFetch-------', data);
-    const {page, pageSize, order, field, textSearch, onlineStatus} = data;
-    let params = {
+    const {page, pageSize, pageNo, order, field, textSearch, onlineStatus} = data;
+    return {
       ...data,
-      page,
+      pageNum: pageNo || page,
       pageSize,
       textSearch,
       onlineStatus,
       deviceProfileIdStr: selectDevices.value,
-      // 如果没有指定排序字段，默认按修改时间降序排列
       sortOrder: order == 'descend' ? 'DESC' : (order == 'ascend' ? 'ASC' : 'DESC'),
-      sortProperty: field || 'lastUpdateTime',
+      sortProperty: field || 'updateTime',
       filterNoCustomer: 1,
     };
-    return params;
   },
   afterFetch: (data) => {
     //请求之后对返回值进行处理
@@ -185,7 +180,8 @@ const [registerTable, {reload}] = useTable({
         ? moment(newDate)?.format?.('YYYY-MM-DD HH:mm:ss')
         : '-';
       res.gateway = additionalInfo?.gateway;
-      res.productName = state.productMap[res['productIdentification']];
+      res.productName = state.productMap[res['productIdentification']]?.productName;
+      res.protocolType = state.productMap[res['productIdentification']]?.protocolType;
       return res;
     });
     return list;
@@ -267,7 +263,7 @@ async function handleClickDelete(record) {
 
 // 新增
 function handleClickAdd() {
-  openAddModal(true);
+  openAddModal(true, { isEdit: false });
 }
 
 // 切换视图
@@ -284,9 +280,12 @@ function handleSuccess() {
 }
 
 async function initProductList() {
-  const record = await getDeviceProfiles({page: 1, pageSize: 100});
+  const record = await getDeviceProfiles({ pageNum: 1, pageSize: 500 });
   record.data.forEach((item) => {
-    state.productMap[item.productIdentification] = item.productName;
+    state.productMap[item.productIdentification] = {
+      productName: item.productName,
+      protocolType: item.protocolType,
+    };
   });
 }
 

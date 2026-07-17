@@ -133,7 +133,7 @@ public class IotKafkaMessageBus implements IotMessageBus {
                 }
             }
         });
-        containerProps.setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+        containerProps.setAckMode(ContainerProperties.AckMode.RECORD);
 
         // 创建并启动容器
         ConcurrentMessageListenerContainer<String, String> container =
@@ -183,7 +183,7 @@ public class IotKafkaMessageBus implements IotMessageBus {
         
         // 处理 # 通配符（只能出现在最后，匹配零个或多个层级）
         if (regex.endsWith("/#")) {
-            regex = regex.substring(0, regex.length() - 2) + ".*";
+            regex = regex.substring(0, regex.length() - 1) + ".*";
         } else if (regex.endsWith("#")) {
             regex = regex.substring(0, regex.length() - 1) + ".*";
         }

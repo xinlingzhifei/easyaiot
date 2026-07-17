@@ -16,6 +16,7 @@ import com.basiclab.iot.system.dal.dataobject.oauth2.OAuth2AccessTokenDO;
 import com.basiclab.iot.system.dal.dataobject.oauth2.OAuth2ClientDO;
 import com.basiclab.iot.system.dal.dataobject.oauth2.OAuth2RefreshTokenDO;
 import com.basiclab.iot.system.dal.dataobject.user.AdminUserDO;
+import com.basiclab.iot.system.enums.oauth2.OAuth2ClientConstants;
 import com.basiclab.iot.system.dal.pgsql.oauth2.OAuth2AccessTokenMapper;
 import com.basiclab.iot.system.dal.pgsql.oauth2.OAuth2RefreshTokenMapper;
 import com.basiclab.iot.system.dal.redis.oauth2.OAuth2AccessTokenRedisDAO;
@@ -59,11 +60,25 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
     @Override
     @Transactional
     public OAuth2AccessTokenDO createAccessToken(Long userId, Integer userType, String clientId, List<String> scopes) {
+        return createAccessToken(userId, userType, clientId, scopes, null);
+    }
+
+    @Override
+    @Transactional
+    public OAuth2AccessTokenDO createAccessToken(Long userId, Integer userType, String clientId, List<String> scopes, Boolean rememberMe) {
         OAuth2ClientDO clientDO = oauth2ClientService.validOAuthClientFromCache(clientId);
+        int accessValiditySeconds = clientDO.getAccessTokenValiditySeconds();
+        int refreshValiditySeconds = clientDO.getRefreshTokenValiditySeconds();
+        if (Boolean.TRUE.equals(rememberMe)) {
+            accessValiditySeconds = OAuth2ClientConstants.REMEMBER_ME_ACCESS_TOKEN_VALIDITY_SECONDS;
+            refreshValiditySeconds = OAuth2ClientConstants.REMEMBER_ME_REFRESH_TOKEN_VALIDITY_SECONDS;
+        } else if (Boolean.FALSE.equals(rememberMe)) {
+            refreshValiditySeconds = OAuth2ClientConstants.DEFAULT_REFRESH_TOKEN_VALIDITY_SECONDS;
+        }
         // 创建刷新令牌
-        OAuth2RefreshTokenDO refreshTokenDO = createOAuth2RefreshToken(userId, userType, clientDO, scopes);
+        OAuth2RefreshTokenDO refreshTokenDO = createOAuth2RefreshToken(userId, userType, clientDO, scopes, refreshValiditySeconds);
         // 创建访问令牌
-        return createOAuth2AccessToken(refreshTokenDO, clientDO);
+        return createOAuth2AccessToken(refreshTokenDO, clientDO, accessValiditySeconds);
     }
 
     @Override
@@ -146,12 +161,17 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
     }
 
     private OAuth2AccessTokenDO createOAuth2AccessToken(OAuth2RefreshTokenDO refreshTokenDO, OAuth2ClientDO clientDO) {
+        return createOAuth2AccessToken(refreshTokenDO, clientDO, clientDO.getAccessTokenValiditySeconds());
+    }
+
+    private OAuth2AccessTokenDO createOAuth2AccessToken(OAuth2RefreshTokenDO refreshTokenDO, OAuth2ClientDO clientDO,
+                                                        int accessValiditySeconds) {
         OAuth2AccessTokenDO accessTokenDO = new OAuth2AccessTokenDO().setAccessToken(generateAccessToken())
                 .setUserId(refreshTokenDO.getUserId()).setUserType(refreshTokenDO.getUserType())
                 .setUserInfo(buildUserInfo(refreshTokenDO.getUserId(), refreshTokenDO.getUserType()))
                 .setClientId(clientDO.getClientId()).setScopes(refreshTokenDO.getScopes())
                 .setRefreshToken(refreshTokenDO.getRefreshToken())
-                .setExpiresTime(LocalDateTime.now().plusSeconds(clientDO.getAccessTokenValiditySeconds()));
+                .setExpiresTime(LocalDateTime.now().plusSeconds(accessValiditySeconds));
         accessTokenDO.setTenantId(TenantContextHolder.getTenantId()); // 手动设置租户编号，避免缓存到 Redis 的时候，无对应的租户编号
         oauth2AccessTokenMapper.insert(accessTokenDO);
         // 记录到 Redis 中
@@ -160,10 +180,15 @@ public class OAuth2TokenServiceImpl implements OAuth2TokenService {
     }
 
     private OAuth2RefreshTokenDO createOAuth2RefreshToken(Long userId, Integer userType, OAuth2ClientDO clientDO, List<String> scopes) {
+        return createOAuth2RefreshToken(userId, userType, clientDO, scopes, clientDO.getRefreshTokenValiditySeconds());
+    }
+
+    private OAuth2RefreshTokenDO createOAuth2RefreshToken(Long userId, Integer userType, OAuth2ClientDO clientDO,
+                                                          List<String> scopes, int refreshValiditySeconds) {
         OAuth2RefreshTokenDO refreshToken = new OAuth2RefreshTokenDO().setRefreshToken(generateRefreshToken())
                 .setUserId(userId).setUserType(userType)
                 .setClientId(clientDO.getClientId()).setScopes(scopes)
-                .setExpiresTime(LocalDateTime.now().plusSeconds(clientDO.getRefreshTokenValiditySeconds()));
+                .setExpiresTime(LocalDateTime.now().plusSeconds(refreshValiditySeconds));
         oauth2RefreshTokenMapper.insert(refreshToken);
         return refreshToken;
     }

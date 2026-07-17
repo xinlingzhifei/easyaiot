@@ -56,6 +56,9 @@
               <template #toolbar>
                 <div class="device-list-toolbar">
                   <Checkbox v-model:checked="enableAi">启用 AI</Checkbox>
+                  <Button type="primary" preIcon="material-symbols:flight-takeoff-rounded" @click="openDjiLiveDrawer()">
+                    接入大疆直播
+                  </Button>
                   <Button type="primary" preIcon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
                     添加设备
                   </Button>
@@ -129,6 +132,9 @@
                   <template #header>
                     <div class="device-list-toolbar device-list-toolbar--card">
                       <Checkbox v-model:checked="enableAi">启用 AI</Checkbox>
+                      <Button type="primary" preIcon="material-symbols:flight-takeoff-rounded" @click="openDjiLiveDrawer()">
+                        接入大疆直播
+                      </Button>
                       <Button type="primary" preIcon="ant-design:video-camera-add-outlined" @click="openDeviceCreate()">
                         添加设备
                       </Button>
@@ -149,6 +155,7 @@
                         @success="handlePlayerSuccess"/>
           <BatchLocationImportModal @register="registerBatchLocationModal" @success="handleLocationImportSuccess" />
           <VideoModal @register="registerAddModel" @success="handleSuccess"/>
+          <DjiLiveDrawer @register="registerDjiLiveDrawer" @success="handleSuccess" />
           <Gb28181DeviceModal @register="registerGbDeviceModal" @success="handleSuccess"/>
           <NvrDeviceModal @register="registerNvrDeviceModal" @success="handleSuccess"/>
         </TabPane>
@@ -161,6 +168,9 @@
         <TabPane key="7" tab="算法任务">
           <AlgorithmTask ref="algorithmTaskRef"/>
         </TabPane>
+        <TabPane key="14" v-if="edgeNodeEnabled" tab="边缘节点（联邦集群）">
+          <EdgeNodeManage ref="edgeNodeManageRef"/>
+        </TabPane>
         <TabPane key="9" v-if="gb28181Enabled" tab="节点管理">
           <Gb28181Node ref="gb28181NodeRef"/>
         </TabPane>
@@ -169,6 +179,9 @@
         </TabPane>
         <TabPane key="11" v-if="facePlateLibraryEnabled" tab="车牌库">
           <PlateLibrary ref="plateLibraryRef"/>
+        </TabPane>
+        <TabPane key="13" v-if="scenarioPoseLibraryEnabled" tab="场景姿态库">
+          <ScenarioPoseLibrary ref="scenarioPoseLibraryRef"/>
         </TabPane>
       </Tabs>
     </div>
@@ -185,13 +198,16 @@ import {BasicTable, TableAction, useTable, type ActionItem} from '@/components/T
 import {useMessage} from '@/hooks/web/useMessage';
 import {getBasicColumns, getFormConfig} from "./Data";
 import {useModal} from "@/components/Modal";
+import {useDrawer} from '@/components/Drawer';
 import VideoModal from "./components/VideoModal/index.vue";
+import DjiLiveDrawer from './components/DjiLiveDrawer/index.vue';
 import DeviceCreate from './components/DeviceCreate/index.vue';
 import {
   deleteDevice,
   deleteNvr,
   DeviceInfo,
   getStreamStatus,
+  refreshDjiSkylinkLiveByDevice,
   StreamStatusResponse,
 } from '@/api/device/camera';
 import DialogPlayer from "@/components/VideoPlayer/DialogPlayer.vue";
@@ -200,8 +216,10 @@ import SplitScreenMonitor from "./components/SplitScreenMonitor/index.vue";
 import CameraMapDistribution from './components/CameraMapDistribution/index.vue';
 import StorageSpace from "./components/StorageSpace/index.vue";
 import AlgorithmTask from "./components/AlgorithmTask/index.vue";
+import EdgeNodeManage from "./components/EdgeNodeManage/index.vue";
 import FaceLibrary from "./components/FaceLibrary/index.vue";
 import PlateLibrary from "./components/PlateLibrary/index.vue";
+import ScenarioPoseLibrary from "./components/ScenarioPoseLibrary/index.vue";
 import DeviceMixedCardList from './components/DeviceMixedCardList/index.vue';
 import Gb28181DeviceDetail from './components/Gb28181DeviceDetail/index.vue';
 import NvrDeviceDetail from './components/NvrDeviceDetail/index.vue';
@@ -219,6 +237,7 @@ import { isNvrListRow } from './utils/deviceLabel';
 import StreamForward from "./components/StreamForward/index.vue";
 import { formatCameraDeviceLabel } from './utils/deviceLabel';
 import {
+  extractVolcLiveUrl,
   hasPlayableStream,
   openDeviceInDialogPlayer,
   supportsRtspForward,
@@ -237,12 +256,19 @@ import {
   type CreateMethod,
   type DeviceKind,
 } from './utils/deviceCreateOptions';
-import { isFacePlateLibraryEnabled, isGb28181Enabled } from '@/utils/deployProfile';
+import {
+  isEdgeNodeEnabled,
+  isFacePlateLibraryEnabled,
+  isGb28181Enabled,
+  isScenarioPoseLibraryEnabled,
+} from '@/utils/deployProfile';
 
 defineOptions({name: 'CAMERA'})
 
 const gb28181Enabled = isGb28181Enabled();
+const edgeNodeEnabled = isEdgeNodeEnabled();
 const facePlateLibraryEnabled = isFacePlateLibraryEnabled();
+const scenarioPoseLibraryEnabled = isScenarioPoseLibraryEnabled();
 
 const route = useRoute();
 const router = useRouter();
@@ -259,6 +285,7 @@ const [registerNvrDeviceModal, {openModal: openNvrDeviceModal}] = useModal();
 const [registerPlayerAddModel, {openModal: openPlayerAddModel}] = useModal();
 const [registerBatchLocationModal, {openModal: openBatchLocationModal}] = useModal();
 const [registerLocationDrawer, { openModal: openLocationModal }] = useModal();
+const [registerDjiLiveDrawer, { openDrawer: openDjiLiveDrawer }] = useDrawer();
 
 // Tab状态
 const state = reactive({
@@ -318,8 +345,10 @@ const storageSpaceRef = ref();
 
 // 算法任务组件引用
 const algorithmTaskRef = ref();
+const edgeNodeManageRef = ref();
 const faceLibraryRef = ref();
 const plateLibraryRef = ref();
+const scenarioPoseLibraryRef = ref();
 
 // 推流转发组件引用
 const streamForwardRef = ref();
@@ -335,9 +364,11 @@ const CAMERA_TAB_KEYS = {
   STORAGE: '4',
   STREAM_FORWARD: '6',
   ALGORITHM: '7',
+  EDGE_NODE: '14',
   GB_NODE: '9',
   FACE_LIBRARY: '10',
   PLATE_LIBRARY: '11',
+  SCENARIO_POSE_LIBRARY: '13',
 } as const;
 
 const CAMERA_TAB_ID_SET = new Set<string>(Object.values(CAMERA_TAB_KEYS));
@@ -354,10 +385,16 @@ function normalizeCameraRouteTab(tab: string): string {
   if (!gb28181Enabled && tab === CAMERA_TAB_KEYS.GB_NODE) {
     return CAMERA_TAB_KEYS.CAMERA_MAP;
   }
+  if (!edgeNodeEnabled && tab === CAMERA_TAB_KEYS.EDGE_NODE) {
+    return CAMERA_TAB_KEYS.CAMERA_MAP;
+  }
   if (
     !facePlateLibraryEnabled
     && (tab === CAMERA_TAB_KEYS.FACE_LIBRARY || tab === CAMERA_TAB_KEYS.PLATE_LIBRARY)
   ) {
+    return CAMERA_TAB_KEYS.CAMERA_MAP;
+  }
+  if (!scenarioPoseLibraryEnabled && tab === CAMERA_TAB_KEYS.SCENARIO_POSE_LIBRARY) {
     return CAMERA_TAB_KEYS.CAMERA_MAP;
   }
   if (CAMERA_TAB_ID_SET.has(tab)) return tab;
@@ -382,11 +419,19 @@ const handleTabClick = (activeKey: string) => {
   if (activeKey === CAMERA_TAB_KEYS.ALGORITHM && algorithmTaskRef.value) {
     algorithmTaskRef.value.refresh();
   }
+  if (activeKey === CAMERA_TAB_KEYS.EDGE_NODE) {
+    void nextTick(() => {
+      edgeNodeManageRef.value?.refresh?.();
+    });
+  }
   if (activeKey === CAMERA_TAB_KEYS.FACE_LIBRARY && faceLibraryRef.value) {
     faceLibraryRef.value.refresh?.();
   }
   if (activeKey === CAMERA_TAB_KEYS.PLATE_LIBRARY && plateLibraryRef.value) {
     plateLibraryRef.value.refresh?.();
+  }
+  if (activeKey === CAMERA_TAB_KEYS.SCENARIO_POSE_LIBRARY && scenarioPoseLibraryRef.value) {
+    scenarioPoseLibraryRef.value.refresh?.();
   }
   // 切换到推流转发标签页时，刷新数据
   if (activeKey === CAMERA_TAB_KEYS.STREAM_FORWARD && streamForwardRef.value) {
@@ -782,12 +827,24 @@ const getTableActions = (record: Record<string, any>): ActionItem[] => {
     {
       icon: 'ant-design:eye-filled',
       tooltip: '详情',
-      onClick: () => openAddModal('view', record)
+      onClick: () => {
+        if (isDjiLiveRecord(record)) {
+          openDjiLiveDrawer(true, { record, isView: true, type: 'view' });
+          return;
+        }
+        openAddModal('view', record);
+      },
     },
     {
       icon: 'ant-design:edit-filled',
       tooltip: '编辑',
-      onClick: () => openAddModal('edit', record)
+      onClick: () => {
+        if (isDjiLiveRecord(record)) {
+          openDjiLiveDrawer(true, { record, isEdit: true, type: 'edit' });
+          return;
+        }
+        openAddModal('edit', record);
+      },
     },
     {
       icon: 'material-symbols:delete-outline-rounded',
@@ -807,9 +864,61 @@ const getTableActions = (record: Record<string, any>): ActionItem[] => {
 function handlePlayerSuccess() {
 }
 
+function isDjiLiveRecord(record: DeviceInfo) {
+  const text = [
+    (record as any)?.manufacturer,
+    (record as any)?.model,
+    (record as any)?.source,
+    (record as any)?.hardware_id,
+    (record as any)?.device_kind,
+  ].filter(Boolean).join(' ');
+  return /DJI|Dock Live|Drone Live|flighthub:|volc:\/\/|device_kind.?dji/i.test(text)
+    || (record as any)?.device_kind === 'dji';
+}
+
+async function refreshDjiLiveBeforePlay(record: DeviceInfo) {
+  if (!isDjiLiveRecord(record) || !(record as any)?.id) return record;
+  try {
+    const response = (await refreshDjiSkylinkLiveByDevice(String((record as any).id))) as any;
+    const result = response?.data || response;
+    if (result?.code && result.code !== 0 && result.code !== 200) {
+      const provider = result?.data?.provider || result?.provider;
+      const url = String(provider?.url || '').trim();
+      const urlType = String(result?.data?.url_type || provider?.url_type || provider?.type || '').toLowerCase();
+      if (urlType === 'volc' && url) {
+        return {
+          ...(record as any),
+          source: url.startsWith('volc://') ? url : `volc://${encodeURIComponent(url)}`,
+          provider,
+          providerType: 'volc',
+          urlType: 'volc',
+        } as DeviceInfo;
+      }
+      return record;
+    }
+    const refreshed = result?.data || result;
+    if (refreshed?.source || refreshed?.id) {
+      return {
+        ...(record as any),
+        ...refreshed,
+        id: refreshed.id || (record as any).id,
+        name: refreshed.name || (record as any).name,
+      } as DeviceInfo;
+    }
+  } catch (error) {
+    console.warn('refresh dji live before play failed', error);
+  }
+  return record;
+}
+
 async function handlePlayStream(record: DeviceInfo) {
-  const ok = await openDeviceInDialogPlayer(openPlayerAddModel, record, { enableAi: enableAi.value });
+  const freshRecord = await refreshDjiLiveBeforePlay(record);
+  const ok = await openDeviceInDialogPlayer(openPlayerAddModel, freshRecord, { enableAi: enableAi.value });
   if (!ok) {
+    if (extractVolcLiveUrl(freshRecord as any)) {
+      createMessage.warning('司空返回了火山 RTC 地址，请确认前端已安装 @volcengine/rtc 依赖');
+      return;
+    }
     createMessage.warning(
       enableAi.value ? '该设备暂无 AI 流或原始流播放地址' : '该设备暂无可播放地址',
     );
@@ -903,12 +1012,20 @@ const handleCardView = (record: Record<string, any>) => {
     handleTableViewGbDevice(record);
     return;
   }
+  if (isDjiLiveRecord(record)) {
+    openDjiLiveDrawer(true, { record, isView: true, type: 'view' });
+    return;
+  }
   openAddModal('view', record);
 };
 
 const handleCardEdit = (record: Record<string, any>) => {
   if (isGb28181SipListRow(record)) {
     handleTableEditGbDevice(record);
+    return;
+  }
+  if (isDjiLiveRecord(record)) {
+    openDjiLiveDrawer(true, { record, isEdit: true, type: 'edit' });
     return;
   }
   openAddModal('edit', record);

@@ -29,6 +29,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.annotation.security.PermitAll;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.constraints.NotEmpty;
 import java.io.IOException;
@@ -98,6 +99,7 @@ public class DeviceController extends BaseController {
      */
     @ApiOperation("EMQX钩子回调")
     @PostMapping("/webHook")
+    @PermitAll
     public void webHook(@RequestBody Map<String, Object> params) {
         log.info("EMQX钩子回调, params=" + params);
         String action = (String) params.get("event");
@@ -189,6 +191,30 @@ public class DeviceController extends BaseController {
         util.exportExcel(response, list, "设备管理数据");
     }
 
+    @ApiOperation("查询网关下已绑定的子设备")
+    @GetMapping("/subDevices")
+    public TableDataInfo listSubDevices(@RequestParam("gatewayIdentification") String gatewayIdentification) {
+        startPage();
+        Device query = new Device();
+        query.setParentIdentification(gatewayIdentification);
+        query.setDeviceType(Device.deviceTypeEnum.SUBSET.getType());
+        List<Device> list = deviceService.selectDeviceList(query);
+        return getDataTable(list);
+    }
+
+    @ApiOperation("查询可绑定的网关子设备（未关联）")
+    @GetMapping("/unboundSubDevices")
+    public TableDataInfo listUnboundSubDevices(
+            @RequestParam(value = "deviceName", required = false) String deviceName) {
+        startPage();
+        Device query = new Device();
+        query.setDeviceType(Device.deviceTypeEnum.SUBSET.getType());
+        query.setIsAssociated(false);
+        query.setDeviceName(deviceName);
+        List<Device> list = deviceService.selectDeviceList(query);
+        return getDataTable(list);
+    }
+
     /**
      * 获取设备管理详细信息
      */
@@ -216,6 +242,15 @@ public class DeviceController extends BaseController {
     public AjaxResult add(@RequestBody Device device) {
         try {
             device.setDeviceIdentification(SnowflakeIdUtil.nextId());
+            if (StringUtils.isEmpty(device.getClientId())) {
+                device.setClientId("tcp-" + device.getDeviceIdentification());
+            }
+            if (StringUtils.isEmpty(device.getDeviceStatus())) {
+                device.setDeviceStatus("ENABLE");
+            }
+            if (StringUtils.isEmpty(device.getConnectStatus())) {
+                device.setConnectStatus("OFFLINE");
+            }
             return toAjax(deviceService.insertDevice(device));
         } catch (Exception e) {
             return AjaxResult.error(e.getMessage());
@@ -376,24 +411,111 @@ public class DeviceController extends BaseController {
         return R.ok(deviceService.selectDeviceByDeviceIdentificationList(deviceIdentificationList));
     }
 
-    @ApiOperation("关联网关")
+    @ApiOperation("关联网关子设备")
     @PostMapping("/associateGateway")
     public AjaxResult associateGateway(@RequestBody AssociateGatewayRequest associateGatewayRequest) {
-        int successCount = deviceService.associateGateway(associateGatewayRequest.getIdList(), associateGatewayRequest.getTargetDeviceIdentification());
-        if (successCount == 0) {
-            return AjaxResult.error("关联失败");
+        try {
+            int successCount = deviceService.associateGateway(associateGatewayRequest.getIdList(), associateGatewayRequest.getTargetDeviceIdentification());
+            if (successCount == 0) {
+                return AjaxResult.error("关联失败");
+            }
+            return AjaxResult.success("成功关联 " + successCount + " 个子设备");
+        } catch (Exception e) {
+            log.error("关联网关子设备失败", e);
+            return AjaxResult.error(e.getMessage());
         }
-        return AjaxResult.success();
     }
 
-    @ApiOperation("解除关联")
+    @ApiOperation("解绑网关子设备")
     @PostMapping("/disassociateGateway")
     public AjaxResult disassociateGateway(@RequestBody List<Long> idList) {
-        int successCount = deviceService.disassociateGateway(idList);
-        if (successCount == 0) {
-            return AjaxResult.error("解除关联");
+        try {
+            int successCount = deviceService.disassociateGateway(idList);
+            if (successCount == 0) {
+                return AjaxResult.error("解绑失败");
+            }
+            return AjaxResult.success("成功解绑 " + successCount + " 个子设备");
+        } catch (Exception e) {
+            log.error("解绑网关子设备失败", e);
+            return AjaxResult.error(e.getMessage());
         }
-        return AjaxResult.success();
+    }
+
+    @ApiOperation("网关代报时确保子设备存在（自动创建并绑定）")
+    @PostMapping("/ensureGatewaySubDevice")
+    public R<Device> ensureGatewaySubDevice(@RequestBody EnsureGatewaySubDeviceParam param) {
+        try {
+            return R.ok(deviceService.ensureGatewaySubDevice(param));
+        } catch (IllegalArgumentException e) {
+            return R.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("确保网关子设备失败", e);
+            return R.fail(e.getMessage());
+        }
+    }
+
+    @ApiOperation("网关删除子设备拓扑关系")
+    @PostMapping("/detachGatewaySubDevices")
+    public R<Integer> detachGatewaySubDevices(@RequestParam("gatewayIdentification") String gatewayIdentification,
+                                              @RequestBody List<String> subDeviceIdentifications) {
+        try {
+            return R.ok(deviceService.detachGatewaySubDevices(gatewayIdentification, subDeviceIdentifications));
+        } catch (Exception e) {
+            log.error("删除网关子设备拓扑失败", e);
+            return R.fail(e.getMessage());
+        }
+    }
+
+    @ApiOperation("网关上报子设备在线状态")
+    @PostMapping("/updateGatewaySubDeviceStatus")
+    public R<Integer> updateGatewaySubDeviceStatus(@RequestParam("gatewayIdentification") String gatewayIdentification,
+                                                   @RequestBody List<Map<String, Object>> statusItems) {
+        try {
+            return R.ok(deviceService.updateGatewaySubDeviceStatus(gatewayIdentification, statusItems));
+        } catch (Exception e) {
+            log.error("更新网关子设备状态失败", e);
+            return R.fail(e.getMessage());
+        }
+    }
+
+    @ApiOperation("上行时确保设备存在（GATEWAY/COMMON 自动建档）")
+    @PostMapping("/ensureDeviceOnUplink")
+    public R<Device> ensureDeviceOnUplink(@RequestBody EnsureDeviceOnUplinkParam param) {
+        try {
+            return R.ok(deviceService.ensureDeviceOnUplink(param));
+        } catch (IllegalArgumentException e) {
+            return R.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("上行自动创建设备失败", e);
+            return R.fail(e.getMessage());
+        }
+    }
+
+    @ApiOperation("调用设备服务（MQTT 下行）")
+    @PostMapping("/{deviceId}/invokeService")
+    public AjaxResult invokeService(@PathVariable("deviceId") Long deviceId,
+                                    @RequestParam String serviceIdentifier,
+                                    @RequestBody(required = false) Object params) {
+        try {
+            Map<String, Object> result = deviceService.invokeService(deviceId, serviceIdentifier, params);
+            return result != null ? AjaxResult.success("服务调用已下发", result)
+                    : AjaxResult.error("服务调用失败");
+        } catch (IllegalArgumentException ex) {
+            return AjaxResult.error(ex.getMessage());
+        }
+    }
+
+    @ApiOperation("下发设备属性期望值（MQTT 下行 thing.property.set）")
+    @PostMapping("/{deviceId}/setProperties")
+    public AjaxResult setProperties(@PathVariable("deviceId") Long deviceId,
+                                    @RequestBody Object params) {
+        try {
+            Map<String, Object> result = deviceService.setProperties(deviceId, params);
+            return result != null ? AjaxResult.success("属性期望值已下发", result)
+                    : AjaxResult.error("属性下发失败");
+        } catch (IllegalArgumentException ex) {
+            return AjaxResult.error(ex.getMessage());
+        }
     }
 
     @ApiOperation("获取设备连接状态统计")
@@ -415,6 +537,51 @@ public class DeviceController extends BaseController {
     public AjaxResult getDeviceStatusStatistics() {
         DeviceStatusStatisticsVo connectStatusStatisticsVo = deviceService.getDeviceStatusStatistics();
         return AjaxResult.success(connectStatusStatisticsVo);
+    }
+
+    @ApiOperation("查询 IoT 设备已关联的流媒体摄像头")
+    @GetMapping("/cameraLinks")
+    public TableDataInfo listCameraLinks(@RequestParam("iotDeviceId") Long iotDeviceId) {
+        startPage();
+        List<DeviceCameraLink> list = deviceService.listDeviceCameraLinks(iotDeviceId);
+        return getDataTable(list);
+    }
+
+    @ApiOperation("查询已被绑定的流媒体摄像头 ID")
+    @GetMapping("/boundCameraIds")
+    public AjaxResult listBoundCameraIds() {
+        return AjaxResult.success(deviceService.listBoundCameraIds());
+    }
+
+    @ApiOperation("关联流媒体摄像头")
+    @PostMapping("/associateCameras")
+    public AjaxResult associateCameras(@RequestBody AssociateCamerasRequest request) {
+        try {
+            int successCount = deviceService.associateCameras(
+                    request.getIotDeviceId(), request.getCameraDeviceIds());
+            if (successCount == 0) {
+                return AjaxResult.error("关联失败");
+            }
+            return AjaxResult.success("成功关联 " + successCount + " 个摄像头");
+        } catch (Exception e) {
+            log.error("关联流媒体摄像头失败", e);
+            return AjaxResult.error(e.getMessage());
+        }
+    }
+
+    @ApiOperation("解绑流媒体摄像头")
+    @PostMapping("/disassociateCameras")
+    public AjaxResult disassociateCameras(@RequestBody List<Long> linkIds) {
+        try {
+            int successCount = deviceService.disassociateCameras(linkIds);
+            if (successCount == 0) {
+                return AjaxResult.error("解绑失败");
+            }
+            return AjaxResult.success("成功解绑 " + successCount + " 个摄像头");
+        } catch (Exception e) {
+            log.error("解绑流媒体摄像头失败", e);
+            return AjaxResult.error(e.getMessage());
+        }
     }
 
 

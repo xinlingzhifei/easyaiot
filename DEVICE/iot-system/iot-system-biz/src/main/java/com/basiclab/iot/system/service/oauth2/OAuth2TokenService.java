@@ -31,6 +31,14 @@ public interface OAuth2TokenService {
     OAuth2AccessTokenDO createAccessToken(Long userId, Integer userType, String clientId, List<String> scopes);
 
     /**
+     * 创建访问令牌（支持记住我：延长 Token 有效期）
+     *
+     * @param rememberMe 是否记住我（30天免登录）
+     * @return 访问令牌的信息
+     */
+    OAuth2AccessTokenDO createAccessToken(Long userId, Integer userType, String clientId, List<String> scopes, Boolean rememberMe);
+
+    /**
      * 刷新访问令牌
      *
      * 参考 DefaultTokenServices 的 refreshAccessToken 方法

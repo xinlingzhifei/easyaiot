@@ -1,39 +1,53 @@
 <template>
   <div class="phsyical-modal">
-    <!-- 标题栏和视图切换 -->
-    <div class="modal-header">
-      <PhysicalModalTitle
-        v-model:isEdit="isEdit"
-        @add-phsyical="handleEdit('add')"
-        @reload="reload"
-        @release="handleRelease"
-        @update:function-type="updateFunctionType"
-      />
-      <div class="view-switch">
-        <ButtonGroup>
-          <Button
-            :type="viewMode === 'table' ? 'primary' : 'default'"
-            @click="viewMode = 'table'"
-          >
-            <template #icon>
-              <Icon icon="ant-design:table-outlined" />
-            </template>
-            表格
+    <div class="toolbar">
+      <RadioGroup
+        :value="state.functionType"
+        button-style="solid"
+        class="type-radio-group"
+        @change="handleTypeChange"
+      >
+        <RadioButton
+          v-for="item in typeOptions"
+          :key="item.key"
+          :value="item.key"
+        >
+          {{ item.label }}
+          <template v-if="state.functionType === item.key">
+            ({{ pagination.total }})
+          </template>
+        </RadioButton>
+      </RadioGroup>
+
+      <div class="toolbar-actions">
+        <template v-if="isEdit">
+          <span class="draft-hint">草稿未发布，发布后生效</span>
+          <Button type="primary" preIcon="ant-design:plus-outlined" @click="handleEdit('add')">
+            新增
           </Button>
-          <Button
-            :type="viewMode === 'card' ? 'primary' : 'default'"
-            @click="viewMode = 'card'"
-          >
-            <template #icon>
-              <Icon icon="ant-design:appstore-outlined" />
-            </template>
-            卡片
+          <Button type="primary" color="success" preIcon="ant-design:cloud-upload-outlined" @click="handleRelease">
+            发布
           </Button>
-        </ButtonGroup>
+          <Button @click="isEdit = false">退出编辑</Button>
+        </template>
+        <Button
+          v-else
+          type="primary"
+          preIcon="ant-design:edit-outlined"
+          @click="isEdit = true"
+        >
+          编辑物模型
+        </Button>
+        <Button
+          type="default"
+          preIcon="ant-design:swap-outlined"
+          @click="handleViewSwap"
+        >
+          切换视图
+        </Button>
       </div>
     </div>
 
-    <!-- 表格视图 -->
     <div v-show="viewMode === 'table'" class="table-view">
       <BasicTable @register="registerTable">
         <template #action="{ record }">
@@ -42,9 +56,7 @@
       </BasicTable>
     </div>
 
-    <!-- 卡片视图 -->
     <div v-show="viewMode === 'card'" class="card-view">
-      <!-- 搜索表单 -->
       <div class="card-search-form">
         <BasicTable @register="registerTable" />
       </div>
@@ -53,40 +65,38 @@
           <Empty description="暂无数据" />
         </div>
         <div v-else class="card-grid">
-          <Card
-            v-for="record in cardData"
-            :key="record.id"
-            class="model-card"
-            :hoverable="true"
-          >
-            <template #title>
-              <div class="card-title">
-                <span class="title-text">{{ getCardTitle(record) }}</span>
-                <Tag
-                  v-if="record.templateIdentification"
-                  color="green"
-                  class="standard-tag"
-                >
-                  标准
-                </Tag>
-                <Tag v-else color="red" class="standard-tag">自定义</Tag>
+          <div v-for="record in cardData" :key="record.id" class="prop-card">
+            <div class="card-header">
+              <div class="title-wrap">
+                <span class="title">
+                  <span class="name">{{ getCardTitle(record) }}</span>
+                  <span v-if="getCardCode(record)" class="code">({{ getCardCode(record) }})</span>
+                </span>
               </div>
-            </template>
-            <div class="card-content">
-              <div class="card-item" v-for="item in getCardFields(record)" :key="item.key">
-                <span class="item-label">{{ item.label }}：</span>
-                <span class="item-value">{{ item.value }}</span>
+              <Tag :color="record.templateIdentification ? 'success' : 'orange'">
+                {{ record.templateIdentification ? '标准' : '自定义' }}
+              </Tag>
+            </div>
+
+            <div class="card-body">
+              <div class="primary-line">{{ getPrimaryValue(record) }}</div>
+              <div v-if="getSecondaryHint(record)" class="secondary-line">
+                {{ getSecondaryHint(record) }}
               </div>
             </div>
-            <template #actions>
-              <div class="card-actions">
+
+            <div class="card-footer">
+              <div class="meta-hint">
+                <span v-if="record.templateIdentification">来自标准模板</span>
+                <span v-else>产品自定义</span>
+              </div>
+              <div class="footer-actions" @click.stop>
                 <TableAction :actions="actionsBtn(record)" />
               </div>
-            </template>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
-      <!-- 卡片视图分页 -->
       <div v-if="cardData.length > 0" class="card-pagination">
         <Pagination
           v-model:current="pagination.current"
@@ -100,7 +110,6 @@
       </div>
     </div>
 
-    <!-- 新增、编辑、查看物模型弹窗 -->
     <Edit
       :title="state.editModelTitle"
       :productIdentification="props.productIdentification"
@@ -114,10 +123,9 @@
 <script lang="ts" setup name="PhysicalModal">
 import {BasicTable, TableAction, useTable, type ActionItem} from '@/components/Table';
 import {getBasicColumns, getFormConfig} from '../data/ProductData';
-import PhysicalModalTitle from './PhysicalModalTitle.vue';
 import {useModal} from '@/components/Modal';
 import Edit from './Edit.vue';
-import {onMounted, reactive, ref, withDefaults, watch} from 'vue';
+import { onMounted, reactive, ref, withDefaults, watch } from 'vue';
 import {
   delPhsyicalEvent,
   delPhsyicalProperties,
@@ -128,25 +136,25 @@ import {
   releasePhsyical,
   savePhsyicalEvent,
   savePhsyicalProperties,
-  savePhsyicalService,
+  savePhsyicalServiceWithParams,
   updatePhsyicalEvent,
   updatePhsyicalProperties,
-  updatePhsyicalService,
+  updatePhsyicalServiceWithParams,
+  getPhsyicalServiceDetail,
 } from '@/api/device/phsyicalModal';
+import { getCommandsList } from '@/api/device/command';
+import { getCommandsRequestList } from '@/api/device/command-parameter';
 import {useMessage} from '@/hooks/web/useMessage';
-import { ButtonGroup, Card, Tag, Empty, Pagination } from 'ant-design-vue';
-import {Icon} from '@/components/Icon';
-import { Button } from '@/components/Button'
+import { Empty, Pagination, RadioButton, RadioGroup, Tag } from 'ant-design-vue';
+import { Button } from '@/components/Button';
 interface Props {
     productIdentification: string;
     deviceProfileName: string;
-    templateIdentification: string;
   }
 
   const props = withDefaults(defineProps<Props>(), {
     productIdentification: '',
     deviceProfileName: '',
-    templateIdentification: '',
   });
 
   const state = reactive({
@@ -154,6 +162,12 @@ interface Props {
     editFunctionType : 'properties',
     editModelTitle: '物模型',
   });
+
+  const typeOptions = [
+    { key: 'properties', label: '属性' },
+    { key: 'services', label: '服务' },
+    { key: 'events', label: '事件' },
+  ];
 
   const { createMessage } = useMessage();
   // 是否处理编辑物模型
@@ -187,7 +201,6 @@ interface Props {
       return {
         ...params,
         productIdentification: props.productIdentification,
-        templateIdentification: props.templateIdentification,
         customApi: state.functionType == 'properties' ? getPropertiesList : state.functionType == 'services' ? getServicesList : getEventsList,
       };
     },
@@ -196,18 +209,57 @@ interface Props {
       totalField: 'total',
     },
     pagination: true,
-    afterFetch: (data) => {
+    afterFetch: async (data) => {
+      let rows = data || [];
+      if (state.functionType === 'services' && rows.length) {
+        rows = await enrichServiceParamCounts(rows);
+      }
       // 更新卡片数据
-      cardData.value = data || [];
+      cardData.value = rows;
       const paginationInfo = getPaginationRef();
       if (paginationInfo && typeof paginationInfo === 'object') {
         pagination.total = paginationInfo.total || 0;
         pagination.current = paginationInfo.current || 1;
         pagination.pageSize = paginationInfo.pageSize || 12;
       }
-      return data;
+      return rows;
     },
   });
+
+  const normalizeList = (response: any) => {
+    if (Array.isArray(response)) return response;
+    return response?.rows || response?.data || response?.list || [];
+  };
+
+  const enrichServiceParamCounts = async (rows: any[]) => {
+    await Promise.all(
+      rows.map(async (svc) => {
+        if (!svc?.id) {
+          svc.inputParamCount = 0;
+          return;
+        }
+        try {
+          const cmdRes = await getCommandsList({ serviceId: svc.id, pageNum: 1, pageSize: 20 });
+          const commands = normalizeList(cmdRes);
+          if (!commands.length) {
+            svc.inputParamCount = 0;
+            return;
+          }
+          const preferred =
+            commands.find((c) => c.commandCode === svc.serviceCode) || commands[0];
+          const reqRes = await getCommandsRequestList({
+            commandsId: preferred.id,
+            pageNum: 1,
+            pageSize: 200,
+          });
+          svc.inputParamCount = normalizeList(reqRes).length;
+        } catch {
+          svc.inputParamCount = 0;
+        }
+      }),
+    );
+    return rows;
+  };
 
   const [registerEditModal, { openModal: openEditModal }] = useModal();
   const actionsBtn = (record: { id: string }): ActionItem[] => {
@@ -277,48 +329,57 @@ interface Props {
     setColumns(getBasicColumns(state.functionType ?? 'properties'));
     pagination.current = 1;
     reload();
-  }
+  };
 
-  // 获取卡片标题
+  const handleTypeChange = (e) => {
+    updateFunctionType(e?.target?.value ?? e);
+  };
+
+  const handleViewSwap = () => {
+    viewMode.value = viewMode.value === 'card' ? 'table' : 'card';
+  };
+
   const getCardTitle = (record: any) => {
     if (state.functionType === 'properties') {
       return record.propertyName || record.propertyCode || '--';
-    } else if (state.functionType === 'services') {
+    }
+    if (state.functionType === 'services') {
       return record.serviceName || record.serviceCode || '--';
-    } else if (state.functionType === 'events') {
+    }
+    if (state.functionType === 'events') {
       return record.eventName || record.eventCode || '--';
     }
     return '--';
-  }
+  };
 
-  // 获取卡片字段
-  const getCardFields = (record: any) => {
-    const fields: Array<{ key: string; label: string; value: any }> = [];
-    
+  const getCardCode = (record: any) => {
+    if (state.functionType === 'properties') return record.propertyCode || '';
+    if (state.functionType === 'services') return record.serviceCode || '';
+    if (state.functionType === 'events') return record.eventCode || '';
+    return '';
+  };
+
+  const getPrimaryValue = (record: any) => {
     if (state.functionType === 'properties') {
-      fields.push(
-        { key: 'propertyCode', label: '属性标识', value: record.propertyCode || '--' },
-        { key: 'datatype', label: '数据类型', value: formatDataType(record.datatype) },
-      );
-      if (record.description) {
-        fields.push({ key: 'description', label: '描述', value: record.description });
-      }
-    } else if (state.functionType === 'services') {
-      fields.push(
-        { key: 'serviceCode', label: '服务标识', value: record.serviceCode || '--' },
-      );
-      if (record.description) {
-        fields.push({ key: 'description', label: '描述', value: record.description });
-      }
-    } else if (state.functionType === 'events') {
-      fields.push(
-        { key: 'eventCode', label: '事件标识', value: record.eventCode || '--' },
-        { key: 'eventType', label: '事件类型', value: formatEventType(record.eventType) },
-      );
+      return formatDataType(record.datatype);
     }
-    
-    return fields;
-  }
+    if (state.functionType === 'services') {
+      if (record.inputParamCount == null) return '--';
+      return record.inputParamCount > 0 ? `${record.inputParamCount} 个入参` : '无参';
+    }
+    if (state.functionType === 'events') {
+      return formatEventType(record.eventType);
+    }
+    return '--';
+  };
+
+  const getSecondaryHint = (record: any) => {
+    if (record.description) return record.description;
+    if (state.functionType === 'properties' && record.accessMode) {
+      return `访问模式：${record.accessMode}`;
+    }
+    return '';
+  };
 
   // 格式化数据类型
   const formatDataType = (text: string) => {
@@ -385,7 +446,7 @@ interface Props {
   }
 
   // 新增物模型
-  const handleEdit = (modalType: 'add' | 'edit' | 'view', record?: any) => {
+  const handleEdit = async (modalType: 'add' | 'edit' | 'view', record?: any) => {
     let params = record ?? {};
     params.functionType = state.functionType ?? 'properties';
     if (record) {
@@ -398,9 +459,44 @@ interface Props {
         ...params,
       };
     }
-    // alert(JSON.stringify(params));
+    // 服务编辑/查看：加载入参出参
+    if (state.functionType === 'services' && record?.id) {
+      try {
+        const detail: any = await getPhsyicalServiceDetail(record.id);
+        params = {
+          ...params,
+          ...detail,
+          inputParams: detail?.inputParams || [],
+          outParams: detail?.outParams || [],
+          functionType: 'services',
+        };
+      } catch (e) {
+        console.warn('加载服务详情失败', e);
+        params.inputParams = params.inputParams || [];
+        params.outParams = params.outParams || [];
+      }
+    }
     openEditModal(true, { modalType, ...params });
   };
+
+  const mapServiceParams = (list: any[] = []) =>
+    (list || []).map((p) => {
+      const item = { ...p };
+      if (item.datatype === 'BOOL') {
+        const tmp: any = {};
+        tmp['0'] = item.boolClose ?? '关';
+        tmp['1'] = item.boolOpen ?? '开';
+        item.enumlist = JSON.stringify(tmp);
+      }
+      if (item.datatype === 'TEXT' && (item.maxlength == null || item.maxlength === undefined)) {
+        item.maxlength = item.length || 10240;
+      }
+      item.parameterCode = item.parameterCode || item.propertyCode;
+      item.parameterName = item.parameterName || item.propertyName;
+      item.propertyCode = item.parameterCode;
+      item.propertyName = item.parameterName;
+      return item;
+    });
 
   // 保存物模型数据到列表
   const handleSubmit = (res) => {
@@ -429,16 +525,38 @@ interface Props {
       productIdentification: props.productIdentification,
     };
     delete params.functionJson;
+
+    // 服务：一体保存入参/出参
+    if (state.editFunctionType == 'services') {
+      const payload = {
+        id: id || undefined,
+        serviceCode: params.serviceCode,
+        serviceName: params.serviceName,
+        description: params.description,
+        productIdentification: props.productIdentification,
+        status: params.status || '0',
+        inputParams: mapServiceParams(params.inputParams),
+        outParams: mapServiceParams(params.outParams),
+      };
+      const req = id
+        ? updatePhsyicalServiceWithParams({ ...payload, id })
+        : savePhsyicalServiceWithParams(payload);
+      req
+        .then(() => {
+          reload();
+          createMessage.success(`${id ? '修改' : '新增'}成功`);
+        })
+        .catch((e) => {
+          createMessage.error(e?.message || '保存服务失败');
+        });
+      return;
+    }
+
     if (id) {
       params.id = id;
       text = '修改';
       if(state.editFunctionType == 'properties') {
         updatePhsyicalProperties(params).then(() => {
-          reload();
-          createMessage.success(`${text}成功`);
-        });
-      } else if(state.editFunctionType == 'services'){
-        updatePhsyicalService(params).then(() => {
           reload();
           createMessage.success(`${text}成功`);
         });
@@ -452,11 +570,6 @@ interface Props {
       delete params.id;
       if(state.editFunctionType == 'properties') {
         savePhsyicalProperties(params).then(() => {
-          reload();
-          createMessage.success(`${text}成功`);
-        });
-      } else if(state.editFunctionType == 'services'){
-        savePhsyicalService(params).then(() => {
           reload();
           createMessage.success(`${text}成功`);
         });
@@ -566,367 +679,275 @@ interface Props {
 </script>
 
 <style lang="less" scoped>
-  .phsyical-modal {
-    background-color: transparent;
-    padding: 0;
-    height: 100%;
+@primary: #1890ff;
+@title: #262626;
+@secondary: #8c8c8c;
+@border: #e8e8e8;
+
+.phsyical-modal {
+  background-color: #ffffff;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+
+  .toolbar {
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+    margin-bottom: 16px;
+    min-height: 32px;
 
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 0;
-      gap: 16px;
+    .type-radio-group {
+      flex-shrink: 0;
 
-      .view-switch {
-        flex-shrink: 0;
-        margin-top: 8px;
-
-        :deep(.ant-btn) {
-          font-size: 13px;
-          height: 32px;
-          padding: 4px 15px;
-        }
+      :deep(.ant-radio-button-wrapper) {
+        height: 32px;
+        line-height: 30px;
+        padding: 0 16px;
+        font-size: 14px;
       }
-    }
-
-    .table-view {
-      flex: 1;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-
-      :deep(.vben-basic-table-form-container) {
-        padding: 12px 16px;
-        background: #fafafa;
-        border-radius: 8px;
-        margin-bottom: 12px;
-      }
-
-      :deep(.ant-table) {
-        font-size: 13px;
-
-        .ant-table-thead > tr > th {
-          font-size: 13px;
-          font-weight: 600;
-          color: #333;
-          padding: 12px 16px;
-          background: #fafafa;
-        }
-
-        .ant-table-tbody > tr > td {
-          font-size: 13px;
-          padding: 12px 16px;
-          color: #666;
-        }
-
-        .ant-table-tbody > tr:hover > td {
-          background: #f5f7fa;
-        }
-      }
-    }
-
-    .card-view {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-
-      .card-search-form {
-        margin-bottom: 0;
-        flex-shrink: 0;
-        
-        :deep(.vben-basic-table-form-container) {
-          padding: 8px 16px;
-          background: #fafafa;
-          border-radius: 8px;
-        }
-
-        // 隐藏表格，只显示搜索表单
-        :deep(.ant-table-wrapper) {
-          display: none;
-        }
-
-        :deep(.ant-pagination) {
-          display: none;
-        }
-      }
-
-      .card-container {
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: hidden;
-        min-height: 0;
-
-        :deep(.ant-tabs) {
-          margin-bottom: 0;
-          background-color: #ffffff;
-
-          .ant-tabs-nav {
-            margin-bottom: 0;
-          }
-
-          .ant-tabs-tab {
-            font-size: 13px;
-            padding: 8px 16px;
-          }
-
-          .ant-tabs-content-holder {
-            display: none;
-          }
-        }
-        
-        // 自定义滚动条样式
-        &::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        &::-webkit-scrollbar-track {
-          background: #f5f5f5;
-          border-radius: 3px;
-        }
-
-        &::-webkit-scrollbar-thumb {
-          background: #d9d9d9;
-          border-radius: 3px;
-          
-          &:hover {
-            background: #bfbfbf;
-          }
-        }
-      }
-
-      .empty-state {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
-        min-height: 300px;
-        background: #ffffff;
-        border-radius: 8px;
-      }
-
-      .card-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 12px;
-        padding-bottom: 4px;
-
-        .model-card {
-          border-radius: 10px;
-          background: 
-            linear-gradient(135deg, #ffffff 0%, #fafbfc 100%),
-            radial-gradient(circle at top right, rgba(24, 144, 255, 0.03) 0%, transparent 50%);
-          box-shadow: 
-            0 0.5px 2px rgba(0, 0, 0, 0.03),
-            0 2px 8px rgba(0, 0, 0, 0.05),
-            0 0 0 0.5px rgba(0, 0, 0, 0.015),
-            inset 0 1px 0 rgba(255, 255, 255, 0.8);
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          border: 0.5px solid rgba(0, 0, 0, 0.06);
-          position: relative;
-          overflow: hidden;
-          backdrop-filter: blur(10px);
-
-          &::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, #1890ff 0%, #40a9ff 50%, #69c0ff 100%);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
-          }
-
-          &::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(24, 144, 255, 0.05) 0%, transparent 70%);
-            opacity: 0;
-            transition: opacity 0.4s ease;
-            pointer-events: none;
-          }
-
-          &:hover {
-            box-shadow: 
-              0 2px 8px rgba(0, 0, 0, 0.06),
-              0 6px 20px rgba(0, 0, 0, 0.08),
-              0 0 0 1px rgba(24, 144, 255, 0.15),
-              inset 0 1px 0 rgba(255, 255, 255, 0.9);
-            transform: translateY(-3px) scale(1.01);
-            border-color: rgba(24, 144, 255, 0.25);
-            background: 
-              linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%),
-              radial-gradient(circle at top right, rgba(24, 144, 255, 0.08) 0%, transparent 50%);
-
-            &::before {
-              opacity: 1;
-            }
-
-            &::after {
-              opacity: 1;
-            }
-          }
-
-          :deep(.ant-card-head) {
-            border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
-            padding: 12px 14px;
-            min-height: 44px;
-            background: linear-gradient(to bottom, rgba(250, 251, 252, 0.6), transparent);
-
-            .ant-card-head-title {
-              padding: 0;
-            }
-          }
-
-          :deep(.ant-card-body) {
-            padding: 14px;
-            background: transparent;
-          }
-
-          :deep(.ant-card-actions) {
-            border-top: 0.5px solid rgba(0, 0, 0, 0.05);
-            background: linear-gradient(to top, rgba(250, 251, 252, 0.4), transparent);
-            padding: 8px 0;
-            margin: 0;
-          }
-
-          .card-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-
-            .title-text {
-              font-size: 13px;
-              font-weight: 600;
-              color: #1a1a1a;
-              flex: 1;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              white-space: nowrap;
-              letter-spacing: 0.1px;
-              line-height: 1.4;
-            }
-
-            .standard-tag {
-              flex-shrink: 0;
-              font-size: 11px;
-              margin: 0;
-              border-radius: 3px;
-              padding: 1px 6px;
-              font-weight: 500;
-              line-height: 1.5;
-            }
-          }
-
-          .card-content {
-            .card-item {
-              display: flex;
-              margin-bottom: 10px;
-              font-size: 12px;
-              line-height: 1.6;
-              padding: 6px 0;
-              border-bottom: 0.5px solid rgba(0, 0, 0, 0.03);
-              transition: all 0.2s ease;
-
-              &:last-child {
-                margin-bottom: 0;
-                border-bottom: none;
-              }
-
-              &:hover {
-                background: rgba(24, 144, 255, 0.03);
-                border-radius: 4px;
-                padding-left: 6px;
-                padding-right: 6px;
-                margin-left: -6px;
-                margin-right: -6px;
-              }
-
-              .item-label {
-                color: #666;
-                font-weight: 500;
-                min-width: 75px;
-                flex-shrink: 0;
-                letter-spacing: 0.05px;
-                font-size: 12px;
-              }
-
-              .item-value {
-                color: #1a1a1a;
-                font-weight: 600;
-                flex: 1;
-                word-break: break-word;
-                letter-spacing: 0.05px;
-                font-size: 12px;
-              }
-            }
-          }
-
-          .card-actions {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 0 8px;
-          }
-        }
-      }
-
-      .card-pagination {
-        display: flex;
-        justify-content: flex-end;
-        padding: 4px 0;
-        flex-shrink: 0;
-        margin-top: 0;
-
-        :deep(.ant-pagination) {
-          font-size: 13px;
-        }
-      }
-    }
-
-    :deep(.ant-btn) {
-      font-size: 13px;
-      height: 32px;
-      padding: 4px 15px;
-    }
-
-    :deep(.ant-btn-sm) {
-      font-size: 12px;
-      height: 28px;
-      padding: 2px 12px;
-    }
-
-    :deep(.ant-input),
-    :deep(.ant-select-selector),
-    :deep(.ant-picker) {
-      font-size: 13px;
-    }
-
-    :deep(.ant-form-item-label > label) {
-      font-size: 13px;
-      font-weight: 500;
-      color: #333;
-    }
-
-    :deep(.ant-alert) {
-      font-size: 13px;
-      padding: 10px 16px;
-      margin-bottom: 16px;
-    }
-
-    :deep(.ant-space-item) {
-      font-size: 13px;
     }
   }
+
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+
+    .draft-hint {
+      font-size: 13px;
+      color: #fa8c16;
+      white-space: nowrap;
+      margin-right: 4px;
+    }
+  }
+
+  .table-view {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+
+    :deep(.vben-basic-table-form-container) {
+      padding: 0;
+      background: transparent;
+      margin-bottom: 12px;
+    }
+
+    :deep(.ant-table) {
+      font-size: 13px;
+
+      .ant-table-thead > tr > th {
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        padding: 12px 16px;
+        background: #fafafa;
+      }
+
+      .ant-table-tbody > tr > td {
+        font-size: 13px;
+        padding: 12px 16px;
+        color: #666;
+      }
+
+      .ant-table-tbody > tr:hover > td {
+        background: #f5f7fa;
+      }
+    }
+  }
+
+  .card-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    .card-search-form {
+      margin-bottom: 8px;
+      flex-shrink: 0;
+
+      :deep(.vben-basic-table-form-container) {
+        padding: 0;
+        background: transparent;
+      }
+
+      :deep(.ant-table-wrapper),
+      :deep(.ant-pagination) {
+        display: none;
+      }
+    }
+
+    .card-container {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      min-height: 0;
+
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: #d9d9d9;
+        border-radius: 3px;
+      }
+    }
+
+    .empty-state {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 240px;
+      color: #bfbfbf;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+      padding-bottom: 4px;
+    }
+
+    .prop-card {
+      height: 156px;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 18px 12px;
+      border-radius: 6px;
+      border: 1px solid @border;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      overflow: hidden;
+
+      &:hover {
+        border-color: #91caff;
+        box-shadow: 0 2px 8px rgba(24, 144, 255, 0.12);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+
+        .title-wrap {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .title {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          line-height: 22px;
+
+          .name {
+            font-size: 14px;
+            font-weight: 500;
+            color: @title;
+          }
+
+          .code {
+            margin-left: 4px;
+            font-size: 13px;
+            font-weight: 400;
+            color: @secondary;
+          }
+        }
+
+        .scope-tag {
+          flex-shrink: 0;
+        }
+
+        :deep(.ant-tag) {
+          margin: 0;
+          flex-shrink: 0;
+        }
+      }
+
+      .card-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 0;
+        padding: 4px 0 8px;
+        text-align: center;
+
+        .primary-line {
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 18px;
+          font-weight: 500;
+          color: @primary;
+          line-height: 1.3;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .secondary-line {
+          margin-top: 6px;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 12px;
+          color: @secondary;
+          line-height: 18px;
+        }
+      }
+
+      .card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding-top: 10px;
+        border-top: 1px solid #f0f0f0;
+        min-width: 0;
+
+        .meta-hint {
+          min-width: 0;
+          font-size: 12px;
+          color: @secondary;
+          line-height: 20px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .footer-actions {
+          flex-shrink: 0;
+        }
+      }
+    }
+
+    .card-pagination {
+      display: flex;
+      justify-content: flex-end;
+      padding: 12px 0 0;
+      flex-shrink: 0;
+
+      :deep(.ant-pagination) {
+        font-size: 13px;
+      }
+    }
+  }
+}
 </style>

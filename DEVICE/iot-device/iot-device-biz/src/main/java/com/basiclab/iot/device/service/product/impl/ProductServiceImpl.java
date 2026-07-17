@@ -20,7 +20,12 @@ import com.basiclab.iot.device.domain.device.vo.*;
 import com.basiclab.iot.device.domain.product.model.ProductModel;
 import com.basiclab.iot.device.domain.product.model.Properties;
 import com.basiclab.iot.device.domain.product.model.Services;
-import com.basiclab.iot.device.domain.product.vo.param.*;
+import com.basiclab.iot.device.domain.product.vo.param.ProductCommandParamVO;
+import com.basiclab.iot.device.domain.product.vo.param.ProductCommandRequestParamVO;
+import com.basiclab.iot.device.domain.product.vo.param.ProductCommandResponseParamVO;
+import com.basiclab.iot.device.domain.product.vo.param.ProductParamVO;
+import com.basiclab.iot.device.domain.product.vo.param.ProductPropertyParamVO;
+import com.basiclab.iot.device.domain.product.vo.param.ProductServiceParamVO;
 import com.basiclab.iot.device.domain.product.vo.result.ProductResultVO;
 import com.basiclab.iot.device.enums.device.DataTypeEnum;
 import com.basiclab.iot.device.enums.product.ProductTypeEnum;
@@ -279,9 +284,8 @@ public class ProductServiceImpl implements ProductService {
             //服务属性解析处理
             Product product = new Product();
             product.setAppId(appId);
-            if (StringUtils.isNotEmpty(templateIdentification)) {
-                product.setTemplateIdentification(templateIdentification);
-            }
+            // 产品管理不再使用产品模板字段
+            product.setTemplateIdentification(null);
             product.setProductName(productName);
             product.setProductIdentification(UUID.getUUID());
             product.setProductType(String.valueOf(productType));
@@ -417,6 +421,8 @@ public class ProductServiceImpl implements ProductService {
         }
         product.setProductIdentification(SnowflakeIdUtil.nextId());
         product.setCreateBy("admin");
+        // 产品管理不再使用产品模板字段
+        product.setTemplateIdentification(null);
         return productMapper.insertProduct(product);
     }
 
@@ -429,6 +435,8 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public int updateProduct(Product product) {
         product.setUpdateBy("admin");
+        // 产品管理不再使用产品模板字段，编辑时清空
+        product.setTemplateIdentification("");
         return productMapper.updateProduct(product);
     }
 

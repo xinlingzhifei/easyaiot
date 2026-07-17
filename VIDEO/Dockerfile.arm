@@ -23,6 +23,50 @@ FROM base AS dependencies
 # Dockerfile 会在 RUN 命令中检查文件大小，如果文件为空或很小则跳过使用
 COPY ffmpeg-master-latest-linuxarm64-gpl.tar.xz* /tmp/
 
+# 镜像源配置（通过 --build-arg 传入）
+# 注意：清华源已不完整同步 AlmaLinux 8 aarch64（AppStream repomd 404），默认使用华为云
+ARG YUM_MIRROR_URL=https://mirrors.huaweicloud.com
+
+# 配置 yum 镜像源
+# manylinuxaarch64-builder 基于 AlmaLinux 8，保留官方 .repo，仅切换 mirrorlist→baseurl
+# 若指定镜像缺少当前架构元数据，则自动回退到其他可用国内源 / 官方源
+RUN set -ex && \
+    mkdir -p /etc/yum.repos.d/backup && \
+    cp -a /etc/yum.repos.d/*.repo /etc/yum.repos.d/backup/ 2>/dev/null || true && \
+    if [ -n "${YUM_MIRROR_URL}" ] && [ -f /etc/almalinux-release ]; then \
+        ARCH="$(uname -m)" && \
+        REL="$(awk -F= '/^VERSION_ID=/{gsub(/"/,""); print $2}' /etc/os-release | cut -d. -f1)" && \
+        CANDIDATES="${YUM_MIRROR_URL} https://mirrors.huaweicloud.com https://mirrors.aliyun.com https://mirrors.cloud.tencent.com https://mirror.nju.edu.cn https://repo.almalinux.org" && \
+        SELECTED="" && \
+        for m in ${CANDIDATES}; do \
+            PROBE="${m}/almalinux/${REL}/AppStream/${ARCH}/os/repodata/repomd.xml"; \
+            if curl -fsI --connect-timeout 5 --max-time 15 "${PROBE}" >/dev/null 2>&1; then \
+                SELECTED="$m"; \
+                echo "选用可用 AlmaLinux YUM 源: ${SELECTED}"; \
+                break; \
+            fi; \
+            echo "跳过不可用源: ${m}"; \
+        done && \
+        if [ -z "${SELECTED}" ]; then \
+            echo "警告：候选镜像均不可用，保留官方 mirrorlist"; \
+        else \
+            for repo in /etc/yum.repos.d/almalinux*.repo; do \
+                [ -f "${repo}" ] || continue; \
+                sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+                    -e "s|^#[[:space:]]*baseurl=https://repo.almalinux.org/almalinux|baseurl=${SELECTED}/almalinux|g" \
+                    -e "s|^baseurl=https://repo.almalinux.org/almalinux|baseurl=${SELECTED}/almalinux|g" \
+                    -i "${repo}"; \
+            done && \
+            echo "AlmaLinux YUM 镜像源已切换到: ${SELECTED}"; \
+        fi; \
+    elif [ -n "${YUM_MIRROR_URL}" ]; then \
+        echo "警告：非 AlmaLinux 基础镜像，跳过 yum 镜像切换，使用默认源"; \
+    else \
+        echo "YUM_MIRROR_URL 为空，使用默认 yum 源"; \
+    fi && \
+    yum clean all && \
+    yum makecache
+
 # manylinuxaarch64-builder 基于 CentOS，使用 yum 包管理器
 # 安装系统依赖包（包含视频处理所需的ffmpeg和相关库）
 RUN set -ex && \

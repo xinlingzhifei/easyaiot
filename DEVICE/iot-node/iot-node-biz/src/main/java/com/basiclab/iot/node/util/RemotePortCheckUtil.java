@@ -31,6 +31,16 @@ public final class RemotePortCheckUtil {
         return ports;
     }
 
+    public static LinkedHashMap<String, Integer> mqttDeployPorts(Map<String, String> tags) {
+        LinkedHashMap<String, Integer> ports = new LinkedHashMap<>();
+        ports.put("MQTT TCP", MqttStackDeployUtil.tagInt(tags, "mqtt_tcp_port", 1883));
+        ports.put("MQTT SSL", MqttStackDeployUtil.tagInt(tags, "mqtt_ssl_port", 8883));
+        ports.put("MQTT WS", MqttStackDeployUtil.tagInt(tags, "mqtt_ws_port", 8083));
+        ports.put("MQTT WSS", MqttStackDeployUtil.tagInt(tags, "mqtt_wss_port", 8084));
+        ports.put("EMQX Dashboard", MqttStackDeployUtil.tagInt(tags, "emqx_dashboard_port", 18083));
+        return ports;
+    }
+
     public static NodePortCheckRespVO checkPorts(SshSessionHelper ssh, LinkedHashMap<String, Integer> portMap)
             throws Exception {
         NodePortCheckRespVO resp = new NodePortCheckRespVO();
@@ -181,6 +191,11 @@ public final class RemotePortCheckUtil {
                     || lower.contains("run_agent")
                     || lower.contains("agent_server")
                     || lower.contains("node-agent");
+        }
+        if (label.startsWith("MQTT") || label.startsWith("EMQX")) {
+            return lower.contains("emqx")
+                    || lower.contains("-emqx")
+                    || lower.contains("beam.smp");
         }
         return false;
     }

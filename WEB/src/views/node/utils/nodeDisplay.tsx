@@ -30,7 +30,7 @@ function resolveStatusKey(status?: string) {
 }
 
 function resolveRoleKey(role?: string) {
-  return role === 'media' || role === 'hybrid' || role === 'gpu' || role === 'storage' || role === 'compute'
+  return role === 'media' || role === 'hybrid' || role === 'gpu' || role === 'storage' || role === 'mqtt' || role === 'compute'
     ? role
     : 'compute';
 }

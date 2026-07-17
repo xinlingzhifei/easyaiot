@@ -1,7 +1,8 @@
 import {BasicColumn} from '@/components/Table/src/types/table';
 import {FormProps} from '@/components/Table';
 import {FormActionType, FormSchema} from '@/components/Form/index';
-import {Button, Space, Tag} from 'ant-design-vue';
+import {Space, Tag} from 'ant-design-vue';
+import {Button} from '@/components/Button';
 import {PlusOutlined} from '@ant-design/icons-vue';
 import {DebouncedFunc} from 'lodash-es';
 
@@ -1377,6 +1378,16 @@ export const getBasicColumns = (functionType : String): BasicColumn[] => {
         dataIndex: 'serviceName',
       },
       {
+        title: '入参',
+        dataIndex: 'inputParamCount',
+        width: 90,
+        customRender({ record }) {
+          const n = record?.inputParamCount;
+          if (n == null) return <span style={{ color: '#8c8c8c' }}>--</span>;
+          return n > 0 ? <Tag color="blue">{n} 个</Tag> : <Tag>无参</Tag>;
+        },
+      },
+      {
         title: '描述',
         dataIndex: 'description'
       },
@@ -1688,9 +1699,16 @@ export const SubuctRender = ({
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       {list?.map((e, i) => {
+        const name = e.propertyName || e.parameterName || e.propertyCode || e.parameterCode || '--';
+        const code = e.propertyCode || e.parameterCode || '';
+        const dtype = e.datatype || '';
         return (
           <Space class={'alert'}>
-            <span style={{ color: '#6b7280' }}>参数名称：{e.propertyName}</span>
+            <span style={{ color: '#6b7280' }}>
+              {name}
+              {code ? <span style={{ marginLeft: 8, color: '#9ca3af' }}>({code})</span> : null}
+              {dtype ? <span style={{ marginLeft: 8, color: '#9ca3af' }}>{dtype}</span> : null}
+            </span>
 
             <div class={'options'}>
               <Button type="link" onClick={() => handleEdit?.(field, i)}>
@@ -1808,27 +1826,6 @@ export const PropsSchemas = ({ handleChange, isInner }: SchemasFn): FormSchema[]
       colProps: {
         span: 24,
       },
-      // dynamicRules() {
-      //   if (!checkIdentifier)
-      //     return [{ required: true, message: '请输入标识符', trigger: 'change' }];
-      //
-      //   return [
-      //     {
-      //       validator(_, value, cb) {
-      //         if (!value) return cb('请输入标识符');
-      //
-      //         (checkIdentifier(value) as unknown as Promise<void>)
-      //           .then(() => {
-      //             cb();
-      //           })
-      //           .catch(() => {
-      //             cb('标识符重复，请重新输入');
-      //           });
-      //       },
-      //       trigger: 'change',
-      //     },
-      //   ];
-      // },
     },
     {
       field: 'propertyName',
@@ -1842,76 +1839,62 @@ export const PropsSchemas = ({ handleChange, isInner }: SchemasFn): FormSchema[]
   ];
 };
 
-// 服务
-export const ServerSchemas = (_options: SchemasFn): FormSchema[] => {
+/** 服务入参/出参（无读写类型） */
+export const ServiceParamSchemas = ({ handleChange, isInner }: SchemasFn): FormSchema[] => {
   return [
-    // {
-    //   field: 'inputParams',
-    //   label: '输入参数',
-    //   component: 'Input',
-    //   colProps: {
-    //     span: 24,
-    //   },
-    //   render({ field }) {
-    //     return SubuctRender({ btnClick, list, field });
-    //   },
-    //   // rules: [{ required: true, message: 'JSON对象不能为空', trigger: 'change' }],
-    //   dynamicRules({ field }) {
-    //     return [
-    //       {
-    //         validator(_, _value, cb) {
-    //           handleCheckSubuct &&
-    //           handleCheckSubuct(field)
-    //             .then(() => {
-    //               cb();
-    //             })
-    //             .catch(() => {
-    //               cb('JSON对象不能为空');
-    //             });
-    //         },
-    //         trigger: 'change',
-    //       },
-    //     ];
-    //   },
-    // },
-    // {
-    //   field: 'outParams',
-    //   label: '输出参数',
-    //   component: 'Input',
-    //   colProps: {
-    //     span: 24,
-    //   },
-    //   render({ field }) {
-    //     return SubuctRender({ btnClick, list, field });
-    //   },
-    //   // rules: [{ required: true, message: 'JSON对象不能为空', trigger: 'change' }],
-    //   dynamicRules({ field }) {
-    //     return [
-    //       {
-    //         validator(_, _value, cb) {
-    //           handleCheckSubuct &&
-    //           handleCheckSubuct(field)
-    //             .then(() => {
-    //               cb();
-    //             })
-    //             .catch(() => {
-    //               cb('JSON对象不能为空');
-    //             });
-    //         },
-    //         trigger: 'change',
-    //       },
-    //     ];
-    //   },
-    // },
+    {
+      field: 'propertyName',
+      label: '参数名称',
+      component: 'Input',
+      rules: [{ required: true, message: '请输入参数名称', trigger: 'change' }],
+      colProps: { span: 24 },
+    },
+    {
+      field: 'propertyCode',
+      label: '参数标识',
+      component: 'Input',
+      rules: [{ required: true, message: '请输入参数标识', trigger: 'change' }],
+      colProps: { span: 24 },
+      componentProps: {
+        placeholder: '下发 JSON 的字段名',
+      },
+    },
+    {
+      field: 'datatype',
+      label: '数据类型',
+      component: 'Select',
+      rules: [{ required: true, message: '请选择数据类型', trigger: 'change' }],
+      colProps: { span: 24 },
+      componentProps: {
+        options: dataTypeOptions.filter((e) => !isInner || e.isInner === isInner),
+        onChange(val) {
+          handleChange && handleChange(val);
+        },
+        defaultValue: 'INT',
+        allowClear: false,
+      },
+      defaultValue: 'INT',
+    },
     {
       field: 'description',
       label: '备注',
       component: 'InputTextArea',
+      colProps: { span: 24 },
+      componentProps: { rows: 3 },
+    },
+  ];
+};
+
+// 服务
+export const ServerSchemas = ({ btnClick, list, handleCheckSubuct }: SchemasFn): FormSchema[] => {
+  return [
+    {
+      field: 'serviceName',
+      label: '服务名称',
+      component: 'Input',
+      rules: [{ required: true, message: '请输入名称', trigger: 'change' }],
       colProps: {
         span: 24,
-      },
-      componentProps: {
-        rows: 4,
       },
     },
     {
@@ -1922,35 +1905,44 @@ export const ServerSchemas = (_options: SchemasFn): FormSchema[] => {
       colProps: {
         span: 24,
       },
-      // dynamicRules() {
-      //   if (!checkIdentifier)
-      //     return [{ required: true, message: '请输入标识符', trigger: 'change' }];
-      //
-      //   return [
-      //     {
-      //       validator(_, value, cb) {
-      //         if (!value) return cb('请输入标识符');
-      //
-      //         (checkIdentifier(value) as unknown as Promise<void>)
-      //           .then(() => {
-      //             cb();
-      //           })
-      //           .catch(() => {
-      //             cb('标识符重复，请重新输入');
-      //           });
-      //       },
-      //       trigger: 'change',
-      //     },
-      //   ];
-      // },
+      componentProps: {
+        placeholder: '英文/数字/下划线，设备调用时使用',
+      },
     },
     {
-      field: 'serviceName',
-      label: '服务名称',
+      field: 'inputParams',
+      label: '输入参数',
       component: 'Input',
-      rules: [{ required: true, message: '请输入名称', trigger: 'change' }],
       colProps: {
         span: 24,
+      },
+      helpMessage: '设备控制页将按此生成表单；无参数可留空',
+      render({ field }) {
+        return SubuctRender({ btnClick, list, field });
+      },
+    },
+    {
+      field: 'outParams',
+      label: '输出参数',
+      component: 'Input',
+      colProps: {
+        span: 24,
+      },
+      helpMessage: '可选，描述设备响应字段',
+      render({ field }) {
+        return SubuctRender({ btnClick, list, field });
+      },
+    },
+    {
+      field: 'description',
+      label: '备注',
+      component: 'InputTextArea',
+      colProps: {
+        span: 24,
+      },
+      componentProps: {
+        rows: 3,
+        placeholder: '说明该服务用途，便于运维识别',
       },
     },
   ];

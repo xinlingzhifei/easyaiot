@@ -57,6 +57,14 @@ export function resolveTaskBaseNameFromRecord(record: Record<string, unknown>): 
   const taskId = record.id as number | undefined
   if (taskId != null && base.endsWith(`_${taskId}`))
     base = base.slice(0, -(`_${taskId}`).length)
+  const dsName = String(record.dataset_name || '').trim()
+  const dsVersion = String(record.dataset_version || '').trim()
+  for (const part of [dsVersion, dsName]) {
+    if (part && base.endsWith(`_${part}`))
+      base = base.slice(0, -(part.length + 1))
+  }
+  if (/^(train_)?download\?prefix=/i.test(base) || /^train_task_/.test(base))
+    return 'train'
   return base || 'train'
 }
 

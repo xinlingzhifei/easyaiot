@@ -25,6 +25,12 @@ export const NODE_ROLE_VISUAL: Record<string, NodeRoleVisual> = {
     bodyIcon: 'mdi:server',
     roleMarkIcon: 'mdi:cast',
   },
+  mqtt: {
+    coverClass: 'node-card-cover--mqtt',
+    iconClass: 'node-server-icon--mqtt',
+    bodyIcon: 'mdi:server',
+    roleMarkIcon: 'mdi:access-point-network',
+  },
   storage: {
     coverClass: 'node-card-cover--storage',
     iconClass: 'node-server-icon--storage',

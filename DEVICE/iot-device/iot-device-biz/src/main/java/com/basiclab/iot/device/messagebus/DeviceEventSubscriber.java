@@ -62,10 +62,10 @@ public class DeviceEventSubscriber implements IotMessageSubscriber<IotDeviceMess
                 return;
             }
 
-            // 2. 匹配Topic，只处理设备事件上报消息
+            // 2. 匹配 Topic：直连事件 或 网关代报子设备事件
             IotDeviceTopicEnum topicEnum = IotDeviceTopicEnum.matchTopic(topic);
-            if (topicEnum != IotDeviceTopicEnum.EVENT_UPSTREAM_REPORT) {
-                // 不是设备事件上报消息，跳过
+            if (topicEnum != IotDeviceTopicEnum.EVENT_UPSTREAM_REPORT
+                    && topicEnum != IotDeviceTopicEnum.SUB_EVENT_UPSTREAM_REPORT) {
                 return;
             }
 

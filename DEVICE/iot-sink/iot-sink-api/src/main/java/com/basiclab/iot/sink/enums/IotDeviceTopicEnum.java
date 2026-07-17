@@ -149,7 +149,55 @@ public enum IotDeviceTopicEnum {
      * <p>
      * 设备一条一条回传日志数据，用于设备日志入库
      */
-    LOG_UPSTREAM_REPORT("/iot/${productIdentification}/${deviceIdentification}/log/upstream/report", false, "设备上行上报日志数据");
+    LOG_UPSTREAM_REPORT("/iot/${productIdentification}/${deviceIdentification}/log/upstream/report", false, "设备上行上报日志数据"),
+
+    // ========== 网关拓扑（Topic 中 product/device 为网关自身标识） ==========
+    /**
+     * 网关上行添加/发现子设备（自动创建 SUBSET 并绑定 parentIdentification）
+     */
+    TOPO_UPSTREAM_ADD("/iot/${productIdentification}/${deviceIdentification}/topo/upstream/add", false, "网关上行添加子设备拓扑"),
+    /**
+     * 云端下行回复拓扑添加
+     */
+    TOPO_DOWNSTREAM_ADD_ACK("/iot/${productIdentification}/${deviceIdentification}/topo/downstream/add/ack", true, "云端下行回复拓扑添加"),
+    /**
+     * 网关上行删除子设备拓扑关系
+     */
+    TOPO_UPSTREAM_DELETE("/iot/${productIdentification}/${deviceIdentification}/topo/upstream/delete", false, "网关上行删除子设备拓扑"),
+    /**
+     * 云端下行回复拓扑删除
+     */
+    TOPO_DOWNSTREAM_DELETE_ACK("/iot/${productIdentification}/${deviceIdentification}/topo/downstream/delete/ack", true, "云端下行回复拓扑删除"),
+    /**
+     * 网关上行上报子设备在线状态
+     */
+    TOPO_UPSTREAM_STATUS("/iot/${productIdentification}/${deviceIdentification}/topo/upstream/status", false, "网关上行上报子设备状态"),
+
+    // ========== 经网关代理的子设备数据面（Topic 中 product/device 为网关标识，payload 携带子设备标识） ==========
+    /**
+     * 网关代报子设备属性
+     */
+    SUB_PROPERTY_UPSTREAM_REPORT("/iot/${productIdentification}/${deviceIdentification}/sub/property/upstream/report", false, "网关代报子设备属性"),
+    /**
+     * 网关代报子设备事件
+     */
+    SUB_EVENT_UPSTREAM_REPORT("/iot/${productIdentification}/${deviceIdentification}/sub/event/upstream/report/${identifier}", false, "网关代报子设备事件"),
+    /**
+     * 云端经网关下发子设备服务调用（网关订阅）
+     */
+    SUB_SERVICE_DOWNSTREAM_INVOKE("/iot/${productIdentification}/${deviceIdentification}/sub/service/downstream/invoke/${identifier}", true, "云端经网关调用子设备服务"),
+    /**
+     * 网关代回子设备服务调用响应
+     */
+    SUB_SERVICE_UPSTREAM_INVOKE_RESPONSE("/iot/${productIdentification}/${deviceIdentification}/sub/service/upstream/invoke/${identifier}/response", false, "网关代回子设备服务响应"),
+    /**
+     * 云端经网关下发子设备属性期望值
+     */
+    SUB_PROPERTY_DOWNSTREAM_DESIRED_SET("/iot/${productIdentification}/${deviceIdentification}/sub/property/downstream/desired/set", true, "云端经网关设置子设备属性期望值"),
+    /**
+     * 网关代回子设备属性期望设置 ACK
+     */
+    SUB_PROPERTY_UPSTREAM_DESIRED_SET_ACK("/iot/${productIdentification}/${deviceIdentification}/sub/property/upstream/desired/set/ack", false, "网关代回子设备属性期望设置 ACK");
 
     /**
      * Topic 模板

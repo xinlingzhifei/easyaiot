@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ubHgecjUGyQyp8VTCoRRb6gSC0WpfpMRe4qCNoa4lU7v8zMdNrYDxBtGd41zhto
+\restrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-device20";
 CREATE DATABASE "iot-device20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict ubHgecjUGyQyp8VTCoRRb6gSC0WpfpMRe4qCNoa4lU7v8zMdNrYDxBtGd41zhto
+\unrestrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-device20'"
-\restrict ubHgecjUGyQyp8VTCoRRb6gSC0WpfpMRe4qCNoa4lU7v8zMdNrYDxBtGd41zhto
+\restrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1914,6 +1914,60 @@ COMMENT ON COLUMN public.device.deleted IS '是否删除';
 
 
 --
+-- Name: device_camera_link; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_camera_link (
+    id bigint NOT NULL,
+    iot_device_id bigint NOT NULL,
+    camera_device_id character varying(100) NOT NULL,
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    update_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    tenant_id bigint DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: TABLE device_camera_link; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.device_camera_link IS 'IoT设备与流媒体摄像头关联表';
+
+
+--
+-- Name: COLUMN device_camera_link.iot_device_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_camera_link.iot_device_id IS 'IoT设备主键(device.id)';
+
+
+--
+-- Name: COLUMN device_camera_link.camera_device_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_camera_link.camera_device_id IS '流媒体摄像头ID(VIDEO device.id)';
+
+
+--
+-- Name: device_camera_link_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.device_camera_link_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: device_camera_link_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.device_camera_link_id_seq OWNED BY public.device_camera_link.id;
+
+
+--
 -- Name: device_event; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3230,7 +3284,9 @@ CREATE TABLE public.product (
     encrypt_method integer DEFAULT 0,
     encrypt_key character varying(255),
     encrypt_vector character varying(255),
-    tenant_id bigint DEFAULT 0 NOT NULL
+    tenant_id bigint DEFAULT 0 NOT NULL,
+    public_key text,
+    private_key text
 );
 
 
@@ -3435,6 +3491,20 @@ COMMENT ON COLUMN public.product.encrypt_vector IS '加密向量';
 --
 
 COMMENT ON COLUMN public.product.tenant_id IS '租户编号';
+
+
+--
+-- Name: COLUMN product.public_key; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.product.public_key IS '公钥（KEY_PAIR 鉴权）';
+
+
+--
+-- Name: COLUMN product.private_key; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.product.private_key IS '私钥（KEY_PAIR 鉴权，服务端保管）';
 
 
 --
@@ -5195,6 +5265,13 @@ ALTER TABLE ONLY public.device ALTER COLUMN id SET DEFAULT nextval('public.devic
 
 
 --
+-- Name: device_camera_link id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_camera_link ALTER COLUMN id SET DEFAULT nextval('public.device_camera_link_id_seq'::regclass);
+
+
+--
 -- Name: device_event id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -5401,7 +5478,15 @@ COPY public.dataset_video (id, dataset_id, video_path, cover_path, description, 
 --
 
 COPY public.device (id, client_id, app_id, device_identification, device_name, device_description, device_status, connect_status, is_will, product_identification, create_by, create_time, update_by, update_time, remark, device_version, device_sn, ip_address, mac_address, active_status, extension, activated_time, last_online_time, parent_identification, device_type, tenant_id, deleted) FROM stdin;
-57038	\N	默认场景	9720084293632004	储能设备	\N	ENABLE	ONLINE	\N	9820630576939008	admin	2024-10-13 10:56:28	1	2025-08-11 15:27:33.475	\N	\N	9720084293632005	\N	\N	0	\N	\N	\N	\N	GATEWAY	1	0
+57038	\N	默认场景	9720084293632004	储能设备	\N	ENABLE	ONLINE	\N	9820630576939008	admin	2024-10-13 10:56:28	1	2026-07-16 17:34:08.478078	\N	\N	9720084293632005	\N	\N	1	{"shadow": {"RSSI": "-64", "Vbatt": "3.89", "deviceId": "9720084293632004", "PVAngle_X": "2.89", "PVAngle_Y": "-0.95", "PVAngle_Z": "-1.26", "eventTime": "2026-07-16T09:34:07Z", "serviceId": "demo-svc"}, "shadowUpdateTime": "2026-07-16T17:34:08.478078+08:00"}	2026-07-16 09:42:08.230075	2026-07-16 17:34:08.460709	\N	GATEWAY	1	0
+\.
+
+
+--
+-- Data for Name: device_camera_link; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.device_camera_link (id, iot_device_id, camera_device_id, create_time, update_time, tenant_id) FROM stdin;
 \.
 
 
@@ -5459,8 +5544,8 @@ COPY public.ota_packages (id, app_id, package_name, package_type, product_identi
 -- Data for Name: product; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.product (id, app_id, template_identification, product_name, product_identification, product_type, manufacturer_id, manufacturer_name, model, data_format, device_type, protocol_type, status, remark, create_by, create_time, update_by, update_time, auth_mode, user_name, password, connector, sign_key, encrypt_method, encrypt_key, encrypt_vector, tenant_id) FROM stdin;
-22	智能家居	3ff77a5289144dacbb6d32bee107f90f	智能网关	9820630576939008	COMMON	12321	华科南航科技有限公司	32423	JSON	32423	GB28181	0	23432	admin	2024-07-04 17:35:50.852	admin	2024-07-04 17:35:50.852	32423	32432	32423	432432	32423	0	32432	23432	1
+COPY public.product (id, app_id, template_identification, product_name, product_identification, product_type, manufacturer_id, manufacturer_name, model, data_format, device_type, protocol_type, status, remark, create_by, create_time, update_by, update_time, auth_mode, user_name, password, connector, sign_key, encrypt_method, encrypt_key, encrypt_vector, tenant_id, public_key, private_key) FROM stdin;
+22	智能家居	3ff77a5289144dacbb6d32bee107f90f	智能网关	9820630576939008	COMMON	12321	华科南航科技有限公司	32423	JSON	32423	GB28181	0	23432	admin	2024-07-04 17:35:50.852	admin	2024-07-04 17:35:50.852	32423	32432	32423	432432	32423	0	32432	23432	1	\N	\N
 \.
 
 
@@ -5728,6 +5813,13 @@ SELECT pg_catalog.setval('public.dataset_video_seq', 1, false);
 --
 
 SELECT pg_catalog.setval('public.datasource_seq', 1, false);
+
+
+--
+-- Name: device_camera_link_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.device_camera_link_id_seq', 1, false);
 
 
 --
@@ -6221,6 +6313,14 @@ ALTER TABLE ONLY public.dataset_video
 
 
 --
+-- Name: device_camera_link device_camera_link_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_camera_link
+    ADD CONSTRAINT device_camera_link_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: device_event device_event_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6351,6 +6451,20 @@ COMMENT ON INDEX public.idx_app_id IS '应用ID';
 --
 
 CREATE INDEX idx_created_time ON public.app USING btree (created_time);
+
+
+--
+-- Name: idx_device_camera_link_iot_device; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_device_camera_link_iot_device ON public.device_camera_link USING btree (iot_device_id);
+
+
+--
+-- Name: idx_device_camera_link_tenant_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_device_camera_link_tenant_id ON public.device_camera_link USING btree (tenant_id);
 
 
 --
@@ -6620,6 +6734,13 @@ COMMENT ON INDEX public.manufacturer_id IS '厂商ID索引';
 
 
 --
+-- Name: uk_device_camera_link_camera; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uk_device_camera_link_camera ON public.device_camera_link USING btree (camera_device_id);
+
+
+--
 -- Name: app update_iot_app_updated_time; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -6630,5 +6751,5 @@ CREATE TRIGGER update_iot_app_updated_time BEFORE UPDATE ON public.app FOR EACH 
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ubHgecjUGyQyp8VTCoRRb6gSC0WpfpMRe4qCNoa4lU7v8zMdNrYDxBtGd41zhto
+\unrestrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
 

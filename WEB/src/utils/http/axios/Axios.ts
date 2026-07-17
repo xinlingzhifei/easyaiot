@@ -15,7 +15,7 @@ import type { RequestOptions, Result, UploadFileParams } from '@/types/axios'
 import { ContentTypeEnum, RequestEnum } from '@/enums/httpEnum'
 import { downloadByData } from '@/utils/file/download'
 import { useGlobSetting } from '@/hooks/setting'
-import { getRefreshToken, getTenantId, setAccessToken } from '@/utils/auth'
+import { getRefreshToken, getTenantId, setAccessToken, handleSessionTimeout } from '@/utils/auth'
 
 export * from './axiosTransform'
 
@@ -124,7 +124,8 @@ export class VAxios {
     // 响应结果拦截器处理
     this.axiosInstance.interceptors.response.use(async (res: AxiosResponse<any>) => {
       const config = res.config
-      if (res.data.code === 401) {
+      const isUnauthorized = res.status === 401 || res.data?.code === 401
+      if (isUnauthorized) {
         // 如果未认证，并且未进行刷新令牌，说明可能是访问令牌过期了
         if (!isRefreshToken) {
           isRefreshToken = true
@@ -134,35 +135,44 @@ export class VAxios {
             try {
               const refreshTokenRes = await this.refreshToken()
               // 2.1 刷新成功，则回放队列的请求 + 当前请求
-              const refreshToken = getRefreshToken()
-              setAccessToken(refreshTokenRes.data.data.accessToken)
-              ;(config as Recordable).headers.Authorization = `Bearer ${refreshToken}`
+              const newAccessToken = refreshTokenRes.data.data.accessToken
+              setAccessToken(newAccessToken)
+              ;(config as Recordable).headers.Authorization = `Bearer ${newAccessToken}`
               requestList.forEach((cb: any) => {
-                cb()
+                cb(newAccessToken)
               })
               requestList = []
               return new Promise((resolve) => {
                 resolve(this.axiosInstance(config))
               })
-              // res = await Promise.all([this.axiosInstance(config)])[0]
             }
             catch (e) {
               requestList.forEach((cb: any) => {
                 cb()
               })
+              handleSessionTimeout()
+              return Promise.reject(e)
             }
             finally {
               requestList = []
               isRefreshToken = false
             }
           }
+          else {
+            isRefreshToken = false
+            handleSessionTimeout()
+            return Promise.reject(new Error('登录已过期，请重新登录'))
+          }
         }
         else {
           // 添加到队列，等待刷新获取到新的令牌
-          return new Promise((resolve) => {
-            const refreshToken = getRefreshToken()
-            requestList.push(() => {
-              ;(config as Recordable).headers.Authorization = `Bearer ${refreshToken}` // 让每个请求携带自定义token 请根据实际情况自行修改
+          return new Promise((resolve, reject) => {
+            requestList.push((newAccessToken?: string) => {
+              if (!newAccessToken) {
+                reject(new Error('登录已过期，请重新登录'))
+                return
+              }
+              ;(config as Recordable).headers.Authorization = `Bearer ${newAccessToken}`
               resolve(this.axiosInstance(config))
             })
           })

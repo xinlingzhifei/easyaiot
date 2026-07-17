@@ -10,6 +10,7 @@ public enum NodeRoleEnum {
     COMPUTE("compute", "计算节点"),
     GPU("gpu", "GPU 节点"),
     MEDIA("media", "媒体节点"),
+    MQTT("mqtt", "MQTT网关节点"),
     STORAGE("storage", "存储节点"),
     HYBRID("hybrid", "混合节点");
 

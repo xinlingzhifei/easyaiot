@@ -367,6 +367,8 @@ const handleViewImage = (record: Record<string, any>) => {
   }
   openImageModal(true, {
     image_url: minioUrl,
+    information: record.information,
+    event: record.event,
   });
 };
 

@@ -6,7 +6,6 @@ FROM pytorch/pytorch:2.9.0-cuda12.8-cudnn9-devel AS base
 ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
-    CUDA_VISIBLE_DEVICES=0 \
     QT_QPA_PLATFORM=xcb \
     QT_X11_NO_MITSHM=1 \
     PIP_UPGRADE_STRATEGY=only-if-needed

@@ -8,26 +8,32 @@ export function getBasicColumns(): BasicColumn[] {
     {
       dataIndex: 'propertyName',
       title: '名称',
+      width: 160,
+      ellipsis: true,
     },
     {
       title: '键',
       dataIndex: 'propertyCode',
+      width: 160,
+      ellipsis: true,
     },
     {
       title: '值',
       dataIndex: 'dataValue',
+      ellipsis: true,
       customRender({value}) {
-        if (!value) return '--';
-        return value;
+        const text = value == null || value === '' ? '--' : String(value);
+        return (
+          <Tooltip title={text}>
+            <span class={'ellipsis-span'}>{text}</span>
+          </Tooltip>
+        );
       },
     },
-    // {
-    //   title: '单位',
-    //   dataIndex: 'unit',
-    // },
     {
       title: '最后更新时间',
       dataIndex: 'ts',
+      width: 180,
       customRender({value}) {
         let val = value;
         if (!val) return '--';
@@ -50,7 +56,7 @@ export function getFormConfig(): Partial<FormProps> {
     schemas: [
       {
         field: `name`,
-        label: `健/名称`,
+        label: `键/名称`,
         component: 'Input',
       },
     ],

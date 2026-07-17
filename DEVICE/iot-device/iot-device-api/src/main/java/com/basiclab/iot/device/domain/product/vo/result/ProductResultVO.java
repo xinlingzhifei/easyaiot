@@ -4,6 +4,7 @@ import cn.hutool.core.map.MapUtil;
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.*;
@@ -48,9 +49,10 @@ public class ProductResultVO implements Serializable {
     private String appId;
 
     /**
-     * 产品模版标识
+     * 产品模版标识（已废弃，产品管理不再使用）
      */
-    @ApiModelProperty(value = "产品模版标识")
+    @ApiModelProperty(value = "产品模版标识（已废弃）", hidden = true)
+    @JsonIgnore
     private String templateIdentification;
 
     /**

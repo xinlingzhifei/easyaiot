@@ -20,6 +20,7 @@ import 'animate.css/animate.min.css'
 import 'vue3-sketch-ruler/lib/style.css'
 import "@/styles/style.css"
 import {setupCustomComponents} from "@/design/component/customComponents"
+import { getAccessToken, syncJwtToken } from '@/utils/auth'
 
 declare module 'vue3-sketch-ruler';
 
@@ -47,6 +48,11 @@ async function bootstrap() {
   // Initialize internal system configuration
   // 初始化内部系统配置
   initAppConfigStore()
+
+  // 已有登录态时同步 VIDEO 子服务使用的 jwt_token
+  const existingToken = getAccessToken()
+  if (existingToken)
+    syncJwtToken(existingToken)
 
   // Register global components
   // 注册全局组件

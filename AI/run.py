@@ -350,7 +350,7 @@ def create_app():
 
     # 注册蓝图（延迟导入，避免在环境变量加载前就导入）
     try:
-        from app.blueprints import export, inference, model, train, train_task, llm, llm_deploy, ocr, speech, deploy, auto_label, plate, minio_proxy, sam
+        from app.blueprints import export, inference, model, train, train_task, llm, llm_deploy, ocr, speech, deploy, auto_label, plate, minio_proxy, sam, pose
         
         app.register_blueprint(minio_proxy.minio_proxy_bp)
         app.register_blueprint(export.export_bp, url_prefix='/model/export')
@@ -366,6 +366,7 @@ def create_app():
         app.register_blueprint(auto_label.auto_label_bp, url_prefix='/model/dataset')  # 与其他模块保持一致，使用 /model/ 前缀
         app.register_blueprint(plate.plate_bp, url_prefix='/model/plate')
         app.register_blueprint(sam.sam_bp, url_prefix='/model/sam')
+        app.register_blueprint(pose.pose_bp, url_prefix='/model/pose')
         
         # SAM 模型预热：在后台线程加载模型，避免首请求因冷加载（3.26GB）超时
         if os.getenv('SAM_ENABLED', 'false').lower() in ('1', 'true', 'yes'):

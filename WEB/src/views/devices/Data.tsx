@@ -41,6 +41,11 @@ export function getBasicColumns(): BasicColumn[] {
       width: 120,
     },
     {
+      title: '接入协议',
+      dataIndex: 'protocolType',
+      width: 100,
+    },
+    {
       title: '连接状态',
       dataIndex: 'connectStatus',
       width: 90,
@@ -103,12 +108,10 @@ export function getFormConfig(): Partial<FormProps> {
         component: 'ApiSelect',
         componentProps: {
           api: getDeviceProfiles,
-          beforeFetch: () => {
-            return {
-              page: 1,
-              pageSize: 100,
-            };
-          },
+          beforeFetch: () => ({
+            pageNum: 1,
+            pageSize: 500,
+          }),
           resultField: 'data',
           // use name as label
           labelField: 'productName',

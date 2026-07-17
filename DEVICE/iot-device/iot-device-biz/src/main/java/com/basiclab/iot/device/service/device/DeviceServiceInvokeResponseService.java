@@ -25,5 +25,15 @@ public interface DeviceServiceInvokeResponseService {
      * @return 响应数据
      */
     DeviceServiceInvokeResponse getByMessageId(String messageId);
+
+    /**
+     * 根据请求编号查询
+     */
+    DeviceServiceInvokeResponse getByRequestId(String requestId);
+
+    /**
+     * 更新响应（PENDING → 完成）
+     */
+    int updateResponse(DeviceServiceInvokeResponse response);
 }
 

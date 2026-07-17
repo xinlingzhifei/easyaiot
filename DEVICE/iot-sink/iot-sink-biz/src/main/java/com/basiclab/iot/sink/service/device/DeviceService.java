@@ -22,6 +22,13 @@ public interface DeviceService {
     IotDeviceRespDTO getDevice(String productIdentification, String deviceIdentification);
 
     /**
+     * 按产品/设备标识查询（忽略租户上下文）。
+     * <p>
+     * 用于私有协议上行：payload 非 JSON，无法从消息体解析 tenantId 时，先定位设备再进入租户上下文。
+     */
+    IotDeviceRespDTO getDeviceIgnoreTenant(String productIdentification, String deviceIdentification);
+
+    /**
      * 根据ID获取设备信息
      *
      * @param id 设备ID
@@ -40,5 +47,8 @@ public interface DeviceService {
      * @return 设备信息
      */
     DeviceDO getDeviceForAuth(String clientId, String userName, String password, String deviceStatus, String protocolType);
+
+    DeviceDO getDeviceForProtocolAuth(String clientId, String productIdentification, String deviceIdentification,
+                                      String deviceStatus, String protocolType);
 }
 

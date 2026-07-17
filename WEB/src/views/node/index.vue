@@ -13,6 +13,7 @@
         <TabPane key="3" :tab="NODE_PAGE.clusterEnvAgent" />
         <TabPane key="4" :tab="NODE_PAGE.clusterEnvStorage" />
         <TabPane key="5" :tab="NODE_PAGE.clusterEnvMedia" />
+        <TabPane key="10" :tab="NODE_PAGE.clusterEnvMqtt" />
         <TabPane key="6" :tab="NODE_PAGE.clusterEnvFfmpeg" />
         <TabPane key="7" :tab="NODE_PAGE.clusterEnvVideo" />
         <TabPane key="8" :tab="NODE_PAGE.clusterEnvAi" />
@@ -36,6 +37,12 @@
         <MediaEnvBatch
           v-if="tabMounted['5']"
           v-show="state.activeKey === '5'"
+          :initial-node-id="selectedNodeId"
+          :initial-node-ids="selectedNodeIds"
+        />
+        <MqttEnvBatch
+          v-if="tabMounted['10']"
+          v-show="state.activeKey === '10'"
           :initial-node-id="selectedNodeId"
           :initial-node-ids="selectedNodeIds"
         />
@@ -74,6 +81,7 @@ import ClusterDashboard from './components/ClusterDashboard/index.vue';
 import FfmpegEnvTab from './components/FfmpegEnvTab/index.vue';
 import LlmDeployInit from './components/LlmDeployInit/index.vue';
 import MediaEnvBatch from './components/MediaEnvBatch/index.vue';
+import MqttEnvBatch from './components/MqttEnvBatch/index.vue';
 import NodeManage from './components/NodeManage/index.vue';
 import StorageEnvBatch from './components/StorageEnvBatch/index.vue';
 import VideoWorkloadInit from './components/VideoWorkloadInit/index.vue';
@@ -82,7 +90,7 @@ import { useNodePageTabRequest } from './utils/useNodePageTab';
 
 defineOptions({ name: 'ComputeNodeIndex' });
 
-const NODE_TAB_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
+const NODE_TAB_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] as const;
 
 const route = useRoute();
 const tabRequest = useNodePageTabRequest();

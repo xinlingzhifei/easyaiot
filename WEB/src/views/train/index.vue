@@ -106,18 +106,55 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .train-wrapper {
+  height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
   :deep(.ant-tabs-nav) {
     padding: 5px 0 0 25px;
+    flex-shrink: 0;
   }
 
   .train-tab {
-    padding: 16px 19px 0 15px;
+    flex: 1;
+    min-height: 0;
+    padding: 16px 19px 12px 15px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 
     .ant-tabs {
       background-color: #FFFFFF;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
 
       :deep(.ant-tabs-nav) {
         padding: 5px 0 0 25px;
+        flex-shrink: 0;
+      }
+
+      :deep(.ant-tabs-content-holder) {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      :deep(.ant-tabs-content) {
+        height: 100%;
+      }
+
+      :deep(.ant-tabs-tabpane) {
+        height: 100%;
+        overflow: hidden;
+
+        > div {
+          height: 100%;
+          min-height: 0;
+        }
       }
     }
   }

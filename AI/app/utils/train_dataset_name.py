@@ -2,8 +2,11 @@
 import json
 import os
 import re
+from urllib.parse import parse_qs, urlparse
 
 UPLOAD_STORAGE_STEM_RE = re.compile(r'^[0-9a-f]{32}$', re.IGNORECASE)
+LEGACY_BAD_NAME_RE = re.compile(r'^download\?prefix=', re.IGNORECASE)
+LOCAL_DATASET_FALLBACK = '本地数据集'
 
 
 def is_upload_storage_stem(name: str) -> bool:
@@ -11,11 +14,46 @@ def is_upload_storage_stem(name: str) -> bool:
     return bool(UPLOAD_STORAGE_STEM_RE.match((name or '').strip()))
 
 
+def is_legacy_bad_dataset_name(name: str) -> bool:
+    """判断是否为无意义的占位数据集名（UUID、错误 MinIO 路径片段等）。"""
+    text = _strip_zip_suffix(name or '')
+    if not text:
+        return True
+    if is_upload_storage_stem(text):
+        return True
+    return bool(LEGACY_BAD_NAME_RE.match(text))
+
+
 def _strip_zip_suffix(name: str) -> str:
     text = (name or '').strip()
     if text.lower().endswith('.zip'):
         return text[:-4]
     return text
+
+
+def extract_minio_object_prefix(dataset_path: str) -> str | None:
+    """从 MinIO 下载 URL 提取 prefix 查询参数。"""
+    if not dataset_path:
+        return None
+    parsed = urlparse(dataset_path)
+    prefix_list = parse_qs(parsed.query).get('prefix')
+    if prefix_list and prefix_list[0]:
+        return prefix_list[0].strip()
+    return None
+
+
+def extract_path_display_hint(dataset_path: str) -> str | None:
+    """从数据集路径推断可读名称（不含扩展名）。"""
+    prefix = extract_minio_object_prefix(dataset_path)
+    if prefix:
+        stem = _strip_zip_suffix(os.path.basename(prefix))
+        if stem and not is_legacy_bad_dataset_name(stem):
+            return stem
+
+    basename = _strip_zip_suffix(os.path.basename(dataset_path.rstrip('/')))
+    if basename and '?' not in basename and not is_legacy_bad_dataset_name(basename):
+        return basename
+    return None
 
 
 def upload_meta_path(dataset_zip_path: str) -> str:
@@ -57,18 +95,20 @@ def resolve_dataset_display_name(
     优先保留已有可读名；若为 UUID 存储名则尝试读取上传元数据。
     """
     stored = _strip_zip_suffix(dataset_name or '')
-    if stored and not is_upload_storage_stem(stored):
+    if stored and not is_legacy_bad_dataset_name(stored):
         return stored
 
     if dataset_path:
         original = read_upload_original_name(dataset_path)
         if original:
             resolved = _strip_zip_suffix(original)
-            if resolved and not is_upload_storage_stem(resolved):
+            if resolved and not is_legacy_bad_dataset_name(resolved):
                 return resolved
 
-        path_stem = _strip_zip_suffix(os.path.basename(dataset_path.rstrip('/')))
-        if path_stem and not is_upload_storage_stem(path_stem):
-            return path_stem
+        hint = extract_path_display_hint(dataset_path)
+        if hint:
+            return hint
 
+    if stored and is_legacy_bad_dataset_name(stored):
+        return LOCAL_DATASET_FALLBACK
     return stored or None

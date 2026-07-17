@@ -63,17 +63,27 @@ public class IotDeviceTopicMethodMapping {
             case OTA_UPSTREAM_FIRMWARE_QUERY:
                 return IotDeviceMessageMethodEnum.OTA_PROGRESS.getMethod();
 
-            // ========== 设备状态相关 ==========
-            // 注意：设备状态更新通常通过 STATE_UPDATE method，但没有对应的标准 Topic
-            // 状态更新可能通过其他机制实现（如连接/断开事件）
+            // ========== 网关拓扑 ==========
+            case TOPO_UPSTREAM_ADD:
+            case TOPO_DOWNSTREAM_ADD_ACK:
+                return IotDeviceMessageMethodEnum.TOPOLOGY_ADD.getMethod();
+            case TOPO_UPSTREAM_DELETE:
+            case TOPO_DOWNSTREAM_DELETE_ACK:
+                return IotDeviceMessageMethodEnum.TOPOLOGY_DELETE.getMethod();
+            case TOPO_UPSTREAM_STATUS:
+                return IotDeviceMessageMethodEnum.TOPOLOGY_UPDATE.getMethod();
 
-            // ========== 其他 Topic ==========
-            // 以下 Topic 可能没有对应的标准 Method，或者使用自定义 Method：
-            // - DEVICE_TAG_*: 设备标签管理
-            // - SHADOW_*: 设备影子
-            // - NTP_*: 时钟同步
-            // - BROADCAST_*: 广播消息
-            // - PROPERTY_DOWNSTREAM_DESIRED_QUERY / PROPERTY_UPSTREAM_DESIRED_QUERY_RESPONSE: 属性期望值查询
+            // ========== 经网关代理的子设备数据面 ==========
+            case SUB_PROPERTY_UPSTREAM_REPORT:
+                return IotDeviceMessageMethodEnum.PROPERTY_POST.getMethod();
+            case SUB_EVENT_UPSTREAM_REPORT:
+                return IotDeviceMessageMethodEnum.EVENT_POST.getMethod();
+            case SUB_SERVICE_DOWNSTREAM_INVOKE:
+            case SUB_SERVICE_UPSTREAM_INVOKE_RESPONSE:
+                return IotDeviceMessageMethodEnum.SERVICE_INVOKE.getMethod();
+            case SUB_PROPERTY_DOWNSTREAM_DESIRED_SET:
+            case SUB_PROPERTY_UPSTREAM_DESIRED_SET_ACK:
+                return IotDeviceMessageMethodEnum.PROPERTY_SET.getMethod();
 
             default:
                 return null;

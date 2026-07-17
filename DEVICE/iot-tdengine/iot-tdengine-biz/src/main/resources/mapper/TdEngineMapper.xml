@@ -2,12 +2,13 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.basiclab.iot.tdengine.mapper.TdEngineMapper">
 
+    <!-- TDengine 结果集列名一律小写，别名勿用 camelCase -->
     <resultMap id="deviceDataMap" type="com.basiclab.iot.tdengine.domain.DeviceData">
-        <result column="last_row(report_time)" property="lastUpdateTime" />
-        <result column="last_row(function_type)" property="functionType" />
-        <result column="last_row(identifier)" property="identifier" />
-        <result column="last_row(data_type)" property="dataType" />
-        <result column="last_row(data_value)" property="dataValue" />
+        <result column="lastupdatetime" property="lastUpdateTime" />
+        <result column="functiontype" property="functionType" />
+        <result column="identifier" property="identifier" />
+        <result column="datatype" property="dataType" />
+        <result column="datavalue" property="dataValue" />
     </resultMap>
 
     <update id="createDatabase" parameterType="String">
@@ -252,23 +253,30 @@
         from #{dataBaseName}.#{tableName}
     </select>
 
+    <!-- 按超级表 + TAG(device_identification) 查最近若干条；跳过 params/data 皆空的无效行 -->
     <select id="getLastRowsListByIdentifier" resultMap="deviceDataMap">
-        <foreach collection="identifierList" item="item" index="index" separator="UNION ALL" close=";">
-            select last_row(*) from ${tdDatabaseName}.${tdSuperTableName}_${deviceIdentification}
-            WHERE function_type = #{functionType} and identifier = #{item}
-        </foreach>
+        select cast(report_time as bigint) as lastupdatetime,
+               'properties' as functiontype,
+               '' as identifier,
+               'JSON' as datatype,
+               coalesce(params, data) as datavalue
+        from ${tdDatabaseName}.${tdSuperTableName}
+        where device_identification = #{deviceIdentification}
+          and coalesce(params, data) is not null
+          and coalesce(params, data) != ''
+        order by report_time desc
+        limit 10
     </select>
     <select id="getDeviceHistory"
             resultType="com.basiclab.iot.device.domain.device.vo.TDDeviceDataResp">
-        select report_time as ts, function_type as functionType, identifier as propertyCode, data_type as dataType, data_value as dataValue
-        from ${tdDatabaseName}.${tdSuperTableName}_${deviceIdentification}
+        select cast(report_time as bigint) as ts,
+               'properties' as functiontype,
+               method as propertycode,
+               'JSON' as datatype,
+               params as datavalue
+        from ${tdDatabaseName}.${tdSuperTableName}
         <where>
-            <if test="functionType != null and functionType != ''">
-                AND function_type = #{functionType}
-            </if>
-            <if test="identifier != null and identifier != ''">
-                AND identifier = #{identifier}
-            </if>
+            device_identification = #{deviceIdentification}
             <if test="startTime != null and startTime != ''">
                 AND report_time >= #{startTime}
             </if>
@@ -281,8 +289,9 @@
 
     <!-- 查询设备时序数据（通用查询方法） -->
     <select id="queryDeviceTimeSeriesData" resultType="Map">
-        select * from ${tdDatabaseName}.${superTableName}_${deviceIdentification}
+        select * from ${tdDatabaseName}.${superTableName}
         <where>
+            device_identification = #{deviceIdentification}
             <if test="identifier != null and identifier != ''">
                 AND identifier = #{identifier}
             </if>

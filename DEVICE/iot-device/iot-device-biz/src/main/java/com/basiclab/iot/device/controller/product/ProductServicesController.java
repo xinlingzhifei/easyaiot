@@ -6,7 +6,9 @@ import com.basiclab.iot.common.domain.R;
 import com.basiclab.iot.common.domain.TableDataInfo;
 import com.basiclab.iot.common.utils.SecurityUtils;
 import com.basiclab.iot.common.web.controller.BaseController;
+import com.basiclab.iot.device.domain.device.vo.ProductServiceDetailVO;
 import com.basiclab.iot.device.domain.device.vo.ProductServices;
+import com.basiclab.iot.device.service.product.ProductServiceThingModelHelper;
 import com.basiclab.iot.device.service.product.ProductServicesService;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,6 +31,8 @@ public class ProductServicesController extends BaseController {
      */
     @Resource
     private ProductServicesService productServicesService;
+    @Resource
+    private ProductServiceThingModelHelper productServiceThingModelHelper;
 
     /**
      * 通过主键查询单条数据
@@ -86,6 +90,44 @@ public class ProductServicesController extends BaseController {
     }
 
     /**
+     * 查询服务详情（含入参/出参）— 须放在 /{id} 之前
+     */
+    @GetMapping("/{id}/detail")
+    public AjaxResult getDetail(@PathVariable("id") Long id) {
+        ProductServiceDetailVO detail = productServiceThingModelHelper.getDetail(id);
+        return detail == null ? AjaxResult.error("服务不存在") : AjaxResult.success(detail);
+    }
+
+    /**
+     * 保存服务及入参/出参（自动维护默认命令）
+     */
+    @PostMapping("/saveWithParams")
+    public AjaxResult saveWithParams(@RequestBody ProductServiceDetailVO detail) {
+        try {
+            ProductServiceDetailVO saved = productServiceThingModelHelper.saveWithParams(detail);
+            return AjaxResult.success("保存成功", saved);
+        } catch (IllegalArgumentException ex) {
+            return AjaxResult.error(ex.getMessage());
+        }
+    }
+
+    /**
+     * 更新服务及入参/出参
+     */
+    @PutMapping("/saveWithParams")
+    public AjaxResult updateWithParams(@RequestBody ProductServiceDetailVO detail) {
+        try {
+            if (detail == null || detail.getId() == null) {
+                return AjaxResult.error("服务ID不能为空");
+            }
+            ProductServiceDetailVO saved = productServiceThingModelHelper.saveWithParams(detail);
+            return AjaxResult.success("保存成功", saved);
+        } catch (IllegalArgumentException ex) {
+            return AjaxResult.error(ex.getMessage());
+        }
+    }
+
+    /**
      * 获取产品模型服务详细信息
      */
     //@PreAuthorize(hasPermi = "link:productServices:query")
@@ -117,13 +159,14 @@ public class ProductServicesController extends BaseController {
     }
 
     /**
-     * 删除产品模型服务
+     * 删除产品模型服务（级联删除默认命令与入参/出参）
      */
     //@PreAuthorize(hasPermi = "link:productServices:remove")
     //@Log(title = "产品模型服务", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
     public AjaxResult remove(@PathVariable Long[] ids) {
-        return toAjax(productServicesService.deleteProductServicesByIds(ids));
+        productServiceThingModelHelper.deleteCascade(ids);
+        return AjaxResult.success();
     }
 
 

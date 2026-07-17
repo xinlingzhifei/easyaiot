@@ -365,7 +365,7 @@
                 and device_identification = #{deviceIdentification}
             </if>
             <if test="eventName != null  and eventName != ''">
-                and event_name = #{eventName}
+                and event_name like concat('%', #{eventName}, '%')
             </if>
             <if test="eventCode != null  and eventCode != ''">
                 and event_code = #{eventCode}
@@ -374,12 +374,19 @@
                 and event_type = #{eventType}
             </if>
             <if test="message != null  and message != ''">
-                and message = #{message}
+                and message like concat('%', #{message}, '%')
             </if>
             <if test="status != null  and status != ''">
                 and status = #{status}
             </if>
+            <if test="startTime != null">
+                and create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                and create_time &lt;= #{endTime}
+            </if>
         </where>
+        order by create_time desc
     </select>
 
     <select id="selectDeviceEventById" parameterType="Long" resultMap="BaseResultMap">

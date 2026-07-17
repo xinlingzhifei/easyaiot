@@ -31,9 +31,13 @@ apply_deploy_profile() {
     export EASYAIOT_DEPLOY_PROFILE
 
     case "$EASYAIOT_DEPLOY_PROFILE" in
-        mini|standard)
+        mini)
             export EASYAIOT_ENABLE_TDENGINE=0
             export EASYAIOT_ENABLE_EMQX=0
+            ;;
+        standard)
+            export EASYAIOT_ENABLE_TDENGINE=0
+            export EASYAIOT_ENABLE_EMQX=1
             ;;
         full)
             export EASYAIOT_ENABLE_TDENGINE=1
@@ -44,10 +48,11 @@ apply_deploy_profile() {
     sync_deploy_profile_to_modules
 }
 
-# docker compose --profile 参数（全量形态启用 TDengine / EMQX profile）
+# docker compose --profile 参数（standard/full 启用 EMQX；full 另启 TDengine）
 compose_profile_flags() {
     case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
         full) echo "--profile tdengine --profile emqx" ;;
+        standard) echo "--profile emqx" ;;
         *) echo "" ;;
     esac
 }
@@ -60,7 +65,7 @@ middleware_skipped_services() {
             skips+=(Nacos MinIO Milvus ZLMediaKit NodeRED TDengine TDengine-init EMQX Kafka)
             ;;
         standard)
-            skips+=(NodeRED TDengine TDengine-init EMQX)
+            skips+=(NodeRED TDengine TDengine-init)
             ;;
         full)
             ;;
@@ -220,8 +225,8 @@ print_deploy_profile_summary() {
       echo "  API 路由: nginx 将 /admin-api、/dev-api 直连宿主机 iot-system:48099（登录鉴权由 system 自身处理）"
       ;;
     standard)
-      echo "  不启动: TDengine, EMQX, NodeRED, iot-device, iot-tdengine"
-      echo "  其余模块与中间件全部启动"
+      echo "  不启动: TDengine, NodeRED, iot-device, iot-tdengine"
+      echo "  其余模块与中间件全部启动（含 EMQX）"
       ;;
     full)
       echo "  启动全部业务模块与中间件（含 APP 移动端 H5，推荐宿主机内存 ≥ 20 GB）"

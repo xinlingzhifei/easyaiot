@@ -10,11 +10,18 @@
         <result column="device_name" jdbcType="VARCHAR" property="deviceName"/>
         <result column="user_name" jdbcType="VARCHAR" property="userName"/>
         <result column="password" jdbcType="VARCHAR" property="password"/>
+        <result column="auth_mode" jdbcType="VARCHAR" property="authMode"/>
+        <result column="public_key" jdbcType="VARCHAR" property="publicKey"/>
+        <result column="private_key" jdbcType="VARCHAR" property="privateKey"/>
         <result column="product_identification" jdbcType="VARCHAR" property="productIdentification"/>
         <result column="device_status" jdbcType="VARCHAR" property="deviceStatus"/>
         <result column="connect_status" jdbcType="VARCHAR" property="connectStatus"/>
         <result column="protocol_type" jdbcType="VARCHAR" property="protocolType"/>
+        <result column="ip_address" jdbcType="VARCHAR" property="ipAddress"/>
+        <result column="extension" jdbcType="VARCHAR" property="extension"/>
         <result column="tenant_id" jdbcType="BIGINT" property="tenantId"/>
+        <result column="device_type" jdbcType="VARCHAR" property="deviceType"/>
+        <result column="parent_identification" jdbcType="VARCHAR" property="parentIdentification"/>
         <result column="create_by" jdbcType="VARCHAR" property="createBy"/>
         <result column="create_time" jdbcType="TIMESTAMP" property="createTime"/>
         <result column="update_by" jdbcType="VARCHAR" property="updateBy"/>
@@ -22,51 +29,93 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id, client_id, app_id, device_identification, device_name, user_name, password,
-        product_identification, device_status, connect_status, protocol_type, tenant_id,
-        create_by, create_time, update_by, update_time
+        d.id, d.client_id, d.app_id, d.device_identification, d.device_name,
+        p.user_name, p.password, p.auth_mode, p.public_key, p.private_key,
+        d.product_identification, d.device_status,
+        d.connect_status, p.protocol_type, d.ip_address, d.extension, d.tenant_id,
+        d.device_type, d.parent_identification, d.create_by,
+        d.create_time, d.update_by, d.update_time
     </sql>
 
     <select id="selectByProductIdentificationAndDeviceIdentification" resultMap="BaseResultMap">
         select
         <include refid="Base_Column_List"/>
-        from device
-        where product_identification = #{productIdentification,jdbcType=VARCHAR}
-        and device_identification = #{deviceIdentification,jdbcType=VARCHAR}
-        and deleted = 0
+        from device d
+        left join product p on p.product_identification = d.product_identification
+            and p.tenant_id = d.tenant_id
+        where d.product_identification = #{productIdentification,jdbcType=VARCHAR}
+        and d.device_identification = #{deviceIdentification,jdbcType=VARCHAR}
+        and d.deleted = 0
+        limit 1
+    </select>
+
+    <select id="selectPollingDevices" resultMap="BaseResultMap">
+        select
+        <include refid="Base_Column_List"/>
+        from device d
+        inner join product p on p.product_identification = d.product_identification
+            and p.tenant_id = d.tenant_id
+        where upper(p.protocol_type) = upper(#{protocolType,jdbcType=VARCHAR})
+          and coalesce(d.device_status, 'ENABLE') != 'DISABLE'
+          and d.deleted = 0
+          and coalesce(p.status, '0') = '0'
+          and d.extension is not null
+          and d.extension != ''
+    </select>
+
+    <!--
+      认证按 username 解析出的 product/device 定位设备，不强制 client_id 相等。
+      原因：1) 库中 client_id 常为空；2) 同一设备允许多个演示连接（demo-up/down/full-*）并行。
+      clientId 参数仍传入，供上层日志比对；MQTT 层「同 clientId 单连接」由 Broker 保证。
+    -->
+    <select id="selectDeviceForAuth" resultMap="BaseResultMap">
+        select
+        <include refid="Base_Column_List"/>
+        from device d
+        inner join product p on p.product_identification = d.product_identification
+            and p.tenant_id = d.tenant_id
+        where d.product_identification = #{productIdentification,jdbcType=VARCHAR}
+          and d.device_identification = #{deviceIdentification,jdbcType=VARCHAR}
+          and d.device_status = #{deviceStatus,jdbcType=VARCHAR}
+          and upper(p.protocol_type) = upper(#{protocolType,jdbcType=VARCHAR})
+          and d.deleted = 0
         limit 1
     </select>
 
     <select id="selectById" resultMap="BaseResultMap">
         select
         <include refid="Base_Column_List"/>
-        from device
-        where id = #{id,jdbcType=BIGINT}
-        and deleted = 0
+        from device d
+        left join product p on p.product_identification = d.product_identification
+            and p.tenant_id = d.tenant_id
+        where d.id = #{id,jdbcType=BIGINT}
+        and d.deleted = 0
         limit 1
     </select>
 
     <select id="selectByClientIdAndUserNameAndPasswordAndDeviceStatusAndProtocolType" resultMap="BaseResultMap">
         select
         <include refid="Base_Column_List"/>
-        from device
+        from device d
+        left join product p on p.product_identification = d.product_identification
+            and p.tenant_id = d.tenant_id
         <where>
             <if test="clientId != null and clientId != ''">
-                and client_id = #{clientId,jdbcType=VARCHAR}
+                and d.client_id = #{clientId,jdbcType=VARCHAR}
             </if>
             <if test="userName != null and userName != ''">
-                and user_name = #{userName,jdbcType=VARCHAR}
+                and p.user_name = #{userName,jdbcType=VARCHAR}
             </if>
             <if test="password != null and password != ''">
-                and "password" = #{password,jdbcType=VARCHAR}
+                and p.password = #{password,jdbcType=VARCHAR}
             </if>
             <if test="deviceStatus != null and deviceStatus != ''">
-                and device_status = #{deviceStatus,jdbcType=VARCHAR}
+                and d.device_status = #{deviceStatus,jdbcType=VARCHAR}
             </if>
             <if test="protocolType != null and protocolType != ''">
-                and protocol_type = #{protocolType,jdbcType=VARCHAR}
+                and p.protocol_type = #{protocolType,jdbcType=VARCHAR}
             </if>
-            and deleted = 0
+            and d.deleted = 0
         </where>
         limit 1
     </select>
@@ -75,11 +124,13 @@
          设备表更新语句 - 根据不同Topic更新不同字段
          ============================================ -->
 
-    <!-- 更新设备连接状态和最后在线时间 -->
+    <!-- 收到有效上行消息后更新在线状态，并在首次上报时激活设备 -->
     <update id="updateDeviceConnectStatus">
         update device
         set connect_status = #{connectStatus,jdbcType=VARCHAR},
             last_online_time = #{lastOnlineTime,jdbcType=TIMESTAMP},
+            active_status = 1,
+            activated_time = COALESCE(activated_time, CURRENT_TIMESTAMP),
             update_time = CURRENT_TIMESTAMP
         where id = #{deviceId,jdbcType=BIGINT}
         and deleted = 0
@@ -88,7 +139,7 @@
     <!-- 更新设备扩展信息（用于属性上报、事件上报等） -->
     <update id="updateDeviceExtension">
         update device
-        set extension = #{extension,jdbcType=OTHER}::jsonb,
+        set extension = (#{extension,jdbcType=VARCHAR}::jsonb)::text,
             update_time = CURRENT_TIMESTAMP
         where id = #{deviceId,jdbcType=BIGINT}
         and deleted = 0
@@ -106,7 +157,10 @@
     <!-- 更新设备标签信息（用于标签上报） -->
     <update id="updateDeviceTags">
         update device
-        set extension = COALESCE(extension, '{}'::jsonb) || #{tags,jdbcType=OTHER}::jsonb,
+        set extension = (
+                COALESCE(NULLIF(extension, '')::jsonb, '{}'::jsonb)
+                || #{tags,jdbcType=VARCHAR}::jsonb
+            )::text,
             update_time = CURRENT_TIMESTAMP
         where id = #{deviceId,jdbcType=BIGINT}
         and deleted = 0
@@ -115,16 +169,71 @@
     <!-- 更新设备影子状态（用于影子上报） -->
     <update id="updateDeviceShadow">
         update device
-        set extension = COALESCE(extension, '{}'::jsonb) || jsonb_build_object('shadow', #{shadow,jdbcType=OTHER}::jsonb),
+        set extension = (
+                COALESCE(NULLIF(extension, '')::jsonb, '{}'::jsonb)
+                || jsonb_build_object(
+                    'shadow', #{shadow,jdbcType=VARCHAR}::jsonb,
+                    'shadowUpdateTime', to_jsonb(CURRENT_TIMESTAMP)
+                )
+            )::text,
             update_time = CURRENT_TIMESTAMP
         where id = #{deviceId,jdbcType=BIGINT}
+        and deleted = 0
+    </update>
+
+    <update id="updatePollingDeviceStatus">
+        update device
+        set connect_status = #{connectStatus,jdbcType=VARCHAR},
+            last_online_time = case
+                when #{connectStatus,jdbcType=VARCHAR} = 'ONLINE'
+                    then #{lastOnlineTime,jdbcType=TIMESTAMP}
+                else last_online_time
+            end,
+            active_status = case
+                when #{connectStatus,jdbcType=VARCHAR} = 'ONLINE' then 1
+                else active_status
+            end,
+            activated_time = case
+                when #{connectStatus,jdbcType=VARCHAR} = 'ONLINE'
+                    then COALESCE(activated_time, CURRENT_TIMESTAMP)
+                else activated_time
+            end,
+            update_time = CURRENT_TIMESTAMP
+        where id = #{deviceId,jdbcType=BIGINT}
+          and tenant_id = #{tenantId,jdbcType=BIGINT}
+          and deleted = 0
+    </update>
+
+    <update id="appendDeviceLog">
+        update device
+        set extension = (
+                case
+                    when COALESCE(NULLIF(extension, '')::jsonb->'logs', '[]'::jsonb)
+                        @> jsonb_build_array(jsonb_build_object(
+                            'id', (#{logEntry,jdbcType=VARCHAR}::jsonb)->'id'))
+                    then COALESCE(NULLIF(extension, '')::jsonb, '{}'::jsonb)
+                    else jsonb_set(
+                        COALESCE(NULLIF(extension, '')::jsonb, '{}'::jsonb),
+                        '{logs}',
+                        COALESCE(NULLIF(extension, '')::jsonb->'logs', '[]'::jsonb)
+                            || jsonb_build_array(#{logEntry,jdbcType=VARCHAR}::jsonb),
+                        true
+                    )
+                end
+            )::text,
+            update_time = CURRENT_TIMESTAMP
+        where id = #{deviceId,jdbcType=BIGINT}
+        and tenant_id = #{tenantId,jdbcType=BIGINT}
         and deleted = 0
     </update>
 
     <!-- 更新设备配置信息（用于配置查询） -->
     <update id="updateDeviceConfig">
         update device
-        set extension = COALESCE(extension, '{}'::jsonb) || jsonb_build_object('config', #{config,jdbcType=OTHER}::jsonb),
+        set extension = (
+                COALESCE(NULLIF(extension, '')::jsonb, '{}'::jsonb)
+                || jsonb_build_object('config', #{config,jdbcType=VARCHAR}::jsonb)
+            )::text,
             update_time = CURRENT_TIMESTAMP
         where id = #{deviceId,jdbcType=BIGINT}
         and deleted = 0
@@ -133,7 +242,10 @@
     <!-- 更新设备OTA进度（用于OTA进度上报） -->
     <update id="updateDeviceOtaProgress">
         update device
-        set extension = COALESCE(extension, '{}'::jsonb) || jsonb_build_object('ota', #{otaProgress,jdbcType=OTHER}::jsonb),
+        set extension = (
+                COALESCE(NULLIF(extension, '')::jsonb, '{}'::jsonb)
+                || jsonb_build_object('ota', #{otaProgress,jdbcType=VARCHAR}::jsonb)
+            )::text,
             update_time = CURRENT_TIMESTAMP
         where id = #{deviceId,jdbcType=BIGINT}
         and deleted = 0

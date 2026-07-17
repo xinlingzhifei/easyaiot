@@ -36,7 +36,7 @@ Many smart IoT projects hit the same wall at deployment: video systems, device p
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-The platform comprises seven core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, and TASK</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side: GB28181 / ONVIF multi-protocol camera access, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and MQTT / TCP / HTTP IoT device lifecycle management. On the experience side: the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
+The platform comprises eight core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, and EDGE</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side: GB28181 / ONVIF multi-protocol camera access, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and <strong>Infinite Federated Edge Cluster mode</strong> (~512MB memory, Ceph with zero local disk at the edge, one-line command turns ordinary boards intelligent, sprawl compute and aggregate to the cloud), and MQTT / TCP / HTTP IoT device lifecycle management. On the experience side: the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
@@ -90,6 +90,14 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
   </div>
 </div>
 
+<div style="margin: 20px 0; padding: 18px 22px; border-radius: 10px; border: 1px solid rgba(52, 152, 219, 0.25); background: linear-gradient(120deg, #f0f7ff 0%, #ffffff 55%, #eef9f4 100%);">
+  <p style="font-size: 16px; font-weight: 700; color: #1a5276; margin: 0 0 8px 0;">🚀 yFeiEye Infinite Federated Edge Cluster</p>
+  <p style="font-size: 14px; line-height: 1.8; color: #333; margin: 0;">
+    About <strong>512MB</strong> memory, <strong>Ceph with zero local disk at the edge</strong> (alerts and business objects write to shared Ceph—no local business disk); sprawl compute deployment with <strong>one command</strong> that turns ordinary development boards intelligent, while alerts and events aggregate to the cloud.
+    Complements the three full-stack profiles above—full-stack owns cloud-edge control and orchestration; EDGE nodes own lightweight on-site inference and infinite horizontal scale-out: “one control plane, edge anywhere.”
+  </p>
+</div>
+
 #### 🧠 AI Capabilities
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -101,12 +109,14 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
     </ul>
   </li>
   <li><strong>YOLO26 Next-Generation Object Detection</strong>: Built-in next-generation object detection, ready out of the box for real-time feed analysis and snapshot recognition. On the same hardware, connect more camera streams with faster response and fewer false alarms. Supports the full loop from data collection, annotation, and training to deployment and inference—helping users iteratively build custom detection models at lower cost and quickly cover common security and industrial scenarios such as hard hat compliance, unauthorized entry, and fire hazards, making "see accurately, compute fast, scale easily" the default capability</li>
+  <li><strong>YOLO26 Human Pose Analysis</strong>: Builds on object detection with human keypoint and skeleton pose analysis, ready out of the box with the YOLO26 Pose model. Supports three input modes—images, videos, and real-time camera streams. Image mode outputs skeleton annotations and person counts synchronously; video mode uses async task processing with pollable progress and downloadable results; camera mode connects to RTSP/RTMP live streams and overlays pose results on relayed output for remote monitoring and behavior analysis. The model inference page offers one-click switching between "Pose Analysis" and "Object Detection" with adjustable confidence, seamlessly integrated with existing model management, history, and side-by-side preview. Suitable for construction site compliance, fitness form assessment, crowd gathering awareness, and other scenarios that require understanding human structure and motion—moving the platform from "boxing targets" to "understanding poses"</li>
   <li><strong>Multi-Protocol Camera Access Support</strong>: Comprehensive support for GB28181 and ONVIF, two mainstream video surveillance protocols, enabling standardized device access and management. GB28181, as China's national standard, perfectly adapts to mainstream domestic surveillance equipment; ONVIF, as an international universal standard, is widely compatible with global mainstream camera brands. Through dual-protocol support, the platform seamlessly integrates with existing surveillance systems, achieving plug-and-play device access, automatic discovery, and unified management, significantly reducing device access barriers, enhancing system compatibility and scalability, and providing a solid technical foundation for large-scale camera deployment. In addition, NVR batch scan, registration, and unified management across same-segment and cross-segment networks are supported, covering mainstream brands including Hikvision, Dahua, Huawei, Ezviz, and Xiaomi, with native-protocol subnet discovery, one-click registration, and batch channel import, further reducing the cost of large-scale surveillance device onboarding and operations</li>
   <li><strong>Real-Time Intercom & PTZ Remote Control</strong>: Breaks through traditional surveillance's "watch-only, can't act" limitation. Operators can conduct voice broadcasting and PTZ control on the same real-time preview screen—no system switching, no on-site presence required. Remotely communicate, guide evacuations, or stop violations, compressing response from "dispatch personnel" to "speak and reach instantly." PTZ control lets cameras pan, tilt, and zoom on demand—quickly aim at incident areas and magnify details during emergencies, forming an integrated on-site response loop of "see clearly, aim precisely, speak and reach." Fully compatible with GB28181 and ONVIF devices, leveraging existing surveillance assets without additional intercom hardware or third-party software, instantly upgrading deployed cameras with remote communication and flexible dispatch capabilities, significantly reducing system silos and monitoring costs</li>
   <li><strong>Orchestrable Algorithm Post-Processing</strong>: Breaks through the "detect but can't judge" bottleneck by adding an independent business judgment layer on top of object detection, transforming visual perception results into operable, accountable, and statistically trackable business events. Supports flexible per-task definition of scenario rules such as people counting, line-crossing, dwell timeout, area loitering, and multi-condition composite alerts—quickly adapting to differentiated needs in construction site safety supervision, campus security, and traffic control without repeatedly tuning models, forging general vision capabilities into field-ready management tools. Post-processing and real-time analysis run independently and in parallel—monitoring feeds continue smooth judgment while business logic scales elastically on demand; judgment results are automatically archived and drive precise alerts, significantly reducing false positives/negatives and manual review costs. Business users focus on rule expression while the platform handles distribution, execution, and scale—truly moving from "being able to see" to "judge clearly, control effectively, and put it to use"</li>
   <li><strong>Multi-Central-Node × Multi-Worker-Node Federated Cluster</strong>: Designed for cross-region, multi-datacenter, and cloud-edge collaborative deployments, the platform adopts an "N central nodes + N worker nodes" federated architecture—central nodes serve as the unified control plane while worker nodes act as the compute and media execution plane, building a horizontally scalable distributed scheduling system. Each central node manages its own worker cluster, supporting runtime distribution and one-click remote deployment of monitoring agents, distributed storage, streaming engines, FFmpeg transcoding, video analytics runtimes, and model inference/training workloads. Multiple central nodes can interconnect and synchronize; the cluster swimlane view intuitively presents "central—worker" topology and resource levels, with lane-level batch maintenance and component distribution. Algorithm tasks, auto-labeling pipelines, and stream relay workloads are intelligently scheduled by node role and GPU capability with elastic queue dispatch—enabling massive stream ingestion, high-concurrency inference, and distributed training to run together in one cluster, truly delivering "onboard easily, schedule clearly, scale openly, govern completely"</li>
   <li><strong>SAM Zero-Start Auto-Labeling Orchestration Pipeline</strong>: Built for cold-start scenarios with no annotated samples and no usable detection model, the platform integrates SAM open-vocabulary segmentation with an intelligent orchestration engine to deliver a one-click, unattended labeling pipeline. Per strategy, the system automatically chains camera frame extraction, SAM text-prompt bootstrap labeling, YOLO fine-tuning once thresholds are met, production-phase YOLO high-speed inference with intelligent SAM fallback for missed detections, periodic iterative training, and automatic dataset packaging and export—closing the full "capture-annotate-train-export" loop. The orchestration hub continuously tracks pipeline phase and labeling progress, autonomously deciding among SAM, YOLO, and hybrid supplement modes and when to trigger training; supports pause/resume and elastic scheduling on local or cluster compute queues. With visual strategy configuration and run logs, users can grow a custom detection capability from zero samples and zero models, making "define categories in words, watch the model take shape" the default path for dataset building</li>
   <li><strong>Ten-Thousand-Node Elastic Compute Cluster & Horizontal Scaling Pool</strong>: Built for hyperscale AI and video workloads, the platform provides a cloud-edge-end distributed compute foundation that unifies algorithm tasks, stream relay, algorithm services, model training, and inference under one horizontal load-balancing and elastic scaling fabric. New servers join the fleet with one-click onboarding and immediately become schedulable compute units—the control plane automatically dispatches work and balances load based on resource levels and business pressure, enabling linear scaling from hundreds to tens of thousands of camera streams and from a single machine to ten-thousand-node clusters without redeployment or manual tuning. Massive stream ingestion, high-concurrency inference, and distributed training run together in a shared compute pool—truly delivering "scale on demand, run reliably, govern with confidence"</li>
+  <li><strong>Infinite Federated Edge Cluster (EDGE)</strong>: For ordinary development boards such as RK3588 and Raspberry Pi and on-site compute nodes, delivers a lightweight headless edge algorithm runtime at about <strong>512MB</strong> memory—<strong>one command</strong> writes the control-plane address and starts, turning ordinary boards intelligent; sprawl compute deployment by site while alerts and events aggregate to the cloud. Alert images and snapshots write to shared Ceph and are archived by the center sink—<strong>Ceph with zero local disk at the edge</strong> for business storage (no local business disk, no direct MinIO upload). Extracts the algorithm execution plane from the VIDEO control plane into a dedicated <code>EDGE</code> module—no WEB UI, no local business database, focused on "receive commands, run inference, report events." On site configure only <code>EDGE_NODE_URL</code>; via enroll / runtime-config, auto-provision EMQX cluster endpoints, MQTT credentials, Ceph hot-buffer paths, and Topic contracts. Any number of nodes share one EMQX bus; the control plane schedules realtime / snapshot / patrol algorithm tasks by node capability. Start/stop commands arrive on <code>mqtt/iot-algo-task-cmd</code>; heartbeat, ack, alert, and postprocess flow back on the same bus—truly "512MB to start, Ceph zero local disk at the edge, one command online, infinite federated scale-out, on-site intelligence and cloud aggregation together"</li>
   <li><strong>Tianditu Spatial Visualization & Map-Based Analysis</strong>: Integrated with China's national Tianditu map service, the platform brings cameras, alerts, and person/vehicle recognition onto a single map—upgrading surveillance from "watching feeds" to "seeing the big picture." Both the streaming media and alert modules offer a "Map Distribution" view with a device directory tree for regional focus, giving instant visibility into checkpoint layout and online status. Map click-to-pin, location search, and batch coordinate import help GB channels, NVR channels, and direct-connect cameras get mapped quickly so every feed has clear spatial context. Alerts are automatically placed on the map via linked camera coordinates; filter by time, event type, task, and business tags, then open snapshots and recordings in one click—helping operators move fast from "where did it happen" to action. Combined with face and plate libraries, hits across multiple sites can be woven into spatial trails—<strong>trace by person</strong> to reconstruct movement and presence within a monitored area; <strong>trace by vehicle</strong> to link passing records and pinpoint routes and stop zones for find-person/find-vehicle, patrol deployment, and post-incident review. Mobile devices also support track playback to replay patrol and travel paths on a timeline. Switch freely between vector and satellite basemaps with auto-fit view, so managers use the map as the anchor to spot anomalies, lock onto targets, and coordinate response faster</li>
   <li><strong>Qwen / DeepSeek Multi-GPU Deployment</strong>: Supports deploying Qwen, DeepSeek, and other large language models across multiple GPUs in parallel. GPU resources can be scheduled flexibly at the cluster and Worker level, enabling elastic scaling and load balancing of model instances to deliver stable inference under high concurrency and long-context workloads</li>
   <li><strong>Vision Large Model Intelligent Understanding</strong>: Integrated with QwenVL3 vision large model, supports deep visual reasoning and semantic understanding of real-time video frames, enabling intelligent analysis and scene comprehension of frame content, providing richer visual cognitive capabilities, achieving a leap from pixel-level perception to semantic-level understanding</li>
@@ -125,6 +135,7 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
     </ul>
   </li>
   <li><strong>Dataset Annotation and Multi-Format Dataset Management</strong>: Provides a visual image annotation workspace supporting rectangle and polygon labeling, category management, and progress tracking; fully supports flexible import and export of mainstream dataset formats including YOLO, COCO, and ImageFolder, with cloud platform dataset integration enabling one-click import and synchronized export of cloud-hosted datasets—seamlessly connecting data collection, annotation, training, and deployment across the full pipeline</li>
+  <li><strong>Multi-GPU Training, Checkpoint Resume, and Node-Side Deployment</strong>: Breaks through the training bottlenecks of “GPUs available but unused, tasks hard to control, and progress lost on interruption” by systematically connecting multi-GPU utilization, controllable task scheduling, and node-side deployment—so on-site GPUs are truly usable and training jobs are truly manageable. The platform automatically discovers and schedules all server GPUs; users can select single- or multi-GPU on the training page instead of being limited to “only one card visible.” It supports common dataset formats and directory layouts, large local dataset uploads, and keeps original data after failed runs for quick retry—greatly reducing data-prep and rework costs. Training progress is fully visible, and jobs can be stopped and resumed—avoiding lost results after interruption or “stop clicked but still spinning in the background.” Local and remote training schedulers also roll back promptly on failure with clear feedback. Front-end GPU selection, resume training, and stop-state display are improved in parallel, and issues such as false failure on model publish, custom preview images being overwritten, models not found by name/version, and dataset sync timeouts/conflicts are fixed—making the train–publish–use loop smoother and more reliable</li>
   <li><strong>Stream Forwarding</strong>: Supports direct viewing of camera real-time feeds without enabling AI analysis functionality. By creating stream forwarding tasks, multiple cameras can be batch-pushed, enabling synchronous viewing of multiple video streams to meet pure video monitoring scenario requirements</li>
   <li><strong>GPU Discovery, Load-Aware Allocation, and Multi-GPU Collaboration</strong>: The platform provides GPU resource discovery and intelligent scheduling: it detects the number of available GPUs and dynamically assigns video encode/decode and algorithm inference work across cards according to per-GPU load, running tasks in parallel where appropriate to raise multi-stream throughput and utilization while keeping the pipeline stable—coordinating frame processing and model inference in multi-GPU deployments</li>
   <li><strong>Smart Transport Selection and Resilient Stream Pull</strong>: On RTSP and similar pull paths, the system can evaluate URL/path and related signals to choose and switch transport-layer modes; camera pulls default to UDP for lower latency. When consecutive frames indicate gray screen, decode errors, or stream collapse (decode stall), RTSP reconnect and link recovery run automatically to limit prolonged artifacts or frozen video</li>
@@ -149,14 +160,45 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
 #### 🌐 IoT Capabilities
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
-  <li><strong>Device Access and Management</strong>: Device registration, authentication, status monitoring, lifecycle management</li>
-  <li><strong>Product and Thing Model Management</strong>: Product definition, thing model configuration, product management</li>
-  <li><strong>Multi-Protocol Support</strong>: Multiple IoT protocols including MQTT, TCP, HTTP</li>
-  <li><strong>Device Authentication and Dynamic Registration</strong>: Secure access, identity authentication, dynamic device registration</li>
-  <li><strong>Rule Engine</strong>: Data flow rules, message routing, data transformation</li>
-  <li><strong>Data Collection and Storage</strong>: Device data collection, storage, query, and analysis</li>
-  <li><strong>Device Status Monitoring and Alert Management</strong>: Real-time monitoring, anomaly alerts, intelligent decision-making</li>
-  <li><strong>Notification Management</strong>: Supports 7 notification methods including Feishu, DingTalk, Enterprise WeChat, Email, Tencent Cloud SMS, Alibaba Cloud SMS, and Webhook, enabling flexible and multi-channel alert notifications</li>
+  <li><strong>Product Model Management</strong>: Treat products as templates for similar devices—create, enable/disable, search, and switch between table/card views; configure application scenarios, vendor, model, and other profile fields. <strong>Value</strong>: Define once for a device class and reuse across many units—no need to configure each device from scratch when scaling</li>
+  <li><strong>Multi-Type Product Modeling</strong>: Supports four product forms: direct-connected, gateway, gateway sub-device, and video. <strong>Value</strong>: Edge aggregation, direct terminals, and video devices are modeled separately so topology and access paths are not mixed or misconfigured</li>
+  <li><strong>Product Access Protocol & Auth Configuration</strong>: Configure access protocol, data format, authentication method, and encryption/decryption at the product level. <strong>Value</strong>: Access rules live on the product and are inherited by child devices—no per-device protocol or auth agreements</li>
+  <li><strong>Thing Model Property Definition</strong>: Define reportable/readable-writable properties (metrics), with standard templates and custom ones; edit as draft, take effect after publish. <strong>Value</strong>: Agree first on “what can be observed”—dashboards, rules, and alerts share one field set, fewer reworks from inconsistent metric names</li>
+  <li><strong>Thing Model Service Definition</strong>: Define callable services with input/output parameters; edit as draft, take effect after publish. <strong>Value</strong>: Agree first on “what can be done remotely”—invoke by contract, fewer one-off control APIs</li>
+  <li><strong>Thing Model Event Definition</strong>: Define business event types devices will report; edit as draft, take effect after publish. <strong>Value</strong>: Agree first on “what can happen”—event logs and rule triggers share semantics, alerts speak the same language</li>
+  <li><strong>Thing Model Publish Control</strong>: Thing model changes land as drafts first; only after confirm-and-publish do they take effect on the device side. <strong>Value</strong>: A buffer before impact—unverified changes do not hit online devices, lowering misoperation risk</li>
+  <li><strong>Protocol Script Adaptation</strong>: Standard payloads need no script; private protocols can use uplink/downlink encode-decode scripts with templates, validation, instant debug, and save-to-hot-reload. <strong>Value</strong>: Legacy multi-vendor devices join a unified thing model without firmware changes—integration shifts from “change the device” to “configure a script”</li>
+  <li><strong>Product Access Guide</strong>: Product details include built-in integration parameters, auth, message samples, and acceptance notes. <strong>Value</strong>: Standard handoff playbooks per product—newcomers can accept by following the page, less reliance on on-site expert walkthroughs</li>
+  <li><strong>Product-Linked Device Overview</strong>: View registered devices and online status under a product. <strong>Value</strong>: Inventory online rate and coverage by product—clear ops and acceptance ownership</li>
+  <li><strong>Device Profile Management</strong>: Full CRUD for devices; search by product/identifier/online status; table and card views. <strong>Value</strong>: Scattered devices become a searchable ledger—one entry for inventory and project handoff</li>
+  <li><strong>Device Online & Activation Status</strong>: Lists and details show connection status, activation status, activation time, and last online time. <strong>Value</strong>: Prioritize offline and inactive devices—stop hunting blindly in “all devices”</li>
+  <li><strong>Register Devices by Product</strong>: Bind devices to a product on create to inherit protocol and scenario. <strong>Value</strong>: Registration attaches the right product template—scale by cloning the product, less re-picking protocols and auth</li>
+  <li><strong>Industrial Collection Access Config</strong>: For industrial collection products, configure host, metrics, and collection interval on register. <strong>Value</strong>: Meters, sensors, and field points are set once at registration—fewer separate SCADA/collection tools</li>
+  <li><strong>Device Basic Profile</strong>: Persist name, identifier, SN, product, version, IP, and other one-device-one-record fields. <strong>Value</strong>: Quickly confirm “who is this” during replacement, accountability, and reconciliation—less verbal chasing and on-site digging</li>
+  <li><strong>Device Access Guide</strong>: Per device type: recommended commands, integration parameters, auth, messages, acceptance, and backend residency notes; copyable commands after parameter edits. <strong>Value</strong>: Field integration moves from hunting docs to copy-command acceptance—shorter go-live and PoC cycles</li>
+  <li><strong>Real-Time Running Status</strong>: Show current property live values by thing model; table/card views and refresh. <strong>Value</strong>: Operators judge key metrics without logging into devices or reading raw payloads</li>
+  <li><strong>Device Shadow Comparison</strong>: View reported state, desired state, and diffs side by side, with full JSON retained. <strong>Value</strong>: See at a glance whether “desired” matches “actual”—troubleshooting shifts from guessing to comparing</li>
+  <li><strong>Desired Property Push</strong>: Batch-edit desired values for writable properties and push in one click; track processing/success/failure. <strong>Value</strong>: Remote tuning without site visits—changes have receipts, fewer wasted truck rolls</li>
+  <li><strong>Thing Model Service Invocation</strong>: Fill parameters for published services and invoke; track command receipts. <strong>Value</strong>: Start/stop, reset, and similar actions go out in one click with execution confirmation—auditable closed loop</li>
+  <li><strong>Offline Command Queue</strong>: Commands still write to desired shadow when offline; devices pull or receive them after coming online per protocol. <strong>Value</strong>: Weak network or brief offline does not drop control intent—catch up on reconnect, fewer retries</li>
+  <li><strong>Sub-Device Gateway Proxy Control</strong>: Sub-devices are controlled via their parent gateway. <strong>Value</strong>: Many edge terminals can be remoted without direct platform links—lower terminal access complexity</li>
+  <li><strong>Linked Cameras</strong>: IoT devices can bind/unbind cameras from the device catalog. <strong>Value</strong>: Map telemetry points to video locations—know which stream to watch when something goes wrong</li>
+  <li><strong>Split-Screen Monitoring & AI Linkage</strong>: In function invocation, switch 1/4/9 split-screen preview of linked cameras and enable AI analysis. <strong>Value</strong>: Tune parameters and issue commands while watching the site—“numbers” and “pictures” in one place, fewer system switches and missed judgments</li>
+  <li><strong>Event Logs</strong>: Aggregate info/warning/error events from devices; filter by type, name, and time. <strong>Value</strong>: Answer “what happened on site”—postmortems have raw events, not just pop-ups</li>
+  <li><strong>Command Logs</strong>: Track processing/success/failure for property sets and service calls. <strong>Value</strong>: Answer “did this command reach the device and was it accepted”—end integration blame games</li>
+  <li><strong>Device Logs</strong>: Aggregate multi-level device-side logs; keyword and time search. <strong>Value</strong>: Troubleshoot without logging into devices for local logs—locate firmware and business faults in the cloud</li>
+  <li><strong>Gateway Sub-Device Binding</strong>: Gateway devices can batch bind/unbind sub-devices. <strong>Value</strong>: Clear, manageable edge topology—ownership stays sharp when expanding, replacing gateways, or isolating faults</li>
+  <li><strong>Topic Capability Inventory</strong>: Per device, list uplink/downlink channel docs for config, shadow, properties, services, events, OTA, clock sync, and more. <strong>Value</strong>: R&D and integration share one channel catalog—fewer reworks from mismatched channel contracts</li>
+  <li><strong>OTA Package Management</strong>: Centrally upload and manage software/firmware packages with version, download, edit, delete, and dual views. <strong>Value</strong>: Patches and firmware live in one reusable place—no per-device media copying</li>
+  <li><strong>OTA Upgrade Strategy</strong>: Mark critical versions and choose forced/non-forced upgrade modes. <strong>Value</strong>: Important releases can be flagged and urgent fixes forced—lower risk of missed or chaotic upgrades</li>
+  <li><strong>Rule Chain Management</strong>: Create, enable/disable, batch-delete rules; list/card management. <strong>Value</strong>: Business linkage rules can be toggled centrally—turn off unused chains to avoid false triggers</li>
+  <li><strong>Visual Rule Chain Orchestration</strong>: Chain-style visual editing that links data flow, conditions, and downstream actions by intent. <strong>Value</strong>: Scenarios move from custom code to drag-and-drop config—change the chain for business changes, no waiting on a sprint</li>
+  <li><strong>Rule Import/Export</strong>: Import rules for cross-environment migration and reuse. <strong>Value</strong>: Mature rules become delivery assets—copy across projects instead of rewriting from scratch</li>
+  <li><strong>Message Configuration</strong>: Centrally maintain notification channels and base message settings. <strong>Value</strong>: Notification outlets managed in one place—swap channels or accounts without changing business code</li>
+  <li><strong>Message Templates</strong>: Maintain template content for email, SMS, Enterprise WeChat, DingTalk, Feishu, Webhook, and more. <strong>Value</strong>: Copy once, reuse everywhere—unified alert wording, fewer ad-hoc message mistakes</li>
+  <li><strong>Message Push</strong>: Create push tasks by channel; support test send and start push. <strong>Value</strong>: Alerts and business events reach owners’ daily work tools—not stuck inside the system</li>
+  <li><strong>Push History</strong>: Review push records by channel. <strong>Value</strong>: Trace whether notices were sent and delivered—audit and improve reach strategy</li>
+  <li><strong>Notification Users & Groups</strong>: Maintain notification users and groups for precise reach by role/shift. <strong>Value</strong>: Critical alerts only to the right people—fewer misses, less alert fatigue from all-hands spam</li>
 </ul>
 
 #### 📱 Mobile APP
@@ -224,7 +266,7 @@ Innovatively leveraging large models to construct a zero-shot labeling technical
 ### 🏗️ Project Architecture Features
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye is not actually one project; it is seven distinct projects.
+yFeiEye is not actually one project; it is eight distinct projects.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -261,10 +303,10 @@ yFeiEye actively responds to localization strategies, providing comprehensive su
 <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 <h4 style="margin-top: 0; color: white; font-size: 18px;">📱 Edge-Side Support</h4>
 <ul style="font-size: 14px; line-height: 1.8; margin: 10px 0; padding-left: 20px;">
-  <li>Comprehensive support for Rockchip ARM architecture chips</li>
-  <li>Perfect adaptation to mainstream edge computing platforms like RK3588</li>
-  <li>Deep optimization for edge scenarios</li>
-  <li>Enables lightweight deployment of edge intelligence</li>
+  <li>Infinite federated edge cluster: join with ~512MB memory</li>
+  <li>Ceph: zero local disk footprint—business objects never land on local disks</li>
+  <li>One command turns RK3588 and similar boards intelligent</li>
+  <li>Sprawl compute by site; alerts and events aggregate to the cloud</li>
 </ul>
 </div>
 
@@ -287,7 +329,7 @@ yFeiEye actively responds to localization strategies, providing comprehensive su
 ## 🧩 Project Structure
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye consists of seven core projects:
+yFeiEye consists of eight core projects:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -367,6 +409,20 @@ yFeiEye consists of seven core projects:
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>TASK Module</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">C++-based high-performance task processing module responsible for compute-intensive task execution</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>EDGE Module</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Infinite Federated Edge Cluster Mode</strong>: The eighth core module—~512MB memory; Ceph zero local disk at the edge; one command turns ordinary boards intelligent; sprawl compute deployment with alerts and events aggregating to the cloud; infinite federated scale-out</li>
+    <li><strong>Headless Edge Algorithm Runtime</strong>: Algorithm execution surface extracted from VIDEO; pure CLI / systemd with no WEB UI and no local business database, focused on edge inference and event reporting</li>
+    <li><strong>Single Config Entry</strong>: On site configure only <code>EDGE_NODE_URL</code> (iot-node control-plane address); via <code>/admin-api/node/edge/enroll</code> and <code>runtime-config</code>, automatically receive MQTT broker list, tenant credentials, clientId, Ceph hot-buffer paths, and algorithm Topic contracts</li>
+    <li><strong>All-MQTT Bus</strong>: Subscribes to <code>mqtt/iot-algo-task-cmd</code> for start/stop commands (filtered by <code>targetNodeId</code>); publishes heartbeat / ack / alert / postprocess; no direct Kafka and no HTTP management plane</li>
+    <li><strong>Ceph: Zero Local Disk at the Edge</strong>: Alert images and snapshots write to shared Ceph paths; center-side <code>iot-sink</code> archives to MinIO—no local business disk at the edge, no MinIO sync-upload responsibility on EDGE</li>
+    <li><strong>Infinite Cluster Scale-Out</strong>: Any number of EDGE nodes join the same EMQX cluster; ordered broker probing with head-of-list retry on failure; supports realtime / snapshot / patrol algorithm task scale-out</li>
+    <li><strong>Clear Control-Plane Split</strong>: VIDEO keeps task CRUD, scheduling policy, and log query; EDGE owns the <code>runtime/</code> inference loops and workload launch, and can coexist with the NODE Agent (generic HTTP workloads)</li>
+  </ul>
+</td>
 </tr>
 </table>
 
@@ -488,6 +544,10 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 <div>
   <img src=".image/banner/banner1145.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1146.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1147.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1148.jpg" alt="Screenshot 1" width="49%">
 </div>
 <div>
   <img src=".image/banner/banner1129.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
@@ -710,16 +770,56 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
+  <img src=".image/banner/banner1149.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1150.jpg" alt="Screenshot 1" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
+  <img src=".image/banner/banner1151.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1152.jpg" alt="Screenshot 1" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
+  <img src=".image/banner/banner1153.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1154.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1155.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1156.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1157.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1158.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1159.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1160.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1161.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1162.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1163.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1164.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1165.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1166.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/app/app_1000.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/app/app_1001.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/app/app_1002.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/app/app_1003.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/app/app_1004.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/app/app_1005.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/app/app_1006.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/app/app_1007.jpg" alt="Screenshot 1" width="49%">
 </div>
 
 ## 📞 Contact Information
@@ -840,7 +940,7 @@ The following are outstanding contributors who have made significant contributio
 </tr>
 <tr style="background-color: #f8f9fa;">
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>爱吃小柚子</nobr></td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in video surveillance and intelligent analytics, led end-to-end integration and validation testing of the national standard GB28181 with AI business workflows; also carried out dedicated testing and evaluation of image clarity and playback smoothness, providing a strong basis for reliable GB28181 access, link stability, and continuous improvement of the viewing experience.</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye toward training that actually runs, stays stable, and stays easy to operate, systematically delivered multi-GPU training, checkpoint resume, and node-side deployment so on-site compute can be fully used and training jobs stay under control: servers can auto-detect and use all GPUs, and users can pick one or more cards on the training page instead of being stuck with a single visible GPU; common dataset formats and directory layouts are supported, large local datasets can be uploaded, and original data is kept after failed runs for quick retries—greatly cutting the cost of data prep and rework; training progress is visible, jobs can be stopped and resumed, avoiding lost results after interruptions or “stop” clicks that leave processes spinning in the background, with clear fallback and feedback when local or remote scheduling fails; also improved frontend GPU selection, resume, and stop-state display, and fixed false “publish failed” results, custom preview images being overwritten, model lookup by name/version not working, and dataset sync timeouts or conflicts—making the train–publish–use loop smoother and more reliable. Previously also led end-to-end GB28181 and AI workflow integration testing and dedicated image-clarity evaluation, providing a strong basis for reliable national-standard access and better viewing experience.</td>
 </tr>
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>Dark</nobr></td>
@@ -870,11 +970,19 @@ The following are outstanding contributors who have made significant contributio
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>Li</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in youth developer community building and collaborative ecosystem development, demonstrated outstanding organizational leadership and rallying power by leading fellow students across campus to actively co-build the project, bringing together young talent and collective momentum to inject a continuous, enduring stream of growth energy into yFeiEye; also made pivotal, irreplaceable contributions in project outreach, hands-on implementation, and cultivating the next generation of contributors.</td>
 </tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>陈家林</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in IoT device interoperability and air–ground video fusion, delivered a closed loop for device commands and status data so the platform can truly “send commands down, see status, and stay in control”; also contributed DJI FlightHub dock and drone video integration, bringing aerial inspection views into the unified video and alarm system, and significantly expanding the platform’s value in wide-area patrol, emergency survey, and sky–ground collaborative sensing.</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>NULL</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in industrial field device access, delivered Modbus protocol uplink acquisition so data from meters, sensors, controllers and other industrial equipment can be unified for aggregation, monitoring and linkage—completing the key puzzle of “seeing the scene and hearing the devices,” and providing a solid foundation for industrial data acquisition, production-line intelligence, and security linkage scenarios.</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Special Thanks</strong>: The work of the above contributors has advanced yFeiEye in many ways, including cross-platform deployment documentation and scripts, delivery of national-standard video capabilities (including GB28181), AI integration testing, multi-vendor camera direct discovery and batch onboarding, production-ready Tianditu spatial visualization, heterogeneous streaming media cluster deployment and scheduling architecture, production-ready license plate recognition algorithm and complete implementation, yFeiEye-Edge end-to-end integration linking camera access with AI, and campus developer community organization and youth collaborative ecosystem building. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
+<strong>Special Thanks</strong>: The work of the above contributors has advanced yFeiEye in many ways, including cross-platform deployment documentation and scripts, delivery of national-standard video capabilities (including GB28181), AI integration testing, multi-GPU training usability and checkpoint resume, multi-vendor camera direct discovery and batch onboarding, production-ready Tianditu spatial visualization, heterogeneous streaming media cluster deployment and scheduling architecture, production-ready license plate recognition algorithm and complete implementation, yFeiEye-Edge end-to-end integration linking camera access with AI, campus developer community organization and youth collaborative ecosystem building, IoT device uplink/downlink closed loop and DJI FlightHub aerial view integration, and industrial Modbus device uplink acquisition. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
 </p>
 
 ## 💝 Open Source Guardians
@@ -884,15 +992,15 @@ Sustaining an open-source project takes more than code and documentation. During
 <table>
   <tbody>
     <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/默者.png" width="80px;" alt="默者"/><br /><sub><b>默者</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/小满藏舟.png" width="80px;" alt="小满藏舟"/><br /><sub><b>小满藏舟</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/空空.png" width="80px;" alt="空空"/><br /><sub><b>空空</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/阿涛.png" width="80px;" alt="阿涛"/><br /><sub><b>阿涛</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/火车叨位去、.png" width="80px;" alt="火车叨位去、"/><br /><sub><b>火车叨位去、</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/NULL.png" width="80px;" alt="NULL"/><br /><sub><b>NULL</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/一片天.png" width="80px;" alt="一片天"/><br /><sub><b>一片天</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/舍得.png" width="80px;" alt="舍得"/><br /><sub><b>舍得</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/M.png" width="80px;" alt="M"/><br /><sub><b>M</b></sub></a></td>
-      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/Louis.png" width="80px;" alt="Louis"/><br /><sub><b>Louis</b></sub></a></td>
-      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/胡首凡 梯控门禁五方对讲.png" width="80px;" alt="胡首凡 梯控门禁五方对讲"/><br /><sub><b>胡首凡 梯控门禁五方对讲</b></sub></a></td>
-      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/袁建华.png" width="80px;" alt="袁建华"/><br /><sub><b>袁建华</b></sub></a></td>
     </tr>
     <tr>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/南北.png" width="80px;" alt="南北"/><br /><sub><b>南北</b></sub></a></td>
@@ -1020,6 +1128,9 @@ Sustaining an open-source project takes more than code and documentation. During
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/noname.png" width="80px;" alt="noname"/><br /><sub><b>noname</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/兔子.png" width="80px;" alt="兔子"/><br /><sub><b>兔子</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/ThinkInStack.png" width="80px;" alt="ThinkInStack"/><br /><sub><b>ThinkInStack</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/Louis.png" width="80px;" alt="Louis"/><br /><sub><b>Louis</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/胡首凡 梯控门禁五方对讲.png" width="80px;" alt="胡首凡 梯控门禁五方对讲"/><br /><sub><b>胡首凡 梯控门禁五方对讲</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/open-source-guardian/袁建华.png" width="80px;" alt="袁建华"/><br /><sub><b>袁建华</b></sub></a></td>
     </tr>
   </tbody>
 </table>
@@ -1040,6 +1151,198 @@ They are the pioneers who push yFeiEye from "usable" to "easy to use and use wel
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Wzs.jpg" width="80px;" alt="Wzs"/><br /><sub><b>Wzs</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
       <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/best-practitioner/刘延波.jpg" width="80px;" alt="刘延波"/><br /><sub><b>刘延波</b></sub></a></td>
+    </tr>
+  </tbody>
+</table>
+
+## 🙏 Acknowledgements
+
+Thanks to the following contributors for code, feedback, donations, and support (in no particular order):
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/默者.png" width="80px;" alt="默者"/><br /><sub><b>默者</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/小满藏舟.png" width="80px;" alt="小满藏舟"/><br /><sub><b>小满藏舟</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/空空.png" width="80px;" alt="空空"/><br /><sub><b>空空</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/chen_jialin123" target="_blank"><img src="./.image/sponsor/陈家林.png" width="80px;" alt="陈家林"/><br /><sub><b>陈家林</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/NULL.png" width="80px;" alt="NULL"/><br /><sub><b>NULL</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/陈勇至.jpg" width="80px;" alt="陈勇至"/><br /><sub><b>陈勇至</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Dark.jpg" width="80px;" alt="Dark"/><br /><sub><b>Dark</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/machh" target="_blank"><img src="./.image/sponsor/machh.jpg" width="80px;" alt="machh"/><br /><sub><b>machh</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/三块两毛四.jpg" width="80px;" alt="三块两毛四"/><br /><sub><b>三块两毛四</b></sub></a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/物语晨水²⁰²⁶.jpg" width="80px;" alt="物语晨水²⁰²⁶"/><br /><sub><b>物语晨水²⁰²⁶</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/L_Z_M" target="_blank"><img src=".image/sponsor/玖零。.jpg" width="80px;" alt="玖零。"/><br /><sub><b>玖零。</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/36436022" target="_blank"><img src=".image/sponsor/金鸿伟.jpg" width="80px;" alt="金鸿伟"/><br /><sub><b>金鸿伟</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/cnlijf" target="_blank"><img src="./.image/sponsor/李江峰.jpg" width="80px;" alt="李江峰"/><br /><sub><b>李江峰</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src=".image/sponsor/Best%20Yao.jpg" width="80px;" alt="Best Yao"/><br /><sub><b>Best Yao</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/weiloser" target="_blank"><img src=".image/sponsor/无为而治.jpg" width="80px;" alt="无为而治"/><br /><sub><b>无为而治</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/shup092_admin" target="_blank"><img src="./.image/sponsor/shup.jpg" width="80px;" alt="shup"/><br /><sub><b>shup</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/gampa" target="_blank"><img src="./.image/sponsor/也许.jpg" width="80px;" alt="也许"/><br /><sub><b>也许</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/leishaozhuanshudi" target="_blank"><img src="./.image/sponsor/⁰ʚᦔrꫀꪖꪑ⁰ɞ%20..jpg" width="80px;" alt="⁰ʚᦔrꫀꪖꪑ⁰ɞ ."/><br /><sub><b>⁰ʚᦔrꫀꪖꪑ⁰ɞ .</b></sub></a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/fateson" target="_blank"><img src="./.image/sponsor/逆.jpg" width="80px;" alt="逆"/><br /><sub><b>逆</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/dongGezzz_admin" target="_blank"><img src="./.image/sponsor/廖东旺.jpg" width="80px;" alt="廖东旺"/><br /><sub><b>廖东旺</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/huangzhen1993" target="_blank"><img src="./.image/sponsor/黄振.jpg" width="80px;" alt="黄振"/><br /><sub><b>黄振</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/fengchunshen" target="_blank"><img src="./.image/sponsor/春生.jpg" width="80px;" alt="春生"/><br /><sub><b>春生</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/mrfox_wang" target="_blank"><img src="./.image/sponsor/贵阳王老板.jpg" width="80px;" alt="贵阳王老板"/><br /><sub><b>贵阳王老板</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/haobaby" target="_blank"><img src="./.image/sponsor/hao_chen.jpg" width="80px;" alt="hao_chen"/><br /><sub><b>hao_chen</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/finalice" target="_blank"><img src="./.image/sponsor/尽千.jpg" width="80px;" alt="尽千"/><br /><sub><b>尽千</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/yuer629" target="_blank"><img src="./.image/sponsor/yuer629.jpg" width="80px;" alt="yuer629"/><br /><sub><b>yuer629</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/cai-peikai/ai-project" target="_blank"><img src="./.image/sponsor/kong.jpg" width="80px;" alt="kong"/><br /><sub><b>kong</b></sub></a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/HB1731276584" target="_blank"><img src="./.image/sponsor/岁月静好.jpg" width="80px;" alt="岁月静好"/><br /><sub><b>岁月静好</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/hy5128" target="_blank"><img src="./.image/sponsor/Kunkka.jpg" width="80px;" alt="Kunkka"/><br /><sub><b>Kunkka</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/guo-dida" target="_blank"><img src="./.image/sponsor/灬.jpg" width="80px;" alt="灬"/><br /><sub><b>灬</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/XyhBill" target="_blank"><img src="./.image/sponsor/Mr.LuCkY.jpg" width="80px;" alt="Mr.LuCkY"/><br /><sub><b>Mr.LuCkY</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/timeforeverz" target="_blank"><img src="./.image/sponsor/泓.jpg" width="80px;" alt="泓"/><br /><sub><b>泓</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/mySia" target="_blank"><img src="./.image/sponsor/i.jpg" width="80px;" alt="i"/><br /><sub><b>i</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/依依.jpg" width="80px;" alt="依依"/><br /><sub><b>依依</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/sunbirder" target="_blank"><img src="./.image/sponsor/小菜鸟先飞.jpg" width="80px;" alt="小菜鸟先飞"/><br /><sub><b>小菜鸟先飞</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/mmy0" target="_blank"><img src="./.image/sponsor/追溯未来-_-.jpg" width="80px;" alt="追溯未来"/><br /><sub><b>追溯未来</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/ccqingshan" target="_blank"><img src="./.image/sponsor/青衫.jpg" width="80px;" alt="青衫"/><br /><sub><b>青衫</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/jiangchunJava" target="_blank"><img src="./.image/sponsor/Fae.jpg" width="80px;" alt="Fae"/><br /><sub><b>Fae</b></sub></a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/huang-xiangtai" target="_blank"><img src="./.image/sponsor/憨憨.jpg" width="80px;" alt="憨憨"/><br /><sub><b>憨憨</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/gu-beichen-starlight" target="_blank"><img src="./.image/sponsor/文艺小青年.jpg" width="80px;" alt="文艺小青年"/><br /><sub><b>文艺小青年</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/zhangnanchao" target="_blank"><img src="./.image/sponsor/lion.jpg" width="80px;" alt="lion"/><br /><sub><b>lion</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/yupccc" target="_blank"><img src="./.image/sponsor/汪汪队立大功.jpg" width="80px;" alt="汪汪队立大功"/><br /><sub><b>汪汪队立大功</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/wcjjjjjjj" target="_blank"><img src="./.image/sponsor/wcj.jpg" width="80px;" alt="wcj"/><br /><sub><b>wcj</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/hufanglei" target="_blank"><img src="./.image/sponsor/🌹怒放de生命😋.jpg" width="80px;" alt="怒放de生命"/><br /><sub><b>怒放de生命</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/juyunsuan" target="_blank"><img src="./.image/sponsor/蓝速传媒.jpg" width="80px;" alt="蓝速传媒"/><br /><sub><b>蓝速传媒</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/achieve275" target="_blank"><img src="./.image/sponsor/Achieve_Xu.jpg" width="80px;" alt="Achieve_Xu"/><br /><sub><b>Achieve_Xu</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/nicholasld" target="_blank"><img src="./.image/sponsor/NicholasLD.jpg" width="80px;" alt="NicholasLD"/><br /><sub><b>NicholasLD</b></sub></a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/ADVISORYZ" target="_blank"><img src=".image/sponsor/ADVISORYZ.jpg" width="80px;" alt="ADVISORYZ"/><br /><sub><b>ADVISORYZ</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/dongxinji" target="_blank"><img src="./.image/sponsor/take%20your%20time%20or.jpg" width="80px;" alt="take your time or"/><br /><sub><b>take your time or</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/xu756" target="_blank"><img src="./.image/sponsor/碎碎念..jpg" width="80px;" alt="碎碎念."/><br /><sub><b>碎碎念.</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/lwisme" target="_blank"><img src="./.image/sponsor/北街.jpg" width="80px;" alt="北街"/><br /><sub><b>北街</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/yu-xinyan71" target="_blank"><img src="./.image/sponsor/Dorky%20TAT.jpg" width="80px;" alt="Dorky TAT"/><br /><sub><b>Dorky TAT</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/chenxiaohong" target="_blank"><img src=".image/sponsor/右耳向西.jpg" width="80px;" alt="右耳向西"/><br /><sub><b>右耳向西</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://github.com/派大星" target="_blank"><img src="./.image/sponsor/派大星.jpg" width="80px;" alt="派大星"/><br /><sub><b>派大星</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/wz_vue_gitee_181" target="_blank"><img src="./.image/sponsor/棒槌🧿🍹🍹🧿.jpg" width="80px;" alt="棒槌🧿🍹🍹🧿"/><br /><sub><b>棒槌</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/nctwo" target="_blank"><img src=".image/sponsor/信微输传助手.jpg" width="80px;" alt="信微输传助手"/><br /><sub><b>信微输传助手</b></sub></a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/l9999_admin" target="_blank"><img src=".image/sponsor/一往无前.jpg" width="80px;" alt="一往无前"/><br /><sub><benen>一往无前</benen></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/stenin" target="_blank"><img src="./.image/sponsor/Charon.jpg" width="80px;" alt="Charon"/><br /><sub><b>Charon</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/zhao-yihuiwifi" target="_blank"><img src="./.image/sponsor/赵WIFI..jpg" width="80px;" alt="赵WIFI."/><br /><sub><b>赵WIFI.</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/Yang619" target="_blank"><img src="./.image/sponsor/Chao..jpg" width="80px;" alt="Chao."/><br /><sub><b>Chao.</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/lcrsd123" target="_blank"><img src=".image/sponsor/城市稻草人.jpg" width="80px;" alt="城市稻草人"/><br /><sub><b>城市稻草人</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/Mo_bai1016" target="_blank"><img src=".image/sponsor/Bug写手墨白.jpg" width="80px;" alt="Bug写手墨白"/><br /><sub><b>Bug写手墨白</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/kevinosc_admin" target="_blank"><img src=".image/sponsor/kevin.jpg" width="80px;" alt="kevin"/><br /><sub><b>kevin</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/lhyicn" target="_blank"><img src=".image/sponsor/童年.jpg" width="80px;" alt="童年"/><br /><sub><b>童年</b></sub></a></td>
+      <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/dubai100" target="_blank"><img src="./.image/sponsor/sherry金.jpg" width="80px;" alt="sherry金"/><br /><sub><b>sherry金</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/℡夏别.jpg" width="80px;" alt="℡夏别"/><br /><sub><b>℡夏别</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/翠翠草原.jpg" width="80px;" alt="翠翠草原"/><br /><sub><b>翠翠草原</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/慕容曦.jpg" width="80px;" alt="慕容曦"/><br /><sub><b>慕容曦</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Tyrion.jpg" width="80px;" alt="Tyrion"/><br /><sub><b>Tyrion</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/大漠孤烟.jpg" width="80px;" alt="大漠孤烟"/><br /><sub><b>大漠孤烟</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Return.jpg" width="80px;" alt="Return"/><br /><sub><b>Return</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/一杯拿铁.jpg" width="80px;" alt="一杯拿铁"/><br /><sub><b>一杯拿铁</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Thuri.jpg" width="80px;" alt="Thuri"/><br /><sub><b>Thuri</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Liu.jpg" width="80px;" alt="Liu"/><br /><sub><b>Liu</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/三金.jpg" width="80px;" alt="三金"/><br /><sub><b>三金</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/ZPort.jpg" width="80px;" alt="ZPort"/><br /><sub><b>ZPort</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Li.jpg" width="80px;" alt="Li"/><br /><sub><b>Li</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嘉树.jpg" width="80px;" alt="嘉树"/><br /><sub><b>嘉树</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/俊采星驰.jpg" width="80px;" alt="俊采星驰"/><br /><sub><b>俊采星驰</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/oi.jpg" width="80px;" alt="oi"/><br /><sub><b>oi</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/ZhangY_000.jpg" width="80px;" alt="ZhangY_000"/><br /><sub><b>ZhangY_000</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/℡夏别.jpg" width="80px;" alt="℡夏别"/><br /><sub><b>℡夏别</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/张瑞麟.jpg" width="80px;" alt="张瑞麟"/><br /><sub><b>张瑞麟</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Lion King.jpg" width="80px;" alt="Lion King"/><br /><sub><b>Lion King</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Frank.jpg" width="80px;" alt="Frank"/><br /><sub><b>Frank</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/徐梦阳.jpg" width="80px;" alt="徐梦阳"/><br /><sub><b>徐梦阳</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/九月.jpg" width="80px;" alt="九月"/><br /><sub><b>九月</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/tangl伟.jpg" width="80px;" alt="tangl伟"/><br /><sub><b>tangl伟</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/冯瑞伦.jpg" width="80px;" alt="冯瑞伦"/><br /><sub><b>冯瑞伦</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/杨林.jpg" width="80px;" alt="杨林"/><br /><sub><b>杨林</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/梧桐有语。.jpg" width="80px;" alt="梧桐有语。"/><br /><sub><b>梧桐有语。</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/歌德de花烛.jpg" width="80px;" alt="歌德de花烛"/><br /><sub><b>歌德de花烛</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/泥嚎.jpg" width="80px;" alt="泥嚎"/><br /><sub><b>泥嚎</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/翠翠草原.jpg" width="80px;" alt="翠翠草原"/><br /><sub><b>翠翠草原</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/胡泽龙.jpg" width="80px;" alt="胡泽龙"/><br /><sub><b>胡泽龙</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/苏叶.jpg" width="80px;" alt="苏叶"/><br /><sub><b>苏叶</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/裴先生.jpg" width="80px;" alt="裴先生"/><br /><sub><b>裴先生</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/谭远彪.jpg" width="80px;" alt="谭远彪"/><br /><sub><b>谭远彪</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/陈祺.jpg" width="80px;" alt="陈祺"/><br /><sub><b>陈祺</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/零点就睡.jpg" width="80px;" alt="零点就睡"/><br /><sub><b>零点就睡</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/风之羽.jpg" width="80px;" alt="风之羽"/><br /><sub><b>风之羽</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/fufeng1908" target="_blank"><img src="./.image/sponsor/王守仁.jpg" width="80px;" alt="王守仁"/><br /><sub><b>王守仁</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/kaigejava" target="_blank"><img src="./.image/sponsor/狼ྂ图ྂ腾ྂ.jpg" width="80px;" alt="狼图腾"/><br /><sub><b>狼图腾</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/马到成功.jpg" width="80px;" alt="马到成功"/><br /><sub><b>马到成功</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/做生活的高手.jpg" width="80px;" alt="做生活的高手"/><br /><sub><b>做生活的高手</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/清欢之恋.jpg" width="80px;" alt="清欢之恋"/><br /><sub><b>清欢之恋</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/绝域时空.jpg" width="80px;" alt="绝域时空"/><br /><sub><b>绝域时空</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/风雨.jpg" width="80px;" alt="风雨"/><br /><sub><b>风雨</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Nicola.jpg" width="80px;" alt="Nicola"/><br /><sub><b>Nicola</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/云住.jpg" width="80px;" alt="云住"/><br /><sub><b>云住</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Mr.Zhang.jpg" width="80px;" alt="Mr.Zhang"/><br /><sub><b>Mr.Zhang</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/剑.jpg" width="80px;" alt="剑"/><br /><sub><b>剑</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/shen.jpg" width="80px;" alt="shen"/><br /><sub><b>shen</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嗯.jpg" width="80px;" alt="嗯"/><br /><sub><b>嗯</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/周华.jpg" width="80px;" alt="周华"/><br /><sub><b>周华</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/太阳鸟.jpg" width="80px;" alt="太阳鸟"/><br /><sub><b>太阳鸟</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/了了.jpg" width="80px;" alt="了了"/><br /><sub><b>了了</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/第七次日落.jpg" width="80px;" alt="第七次日落"/><br /><sub><b>第七次日落</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/npc.jpg" width="80px;" alt="npc"/><br /><sub><b>npc</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/承担不一样的天空.jpg" width="80px;" alt="承担不一样的天空"/><br /><sub><b>承担不一样的天空</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/铁木.jpg" width="80px;" alt="铁木"/><br /><sub><b>铁木</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Orion.jpg" width="80px;" alt="Orion"/><br /><sub><b>Orion</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/森源-金福洪.jpg" width="80px;" alt="森源-金福洪"/><br /><sub><b>森源-金福洪</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/薛继超.jpg" width="80px;" alt="薛继超"/><br /><sub><b>薛继超</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/虎虎虎.jpg" width="80px;" alt="虎虎虎"/><br /><sub><b>虎虎虎</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Everyman.jpg" width="80px;" alt="Everyman"/><br /><sub><b>Everyman</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/NXL.jpg" width="80px;" alt="NXL"/><br /><sub><b>NXL</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/孙涛.jpg" width="80px;" alt="孙涛"/><br /><sub><b>孙涛</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/bcake" target="_blank"><img src=".image/sponsor/大饼.jpg" width="80px;" alt="大饼"/><br /><sub><b>大饼</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/hrsjw1.jpg" width="80px;" alt="hrsjw1"/><br /><sub><b>hrsjw1</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/linguanghuan.jpg" width="80px;" alt="linguanghuan"/><br /><sub><b>linguanghuan</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/YiYaYiYaho.jpg" width="80px;" alt="YiYaYiYaho"/><br /><sub><b>YiYaYiYaho</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/慢慢慢.jpg" width="80px;" alt="慢慢慢"/><br /><sub><b>慢慢慢</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/lilOne.jpg" width="80px;" alt="lilOne"/><br /><sub><b>lilOne</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src=".image/sponsor/icon.jpg" width="80px;" alt="icon"/><br /><sub><b>icon</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/jiang4yu" target="_blank"><img src=".image/sponsor/山寒.jpg" width="80px;" alt="山寒"/><br /><sub><b>山寒</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/baobaomo" target="_blank"><img src="./.image/sponsor/放学丶别走.jpg" width="80px;" alt="放学丶别走"/><br /><sub><b>放学丶别走</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/wagger" target="_blank"><img src="./.image/sponsor/春和.jpg" width="80px;" alt="春和"/><br /><sub><b>春和</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="https://gitee.com/longbinwu" target="_blank"><img src="./.image/sponsor/章鱼小丸子.jpg" width="80px;" alt="章鱼小丸子"/><br /><sub><b>章鱼小丸子</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/Catwings.jpg" width="80px;" alt="Catwings"/><br /><sub><b>Catwings</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/小工头.jpg" width="80px;" alt="小工头"/><br /><sub><b>小工头</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/西乡一粒沙.jpg" width="80px;" alt="西乡一粒沙"/><br /><sub><b>西乡一粒沙</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/爱吃小柚子.jpg" width="80px;" alt="爱吃小柚子"/><br /><sub><b>爱吃小柚子</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/阿龙.jpg" width="80px;" alt="阿龙"/><br /><sub><b>阿龙</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/雨落流殇.jpg" width="80px;" alt="雨落流殇"/><br /><sub><b>雨落流殇</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/遗忘的星空.jpg" width="80px;" alt="遗忘的星空"/><br /><sub><b>遗忘的星空</b></sub></a></td>
+    </tr>
+    <tr>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/常康.jpg" width="80px;" alt="常康"/><br /><sub><b>常康</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嘎嗝.jpg" width="80px;" alt="嘎嗝"/><br /><sub><b>嘎嗝</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/曹.jpg" width="80px;" alt="曹"/><br /><sub><b>曹</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/滔滔.jpg" width="80px;" alt="滔滔"/><br /><sub><b>滔滔</b></sub></a></td>
     </tr>
   </tbody>
 </table>

@@ -149,6 +149,27 @@ public class DeviceParams implements Serializable {
     private String extension;
 
     /**
+     * 备注
+     */
+    @Excel(name = "备注")
+    @ApiModelProperty(value = "备注")
+    private String remark;
+
+    /**
+     * 设备类型
+     */
+    @Excel(name = "设备类型")
+    @ApiModelProperty(value = "设备类型")
+    private String deviceType;
+
+    /**
+     * 父设备标识（网关子设备）
+     */
+    @Excel(name = "父设备标识")
+    @ApiModelProperty(value = "父设备标识")
+    private String parentIdentification;
+
+    /**
      * 设备位置信息
      */
     @ApiModelProperty(value = "设备位置信息")

@@ -7,7 +7,7 @@ import { CollapseContainer } from '@/components/Container';
 import { Button } from '@/components/Button';
 import type { ComputeNodeVO } from '@/api/device/node';
 import { nodeSetupSummarySchema } from '../../Data';
-import { getMediaStackGuideState, getStorageStackGuideState, NODE_ROLE_DESC, SETUP_COPY, readMediaPortsFromTags, readStorageTagsFromTags } from '../../utils/constants';
+import { getMediaStackGuideState, getMqttStackGuideState, getStorageStackGuideState, NODE_ROLE_DESC, SETUP_COPY, readMediaPortsFromTags, readMqttPortsFromTags, readStorageTagsFromTags } from '../../utils/constants';
 import { formatSshUsername, isSshUsernameConfigured } from '../../utils/nodeDisplay';
 import SetupStepShell from '../SetupStepShell/index.vue';
 import NodeMetaBadge from '../NodeMetaBadge/index.vue';
@@ -34,6 +34,8 @@ const emit = defineEmits<{ edit: []; testSsh: [] }>();
 const isMediaNode = computed(
   () => props.node?.nodeRole === 'media' || props.node?.nodeRole === 'hybrid',
 );
+
+const isMqttNode = computed(() => props.node?.nodeRole === 'mqtt');
 
 const isStorageNode = computed(() => props.node?.nodeRole === 'storage');
 
@@ -63,6 +65,20 @@ const storageParams = computed(() => {
 });
 
 const storageGuide = computed(() => getStorageStackGuideState(storageParams.value));
+
+const mqttParams = computed(() => {
+  const node = props.node;
+  if (!node) return undefined;
+  const tags = node.tags || {};
+  return {
+    nodeRole: node.nodeRole,
+    host: node.host,
+    name: node.name,
+    ...readMqttPortsFromTags(tags),
+  };
+});
+
+const mqttGuide = computed(() => getMqttStackGuideState(mqttParams.value));
 
 const checklist = computed(() => {
   const node = props.node;
@@ -116,6 +132,17 @@ const checklist = computed(() => {
     });
   }
 
+  if (isMqttNode.value) {
+    items.push({
+      key: 'mqttPorts',
+      label: SETUP_COPY.mqttPortConfigured,
+      ok: mqttGuide.value.isReady,
+      hint: mqttGuide.value.isReady
+        ? '端口配置完整'
+        : `待完善：${mqttGuide.value.pendingItems.filter((i) => !i.done).map((i) => i.label).join('、') || '端口信息'}`,
+    });
+  }
+
   return items;
 });
 
@@ -125,9 +152,11 @@ const roleDesc = computed(() => NODE_ROLE_DESC[props.node?.nodeRole || ''] || ''
 const flowSummary = computed(() => {
   const steps = isStorageNode.value
     ? SETUP_COPY.flowStorage
-    : isMediaNode.value
-      ? SETUP_COPY.flowMedia
-      : SETUP_COPY.flowCompute;
+    : isMqttNode.value
+      ? SETUP_COPY.flowMqtt
+      : isMediaNode.value
+        ? SETUP_COPY.flowMedia
+        : SETUP_COPY.flowCompute;
   return roleDesc.value ? `${steps} · ${roleDesc.value}` : steps;
 });
 

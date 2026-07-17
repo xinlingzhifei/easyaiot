@@ -611,6 +611,33 @@ def _to_dict(camera: Device) -> dict:
     # nvr_fields_for_device 对无 NVR 的设备默认 device_kind=direct，需保留国标通道类型
     if source.lower().startswith('gb28181://'):
         payload['device_kind'] = 'gb28181'
+    # 大疆机场 / 无人机：协议共用司空 OpenAPI，用 dji_device_type 区分展示
+    try:
+        from app.utils.flighthub_source import (
+            is_dji_device,
+            resolve_camera_index,
+            resolve_device_type_from_record,
+        )
+        if is_dji_device(
+            manufacturer=camera.manufacturer or '',
+            model=camera.model or '',
+            hardware_id=camera.hardware_id or '',
+            source=source,
+        ):
+            dji_type = resolve_device_type_from_record(
+                model=camera.model or '',
+                name=camera.name or '',
+                connection_status=camera.connection_status or '',
+            )
+            payload['device_kind'] = 'dji'
+            payload['dji_device_type'] = dji_type
+            payload['camera_index'] = resolve_camera_index(
+                source=source,
+                connection_status=camera.connection_status or '',
+            )
+            payload['has_skylink_token'] = bool(getattr(camera, 'skylink_token', None))
+    except Exception:
+        pass
     return payload
 
 
@@ -1288,6 +1315,8 @@ def register_camera(register_info: dict) -> str:
             existing.port = port
             existing.username = username
             existing.password = password
+            if 'skylink_token' in register_info:
+                existing.skylink_token = register_info.get('skylink_token') or None
             existing.mac = reg_mac or existing.mac
             existing.manufacturer = manufacturer.strip()
             existing.model = model.strip()
@@ -1300,7 +1329,8 @@ def register_camera(register_info: dict) -> str:
             existing.nvr_channel = nvr_channel or 0
             existing.rtsp_direct = register_info.get('rtsp_direct')
             existing.channel_online = register_info.get('channel_online')
-            existing.connection_status = register_info.get('connection_status')
+            if register_info.get('connection_status') is not None:
+                existing.connection_status = register_info.get('connection_status')
             if register_info.get('enable_forward') is not None:
                 existing.enable_forward = register_info.get('enable_forward')
             camera = existing
@@ -1320,6 +1350,7 @@ def register_camera(register_info: dict) -> str:
                 port=port,
                 username=username,
                 password=password,
+                skylink_token=register_info.get('skylink_token') or None,
                 mac=reg_mac,
                 manufacturer=manufacturer.strip(),
                 model=model.strip(),
@@ -1338,6 +1369,11 @@ def register_camera(register_info: dict) -> str:
             )
             db.session.add(camera)
         try:
+            if any(k in register_info for k in ('longitude', 'latitude', 'altitude', 'address', 'heading', 'location_source')):
+                try:
+                    _apply_location_updates(camera, register_info)
+                except Exception as loc_err:
+                    logger.warning(f'设备 {id} 位置信息写入失败: {loc_err}')
             db.session.commit()
             if ip and not is_nvr_channel:
                 # 自定义摄像头默认在线；NVR 通道不启动 IPC 在线探测

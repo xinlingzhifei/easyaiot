@@ -21,6 +21,9 @@ public class NodeAgentHeartbeatReqVO {
     @NotBlank(message = "Agent 令牌不能为空")
     private String agentToken;
 
+    @Schema(description = "主机名（用于识别冲突 Agent，防止同一 NODE_ID 被多台机器交叉上报）")
+    private String hostname;
+
     @Schema(description = "CPU 使用率")
     private BigDecimal cpuPercent;
 

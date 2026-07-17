@@ -1,7 +1,8 @@
 import {BasicColumn} from '@/components/Table/src/types/table';
 import {FormProps} from '@/components/Table';
 import {FormActionType, FormSchema} from '@/components/Form/index';
-import {Button, Space, Tag} from 'ant-design-vue';
+import {Space, Tag} from 'ant-design-vue';
+import {Button} from '@/components/Button';
 import {PlusOutlined} from '@ant-design/icons-vue';
 import {DebouncedFunc} from 'lodash-es';
 

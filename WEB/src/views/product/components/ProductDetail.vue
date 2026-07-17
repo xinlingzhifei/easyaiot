@@ -27,10 +27,6 @@ const descSchema = [
     label: '产品标识',
   },
   {
-    field: 'templateIdentification',
-    label: '模板标识',
-  },
-  {
     field: 'appId',
     label: '应用场景',
   },

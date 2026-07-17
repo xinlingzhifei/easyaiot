@@ -229,17 +229,20 @@ basiclab:
           ssl-cert-path: # SSL 证书路径
           auth-enabled: true # 是否开启鉴权（默认开启，设置为 false 则不进行鉴权）
         emqx:
-          enabled: false # 是否开启 EMQX 协议（用于订阅外部 MQTT Broker，如阿里云 IoT）
+          enabled: true # 是否开启 EMQX 协议（订阅外部 MQTT Broker；设备上报 /iot/#）
           http-port: 8090 # EMQX HTTP 服务端口（用于认证和事件回调）
           mqtt-host: localhost # MQTT 服务器地址
           mqtt-port: 1883 # MQTT 服务器端口（1883 非 SSL，8883 SSL）
-          mqtt-username: # MQTT 用户名
-          mqtt-password: # MQTT 密码
+          mqtt-username: emqx # MQTT 用户名（sink 作为客户端登录 Broker）
+          mqtt-password: 123456 # MQTT 密码
           mqtt-ssl: false # MQTT 是否开启 SSL
-          mqtt-client-id: # MQTT 客户端 ID
-          mqtt-topics: # MQTT 订阅的主题列表
-            - "iot/#"
-            - "shadow/#"
+          mqtt-client-id: iot-sink-local # MQTT 客户端 ID
+          mqtt-topics: # MQTT 订阅的主题列表（标准 IoT Topic + 算法总线）
+            - "/iot/#"
+            - "/shadow/#"
+            - "$share/algo-sink/mqtt/iot-alert-notification"
+            - "$share/algo-sink/mqtt/iot-snapshot-alert"
+            - "$share/algo-sink/mqtt/iot-post-process-request"
           mqtt-qos: 1 # MQTT QoS 级别（0-最多一次，1-至少一次，2-刚好一次）
           connect-timeout-seconds: 10 # 连接超时时间（秒）
           reconnect-delay-ms: 5000 # 重连延迟时间（毫秒）

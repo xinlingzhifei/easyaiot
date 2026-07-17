@@ -17,10 +17,7 @@ import { Button } from '@/components/Button'
         <CodeEditor :value="jsonData" readonly />
       </TabPane>
       <template #rightExtra>
-        <Button @click="handleCopy">
-          <template #icon>
-            <CopyOutlined class="app-iconify" />
-          </template>
+        <Button @click="handleCopy" preIcon="ant-design:copy-outlined">
           copy
         </Button>
       </template>
@@ -36,7 +33,6 @@ import { Button } from '@/components/Button'
 
 <script lang="ts" setup name="TSL">
   import { BasicModal, useModalInner } from '@/components/Modal';
-  import { CopyOutlined } from '@ant-design/icons-vue';
   import { Typography, TypographyParagraph, Tabs, TabPane } from 'ant-design-vue';
   import { CodeEditor } from '@/components/CodeEditor';
   import { ref, computed } from 'vue';

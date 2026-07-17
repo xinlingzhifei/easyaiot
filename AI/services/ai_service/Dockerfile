@@ -17,7 +17,6 @@ WORKDIR /app
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
-ENV CUDA_VISIBLE_DEVICES=0
 ENV TZ=Asia/Shanghai
 
 # 设置时区，避免时区配置交互式提示

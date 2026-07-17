@@ -4,232 +4,214 @@
     <div class="main-content">
       <!-- 左侧配置面板 -->
       <div class="left-panel" :class="{ collapsed: state.leftPanelCollapsed }">
-        <!-- 模型选择 -->
-        <div class="config-section">
-          <div class="section-title">
-            <SettingOutlined class="icon" />
-            <span>模型选择</span>
-            <ReloadOutlined class="icon refresh-icon" @click="loadModels" :class="{ spinning: state.loading }" title="刷新模型列表" />
-          </div>
-          <div class="config-options">
-            <div class="input-group">
-              <select class="select-field" v-model="state.selectedModelId" @change="handleModelChange">
-                <option value="">请选择模型</option>
-                <option value="yolov8">Yolov8模型</option>
-                <option value="yolov11">Yolov11模型</option>
-                <option value="yolov26">Yolov26模型</option>
-                <option v-for="model in state.models" :key="model.id" :value="model.id">
-                  {{ model.name }} ({{ formatVersion(model.version) }})
-                </option>
-              </select>
-              <div v-if="!isCustomModelSelected" class="model-select-tip">
-                选择「模型管理」中上传的自定义模型后，可筛选本次要检测的类别
+        <div class="left-panel-body">
+          <!-- 分析类型 -->
+          <div class="config-section">
+            <div class="section-title">
+              <ExperimentOutlined class="icon" />
+              <span>分析类型</span>
+            </div>
+            <div class="config-options">
+              <div class="input-group">
+                <select class="select-field" v-model="state.analysisType" @change="handleAnalysisTypeChange">
+                  <option v-for="option in analysisTypeOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- 检测类别（自定义模型：推理时筛选） -->
-        <div class="config-section" v-if="isCustomModelSelected">
-          <div class="section-title">
-            <AppstoreOutlined class="icon" />
-            <span>检测类别</span>
-            <BasicHelp
-              class="section-help"
-              placement="top"
-              text="目标检测模型可识别的类别；未选择时默认检测全部类别"
-            />
-          </div>
-          <div class="config-options">
-            <div v-if="state.classesLoading" class="class-tags-status">正在加载检测类别...</div>
-            <div v-else-if="state.availableClassNames.length === 0" class="class-tags-status class-tags-status--warn">
-              未能读取检测类别，请确认模型已上传有效 YOLO 权重（.pt），或点击上方刷新后重试
+          <!-- 模型选择 -->
+          <div class="config-section">
+            <div class="section-title">
+              <SettingOutlined class="icon" />
+              <span>模型选择</span>
+              <ReloadOutlined class="icon refresh-icon" @click="loadModels" :class="{ spinning: state.loading }" title="刷新模型列表" />
             </div>
-            <template v-else>
+            <div class="config-options">
+              <div class="input-group">
+                <select class="select-field" v-model="state.selectedModelId" @change="handleModelChange">
+                  <option value="">请选择模型</option>
+                  <template v-if="isPoseMode">
+                    <option value="yolo26n-pose">Yolo26n-Pose（姿态）</option>
+                    <option v-for="model in poseCustomModels" :key="model.id" :value="model.id">
+                      {{ model.name }} ({{ formatVersion(model.version) }})
+                    </option>
+                  </template>
+                  <template v-else>
+                    <option value="yolov8">Yolov8模型</option>
+                    <option value="yolov11">Yolov11模型</option>
+                    <option value="yolov26">Yolov26模型</option>
+                    <option v-for="model in state.models" :key="model.id" :value="model.id">
+                      {{ model.name }} ({{ formatVersion(model.version) }})
+                    </option>
+                  </template>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 检测类别 -->
+          <div class="config-section" v-if="isCustomModelSelected && !isPoseMode">
+            <div class="section-title">
+              <AppstoreOutlined class="icon" />
+              <span>检测类别</span>
+              <BasicHelp class="section-help" placement="top" text="目标检测模型可识别的类别；未选择时默认检测全部类别" />
+            </div>
+            <div class="config-options">
+              <div v-if="state.classesLoading" class="class-tags-status">正在加载检测类别...</div>
+              <div v-else-if="state.availableClassNames.length === 0" class="class-tags-status class-tags-status--warn">
+                未能读取检测类别
+              </div>
               <ApiSelect
+                v-else
                 v-model:value="state.selectedClassNames"
                 mode="multiple"
                 allow-clear
-                placeholder="默认检测全部类别，可取消不需要的类别"
+                placeholder="默认检测全部类别"
                 :max-tag-count="4"
                 class="class-select"
                 :options="classNameOptions"
                 :immediate="false"
               />
-              <div class="class-tags-hint">
-                <template v-if="state.selectedClassNames.length === 0">
-                  当前检测全部 {{ state.availableClassNames.length }} 个类别
-                </template>
-                <template v-else>
-                  仅检测已选的 {{ state.selectedClassNames.length }} 个类别
-                </template>
+            </div>
+          </div>
+
+          <!-- 模型服务 + 大模型 -->
+          <div class="config-section" v-if="state.activeSource === 'image' && !isPoseMode">
+            <div class="config-row config-row--2">
+              <div class="config-col">
+                <div class="section-title">
+                  <SettingOutlined class="icon" />
+                  <span>模型服务</span>
+                  <ReloadOutlined class="icon refresh-icon" @click="loadDeployServices" :class="{ spinning: state.deployServicesLoading }" title="刷新服务列表" />
+                </div>
+                <div class="config-options">
+                  <ApiSelect
+                    v-model:value="state.selectedDeployServiceId"
+                    allow-clear
+                    placeholder="请选择模型服务"
+                    class="class-select"
+                    :options="deployServiceOptions"
+                    :immediate="false"
+                    :loading="state.deployServicesLoading"
+                    @change="handleDeployServiceChange"
+                  />
+                </div>
               </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- 模型服务选择（仅在图片推理时显示） -->
-        <div class="config-section" v-if="state.activeSource === 'image'">
-          <div class="section-title">
-            <SettingOutlined class="icon" />
-            <span>模型服务</span>
-            <Tooltip title="推理用模型服务优先级高于模型选择，但低于大模型">
-              <QuestionCircleOutlined class="icon tip-icon" />
-            </Tooltip>
-            <ReloadOutlined class="icon refresh-icon" @click="loadDeployServices" :class="{ spinning: state.deployServicesLoading }" title="刷新服务列表" />
-          </div>
-          <div class="config-options">
-            <div class="input-group">
-              <select class="select-field" v-model="state.selectedDeployServiceId" @change="handleDeployServiceChange">
-                <option :value="null">请选择模型服务</option>
-                <option v-for="service in state.deployServices" :key="service.id" :value="service.id">
-                  {{ service.model_name }}服务（{{ formatVersion(service.model_version) }}）
-                </option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- 大模型选择（仅在图片推理时显示） -->
-        <div class="config-section" v-if="state.activeSource === 'image'">
-          <div class="section-title">
-            <SettingOutlined class="icon" />
-            <span>大模型</span>
-            <Tooltip title="推理用大模型优先级最高，高于模型服务和模型选择">
-              <QuestionCircleOutlined class="icon tip-icon" />
-            </Tooltip>
-            <ReloadOutlined class="icon refresh-icon" @click="loadLLMs" :class="{ spinning: state.llmsLoading }" title="刷新大模型列表" />
-          </div>
-          <div class="config-options">
-            <div class="input-group">
-              <select class="select-field" v-model="state.selectedLLMId" @change="handleLLMChange">
-                <option :value="null">请选择大模型</option>
-                <option v-for="llm in state.llms" :key="llm.id" :value="llm.id">
-                  {{ llm.name }} ({{ llm.model_type === 'vision' ? '视觉' : llm.model_type === 'text' ? '文本' : '多模态' }})
-                </option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- 历史推理记录 -->
-        <div class="config-section">
-          <div class="section-title">
-            <HistoryOutlined class="icon" />
-            <span>历史推理记录</span>
-            <ReloadOutlined class="icon refresh-icon" @click="loadInferenceHistory" :class="{ spinning: state.historyLoading }" title="刷新历史记录" />
-          </div>
-          <div class="config-options">
-            <div class="input-group">
-              <select class="select-field" v-model="state.selectedHistoryRecordId" @change="handleHistoryRecordChange">
-                <option value="">请选择历史记录</option>
-                <option v-for="record in state.inferenceHistory" :key="record.id" :value="record.id">
-                  {{ formatHistoryRecordLabel(record) }}
-                </option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- 检测置信度 -->
-        <div class="config-section">
-          <div class="section-title">
-            <ExperimentOutlined class="icon" />
-            <span>检测置信度</span>
-          </div>
-          <div class="config-options">
-            <InputNumber
-              v-model:value="state.detectConf"
-              class="detect-conf-input"
-              :min="0.1"
-              :max="0.95"
-              :step="0.05"
-            />
-            <div class="class-tags-hint">
-              默认 0.5；值越高误检越少，但可能增加漏检
-            </div>
-          </div>
-        </div>
-
-        <!-- 输入源选择 -->
-        <div class="config-section">
-          <div class="section-title">
-            <UploadOutlined class="icon" />
-            <span>输入源选择</span>
-          </div>
-          <div class="config-options">
-            <div class="input-group">
-              <select class="select-field" v-model="state.activeSource" @change="handleSourceChange">
-                <option v-for="option in sourceOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-            </div>
-
-            <!-- 动态内容区域 -->
-            <div class="source-content" v-if="state.activeSource === 'image'">
-              <div class="file-upload-wrapper">
-                <input
-                  type="file"
-                  class="file-input"
-                  accept="image/*"
-                  @change="handleImageUpload"
-                  ref="imageInput"
-                  id="image-upload-input"
-                >
-                <label for="image-upload-input" class="file-upload-label">
-                  <PictureOutlined class="icon" />
-                  <span>{{ state.uploadedImageFile ? state.uploadedImageFile.name : '选择图片文件' }}</span>
-                </label>
+              <div class="config-col">
+                <div class="section-title">
+                  <SettingOutlined class="icon" />
+                  <span>大模型</span>
+                  <ReloadOutlined class="icon refresh-icon" @click="loadLLMs" :class="{ spinning: state.llmsLoading }" title="刷新大模型列表" />
+                </div>
+                <div class="config-options">
+                  <ApiSelect
+                    v-model:value="state.selectedLLMId"
+                    allow-clear
+                    placeholder="请选择大模型"
+                    class="class-select"
+                    :options="llmOptions"
+                    :immediate="false"
+                    :loading="state.llmsLoading"
+                    @change="handleLLMChange"
+                  />
+                </div>
               </div>
             </div>
-            <div class="source-content" v-else-if="state.activeSource === 'video'">
-              <div class="file-upload-wrapper">
-                <input
-                  type="file"
-                  class="file-input"
-                  accept="video/*"
-                  @change="handleVideoUpload"
-                  ref="videoInput"
-                  id="video-upload-input"
-                >
-                <label for="video-upload-input" class="file-upload-label">
-                  <VideoCameraOutlined class="icon" />
-                  <span>{{ state.uploadedVideoFile ? state.uploadedVideoFile.name : '选择视频文件' }}</span>
-                </label>
-              </div>
+          </div>
+
+          <!-- 历史推理记录 -->
+          <div class="config-section">
+            <div class="section-title">
+              <HistoryOutlined class="icon" />
+              <span>历史推理记录</span>
+              <ReloadOutlined class="icon refresh-icon" @click="loadInferenceHistory" :class="{ spinning: state.historyLoading }" title="刷新历史记录" />
             </div>
-            <div class="source-content" v-else-if="state.activeSource === 'camera'">
-              <div class="camera-select-combo">
-                <select class="select-field camera-select-field" v-model="state.selectedCameraId" @change="handleCameraChange">
-                  <option value="">请选择在线摄像头</option>
-                  <option v-for="cam in cameraOptions" :key="cam.id" :value="cam.id">
-                    {{ cam.name || cam.id }}{{ getCameraOnlineLabel(cam) }}
+            <div class="config-options">
+              <div class="input-group">
+                <select class="select-field" v-model="state.selectedHistoryRecordId" @change="handleHistoryRecordChange">
+                  <option value="">请选择历史记录</option>
+                  <option v-for="record in state.inferenceHistory" :key="record.id" :value="record.id">
+                    {{ formatHistoryRecordLabel(record) }}
                   </option>
                 </select>
-                <button
-                  type="button"
-                  class="camera-refresh-btn"
-                  :disabled="state.camerasLoading"
-                  title="刷新摄像头列表"
-                  @click="refreshCameras"
-                >
-                  <SyncOutlined :spin="state.camerasLoading" />
-                </button>
               </div>
-              <div v-if="state.camerasLoading" class="class-tags-status">正在加载摄像头列表...</div>
-              <div v-else-if="cameraOptions.length === 0" class="class-tags-status class-tags-status--warn">
-                暂无可用摄像头，请先在摄像头管理中注册设备
+            </div>
+          </div>
+
+          <!-- 检测置信度 -->
+          <div class="config-section">
+            <div class="section-title">
+              <ExperimentOutlined class="icon" />
+              <span>{{ isPoseMode ? '姿态置信度' : '检测置信度' }}</span>
+            </div>
+            <div class="config-options">
+              <InputNumber
+                v-model:value="state.detectConf"
+                class="detect-conf-input"
+                :min="0.1"
+                :max="0.95"
+                :step="0.05"
+              />
+            </div>
+          </div>
+
+          <!-- 输入源选择 -->
+          <div class="config-section">
+            <div class="section-title">
+              <UploadOutlined class="icon" />
+              <span>输入源选择</span>
+            </div>
+            <div class="config-options">
+              <div class="input-group">
+                <select class="select-field" v-model="state.activeSource" @change="handleSourceChange">
+                  <option v-for="option in sourceOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
               </div>
-              <div v-else-if="selectedCameraRtsp" class="camera-rtsp-hint">
-                取流地址：{{ maskRtspUrl(selectedCameraRtsp) }}
+
+              <div class="source-content" v-if="state.activeSource === 'image'">
+                <div class="file-upload-wrapper">
+                  <input type="file" class="file-input" accept="image/*" @change="handleImageUpload" ref="imageInput" id="image-upload-input">
+                  <label for="image-upload-input" class="file-upload-label">
+                    <PictureOutlined class="icon" />
+                    <span>{{ state.uploadedImageFile ? state.uploadedImageFile.name : '选择图片文件' }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="source-content" v-else-if="state.activeSource === 'video'">
+                <div class="file-upload-wrapper">
+                  <input type="file" class="file-input" accept="video/*" @change="handleVideoUpload" ref="videoInput" id="video-upload-input">
+                  <label for="video-upload-input" class="file-upload-label">
+                    <VideoCameraOutlined class="icon" />
+                    <span>{{ state.uploadedVideoFile ? state.uploadedVideoFile.name : '选择视频文件' }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="source-content" v-else-if="state.activeSource === 'camera'">
+                <div class="camera-select-combo">
+                  <select class="select-field camera-select-field" v-model="state.selectedCameraId" @change="handleCameraChange">
+                    <option value="">请选择在线摄像头</option>
+                    <option v-for="cam in cameraOptions" :key="cam.id" :value="cam.id">
+                      {{ cam.name || cam.id }}{{ getCameraOnlineLabel(cam) }}
+                    </option>
+                  </select>
+                  <button type="button" class="camera-refresh-btn" :disabled="state.camerasLoading" title="刷新摄像头列表" @click="refreshCameras">
+                    <SyncOutlined :spin="state.camerasLoading" />
+                  </button>
+                </div>
+                <div v-if="state.camerasLoading" class="class-tags-status">正在加载摄像头...</div>
+                <div v-else-if="cameraOptions.length === 0" class="class-tags-status class-tags-status--warn">暂无可用摄像头</div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- 控制操作 -->
-        <div class="config-section">
+        <div class="config-section config-section--footer">
           <div class="section-title">
             <ControlOutlined class="icon" />
             <span>控制操作</span>
@@ -245,23 +227,17 @@
                 <PlayCircleOutlined class="icon" />
                 <span v-if="state.inferenceLoading">推理中...</span>
                 <span v-else-if="state.activeSource === 'camera'">开始实时推理</span>
+                <span v-else-if="isPoseMode">开始姿态分析</span>
                 <span v-else>开始检测</span>
               </button>
-              <button
-                v-if="state.activeSource === 'camera' && state.cameraStreamActive"
-                class="btn btn-white"
-                @click="stopCameraInference()"
-              >
+              <button v-if="state.activeSource === 'camera' && state.cameraStreamActive" class="btn btn-white" @click="stopCameraInference()">
                 <CloseOutlined class="icon" />
                 <span>停止推理</span>
               </button>
-              <button class="btn btn-success" @click="state.showOriginal = true" v-if="!state.showOriginal">
-                <EyeOutlined class="icon" />
-                <span>显示原始对照</span>
-              </button>
-              <button class="btn btn-white" @click="state.showOriginal = false" v-if="state.showOriginal">
-                <CloseOutlined class="icon" />
-                <span>关闭原始对照</span>
+              <button class="btn btn-white" @click="state.showOriginal = !state.showOriginal">
+                <EyeOutlined v-if="!state.showOriginal" class="icon" />
+                <CloseOutlined v-else class="icon" />
+                <span>{{ state.showOriginal ? '关闭对照' : '显示对照' }}</span>
               </button>
             </div>
           </div>
@@ -298,7 +274,7 @@
               </div>
               <div class="video-wrapper">
                 <div class="video-title">
-                  <span>检测结果</span>
+                  <span>{{ resultPanelTitle }}</span>
                 </div>
                 <div class="video-content video-content-scrollable">
                   <div v-if="state.llmTextResult" class="llm-text-result">
@@ -314,14 +290,14 @@
                     <img :src="state.detectionResult" alt="检测结果" class="preview-image" @error="handleImageError">
                     <div class="detection-overlay">
                       <div class="detection-info">
-                        <div class="detection-count">检测到 {{ state.detectionCount }} 个目标</div>
-                        <div class="confidence">平均置信度: {{ state.averageConfidence }}%</div>
+                        <div class="detection-count">{{ resultCountLabel }}</div>
+                        <div v-if="!isPoseMode" class="confidence">平均置信度: {{ state.averageConfidence }}%</div>
                       </div>
                     </div>
                   </div>
                   <div v-else class="video-placeholder">
                     <ExperimentOutlined class="icon" />
-                    <span>检测结果将显示在这里</span>
+                    <span>{{ isPoseMode ? '姿态结果将显示在这里' : '检测结果将显示在这里' }}</span>
                   </div>
                 </div>
               </div>
@@ -329,7 +305,7 @@
             <div v-else class="single-video">
               <div class="video-wrapper">
                 <div class="video-title">
-                  <span>检测结果</span>
+                  <span>{{ resultPanelTitle }}</span>
                 </div>
                 <div class="video-content video-content-scrollable">
                   <div v-if="state.llmTextResult" class="llm-text-result">
@@ -345,14 +321,14 @@
                     <img :src="state.detectionResult" alt="检测结果" class="preview-image" @error="handleImageError">
                     <div class="detection-overlay">
                       <div class="detection-info">
-                        <div class="detection-count">检测到 {{ state.detectionCount }} 个目标</div>
-                        <div class="confidence">平均置信度: {{ state.averageConfidence }}%</div>
+                        <div class="detection-count">{{ resultCountLabel }}</div>
+                        <div v-if="!isPoseMode" class="confidence">平均置信度: {{ state.averageConfidence }}%</div>
                       </div>
                     </div>
                   </div>
                   <div v-else class="video-placeholder">
                     <ExperimentOutlined class="icon" />
-                    <span>检测结果将显示在这里</span>
+                    <span>{{ isPoseMode ? '姿态结果将显示在这里' : '检测结果将显示在这里' }}</span>
                   </div>
                 </div>
               </div>
@@ -397,7 +373,7 @@
                   </div>
                   <div v-else class="video-placeholder">
                     <SearchOutlined class="icon" />
-                    <span>点击「开始实时推理」查看检测结果</span>
+                    <span>{{ isPoseMode ? '点击「开始实时推理」查看姿态结果' : '点击「开始实时推理」查看检测结果' }}</span>
                   </div>
                 </div>
               </div>
@@ -421,7 +397,7 @@
                   </div>
                   <div v-else class="video-placeholder">
                     <SearchOutlined class="icon" />
-                    <span>点击「开始实时推理」查看检测结果</span>
+                    <span>{{ isPoseMode ? '点击「开始实时推理」查看姿态结果' : '点击「开始实时推理」查看检测结果' }}</span>
                   </div>
                 </div>
               </div>
@@ -471,7 +447,7 @@
               </div>
               <div class="video-wrapper">
                 <div class="video-title">
-                  <span>检测结果</span>
+                  <span>{{ resultPanelTitle }}</span>
                 </div>
                 <div class="video-content">
                   <div v-if="state.detectionResult" class="video-preview">
@@ -491,7 +467,7 @@
                   </div>
                   <div v-else class="video-placeholder">
                     <SearchOutlined class="icon" />
-                    <span>检测结果将显示在这里</span>
+                    <span>{{ isPoseMode ? '姿态结果将显示在这里' : '检测结果将显示在这里' }}</span>
                   </div>
                 </div>
               </div>
@@ -499,7 +475,7 @@
             <div v-else class="single-video">
               <div class="video-wrapper">
                 <div class="video-title">
-                  <span>检测结果</span>
+                  <span>{{ resultPanelTitle }}</span>
                 </div>
                 <div class="video-content">
                   <div v-if="state.detectionResult" class="video-preview">
@@ -519,7 +495,7 @@
                   </div>
                   <div v-else class="video-placeholder">
                     <SearchOutlined class="icon" />
-                    <span>检测结果将显示在这里</span>
+                    <span>{{ isPoseMode ? '姿态结果将显示在这里' : '检测结果将显示在这里' }}</span>
                   </div>
                 </div>
               </div>
@@ -534,7 +510,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted, onUnmounted, nextTick, watch } from "vue";
-import { getModelPage, runInference, runClusterInference, uploadInputFile, getInferenceTaskDetail, getInferenceTasks, getDeployServicePage, getModelClasses, parseModelClassPayload, stopRtspInference } from "@/api/device/model";
+import { getModelPage, runInference, runClusterInference, uploadInputFile, getInferenceTaskDetail, getInferenceTasks, getDeployServicePage, getModelClasses, parseModelClassPayload, stopRtspInference, posePredict, posePredictVideo, poseVideoProgress, poseOutputVideo, poseRtspStart, poseRtspStop } from "@/api/device/model";
 import { getLLMList, visionInference, activateLLM, type LLMModel } from "@/api/device/llm";
 import { getDeviceList, startStreamForwarding, getStreamStatus, type DeviceInfo } from '@/api/device/camera';
 import { ensureDeviceStreamForwardTask } from '@/api/device/stream_forward';
@@ -659,6 +635,9 @@ interface AppState {
   cameraStreamActive: boolean;
   cameraInferenceRecordId: number | null;
   cameraInferenceDeviceId: string;
+  analysisType: 'detect' | 'pose';
+  posePollTimer: number | null;
+  poseJobId: string | null;
 }
 
 // 状态管理
@@ -709,6 +688,9 @@ const state = reactive<AppState>({
   cameraStreamActive: false,
   cameraInferenceRecordId: null,
   cameraInferenceDeviceId: '',
+  analysisType: 'detect',
+  posePollTimer: null,
+  poseJobId: null,
 });
 
 // 轮询超时时间（30分钟）
@@ -723,6 +705,13 @@ const sourceOptions = [
   { value: 'camera', label: '在线摄像头' },
 ];
 
+const analysisTypeOptions = [
+  { value: 'detect', label: '目标检测' },
+  { value: 'pose', label: '姿态分析' },
+];
+
+const POSE_BUILTIN_MODELS = ['yolo26n-pose'];
+
 const imageInput = ref<HTMLInputElement | null>(null);
 const videoInput = ref<HTMLInputElement | null>(null);
 const inputVideoRef = ref<HTMLVideoElement | null>(null);
@@ -730,11 +719,52 @@ const resultVideoRef = ref<HTMLVideoElement | null>(null);
 
 const isCustomModelSelected = computed(() => {
   const modelId = state.selectedModelId;
+  if (isPoseMode.value) {
+    return modelId !== null && modelId !== '' && !POSE_BUILTIN_MODELS.includes(String(modelId));
+  }
   return modelId !== null && modelId !== '' && !['yolov8', 'yolov11', 'yolov26'].includes(String(modelId));
 });
 
+const isPoseMode = computed(() => state.analysisType === 'pose');
+
+const poseCustomModels = computed(() =>
+  state.models.filter((m) => {
+    const name = (m.name || '').toLowerCase();
+    return name.includes('pose');
+  }),
+);
+
+const resultCountLabel = computed(() => {
+  if (isPoseMode.value) {
+    return `检测到 ${state.detectionCount} 个人体`;
+  }
+  return `检测到 ${state.detectionCount} 个目标`;
+});
+
+const resultPanelTitle = computed(() => (isPoseMode.value ? '姿态结果' : '检测结果'));
+
 const classNameOptions = computed(() =>
   state.availableClassNames.map((name) => ({ label: name, value: name })),
+);
+
+const deployServiceOptions = computed(() =>
+  state.deployServices.map((service) => ({
+    label: `${service.model_name}服务（${formatVersion(service.model_version)}）`,
+    value: service.id,
+  })),
+);
+
+const formatLLMTypeLabel = (modelType?: string) => {
+  if (modelType === 'vision') return '视觉';
+  if (modelType === 'text') return '文本';
+  return '多模态';
+};
+
+const llmOptions = computed(() =>
+  state.llms.map((llm) => ({
+    label: `${llm.name} (${formatLLMTypeLabel(llm.model_type)})`,
+    value: llm.id,
+  })),
 );
 
 const getCameraRtspUrl = (device: DeviceInfo): string | null => {
@@ -1017,7 +1047,218 @@ const resolveUploadBlob = (fileLike: any): Blob | null => {
   return null;
 };
 
+const handleAnalysisTypeChange = async () => {
+  state.detectionResult = null;
+  state.detectionCount = 0;
+  state.averageConfidence = 0;
+  state.llmTextResult = null;
+  stopPosePolling();
+  if (isPoseMode.value) {
+    if (!POSE_BUILTIN_MODELS.includes(String(state.selectedModelId || ''))) {
+      state.selectedModelId = 'yolo26n-pose';
+    }
+    state.selectedLLMId = null;
+    state.selectedDeployServiceId = null;
+  } else if (POSE_BUILTIN_MODELS.includes(String(state.selectedModelId || ''))) {
+    state.selectedModelId = 'yolov26';
+  }
+};
+
+const resolvePoseModelParams = (): { modelId: number; modelFilePath?: string } => {
+  const selected = String(state.selectedModelId || '');
+  if (selected === 'yolo26n-pose') {
+    return { modelId: 0, modelFilePath: 'yolo26n-pose.pt' };
+  }
+  const parsed = typeof state.selectedModelId === 'number'
+    ? state.selectedModelId
+    : parseInt(String(state.selectedModelId), 10);
+  return { modelId: Number.isNaN(parsed) ? 0 : parsed };
+};
+
+const stopPosePolling = () => {
+  if (state.posePollTimer) {
+    clearInterval(state.posePollTimer);
+    state.posePollTimer = null;
+  }
+  state.poseJobId = null;
+};
+
+const startPosePolling = (jobId: string) => {
+  stopPosePolling();
+  state.poseJobId = jobId;
+  state.pollingStartTime = Date.now();
+
+  state.posePollTimer = window.setInterval(async () => {
+    if (state.pollingStartTime && Date.now() - state.pollingStartTime > POLLING_TIMEOUT) {
+      stopPosePolling();
+      state.inferenceLoading = false;
+      state.detectionStatus = 'failed';
+      state.statusText = '姿态分析超时';
+      createMessage.error('视频姿态分析超时');
+      return;
+    }
+
+    try {
+      const resp = await poseVideoProgress(jobId);
+      const responseData = resp.data || resp;
+      if (responseData.code !== 0) {
+        throw new Error(responseData.msg || '查询进度失败');
+      }
+      const progress = responseData.data || {};
+      if (progress.status === 'error') {
+        stopPosePolling();
+        state.inferenceLoading = false;
+        state.detectionStatus = 'failed';
+        state.statusText = '姿态分析失败';
+        createMessage.error(progress.error || responseData.msg || '视频姿态分析失败');
+        return;
+      }
+      if (progress.status === 'done') {
+        stopPosePolling();
+        const stats = progress.stats || {};
+        state.detectionCount = stats.totalPersons || 0;
+        if (stats.result_url) {
+          state.detectionResult = getMediaUrl(stats.result_url);
+        } else if (stats.output) {
+          const blobResp = await poseOutputVideo(stats.output);
+          const blob = blobResp.data instanceof Blob ? blobResp.data : blobResp;
+          state.detectionResult = URL.createObjectURL(blob);
+        }
+        state.inferenceLoading = false;
+        state.detectionStatus = 'completed';
+        state.statusText = '姿态分析完成';
+        createMessage.success('视频姿态分析完成');
+      }
+    } catch (error: any) {
+      console.error('姿态视频轮询失败:', error);
+    }
+  }, POLLING_INTERVAL);
+};
+
+const startPoseAnalysis = async () => {
+  if (!state.selectedModelId) {
+    createMessage.warning('请先选择姿态模型');
+    return;
+  }
+
+  if (state.activeSource === 'image' && !state.uploadedImageFile) {
+    createMessage.warning('请先上传图片');
+    return;
+  }
+  if (state.activeSource === 'video' && !state.uploadedVideoFile) {
+    createMessage.warning('请先上传视频');
+    return;
+  }
+  if (state.activeSource === 'camera') {
+    if (!state.selectedCameraId) {
+      createMessage.warning('请选择有效的在线摄像头');
+      return;
+    }
+  }
+
+  state.inferenceLoading = true;
+  state.detectionStatus = 'running';
+  state.statusText = '姿态分析中...';
+  state.detectionResult = null;
+  state.detectionCount = 0;
+
+  const { modelId, modelFilePath } = resolvePoseModelParams();
+
+  try {
+    if (state.activeSource === 'image') {
+      const formData = new FormData();
+      const blob = resolveUploadBlob(state.uploadedImageFile);
+      if (!blob) throw new Error('图片文件无效');
+      formData.append('file', blob);
+      formData.append('conf', String(state.detectConf));
+      if (modelFilePath) formData.append('model_file_path', modelFilePath);
+
+      const resp = await posePredict(modelId, formData);
+      const responseData = resp.data || resp;
+      if (responseData.code !== 0) throw new Error(responseData.msg || '姿态分析失败');
+      const data = responseData.data || {};
+      state.detectionCount = data.count || 0;
+      if (data.imageBase64) {
+        state.detectionResult = `data:image/jpeg;base64,${data.imageBase64}`;
+      }
+      state.detectionStatus = 'completed';
+      state.statusText = '姿态分析完成';
+      createMessage.success('姿态分析完成');
+      return;
+    }
+
+    if (state.activeSource === 'video') {
+      const formData = new FormData();
+      const blob = resolveUploadBlob(state.uploadedVideoFile);
+      if (!blob) throw new Error('视频文件无效');
+      formData.append('file', blob);
+      formData.append('conf', String(state.detectConf));
+      if (modelFilePath) formData.append('model_file_path', modelFilePath);
+
+      const resp = await posePredictVideo(modelId, formData);
+      const responseData = resp.data || resp;
+      if (responseData.code !== 0) throw new Error(responseData.msg || '视频姿态任务启动失败');
+      const jobId = responseData.data?.jobId;
+      if (!jobId) throw new Error('未获取到任务 ID');
+      startPosePolling(jobId);
+      createMessage.success('视频姿态分析任务已提交，处理中...');
+      return;
+    }
+
+    if (state.activeSource === 'camera') {
+      const device = selectedCamera.value;
+      if (device) {
+        await ensureCameraStreamReady(device);
+      }
+      const formData = new FormData();
+      const parameters: Record<string, any> = {
+        conf: state.detectConf,
+        conf_thres: state.detectConf,
+        stream_extract_interval: 5,
+      };
+      if (device?.rtmp_stream) parameters.rtmp_stream = device.rtmp_stream;
+      if (device?.http_stream) parameters.http_stream = device.http_stream;
+      const rtsp = device ? getCameraRtspUrl(device) : null;
+      if (rtsp) parameters.rtsp_direct = rtsp;
+      formData.append('device_id', state.selectedCameraId);
+      if (selectedCameraRtsp.value) formData.append('input_source', selectedCameraRtsp.value);
+      formData.append('parameters', JSON.stringify(parameters));
+      if (modelFilePath) formData.append('model_file_path', modelFilePath);
+
+      const resp = await poseRtspStart(modelId, formData);
+      const responseData = resp.data || resp;
+      if (responseData.code !== 0) throw new Error(responseData.msg || '姿态推流启动失败');
+      const result = responseData.data?.result || responseData.data || {};
+      const streamUrl = result.stream_url;
+      if (!streamUrl) throw new Error('未获取到姿态推流地址');
+      state.cameraResultUrl = toStreamPlayUrl(streamUrl);
+      state.cameraInferenceRecordId = result.record_id ?? responseData.data?.record_id ?? null;
+      state.cameraInferenceDeviceId = state.selectedCameraId;
+      state.cameraStreamActive = true;
+      state.detectionStatus = 'running';
+      state.statusText = '实时姿态分析中';
+      createMessage.success('实时姿态分析已启动');
+      return;
+    }
+  } catch (error: any) {
+    console.error('姿态分析失败:', error);
+    state.detectionStatus = 'failed';
+    state.statusText = '姿态分析失败';
+    createMessage.error(error?.message || '姿态分析失败');
+  } finally {
+    if (state.activeSource !== 'video' && state.activeSource !== 'camera') {
+      state.inferenceLoading = false;
+    } else if (state.activeSource === 'camera' && !state.cameraStreamActive) {
+      state.inferenceLoading = false;
+    }
+  }
+};
+
 const startDetection = async () => {
+  if (isPoseMode.value) {
+    await startPoseAnalysis();
+    return;
+  }
   // 检查是否有可用的模型（大模型、模型服务或模型选择）
   const hasModel = state.selectedLLMId || state.selectedDeployServiceId || state.selectedModelId;
   if (!hasModel) {
@@ -1843,7 +2084,11 @@ const stopCameraInference = async (showMsg = true) => {
     return;
   }
   try {
-    await stopRtspInference({ stop_all: true });
+    if (isPoseMode.value) {
+      await poseRtspStop({ stop_all: true });
+    } else {
+      await stopRtspInference({ stop_all: true });
+    }
   } catch (error) {
     console.warn('停止实时推理失败:', error);
   }
@@ -2403,6 +2648,7 @@ onMounted(() => {
 // 组件卸载时清理
 onUnmounted(() => {
   stopPollingInferenceResult();
+  stopPosePolling();
   stopCameraInference(false);
   cleanupVideoUrl();
 });
@@ -2447,7 +2693,9 @@ body {
 .model-workbench {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 480px;
+  max-height: 100%;
   width: 100%;
   overflow: hidden;
   margin: 0;
@@ -2475,8 +2723,7 @@ body {
   flex-direction: column;
   background: #ffffff;
   border-right: none;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   transition: @panel-transition;
   flex-shrink: 0;
   height: 100%;
@@ -2509,30 +2756,75 @@ body {
     border-right: none;
   }
 
+  .left-panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-bottom: 4px;
+
+    &::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: fade(@border-color, 80%);
+      border-radius: 4px;
+    }
+  }
+
+  .config-row {
+    display: flex;
+    gap: 10px;
+
+    &--2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+  }
+
+  .config-col {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .section-title {
+      margin-bottom: 0;
+    }
+  }
+
   .config-section {
-    padding: 14px 20px;
-    border-bottom: none;
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid fade(@border-color, 65%);
     background: transparent;
     margin: 0;
     border-radius: 0;
     transition: @panel-transition;
-    flex-shrink: 1;
-    overflow: hidden;
+    flex-shrink: 0;
+    overflow: visible;
     display: flex;
     flex-direction: column;
-    min-height: 0;
 
-    &:not(:last-child) {
+    &--footer {
+      flex-shrink: 0;
       border-bottom: none;
+      border-top: 1px solid @border-color;
+      padding: 12px 16px 14px;
+      background: #fff;
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+      z-index: 1;
     }
 
       .section-title {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
+      gap: 8px;
+      margin-bottom: 8px;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 14px;
+      line-height: 1.3;
       color: @light-text;
 
       .icon {
@@ -2579,13 +2871,44 @@ body {
     .config-options {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      overflow: hidden;
-      flex: 1;
-      min-height: 0;
+      gap: 8px;
+      overflow: visible;
+      flex: none;
+      min-height: auto;
 
       .detect-conf-input {
         width: 100%;
+
+        :deep(.ant-input-number) {
+          width: 100%;
+          border-radius: 6px;
+        }
+
+        :deep(.ant-input-number-input) {
+          height: 36px;
+        }
+      }
+
+      .class-select {
+        width: 100%;
+
+        :deep(.ant-select-selector) {
+          min-height: 38px !important;
+          border-radius: 6px !important;
+          border-color: @border-color !important;
+          box-shadow: @shadow-sm;
+          padding-top: 2px;
+          padding-bottom: 2px;
+        }
+
+        :deep(.ant-select:hover .ant-select-selector) {
+          border-color: @border-hover !important;
+        }
+
+        :deep(.ant-select-focused .ant-select-selector) {
+          border-color: @primary-color !important;
+          box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1), @shadow-sm !important;
+        }
       }
 
       .model-select-tip {
@@ -3539,13 +3862,21 @@ body {
 
   .left-panel {
     width: 100%;
-    height: auto;
+    max-width: 100%;
+    min-width: 0;
+    max-height: 42vh;
     border-right: none;
     border-bottom: 1px solid @border-color;
+
+    .left-panel-body {
+      max-height: calc(42vh - 72px);
+    }
   }
 
   .video-area {
-    height: 60vh;
+    flex: 1;
+    min-height: 0;
+    height: auto;
   }
 
   .panel-toggle {

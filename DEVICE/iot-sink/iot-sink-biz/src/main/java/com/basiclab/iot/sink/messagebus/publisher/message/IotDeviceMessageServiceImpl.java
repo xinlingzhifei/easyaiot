@@ -6,10 +6,12 @@ import cn.hutool.extra.spring.SpringUtil;
 import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.sink.biz.dto.IotDeviceRespDTO;
 import com.basiclab.iot.sink.codec.IotDeviceMessageCodec;
+import com.basiclab.iot.sink.enums.IotDeviceTopicEnum;
 import com.basiclab.iot.sink.javascript.JsScriptManager;
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 import com.basiclab.iot.sink.mq.producer.IotDeviceMessageProducer;
 import com.basiclab.iot.sink.service.device.DeviceService;
+import com.basiclab.iot.sink.service.device.GatewaySubDeviceSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,9 @@ public class IotDeviceMessageServiceImpl implements IotDeviceMessageService {
 
     @Resource
     private JsScriptManager jsScriptManager;
+
+    @Resource
+    private GatewaySubDeviceSupport gatewaySubDeviceSupport;
 
     /**
      * 编解码器缓存，key 为 topic 模式，value 为编解码器实例
@@ -107,8 +112,8 @@ public class IotDeviceMessageServiceImpl implements IotDeviceMessageService {
         
         // 如果脚本返回了数据，使用脚本处理后的数据；否则使用编解码器编码
         if (scriptResult != null && scriptResult.length > 0) {
-            log.debug("[encodeDeviceMessage][使用 JS 脚本处理后的数据，productIdentification: {}，数据长度: {}]", 
-                    productId, scriptResult.length);
+            log.info("[encodeDeviceMessage][JS 下行编码生效 product={} topic={} bytes={}]",
+                    productId, topic, scriptResult.length);
             return scriptResult;
         }
         
@@ -149,14 +154,18 @@ public class IotDeviceMessageServiceImpl implements IotDeviceMessageService {
             productId = topicParts[2]; // 通常格式为 /iot/{productIdentification}/{deviceIdentification}/...
         }
         
-        // 调用 JS 脚本进行前置处理
+        // 调用 JS 脚本进行前置处理（无脚本时直接走 Codec，标准 JSON 可正常解码）
         byte[] scriptResult = bytes;
         if (productId != null) {
-            byte[] result = jsScriptManager.invokeRawDataToProtocol(productId, topic, bytes);
-            if (result != null && result.length > 0) {
-                log.debug("[decodeDeviceMessageByTopic][使用 JS 脚本处理后的数据，productIdentification: {}，数据长度: {}]", 
-                        productId, result.length);
-                scriptResult = result;
+            if (jsScriptManager.hasScript(productId)) {
+                byte[] result = jsScriptManager.invokeRawDataToProtocol(productId, topic, bytes);
+                if (result != null && result.length > 0) {
+                    log.info("[decodeDeviceMessageByTopic][JS 上行解码生效 product={} topic={} in={} out={}]",
+                            productId, topic, bytes.length, result.length);
+                    scriptResult = result;
+                } else {
+                    log.warn("[decodeDeviceMessageByTopic][已加载脚本但返回空，回退原始 payload product={}]", productId);
+                }
             }
         }
         
@@ -187,19 +196,42 @@ public class IotDeviceMessageServiceImpl implements IotDeviceMessageService {
         Assert.notBlank(deviceIdentification, "设备唯一标识不能为空");
         Assert.notBlank(serverId, "服务器 ID 不能为空");
         
-        // 1. 获取设备信息
+        // 1. 获取 Topic 对应设备（网关代报时 Topic 中为网关标识）
+        //    不存在时：GATEWAY/COMMON 产品自动建档（子设备仍走代理 ensure）
         IotDeviceRespDTO device = deviceService.getDevice(productIdentification, deviceIdentification);
-        Assert.notNull(device, "设备不存在，productIdentification: {}, deviceIdentification: {}", productIdentification, deviceIdentification);
-        
-        // 2. 设置设备信息到消息中
-        message.setDeviceId(String.valueOf(device.getId()));
-        message.setTenantId(device.getTenantId());
+        if (device == null) {
+            device = gatewaySubDeviceSupport.ensurePathDevice(
+                    productIdentification, deviceIdentification, message.getTenantId());
+        }
+        if (device == null) {
+            log.warn("[sendDeviceMessage][忽略上行：设备不存在且无法自动建档 {}/{}，请确认产品已存在且类型为 GATEWAY/COMMON]",
+                    productIdentification, deviceIdentification);
+            return;
+        }
+
+        // 2. 经网关代理的子设备数据面：改写归属到子设备（必要时自动创建）
+        IotDeviceTopicEnum topicEnum = IotDeviceTopicEnum.matchTopic(message.getTopic());
+        if (GatewaySubDeviceSupport.isSubDataUpstream(topicEnum)) {
+            message.setDeviceId(String.valueOf(device.getId()));
+            if (message.getTenantId() == null) {
+                message.setTenantId(device.getTenantId());
+            }
+            boolean ok = gatewaySubDeviceSupport.rewriteToSubDevice(message, deviceIdentification);
+            if (!ok) {
+                log.warn("[sendDeviceMessage][网关代报子设备失败，忽略 messageId={} topic={}]",
+                        message.getId(), message.getTopic());
+                return;
+            }
+        } else {
+            message.setDeviceId(String.valueOf(device.getId()));
+            message.setTenantId(device.getTenantId());
+        }
         message.setServerId(serverId);
-        
+
         // 3. 发送消息到网关（用于网关内部处理）
         deviceMessageProducer.sendDeviceMessageToGateway(serverId, message);
-        
-        // 4. 发送消息到通用设备消息主题（供 iot-broker 模块消费）
+
+        // 4. 发送消息到通用设备消息主题（供 iot-broker / iot-device 消费）
         deviceMessageProducer.sendDeviceMessage(message);
     }
 

@@ -113,7 +113,7 @@ import TrainLogsModal from '@/views/train/components/TrainTaskLogsModal/index.vu
 import TrainTaskCardList from '@/views/train/components/TrainTaskCardList/index.vue';
 import PublishTrainModelModal from '@/views/train/components/PublishTrainModelModal/index.vue';
 import {getBasicColumns, getFormConfig} from './Data';
-import {canPublishTrainTask, canResumeTrainTask, canRetrainTrainTask, getPublishedModelId, isTrainTaskActive} from './trainTaskUtils';
+import {canPublishTrainTask, canResumeTrainTask, canRetrainTrainTask, getPublishedModelId, buildTrainTaskDisplayName, isLegacyBadDatasetName, isTrainTaskActive, resolveTaskBaseNameFromRecord} from './trainTaskUtils';
 import {Empty as AEmpty, Modal as AModal} from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {resolveTrainResultsDisplayUrl} from '@/utils/alertMinioImage';
@@ -248,63 +248,10 @@ async function ensureDatasetUrlMap() {
   }
 }
 
-const LEGACY_TIMESTAMP_BASE = /^train_task_\d{8}_\d{6}$/;
-
-function resolveTaskBaseName(record: Record<string, unknown>) {
-  try {
-    const raw = record.hyperparameters;
-    const hp = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    for (const key of ['task_base_name', 'taskName', 'task_name']) {
-      const val = String(hp?.[key] || '').trim();
-      if (val) return val;
-    }
-  } catch {
-    /* ignore */
-  }
-
-  let base = String(record.name || record.task_name || '').trim();
-  const taskId = record.id as number | undefined;
-  if (taskId != null && base.endsWith(`_${taskId}`)) {
-    base = base.slice(0, -(`_${taskId}`).length);
-  }
-  const dsName = String(record.dataset_name || '').trim();
-  const dsVersion = String(record.dataset_version || '').trim();
-  for (const part of [dsVersion, dsName]) {
-    if (part && base.endsWith(`_${part}`)) {
-      base = base.slice(0, -(part.length + 1));
-    }
-  }
-  if (LEGACY_TIMESTAMP_BASE.test(base) || base.startsWith('train_task_')) {
-    return 'train';
-  }
-  return base || 'train';
-}
-
-function buildTrainTaskDisplayName(
-  baseName: string,
-  datasetName?: string,
-  datasetVersion?: string,
-  taskId?: number,
-) {
-  let base = (baseName || '').trim();
-  if (LEGACY_TIMESTAMP_BASE.test(base) || base.startsWith('train_task_')) {
-    base = 'train';
-  }
-  if (!base) base = 'train';
-
-  const parts = [base];
-  const dsName = (datasetName || '').trim();
-  const dsVersion = (datasetVersion || '').trim();
-  if (dsName) parts.push(dsName);
-  if (dsVersion) parts.push(dsVersion);
-  if (taskId != null) parts.push(String(taskId));
-  return parts.join('_');
-}
-
 function enrichTrainTaskRecords(records: Record<string, unknown>[]) {
   if (!records?.length) return;
   for (const record of records) {
-    if (!record.dataset_name) {
+    if (!record.dataset_name || isLegacyBadDatasetName(String(record.dataset_name))) {
       const matched = datasetUrlMap?.[record.dataset_path as string];
       if (matched?.name) {
         record.dataset_name = matched.name;
@@ -317,7 +264,7 @@ function enrichTrainTaskRecords(records: Record<string, unknown>[]) {
     const dsName = (record.dataset_name as string) || '';
     const dsVersion = (record.dataset_version as string) || '';
     const expectedName = buildTrainTaskDisplayName(
-      resolveTaskBaseName(record),
+      resolveTaskBaseNameFromRecord(record),
       dsName,
       dsVersion,
       taskId,

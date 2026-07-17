@@ -264,6 +264,16 @@ export interface MediaStackCheckResult {
   steps?: MediaDeployStepVO[];
 }
 
+export interface MqttStackCheckResult {
+  success?: boolean;
+  deployed?: boolean;
+  emqxRunning?: boolean;
+  dockerReady?: boolean;
+  composeReady?: boolean;
+  message?: string;
+  steps?: MediaDeployStepVO[];
+}
+
 export interface StorageStackCheckResult {
   success?: boolean;
   deployed?: boolean;
@@ -389,6 +399,70 @@ export const checkMediaPortsBySsh = async (nodeId: number): Promise<PortCheckRes
   const res = await commonApi(
     'post',
     `${Api.Node}/media/check-ports-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 2 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<PortCheckResult>(res);
+};
+
+/** 通过 SSH 自动部署 EMQX MQTT 网关（本机导出+同步离线镜像，超时 45 分钟） */
+export const deployMqttStackBySsh = async (
+  nodeId: number,
+  options?: { signal?: AbortSignal },
+): Promise<MediaRemoteDeployResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/mqtt/deploy-ssh?nodeId=${nodeId}`,
+    { signal: options?.signal },
+    { isTransformResponse: false, timeout: 45 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<MediaRemoteDeployResult>(res);
+};
+
+export const stopMqttServiceBySsh = async (nodeId: number): Promise<MediaRemoteDeployResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/mqtt/stop-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 3 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<MediaRemoteDeployResult>(res);
+};
+
+export const removeMqttContainerBySsh = async (nodeId: number): Promise<MediaRemoteDeployResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/mqtt/remove-container-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 3 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<MediaRemoteDeployResult>(res);
+};
+
+export const removeMqttImageBySsh = async (nodeId: number): Promise<MediaRemoteDeployResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/mqtt/remove-image-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 3 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<MediaRemoteDeployResult>(res);
+};
+
+export const checkMqttStackBySsh = async (nodeId: number): Promise<MqttStackCheckResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/mqtt/check-ssh?nodeId=${nodeId}`,
+    {},
+    { isTransformResponse: false, timeout: 2 * 60 * 1000 },
+  );
+  return unwrapNodeApiData<MqttStackCheckResult>(res);
+};
+
+export const checkMqttPortsBySsh = async (nodeId: number): Promise<PortCheckResult> => {
+  const res = await commonApi(
+    'post',
+    `${Api.Node}/mqtt/check-ports-ssh?nodeId=${nodeId}`,
     {},
     { isTransformResponse: false, timeout: 2 * 60 * 1000 },
   );

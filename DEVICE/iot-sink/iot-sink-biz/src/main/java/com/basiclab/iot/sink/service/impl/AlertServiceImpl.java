@@ -439,7 +439,7 @@ public class AlertServiceImpl implements AlertService {
                 fileExt = ".jpg"; // 默认扩展名
             }
 
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now(ALERT_EVENT_ZONE);
             String dateDir = now.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
             String timestamp = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             String objectName = String.format("%s/%s/snapshot_%s_%s%s", 
@@ -606,7 +606,7 @@ public class AlertServiceImpl implements AlertService {
                 fileExt = ".jpg"; // 默认扩展名
             }
 
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now(ALERT_EVENT_ZONE);
             String dateDir = now.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
             String timestamp = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             String objectName = String.format("%s/alert_%s_%s_%s%s", 
@@ -1033,6 +1033,12 @@ public class AlertServiceImpl implements AlertService {
             alertDO.setNotificationSent(false);
             alertDO.setNotificationSentTime(null);
             alertDO.setCorrelationId(notificationMessage.getCorrelationId());
+            alertDO.setTaskId(notificationMessage.getTaskId());
+            alertDO.setTaskName(notificationMessage.getTaskName());
+            alertDO.setEdgeNodeId(notificationMessage.getEdgeNodeId());
+            alertDO.setEdgeNodeName(notificationMessage.getEdgeNodeName());
+            alertDO.setEdgeNodeHost(notificationMessage.getEdgeNodeHost());
+            alertDO.setNodeId(notificationMessage.getNodeId());
             
             // 插入数据库（使用@DS("video")注解的Mapper会自动切换到VIDEO数据库）
             int result = alertMapper.insert(alertDO);

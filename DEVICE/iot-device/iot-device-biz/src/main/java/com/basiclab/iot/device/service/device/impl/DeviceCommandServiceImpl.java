@@ -7,7 +7,6 @@ import com.basiclab.iot.common.domain.R;
 import com.basiclab.iot.common.factory.ProtocolMessageAdapter;
 import com.basiclab.iot.common.model.EncryptionDetailsDTO;
 import com.basiclab.iot.common.model.ProtocolDataMessageDTO;
-import com.basiclab.iot.common.mqs.ConsumerTopicConstant;
 import com.basiclab.iot.common.utils.SnowflakeIdUtil;
 import com.basiclab.iot.common.utils.bean.BeanPlusUtil;
 import com.basiclab.iot.device.cache.helper.CacheDataHelper;
@@ -289,12 +288,21 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
         // Send the constructed message using IotDownstreamMessageApi
         try {
-            // 构建 IotDeviceMessage
-            // 注意：IotDeviceMessage 的 params 字段类型是 Object，可以直接传入 JSON 字符串解析后的对象
+            String productIdentification = deviceResultVO.getProductIdentification();
+            String deviceIdentification = deviceResultVO.getDeviceIdentification();
+            String serviceCode = commandRequest != null ? commandRequest.getServiceCode() : "default";
+            String topic = String.format("/iot/%s/%s/service/downstream/invoke/%s",
+                    productIdentification, deviceIdentification, serviceCode);
+
+            Device deviceEntity = deviceService.findOneById(deviceResultVO.getId());
+            Long tenantId = deviceEntity != null ? deviceEntity.getTenantId() : null;
+
             Object params = JSONUtil.parse(messageContent);
             IotDeviceMessage deviceMessage = IotDeviceMessage.builder()
                     .deviceId(String.valueOf(deviceResultVO.getId()))
-                    .topic(ConsumerTopicConstant.Mqtt.IOT_MQS_MQTT_MSG)
+                    .tenantId(tenantId)
+                    .method("thing.service.invoke")
+                    .topic(topic)
                     .params(params)
                     .build();
 
@@ -443,9 +451,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
             // 构建 IotDeviceMessage
             Object params = JSONUtil.parse(publishMessageRequestParam.getPayload());
+            String method = "thing.service.invoke";
+            String topic = publishMessageRequestParam.getTopic();
+            if (StrUtil.isNotBlank(topic) && topic.contains("/property/downstream/desired/set")) {
+                method = "thing.property.set";
+            } else if (StrUtil.isNotBlank(topic) && topic.contains("/service/downstream/invoke")) {
+                method = "thing.service.invoke";
+            }
             IotDeviceMessage deviceMessage = IotDeviceMessage.builder()
                     .deviceId(String.valueOf(device.getId()))
-                    .topic(publishMessageRequestParam.getTopic())
+                    .tenantId(device.getTenantId())
+                    .method(method)
+                    .topic(topic)
                     .params(params)
                     .build();
 

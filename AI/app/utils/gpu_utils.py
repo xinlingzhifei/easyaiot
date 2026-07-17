@@ -59,12 +59,18 @@ def detect_visible_gpu_ids() -> List[int]:
 
 def get_visible_gpu_ids() -> List[int]:
     """
-    获取用于训练的 GPU 列表：优先 GPU_IDS 环境变量，否则自动探测。
+    获取用于训练的逻辑 GPU 列表。
+
+    CUDA_VISIBLE_DEVICES 会把宿主机物理编号重映射为当前进程内的连续编号，
+    因此仅当 GPU_IDS 已经是有效逻辑编号时才采用；否则以 torch 探测结果为准。
     """
+    visible = detect_visible_gpu_ids()
+    if not visible:
+        return []
     configured = parse_gpu_id_list(os.getenv('GPU_IDS', '').strip())
-    if configured:
+    if configured and all(gpu_id in visible for gpu_id in configured):
         return configured
-    return detect_visible_gpu_ids()
+    return visible
 
 
 def normalize_request_gpu_ids(gpu_ids: Any) -> Optional[List[int]]:
@@ -76,16 +82,35 @@ def normalize_request_gpu_ids(gpu_ids: Any) -> Optional[List[int]]:
         return parsed if parsed else None
     if isinstance(gpu_ids, (list, tuple)):
         result: List[int] = []
+        seen = set()
         for item in gpu_ids:
             try:
-                result.append(int(item))
+                gpu_id = int(item)
             except (TypeError, ValueError):
                 continue
+            if gpu_id in seen:
+                continue
+            seen.add(gpu_id)
+            result.append(gpu_id)
         return result if result else None
     try:
         return [int(gpu_ids)]
     except (TypeError, ValueError):
         return None
+
+
+def resolve_request_gpu_ids(
+    gpu_ids: Any,
+    *,
+    manual_selection: bool,
+) -> Optional[List[int]]:
+    """兼容旧客户端：仅新版手动选择请求才采用 gpu_ids。"""
+    if not manual_selection:
+        return None
+    normalized = normalize_request_gpu_ids(gpu_ids)
+    if not normalized:
+        raise ValueError('已启用手动 GPU 选择，但未提供有效的 GPU 编号')
+    return normalized
 
 
 def resolve_yolo_train_device(
@@ -96,6 +121,7 @@ def resolve_yolo_train_device(
     解析 ultralytics YOLO train() 的 device 参数。
     - 单卡: int 索引
     - 多卡: list[int]，启用 DDP 并行训练
+    - 未指定 GPU: 默认使用首张可见 GPU
     - 无 GPU: 'cpu'
     """
     if not use_gpu:
@@ -103,14 +129,21 @@ def resolve_yolo_train_device(
 
     visible = get_visible_gpu_ids()
     if not visible:
+        if gpu_ids:
+            raise ValueError(
+                f'请求使用 GPU {gpu_ids}，但当前进程未检测到可用 CUDA 设备'
+            )
         return 'cpu'
 
     if gpu_ids:
-        selected = [g for g in gpu_ids if g in visible]
-        if not selected:
-            selected = visible
+        invalid = [gpu_id for gpu_id in gpu_ids if gpu_id not in visible]
+        if invalid:
+            raise ValueError(
+                f'请求的 GPU 编号 {invalid} 当前不可用，可用 GPU 编号: {visible}'
+            )
+        selected = gpu_ids
     else:
-        selected = visible
+        selected = [visible[0]]
 
     if len(selected) == 1:
         return selected[0]
@@ -200,6 +233,7 @@ def resolve_train_dataloader_workers(use_gpu: bool) -> int:
     """
     解析 YOLO 训练 DataLoader workers。
     Windows + GPU 时默认降低 workers，减轻 pin_memory 线程导致的显存峰值/OOM。
+    容器训练默认禁用子进程 worker，避免 /dev/shm 或 worker OOM 导致异常退出。
     可通过环境变量 TRAIN_DATALOADER_WORKERS 覆盖。
     """
     raw = os.environ.get('TRAIN_DATALOADER_WORKERS', '').strip()
@@ -210,4 +244,14 @@ def resolve_train_dataloader_workers(use_gpu: bool) -> int:
             pass
     if use_gpu and os.name == 'nt':
         return 2
+    if os.name != 'nt':
+        if os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv'):
+            return 0
+        try:
+            shm_stat = os.statvfs('/dev/shm')
+            shm_bytes = shm_stat.f_frsize * shm_stat.f_bavail
+            if shm_bytes < 512 * 1024 * 1024:
+                return 0
+        except OSError:
+            pass
     return 4 if use_gpu else 8

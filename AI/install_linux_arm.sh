@@ -144,7 +144,8 @@ build_with_cache() {
     prepare_cached_resources
 
     cache_opts="--build-arg BASE_IMAGE=${ARM_BASE_IMAGE} --build-arg OFFLINE_MODE=${OFFLINE_MODE:-0}"
-    cache_opts="$cache_opts --build-arg YUM_MIRROR_URL=${YUM_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
+    # AlmaLinux 8 aarch64：清华源已 404，默认华为云（Dockerfile 内仍会探测并回退）
+    cache_opts="$cache_opts --build-arg YUM_MIRROR_URL=${YUM_MIRROR_URL:-https://mirrors.huaweicloud.com}"
     cache_opts="$cache_opts --build-arg PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
     print_info "docker build（ARM，Dockerfile.arm，.build-cache bind mount）..."
     while [ $attempt -le $max_retries ]; do

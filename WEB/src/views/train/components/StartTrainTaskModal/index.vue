@@ -70,7 +70,10 @@
             </Select>
             <div class="form-hint">系统模型为 Ultralytics 官方权重；用户模型来自模型管理上传的 .pt 文件</div>
           </FormItem>
-          <FormItem v-if="gpuStatus.devices?.length" label="GPU 设备">
+          <FormItem
+            v-if="selectedSchedulePolicy !== 'node' && gpuStatus.devices?.length"
+            label="GPU 设备"
+          >
             <div class="gpu-device-panel">
               <div
                 v-for="dev in gpuStatus.devices"
@@ -166,7 +169,7 @@ import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { BasicForm, useForm } from '@/components/Form';
 import { getDatasetPage } from '@/api/device/dataset';
 import { getModelPage } from '@/api/device/model';
-import { getNodePage } from '@/api/device/node';
+import { getNodePage, type ComputeNodeVO } from '@/api/device/node';
 import { getTrainGpuStatus, uploadTrainDataset } from '@/api/device/train';
 import { useMessage } from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button';
@@ -220,10 +223,14 @@ const presetModelOptions: CustomWeightOption[] = [
 
 const schedulePolicyOptions = [
   { label: '自动调度', value: 'auto' },
+  { label: '本机训练', value: 'local' },
   { label: '指定节点', value: 'node' },
 ];
 
 const nodeOptions = ref<Array<{ label: string; value: number }>>([]);
+const nodeRecords = ref<ComputeNodeVO[]>([]);
+const selectedSchedulePolicy = ref('auto');
+const selectedTargetNodeId = ref<number>();
 
 const { createMessage } = useMessage();
 
@@ -242,6 +249,87 @@ const defaultGpuStatus = (): GpuStatusData => ({
 
 const gpuLoading = ref(false);
 const gpuStatus = ref<GpuStatusData>(defaultGpuStatus());
+const localGpuOptions = computed(() =>
+  gpuStatus.value.visible_gpu_ids.map((gpuId) => {
+    const device = gpuStatus.value.devices.find((item) => item.index === gpuId);
+    const detail = device
+      ? `${device.name}${device.total_memory_gb ? ` (${device.total_memory_gb} GB)` : ''}`
+      : '可用 GPU';
+    return {
+      label: `GPU ${gpuId} - ${detail}`,
+      value: gpuId,
+    };
+  }),
+);
+
+function parseNodeGpuDevices(node?: ComputeNodeVO): GpuDeviceInfo[] {
+  if (!node?.gpuInfo) return [];
+  try {
+    const parsed = JSON.parse(node.gpuInfo);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item, index) => ({
+        index: Number(item?.id ?? item?.index ?? index),
+        name: String(item?.name || item?.gpu_name || 'GPU'),
+        total_memory_gb: Number(
+          item?.total_memory_gb
+          ?? item?.memory_total_gb
+          ?? item?.mem_total_gb
+          ?? (Number(item?.memory_total_mb ?? item?.mem_total_mb ?? 0) / 1024),
+        ) || 0,
+      }))
+      .filter((item) => Number.isInteger(item.index) && item.index >= 0)
+      .filter((item, index, items) => items.findIndex((candidate) => candidate.index === item.index) === index)
+      .sort((left, right) => left.index - right.index);
+  } catch {
+    return [];
+  }
+}
+
+function nodeGpuCount(node?: ComputeNodeVO): number {
+  const configuredCount = Number(node?.maxGpuCount);
+  if (Number.isFinite(configuredCount) && configuredCount >= 0) {
+    return Math.floor(configuredCount);
+  }
+  return parseNodeGpuDevices(node).length;
+}
+
+const selectedTargetNode = computed(() =>
+  nodeRecords.value.find((node) => Number(node.id) === Number(selectedTargetNodeId.value)),
+);
+
+const gpuOptions = computed(() => {
+  if (selectedSchedulePolicy.value === 'node') {
+    const node = selectedTargetNode.value;
+    const devices = parseNodeGpuDevices(node);
+    const gpuCount = nodeGpuCount(node);
+    const gpuIds = devices.slice(0, gpuCount).map((item) => item.index);
+    for (let gpuId = 0; gpuIds.length < gpuCount; gpuId += 1) {
+      if (!gpuIds.includes(gpuId)) gpuIds.push(gpuId);
+    }
+    return gpuIds.map((gpuId) => {
+      const device = devices.find((item) => item.index === gpuId);
+      const detail = device
+        ? `${device.name}${device.total_memory_gb ? ` (${device.total_memory_gb.toFixed(2)} GB)` : ''}`
+        : '目标节点 GPU';
+      return { label: `GPU ${gpuId} - ${detail}`, value: gpuId };
+    });
+  }
+  if (selectedSchedulePolicy.value === 'auto') {
+    const maxGpuCount = Math.max(
+      gpuStatus.value.visible_gpu_ids.length,
+      ...nodeRecords.value.map((node) => nodeGpuCount(node)),
+      0,
+    );
+    return Array.from({ length: maxGpuCount }, (_, index) => ({
+      label: `GPU ${index}`,
+      value: index,
+    }));
+  }
+  return localGpuOptions.value;
+});
+
+const availableGpuIds = computed(() => gpuOptions.value.map((option) => option.value));
 const uploading = ref(false);
 const customModelsLoading = ref(false);
 const customWeightOptions = ref<CustomWeightOption[]>([]);
@@ -266,6 +354,17 @@ function parseModelPageResponse(response: unknown): Array<Record<string, any>> {
   return [];
 }
 
+function hasManualGpuSelection(raw: unknown): boolean {
+  try {
+    const hyperparameters = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return !!hyperparameters
+      && typeof hyperparameters === 'object'
+      && (hyperparameters as Record<string, unknown>).gpu_selection_manual === true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveTrainModelPath(model: Record<string, any>): string {
   return String(model.model_path || model.filePath || model.modelPath || '').trim();
 }
@@ -285,8 +384,18 @@ function isTrainablePtModel(model: Record<string, any>): boolean {
 
 const gpuHelpMessage = computed(() => {
   if (gpuLoading.value) return '正在探测 GPU...';
+  if (selectedSchedulePolicy.value === 'node') {
+    if (!selectedTargetNode.value) return '请先选择目标节点';
+    if (!gpuOptions.value.length) return '目标节点未上报可用 GPU';
+    return `目标节点可用 ${gpuOptions.value.length} 张 GPU，可指定单卡或多卡`;
+  }
+  if (selectedSchedulePolicy.value === 'auto') {
+    return gpuOptions.value.length
+      ? '自动调度仅使用所选数量，具体 GPU 编号由目标节点分配'
+      : '当前没有上报可用 GPU 的计算节点';
+  }
   if (gpuStatus.value.multi_gpu) {
-    return `已探测 ${gpuStatus.value.visible_gpu_ids.length} 张 GPU，将自动多卡并行 (DDP)`;
+    return `已探测 ${gpuStatus.value.visible_gpu_ids.length} 张 GPU，可选择单卡或多卡；多选启用 DDP`;
   }
   if (gpuStatus.value.visible_gpu_ids.length === 1) {
     const dev = gpuStatus.value.devices?.[0];
@@ -322,14 +431,17 @@ const loadNodes = async () => {
   try {
     const res = await getNodePage({ pageNo: 1, pageSize: 200, status: 'online' });
     const page = (res as { data?: { list?: unknown[] }; list?: unknown[] })?.data || res;
-    const list = ((page as { list?: unknown[] })?.list || []).filter(
-      (node: { nodeRole?: string }) =>
+    const list = (((page as { list?: unknown[] })?.list || []) as ComputeNodeVO[]).filter(
+      (node) =>
         node.nodeRole === 'compute' || node.nodeRole === 'gpu' || node.nodeRole === 'hybrid',
     );
-    nodeOptions.value = list.map((node: { id: number; name?: string; host?: string }) => ({
-      label: `${node.name || '节点'} (${node.host || '-'})`,
-      value: node.id,
-    }));
+    nodeRecords.value = list;
+    nodeOptions.value = list
+      .filter((node): node is ComputeNodeVO & { id: number } => Number.isInteger(Number(node.id)))
+      .map((node) => ({
+        label: `${node.name || '节点'} (${node.host || '-'})`,
+        value: Number(node.id),
+      }));
     updateSchema({
       field: 'target_node_id',
       componentProps: {
@@ -337,6 +449,10 @@ const loadNodes = async () => {
         placeholder: '选择在线 GPU/计算节点',
         showSearch: true,
         allowClear: true,
+        onChange: (value?: number) => {
+          selectedTargetNodeId.value = value;
+          void refreshGpuSelection();
+        },
         filterOption: (input: string, option: { label?: string }) =>
           (option?.label ?? '').toLowerCase().includes(input.toLowerCase()),
       },
@@ -344,7 +460,38 @@ const loadNodes = async () => {
   } catch (e) {
     console.error('加载节点列表失败', e);
     nodeOptions.value = [];
+    nodeRecords.value = [];
   }
+};
+
+const refreshGpuSelection = async () => {
+  const values = await getFieldsValue();
+  const currentGpuIds = Array.isArray(values.gpu_ids)
+    ? values.gpu_ids.map((gpuId: string | number) => Number(gpuId))
+    : [];
+  const validGpuIds = currentGpuIds.filter((gpuId) => availableGpuIds.value.includes(gpuId));
+  const defaultGpuIds = validGpuIds.length
+    ? validGpuIds
+    : (availableGpuIds.value.length ? [availableGpuIds.value[0]] : undefined);
+  const gpuSourceResolved = selectedSchedulePolicy.value !== 'node' || !!selectedTargetNode.value;
+  await setFieldsValue({
+    use_gpu: availableGpuIds.value.length > 0
+      ? values.use_gpu !== false
+      : (gpuSourceResolved ? false : values.use_gpu !== false),
+    gpu_ids: defaultGpuIds,
+  });
+  updateSchema([
+    {
+      field: 'gpu_ids',
+      componentProps: {
+        mode: 'multiple',
+        options: gpuOptions.value,
+        placeholder: '请选择训练使用的 GPU',
+        allowClear: false,
+      },
+    },
+    { field: 'use_gpu', helpMessage: gpuHelpMessage.value },
+  ]);
 };
 
 const datasetSourceTab = ref<DatasetSourceTab>('local');
@@ -370,11 +517,10 @@ const loadGpuStatus = async () => {
       multi_gpu: !!data?.multi_gpu,
       devices: data?.devices ?? [],
     };
-    const defaultUseGpu = gpuStatus.value.visible_gpu_ids.length > 0;
-    await setFieldsValue({ use_gpu: defaultUseGpu });
+    await refreshGpuSelection();
   } catch (e) {
     gpuStatus.value = defaultGpuStatus();
-    await setFieldsValue({ use_gpu: false });
+    await refreshGpuSelection();
     console.error(e);
   } finally {
     gpuLoading.value = false;
@@ -500,12 +646,31 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       helpMessage: '正在探测 GPU...',
     },
     {
+      field: 'gpu_ids',
+      label: '训练 GPU',
+      component: 'Select',
+      componentProps: {
+        mode: 'multiple',
+        options: [],
+        placeholder: '请选择训练使用的 GPU',
+        allowClear: false,
+      },
+      ifShow: ({ values }) => values.use_gpu && availableGpuIds.value.length > 0,
+      required: ({ values }) => values.use_gpu && availableGpuIds.value.length > 0,
+      helpMessage: '选择一张 GPU 为单卡训练；选择多张 GPU 将启用 DDP 并行训练',
+    },
+    {
       field: 'schedule_policy',
       label: '调度策略',
       component: 'Select',
       defaultValue: 'auto',
       componentProps: {
         options: schedulePolicyOptions,
+        onChange: (value: string) => {
+          selectedSchedulePolicy.value = value;
+          if (value !== 'node') selectedTargetNodeId.value = undefined;
+          void refreshGpuSelection();
+        },
       },
       helpMessage:
         '优先调度 GPU 节点；无可用 GPU 时自动回落到 CPU 节点（含中心节点）。集群模式需 CephFS 与 model_train Bundle',
@@ -519,6 +684,10 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         placeholder: '选择在线 GPU/计算节点',
         showSearch: true,
         allowClear: true,
+        onChange: (value?: number) => {
+          selectedTargetNodeId.value = value;
+          void refreshGpuSelection();
+        },
       },
       ifShow: ({ values }) => values.schedule_policy === 'node',
       required: ({ values }) => values.schedule_policy === 'node',
@@ -538,6 +707,9 @@ const resetTrainForm = () => {
   cloudDatasetsLoaded.value = false;
   datasetList.value = [];
   customWeightOptions.value = [];
+  nodeRecords.value = [];
+  selectedSchedulePolicy.value = 'auto';
+  selectedTargetNodeId.value = undefined;
   gpuStatus.value = defaultGpuStatus();
   selectedModelPath.value = presetModels[0];
   modelPathDisabled.value = false;
@@ -582,6 +754,10 @@ async function initTrainDrawer(data: Record<string, unknown> = {}) {
       schedule_policy: (record.schedule_policy as string) || 'auto',
       target_node_id: record.target_node_id ?? undefined,
     });
+    selectedSchedulePolicy.value = String(record.schedule_policy || 'auto');
+    selectedTargetNodeId.value = record.target_node_id == null
+      ? undefined
+      : Number(record.target_node_id);
     selectedModelPath.value = hp.modelPath || presetModels[0];
 
     const datasetPath = String(record.dataset_path || '');
@@ -629,8 +805,17 @@ async function initTrainDrawer(data: Record<string, unknown> = {}) {
   if ((data?.isRetrain || data?.isResume) && data?.record) {
     const hp = parseTrainHyperparameters((data.record as Record<string, unknown>).hyperparameters);
     if (hp.use_gpu !== undefined) {
+      const savedGpuIds = hasManualGpuSelection(data.record.hyperparameters)
+      && Array.isArray(hp.gpu_ids)
+        ? hp.gpu_ids
+          .map((gpuId) => Number(gpuId))
+          .filter((gpuId) => availableGpuIds.value.includes(gpuId))
+        : [];
       await setFieldsValue({
-        use_gpu: hp.use_gpu && gpuStatus.value.visible_gpu_ids.length > 0,
+        use_gpu: hp.use_gpu && availableGpuIds.value.length > 0,
+        gpu_ids: savedGpuIds.length
+          ? savedGpuIds
+          : (availableGpuIds.value.length ? [availableGpuIds.value[0]] : undefined),
       });
     }
   }
@@ -769,6 +954,31 @@ const startTrain = async () => {
     return;
   }
 
+  const selectedGpuIds = values.use_gpu && Array.isArray(values.gpu_ids)
+    ? [...new Set(values.gpu_ids.map((gpuId: string | number) => Number(gpuId)))]
+    : [];
+  if (values.use_gpu) {
+    if (!selectedGpuIds.length) {
+      createMessage.warn('请至少选择一张训练 GPU');
+      return;
+    }
+    const invalidGpuIds = selectedGpuIds.filter(
+      (gpuId) => !Number.isInteger(gpuId) || !availableGpuIds.value.includes(gpuId),
+    );
+    if (invalidGpuIds.length) {
+      createMessage.warn(`GPU ${invalidGpuIds.join(', ')} 当前不可用，请重新选择`);
+      return;
+    }
+    if (selectedGpuIds.length > 1 && Number(values.batch_size) % selectedGpuIds.length !== 0) {
+      const nextBatchSize = Math.ceil(Number(values.batch_size) / selectedGpuIds.length)
+        * selectedGpuIds.length;
+      createMessage.warn(
+        `多卡训练的批次大小必须能被 GPU 数量 ${selectedGpuIds.length} 整除，建议改为 ${nextBatchSize}`,
+      );
+      return;
+    }
+  }
+
   let datasetPath = '';
   let datasetName = '';
   let datasetVersion = '';
@@ -839,9 +1049,8 @@ const startTrain = async () => {
     datasetName,
     datasetVersion,
     use_gpu: values.use_gpu,
-    gpu_ids: values.use_gpu && gpuStatus.value.visible_gpu_ids.length
-      ? gpuStatus.value.visible_gpu_ids
-      : undefined,
+    gpu_ids: values.use_gpu ? selectedGpuIds : undefined,
+    gpu_selection_manual: true,
     schedulePolicy: values.schedule_policy,
     targetNodeId: values.schedule_policy === 'node' ? values.target_node_id : null,
     ...(retrainTaskId.value ? { taskId: retrainTaskId.value } : {}),

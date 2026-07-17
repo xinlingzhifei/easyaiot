@@ -58,8 +58,8 @@ export function canResumeTrainTask(record?: {
   can_resume?: boolean;
   checkpoint_dir?: string;
 }): boolean {
-  if (String(record?.status || '') !== 'stopped') return false;
-  if (record?.can_resume === true) return true;
+  if (!['stopped', 'error', 'failed'].includes(String(record?.status || ''))) return false;
+  if (record?.can_resume !== undefined) return record.can_resume === true;
   return !!(record?.checkpoint_dir || '').trim();
 }
 
@@ -118,16 +118,54 @@ export function resolveTaskBaseNameFromRecord(record: Record<string, unknown>): 
       base = base.slice(0, -(part.length + 1));
     }
   }
-  if (/^train_task_\d{8}_\d{6}$/.test(base) || base.startsWith('train_task_')) {
+  if (isLegacyBadTaskBaseName(base)) {
     return 'train';
   }
   return base || 'train';
 }
 
+const LEGACY_TIMESTAMP_BASE_RE = /^train_task_\d{8}_\d{6}$/;
+const LEGACY_BAD_TASK_BASE_RE = /^(train_)?download\?prefix=/i;
+
+export function isLegacyBadTaskBaseName(name?: string): boolean {
+  const text = (name || '').trim();
+  if (!text) return true;
+  if (LEGACY_BAD_TASK_BASE_RE.test(text)) return true;
+  if (isLegacyBadDatasetName(text)) return true;
+  if (LEGACY_TIMESTAMP_BASE_RE.test(text)) return true;
+  return text.startsWith('train_task_');
+}
+
+/** 训练任务展示名：仅保留用户任务名与任务 ID，数据集信息走独立字段。 */
+export function buildTrainTaskDisplayName(
+  baseName: string,
+  _datasetName?: string,
+  _datasetVersion?: string,
+  taskId?: number,
+): string {
+  let base = (baseName || '').trim();
+  if (isLegacyBadTaskBaseName(base)) {
+    base = 'train';
+  }
+  if (!base) base = 'train';
+
+  const parts = [base];
+  if (taskId != null) parts.push(String(taskId));
+  return parts.join('_');
+}
+
 const UPLOAD_STORAGE_STEM_RE = /^[0-9a-f]{32}$/i;
+const LEGACY_BAD_NAME_RE = /^download\?prefix=/i;
 
 export function isUploadStorageStem(name: string): boolean {
   return UPLOAD_STORAGE_STEM_RE.test((name || '').trim());
+}
+
+export function isLegacyBadDatasetName(name?: string): boolean {
+  const text = (name || '').trim().replace(/\.zip$/i, '');
+  if (!text) return true;
+  if (isUploadStorageStem(text)) return true;
+  return LEGACY_BAD_NAME_RE.test(text);
 }
 
 /** 本地上传数据集展示名：优先可读 dataset_name，避免使用 UUID 存储文件名。 */
@@ -136,12 +174,12 @@ export function resolveLocalDatasetDisplayName(
   datasetName?: string,
 ): string {
   const stored = (datasetName || '').trim().replace(/\.zip$/i, '');
-  if (stored && !isUploadStorageStem(stored)) {
+  if (stored && !isLegacyBadDatasetName(stored)) {
     return stored;
   }
   const pathBase = (datasetPath.split('/').pop() || '').replace(/\.zip$/i, '');
-  if (pathBase && !isUploadStorageStem(pathBase)) {
+  if (pathBase && !isLegacyBadDatasetName(pathBase)) {
     return pathBase;
   }
-  return stored || pathBase || '本地数据集';
+  return stored && isLegacyBadDatasetName(stored) ? '本地数据集' : stored || pathBase || '本地数据集';
 }

@@ -54,6 +54,13 @@ public enum IotDeviceMessageMethodEnum implements ArrayValuable<String> {
 
     OTA_UPGRADE("thing.ota.upgrade", "OTA 固定信息推送", false),
     OTA_PROGRESS("thing.ota.progress", "OTA 升级进度上报", true),
+
+    // ========== 网关拓扑 ==========
+    // 可参考：https://help.aliyun.com/zh/iot/user-guide/manage-topological-relationships
+
+    TOPOLOGY_ADD("thing.topology.add", "网关添加子设备", true),
+    TOPOLOGY_DELETE("thing.topology.delete", "网关删除子设备拓扑", true),
+    TOPOLOGY_UPDATE("thing.topology.update", "网关上报子设备状态", true),
     ;
 
     public static final String[] ARRAYS = Arrays.stream(values()).map(IotDeviceMessageMethodEnum::getMethod)
@@ -65,7 +72,8 @@ public enum IotDeviceMessageMethodEnum implements ArrayValuable<String> {
     public static final Set<String> REPLY_DISABLED = SetUtils.asSet(
             STATE_UPDATE.getMethod(),
             OTA_PROGRESS.getMethod(), // 参考阿里云，OTA 升级进度上报，不进行回复
-            LOG_POST.getMethod() // 日志上报，设备一条一条回传，不需要回复
+            LOG_POST.getMethod(), // 日志上报，设备一条一条回传，不需要回复
+            TOPOLOGY_UPDATE.getMethod() // 子设备状态上报，不强制回复
     );
 
     private final String method;

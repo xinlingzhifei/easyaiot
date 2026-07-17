@@ -26,15 +26,19 @@ def detect_local_ai_root() -> str:
     return _DEFAULT_AI_ROOT
 
 
+def is_platform_node(node: dict | None) -> bool:
+    if not node:
+        return False
+    caps = node.get('capabilities') or {}
+    return bool(
+        node.get('isPlatform') or node.get('is_platform') or caps.get('platform')
+    )
+
+
 def resolve_ai_root_for_deploy(node: dict | None = None) -> str:
     """按目标节点解析 AI 根目录：控制面节点用本机路径，远程节点用 NODE_REMOTE_AI_ROOT。"""
-    if node:
-        caps = node.get('capabilities') or {}
-        is_platform = bool(
-            node.get('isPlatform') or node.get('is_platform') or caps.get('platform')
-        )
-        if is_platform:
-            return detect_local_ai_root()
+    if is_platform_node(node):
+        return detect_local_ai_root()
 
     remote = (os.getenv('NODE_REMOTE_AI_ROOT') or '').strip()
     if _looks_like_ai_root(remote):
@@ -51,7 +55,7 @@ def resolve_ai_bundle_python(ai_root: str | None = None, bundle: str = 'ai_servi
     launcher = os.path.join(root, '.bundles', bundle_key, 'run-python.sh')
     if os.path.isfile(launcher):
         return launcher
-    if os.path.isfile(sys.executable):
+    if _looks_like_ai_root(root) and os.path.isfile(sys.executable):
         logger.info(
             'bundle 启动器不存在 %s，回退控制面 Python: %s',
             launcher, sys.executable,

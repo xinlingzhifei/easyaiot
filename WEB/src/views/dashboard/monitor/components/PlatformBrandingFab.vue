@@ -198,7 +198,11 @@ watch(panelOpen, (open) => {
 })
 
 function handleSave() {
-  updateConfig({ ...form })
+  const ok = updateConfig({ ...form })
+  if (!ok) {
+    createMessage.error('保存失败，本地存储空间不足，请压缩图片后重试')
+    return
+  }
   createMessage.success('保存成功')
 }
 

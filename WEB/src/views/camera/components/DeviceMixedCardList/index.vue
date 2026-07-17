@@ -48,9 +48,21 @@
                 @delete="handleGbCardDelete"
               />
             </ListItem>
-            <ListItem v-else :class="item.device.online ? 'camera-item normal' : 'camera-item error'">
+            <ListItem
+              v-else
+              :class="[
+                item.device.online ? 'camera-item normal' : 'camera-item error',
+                isDjiLiveDevice(item.device) ? 'camera-item--dji' : '',
+                getDjiDeviceKind(item.device) === 'dock' ? 'camera-item--dji-dock' : '',
+                getDjiDeviceKind(item.device) === 'drone' ? 'camera-item--dji-drone' : '',
+              ]"
+            >
               <div class="camera-info">
                 <div class="status">{{ item.device.online ? '在线' : '离线' }}</div>
+                <div v-if="isDjiLiveDevice(item.device)" class="device-kind-badge">
+                  <Icon :icon="getDjiDeviceKind(item.device) === 'dock' ? 'mdi:garage' : 'mdi:quadcopter'" />
+                  <span>{{ getDjiDeviceKind(item.device) === 'dock' ? '大疆机场' : '大疆无人机' }}</span>
+                </div>
                 <div class="title o2">{{ formatCameraDeviceLabel(item.device) }}</div>
                 <div class="props">
                   <div class="flex" style="justify-content: space-between">
@@ -152,7 +164,19 @@
                 </div>
               </div>
               <div class="camera-img">
+                <div
+                  v-if="isDjiLiveDevice(item.device)"
+                  class="dji-device-visual"
+                  @click="handleView(item.device)"
+                >
+                  <Icon
+                    :icon="getDjiDeviceKind(item.device) === 'dock' ? 'mdi:garage' : 'mdi:quadcopter'"
+                    :size="100"
+                  />
+                  <span>{{ getDjiDeviceKind(item.device) === 'dock' ? '机场' : '无人机' }}</span>
+                </div>
                 <img
+                  v-else
                   :src="getCameraImage(item.device.manufacturer)"
                   alt=""
                   class="img"
@@ -340,6 +364,27 @@ const getCameraImage = (manufacturer: string) => {
   if (mfr.includes('华为') || mfr.includes('huawei')) return HUAWEI_IMAGE;
   return OTHER_IMAGE;
 };
+
+function isDjiLiveDevice(device: DeviceInfo) {
+  if ((device as any)?.device_kind === 'dji') return true;
+  const text = [
+    (device as any)?.manufacturer,
+    (device as any)?.model,
+    (device as any)?.source,
+    (device as any)?.hardware_id,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return /DJI|Dock Live|Drone Live|flighthub:|volc:\/\//i.test(text);
+}
+
+/** 机场 / 无人机共用司空协议，仅展示区分 */
+function getDjiDeviceKind(device: DeviceInfo): 'dock' | 'drone' {
+  const explicit = String((device as any)?.dji_device_type || (device as any)?.device_type || '').toLowerCase();
+  if (explicit === 'drone' || explicit === 'dock') return explicit;
+  const text = [(device as any)?.model, (device as any)?.name].filter(Boolean).join(' ');
+  return /drone|无人机|Drone\s*Live/i.test(text) ? 'drone' : 'dock';
+}
 
 onMounted(() => {
   fetch();
@@ -550,6 +595,47 @@ defineExpose({
       }
     }
 
+    &.camera-item--dji {
+      border: 1px solid #c8e3ff;
+      background-image:
+        radial-gradient(circle at 86% 22%, rgba(70, 166, 255, 0.2), transparent 34%),
+        linear-gradient(135deg, #f9fcff 0%, #eef7ff 52%, #ffffff 100%);
+
+      .device-kind-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 8px;
+        margin: 4px 0 6px;
+        color: #1266d6;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid #b8ddff;
+        border-radius: 999px;
+        background: rgba(232, 246, 255, 0.92);
+      }
+
+      .camera-info .title {
+        height: 26px;
+        color: #0b3f83;
+      }
+
+      .camera-info .btns {
+        border-color: #35a7ff;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 8px 18px rgba(40, 132, 245, 0.14);
+      }
+    }
+
+    &.camera-item--dji-dock .dji-device-visual {
+      color: #0f65c8;
+    }
+
+    &.camera-item--dji-drone .dji-device-visual {
+      color: #1684e8;
+    }
+
     .camera-info {
       flex-direction: column;
       max-width: calc(100% - 128px);
@@ -689,6 +775,29 @@ defineExpose({
       img {
         cursor: pointer;
         width: 120px;
+      }
+
+      .dji-device-visual {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 120px;
+        height: 120px;
+        cursor: pointer;
+        color: #1684e8;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 50% 36%, rgba(54, 181, 255, 0.22), transparent 48%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(223, 241, 255, 0.72));
+        box-shadow: inset 0 0 0 1px rgba(62, 159, 255, 0.22), 0 10px 24px rgba(51, 141, 235, 0.12);
+
+        span {
+          margin-top: -2px;
+          color: #0f65c8;
+          font-size: 12px;
+          font-weight: 700;
+        }
       }
     }
   }

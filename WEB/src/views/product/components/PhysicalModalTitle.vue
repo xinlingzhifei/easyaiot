@@ -4,7 +4,7 @@
       <div class="product-phsyical-model-tab">
         <Tabs
           :activeKey="state.activeKey"
-          :tabBarGutter="80"
+          :tabBarGutter="40"
           @tabClick="handleTabClick"
         >
           <TabPane key="properties" tab="属性"></TabPane>
@@ -89,8 +89,9 @@ import { Button } from '@/components/Button'
 <style lang="less" scoped>
   .phsyical-modal-title {
     width: 100%;
-    margin-bottom: 2px;
+    margin-bottom: 0;
     background-color: #fff;
+    flex-shrink: 0;
 
     .title-content {
       display: flex;
@@ -107,8 +108,24 @@ import { Button } from '@/components/Button'
         }
 
         .ant-tabs-tab {
-          font-size: 13px;
-          padding: 8px 16px;
+          font-size: 14px;
+          font-weight: 500;
+          padding: 12px 8px;
+          color: #666;
+
+          &:hover {
+            color: #1890ff;
+          }
+        }
+
+        .ant-tabs-tab-active .ant-tabs-tab-btn {
+          color: #1890ff;
+          font-weight: 600;
+        }
+
+        .ant-tabs-ink-bar {
+          height: 3px;
+          border-radius: 2px;
         }
 
         .ant-tabs-content-holder {
@@ -118,13 +135,11 @@ import { Button } from '@/components/Button'
     }
 
     .info-alert {
-      margin: 0;
-      margin-top: 8px;
+      margin: 12px 0 0;
       border-radius: 6px;
       font-size: 13px;
       line-height: 1.5;
-      padding: 4px 12px;
-      margin-bottom: 0;
+      padding: 8px 12px;
 
       :deep(.ant-alert-icon) {
         margin-right: 8px;
@@ -157,19 +172,7 @@ import { Button } from '@/components/Button'
     .box {
       display: flex;
       justify-content: flex-start;
-      margin-top: 0;
-    }
-
-    :deep(.ant-btn) {
-      font-size: 13px;
-      height: 32px;
-      padding: 4px 15px;
-    }
-
-    :deep(.ant-btn-sm) {
-      font-size: 12px;
-      height: 28px;
-      padding: 2px 12px;
+      margin-top: 12px;
     }
   }
 </style>

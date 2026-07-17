@@ -117,6 +117,8 @@ export interface SamPredictResult {
   inference_ms?: number;
   prompt_type?: string;
   engine?: string;
+  /** 服务端绘制的标注结果图（JPEG base64，无前缀） */
+  result_image_base64?: string;
 }
 
 export const getSamHealth = async () => {

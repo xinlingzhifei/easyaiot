@@ -300,8 +300,8 @@ function getStatusBadgeStyle(item: Record<string, unknown>) {
 function getStatusText(item: Record<string, unknown>) {
   const status = String(item.status || '');
   let base = statusConfig[status] || status || '未知';
-  if (status === 'stopped' && canResumeTrainTask(item as { status?: string; can_resume?: boolean; checkpoint_dir?: string })) {
-    base = '已停止(可续训)';
+  if (canResumeTrainTask(item as { status?: string; can_resume?: boolean; checkpoint_dir?: string })) {
+    base = status === 'stopped' ? '已停止(可续训)' : '失败(可续训)';
   }
   if (['Train', 'train', 'running'].includes(status)) {
     return `${base} (${item.progress ?? 0}%)`;

@@ -126,6 +126,39 @@ export const getDevicethingModels = (_params) => {
   );
 };
 
+/** 调用设备服务（MQTT 下行 thing.service.invoke） */
+export const invokeDeviceService = (deviceId: string | number, serviceIdentifier: string, data?: any) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `${API.Devices}/${deviceId}/invokeService`,
+      params: { serviceIdentifier },
+      data: data || {},
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 下发设备属性期望值（MQTT 下行 thing.property.set） */
+export const setDeviceProperties = (deviceId: string | number, data: Record<string, any>) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `${API.Devices}/${deviceId}/setProperties`,
+      data: data || {},
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
 export const getDevicethingmodelsHistory = (params) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
   // debugger;
@@ -401,6 +434,109 @@ export const getDeviceStatusStatistics = () => {
   return defHttp.get(
     {
       url: API.Devices + '/getDeviceStatusStatistics',
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 查询网关下已绑定的子设备 */
+export const getGatewaySubDevices = (params: {
+  gatewayIdentification: string;
+  pageNum?: number;
+  pageSize?: number;
+}) => {
+  return commonApi('get', API.Devices + '/subDevices', params);
+};
+
+/** 查询可绑定的未关联子设备 */
+export const getUnboundSubDevices = (params?: { pageNum?: number; pageSize?: number; deviceName?: string }) => {
+  return commonApi('get', API.Devices + '/unboundSubDevices', params || {});
+};
+
+/** 关联网关子设备 */
+export const associateGatewayDevices = (idList: Array<string | number>, targetDeviceIdentification: string) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/associateGateway',
+      data: { idList, targetDeviceIdentification },
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 解绑网关子设备 */
+export const disassociateGatewayDevices = (idList: Array<string | number>) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/disassociateGateway',
+      data: idList,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export interface DeviceCameraLink {
+  id: number;
+  iotDeviceId: number;
+  cameraDeviceId: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+/** 查询 IoT 设备已关联的流媒体摄像头 */
+export const getDeviceCameraLinks = (params: {
+  iotDeviceId: string | number;
+  pageNum?: number;
+  pageSize?: number;
+}) => {
+  return commonApi('get', API.Devices + '/cameraLinks', params);
+};
+
+/** 查询已被绑定的流媒体摄像头 ID */
+export const getBoundCameraIds = () => {
+  return commonApi('get', API.Devices + '/boundCameraIds');
+};
+
+/** 关联流媒体摄像头 */
+export const associateDeviceCameras = (
+  iotDeviceId: string | number,
+  cameraDeviceIds: string[],
+) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/associateCameras',
+      data: { iotDeviceId, cameraDeviceIds },
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 解绑流媒体摄像头 */
+export const disassociateDeviceCameras = (linkIds: Array<string | number>) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/disassociateCameras',
+      data: linkIds,
       headers: {
         // @ts-ignore
         ignoreCancelToken: true,

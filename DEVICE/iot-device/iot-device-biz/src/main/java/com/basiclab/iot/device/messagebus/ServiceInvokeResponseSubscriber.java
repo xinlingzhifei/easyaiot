@@ -63,10 +63,10 @@ public class ServiceInvokeResponseSubscriber implements IotMessageSubscriber<Iot
                 return;
             }
 
-            // 2. 匹配Topic，只处理服务调用响应消息
+            // 2. 匹配 Topic：直连服务响应 或 网关代回子设备服务响应
             IotDeviceTopicEnum topicEnum = IotDeviceTopicEnum.matchTopic(topic);
-            if (topicEnum != IotDeviceTopicEnum.SERVICE_UPSTREAM_INVOKE_RESPONSE) {
-                // 不是服务调用响应消息，跳过
+            if (topicEnum != IotDeviceTopicEnum.SERVICE_UPSTREAM_INVOKE_RESPONSE
+                    && topicEnum != IotDeviceTopicEnum.SUB_SERVICE_UPSTREAM_INVOKE_RESPONSE) {
                 return;
             }
 

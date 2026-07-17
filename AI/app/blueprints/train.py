@@ -2,14 +2,18 @@
 @author reese
 @email reese
 """
+import csv
 import json
 import os
 import shutil
+import subprocess
 import threading
+import time
 import traceback
 import uuid
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import torch
 import yaml
@@ -18,12 +22,23 @@ from ultralytics import YOLO
 
 from app.blueprints.train_task import build_train_task_name, resolve_task_base_name
 from app.services.minio_service import ModelService
+from app.utils.train_checkpoint import (
+    CHECKPOINT_ACTION_FINALIZE,
+    CHECKPOINT_ACTION_REJECT,
+    cleanup_staged_checkpoint,
+    find_yolo_checkpoint,
+    prepare_yolo_resume_checkpoint,
+    stage_yolo_checkpoint,
+)
 from app.utils.train_dataset_name import resolve_dataset_display_name, save_upload_meta
+from app.utils.train_dataset_layout import repair_flat_coco_yolo_layout
+from app.utils.train_process_control import terminate_task_ddp_processes
+from app.utils.yolo_chinese_font import ensure_ultralytics_training_fonts
 from app.utils.gpu_utils import (
     check_gpu_status,
     format_device_for_log,
-    normalize_request_gpu_ids,
     release_cuda_memory,
+    resolve_request_gpu_ids,
     resolve_train_dataloader_workers,
     resolve_yolo_train_device,
 )
@@ -40,6 +55,16 @@ train_processes = {}
 
 # 数据库中表示「进行中」的状态（容器重启后需 recover_stale_train_tasks 清理）
 ACTIVE_TRAIN_STATUSES = ('preparing', 'train', 'Train', 'running', 'stopping')
+RESUMABLE_TRAIN_STATUSES = ('stopped', 'error', 'failed')
+
+
+def _train_log_timestamp() -> str:
+    timezone_name = (os.getenv('TRAIN_LOG_TIMEZONE') or os.getenv('TZ') or 'Asia/Shanghai').strip()
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo('Asia/Shanghai')
+    return datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _is_stop_requested(task_id, train_task=None) -> bool:
@@ -50,6 +75,36 @@ def _is_stop_requested(task_id, train_task=None) -> bool:
     if (status_entry.get('status') or '').lower() == 'stopping':
         return True
     return False
+
+
+def _watch_task_ddp_stop(task_id, model_dir, stop_event, log_fn=None) -> None:
+    """轮询停止标志，并终止该训练目录对应的 Ultralytics DDP 进程树。"""
+    stop_requested_at = None
+    while not stop_event.wait(0.5):
+        if not _is_stop_requested(task_id):
+            continue
+        if stop_requested_at is None:
+            stop_requested_at = time.monotonic()
+        try:
+            terminated_pids = terminate_task_ddp_processes(
+                model_dir,
+                timeout=2,
+            )
+        except Exception as terminate_error:
+            if log_fn:
+                log_fn(f'DDP 训练进程终止失败: {terminate_error}')
+            return
+        if terminated_pids:
+            if log_fn:
+                log_fn(
+                    '已终止 DDP 训练进程: '
+                    + ','.join(str(pid) for pid in terminated_pids)
+                )
+            return
+        if time.monotonic() - stop_requested_at >= 10:
+            if log_fn:
+                log_fn('未发现仍在运行的 DDP 子进程，等待训练线程退出')
+            return
 
 
 def _release_train_model(yolo_model, log_fn=None) -> None:
@@ -100,7 +155,12 @@ def _start_train_execution(
     is_resume: bool,
 ) -> tuple[bool, str]:
     """本机线程或集群远程下发训练。"""
-    from app.services.train_launcher_service import dispatch_train_to_node, use_remote_deploy
+    from app.services.train_launcher_service import (
+        TRAIN_DISPATCH_ERROR,
+        TRAIN_DISPATCH_REMOTE,
+        dispatch_train_to_node,
+        use_remote_deploy,
+    )
 
     train_status[task_id] = {
         'status': 'preparing',
@@ -110,8 +170,9 @@ def _start_train_execution(
         'stop_requested': False,
     }
 
+    local_launch_msg = '训练已启动'
     if use_remote_deploy(train_task.schedule_policy):
-        ok, msg = dispatch_train_to_node(
+        dispatch_mode, msg = dispatch_train_to_node(
             train_task,
             epochs=int(epochs),
             model_arch=model_arch,
@@ -123,14 +184,22 @@ def _start_train_execution(
             resume_mode=is_resume,
             gpu_ids=request_gpu_ids,
         )
-        if not ok:
+        if dispatch_mode == TRAIN_DISPATCH_ERROR:
             train_task.status = 'error'
             train_task.train_log = (train_task.train_log or '') + f'集群调度失败: {msg}\n'
             db.session.commit()
             train_status.pop(task_id, None)
             return False, msg
+        if dispatch_mode == TRAIN_DISPATCH_REMOTE:
+            train_status[task_id]['message'] = msg
+            return True, msg
+
+        train_task.node_id = None
+        train_task.service_server_ip = None
+        train_task.service_process_id = None
+        db.session.commit()
         train_status[task_id]['message'] = msg
-        return True, msg
+        local_launch_msg = msg
 
     train_thread = threading.Thread(
         target=train_model,
@@ -142,7 +211,7 @@ def _start_train_execution(
     )
     train_thread.daemon = True
     train_thread.start()
-    return True, '训练已启动'
+    return True, local_launch_msg
 
 
 def _build_train_hyperparameters(
@@ -154,6 +223,7 @@ def _build_train_hyperparameters(
     task_base_name,
     gpu_ids=None,
     dataset_source=None,
+    gpu_selection_manual=False,
 ):
     base = (task_base_name or 'train').strip() or 'train'
     hp = {
@@ -167,6 +237,8 @@ def _build_train_hyperparameters(
     }
     if gpu_ids is not None:
         hp['gpu_ids'] = gpu_ids
+    if gpu_selection_manual:
+        hp['gpu_selection_manual'] = True
     return json.dumps(hp)
 
 
@@ -184,33 +256,45 @@ def _is_cloud_dataset_path(dataset_path: str) -> bool:
 
 
 def _resolve_split_path(raw_path, split_name, yaml_dir, dataset_root):
-    if not raw_path:
-        return None
-
-    normalized_raw = str(raw_path).replace('\\', '/')
     candidate_bases = [
         dataset_root,
         yaml_dir,
         os.path.dirname(dataset_root),
     ]
 
-    for base in candidate_bases:
-        candidate = os.path.normpath(os.path.join(base, normalized_raw))
-        if os.path.exists(candidate):
-            return os.path.abspath(candidate)
+    if raw_path is not None and str(raw_path).strip():
+        normalized_raw = str(raw_path).replace('\\', '/')
+        for base in candidate_bases:
+            candidate = os.path.normpath(os.path.join(base, normalized_raw))
+            if os.path.exists(candidate):
+                return os.path.abspath(candidate)
 
     split_alias = {
-        'train': ['train'],
+        'train': ['train', 'training'],
         'val': ['val', 'valid', 'validation'],
-        'test': ['test'],
+        'test': ['test', 'testing'],
     }
+
+    def _child_dir(parent, expected_name):
+        if not os.path.isdir(parent):
+            return None
+        expected = expected_name.lower()
+        for entry in os.listdir(parent):
+            if entry.lower() == expected:
+                candidate = os.path.join(parent, entry)
+                if os.path.isdir(candidate):
+                    return candidate
+        return None
+
     for alias in split_alias.get(split_name, [split_name]):
         for base in candidate_bases:
-            img_candidate = os.path.join(base, alias, 'images')
-            if os.path.exists(img_candidate):
+            split_dir = _child_dir(base, alias)
+            img_candidate = _child_dir(split_dir, 'images') if split_dir else None
+            if img_candidate:
                 return os.path.abspath(img_candidate)
-            alt_candidate = os.path.join(base, 'images', alias)
-            if os.path.exists(alt_candidate):
+            images_dir = _child_dir(base, 'images')
+            alt_candidate = _child_dir(images_dir, alias) if images_dir else None
+            if alt_candidate:
                 return os.path.abspath(alt_candidate)
 
     return None
@@ -293,10 +377,7 @@ def _normalize_dataset_yaml(dataset_root, output_dir=None):
     effective_root = _resolve_dataset_root(cfg, yaml_dir)
     train_path = _resolve_split_path(cfg.get('train'), 'train', yaml_dir, effective_root)
     val_path = _resolve_split_path(cfg.get('val'), 'val', yaml_dir, effective_root)
-    test_path = (
-        _resolve_split_path(cfg.get('test'), 'test', yaml_dir, effective_root)
-        if cfg.get('test') else None
-    )
+    test_path = _resolve_split_path(cfg.get('test'), 'test', yaml_dir, effective_root)
 
     if not train_path:
         raise ValueError('数据集 train 路径无效，请检查 YAML 配置或目录结构')
@@ -437,11 +518,7 @@ def _update_hyperparameters_field(hp_text, **fields):
 
 def _resolve_train_checkpoint_path(model_dir):
     """定位 YOLO 断点权重 last.pt。"""
-    results_dir = _resolve_train_results_dir(model_dir)
-    last_pt = os.path.join(results_dir, 'weights', 'last.pt')
-    if os.path.isfile(last_pt):
-        return os.path.abspath(last_pt)
-    return None
+    return find_yolo_checkpoint(model_dir)
 
 
 def _clear_train_results_dirs(model_dir, log_fn=None):
@@ -488,18 +565,32 @@ def _resolve_resume_checkpoint(train_task, model_dir, log_fn=None):
         if log_fn:
             log_fn(msg)
 
+    staging_root = os.path.join(get_datasets_root(), '.resume_checkpoints')
+
+    def _stage(checkpoint_path):
+        try:
+            staged_path = stage_yolo_checkpoint(
+                checkpoint_path,
+                staging_root,
+                train_task.id,
+            )
+            if os.path.abspath(checkpoint_path) != staged_path:
+                _log(f'已将训练断点暂存到独立目录: {staged_path}')
+            return staged_path
+        except OSError as stage_error:
+            _log(f'训练断点暂存失败: {stage_error}')
+            return None
+
     checkpoint = (train_task.checkpoint_dir or '').strip()
     if checkpoint and os.path.isfile(checkpoint):
-        return os.path.abspath(checkpoint)
+        return _stage(checkpoint)
 
     checkpoint = _resolve_train_checkpoint_path(model_dir)
     if checkpoint:
-        return checkpoint
+        return _stage(checkpoint)
 
-    results_dir = _resolve_train_results_dir(model_dir)
-    weights_dir = os.path.join(results_dir, 'weights')
-    os.makedirs(weights_dir, exist_ok=True)
-    dest = os.path.join(weights_dir, 'last.pt')
+    dest = os.path.join(staging_root, f'train_{train_task.id}', 'last.pt')
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
     return _download_checkpoint_from_minio(train_task, dest, _log)
 
 
@@ -549,15 +640,21 @@ def _is_uploaded_dataset_zip(path: str) -> bool:
         return False
 
 
-def _cleanup_train_dataset_artifacts(model_dir, dataset_zip_path, log_fn=None):
-    """训练结束后删除本地数据集文件，保留 train_results 与已导出的权重。"""
+def _cleanup_train_dataset_artifacts(
+    model_dir,
+    dataset_zip_path,
+    log_fn=None,
+    *,
+    remove_uploaded_zip=True,
+):
+    """删除已准备的数据集文件，保留 train_results 与已导出的权重。"""
     def _log(msg):
         if log_fn:
             log_fn(msg)
 
     freed = []
 
-    if dataset_zip_path and _is_uploaded_dataset_zip(dataset_zip_path):
+    if remove_uploaded_zip and dataset_zip_path and _is_uploaded_dataset_zip(dataset_zip_path):
         try:
             os.remove(dataset_zip_path)
             freed.append(f'上传压缩包: {dataset_zip_path}')
@@ -570,7 +667,9 @@ def _cleanup_train_dataset_artifacts(model_dir, dataset_zip_path, log_fn=None):
         return
 
     train_results_dir = os.path.join(model_dir, 'train_results')
-    for name in ('images', 'labels', 'train', 'val', 'test'):
+    for name in os.listdir(model_dir):
+        if name.startswith('train_results'):
+            continue
         target = os.path.join(model_dir, name)
         if os.path.isdir(target):
             try:
@@ -578,10 +677,7 @@ def _cleanup_train_dataset_artifacts(model_dir, dataset_zip_path, log_fn=None):
                 freed.append(name + '/')
             except OSError as e:
                 _log(f'删除 {name}/ 失败: {e}')
-
-    for name in ('data.yaml', 'dataset.zip'):
-        target = os.path.join(model_dir, name)
-        if os.path.isfile(target):
+        elif os.path.isfile(target):
             try:
                 os.remove(target)
                 freed.append(name)
@@ -675,7 +771,17 @@ def api_start_train():
         dataset_name = resolve_dataset_display_name(dataset_zip_path, dataset_name)
         dataset_version = (data.get('datasetVersion') or data.get('dataset_version') or '').strip() or None
         use_gpu = data.get('use_gpu', True)
-        request_gpu_ids = normalize_request_gpu_ids(data.get('gpu_ids'))
+        gpu_selection_manual = bool(use_gpu) and (
+            data.get('gpu_selection_manual') is True
+            or data.get('gpuSelectionManual') is True
+        )
+        try:
+            request_gpu_ids = resolve_request_gpu_ids(
+                data.get('gpu_ids'),
+                manual_selection=gpu_selection_manual,
+            )
+        except ValueError as gpu_err:
+            return jsonify({'success': False, 'code': 400, 'msg': str(gpu_err)}), 400
 
         schedule_data = data
 
@@ -705,11 +811,11 @@ def api_start_train():
                 model_dir = get_train_task_dir(train_task.id)
 
                 if is_resume:
-                    if train_task.status != 'stopped':
+                    if train_task.status not in RESUMABLE_TRAIN_STATUSES:
                         return jsonify({
                             'success': False,
                             'code': 400,
-                            'msg': '仅已停止的任务可继续训练',
+                            'msg': '仅已停止或存在断点的失败任务可继续训练',
                         }), 400
 
                     completed_epochs = _get_completed_epochs(train_task.hyperparameters)
@@ -738,7 +844,7 @@ def api_start_train():
                     train_task.hyperparameters = _update_hyperparameters_field(
                         _build_train_hyperparameters(
                             epochs, model_arch, img_size, batch_size, use_gpu, task_base_name,
-                            request_gpu_ids, dataset_source,
+                            request_gpu_ids, dataset_source, gpu_selection_manual,
                         ),
                         completed_epochs=completed_epochs,
                     )
@@ -764,7 +870,7 @@ def api_start_train():
                     train_task.hyperparameters = _update_hyperparameters_field(
                         _build_train_hyperparameters(
                             epochs, model_arch, img_size, batch_size, use_gpu, task_base_name,
-                            request_gpu_ids, dataset_source,
+                            request_gpu_ids, dataset_source, gpu_selection_manual,
                         ),
                         completed_epochs=0,
                     )
@@ -788,7 +894,7 @@ def api_start_train():
                 dataset_version=dataset_version,
                 hyperparameters=_build_train_hyperparameters(
                     epochs, model_arch, img_size, batch_size, use_gpu, task_base_name,
-                    request_gpu_ids, dataset_source,
+                    request_gpu_ids, dataset_source, gpu_selection_manual,
                 ),
                 start_time=datetime.utcnow(),
                 status='preparing',
@@ -855,7 +961,7 @@ def api_start_train():
             except Exception as rollback_error:
                 print(f'回滚训练记录失败: {str(rollback_error)}')
                 db.session.rollback()
-        
+
         return jsonify({'success': False, 'code': 400, 'msg': f'启动训练失败: {str(e)}'}), 400
 
 
@@ -899,7 +1005,7 @@ def recover_stale_train_tasks(app=None):
             return 0
 
         interrupt_msg = (
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"[{_train_log_timestamp()}] "
             "训练进程因服务重启或异常退出而中断。"
         )
         for task in stale_tasks:
@@ -1015,6 +1121,20 @@ def api_stop_train(task_id):
         if train_task and train_task.node_id:
             from app.services.train_launcher_service import stop_remote_train
             stop_remote_train(train_task)
+        else:
+            try:
+                terminated_pids = terminate_task_ddp_processes(
+                    get_train_task_dir(task_id),
+                    timeout=1,
+                )
+                if terminated_pids:
+                    update_log(
+                        '已向 DDP 训练进程发送终止信号: '
+                        + ','.join(str(pid) for pid in terminated_pids),
+                        task_id,
+                    )
+            except Exception as terminate_error:
+                update_log(f'DDP 训练进程终止失败: {terminate_error}', task_id)
 
         return jsonify({'success': True, 'code': 0, 'msg': '停止请求已发送'}), 200
 
@@ -1025,7 +1145,7 @@ def api_stop_train(task_id):
             return jsonify({'success': True, 'code': 0, 'msg': '已向远程训练节点发送停止请求'}), 200
 
         stop_msg = (
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"[{_train_log_timestamp()}] "
             "训练已停止（训练进程不在当前服务实例中）。"
         )
         train_task.status = 'stopped'
@@ -1095,7 +1215,7 @@ def api_train_log(task_id):
 
 def update_log(message, task_id=None, progress=None, train_task=None):
     """统一的日志记录函数"""
-    log_message = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+    log_message = f"[{_train_log_timestamp()}] {message}"
     print(log_message)
 
     if task_id is not None and task_id in train_status:
@@ -1112,6 +1232,103 @@ def update_log(message, task_id=None, progress=None, train_task=None):
             db.session.commit()
         except Exception as e:
             print(f"数据库提交失败: {str(e)}")
+
+
+def _read_completed_result_epochs(model_dir) -> int:
+    results_csv = os.path.join(_resolve_train_results_dir(model_dir), 'results.csv')
+    if not os.path.isfile(results_csv):
+        return 0
+    try:
+        with open(results_csv, 'r', encoding='utf-8', newline='') as csv_file:
+            return sum(
+                1
+                for row in csv.DictReader(csv_file)
+                if any(str(value or '').strip() for value in row.values())
+            )
+    except (OSError, csv.Error):
+        return 0
+
+
+def _progress_for_completed_epochs(completed_epochs: int, total_epochs: int) -> int:
+    total = max(1, int(total_epochs))
+    completed = max(0, min(int(completed_epochs), total))
+    progress_delta = (completed * 74 + total - 1) // total
+    return min(89, 15 + progress_delta)
+
+
+def _monitor_training_progress(
+    application,
+    task_id,
+    record_id,
+    model_dir,
+    total_epochs,
+    stop_event,
+):
+    heartbeat_seconds = max(
+        5,
+        int(os.getenv('TRAIN_PROGRESS_HEARTBEAT_SECONDS', '30')),
+    )
+    log_seconds = max(
+        heartbeat_seconds,
+        int(os.getenv('TRAIN_PROGRESS_LOG_SECONDS', '60')),
+    )
+    started_at = time.monotonic()
+    last_log_elapsed = 0
+
+    while not stop_event.wait(heartbeat_seconds):
+        if _is_stop_requested(task_id):
+            return
+        elapsed_seconds = int(time.monotonic() - started_at)
+        try:
+            with application.app_context():
+                task = TrainTask.query.get(record_id or task_id)
+                status_entry = train_status.get(task_id)
+                if not task or not status_entry:
+                    return
+                if task.status not in ('preparing', 'train', 'Train', 'running'):
+                    return
+                if status_entry.get('status') in ('completed', 'error', 'stopped', 'stopping'):
+                    return
+
+                completed_epochs = _read_completed_result_epochs(model_dir)
+                progress = max(
+                    16,
+                    int(task.progress or 0),
+                    int(status_entry.get('progress') or 0),
+                    _progress_for_completed_epochs(completed_epochs, total_epochs),
+                )
+                if completed_epochs > 0:
+                    message = (
+                        f'训练运行中，已完成 epoch '
+                        f'{completed_epochs}/{max(1, int(total_epochs))}...'
+                    )
+                else:
+                    message = f'训练运行中，首个 epoch 计算中，已持续 {elapsed_seconds} 秒...'
+
+                status_entry.update({
+                    'progress': progress,
+                    'message': message,
+                })
+                task.progress = progress
+                saved_epochs = _get_completed_epochs(task.hyperparameters)
+                if completed_epochs > saved_epochs:
+                    task.hyperparameters = _update_hyperparameters_field(
+                        task.hyperparameters,
+                        completed_epochs=completed_epochs,
+                    )
+                    checkpoint_path = _resolve_train_checkpoint_path(model_dir)
+                    if checkpoint_path:
+                        task.checkpoint_dir = checkpoint_path
+
+                if elapsed_seconds - last_log_elapsed >= log_seconds:
+                    log_message = f'[{_train_log_timestamp()}] 训练心跳: {message}'
+                    print(log_message)
+                    status_entry['log'] = status_entry.get('log', '') + log_message + '\n'
+                    task.train_log = (task.train_log or '') + log_message + '\n'
+                    last_log_elapsed = elapsed_seconds
+                db.session.commit()
+        except Exception as monitor_err:
+            print(f'训练进度监控更新失败: {monitor_err}')
 
 
 def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
@@ -1133,7 +1350,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
         with application.app_context():
             # 在函数内部通过record_id获取训练记录
             train_task = TrainTask.query.get(record_id)
-            
+
             # 重新获取train_task以确保在当前会话中
             db.session.refresh(train_task)
 
@@ -1179,14 +1396,13 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 update_log_local(log_msg, progress=5)
 
                 if dataset_zip_path:
-                    try:
-                        _prepare_train_dataset_in_dir(
-                            dataset_zip_path, model_dir, update_log_local
-                        )
-                    except Exception as prep_err:
-                        update_log_local(f'数据集准备失败: {prep_err}')
+                    _prepare_train_dataset_in_dir(
+                        dataset_zip_path, model_dir, update_log_local
+                    )
                 else:
-                    update_log_local('未提供数据集路径，无法准备训练数据')
+                    raise RuntimeError('未提供数据集路径，无法准备训练数据')
+
+            repair_flat_coco_yolo_layout(model_dir, update_log_local)
 
             # 检查是否应该停止训练
             if _is_stop_requested(task_id, train_task):
@@ -1211,6 +1427,18 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 db.session.commit()
                 raise Exception(error_msg) from norm_err
 
+            if not ensure_ultralytics_training_fonts():
+                error_msg = (
+                    '无法离线准备 Ultralytics 训练字体，已阻止多卡训练联网下载字体；'
+                    '请设置 ULTRALYTICS_FONT_PATH 指向本地字体文件'
+                )
+                update_log_local(error_msg)
+                train_task.status = 'error'
+                train_task.error_log = error_msg
+                db.session.commit()
+                raise RuntimeError(error_msg)
+            update_log_local('已离线准备 Ultralytics 训练字体，DDP 子进程无需联网下载')
+
             # 更新状态：开始加载模型
             train_status[task_id].update({
                 'message': '加载预训练模型...',
@@ -1219,6 +1447,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             update_log_local("加载预训练YOLOv8模型...", progress=10)
 
             resume_train = False
+            finalized_checkpoint_path = None
             if resume_mode:
                 checkpoint_path = _resolve_resume_checkpoint(
                     train_task, model_dir, update_log_local
@@ -1232,16 +1461,56 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     raise Exception(error_msg)
 
                 completed_epochs = _get_completed_epochs(train_task.hyperparameters)
+                try:
+                    prepared_checkpoint = prepare_yolo_resume_checkpoint(
+                        checkpoint_path,
+                        os.path.join(get_datasets_root(), '.resume_checkpoints'),
+                        task_id=task_id,
+                        completed_epochs=completed_epochs,
+                        target_epochs=epochs,
+                    )
+                except Exception as checkpoint_error:
+                    error_msg = f'训练断点元数据读取失败: {checkpoint_error}'
+                    update_log_local(error_msg)
+                    train_task.status = 'error'
+                    train_task.error_log = error_msg
+                    db.session.commit()
+                    raise Exception(error_msg) from checkpoint_error
+
+                checkpoint_path = prepared_checkpoint.path
                 train_task.checkpoint_dir = checkpoint_path
                 db.session.commit()
                 update_log_local(
                     f'从断点恢复训练: {checkpoint_path} '
                     f'(已完成 {completed_epochs}/{epochs} epoch)'
                 )
+                if prepared_checkpoint.action == CHECKPOINT_ACTION_REJECT:
+                    checkpoint_state = prepared_checkpoint.state
+                    error_msg = (
+                        '该断点仅包含模型权重，缺少可续训的 epoch/optimizer 状态，'
+                        '已阻止 DDP 将其当作新训练并删除；请重新训练，或使用更早的 '
+                        'epoch*.pt 完整断点继续训练'
+                    )
+                    if checkpoint_state.configured_epochs:
+                        error_msg += (
+                            f'（断点原目标 epochs={checkpoint_state.configured_epochs}）'
+                        )
+                    update_log_local(error_msg)
+                    train_task.status = 'error'
+                    train_task.error_log = error_msg
+                    db.session.commit()
+                    raise Exception(error_msg)
                 try:
                     yolo_model = YOLO(checkpoint_path)
-                    resume_train = True
-                    update_log_local('断点权重加载成功，将从下一 epoch 继续训练')
+                    if prepared_checkpoint.action == CHECKPOINT_ACTION_FINALIZE:
+                        finalized_checkpoint_path = checkpoint_path
+                        update_log_local(
+                            '检测到训练已进入最终权重阶段，数据库进度最多滞后 1 个 epoch；'
+                            '将跳过重复 DDP 训练并直接保存最终模型'
+                        )
+                    else:
+                        resume_train = True
+                        update_log_local('断点权重加载成功，将从下一 epoch 继续训练')
                 except Exception as e:
                     error_msg = f'断点权重加载失败: {str(e)}'
                     update_log_local(error_msg)
@@ -1283,7 +1552,12 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             })
             train_task.status = 'train'
             db.session.commit()
-            if resume_mode:
+            if finalized_checkpoint_path:
+                update_log_local(
+                    '断点已包含最终模型权重，开始补齐训练结果保存流程...',
+                    progress=89,
+                )
+            elif resume_mode:
                 completed_epochs = _get_completed_epochs(train_task.hyperparameters)
                 update_log_local(
                     f"继续训练模型，目标共 {epochs} 个 epochs（已完成 {completed_epochs}）...",
@@ -1301,7 +1575,10 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     raise RuntimeError('训练已被用户停止')
                 total_epochs_count = max(1, int(getattr(trainer, 'epochs', epochs)))
                 now_epoch = int(getattr(trainer, 'epoch', 0)) + 1
-                progress = min(89, 15 + int(now_epoch * 74 / total_epochs_count))
+                progress_delta = (
+                    now_epoch * 74 + total_epochs_count - 1
+                ) // total_epochs_count
+                progress = min(89, 15 + progress_delta)
                 train_status[task_id].update({
                     'progress': progress,
                     'message': f'训练中 epoch {now_epoch}/{total_epochs_count}...',
@@ -1325,72 +1602,182 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     except Exception as commit_err:
                         print(f'更新训练进度失败: {commit_err}')
 
+            batch_heartbeat = {
+                'last_log_at': 0.0,
+                'epoch_index': None,
+                'batch_count': 0,
+            }
+
+            def on_train_batch_end(trainer):
+                now_monotonic = time.monotonic()
+                train_loader = getattr(trainer, 'train_loader', None)
+                try:
+                    total_batches = len(train_loader) if train_loader is not None else 0
+                except TypeError:
+                    total_batches = 0
+                if total_batches <= 0:
+                    return
+                epoch_index = int(getattr(trainer, 'epoch', 0)) + 1
+                if batch_heartbeat['epoch_index'] != epoch_index:
+                    batch_heartbeat['epoch_index'] = epoch_index
+                    batch_heartbeat['batch_count'] = 0
+                batch_heartbeat['batch_count'] += 1
+                batch_index = min(total_batches, batch_heartbeat['batch_count'])
+                if batch_index < total_batches and now_monotonic - batch_heartbeat['last_log_at'] < 30:
+                    return
+
+                total_epochs_count = max(1, int(getattr(trainer, 'epochs', epochs)))
+                completed_batches = (epoch_index - 1) * total_batches + batch_index
+                total_train_batches = total_epochs_count * total_batches
+                progress_delta = (
+                    completed_batches * 74 + total_train_batches - 1
+                ) // total_train_batches
+                progress = min(89, 15 + progress_delta)
+                batch_heartbeat['last_log_at'] = now_monotonic
+                train_status[task_id].update({
+                    'progress': progress,
+                    'message': (
+                        f'训练中 epoch {epoch_index}/{total_epochs_count}, '
+                        f'batch {batch_index}/{total_batches}...'
+                    ),
+                })
+                update_log_local(
+                    f'训练心跳: epoch {epoch_index}/{total_epochs_count}, '
+                    f'batch {batch_index}/{total_batches}',
+                    progress=progress,
+                )
+
             def on_val_start(_trainer):
                 # 验证阶段 DataLoader pin_memory 容易触发显存峰值，先同步并释放训练残留缓存
                 release_cuda_memory(synchronize=True)
 
             yolo_model.add_callback('on_train_epoch_end', on_train_epoch_end)
+            yolo_model.add_callback('on_train_batch_end', on_train_batch_end)
             yolo_model.add_callback('on_val_start', on_val_start)
 
-            # 训练模型
-            update_log_local(
-                f"开始训练模型，配置: 数据文件={data_yaml_path}, epochs={epochs}, 图像尺寸={img_size}x{img_size}, 批次大小={batch_size}")
-
-            gpu_status = check_gpu_status()
-            update_log_local(f"GPU状态检查: {json.dumps(gpu_status, indent=2, ensure_ascii=False)}")
-
-            device = resolve_yolo_train_device(use_gpu, gpu_ids)
-            if device == 'cpu':
-                if use_gpu:
-                    update_log_local("警告: 请求使用GPU，但当前无可用 CUDA 设备，回退到 CPU 训练。")
-                    update_log_local(
-                        f"可能的原因: USE_GPU={gpu_status.get('use_gpu_env')}, "
-                        f"PyTorch={torch.__version__}, CUDA={getattr(torch.version, 'cuda', '未知')}")
-                else:
-                    update_log_local("使用 CPU 进行训练")
-            elif isinstance(device, list):
-                names = []
-                for idx in device:
-                    try:
-                        names.append(f"GPU{idx}({torch.cuda.get_device_name(idx)})")
-                    except Exception:
-                        names.append(f"GPU{idx}")
+            if finalized_checkpoint_path:
+                train_status[task_id].update({
+                    'message': '最终权重已确认，正在保存训练结果...',
+                    'progress': 90,
+                })
                 update_log_local(
-                    f"多卡并行训练 (DDP): {len(device)} 张 GPU [{format_device_for_log(device)}] — "
-                    + ', '.join(names)
-                )
-                update_log_local(
-                    f"提示: batch_size={batch_size} 为每张 GPU 的批次大小，有效总 batch≈{batch_size * len(device)}"
+                    '最终权重校验通过，未启动 DDP 子进程',
+                    progress=90,
                 )
             else:
-                try:
-                    gpu_name = torch.cuda.get_device_name(device)
-                except Exception:
-                    gpu_name = 'unknown'
-                update_log_local(f"单卡 GPU 训练: GPU{device} ({gpu_name})")
+                update_log_local(
+                    f"开始训练模型，配置: 数据文件={data_yaml_path}, epochs={epochs}, "
+                    f"图像尺寸={img_size}x{img_size}, 批次大小={batch_size}"
+                )
 
-            # 训练模型
-            train_workers = resolve_train_dataloader_workers(use_gpu)
-            use_amp = bool(use_gpu and device != 'cpu')
-            update_log_local(
-                f'DataLoader workers={train_workers}，AMP={use_amp} '
-                f'（workers 可通过 TRAIN_DATALOADER_WORKERS 覆盖）'
-            )
-            yolo_model.train(
-                data=data_yaml_path,
-                epochs=epochs,
-                imgsz=img_size,
-                batch=batch_size,
-                project=model_dir,
-                name='train_results',
-                exist_ok=True,
-                device=device,
-                save_period=5,
-                resume=resume_train,
-                workers=train_workers,
-                cache=False,
-                amp=use_amp,
-            )
+                gpu_status = check_gpu_status()
+                update_log_local(
+                    f"GPU状态检查: {json.dumps(gpu_status, indent=2, ensure_ascii=False)}"
+                )
+
+                device = resolve_yolo_train_device(use_gpu, gpu_ids)
+                if device == 'cpu':
+                    if use_gpu:
+                        if not gpu_status.get('use_gpu_env'):
+                            update_log_local(
+                                "警告: 请求使用GPU，但环境变量 USE_GPU=False，已回退到 CPU 训练。"
+                            )
+                        else:
+                            update_log_local(
+                                "警告: 请求使用GPU，但当前无可用 CUDA 设备，回退到 CPU 训练。"
+                            )
+                        update_log_local(
+                            f"GPU诊断: USE_GPU={gpu_status.get('use_gpu_env')}, "
+                            f"CUDA可用={gpu_status.get('cuda_available')}, "
+                            f"设备数={gpu_status.get('device_count')}, "
+                            f"PyTorch={torch.__version__}, "
+                            f"CUDA={getattr(torch.version, 'cuda', '未知')}"
+                        )
+                    else:
+                        update_log_local("使用 CPU 进行训练")
+                elif isinstance(device, list):
+                    if batch_size % len(device) != 0:
+                        raise ValueError(
+                            f'多卡训练 batch_size={batch_size} 必须能被 GPU 数量 '
+                            f'{len(device)} 整除；请选择较少 GPU，或将 batch_size 调整为 '
+                            f'{((batch_size + len(device) - 1) // len(device)) * len(device)}'
+                        )
+                    names = []
+                    for idx in device:
+                        try:
+                            names.append(f"GPU{idx}({torch.cuda.get_device_name(idx)})")
+                        except Exception:
+                            names.append(f"GPU{idx}")
+                    update_log_local(
+                        f"多卡并行训练 (DDP): {len(device)} 张 GPU "
+                        f"[{format_device_for_log(device)}] — " + ', '.join(names)
+                    )
+                    update_log_local(
+                        f"提示: batch_size={batch_size} 为总批次大小，将分配到 "
+                        f"{len(device)} 张 GPU"
+                    )
+                else:
+                    try:
+                        gpu_name = torch.cuda.get_device_name(device)
+                    except Exception:
+                        gpu_name = 'unknown'
+                    update_log_local(f"单卡 GPU 训练: GPU{device} ({gpu_name})")
+
+                train_workers = resolve_train_dataloader_workers(use_gpu)
+                use_amp = bool(use_gpu and device != 'cpu')
+                update_log_local(
+                    f'DataLoader workers={train_workers}，AMP={use_amp} '
+                    f'（workers 可通过 TRAIN_DATALOADER_WORKERS 覆盖）'
+                )
+                update_log_local('已进入训练计算阶段，等待首个 batch 完成...', progress=16)
+                progress_monitor_stop = threading.Event()
+                ddp_stop_watcher_thread = None
+                if isinstance(device, list):
+                    ddp_stop_watcher_thread = threading.Thread(
+                        target=_watch_task_ddp_stop,
+                        args=(
+                            task_id,
+                            model_dir,
+                            progress_monitor_stop,
+                            lambda message: update_log(message, task_id),
+                        ),
+                        daemon=True,
+                    )
+                    ddp_stop_watcher_thread.start()
+                progress_monitor_thread = threading.Thread(
+                    target=_monitor_training_progress,
+                    args=(
+                        application,
+                        task_id,
+                        record_id,
+                        model_dir,
+                        epochs,
+                        progress_monitor_stop,
+                    ),
+                    daemon=True,
+                )
+                progress_monitor_thread.start()
+                try:
+                    yolo_model.train(
+                        data=data_yaml_path,
+                        epochs=epochs,
+                        imgsz=img_size,
+                        batch=batch_size,
+                        project=model_dir,
+                        name='train_results',
+                        exist_ok=True,
+                        device=device,
+                        save_period=5,
+                        resume=resume_train,
+                        workers=train_workers,
+                        cache=False,
+                        amp=use_amp,
+                    )
+                finally:
+                    progress_monitor_stop.set()
+                    progress_monitor_thread.join(timeout=2)
+                    if ddp_stop_watcher_thread is not None:
+                        ddp_stop_watcher_thread.join(timeout=2)
 
             train_output_dir = _resolve_train_results_dir(model_dir)
             model_id = train_task.model_id
@@ -1457,7 +1844,13 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             update_log_local(f"训练结果保存路径: {train_output_dir}")
 
             # 保存最佳模型
-            best_model_path = os.path.join(train_output_dir, 'weights', 'best.pt')
+            best_model_path = finalized_checkpoint_path or os.path.join(
+                train_output_dir, 'weights', 'best.pt'
+            )
+            if finalized_checkpoint_path:
+                update_log_local(
+                    f'使用已完成训练的最终断点作为最佳模型: {best_model_path}'
+                )
             update_log_local(f"检查最佳模型文件是否存在: {best_model_path}")
 
             if os.path.exists(best_model_path):
@@ -1532,6 +1925,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
             })
 
             # 更新训练记录状态
+            staged_checkpoint_path = (train_task.checkpoint_dir or '').strip()
             train_task.status = 'completed'
             train_task.end_time = datetime.utcnow()
             train_task.progress = 100
@@ -1541,6 +1935,10 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 completed_epochs=epochs,
             )
             db.session.commit()
+            cleanup_staged_checkpoint(
+                staged_checkpoint_path,
+                os.path.join(get_datasets_root(), '.resume_checkpoints'),
+            )
             update_log_local("模型训练完成并已保存", progress=100)
 
             _cleanup_train_dataset_artifacts(
@@ -1558,15 +1956,19 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
         with application.app_context():
             task = TrainTask.query.get(record_id) if record_id else None
             error_msg = '训练已停止' if user_stopped else f'训练出错: {str(e)}'
-            log_msg = f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] {error_msg}'
+            log_msg = f'[{_train_log_timestamp()}] {error_msg}'
+            terminal_progress = train_status.get(task_id, {}).get('progress', 0) or 0
 
             if task:
                 task.status = 'stopped' if user_stopped else 'error'
                 task.end_time = datetime.utcnow()
+                task.train_log = (task.train_log or '') + log_msg + '\n'
+                model_dir = get_train_task_dir(task_id)
+                completed_epochs = max(
+                    _get_completed_epochs(task.hyperparameters),
+                    _read_completed_result_epochs(model_dir),
+                )
                 if user_stopped:
-                    task.train_log = (task.train_log or '') + log_msg + '\n'
-                    model_dir = get_train_task_dir(task_id)
-                    completed_epochs = _get_completed_epochs(task.hyperparameters)
                     if completed_epochs <= 0 and task_id in train_status:
                         progress = train_status[task_id].get('progress', 0) or 0
                         total_epochs = _get_total_epochs_from_hp(task.hyperparameters, epochs)
@@ -1583,7 +1985,35 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                     )
                 else:
                     task.error_log = f"{str(e)}\n{traceback.format_exc()}"
-                    task.train_log = (task.train_log or '') + log_msg + '\n'
+                    checkpoint_path = _resolve_train_checkpoint_path(model_dir)
+                    if checkpoint_path:
+                        total_epochs = _get_total_epochs_from_hp(task.hyperparameters, epochs)
+                        terminal_progress = max(
+                            terminal_progress,
+                            _progress_for_completed_epochs(completed_epochs, total_epochs),
+                        )
+                        task.progress = terminal_progress
+                        _persist_stop_checkpoint(
+                            task,
+                            model_dir,
+                            completed_epochs,
+                            lambda msg: update_log(msg, task_id, train_task=task),
+                        )
+                        update_log(
+                            '训练异常退出，但已保留可用断点；可选择单张 GPU 继续训练',
+                            task_id,
+                            train_task=task,
+                        )
+                    if isinstance(e, subprocess.CalledProcessError) and any(
+                        'torch.distributed' in str(part)
+                        for part in (e.cmd if isinstance(e.cmd, (list, tuple)) else [e.cmd])
+                    ):
+                        update_log(
+                            'DDP 子进程异常退出；完整 rank/CUDA/NCCL 原因请查看 '
+                            'ai-service 容器同期标准输出',
+                            task_id,
+                            train_task=task,
+                        )
                 db.session.commit()
 
             update_log(error_msg, task_id, train_task=task)
@@ -1594,7 +2024,7 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
                 train_status[task_id].update({
                     'status': 'stopped' if user_stopped else 'error',
                     'message': error_msg,
-                    'progress': train_status[task_id].get('progress', 0) if user_stopped else 0,
+                    'progress': terminal_progress,
                     **({} if user_stopped else {
                         'error_details': str(e),
                         'traceback': traceback.format_exc(),
@@ -1624,7 +2054,10 @@ def train_model(task_id, epochs=20, model_arch='yolov8n.pt',
 
                 try:
                     _cleanup_train_dataset_artifacts(
-                        model_dir_for_cleanup, ds_path, _log_cleanup
+                        model_dir_for_cleanup,
+                        ds_path,
+                        _log_cleanup,
+                        remove_uploaded_zip=False,
                     )
                 except Exception:
                     pass

@@ -11,9 +11,6 @@ import os
 # 注意：这些环境变量需要在导入onnxruntime之前设置
 if 'ORT_EXECUTION_PROVIDERS' not in os.environ:
     os.environ['ORT_EXECUTION_PROVIDERS'] = 'CPUExecutionProvider'
-# 隐藏GPU设备，避免onnxruntime-gpu在导入时尝试加载CUDA库
-if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 from typing import Optional, Tuple
 
@@ -120,4 +117,3 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
         
         # 如果所有方法都失败，抛出异常
         raise Exception(f"无法通过ultralytics库判断ONNX模型版本: {e}")
-

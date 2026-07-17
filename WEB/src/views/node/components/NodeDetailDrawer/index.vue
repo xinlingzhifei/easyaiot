@@ -16,7 +16,7 @@ import {
   readCephMountFromTags,
   isClusterComputeRole,
 } from '../../utils/constants';
-import { mediaDetailSchema, nodeSetupSummarySchema, storageDetailSchema, cephMountDetailSchema } from '../../Data';
+import { mediaDetailSchema, mqttDetailSchema, nodeSetupSummarySchema, storageDetailSchema, cephMountDetailSchema } from '../../Data';
 import NodeMetaBadge from '../NodeMetaBadge/index.vue';
 import { isPlatformNode } from '../../utils/platformNode';
 import SetupOverviewPanel from '../SetupOverviewPanel/index.vue';
@@ -46,6 +46,8 @@ const metricsLoading = ref(false);
 const isMediaNode = computed(
   () => node.value?.nodeRole === 'media' || node.value?.nodeRole === 'hybrid',
 );
+
+const isMqttNode = computed(() => node.value?.nodeRole === 'mqtt');
 
 const isStorageNode = computed(() => node.value?.nodeRole === 'storage');
 
@@ -80,6 +82,14 @@ const [registerMediaDesc] = useDescription({
   bordered: true,
   column: 2,
   schema: mediaDetailSchema,
+  data: node,
+});
+
+const [registerMqttDesc] = useDescription({
+  useCollapse: false,
+  bordered: true,
+  column: 2,
+  schema: mqttDetailSchema,
   data: node,
 });
 
@@ -298,6 +308,10 @@ defineExpose({
             <div v-if="isMediaNode" class="media-desc-block">
               <h4 class="detail-subtitle">{{ NODE_DETAIL.sectionMedia }}</h4>
               <Description @register="registerMediaDesc" />
+            </div>
+            <div v-if="isMqttNode" class="media-desc-block">
+              <h4 class="detail-subtitle">{{ NODE_DETAIL.sectionMqtt }}</h4>
+              <Description @register="registerMqttDesc" />
             </div>
             <div v-if="isStorageNode" class="media-desc-block">
               <h4 class="detail-subtitle">{{ NODE_DETAIL.sectionStorage }}</h4>

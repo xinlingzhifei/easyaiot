@@ -284,9 +284,12 @@ basiclab:
           mqtt-password: # MQTT 密码
           mqtt-ssl: false # MQTT 是否开启 SSL（生产环境建议 true）
           mqtt-client-id: # MQTT 客户端 ID
-          mqtt-topics: # MQTT 订阅的主题列表
+          mqtt-topics: # MQTT 订阅的主题列表（含算法总线 mqtt/iot-*）
             - "iot/#"
             - "shadow/#"
+            - "$share/algo-sink/mqtt/iot-alert-notification"
+            - "$share/algo-sink/mqtt/iot-snapshot-alert"
+            - "$share/algo-sink/mqtt/iot-post-process-request"
           mqtt-qos: 1 # MQTT QoS 级别（0-最多一次，1-至少一次，2-刚好一次）
           connect-timeout-seconds: 10 # 连接超时时间（秒）
           reconnect-delay-ms: 5000 # 重连延迟时间（毫秒）

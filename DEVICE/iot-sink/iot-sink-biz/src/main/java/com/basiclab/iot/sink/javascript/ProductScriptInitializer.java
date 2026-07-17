@@ -32,7 +32,7 @@ public class ProductScriptInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("[run][开始初始化产品脚本...]");
+        log.info("[run][开始初始化产品脚本... engine={}]", JsEngine.engineName());
 
         try {
             // 1. 从数据库加载所有启用的脚本

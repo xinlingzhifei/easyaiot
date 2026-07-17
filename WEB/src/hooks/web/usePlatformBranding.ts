@@ -45,10 +45,14 @@ function applyBrandingToDom(config: PlatformBrandingConfig): void {
 applyBrandingToDom(state.config)
 
 export function usePlatformBranding() {
-  function updateConfig(partial: Partial<PlatformBrandingConfig>): void {
-    Object.assign(state.config, partial)
-    savePlatformBrandingConfig({ ...state.config })
+  function updateConfig(partial: Partial<PlatformBrandingConfig>): boolean {
+    const next = { ...state.config, ...partial }
+    const ok = savePlatformBrandingConfig(next)
+    if (!ok)
+      return false
+    Object.assign(state.config, next)
     applyBrandingToDom(state.config)
+    return true
   }
 
   function resetConfig(): void {

@@ -37,8 +37,17 @@ export function isTrainAdvancedEnabled(): boolean {
   return !isMiniDeployProfile();
 }
 
-/** mini 形态不展示人脸库 / 车牌库 Tab */
+/** mini 形态不展示人脸库 / 车牌库 / 场景姿态库 Tab */
 export function isFacePlateLibraryEnabled(): boolean {
+  return !isMiniDeployProfile();
+}
+
+export function isScenarioPoseLibraryEnabled(): boolean {
+  return !isMiniDeployProfile();
+}
+
+/** mini 形态不支持无限联邦边缘集群，不展示边缘节点管理 */
+export function isEdgeNodeEnabled(): boolean {
   return !isMiniDeployProfile();
 }
 

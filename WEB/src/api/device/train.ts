@@ -78,6 +78,7 @@ export interface TrainStartConfig {
   datasetVersion?: string;
   use_gpu?: boolean;
   gpu_ids?: number[];
+  gpu_selection_manual?: boolean;
   taskId?: number;
   resume?: boolean;
   schedulePolicy?: TrainSchedulePolicy;

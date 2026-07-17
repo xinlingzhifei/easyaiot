@@ -97,7 +97,7 @@ public class AdminAuthServiceImpl implements AdminAuthService {
         AdminUserDO user = authenticate(reqVO.getUsername(), reqVO.getPassword());
 
         // 创建 Token 令牌，记录登录日志
-        return createTokenAfterLoginSuccess(user.getId(), reqVO.getUsername(), LoginLogTypeEnum.LOGIN_USERNAME);
+        return createTokenAfterLoginSuccess(user.getId(), reqVO.getUsername(), LoginLogTypeEnum.LOGIN_USERNAME, reqVO.getRememberMe());
     }
 
     @Override
@@ -164,11 +164,15 @@ public class AdminAuthServiceImpl implements AdminAuthService {
     }
 
     private AuthLoginRespVO createTokenAfterLoginSuccess(Long userId, String username, LoginLogTypeEnum logType) {
+        return createTokenAfterLoginSuccess(userId, username, logType, null);
+    }
+
+    private AuthLoginRespVO createTokenAfterLoginSuccess(Long userId, String username, LoginLogTypeEnum logType, Boolean rememberMe) {
         // 插入登陆日志
         createLoginLog(userId, username, logType, LoginResultEnum.SUCCESS);
         // 创建访问令牌
         OAuth2AccessTokenDO accessTokenDO = oauth2TokenService.createAccessToken(userId, getUserType().getValue(),
-                OAuth2ClientConstants.CLIENT_ID_DEFAULT, null);
+                OAuth2ClientConstants.CLIENT_ID_DEFAULT, null, rememberMe);
         // 构建返回结果
         return AuthConvert.INSTANCE.convert(accessTokenDO);
     }

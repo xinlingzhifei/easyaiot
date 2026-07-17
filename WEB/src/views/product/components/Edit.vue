@@ -70,6 +70,7 @@ import {
   IntFormSchemas,
   PropsSchemas,
   ServerSchemas,
+  ServiceParamSchemas,
   SubuctRender,
   SubuctSchemas,
   tabsOptions,
@@ -142,6 +143,9 @@ import {throttle} from 'lodash-es';
     if(functionType == 'services') {
       obj['propertyName'] = obj['serviceName']
       obj['propertyCode'] = obj['serviceCode']
+      // 保证参数数组存在，便于增加参数
+      if (!obj.inputParams) obj.inputParams = [];
+      if (!obj.outParams) obj.outParams = [];
     } else if(functionType == 'events') {
       obj['propertyName'] = obj['eventName']
       obj['propertyCode'] = obj['eventCode']
@@ -163,7 +167,8 @@ import {throttle} from 'lodash-es';
         break;
     }
     field.forEach((e) => {
-      if (obj[e]?.length) {
+      // 服务参数始终绑定渲染，便于空列表时也能「增加参数」
+      if (functionType === 'services' || obj[e]?.length) {
         setTimeout(() => {
           formRef.value.updateSchema({
             field: e,
@@ -171,7 +176,7 @@ import {throttle} from 'lodash-es';
               return SubuctRender({
                 btnClick: handleShowInner,
                 handleEdit,
-                list: obj[e],
+                list: obj[e] || [],
                 field: _field,
                 handleDel,
                 disabled: disabled.value,
@@ -244,6 +249,30 @@ import {throttle} from 'lodash-es';
         });
       }
     }
+    if (key === 'services') {
+      if (!params.value.inputParams) params.value.inputParams = [];
+      if (!params.value.outParams) params.value.outParams = [];
+      // 新增模式下绑定参数列表渲染
+      if (!hideTab.value) {
+        setTimeout(() => {
+          ['inputParams', 'outParams'].forEach((e) => {
+            formRef.value.updateSchema({
+              field: e,
+              render({ field: _field }) {
+                return SubuctRender({
+                  btnClick: handleShowInner,
+                  handleEdit,
+                  list: params.value[e] || [],
+                  field: _field,
+                  handleDel,
+                  disabled: disabled.value,
+                });
+              },
+            });
+          });
+        }, 100);
+      }
+    }
     tabsActive.value = key;
   };
 
@@ -264,7 +293,8 @@ import {throttle} from 'lodash-es';
     openInnerModal();
 
     nextTick(async () => {
-      innerRef.value.setSchemas([PropsSchemas], 'propertyCode');
+      const schemaFn = tabsActive.value === 'services' ? ServiceParamSchemas : PropsSchemas;
+      innerRef.value.setSchemas([schemaFn], 'propertyCode');
       await nextTick();
       //alert(1111);
       innerRef.value.handleChangeDataType('INT');
@@ -283,7 +313,8 @@ import {throttle} from 'lodash-es';
     }
     openInsideModal();
     nextTick(async () => {
-      innerInsideRef.value.setSchemas([PropsSchemas], 'propertyCode');
+      const schemaFn = tabsActive.value === 'services' ? ServiceParamSchemas : PropsSchemas;
+      innerInsideRef.value.setSchemas([schemaFn], 'propertyCode');
       await nextTick();
       innerInsideRef.value.handleChangeDataType('INT');
     });
@@ -306,7 +337,8 @@ import {throttle} from 'lodash-es';
 
       obj = params.value[field][i];
     }
-    tempRef.value.setSchemas([PropsSchemas], 'propertyCode');
+    const schemaFn = tabsActive.value === 'services' ? ServiceParamSchemas : PropsSchemas;
+    tempRef.value.setSchemas([schemaFn], 'propertyCode');
     tempRef.value.setData(obj);
 
     setTimeout(() => {

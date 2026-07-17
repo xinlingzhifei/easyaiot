@@ -19,11 +19,18 @@
         <result column="notification_sent" jdbcType="BOOLEAN" property="notificationSent"/>
         <result column="notification_sent_time" jdbcType="TIMESTAMP" property="notificationSentTime"/>
         <result column="correlation_id" jdbcType="VARCHAR" property="correlationId"/>
+        <result column="task_id" jdbcType="INTEGER" property="taskId"/>
+        <result column="task_name" jdbcType="VARCHAR" property="taskName"/>
+        <result column="edge_node_id" jdbcType="BIGINT" property="edgeNodeId"/>
+        <result column="edge_node_name" jdbcType="VARCHAR" property="edgeNodeName"/>
+        <result column="edge_node_host" jdbcType="VARCHAR" property="edgeNodeHost"/>
+        <result column="node_id" jdbcType="BIGINT" property="nodeId"/>
     </resultMap>
     
     <sql id="Base_Column_List">
         id, object, event, region, information, time, device_id, device_name, image_path, image_url, record_path, task_type, 
-        notify_users, channels, notification_sent, notification_sent_time, correlation_id
+        notify_users, channels, notification_sent, notification_sent_time, correlation_id,
+        task_id, task_name, edge_node_id, edge_node_name, edge_node_host, node_id
     </sql>
     
     <select id="selectById" parameterType="java.lang.Integer" resultMap="BaseResultMap">
@@ -35,7 +42,8 @@
     
     <insert id="insert" parameterType="com.basiclab.iot.sink.dal.dataobject.AlertDO" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         insert into alert (object, event, region, information, time, device_id, device_name, image_path, image_url, record_path, task_type, 
-                          notify_users, channels, notification_sent, notification_sent_time, correlation_id)
+                          notify_users, channels, notification_sent, notification_sent_time, correlation_id,
+                          task_id, task_name, edge_node_id, edge_node_name, edge_node_host, node_id)
         values (
             #{object,jdbcType=VARCHAR},
             #{event,jdbcType=VARCHAR},
@@ -52,7 +60,13 @@
             #{channels,jdbcType=VARCHAR},
             #{notificationSent,jdbcType=BOOLEAN},
             #{notificationSentTime,jdbcType=TIMESTAMP},
-            #{correlationId,jdbcType=VARCHAR}
+            #{correlationId,jdbcType=VARCHAR},
+            #{taskId,jdbcType=INTEGER},
+            #{taskName,jdbcType=VARCHAR},
+            #{edgeNodeId,jdbcType=BIGINT},
+            #{edgeNodeName,jdbcType=VARCHAR},
+            #{edgeNodeHost,jdbcType=VARCHAR},
+            #{nodeId,jdbcType=BIGINT}
         )
     </insert>
     

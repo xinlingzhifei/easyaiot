@@ -92,6 +92,20 @@ public class AlertNotificationMessage {
      */
     @JsonAlias("correlation_id")
     private String correlationId;
+
+    /** 边缘节点 edge_node.id（多 EDGE 数据区分） */
+    @JsonAlias({"edge_node_id", "edgeNodeId"})
+    private Long edgeNodeId;
+
+    @JsonAlias({"edge_node_name", "edgeNodeName"})
+    private String edgeNodeName;
+
+    @JsonAlias({"edge_node_host", "edgeNodeHost"})
+    private String edgeNodeHost;
+
+    /** compute_node.id */
+    @JsonAlias({"node_id", "nodeId", "compute_node_id"})
+    private Long nodeId;
     
     /**
      * 告警信息内部类

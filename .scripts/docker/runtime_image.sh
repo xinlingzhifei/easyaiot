@@ -180,6 +180,8 @@ source "${SCRIPT_DIR}/deploy_profile.sh"
 source "${SCRIPT_DIR}/init-build-cache-dirs.sh"
 # shellcheck source=runtime_image_common.sh
 source "${SCRIPT_DIR}/runtime_image_common.sh"
+# shellcheck source=docker_mirror_common.sh
+source "${SCRIPT_DIR}/docker_mirror_common.sh"
 
 runtime_load_registry
 REGISTRY=$(runtime_normalize_registry "${REGISTRY:-$RUNTIME_IMAGE_REGISTRY}")
@@ -251,7 +253,9 @@ APT_MIRROR_URL="${APT_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com/}"
 APK_MIRROR="${APK_MIRROR:-mirrors.tuna.tsinghua.edu.cn}"
-YUM_MIRROR_URL="${YUM_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
+# AlmaLinux 8 aarch64 在清华源已缺失，YUM 默认走华为云（Dockerfile.arm 还会探测回退）
+YUM_MIRROR_URL="${YUM_MIRROR_URL:-https://mirrors.huaweicloud.com}"
+# 阿里云：清华 maven-public 对 org.graalvm.* 常缺包（404），会导致 iot-sink-biz 编译失败
 MAVEN_MIRROR_URL="${MAVEN_MIRROR_URL:-https://maven.aliyun.com/repository/public}"
 
 if $NATIVE_SOURCE; then
@@ -1118,32 +1122,43 @@ build_all_modules() {
             ensure_docker_disk_space "$target_arch"
             export DOCKER_PLATFORM="$cross_platform"
 
-            # ★ 跨架构构建前预拉取 ARM 基础镜像（避免 install 脚本中 --pull=false 导致失败）
-            # pytorch/manylinuxaarch64-builder 约 10GB+，需预留足够时间和磁盘空间
-            local arm_base_images=(
-                "pytorch/manylinuxaarch64-builder:cuda12.9"
-            )
-            for base_img in "${arm_base_images[@]}"; do
-                if ! docker image inspect "$base_img" >/dev/null 2>&1; then
-                    print_info "预拉取 ARM 基础镜像: ${base_img}（约 10GB+，请耐心等待）..."
-                    if ! docker pull --platform "$DOCKER_PLATFORM" "$base_img"; then
-                        print_warning "预拉取失败: ${base_img}，构建时将由 install 脚本自动拉取"
+            # ★ 仅当本次构建包含 AI 时预拉取 pytorch 基础镜像（约 10GB+）
+            # 单模块 WEB/DEVICE/APP 等不应误触发 AI 依赖拉取
+            if runtime_build_includes_module AI; then
+                local arm_base_images=(
+                    "pytorch/manylinuxaarch64-builder:cuda12.9"
+                )
+                local base_img
+                for base_img in "${arm_base_images[@]}"; do
+                    if ! docker image inspect "$base_img" >/dev/null 2>&1; then
+                        print_info "预拉取 AI ARM 基础镜像: ${base_img}（约 10GB+，请耐心等待）..."
+                        if ! docker pull --platform "$DOCKER_PLATFORM" "$base_img"; then
+                            print_warning "预拉取失败: ${base_img}，构建时将由 install 脚本自动拉取"
+                        else
+                            print_success "AI ARM 基础镜像已就绪: ${base_img}"
+                        fi
                     else
-                        print_success "ARM 基础镜像已就绪: ${base_img}"
+                        print_info "AI ARM 基础镜像已存在: ${base_img}"
                     fi
-                else
-                    print_info "ARM 基础镜像已存在: ${base_img}"
-                fi
-            done
+                done
+            fi
         fi
 
-        # ★ ARM 构建前预下载 pip wheel / ffmpeg 到 .build-cache/arm/
+        # ★ ARM 构建前预下载 pip wheel / ffmpeg（仅 AI/VIDEO 需要，避免单模块 WEB 误跑）
         case "$target_arch" in
             arm64|arm32)
-                print_info "检查 ARM 离线缓存（.build-cache/arm/ pip-wheels + ffmpeg）..."
-                ensure_arm_python_wheels_cached "$PROJECT_ROOT"
-                ensure_arm_ffmpeg_cached "$PROJECT_ROOT"
-                stage_arm_ffmpeg_into_build_context "$PROJECT_ROOT" "${PROJECT_ROOT}/VIDEO" || true
+                local -a _arm_wheel_mods=()
+                runtime_build_includes_module AI && _arm_wheel_mods+=(ai)
+                runtime_build_includes_module VIDEO && _arm_wheel_mods+=(video)
+                if [ ${#_arm_wheel_mods[@]} -gt 0 ]; then
+                    print_info "检查 ARM 离线缓存（.build-cache/arm/ pip-wheels: ${_arm_wheel_mods[*]}）..."
+                    ensure_arm_python_wheels_cached "$PROJECT_ROOT" "${_arm_wheel_mods[@]}"
+                fi
+                if runtime_build_includes_module VIDEO; then
+                    print_info "检查 ARM ffmpeg 离线缓存..."
+                    ensure_arm_ffmpeg_cached "$PROJECT_ROOT"
+                    stage_arm_ffmpeg_into_build_context "$PROJECT_ROOT" "${PROJECT_ROOT}/VIDEO" || true
+                fi
                 ;;
         esac
 
@@ -1384,7 +1399,20 @@ print_local_runtime_image_list() {
 pull_and_tag_image() {
     local remote_ref="$1" local_ref="$2"
     print_info "docker pull ${remote_ref}"
-    docker pull "$remote_ref" || { print_warning "拉取失败: ${remote_ref}"; return 1; }
+    local pull_out pull_rc=0
+    set +e
+    pull_out=$(docker pull "$remote_ref" 2>&1)
+    pull_rc=$?
+    set -e
+    printf '%s\n' "$pull_out"
+    if [ "$pull_rc" -ne 0 ]; then
+        print_warning "拉取失败: ${remote_ref}"
+        if docker_error_is_dns_failure "$pull_out"; then
+            _print_host_dns_fix_guide
+            return 53
+        fi
+        return 1
+    fi
     print_info "打本地标签: ${remote_ref} → ${local_ref}"
     docker tag "$remote_ref" "$local_ref" || { print_error "打标签失败"; return 1; }
     print_success "${local_ref} 已就绪"
@@ -1439,6 +1467,15 @@ pull_all_images() {
     runtime_log_registry_info
     echo "  当前架构: ${CURRENT_ARCH}"; echo "  Tag: ${TAG}"; echo ""
     check_docker
+
+    # ★ 拉取前必须先修好宿主机 DNS（daemon.json dns 无法修复 dockerd 自身解析）
+    # 典型故障: lookup docker.cnb.cool on [::1]:53: connection refused
+    print_info "检查并修复宿主机 DNS（供 dockerd 解析镜像仓库）..."
+    if ! ensure_host_dns_for_docker "docker.cnb.cool"; then
+        print_error "宿主机 DNS 不可用，已中止拉取。请按上方指引修复 /etc/resolv.conf 后重试。"
+        return 1
+    fi
+
     select_pull_profile
     local pull_profile="${EASYAIOT_DEPLOY_PROFILE}"
 
@@ -1448,6 +1485,8 @@ pull_all_images() {
     local shared_ok=0 shared_fail=0 shared_skipped=0
     local device_pull_total
     device_pull_total=$(runtime_device_pull_count_for_profile "$pull_profile")
+    # 非 local：供循环内检测到 DNS 故障后置位
+    _EASYAIOT_DNS_ABORT=0
 
     # ---- 共享模块 ----
     print_header "阶段 1/2：拉取共享镜像（架构: ${CURRENT_ARCH}）"
@@ -1455,6 +1494,7 @@ pull_all_images() {
     print_info "DEVICE 镜像：${pull_profile} 形态需拉取 ${device_pull_total}/${#DEVICE_REMOTE_NAMES[@]} 个（其余运行时不会启动，已跳过）"
     echo ""
     for mapping in "${INDEPENDENT_MODULES[@]}"; do
+        [ "${_EASYAIOT_DNS_ABORT}" -eq 1 ] && break
         local rname="${mapping%%|*}"; local tmp="${mapping#*|}"; local lname="${tmp%%|*}"
         is_profile_dependent "$rname" && continue
 
@@ -1465,10 +1505,21 @@ pull_all_images() {
         if runtime_pull_should_skip_image "$lref" "$CURRENT_ARCH"; then
             print_info "${lref} 已存在（${CURRENT_ARCH}），跳过"; shared_ok=$((shared_ok + 1)); continue
         fi
-        pull_and_tag_image "$rref" "$lref" && shared_ok=$((shared_ok + 1)) || shared_fail=$((shared_fail + 1))
+        local _prc=0
+        pull_and_tag_image "$rref" "$lref" || _prc=$?
+        if [ "$_prc" -eq 0 ]; then
+            shared_ok=$((shared_ok + 1))
+        elif [ "$_prc" -eq 53 ]; then
+            _EASYAIOT_DNS_ABORT=1
+            shared_fail=$((shared_fail + 1))
+            break
+        else
+            shared_fail=$((shared_fail + 1))
+        fi
     done
     # DEVICE 模块（按部署形态过滤，仅拉取 compose 会启动的服务）
     for i in "${!DEVICE_REMOTE_NAMES[@]}"; do
+        [ "${_EASYAIOT_DNS_ABORT}" -eq 1 ] && break
         local rname="${DEVICE_REMOTE_NAMES[$i]}"; local lname="${DEVICE_LOCAL_NAMES[$i]}"
         if ! runtime_device_image_needed_for_pull "$i" "$pull_profile"; then
             print_info "跳过 ${rname} → ${lname}（${pull_profile} 形态不部署 ${DEVICE_COMPOSE_SERVICES[$i]}）"
@@ -1482,12 +1533,23 @@ pull_all_images() {
         if runtime_pull_should_skip_image "$lref" "$CURRENT_ARCH"; then
             print_info "${lref} 已存在（${CURRENT_ARCH}），跳过"; shared_ok=$((shared_ok + 1)); continue
         fi
-        pull_and_tag_image "$rref" "$lref" && shared_ok=$((shared_ok + 1)) || shared_fail=$((shared_fail + 1))
+        local _prc=0
+        pull_and_tag_image "$rref" "$lref" || _prc=$?
+        if [ "$_prc" -eq 0 ]; then
+            shared_ok=$((shared_ok + 1))
+        elif [ "$_prc" -eq 53 ]; then
+            _EASYAIOT_DNS_ABORT=1
+            shared_fail=$((shared_fail + 1))
+            break
+        else
+            shared_fail=$((shared_fail + 1))
+        fi
     done
 
     # APP 模块（仅 full 形态）
-    if [ "$pull_profile" = "full" ]; then
+    if [ "$pull_profile" = "full" ] && [ "${_EASYAIOT_DNS_ABORT}" -eq 0 ]; then
         for mapping in "${FULL_ONLY_MODULES[@]}"; do
+            [ "${_EASYAIOT_DNS_ABORT}" -eq 1 ] && break
             local rname="${mapping%%|*}"; local tmp="${mapping#*|}"; local lname="${tmp%%|*}"
             local rref; rref=$(remote_ref "$rname" "" "$CURRENT_ARCH")
             local lref; lref=$(local_ref "$lname")
@@ -1496,8 +1558,23 @@ pull_all_images() {
             if runtime_pull_should_skip_image "$lref" "$CURRENT_ARCH"; then
                 print_info "${lref} 已存在（${CURRENT_ARCH}），跳过"; shared_ok=$((shared_ok + 1)); continue
             fi
-            pull_and_tag_image "$rref" "$lref" && shared_ok=$((shared_ok + 1)) || shared_fail=$((shared_fail + 1))
+            local _prc=0
+            pull_and_tag_image "$rref" "$lref" || _prc=$?
+            if [ "$_prc" -eq 0 ]; then
+                shared_ok=$((shared_ok + 1))
+            elif [ "$_prc" -eq 53 ]; then
+                _EASYAIOT_DNS_ABORT=1
+                shared_fail=$((shared_fail + 1))
+                break
+            else
+                shared_fail=$((shared_fail + 1))
+            fi
         done
+    fi
+
+    if [ "${_EASYAIOT_DNS_ABORT}" -eq 1 ]; then
+        print_error "因宿主机 DNS 故障已中止后续拉取（避免无意义重试）。请先修复 /etc/resolv.conf。"
+        return 1
     fi
 
     # 共享镜像总数 = 非形态相关的独立模块 + 当前形态需要的 DEVICE +（full 时）APP
@@ -1531,9 +1608,15 @@ pull_all_images() {
             record_web_deploy_profile_built "${PROJECT_ROOT}"
             continue
         fi
-        if pull_and_tag_image "$rref" "$lref"; then
+        local _prc=0
+        pull_and_tag_image "$rref" "$lref" || _prc=$?
+        if [ "$_prc" -eq 0 ]; then
             web_ok=$((web_ok + 1))
             record_web_deploy_profile_built "${PROJECT_ROOT}"
+        elif [ "$_prc" -eq 53 ]; then
+            web_fail=$((web_fail + 1))
+            print_error "因宿主机 DNS 故障已中止 WEB 镜像拉取。"
+            return 1
         else
             web_fail=$((web_fail + 1))
         fi

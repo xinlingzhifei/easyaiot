@@ -370,3 +370,93 @@ export const disableExtractor = (cameraName) => {
 export const getExtractorLogs = (cameraName, params) => {
   return commonApi('get', `${Api.DeployService}/extractor/${cameraName}/logs`, {params});
 };
+
+// ================= 姿态分析接口 =================
+const poseFormPost = (url: string, formData: FormData) => {
+  return defHttp.post({
+    url,
+    data: formData,
+    transformRequest: [(data, headers) => {
+      if (typeof FormData !== 'undefined' && data instanceof FormData) {
+        if ((headers as any)?.delete) {
+          (headers as any).delete('Content-Type');
+          (headers as any).delete('content-type');
+        } else if (headers) {
+          delete (headers as Record<string, any>)['Content-Type'];
+          delete (headers as Record<string, any>)['content-type'];
+        }
+      }
+      return data;
+    }],
+    timeout: 10 * 60 * 1000,
+    headers: {
+      'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+    },
+  }, {
+    isTransformResponse: false,
+  });
+};
+
+/** 图片姿态估计（同步） */
+export const posePredict = (modelId: number, formData: FormData) => {
+  return poseFormPost(`/model/pose/${modelId}/predict`, formData);
+};
+
+/** 视频姿态估计（异步），返回 jobId */
+export const posePredictVideo = (modelId: number, formData: FormData) => {
+  return poseFormPost(`/model/pose/${modelId}/predict-video`, formData);
+};
+
+/** 查询姿态视频任务进度 */
+export const poseVideoProgress = (jobId: string) => {
+  return defHttp.get({
+    url: `/model/pose/progress/${jobId}`,
+    timeout: 10 * 60 * 1000,
+    headers: {
+      'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+    },
+  }, {
+    isTransformResponse: false,
+  });
+};
+
+/** 下载姿态输出视频 */
+export const poseOutputVideo = (filename: string) => {
+  return defHttp.get({
+    url: `/model/pose/output/${encodeURIComponent(filename)}`,
+    responseType: 'blob',
+    timeout: 10 * 60 * 1000,
+    headers: {
+      'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+    },
+  }, {
+    isTransformResponse: false,
+  });
+};
+
+/** 启动摄像头姿态 RTSP 推流 */
+export const poseRtspStart = (modelId: number, formData: FormData) => {
+  return poseFormPost(`/model/pose/${modelId}/rtsp/start`, formData);
+};
+
+/** 停止姿态 RTSP 推流 */
+export const poseRtspStop = (payload: {
+  device_id?: string;
+  record_id?: number;
+  stop_all?: boolean;
+}) => {
+  return defHttp.post({
+    url: '/model/pose/rtsp/stop',
+    data: payload,
+    headers: {
+      'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+    },
+  }, {
+    isTransformResponse: false,
+  });
+};
+
+/** 获取可用姿态模型列表 */
+export const getPoseModels = () => {
+  return commonApi('get', '/model/pose/models');
+};

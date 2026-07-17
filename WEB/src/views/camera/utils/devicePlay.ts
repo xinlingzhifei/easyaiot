@@ -23,6 +23,41 @@ import {
 
 export type DevicePlayModalOpener = (visible: boolean, data: Record<string, any>) => void;
 
+function parseProviderJson(value: unknown): Record<string, any> | null {
+  if (!value) return null;
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从设备记录中提取火山 RTC（volc）播放地址 */
+export function extractVolcLiveUrl(record: Record<string, any> | null | undefined): string | null {
+  if (!record) return null;
+  const provider =
+    parseProviderJson(record.provider) ||
+    parseProviderJson(record.live_provider) ||
+    parseProviderJson(record.providerJson) ||
+    parseProviderJson(record.provider_json);
+
+  const providerType = String(
+    provider?.url_type || provider?.type || record.providerType || record.urlType || '',
+  ).toLowerCase();
+  const providerUrl = String(provider?.url || '').trim();
+  if (providerType === 'volc' && providerUrl) return providerUrl;
+
+  for (const candidate of [record.source, record.url, record.directUrl]) {
+    const value = String(candidate || '').trim();
+    if (!value) continue;
+    if (value.startsWith('volc://')) return decodeURIComponent(value.slice('volc://'.length));
+  }
+  return null;
+}
+
 export function isGb28181DeviceRecord(record: { source?: string | null; device_kind?: string }) {
   return isGb28181Device(record.source, record.device_kind);
 }
@@ -30,6 +65,7 @@ export function isGb28181DeviceRecord(record: { source?: string | null; device_k
 export function hasDirectPlayStream(record: Record<string, any>, ai = false): boolean {
   if (isGb28181DeviceRecord(record)) return false;
   if ((record as { device_kind?: string }).device_kind === 'gb28181_sip') return false;
+  if (!ai && extractVolcLiveUrl(record as Record<string, any>)) return true;
   if (ai) {
     return !!(record.ai_http_stream || record.ai_rtmp_stream);
   }
@@ -65,17 +101,6 @@ export const AI_PLAY_FALLBACK_MS = 2500;
 export const AI_STREAM_LOAD_TIMEOUT_SEC = 3;
 export const AI_STREAM_HEART_TIMEOUT_SEC = 8;
 
-const LOCAL_STREAM_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
-/** SRS HTTP-FLV / ZLM ws-flv 端口：mini 形态经 nginx 同页代理，浏览器不应直连 */
-const MEDIA_PROXY_PORTS = new Set(['8080', '6080']);
-
-/** 流是否在远端集群 SRS/ZLM 节点（页面 nginx 无法代理，须保留原 host） */
-function isRemoteClusterStreamHost(streamHost: string, pageHostname: string): boolean {
-  if (!streamHost || !pageHostname) return false;
-  if (LOCAL_STREAM_HOSTS.has(streamHost) || LOCAL_STREAM_HOSTS.has(pageHostname)) return false;
-  return streamHost !== pageHostname;
-}
-
 /** 将服务端生成的 127.0.0.1/localhost 流地址改写为当前页面主机名，便于浏览器拉流 */
 export function rewriteStreamUrlForBrowser(url: string): string {
   return rewriteStreamUrlForBrowserForBrowser(url);
@@ -86,6 +111,8 @@ export function rewriteStreamUrlForBrowser(url: string): string {
  * 例如页面在 http://localhost:8888 打开时，
  * http://33.150.1.104:8080/ai/xxx.flv -> http://localhost:8888/ai/xxx.flv
  * 仅替换 host，协议与路径保持不变。
+ * forcePageProxy 用于明确知道当前页面 nginx 已代理媒体路径的入口，避免反向代理页面
+ * 仍按服务端返回的远端 host:port 直连媒体服务。
  */
 export function rewriteStreamHostToPageHost(url: string): string {
   return rewriteStreamUrlForBrowserForBrowser(url);
@@ -106,6 +133,16 @@ export function normalizeJessibucaPlayUrl(url: string): string {
     if (/^\/(ai|live)\//i.test(parsed.pathname)) {
       if (parsed.protocol === 'ws:') parsed.protocol = 'http:';
       if (parsed.protocol === 'wss:') parsed.protocol = 'https:';
+      // https 页面直连 http-flv 会被浏览器按 mixed-content 拦截。
+      // 仅升级已改写成页面 host 的地址（单机经页面 nginx 反代，随页面出 https）；
+      // 远端集群节点 host 未改写、其 8080 未必有 TLS，不能盲目升级。
+      if (
+        window.location.protocol === 'https:' &&
+        parsed.protocol === 'http:' &&
+        parsed.host === window.location.host
+      ) {
+        parsed.protocol = 'https:';
+      }
       return parsed.toString();
     }
     return trimmed;

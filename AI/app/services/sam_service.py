@@ -194,6 +194,9 @@ class SamService:
             parsed['engine'] = self._engine
             parsed['prompt_type'] = prompt_type
             parsed['orig_shape'] = [h, w]
+            parsed['result_image_base64'] = self._encode_result_image(
+                bgr, parsed, return_masks=return_masks,
+            )
             return parsed
         finally:
             self._model_lock.release()
@@ -341,6 +344,22 @@ class SamService:
             'predictions': predictions,
             'masks': masks_out if return_masks else [],
         }
+
+    @staticmethod
+    def _encode_result_image(bgr: np.ndarray, parsed: dict, *, return_masks: bool) -> str:
+        """生成带类别标签的 JPEG 结果图（base64，无前缀）。"""
+        from app.utils.sam_visualize import render_sam_result_image
+
+        annotated = render_sam_result_image(
+            bgr,
+            parsed.get('predictions'),
+            parsed.get('masks'),
+            draw_masks=return_masks,
+        )
+        ok, buf = cv2.imencode('.jpg', annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        if not ok:
+            raise RuntimeError('SAM 结果图编码失败')
+        return base64.b64encode(buf.tobytes()).decode('ascii')
 
     @staticmethod
     def _bbox_to_mask_contour(bbox, img_w, img_h) -> Optional[dict]:

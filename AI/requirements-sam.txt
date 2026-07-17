@@ -6,3 +6,7 @@ git+https://github.com/facebookresearch/segment-anything.git
 pycocotools>=2.0.7
 # SAM 3.1 权重从魔塔 ModelScope 下载（facebook/sam3.1）
 modelscope>=1.20.0
+# SAM3 文本 tokenizer（ultralytics build_sam3 依赖；sam_service monkey-patch 需要 import clip）
+openai-clip>=1.0
+# SAM3 视觉骨干（ultralytics SAM3 构建依赖）
+timm>=1.0.0

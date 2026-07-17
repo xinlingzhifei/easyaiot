@@ -6,7 +6,7 @@ services:
     image: ai-service:latest
     container_name: ai-service
     user: root
-    # runtime: nvidia  # 由 install_linux.sh 检测到 GPU 后自动启用
+    # GPU 设备申请由 install_linux.sh 生成本机专用 override 文件，基础模板保持 CPU 可用。
 
     # 业务源码经卷挂载（见下方 volumes 的 ./:/app）后，用 sh 调用入口脚本，
     # 这样宿主机 docker-entrypoint.sh 即使没有可执行位也能正常启动。
@@ -45,6 +45,7 @@ services:
       - ./yolo11n.pt:/app/yolo11n.pt
       - ./yolov8n.pt:/app/yolov8n.pt
       - ./yolo26n.pt:/app/yolo26n.pt
+      - ./yolo26n-pose.pt:/app/yolo26n-pose.pt
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
       - ./.env.docker:/app/.env:ro
       # mini 形态不启 MinIO 服务时，只读挂载 flat 种子数据供懒加载/启动同步
@@ -55,7 +56,6 @@ services:
       # GPU相关配置
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       # Python环境
       - PYTHONUNBUFFERED=${PYTHONUNBUFFERED:-1}
       # 源码经 ./:/app 卷挂载且容器以 root 运行，禁止写 .pyc，避免 root 属主的
@@ -109,14 +109,15 @@ services:
       # 时区配置
       - TZ=${TZ:-Asia/Shanghai}
       # Ultralytics (YOLO) 配置目录
-      - YOLO_CONFIG_DIR=${YOLO_CONFIG_DIR:-/tmp/Ultralytics}
+      - YOLO_CONFIG_DIR=${YOLO_CONFIG_DIR:-/tmp}
+      - MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/matplotlib}
       # PaddleX 临时目录（通过环境变量或使用默认的 /home/appuser/.paddlex）
       # 代理配置（可选）
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1}
       # GPU配置
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      #- NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
 
     # 资源限制（GPU 配置，如果 NVIDIA Container Toolkit 未配置，请注释掉以下部分）
     # deploy:

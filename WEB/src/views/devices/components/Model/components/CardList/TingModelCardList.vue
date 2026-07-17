@@ -1,55 +1,62 @@
 <template>
-  <div class="model-card-list-wrapper p-2">
-    <div class="p-2 bg-white">
-      <Spin :spinning="state.loading">
-        <List
-          :grid="{ gutter: 12, xs: 1, sm: 2, md: 4, lg: 6, xl: 8, xxl: 8 }"
-          :data-source="data"
-          :pagination="paginationProp"
-          class="model-list"
-        >
-          <template #renderItem="{ item }">
-            <ListItem class="model-item">
-              <div class="model-info">
-                <div class="title">
-                  <span class="title-text">{{ item.propertyName }}</span>
-                  <Icon icon="ant-design:question-circle-outlined" class="help-icon" />
+  <div class="model-card-list-wrapper">
+    <Spin :spinning="state.loading">
+      <List
+        :grid="{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 4, xxl: 4 }"
+        :data-source="data"
+        :pagination="paginationProp"
+        class="model-list"
+      >
+        <template #renderItem="{ item }">
+          <ListItem class="model-item">
+            <div class="prop-card">
+              <div class="card-header">
+                <div class="title-wrap">
+                  <Tooltip :title="fullTitle(item)" placement="topLeft">
+                    <span class="title">
+                      <span class="name">{{ item.propertyName || '--' }}</span>
+                      <span v-if="item.propertyCode" class="code">({{ item.propertyCode }})</span>
+                    </span>
+                  </Tooltip>
                 </div>
-                <div class="value">
-                  <span>{{ item.dataValue == null ? "null" : item.dataValue }}</span>
-                  <span class="unit" v-if="item.unit">{{ item.unit }}</span>
+                <span class="type-tag">属性</span>
+              </div>
+
+              <div class="card-body">
+                <Tooltip :title="fullValue(item)" placement="top">
+                  <div class="value-line" :class="valueClass(item)">
+                    <span class="value">{{ fullValue(item) }}</span>
+                  </div>
+                </Tooltip>
+              </div>
+
+              <div class="card-footer">
+                <div class="time">
+                  <Icon icon="ant-design:clock-circle-outlined" class="time-icon" />
+                  <span>{{ item.ts == 0 ? '--' : formatTime(item.ts) }}</span>
                 </div>
-                <div class="props">
-                  <div class="prop">
-                    <div class="label">键</div>
-                    <div class="value-text">{{ item.propertyCode || '--' }}</div>
-                  </div>
-                  <div class="prop">
-                    <div class="label">更新时间</div>
-                    <div class="value-text">{{ item.ts == 0 ? '--' : formatTime(item.ts) }}</div>
-                  </div>
-                </div>
-                <div class="actions">
-                  <div class="action-btn" @click="handleRefresh(item)">
-                    <Icon icon="ant-design:redo-outlined" />
-                    <span>刷新</span>
-                  </div>
-                  <div class="action-btn" @click="handleView(item)">
-                    <Icon icon="ant-design:eye-filled" />
-                    <span>详情</span>
-                  </div>
+                <div class="footer-actions" @click.stop>
+                  <button type="button" class="history-btn" @click="handleView(item)">
+                    <Icon icon="ant-design:line-chart-outlined" />
+                    <span>历史</span>
+                  </button>
+                  <Tooltip title="刷新">
+                    <button type="button" class="icon-btn" @click="handleRefresh(item)">
+                      <Icon icon="ant-design:reload-outlined" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
-            </ListItem>
-          </template>
-        </List>
-      </Spin>
-    </div>
+            </div>
+          </ListItem>
+        </template>
+      </List>
+    </Spin>
   </div>
 </template>
 <script lang="ts" setup>
 import {onMounted, reactive, ref, watch} from 'vue';
-import {List, Spin} from 'ant-design-vue';
+import {List, Spin, Tooltip} from 'ant-design-vue';
 import {Icon} from '@/components/Icon';
 import {propTypes} from '@/utils/propTypes';
 import {isFunction} from '@/utils/is';
@@ -57,81 +64,101 @@ import {formatToDateTime} from '@/utils/dateUtil';
 
 const ListItem = List.Item;
 
-// 组件接收参数
 const props = defineProps({
-  // 请求API的参数
   params: propTypes.object.def({}),
-  //api
   api: propTypes.func,
-  // 当前激活的视图
   activeKey: propTypes.string.def('card'),
-  // 搜索参数
   searchParams: propTypes.object.def({}),
 });
-//暴露内部方法
-const emit = defineEmits(['getMethod', 'refresh', 'view', 'tabChange']);
 
-// 切换视图
-function handleTabChange(key: string) {
-  emit('tabChange', key);
-}
-void handleTabChange;
+const emit = defineEmits(['getMethod', 'refresh', 'view', 'tabChange', 'loaded']);
 
-//数据
 const data = ref([]);
+const total = ref(0);
 
 const state = reactive({
   loading: true,
 });
 
-// 格式化时间
 function formatTime(ts: number) {
   if (!ts) return '--';
   return formatToDateTime(ts);
 }
 
-// 自动请求并暴露内部方法
-onMounted(() => {
-  fetch();
-  emit('getMethod', fetch);
-});
+function displayValue(item: any) {
+  if (item?.dataValue == null || item?.dataValue === '') return '--';
+  return String(item.dataValue);
+}
 
-async function fetch(p = {}) {
+function fullValue(item: any) {
+  const val = displayValue(item);
+  if (val === '--') return '--';
+  return item.unit ? `${val}${item.unit}` : val;
+}
+
+function fullTitle(item: any) {
+  if (item?.propertyCode) {
+    return `${item.propertyName || '--'} (${item.propertyCode})`;
+  }
+  return item?.propertyName || '--';
+}
+
+function valueClass(item: any) {
+  const val = fullValue(item);
+  if (val === '--') return 'is-empty';
+  if (val.length > 20) return 'is-long';
+  if (val.length > 12) return 'is-medium';
+  return 'is-short';
+}
+
+async function fetch(p: Record<string, any> = {}, options: { silent?: boolean } = {}) {
   const {api, params, searchParams} = props;
   if (api && isFunction(api)) {
-    const res = await api({
-      ...params, 
-      ...searchParams,
-      pageNo: page.value, 
-      pageSize: pageSize.value, 
-      ...p
-    });
-    data.value = res.data;
-    total.value = res.total;
-    hideLoading();
+    const silent = !!options.silent;
+    if (!silent) {
+      state.loading = true;
+    }
+    try {
+      const res = await api({
+        ...params,
+        ...searchParams,
+        pageNo: page.value,
+        pageSize: pageSize.value,
+        ...p,
+      });
+      data.value = res.data;
+      total.value = res.total;
+      emit('loaded', res.total ?? 0);
+    } finally {
+      state.loading = false;
+    }
   }
 }
 
-// 监听搜索参数变化
+function reload(p: Record<string, any> = {}, options: { silent?: boolean } = {}) {
+  return fetch(p, options);
+}
+
+onMounted(() => {
+  fetch();
+  emit('getMethod', reload);
+});
+
 watch(() => props.searchParams, () => {
+  page.value = 1;
   fetch();
 }, { deep: true });
 
-function hideLoading() {
-  state.loading = false;
-}
-
-//分页相关
 const page = ref(1);
-const pageSize = ref(8);
-const total = ref(0);
+const pageSize = ref(12);
 const paginationProp = ref({
-  showSizeChanger: false,
+  showSizeChanger: true,
   showQuickJumper: true,
   pageSize,
   current: page,
   total,
-  showTotal: (total: number) => `总 ${total} 条`,
+  pageSizeOptions: ['12', '24', '48'],
+  showTotal: (t: number) => `共 ${t} 条`,
   onChange: pageChange,
   onShowSizeChange: pageSizeChange,
 });
@@ -143,6 +170,7 @@ function pageChange(p: number, pz: number) {
 }
 
 function pageSizeChange(_current, size: number) {
+  page.value = 1;
   pageSize.value = size;
   fetch();
 }
@@ -156,6 +184,12 @@ async function handleView(record: object) {
 }
 </script>
 <style lang="less" scoped>
+@primary: #1890ff;
+@title: #262626;
+@secondary: #8c8c8c;
+@border: #e8e8e8;
+@bg: #fafafa;
+
 .model-card-list-wrapper {
   background: transparent;
 
@@ -164,211 +198,212 @@ async function handleView(record: object) {
     background: transparent;
   }
 
+  :deep(.ant-list-pagination) {
+    margin-top: 16px;
+    text-align: right;
+  }
+
   :deep(.ant-list-item) {
-    margin: 0 0 12px 0;
+    margin: 0 0 16px;
     padding: 0;
     border: none;
+    height: 100%;
   }
 
   :deep(.model-item) {
-    overflow: hidden;
-    // 浅灰色光幕阴影 - 柔和光感
-    box-shadow: 
-      0 2px 8px rgba(0, 0, 0, 0.04),
-      0 4px 16px rgba(0, 0, 0, 0.03),
-      0 8px 32px rgba(0, 0, 0, 0.02);
-    border-radius: 12px;
-    padding: 12px;
-    position: relative;
-    // 白淡灰背景
-    background: #fafafa;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    min-height: 140px;
     height: 100%;
-    // 浅灰色边框
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    display: flex;
-    align-items: stretch;
+  }
 
-    // 悬停效果 - 光幕阴影增强
+  .prop-card {
+    height: 156px;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px 12px;
+    border-radius: 6px;
+    border: 1px solid @border;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    overflow: hidden;
+
     &:hover {
-      box-shadow: 
-        0 4px 12px rgba(0, 0, 0, 0.06),
-        0 8px 24px rgba(0, 0, 0, 0.04),
-        0 16px 48px rgba(0, 0, 0, 0.03);
-      transform: translateY(-2px);
-      border-color: rgba(0, 0, 0, 0.1);
-      background: #ffffff;
+      border-color: #91caff;
+      box-shadow: 0 2px 8px rgba(24, 144, 255, 0.12);
     }
 
-    .model-info {
-      flex: 1;
+    .card-header {
       display: flex;
-      flex-direction: column;
+      align-items: flex-start;
       justify-content: space-between;
-      min-width: 0;
+      gap: 10px;
+      margin-bottom: 8px;
+
+      .title-wrap {
+        flex: 1;
+        min-width: 0;
+      }
 
       .title {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 22px;
 
-        .title-text {
+        .name {
+          font-size: 14px;
+          font-weight: 500;
+          color: @title;
+        }
+
+        .code {
+          margin-left: 4px;
           font-size: 13px;
-          font-weight: 600;
-          color: #434343;
-          line-height: 1.4;
-          flex: 1;
+          font-weight: 400;
+          color: @secondary;
+        }
+      }
+
+      .type-tag {
+        flex-shrink: 0;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 11px;
+        background: #e6f4ff;
+        color: @primary;
+        font-size: 12px;
+        line-height: 22px;
+        font-weight: 400;
+      }
+    }
+
+    .card-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 0;
+      padding: 4px 0 8px;
+
+      .value-line {
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        max-width: 100%;
+        min-width: 0;
+        color: @primary;
+        line-height: 1.25;
+
+        .value {
+          min-width: 0;
+          max-width: 100%;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          letter-spacing: 0.01em;
+          font-weight: 500;
+          font-variant-numeric: tabular-nums;
         }
 
-        .help-icon {
-          color: #8c8c8c;
-          font-size: 13px;
-          cursor: help;
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          opacity: 0.6;
-          margin-left: 6px;
-          flex-shrink: 0;
+        &.is-short .value {
+          font-size: 28px;
+        }
 
-          &:hover {
-            color: #595959;
-            opacity: 1;
-            transform: scale(1.1);
+        &.is-medium .value {
+          font-size: 20px;
+        }
+
+        &.is-long .value {
+          font-size: 15px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+        }
+
+        &.is-empty {
+          color: #bfbfbf;
+
+          .value {
+            font-size: 24px;
+            font-weight: 400;
           }
         }
       }
+    }
 
-      .value {
-        padding: 12px;
-        font-size: 20px;
-        font-weight: 700;
-        color: #262626;
-        text-align: center;
-        background: #ffffff;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        // 浅灰色内部阴影和边框
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        box-shadow: 
-          inset 0 1px 2px rgba(0, 0, 0, 0.02),
-          0 1px 3px rgba(0, 0, 0, 0.04);
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid #f0f0f0;
+      min-width: 0;
+
+      .time {
         display: flex;
         align-items: center;
-        justify-content: center;
         gap: 4px;
-        min-height: 50px;
-        position: relative;
-        // 白色背景
-        background: #ffffff;
+        min-width: 0;
+        font-size: 12px;
+        color: @secondary;
+        line-height: 20px;
 
-        .unit {
-          font-size: 11px;
-          font-weight: 500;
-          color: #8c8c8c;
-          letter-spacing: 0.02em;
+        .time-icon {
+          flex-shrink: 0;
+          font-size: 12px;
+          color: #bfbfbf;
         }
-      }
 
-      .props {
-        margin-bottom: 10px;
-        flex: 1;
-
-        .prop {
-          margin-bottom: 6px;
-
-          &:last-child {
-            margin-bottom: 0;
-          }
-
-          .label {
-            font-size: 12px;
-            font-weight: 600;
-            color: #8c8c8c;
-            line-height: 1.5;
-            margin-bottom: 4px;
-            letter-spacing: 0.01em;
-            text-transform: uppercase;
-          }
-
-          .value-text {
-            font-size: 13px;
-            font-weight: 500;
-            color: #434343;
-            line-height: 1.5;
-            word-break: break-word;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-          }
-        }
-      }
-
-      .actions {
-        display: flex;
-        gap: 6px;
-        padding-top: 10px;
-        border-top: 1px solid rgba(0, 0, 0, 0.08);
-
-        .action-btn {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 4px;
-          padding: 6px 10px;
-          border-radius: 8px;
-          // 白淡灰按钮背景
-          background: #ffffff;
-          color: #595959;
-          font-size: 11px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          // 浅灰色光幕按钮阴影
-          box-shadow: 
-            0 1px 3px rgba(0, 0, 0, 0.04),
-            0 2px 6px rgba(0, 0, 0, 0.03);
-          position: relative;
+        span {
           overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
 
-          // 悬停效果 - 浅灰色光幕
-          &:hover {
-            background: #f5f5f5;
-            color: #262626;
-            border-color: rgba(0, 0, 0, 0.12);
-            box-shadow: 
-              0 2px 6px rgba(0, 0, 0, 0.06),
-              0 4px 12px rgba(0, 0, 0, 0.04);
-            transform: translateY(-1px);
-          }
+      .footer-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
 
-          // 点击效果
-          &:active {
-            background: #f0f0f0;
-            color: #1a1a1a;
-            box-shadow: 
-              0 1px 3px rgba(0, 0, 0, 0.05),
-              inset 0 1px 2px rgba(0, 0, 0, 0.04);
-            transform: translateY(0);
-          }
+      .history-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 24px;
+        padding: 0 8px;
+        border: none;
+        border-radius: 4px;
+        background: #e6f4ff;
+        color: @primary;
+        font-size: 12px;
+        line-height: 24px;
+        cursor: pointer;
+        transition: background 0.2s ease;
 
-          :deep(.anticon) {
-            font-size: 12px;
-            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          }
+        &:hover {
+          background: #bae0ff;
+        }
+      }
 
-          // 图标悬停动画
-          &:hover :deep(.anticon) {
-            transform: scale(1.1);
-          }
+      .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid @border;
+        border-radius: 4px;
+        background: #fff;
+        color: @secondary;
+        cursor: pointer;
+        transition: color 0.2s ease, border-color 0.2s ease;
+
+        &:hover {
+          color: @primary;
+          border-color: #91caff;
         }
       }
     }

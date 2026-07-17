@@ -380,7 +380,7 @@ services:
     networks:
       - yfeieye-network
 
-  # EMQX MQTT Broker（默认不启动；EASYAIOT_ENABLE_EMQX=1 或 docker compose --profile emqx up）
+  # EMQX MQTT Broker（mini 默认不启动；standard/full 或 EASYAIOT_ENABLE_EMQX=1 / --profile emqx）
   EMQX:
     profiles: ["emqx"]
     image: emqx/emqx:5.8.7

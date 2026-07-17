@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
+\restrict tkhRGoOleUb8qmUuzZHq8ku7GXlg6Z5vRZgibRA0Zwpyw1riQ1ca3Q8dC0ChoNp
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "ruoyi-vue-pro20";
 CREATE DATABASE "ruoyi-vue-pro20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
+\unrestrict tkhRGoOleUb8qmUuzZHq8ku7GXlg6Z5vRZgibRA0Zwpyw1riQ1ca3Q8dC0ChoNp
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='ruoyi-vue-pro20'"
-\restrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
+\restrict tkhRGoOleUb8qmUuzZHq8ku7GXlg6Z5vRZgibRA0Zwpyw1riQ1ca3Q8dC0ChoNp
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -16613,8 +16613,8 @@ COPY public.qrtz_paused_trigger_grps (sched_name, trigger_group) FROM stdin;
 --
 
 COPY public.qrtz_scheduler_state (sched_name, instance_name, last_checkin_time, checkin_interval) FROM stdin;
-schedulerName	ubuntu1781145770907	1781201294148	15000
-schedulerName	ubuntu1781145805360	1781201294822	15000
+schedulerName	ubuntu1784183090997	1784194448243	15000
+schedulerName	ubuntu1784164969339	1784194449706	15000
 \.
 
 
@@ -20210,6 +20210,8 @@ COPY public.system_login_log (id, log_type, trace_id, user_id, user_type, userna
 3076	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 00:36:56.41513	\N	2026-06-12 00:36:56.41513	0	1
 3077	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 01:12:21.251442	\N	2026-06-12 01:12:21.251442	0	1
 3078	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-06-12 01:44:18.833648	\N	2026-06-12 01:44:18.833648	0	1
+3079	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-07-13 16:23:15.866892	\N	2026-07-13 16:23:15.866892	0	1
+3080	100		1	2	admin	0	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36	\N	2026-07-16 09:27:50.128874	\N	2026-07-16 09:27:50.128874	0	1
 \.
 
 
@@ -21081,13 +21083,12 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 1070	生成案例		2	22	1	code/demo	ep:aim	infra/testDemo/index	\N	0	t	t	t		2021-02-06 12:42:49	1	2024-12-26 14:41:21.235	0
 2799	设备分组查询	device:device-group:query	3	1	2798				\N	0	t	t	t		2024-07-11 05:21:49.127724		2024-07-11 05:21:49.127724	0
 2835	OTA升级任务查询	device:ota-tasks:query	3	1	2834				\N	0	t	t	t		2024-07-11 05:24:03.379076		2024-07-11 05:24:03.379076	1
-2804	设备日志		2	10	2761	device-log	ant-design:appstore-twotone	device/device_log/index	DeviceLog	0	t	t	t		2024-07-11 05:22:40.397952	1	2024-07-11 11:59:14.31	0
-2798	设备分组		2	2	2761	device-group	ant-design:trophy-filled	device/device_group/index	DeviceGroup	0	t	t	t		2024-07-11 05:21:49.127724	1	2024-07-11 11:58:58.822	0
-2840	产品列表		2	0	2939	product	ant-design:euro-outlined	device/product/index	Product	0	t	t	t		2024-07-11 05:24:19.66822	1	2024-07-22 13:23:02.289	0
 2841	产品查询	device:product:query	3	1	2931					0	t	t	t		2024-07-11 05:24:19.66822	1	2024-07-22 13:23:50.543	0
-2810	设备Topic		2	5	2761	device-topic	ant-design:api-filled	device/device_topic/index	DeviceTopic	0	t	t	t		2024-07-11 05:22:55.437016	1	2024-07-11 11:59:07.596	0
 2842	产品创建	device:product:create	3	2	2931					0	t	t	t		2024-07-11 05:24:19.66822	1	2024-07-22 13:23:57.884	0
 2892	产品模板删除	device:product-template:delete	3	4	2888				\N	0	t	t	t		2024-07-11 05:26:18.024696		2024-07-11 05:26:18.024696	0
+2810	设备Topic		2	5	2761	device-topic	ant-design:api-filled	device/device_topic/index	DeviceTopic	0	f	t	f		2024-07-11 05:22:55.437016	1	2026-07-16 14:40:25.180872	0
+2804	设备日志		2	10	2761	device-log	ant-design:appstore-twotone	device/device_log/index	DeviceLog	0	f	t	f		2024-07-11 05:22:40.397952	1	2026-07-16 14:40:54.148767	0
+2840	产品列表		2	0	2939	product	ant-design:euro-outlined	device/product/index	Product	0	f	t	f		2024-07-11 05:24:19.66822	1	2026-07-16 14:41:11.957712	0
 2891	产品模板更新	device:product-template:update	3	3	2888				\N	0	t	t	t		2024-07-11 05:26:18.024696		2024-07-11 05:26:18.024696	0
 2890	产品模板创建	device:product-template:create	3	2	2888				\N	0	t	t	t		2024-07-11 05:26:18.024696		2024-07-11 05:26:18.024696	0
 2889	产品模板查询	device:product-template:query	3	1	2888				\N	0	t	t	t		2024-07-11 05:26:18.024696		2024-07-11 05:26:18.024696	0
@@ -21127,7 +21128,6 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2883	产品模型服务查询	device:product-services:query	3	1	2882				\N	0	t	t	t		2024-07-11 05:26:02.939744		2024-07-11 05:26:02.939744	1
 2865	产品模型事件查询	device:product-event:query	3	1	2864				\N	0	t	t	t		2024-07-11 05:25:10.088413		2024-07-11 05:25:10.088413	1
 2877	产品模型属性查询	device:product-properties:query	3	1	2876				\N	0	t	t	t		2024-07-11 05:25:45.988057		2024-07-11 05:25:45.988057	1
-2888	产品模板		2	10	2939	product-template	ant-design:barcode-outlined	device/product_template/index	ProductTemplate	0	t	t	t		2024-07-11 05:26:18.024696	1	2024-07-22 13:23:17.37	0
 2849	产品模型设备服务命令更新	device:product-commands:update	3	3	2846				\N	0	t	t	t		2024-07-11 05:24:31.78072		2024-07-11 05:24:31.78072	1
 2924	场景管理		2	5	2935	rule	ant-design:usb-twotone	device/rule/index	Rule	0	t	t	t		2024-07-11 05:27:46.10679	1	2024-07-11 06:24:44.218	1
 2929	规则信息导出	device:rule:export	3	5	2924				\N	0	t	t	t		2024-07-11 05:27:46.10679		2024-07-11 05:27:46.10679	1
@@ -21162,9 +21162,7 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2893	产品模板导出	device:product-template:export	3	5	2888				\N	0	t	t	t		2024-07-11 05:26:18.024696		2024-07-11 05:26:18.024696	0
 2815	设备Topic数据导出	device:device-topic:export	3	5	2810				\N	0	t	t	t		2024-07-11 05:22:55.437016		2024-07-11 05:22:55.437016	0
 2915	告警规则列更新	device:rule-alarm-list:update	3	3	2912				\N	0	t	t	t		2024-07-11 05:27:18.775137		2024-07-11 05:27:18.775137	1
-2900	传输协议		2	20	2939	protocol	ant-design:gold-twotone	device/protocol/index	Protocol	0	t	t	t		2024-07-11 05:26:50.993119	1	2024-07-22 13:23:27.396	0
 2919	规则告警查询	device:rule-alarm:query	3	1	2918				\N	0	t	t	t		2024-07-11 05:27:32.37771		2024-07-11 05:27:32.37771	1
-2894	产品分类		2	5	2939	product-type	ant-design:calculator-twotone	device/product_type/index	ProductType	0	t	t	t		2024-07-11 05:26:35.478039	1	2024-07-22 13:23:09.531	0
 2848	产品模型设备服务命令创建	device:product-commands:create	3	2	2846				\N	0	t	t	t		2024-07-11 05:24:31.78072		2024-07-11 05:24:31.78072	1
 2925	规则信息查询	device:rule:query	3	1	2924				\N	0	t	t	t		2024-07-11 05:27:46.10679		2024-07-11 05:27:46.10679	1
 2907	规则条件查询	device:rule-conditions:query	3	1	2906				\N	0	t	t	t		2024-07-11 05:27:02.947998		2024-07-11 05:27:02.947998	1
@@ -21179,7 +21177,8 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2956	项目管理	project:project:list	2	40	0	project	ant-design:book-twotone	visualis/local-list	Project	0	t	t	t	1	2024-09-20 11:28:28.697	1	2024-09-20 11:28:28.697	1
 2957	数据源管理	datasource:datasource:list	2	42	0	datasource	ant-design:linkedin-outlined	visualis/datasource	Datasource	0	t	t	t	1	2024-09-20 11:29:21.042	1	2024-09-20 11:29:21.042	1
 2946	通道列表	channel:channel:list	2	99	0	channel/:deviceIdentification	ant-design:ci-circle-outlined	video/components/Channel/index	Channel	0	f	t	f	1	2024-08-05 17:36:32.706	1	2024-08-05 18:02:21.754	0
-2940	产品详情	product:detail:query	2	99	0	detail/:id/:templateIdentification/:productIdentification	ant-design:appstore-add-outlined	product/components/ProductDrawer	ProductDetail	0	f	f	f	1	2024-07-22 15:46:57.693	1	2024-07-24 10:52:44.965	0
+2900	传输协议		2	20	2939	protocol	ant-design:gold-twotone	device/protocol/index	Protocol	0	f	t	f		2024-07-11 05:26:50.993119	1	2026-07-16 14:40:45.698722	0
+2894	产品分类		2	5	2939	product-type	ant-design:calculator-twotone	device/product_type/index	ProductType	0	f	t	f		2024-07-11 05:26:35.478039	1	2026-07-16 14:41:23.110351	0
 2937	设备详情	device:detail:list	2	1	0	detail/:id/:productIdentification/:deviceIdentification/:deviceType	ant-design:bulb-twotone	devices/components/Drawer/index	DeviceDetail	0	t	t	t	1	2024-07-19 11:11:12.369	1	2024-07-19 16:30:17.176	1
 2939	产品管理（隐藏）		1	99	0	producthidden	ant-design:account-book-twotone	\N	\N	1	t	t	t	1	2024-07-22 13:22:32.521	1	2024-07-22 13:25:28.256	0
 2846	物模型服务命令		2	3	2934	product-commands	ant-design:block-outlined	device/product_commands/index	ProductCommands	0	t	t	t		2024-07-11 05:24:31.78072	1	2024-07-11 06:22:12.27	1
@@ -21224,6 +21223,9 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 2968	OTA升级	ota:ota:query	2	7	0	ota	ant-design:hourglass-outlined	ota/index	OtaVersion	0	t	t	t	1	2025-11-20 12:40:20.867024	1	2026-06-11 10:47:19.091584	0
 2762	设备管理	device:device:query	2	4	0	device	ant-design:laptop-outlined	devices/index	Devices	0	t	f	t	1	2024-07-10 22:42:17.76	1	2026-06-11 10:47:27.631261	0
 2972	集群管理	node:node:query	2	0	0	node/index	ant-design:ungroup-outlined	node/index	ComputeNodeManage	0	t	t	t	1	2026-06-11 10:46:06.011163	1	2026-06-11 11:13:26.93809	0
+2940	产品详情	product:detail:query	2	99	0	detail/:id/:productIdentification	ant-design:appstore-add-outlined	product/components/ProductDrawer	ProductDetail	0	f	f	f	1	2024-07-22 15:46:57.693	1	2026-07-16 12:58:34.906457	0
+2888	产品模板		2	10	2939	product-template	ant-design:barcode-outlined	device/product_template/index	ProductTemplate	0	f	t	f		2024-07-11 05:26:18.024696	1	2026-07-16 14:39:58.203559	0
+2798	设备分组		2	2	2761	device-group	ant-design:trophy-filled	device/device_group/index	DeviceGroup	0	f	t	f		2024-07-11 05:21:49.127724	1	2026-07-16 14:40:09.50964	0
 \.
 
 
@@ -24539,6 +24541,8 @@ COPY public.system_oauth2_access_token (id, user_id, user_type, user_info, acces
 6048	1	2	{"nickname":"IoT","deptId":"103"}	492bb95954a444fd98d0797dae78c4cf	a08a27b638ac4a9db942bde3a41f8071	default	\N	2026-06-12 01:06:56.435435	\N	2026-06-12 00:36:56.436195	\N	2026-06-12 00:36:56.436195	0	1
 6050	1	2	{"nickname":"IoT","deptId":"103"}	46e7a7bdd5cc434abd8c55a4b45495e6	70b1ddbd3fd64062b04ef666434c9237	default	\N	2026-06-12 01:42:21.279666	\N	2026-06-12 01:12:21.280658	\N	2026-06-12 01:12:21.280658	0	1
 6052	1	2	{"nickname":"IoT","deptId":"103"}	eecb183e009d43cbbdbe32b670297953	b1145064fb044c8491ddf988d6b70885	default	\N	2026-06-12 02:14:18.853727	\N	2026-06-12 01:44:18.855158	\N	2026-06-12 01:44:18.855158	0	1
+6054	1	2	{"nickname":"IoT","deptId":"103"}	8c8e11ceeb474fc297e3cbefb052a142	376083153c594f9f8ffb046dd218e635	default	\N	2026-08-12 16:23:15.948964	\N	2026-07-13 16:23:15.962559	\N	2026-07-13 16:23:15.962559	0	1
+6056	1	2	{"nickname":"IoT","deptId":"103"}	04d0a319d8ff44caa5458e5e823fb36c	090307f7e8f24577a6e972bf3a3a8bb0	default	\N	2026-08-15 09:27:50.203873	\N	2026-07-16 09:27:50.206402	\N	2026-07-16 09:27:50.206402	0	1
 \.
 
 
@@ -27356,6 +27360,8 @@ COPY public.system_oauth2_refresh_token (id, user_id, refresh_token, user_type, 
 6047	1	a08a27b638ac4a9db942bde3a41f8071	2	default	\N	2026-07-12 00:36:56.426239	\N	2026-06-12 00:36:56.426958	\N	2026-06-12 00:36:56.426958	0	1
 6049	1	70b1ddbd3fd64062b04ef666434c9237	2	default	\N	2026-07-12 01:12:21.264302	\N	2026-06-12 01:12:21.265497	\N	2026-06-12 01:12:21.265497	0	1
 6051	1	b1145064fb044c8491ddf988d6b70885	2	default	\N	2026-07-12 01:44:18.841163	\N	2026-06-12 01:44:18.841962	\N	2026-06-12 01:44:18.841962	0	1
+6053	1	376083153c594f9f8ffb046dd218e635	2	default	\N	2026-08-12 16:23:15.925684	\N	2026-07-13 16:23:15.92955	\N	2026-07-13 16:23:15.92955	0	1
+6055	1	090307f7e8f24577a6e972bf3a3a8bb0	2	default	\N	2026-08-15 09:27:50.185529	\N	2026-07-16 09:27:50.189243	\N	2026-07-16 09:27:50.189243	0	1
 \.
 
 
@@ -28570,7 +28576,7 @@ COPY public.system_users (id, username, password, nickname, remark, dept_id, pos
 131	hh	$2a$04$jyH9h6.gaw8mpOjPfHIpx.8as2Rzfcmdlj5rlJFwgCw4rsv/MTb2K	呵呵	\N	100	[]	777@qq.com	15601882312	1		0		\N	1	2024-04-27 08:45:56	1	2024-04-27 08:45:56	1	1	0	0
 100	yudao	$2a$10$11U48RhyJ5pSBYWSn12AD./ld671.ycSzJHbyrtpeoMeYiw31eo8a	王总	不要吓我	104	[1]	yudao@iocoder.cn	15601691300	1		1	127.0.0.1	2022-07-09 23:03:33		2021-01-07 09:07:17	1	2025-08-14 09:39:37.486	0	1	0	0
 118	goudan	$2a$04$A7vqK6hfgoPeOGDgZoC1BOnVwTpDyBtQnlsOWBIqM8Wj9A6NTr0Tq	狗蛋	\N	103	[1]		15601691239	1		0	0:0:0:0:0:0:0:1	2024-07-24 11:23:40.932	1	2022-07-09 17:44:43	1	2025-08-14 11:34:37.076	0	1	0	0
-1	admin	$2a$10$mRMIYLDtRHlf6.9ipiqH1.Z.bh/R9dO9d5iHiGYPigi6r5KOoR2Wm	IoT	管理员	103	[1]	aoteman@126.com	18818260277	1	http://test.yudao.iocoder.cn/113dcbab48d22fc988151b98be2b8b4f262effdb5305c171cf1fe9a71801377a.png	0	127.0.0.1	2026-06-12 01:44:18.836547	admin	2021-01-05 17:03:47	\N	2026-06-12 01:44:18.836731	0	1	0	0
+1	admin	$2a$10$mRMIYLDtRHlf6.9ipiqH1.Z.bh/R9dO9d5iHiGYPigi6r5KOoR2Wm	IoT	管理员	103	[1]	aoteman@126.com	18818260277	1	http://test.yudao.iocoder.cn/113dcbab48d22fc988151b98be2b8b4f262effdb5305c171cf1fe9a71801377a.png	0	127.0.0.1	2026-07-16 09:27:50.135711	admin	2021-01-05 17:03:47	\N	2026-07-16 09:27:50.137551	0	1	0	0
 \.
 
 
@@ -28781,7 +28787,7 @@ SELECT pg_catalog.setval('public.system_dict_type_seq', 620, false);
 -- Name: system_login_log_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_login_log_seq', 3078, true);
+SELECT pg_catalog.setval('public.system_login_log_seq', 3080, true);
 
 
 --
@@ -28837,7 +28843,7 @@ SELECT pg_catalog.setval('public.system_notify_template_seq', 1, false);
 -- Name: system_oauth2_access_token_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_oauth2_access_token_seq', 6052, true);
+SELECT pg_catalog.setval('public.system_oauth2_access_token_seq', 6056, true);
 
 
 --
@@ -29680,5 +29686,5 @@ ALTER TABLE ONLY public.qrtz_triggers
 -- PostgreSQL database dump complete
 --
 
-\unrestrict iR7z8lorYoJVQdHQHu3B0rdLrI8GIQ7D1zTxCFcfChA0KClXbckzLIvhkTpHdWc
+\unrestrict tkhRGoOleUb8qmUuzZHq8ku7GXlg6Z5vRZgibRA0Zwpyw1riQ1ca3Q8dC0ChoNp
 

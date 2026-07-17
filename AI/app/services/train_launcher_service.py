@@ -10,12 +10,20 @@ import socket
 from typing import Optional
 
 from db_models import db, TrainTask
-from app.utils.node_remote_python import resolve_ai_bundle_python, resolve_ai_root_for_deploy
+from app.utils.node_remote_python import (
+    detect_local_ai_root,
+    is_platform_node,
+    resolve_ai_bundle_python,
+    resolve_ai_root_for_deploy,
+)
 
 logger = logging.getLogger(__name__)
 
 WORKLOAD_TYPE_MODEL_TRAIN = 'model_train'
 BUNDLE_MODEL_TRAIN = 'model_train'
+TRAIN_DISPATCH_ERROR = 'error'
+TRAIN_DISPATCH_LOCAL = 'local'
+TRAIN_DISPATCH_REMOTE = 'remote'
 
 
 def _is_cluster_mode() -> bool:
@@ -30,9 +38,7 @@ def resolve_schedule_policy(explicit: str | None) -> str:
     policy = (explicit or '').strip().lower()
     from app.utils.node_client import is_remote_deploy_enabled
     remote_enabled = is_remote_deploy_enabled()
-    if policy == 'local' and remote_enabled:
-        return 'auto'
-    if policy in ('auto', 'node'):
+    if policy in ('local', 'auto', 'node'):
         return policy
     if remote_enabled:
         return 'auto'
@@ -122,14 +128,14 @@ def dispatch_train_to_node(
     dataset_source: str,
     resume_mode: bool,
     gpu_ids: list | None = None,
-) -> tuple[bool, str]:
+) -> tuple[str, str]:
     """将训练任务调度到集群节点并下发 Worker（优先 GPU，无 GPU 时回落 CPU）。"""
     from app.utils import node_client
 
     policy = resolve_schedule_policy(train_task.schedule_policy)
     target_node_id = train_task.target_node_id
     if policy == 'node' and not target_node_id:
-        return False, '已选择指定节点但未配置目标节点'
+        return TRAIN_DISPATCH_ERROR, '已选择指定节点但未配置目标节点'
 
     workload_id = str(train_task.id)
     try:
@@ -145,20 +151,41 @@ def dispatch_train_to_node(
         )
     except Exception as e:
         logger.warning('训练任务调度失败 task_id=%s: %s', train_task.id, e)
-        return False, f'节点调度失败: {e}'
+        if policy == 'auto':
+            return TRAIN_DISPATCH_LOCAL, f'节点调度不可用，已切换本机训练: {e}'
+        return TRAIN_DISPATCH_ERROR, f'节点调度失败: {e}'
 
     node_id = allocation['nodeId']
     host = allocation.get('host') or ''
     allocated_gpu_ids = allocation.get('gpuIds')
 
-    node = node_client.get_node(node_id)
+    try:
+        node = node_client.get_node(node_id)
+    except Exception as e:
+        node_client.release_binding(WORKLOAD_TYPE_MODEL_TRAIN, workload_id)
+        logger.warning('读取训练节点失败 task_id=%s node_id=%s: %s', train_task.id, node_id, e)
+        if policy == 'auto':
+            return TRAIN_DISPATCH_LOCAL, f'节点信息不可用，已切换本机训练: {e}'
+        return TRAIN_DISPATCH_ERROR, f'读取节点信息失败: {e}'
+
+    if is_platform_node(node):
+        node_client.release_binding(WORKLOAD_TYPE_MODEL_TRAIN, workload_id)
+        logger.info(
+            '训练任务命中控制面节点，改由 AI 容器本机执行 task_id=%s node_id=%s',
+            train_task.id, node_id,
+        )
+        return TRAIN_DISPATCH_LOCAL, '训练已启动（控制面节点本机执行）'
+
     ai_root = resolve_ai_root_for_deploy(node)
     work_dir = os.path.join(ai_root, 'services', 'train_worker')
     log_dir = os.path.join(ai_root, 'logs', 'train', str(train_task.id))
     worker_script = os.path.join(ai_root, 'services', 'train_worker', 'run_worker.py')
-    if not os.path.isfile(worker_script):
+    local_worker_script = os.path.join(
+        detect_local_ai_root(), 'services', 'train_worker', 'run_worker.py'
+    )
+    if not os.path.isfile(local_worker_script):
         node_client.release_binding(WORKLOAD_TYPE_MODEL_TRAIN, workload_id)
-        return False, f'训练 Worker 脚本不存在: {worker_script}'
+        return TRAIN_DISPATCH_ERROR, f'训练 Worker 源码不存在: {local_worker_script}'
 
     python_exec = resolve_ai_bundle_python(ai_root, BUNDLE_MODEL_TRAIN)
     command = [python_exec, worker_script]
@@ -193,7 +220,7 @@ def dispatch_train_to_node(
     except Exception as e:
         node_client.release_binding(WORKLOAD_TYPE_MODEL_TRAIN, workload_id)
         logger.error('训练 Worker 下发失败 task_id=%s: %s', train_task.id, e)
-        return False, f'Worker 下发失败: {e}'
+        return TRAIN_DISPATCH_ERROR, f'Worker 下发失败: {e}'
 
     train_task.node_id = node_id
     train_task.service_server_ip = host
@@ -204,7 +231,7 @@ def dispatch_train_to_node(
         '训练任务已下发集群 task_id=%s node_id=%s host=%s pid=%s',
         train_task.id, node_id, host, result.get('pid'),
     )
-    return True, f'已下发到节点 {host}，训练正在启动'
+    return TRAIN_DISPATCH_REMOTE, f'已下发到节点 {host}，训练正在启动'
 
 
 def stop_remote_train(train_task: TrainTask) -> None:

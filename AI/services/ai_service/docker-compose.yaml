@@ -37,7 +37,6 @@ services:
       # GPU相关配置
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       # Python环境
       - PYTHONUNBUFFERED=${PYTHONUNBUFFERED:-1}
       # Flask配置
@@ -79,7 +78,8 @@ services:
       # 时区配置
       - TZ=${TZ:-Asia/Shanghai}
       # Ultralytics (YOLO) 配置目录
-      - YOLO_CONFIG_DIR=${YOLO_CONFIG_DIR:-/tmp/Ultralytics}
+      - YOLO_CONFIG_DIR=${YOLO_CONFIG_DIR:-/tmp}
+      - MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/matplotlib}
       # PaddleX 临时目录（通过环境变量或使用默认的 /home/appuser/.paddlex）
       # 代理配置（可选）
       - HTTP_PROXY=${HTTP_PROXY:-}
@@ -126,4 +126,3 @@ services:
 # 1. 使用macvlan网络（需要root权限）
 # 2. 使用host网络 + 通过IP访问中间件容器
 # 3. 使用sidecar容器模式
-

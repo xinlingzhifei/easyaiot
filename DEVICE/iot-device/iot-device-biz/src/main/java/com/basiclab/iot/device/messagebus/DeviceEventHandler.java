@@ -69,7 +69,7 @@ public class DeviceEventHandler {
                 }
             }
 
-            // 4. 解析事件数据
+            // 4. 解析事件数据（兼容 eventType/level、message/content、data 整包）
             Object params = message.getParams();
             String eventName = null;
             String eventType = null;
@@ -80,11 +80,14 @@ public class DeviceEventHandler {
                 if (params instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> paramsMap = (Map<String, Object>) params;
-                    eventName = (String) paramsMap.get("eventName");
-                    eventType = (String) paramsMap.get("eventType");
+                    eventName = firstString(paramsMap, "eventName", "name", "title");
+                    eventType = firstString(paramsMap, "eventType", "level", "severity");
                     Object data = paramsMap.get("data");
                     if (data != null) {
                         eventMessage = JSONUtil.toJsonStr(data);
+                    } else {
+                        String text = firstString(paramsMap, "message", "content", "msg");
+                        eventMessage = text != null ? text : JSONUtil.toJsonStr(paramsMap);
                     }
                     Object code = paramsMap.get("code");
                     if (code != null) {
@@ -92,6 +95,13 @@ public class DeviceEventHandler {
                     }
                 } else {
                     eventMessage = JSONUtil.toJsonStr(params);
+                }
+            }
+
+            if (StrUtil.isNotBlank(eventType)) {
+                eventType = eventType.trim().toUpperCase();
+                if ("WARNING".equals(eventType)) {
+                    eventType = "WARN";
                 }
             }
 
@@ -119,6 +129,19 @@ public class DeviceEventHandler {
                     message != null ? message.getTopic() : "unknown", e);
             throw e;
         }
+    }
+
+    private static String firstString(Map<String, Object> map, String... keys) {
+        for (String key : keys) {
+            Object value = map.get(key);
+            if (value != null) {
+                String text = String.valueOf(value).trim();
+                if (StrUtil.isNotBlank(text) && !"null".equalsIgnoreCase(text)) {
+                    return text;
+                }
+            }
+        }
+        return null;
     }
 }
 

@@ -7,7 +7,6 @@ FROM pytorch/manylinuxaarch64-builder:cuda12.9 AS base
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
-    CUDA_VISIBLE_DEVICES=0 \
     QT_QPA_PLATFORM=xcb \
     QT_X11_NO_MITSHM=1 \
     PATH=/opt/python/cp311-cp311/bin:/opt/python/cp310-cp310/bin:$PATH
@@ -18,70 +17,49 @@ WORKDIR /app
 # ======================= 第一阶段：系统依赖安装 =======================
 FROM base AS dependencies
 
-# 镜像源配置（通过 --build-arg 传入，默认腾讯云）
-ARG YUM_MIRROR_URL=https://mirrors.tuna.tsinghua.edu.cn
+# 镜像源配置（通过 --build-arg 传入）
+# 注意：清华源已不完整同步 AlmaLinux 8 aarch64（AppStream repomd 404），默认使用华为云
+ARG YUM_MIRROR_URL=https://mirrors.huaweicloud.com
 
 # 配置 yum 镜像源
-# manylinuxaarch64-builder 基于 AlmaLinux/CentOS，使用 yum 包管理器
+# manylinuxaarch64-builder 基于 AlmaLinux 8，保留官方 .repo，仅切换 mirrorlist→baseurl
+# 若指定镜像缺少当前架构元数据，则自动回退到其他可用国内源 / 官方源
 RUN set -ex && \
-    # 备份原始 yum 源配置
     mkdir -p /etc/yum.repos.d/backup && \
-    mv /etc/yum.repos.d/*.repo /etc/yum.repos.d/backup/ 2>/dev/null || true && \
-    # 如果指定了 YUM_MIRROR_URL 则配置镜像源
-    if [ -n "${YUM_MIRROR_URL}" ]; then \
-        if [ -f /etc/almalinux-release ]; then \
-            ALMA_VERSION=$(cat /etc/almalinux-release | grep -oE '[0-9]+' | head -1) && \
-            echo "检测到 AlmaLinux $ALMA_VERSION，配置 YUM 镜像源: ${YUM_MIRROR_URL}" && \
-            echo "[base]" > /etc/yum.repos.d/almalinux-base.repo && \
-            echo "name=AlmaLinux-$ALMA_VERSION - Base" >> /etc/yum.repos.d/almalinux-base.repo && \
-            echo "baseurl=${YUM_MIRROR_URL}/almalinux/$ALMA_VERSION/BaseOS/aarch64/os/" >> /etc/yum.repos.d/almalinux-base.repo && \
-            echo "gpgcheck=1" >> /etc/yum.repos.d/almalinux-base.repo && \
-            echo "enabled=1" >> /etc/yum.repos.d/almalinux-base.repo && \
-            echo "gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux" >> /etc/yum.repos.d/almalinux-base.repo && \
-            echo "[appstream]" > /etc/yum.repos.d/almalinux-appstream.repo && \
-            echo "name=AlmaLinux-$ALMA_VERSION - AppStream" >> /etc/yum.repos.d/almalinux-appstream.repo && \
-            echo "baseurl=${YUM_MIRROR_URL}/almalinux/$ALMA_VERSION/AppStream/aarch64/os/" >> /etc/yum.repos.d/almalinux-appstream.repo && \
-            echo "gpgcheck=1" >> /etc/yum.repos.d/almalinux-appstream.repo && \
-            echo "enabled=1" >> /etc/yum.repos.d/almalinux-appstream.repo && \
-            echo "gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux" >> /etc/yum.repos.d/almalinux-appstream.repo && \
-            echo "[extras]" > /etc/yum.repos.d/almalinux-extras.repo && \
-            echo "name=AlmaLinux-$ALMA_VERSION - Extras" >> /etc/yum.repos.d/almalinux-extras.repo && \
-            echo "baseurl=${YUM_MIRROR_URL}/almalinux/$ALMA_VERSION/extras/aarch64/os/" >> /etc/yum.repos.d/almalinux-extras.repo && \
-            echo "gpgcheck=1" >> /etc/yum.repos.d/almalinux-extras.repo && \
-            echo "enabled=1" >> /etc/yum.repos.d/almalinux-extras.repo && \
-            echo "gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux" >> /etc/yum.repos.d/almalinux-extras.repo && \
-            echo "[powertools]" > /etc/yum.repos.d/almalinux-powertools.repo && \
-            echo "name=AlmaLinux-$ALMA_VERSION - PowerTools" >> /etc/yum.repos.d/almalinux-powertools.repo && \
-            echo "baseurl=${YUM_MIRROR_URL}/almalinux/$ALMA_VERSION/PowerTools/aarch64/os/" >> /etc/yum.repos.d/almalinux-powertools.repo && \
-            echo "gpgcheck=1" >> /etc/yum.repos.d/almalinux-powertools.repo && \
-            echo "enabled=0" >> /etc/yum.repos.d/almalinux-powertools.repo && \
-            echo "gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux" >> /etc/yum.repos.d/almalinux-powertools.repo && \
-            echo "AlmaLinux $ALMA_VERSION YUM 镜像源配置完成"; \
-        elif [ -f /etc/centos-release ]; then \
-            CENTOS_VERSION=$(cat /etc/centos-release | grep -oE '[0-9]+' | head -1) && \
-            echo "检测到 CentOS $CENTOS_VERSION，配置 YUM 镜像源: ${YUM_MIRROR_URL}" && \
-            echo "[base]" > /etc/yum.repos.d/centos-base.repo && \
-            echo "name=CentOS-$CENTOS_VERSION - Base" >> /etc/yum.repos.d/centos-base.repo && \
-            echo "baseurl=${YUM_MIRROR_URL}/centos/$CENTOS_VERSION/BaseOS/aarch64/os/" >> /etc/yum.repos.d/centos-base.repo && \
-            echo "gpgcheck=1" >> /etc/yum.repos.d/centos-base.repo && \
-            echo "enabled=1" >> /etc/yum.repos.d/centos-base.repo && \
-            echo "gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial" >> /etc/yum.repos.d/centos-base.repo && \
-            echo "[appstream]" > /etc/yum.repos.d/centos-appstream.repo && \
-            echo "name=CentOS-$CENTOS_VERSION - AppStream" >> /etc/yum.repos.d/centos-appstream.repo && \
-            echo "baseurl=${YUM_MIRROR_URL}/centos/$CENTOS_VERSION/AppStream/aarch64/os/" >> /etc/yum.repos.d/centos-appstream.repo && \
-            echo "gpgcheck=1" >> /etc/yum.repos.d/centos-appstream.repo && \
-            echo "enabled=1" >> /etc/yum.repos.d/centos-appstream.repo && \
-            echo "gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial" >> /etc/yum.repos.d/centos-appstream.repo && \
-            echo "CentOS $CENTOS_VERSION YUM 镜像源配置完成"; \
+    cp -a /etc/yum.repos.d/*.repo /etc/yum.repos.d/backup/ 2>/dev/null || true && \
+    if [ -n "${YUM_MIRROR_URL}" ] && [ -f /etc/almalinux-release ]; then \
+        ARCH="$(uname -m)" && \
+        REL="$(awk -F= '/^VERSION_ID=/{gsub(/"/,""); print $2}' /etc/os-release | cut -d. -f1)" && \
+        CANDIDATES="${YUM_MIRROR_URL} https://mirrors.huaweicloud.com https://mirrors.aliyun.com https://mirrors.cloud.tencent.com https://mirror.nju.edu.cn https://repo.almalinux.org" && \
+        SELECTED="" && \
+        for m in ${CANDIDATES}; do \
+            PROBE="${m}/almalinux/${REL}/AppStream/${ARCH}/os/repodata/repomd.xml"; \
+            if curl -fsI --connect-timeout 5 --max-time 15 "${PROBE}" >/dev/null 2>&1; then \
+                SELECTED="$m"; \
+                echo "选用可用 AlmaLinux YUM 源: ${SELECTED}"; \
+                break; \
+            fi; \
+            echo "跳过不可用源: ${m}"; \
+        done && \
+        if [ -z "${SELECTED}" ]; then \
+            echo "警告：候选镜像均不可用，保留官方 mirrorlist"; \
         else \
-            echo "警告：未识别的系统版本，使用默认 yum 源"; \
+            for repo in /etc/yum.repos.d/almalinux*.repo; do \
+                [ -f "${repo}" ] || continue; \
+                sed -e 's|^mirrorlist=|#mirrorlist=|g' \
+                    -e "s|^#[[:space:]]*baseurl=https://repo.almalinux.org/almalinux|baseurl=${SELECTED}/almalinux|g" \
+                    -e "s|^baseurl=https://repo.almalinux.org/almalinux|baseurl=${SELECTED}/almalinux|g" \
+                    -i "${repo}"; \
+            done && \
+            echo "AlmaLinux YUM 镜像源已切换到: ${SELECTED}"; \
         fi; \
+    elif [ -n "${YUM_MIRROR_URL}" ]; then \
+        echo "警告：非 AlmaLinux 基础镜像，跳过 yum 镜像切换，使用默认源"; \
     else \
         echo "YUM_MIRROR_URL 为空，使用默认 yum 源"; \
     fi && \
-    # 清理 yum 缓存并更新（允许部分仓库失败，因为 PowerTools 可能不是必需的）
     yum clean all && \
-    (yum makecache || echo "警告：部分仓库缓存更新失败，继续构建...")
+    yum makecache
 
 # manylinuxaarch64-builder 基于 CentOS，使用 yum 包管理器
 # 安装系统依赖包
@@ -237,4 +215,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
 
 # 启动命令
 CMD ["python3", "run.py"]
-

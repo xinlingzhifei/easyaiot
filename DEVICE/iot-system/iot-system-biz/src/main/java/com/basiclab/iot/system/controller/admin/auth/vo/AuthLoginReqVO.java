@@ -51,6 +51,11 @@ public class AuthLoginReqVO {
     @Schema(description = "state", example = "9b2ffbc1-7425-4155-9894-9d5c08541d62")
     private String socialState;
 
+    // ========== 记住我（30天免登录）==========
+
+    @Schema(description = "是否记住我（30天免登录）", example = "true")
+    private Boolean rememberMe;
+
     /**
  * AuthLoginReqVO
  *

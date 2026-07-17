@@ -335,6 +335,10 @@ const footerBadges = computed(() => {
     background: linear-gradient(180deg, @node-media-tile-start 0%, @node-media-tile-end 100%);
   }
 
+  &--mqtt {
+    background: linear-gradient(180deg, @node-mqtt-tile-start 0%, @node-mqtt-tile-end 100%);
+  }
+
   &--hybrid {
     background: linear-gradient(180deg, @node-hybrid-tile-start 0%, @node-hybrid-tile-end 100%);
   }

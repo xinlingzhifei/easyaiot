@@ -11,7 +11,7 @@
 #
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
 #   mini(1)     - 4G：iot-system + VIDEO/AI/WEB
-#   standard(2) - 16G：不含 TDengine/EMQX/iot-device/iot-tdengine 等
+#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine 等（含 EMQX）
 #   full(3)     - 全量（默认，约 20G）
 #
 # 示例:
@@ -44,6 +44,9 @@ source "${SCRIPT_DIR}/runtime_image_common.sh"
 # shellcheck source=docker_mirror_common.sh
 source "${SCRIPT_DIR}/docker_mirror_common.sh"
 
+# shellcheck source=docker_compose_bundled.sh
+source "${SCRIPT_DIR}/docker_compose_bundled.sh"
+
 # shellcheck source=node/ensure_platform_agent_invoke.sh
 source "${PROJECT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
 
@@ -56,6 +59,24 @@ ensure_platform_agent_after_business_stack() {
     ENSURE_PLATFORM_AGENT_OK=_ensure_platform_agent_ok \
     ENSURE_PLATFORM_AGENT_WARN=_ensure_platform_agent_warn \
     ensure_platform_agent_if_needed || true
+}
+
+ensure_mqtt_demo_after_business_stack() {
+    local demo_dir="${PROJECT_ROOT}/.scripts/mqtt-demo"
+    local starter="${demo_dir}/start_mqtt_demo.sh"
+    if [ "${EASYAIOT_ENABLE_MQTT_DEMO:-1}" = "0" ]; then
+        print_info "跳过 mqtt-demo 自动启动（EASYAIOT_ENABLE_MQTT_DEMO=0）"
+        return 0
+    fi
+    if [ "${EASYAIOT_ENABLE_EMQX:-1}" = "0" ]; then
+        print_info "跳过 mqtt-demo 自动启动（EMQX 未启用）"
+        return 0
+    fi
+    if [ -f "$starter" ]; then
+        chmod +x "$starter" "${demo_dir}/stop_mqtt_demo.sh" 2>/dev/null || true
+        print_info "启动 MQTT 演示设备（01/02/03 并行）..."
+        bash "$starter" || print_warning "mqtt-demo 启动未完全成功，可手动: bash ${starter}"
+    fi
 }
 
 # 业务模块（按依赖顺序：网关/微服务 -> AI/视频 -> 前端）
@@ -153,14 +174,33 @@ check_docker() {
 }
 
 check_docker_compose() {
-    if check_command docker-compose; then
-        return 0
+    local _need_fix=false
+    if ! check_command docker-compose && ! docker compose version &>/dev/null 2>&1; then
+        _need_fix=true
+    elif ! compose_version_meets_requirement_quiet; then
+        _need_fix=true
     fi
-    if docker compose version &>/dev/null 2>&1; then
-        return 0
+
+    if [ "$_need_fix" = true ]; then
+        if bundled_compose_available; then
+            local _bundled_ver
+            _bundled_ver=$(get_bundled_compose_version 2>/dev/null || echo "未知")
+            print_warning "Docker Compose 未安装或版本过低（需要 v${COMPOSE_MIN_VERSION}+）"
+            print_info "将使用项目内置 Docker Compose v${_bundled_ver} 离线安装/升级（架构: $(uname -m)）"
+            if [ "$EUID" -ne 0 ]; then
+                print_error "请使用 sudo 运行以自动安装/升级 Docker Compose"
+                exit 1
+            fi
+            if ! install_bundled_docker_compose || ! compose_version_meets_requirement_quiet; then
+                print_error "内置 Docker Compose 安装/升级失败"
+                exit 1
+            fi
+            print_success "Docker Compose 已就绪: $(docker compose version 2>/dev/null || docker-compose --version)"
+            return 0
+        fi
+        print_error "未安装 Docker Compose 或版本过低，且当前架构无内置离线包"
+        exit 1
     fi
-    print_error "未安装 Docker Compose"
-    exit 1
 }
 
 create_network() {
@@ -476,6 +516,7 @@ run_on_modules() {
     case "$cmd" in
         install|start|restart|update)
             ensure_platform_agent_after_business_stack
+            ensure_mqtt_demo_after_business_stack
             ;;
     esac
     return 0

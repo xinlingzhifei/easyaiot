@@ -1,0 +1,48 @@
+# MQTT 网关节点 Compose（host 网络，EMQX 5 集群）
+# 用法:
+#   export MQTT_NODE_ID=mqtt-gw-01 EMQX_NODE_NAME=emqx@10.0.0.31 ...
+#   docker compose -f docker-compose.mqtt-node.yml up -d
+
+services:
+  emqx:
+    image: emqx/emqx:5.8.7
+    container_name: "${MQTT_NODE_ID:-emqx-node}"
+    restart: always
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
+      EMQX_NAME: "${EMQX_NAME:-emqx}"
+      EMQX_HOST: "${EMQX_HOST:-127.0.0.1}"
+      EMQX_NODE__NAME: "${EMQX_NODE_NAME:-emqx@127.0.0.1}"
+      EMQX_NODE__COOKIE: "${EMQX_NODE_COOKIE:-emqxsecretcookie}"
+      EMQX_CLUSTER__DISCOVERY_STRATEGY: "${EMQX_CLUSTER_DISCOVERY:-static}"
+      EMQX_CLUSTER__STATIC__SEEDS: "${EMQX_CLUSTER_SEEDS:-}"
+      EMQX_DASHBOARD__DEFAULT_USERNAME: "${EMQX_DASHBOARD_USER:-admin}"
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: "${EMQX_DASHBOARD_PASSWORD:-basiclab@iot6874125784}"
+      EMQX_LOG__LEVEL: "${EMQX_LOG_LEVEL:-warning}"
+      # HTTP 认证指向 iot-sink EMQX Auth（默认宿主机:8090）
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: http
+      EMQX_AUTHENTICATION__1__ENABLE: "true"
+      EMQX_AUTHENTICATION__1__METHOD: post
+      EMQX_AUTHENTICATION__1__URL: "${MQTT_AUTH_URL:-http://127.0.0.1:8090/mqtt/auth}"
+      EMQX_AUTHENTICATION__1__HEADERS__content-type: application/json
+      # $${...} 转义，避免 compose 插值；容器内保留 EMQX 模板变量
+      EMQX_AUTHENTICATION__1__BODY__username: "$${username}"
+      EMQX_AUTHENTICATION__1__BODY__password: "$${password}"
+      EMQX_AUTHENTICATION__1__BODY__clientid: "$${clientid}"
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 25s
+      retries: 8
+      start_period: 40s
+
+volumes:
+  emqx_data:
+    driver: local
+  emqx_log:
+    driver: local

@@ -16,6 +16,7 @@
 #   logs       - 查看服务日志
 #   build      - 重新构建所有镜像
 #   clean      - 清理所有容器和镜像
+#   clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，再删镜像/构建缓存；不停中间件）
 #   update     - 更新镜像并重启所有服务（交互可选拉取/本地重建）
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
@@ -27,7 +28,7 @@
 #
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
 #   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra）
-#   standard(2) - 16G：不含 TDengine/EMQX/iot-device/iot-tdengine/NodeRED
+#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/NodeRED（含 EMQX）
 #   full(3)     - 全量（默认，约 20G）
 # ============================================
 
@@ -275,6 +276,9 @@ check_command() {
     return 0
 }
 
+# shellcheck source=docker_compose_bundled.sh
+source "${SCRIPT_DIR}/docker_compose_bundled.sh"
+
 # 检查 Docker 权限
 check_docker_permission() {
     # 首先检查 Docker daemon 是否运行
@@ -417,24 +421,46 @@ detect_compose() {
     [ -n "$COMPOSE_CMD" ]
 }
 
-# 检查 Docker Compose 是否安装（进程内幂等）
+# 检查 Docker Compose 是否安装（进程内幂等；版本不足时自动用内置离线包覆盖升级）
 check_docker_compose() {
     [ "${_COMPOSE_CHECKED:-0}" = "1" ] && return 0
     print_info "检查 Docker Compose 安装状态..."
 
+    local _need_fix=false _reason=""
     if ! detect_compose; then
-        print_error "Docker Compose 未安装"
-        echo ""
-        echo "安装方法："
-        echo "  Docker Compose v2 (推荐，随 Docker Desktop 自动安装):"
-        echo "    如果使用 Docker Desktop，Compose v2 已包含在内"
-        echo ""
-        echo "  Docker Compose v1 (独立安装):"
-        echo "    sudo curl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose"
-        echo "    sudo chmod +x /usr/local/bin/docker-compose"
-        echo ""
-        echo "  更多安装指南: https://docs.docker.com/compose/install/"
-        exit 1
+        _need_fix=true
+        _reason="未安装"
+    elif ! compose_version_meets_requirement_quiet; then
+        _need_fix=true
+        _reason="版本过低（需要 v${COMPOSE_MIN_VERSION}+）"
+    fi
+
+    if [ "$_need_fix" = true ]; then
+        if bundled_compose_available; then
+            local _bundled_ver
+            _bundled_ver=$(get_bundled_compose_version 2>/dev/null || echo "未知")
+            print_warning "Docker Compose ${_reason}"
+            print_info "将使用项目内置 Docker Compose v${_bundled_ver} 离线安装/升级（架构: $(uname -m)）"
+            if [ "$EUID" -ne 0 ]; then
+                print_error "请使用 sudo 运行以自动安装/升级 Docker Compose"
+                echo ""
+                echo "或手动执行："
+                bundled_compose_manual_hint
+                exit 1
+            fi
+            if ! install_bundled_docker_compose || ! compose_version_meets_requirement_quiet; then
+                print_error "内置 Docker Compose 安装/升级失败或版本仍不符合要求"
+                exit 1
+            fi
+            detect_compose
+        else
+            print_error "Docker Compose ${_reason}"
+            echo ""
+            echo "安装方法："
+            echo "  请确保 Docker Compose v${COMPOSE_MIN_VERSION}+ 已安装"
+            echo "  更多安装指南: https://docs.docker.com/compose/install/"
+            exit 1
+        fi
     fi
 
     if [ -n "$COMPOSE_V1_VERSION" ]; then
@@ -988,6 +1014,25 @@ stop_all() {
     print_success "所有服务已停止"
 }
 
+# 仅停止业务运行时模块（不含 Nacos/PostgreSQL 等中间件），便于释放 build-runtime 镜像占用
+stop_runtime_modules() {
+    print_section "停止业务运行时服务（保留中间件）"
+
+    check_docker
+    check_docker_compose
+
+    collect_biz_modules
+    local -a stop_modules=("${BIZ_MODULES[@]}")
+    local idx module
+    for ((idx=${#stop_modules[@]}-1 ; idx>=0 ; idx--)); do
+        module="${stop_modules[$idx]}"
+        execute_module_command "$module" "stop" || print_warning "${MODULE_NAMES[$module]} 停止失败，继续其余模块"
+        echo ""
+    done
+
+    print_success "业务运行时服务已停止（中间件未停止）"
+}
+
 # 重启所有服务
 restart_all() {
     print_section "重启所有服务 (ARM架构)"
@@ -1137,6 +1182,27 @@ clean_all() {
         print_success "清理完成"
     else
         print_info "已取消清理操作"
+    fi
+}
+
+# 清理 build-runtime 构建产物：先停止服务，再调用 cleanup_build_runtime.sh
+clean_build_runtime() {
+    shift
+    local -a cleanup_args=("$@")
+
+    print_section "清理 build-runtime 构建产物"
+    check_docker
+
+    print_info "步骤 1/2: 停止业务运行时服务（保留中间件）..."
+    stop_runtime_modules
+
+    print_info "步骤 2/2: 清理 build-runtime 镜像与构建缓存..."
+    if [ "${EASYAIOT_FROM_MENU:-0}" = "1" ] && [ ${#cleanup_args[@]} -eq 0 ]; then
+        bash "${SCRIPT_DIR}/cleanup_build_runtime.sh"
+    elif [ ${#cleanup_args[@]} -eq 0 ]; then
+        bash "${SCRIPT_DIR}/cleanup_build_runtime.sh" -y
+    else
+        bash "${SCRIPT_DIR}/cleanup_build_runtime.sh" "${cleanup_args[@]}"
     fi
 }
 
@@ -1325,6 +1391,7 @@ show_help() {
     echo "  build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
+    echo "  clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，默认删镜像+构建缓存）"
     echo "  update          - 更新镜像并重启所有服务（交互可选拉取/本地重建）"
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
@@ -1399,6 +1466,9 @@ main() {
             ;;
         clean)
             clean_all
+            ;;
+        clean-build-runtime|clean-runtime)
+            clean_build_runtime "$@"
             ;;
         update)
             update_all

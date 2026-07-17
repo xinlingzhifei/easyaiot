@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="model-list-container">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
         <Button type="primary" @click="openAddModal(true, { type: 'add' })">新增模型</Button>
@@ -8,6 +8,9 @@
         </Button>
       </template>
       <template #bodyCell="{ column, record }">
+        <template v-if="column.dataIndex === 'name'">
+          <a class="model-name-link" @click="handleView(record)">{{ record.name }}</a>
+        </template>
         <template v-if="column.dataIndex === 'action'">
           <TableAction
             :actions="[
@@ -52,7 +55,7 @@
         </template>
       </template>
     </BasicTable>
-    <div v-else>
+    <div v-else class="model-list-card-wrap">
       <ModelCardList
         :params="params"
         :api="getModelPage"
@@ -77,7 +80,7 @@
 </template>
 
 <script lang="ts" setup name="modelManagement">
-import { reactive } from 'vue';
+import { nextTick, reactive } from 'vue';
 import { BasicTable, TableAction, useTable } from '@/components/Table';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getBasicColumns, getFormConfig } from "./data";
@@ -97,7 +100,7 @@ const state = reactive({
 });
 
 const params = {};
-let cardListReload = () => {};
+let cardListReload: (opts?: { resetPage?: boolean }) => void = () => {};
 
 function getMethod(m: any) {
   cardListReload = m;
@@ -113,19 +116,46 @@ function handleEdit(record) {
 
 function handleDel(record) {
   handleDelete(record);
-  cardListReload();
 }
 
-function handleClickSwap() {
+/** 刷新表格第 1 页；切换视图时可清空筛选，避免卡片可见的新模型被状态筛掉 */
+async function reloadTableFirstPage(options?: { resetForm?: boolean }) {
+  if (options?.resetForm) {
+    try {
+      const form = getForm();
+      await form?.resetFields?.();
+    } catch {
+      // 表格尚未就绪时忽略
+    }
+  }
+  try {
+    await reload({ page: 1 });
+  } catch (error) {
+    console.warn('表格尚未注册，跳过刷新', error);
+  }
+}
+
+async function handleClickSwap() {
   state.isTableMode = !state.isTableMode;
+  await nextTick();
+  if (state.isTableMode) {
+    // 等 BasicTable 完成 register 后再拉数（与 DeployService 一致）
+    await nextTick();
+    await reloadTableFirstPage({ resetForm: true });
+  } else {
+    cardListReload({ resetPage: true });
+  }
 }
 
-function handleSuccess() {
-  reload({ page: 0 });
-  cardListReload();
+async function handleSuccess() {
+  if (state.isTableMode) {
+    await reloadTableFirstPage();
+  } else {
+    cardListReload({ resetPage: true });
+  }
 }
 
-const [registerTable, { reload }] = useTable({
+const [registerTable, { reload, getForm }] = useTable({
   canResize: true,
   showIndexColumn: false,
   title: '模型管理',
@@ -229,3 +259,27 @@ const handleDownload = async (record) => {
   }
 };
 </script>
+
+<style lang="less" scoped>
+.model-list-container {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.model-list-card-wrap {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.model-name-link {
+  color: #266cfb;
+  cursor: pointer;
+
+  &:hover {
+    color: #4d8afb;
+  }
+}
+</style>

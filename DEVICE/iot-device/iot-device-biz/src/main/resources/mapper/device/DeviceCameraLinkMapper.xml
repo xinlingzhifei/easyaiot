@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.basiclab.iot.device.dal.pgsql.device.DeviceCameraLinkMapper">
+
+    <resultMap id="BaseResultMap" type="com.basiclab.iot.device.domain.device.vo.DeviceCameraLink">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="iot_device_id" jdbcType="BIGINT" property="iotDeviceId"/>
+        <result column="camera_device_id" jdbcType="VARCHAR" property="cameraDeviceId"/>
+        <result column="tenant_id" jdbcType="BIGINT" property="tenantId"/>
+        <result column="create_time" jdbcType="TIMESTAMP" property="createTime"/>
+        <result column="update_time" jdbcType="TIMESTAMP" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectByIotDeviceId" resultMap="BaseResultMap">
+        SELECT id, iot_device_id, camera_device_id, tenant_id, create_time, update_time
+        FROM device_camera_link
+        WHERE iot_device_id = #{iotDeviceId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectAllBoundCameraIds" resultType="java.lang.String">
+        SELECT dcl.camera_device_id
+        FROM device_camera_link dcl
+        INNER JOIN device d ON d.id = dcl.iot_device_id
+    </select>
+
+    <select id="selectByCameraDeviceId" resultMap="BaseResultMap">
+        SELECT id, iot_device_id, camera_device_id, tenant_id, create_time, update_time
+        FROM device_camera_link
+        WHERE camera_device_id = #{cameraDeviceId}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByIotDeviceIds">
+        DELETE FROM device_camera_link
+        WHERE iot_device_id IN
+        <foreach item="iotDeviceId" collection="iotDeviceIds" open="(" separator="," close=")">
+            #{iotDeviceId}
+        </foreach>
+    </delete>
+
+</mapper>

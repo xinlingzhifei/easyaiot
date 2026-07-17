@@ -8,7 +8,6 @@ import os
 import re
 import shutil
 import tempfile
-import uuid
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
@@ -18,8 +17,12 @@ from sqlalchemy import desc, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.services.minio_service import ModelService
-from app.utils.train_dataset_name import is_upload_storage_stem, resolve_dataset_display_name
-from app.utils.image_utils import download_default_model_image
+from app.utils.node_client import resolve_java_backend_url
+from app.utils.train_checkpoint import find_yolo_checkpoint, is_yolo_checkpoint_resumable
+from app.utils.train_dataset_name import (
+    is_legacy_bad_dataset_name,
+    resolve_dataset_display_name,
+)
 from app.utils.model_class_utils import (
     dump_class_names_json,
     extract_class_names_from_model,
@@ -32,6 +35,21 @@ logger = logging.getLogger(__name__)
 TASK_NAME_MAX_LEN = 200
 DEFAULT_TASK_BASE_NAME = 'train'
 LEGACY_TIMESTAMP_BASE = re.compile(r'^train_task_\d{8}_\d{6}$')
+LEGACY_BAD_TASK_BASE_RE = re.compile(r'^(train_)?download\?prefix=', re.IGNORECASE)
+
+
+def is_legacy_bad_task_base_name(name: str) -> bool:
+    """判断是否为历史拼接产生的无意义任务名前缀。"""
+    text = (name or '').strip()
+    if not text:
+        return True
+    if LEGACY_BAD_TASK_BASE_RE.match(text):
+        return True
+    if is_legacy_bad_dataset_name(text):
+        return True
+    if LEGACY_TIMESTAMP_BASE.match(text):
+        return True
+    return text.startswith('train_task_')
 
 
 def _strip_task_id_suffix(name: str, task_id: int | None) -> str:
@@ -65,6 +83,9 @@ def resolve_task_base_name(task: TrainTask) -> str:
     if LEGACY_TIMESTAMP_BASE.match(stored) or stored.startswith('train_task_'):
         return DEFAULT_TASK_BASE_NAME
 
+    if is_legacy_bad_task_base_name(stored):
+        return DEFAULT_TASK_BASE_NAME
+
     return stored or DEFAULT_TASK_BASE_NAME
 
 
@@ -74,9 +95,11 @@ def build_train_task_name(
     dataset_version=None,
     task_id=None,
 ) -> str:
-    """格式: {用户任务名}_{数据集名}_{版本}_{任务ID}，例如 train_人_v1.0.0_19"""
+    """格式: {用户任务名}_{任务ID}，例如 xxx_21。数据集信息单独字段展示。"""
     base = _strip_task_id_suffix((base_name or '').strip(), task_id)
     if LEGACY_TIMESTAMP_BASE.match(base) or base.startswith('train_task_'):
+        base = DEFAULT_TASK_BASE_NAME
+    if is_legacy_bad_task_base_name(base):
         base = DEFAULT_TASK_BASE_NAME
     if not base:
         base = DEFAULT_TASK_BASE_NAME
@@ -86,12 +109,10 @@ def build_train_task_name(
     for extra in (dv, ds):
         if extra and base.endswith(f'_{extra}'):
             base = base[: -(len(extra) + 1)]
+    if is_legacy_bad_task_base_name(base):
+        base = DEFAULT_TASK_BASE_NAME
 
     parts = [base]
-    if ds:
-        parts.append(ds)
-    if dv:
-        parts.append(dv)
     if task_id is not None:
         parts.append(str(task_id))
 
@@ -105,7 +126,19 @@ def _dataset_path_key(dataset_path: str) -> str:
     prefix_list = parse_qs(parsed.query).get('prefix')
     if prefix_list and prefix_list[0]:
         return prefix_list[0]
-    return dataset_path.rstrip('/').split('/')[-1]
+    basename = dataset_path.rstrip('/').split('/')[-1]
+    if '?' in basename:
+        return ''
+    return basename
+
+
+def _register_dataset_map_keys(dataset_map: dict, key: str, info: dict) -> None:
+    if not key:
+        return
+    dataset_map[key] = info
+    stripped = key[:-4] if key.lower().endswith('.zip') else key
+    if stripped and stripped != key:
+        dataset_map[stripped] = info
 
 
 def _build_dataset_zip_map(items) -> dict:
@@ -118,15 +151,13 @@ def _build_dataset_zip_map(items) -> dict:
         if not zip_url:
             continue
         info = {'name': name, 'version': version}
-        dataset_map[zip_url] = info
-        path_key = _dataset_path_key(zip_url)
-        if path_key:
-            dataset_map[path_key] = info
+        _register_dataset_map_keys(dataset_map, zip_url, info)
+        _register_dataset_map_keys(dataset_map, _dataset_path_key(zip_url), info)
     return dataset_map
 
 
 def _load_dataset_zip_map() -> dict:
-    java_url = os.getenv('JAVA_BACKEND_URL', 'http://localhost:8080').rstrip('/')
+    java_url = resolve_java_backend_url()
     headers = {}
     auth = request.headers.get('Authorization') or request.headers.get('X-Authorization')
     if auth:
@@ -179,12 +210,18 @@ def _is_local_filesystem_dataset_path(dataset_path: str) -> bool:
 def _enrich_task_metadata(task: TrainTask, dataset_map: dict) -> bool:
     """补全缺失的数据集字段与任务名，返回是否有字段变更。"""
     changed = False
-    info = None
-    if not _is_local_filesystem_dataset_path(task.dataset_path):
-        info = _lookup_dataset_info(dataset_map, task.dataset_path)
+    should_lookup_map = (
+        not _is_local_filesystem_dataset_path(task.dataset_path)
+        or is_legacy_bad_dataset_name(task.dataset_name)
+    )
+    info = _lookup_dataset_info(dataset_map, task.dataset_path) if should_lookup_map else None
     if info:
-        if not task.dataset_name and info.get('name'):
-            task.dataset_name = info['name']
+        map_name = (info.get('name') or '').strip()
+        if map_name and (
+            not task.dataset_name
+            or is_legacy_bad_dataset_name(task.dataset_name)
+        ):
+            task.dataset_name = map_name
             changed = True
         if task.dataset_version in (None, '') and info.get('version'):
             task.dataset_version = info['version']
@@ -192,7 +229,7 @@ def _enrich_task_metadata(task: TrainTask, dataset_map: dict) -> bool:
 
     resolved_name = resolve_dataset_display_name(task.dataset_path, task.dataset_name)
     if resolved_name and resolved_name != (task.dataset_name or '').strip():
-        if not task.dataset_name or is_upload_storage_stem(task.dataset_name):
+        if not task.dataset_name or is_legacy_bad_dataset_name(task.dataset_name):
             task.dataset_name = resolved_name
             changed = True
 
@@ -294,31 +331,16 @@ def _get_completed_epochs(hp_text: str) -> int:
 
 
 def _resolve_train_checkpoint_path(model_dir: str) -> str | None:
-    if not model_dir or not os.path.isdir(model_dir):
-        return None
-    candidates = []
-    for name in os.listdir(model_dir):
-        if not name.startswith('train_results'):
-            continue
-        path = os.path.join(model_dir, name)
-        if os.path.isdir(path):
-            candidates.append(name)
-    for name in sorted(candidates, reverse=True):
-        results_dir = os.path.join(model_dir, name)
-        last_pt = os.path.join(results_dir, 'weights', 'last.pt')
-        if os.path.isfile(last_pt):
-            return os.path.abspath(last_pt)
-    return None
+    return find_yolo_checkpoint(model_dir)
 
 
 def _task_can_resume(task: TrainTask) -> bool:
-    if task.status != 'stopped':
+    if task.status not in ('stopped', 'error', 'failed'):
         return False
     checkpoint = (task.checkpoint_dir or '').strip()
-    if checkpoint and os.path.isfile(checkpoint):
-        return True
-    model_dir = _get_train_task_dir(task.id)
-    return _resolve_train_checkpoint_path(model_dir) is not None
+    if not checkpoint or not os.path.isfile(checkpoint):
+        checkpoint = _resolve_train_checkpoint_path(_get_train_task_dir(task.id)) or ''
+    return bool(checkpoint and is_yolo_checkpoint_resumable(checkpoint))
 
 
 def _normalize_model_version(version) -> str:
@@ -342,6 +364,22 @@ def _parse_minio_url(url: str):
     except Exception as exc:
         logger.error('解析 MinIO URL 失败: %s, error=%s', url, exc)
         return None, None
+
+
+_GENERATED_DEFAULT_MODEL_IMAGE_RE = re.compile(
+    r'^images/default_model_[0-9a-f]{32}\.png$',
+    re.IGNORECASE,
+)
+
+
+def _resolve_publish_image_url(existing_model: Model | None) -> str | None:
+    if not existing_model or not existing_model.image_url:
+        return None
+    image_url = existing_model.image_url.strip()
+    _, object_key = _parse_minio_url(image_url)
+    if object_key and _GENERATED_DEFAULT_MODEL_IMAGE_RE.fullmatch(object_key):
+        return None
+    return image_url or None
 
 
 def _get_published_model_id(hp_text: str) -> int | None:
@@ -437,32 +475,6 @@ def _default_publish_name(task: TrainTask) -> str:
     if ds_name and base == DEFAULT_TASK_BASE_NAME:
         return ds_name
     return base or _task_display_name(task)
-
-
-def _upload_default_model_image() -> str | None:
-    temp_dir = 'temp_uploads'
-    os.makedirs(temp_dir, exist_ok=True)
-    default_image_filename = f'default_model_{uuid.uuid4().hex}.png'
-    default_image_path = os.path.join(temp_dir, default_image_filename)
-    try:
-        if not download_default_model_image(default_image_path):
-            return None
-        bucket_name = 'models'
-        image_object_key = f'images/{default_image_filename}'
-        upload_success, _ = ModelService.upload_to_minio(
-            bucket_name, image_object_key, default_image_path
-        )
-        if upload_success:
-            return f'/api/v1/buckets/{bucket_name}/objects/download?prefix={image_object_key}'
-    except Exception as exc:
-        logger.warning('上传默认模型图片失败: %s', exc)
-    finally:
-        if os.path.exists(default_image_path):
-            try:
-                os.remove(default_image_path)
-            except OSError:
-                pass
-    return None
 
 
 def _extract_class_names_from_minio_model(model_url: str) -> list[str]:
@@ -667,11 +679,11 @@ def publish_train_task_to_model(
 
     if not class_names:
         class_names = _extract_class_names_from_minio_model(model_url)
-    image_url = _upload_default_model_image()
 
     existing_model = None
     if published_model_id:
         existing_model = Model.query.get(published_model_id)
+    image_url = _resolve_publish_image_url(existing_model)
 
     if existing_model:
         conflict = Model.query.filter(
@@ -688,8 +700,7 @@ def publish_train_task_to_model(
         existing_model.model_path = model_url
         existing_model.status = 0
         existing_model.updated_at = datetime.utcnow()
-        if image_url and not existing_model.image_url:
-            existing_model.image_url = image_url
+        existing_model.image_url = image_url
         if class_names:
             existing_model.class_names = dump_class_names_json(class_names)
             existing_model.selected_class_names = dump_class_names_json(class_names)

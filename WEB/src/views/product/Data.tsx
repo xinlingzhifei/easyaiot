@@ -50,11 +50,6 @@ export function getBasicColumns(): BasicColumn[] {
       width: 50,
     },
     {
-      title: '产品型号',
-      dataIndex: 'model',
-      width: 50,
-    },
-    {
       title: '数据格式',
       dataIndex: 'dataFormat',
       width: 50,
@@ -74,7 +69,8 @@ export function getBasicColumns(): BasicColumn[] {
       dataIndex: 'status',
       width: 50,
       customRender: ({ text }) => {
-        return <Tag color={text ? 'green' : 'red'}>{text ? '启用' : '停用'}</Tag>;
+        const enabled = text === '0' || text === 0;
+        return <Tag color={enabled ? 'green' : 'red'}>{enabled ? '启用' : '停用'}</Tag>;
       },
     },
     {
@@ -227,6 +223,14 @@ export const protoTypeList = [
     value: 'WEBSOCKET',
   },
   {
+    label: 'Modbus TCP',
+    value: 'MODBUS_TCP',
+  },
+  {
+    label: 'OPC UA',
+    value: 'OPCUA',
+  },
+  {
     label: 'GB28181',
     value: 'GB28181',
   },
@@ -247,59 +251,39 @@ export const encryptMethodList = [
   },
 ];
 
-export let productTemplateList = [];
+export const authModeList = [
+  { label: '用户名密码', value: 'USERNAME_PASSWORD' },
+  { label: 'Access Token', value: 'ACCESS_TOKEN' },
+  { label: '证书认证', value: 'CERTIFICATE' },
+];
 
-export const productModel = {
-  id :'',
-  //应用ID
-  appId :'',
-  //产品模版标识
-  templateIdentification :'',
-  //产品名称:自定义，支持中文、英文大小写、数字、下划线和中划线
-  productName :'',
-  //产品标识
-  productIdentification :'',
-  //支持以下两种产品类型•COMMON：普通产品，需直连设备。//•GATEWAY：网关产品，可挂载子设备。
-  productType :'',
-  //厂商ID:支持英文大小写，数字，下划线和中划线
-  manufacturerId :'',
-  //厂商名称 :支持中文、英文大小写、数字、下划线和中划线
-  manufacturerName :'',
-  //产品型号，建议包含字母或数字来保证可扩展性。支持英文大小写、数字、下划线和中划线
-  model :'',
-  //数据格式，默认为JSON无需修改。
-  dataFormat :'',
-  //设备类型:支持英文大小写、数字、下划线和中划线
-  deviceType :'',
-  //设备接入平台的协议类型，默认为MQTT无需修改。
-  protocolType :'',
-  encryptKey: '',
-  encryptVector: '',
-  //状态(字典值：0启用  1停用)
-  status :'',
-  //产品描述
-  remark :'',
-  //创建者
-  createBy :'',
-  //创建时间
-  createTime :'',
-  //更新者
-  updateBy :'',
-  //更新时间
-  updateTime :'',
-  //认证方式
-  authMode :'',
-  //用户名
-  userName :'',
-  //密码
-  password :'',
-  //连接实例
-  connector :'',
-  //签名密钥
-  signKey :'',
-  //协议加密方式
-  encryptMethod :'',
+export function createEmptyProduct() {
+  return {
+    id: '',
+    appId: '',
+    productName: '',
+    productIdentification: '',
+    productType: '',
+    manufacturerId: '',
+    manufacturerName: '',
+    model: '',
+    dataFormat: 'JSON',
+    deviceType: '',
+    protocolType: 'MQTT',
+    encryptKey: '',
+    encryptVector: '',
+    status: '0',
+    remark: '',
+    authMode: '',
+    userName: '',
+    password: '',
+    connector: '',
+    signKey: '',
+    encryptMethod: '0',
+  };
 }
+
+export const productModel = createEmptyProduct();
 
 // 设备接入
 export function deviceAccessFormSchemas() {

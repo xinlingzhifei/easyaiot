@@ -17,6 +17,9 @@ public interface ErrorCodeConstants {
     ErrorCode SSH_CREDENTIAL_NOT_EXISTS = new ErrorCode(1_005_001_000, "SSH 凭据不存在");
     ErrorCode SSH_CONNECT_FAILED = new ErrorCode(1_005_001_001, "SSH 连接失败");
     ErrorCode AGENT_TOKEN_INVALID = new ErrorCode(1_005_002_000, "Agent 认证令牌无效");
+    ErrorCode AGENT_HOST_MISMATCH = new ErrorCode(1_005_002_001, "Agent 主机名与节点已绑定主机不一致，请检查是否多个 Agent 共用同一 NODE_ID");
+    ErrorCode AGENT_CAPACITY_MISMATCH = new ErrorCode(1_005_002_002, "Agent 上报的内存/磁盘容量与已绑定指纹不一致，请检查是否多个 Agent 共用同一 NODE_ID");
+    ErrorCode AGENT_COMMAND_FAILED = new ErrorCode(1_005_002_003, "Agent 命令执行失败: {}");
     ErrorCode NODE_POOL_EXHAUSTED = new ErrorCode(1_005_003_000, "无可用节点，节点池已耗尽");
     ErrorCode MEDIA_BINDING_NOT_EXISTS = new ErrorCode(1_005_004_000, "设备媒体绑定不存在");
     ErrorCode MEDIA_DEPLOY_SSH_FAILED = new ErrorCode(1_005_004_001, "媒体栈 SSH 部署失败");
@@ -27,6 +30,13 @@ public interface ErrorCodeConstants {
 
     ErrorCode STORAGE_CLUSTER_SOURCE_NOT_FOUND = new ErrorCode(1_005_006_000, "控制面未找到 Ceph storage-cluster 源目录");
     ErrorCode STORAGE_NODE_ROLE_INVALID = new ErrorCode(1_005_006_001, "当前节点角色不支持该 Ceph 存储操作");
+
+    ErrorCode MQTT_CLUSTER_SOURCE_NOT_FOUND = new ErrorCode(1_005_008_000, "控制面未找到 mqtt-cluster 源目录");
+    ErrorCode MQTT_NODE_ROLE_INVALID = new ErrorCode(1_005_008_001, "仅 MQTT 网关节点支持 EMQX 集群部署");
+
+    ErrorCode EDGE_JOIN_TOKEN_INVALID = new ErrorCode(1_005_009_000, "EDGE 加入令牌无效或未开启开放纳管");
+    ErrorCode EDGE_ENROLL_HOST_EMPTY = new ErrorCode(1_005_009_001, "EDGE 纳管主机地址不能为空");
+    ErrorCode EDGE_NODE_NOT_EXISTS = new ErrorCode(1_005_009_002, "边缘节点不存在");
 
     ErrorCode CONTROL_PLANE_PEER_NOT_EXISTS = new ErrorCode(1_005_007_000, "对等中心节点不存在");
     ErrorCode CONTROL_PLANE_PEER_LIMIT = new ErrorCode(1_005_007_001, "最多支持 3 个中心节点（含本机）");

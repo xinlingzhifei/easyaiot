@@ -304,8 +304,75 @@ public interface DeviceService extends IService<Device> {
      * @param deviceId          设备ID
      * @param serviceIdentifier 服务标识（从产品模型中获取的 service_code）
      * @param params            服务调用参数
-     * @return 是否发送成功
+     * @return 下发结果（含 requestId）；失败返回 null；参数非法抛出 IllegalArgumentException
      */
-    boolean invokeService(Long deviceId, String serviceIdentifier, Object params);
+    Map<String, Object> invokeService(Long deviceId, String serviceIdentifier, Object params);
+
+    /**
+     * 下发设备属性期望值（thing.property.set）
+     * <p>
+     * 会校验可写属性与类型、写入云端 desired、记录 PENDING 指令日志
+     *
+     * @param deviceId 设备ID
+     * @param params   属性键值
+     * @return 下发结果（含 requestId）；失败返回 null；参数非法抛出 IllegalArgumentException
+     */
+    Map<String, Object> setProperties(Long deviceId, Object params);
+
+    /**
+     * 网关代报时确保子设备存在：不存在则按 SUBSET 产品自动创建并绑定网关；
+     * 已存在则补齐/校验 parentIdentification。
+     *
+     * @param param 网关与子设备标识
+     * @return 子设备
+     */
+    Device ensureGatewaySubDevice(EnsureGatewaySubDeviceParam param);
+
+    /**
+     * 网关删除子设备拓扑关系（清空 parentIdentification，不删除设备档案）
+     *
+     * @param gatewayIdentification 网关设备标识
+     * @param subDeviceIdentifications 子设备标识列表
+     * @return 成功解绑数量
+     */
+    int detachGatewaySubDevices(String gatewayIdentification, List<String> subDeviceIdentifications);
+
+    /**
+     * 网关上报子设备在线状态
+     *
+     * @param gatewayIdentification 网关设备标识
+     * @param statusItems 子设备状态列表（deviceIdentification + status ONLINE/OFFLINE）
+     * @return 更新数量
+     */
+    int updateGatewaySubDeviceStatus(String gatewayIdentification, List<Map<String, Object>> statusItems);
+
+    /**
+     * 上行时确保设备存在：产品类型为 GATEWAY / COMMON 时，设备不存在则自动建档。
+     * SUBSET 不走此接口（须经网关代理 ensureGatewaySubDevice）。
+     *
+     * @param param 产品与设备标识
+     * @return 设备
+     */
+    Device ensureDeviceOnUplink(EnsureDeviceOnUplinkParam param);
+
+    /**
+     * 查询 IoT 设备已关联的流媒体摄像头
+     */
+    List<DeviceCameraLink> listDeviceCameraLinks(Long iotDeviceId);
+
+    /**
+     * 查询已被任意 IoT 设备绑定的摄像头 ID
+     */
+    List<String> listBoundCameraIds();
+
+    /**
+     * 关联流媒体摄像头
+     */
+    int associateCameras(Long iotDeviceId, List<String> cameraDeviceIds);
+
+    /**
+     * 解绑流媒体摄像头
+     */
+    int disassociateCameras(List<Long> linkIds);
 }
 

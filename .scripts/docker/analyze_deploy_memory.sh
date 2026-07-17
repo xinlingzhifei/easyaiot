@@ -190,7 +190,7 @@ infer_profile_from_containers() {
 
     for name in "${running[@]}"; do
         case "$name" in
-            tdengine-server|emqx-server|nodered-server|milvus-server|zlmediakit-server)
+            tdengine-server|nodered-server)
                 echo "full"
                 return 0
                 ;;

@@ -46,5 +46,15 @@ public interface DeviceServiceInvokeResponseMapper {
      * @return 记录列表
      */
     List<DeviceServiceInvokeResponse> selectByDeviceId(@Param("deviceId") Long deviceId);
+
+    /**
+     * 根据请求编号查询（取最新一条）
+     */
+    DeviceServiceInvokeResponse selectByRequestId(@Param("requestId") String requestId);
+
+    /**
+     * 更新响应结果（用于 PENDING → SUCCESS/FAILED）
+     */
+    int updateResponse(DeviceServiceInvokeResponse record);
 }
 

@@ -51,7 +51,9 @@ public class GlobalExceptionHandler {
     public static final Set<String> IGNORE_ERROR_MESSAGES = SetUtils.asSet(
             "无效的刷新令牌",
             "服务器节点不存在",
-            "Agent 认证令牌无效");
+            "Agent 认证令牌无效",
+            "Agent 主机名与节点已绑定主机不一致，请检查是否多个 Agent 共用同一 NODE_ID",
+            "Agent 上报的内存/磁盘容量与已绑定指纹不一致，请检查是否多个 Agent 共用同一 NODE_ID");
 
     @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     private final String applicationName;

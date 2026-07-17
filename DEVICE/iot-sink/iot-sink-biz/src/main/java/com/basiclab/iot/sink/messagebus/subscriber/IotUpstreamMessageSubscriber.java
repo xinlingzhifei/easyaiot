@@ -5,84 +5,92 @@ import com.basiclab.iot.sink.messagebus.core.IotMessageSubscriber;
 import com.basiclab.iot.sink.messagebus.subscriber.handler.IotUpstreamMessageHandler;
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
-import org.springframework.beans.factory.annotation.Autowired;
-
-import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.util.List;
 
 /**
  * IotUpstreamMessageSubscriber
  *
+ * 使用 SmartInitializingSingleton 延迟注册，避免与 IotMessageBus 循环依赖，
+ * 并确保在所有单例 Bean 创建完成后再挂载 Kafka 消费。
+ *
  * @author reese
  * @email reese
  */
-
 @Slf4j
 @Component
-@ConditionalOnBean(IotMessageBus.class)
-public class IotUpstreamMessageSubscriber implements IotMessageSubscriber<IotDeviceMessage> {
+public class IotUpstreamMessageSubscriber
+        implements IotMessageSubscriber<IotDeviceMessage>, SmartInitializingSingleton {
 
     @Resource
+    @Lazy
     private IotMessageBus messageBus;
 
     @Autowired(required = false)
     private List<IotUpstreamMessageHandler> upstreamMessageHandlers;
 
-    @PostConstruct
-    public void subscribe() {
+    @Override
+    public void afterSingletonsInstantiated() {
         messageBus.register(this);
-        log.info("[subscribe][IoT 网关上行消息订阅成功，主题：{}]", getTopic());
+        log.info("[afterSingletonsInstantiated][IoT 网关上行消息订阅成功，主题：{}]", getTopic());
     }
 
     @Override
     public String getTopic() {
-        // 订阅通用设备消息主题（来自 iot-broker 或 iot-sink 的上行消息）
         return IotDeviceMessage.MESSAGE_BUS_DEVICE_MESSAGE_TOPIC;
     }
 
     @Override
     public String getGroup() {
-        // 使用固定的 Group，确保所有网关实例共享消费
         return "iot-gateway-upstream-subscriber";
     }
 
     @Override
     public void onMessage(IotDeviceMessage message) {
+        if (message == null) {
+            log.warn("[onMessage][接收到空的上行消息]");
+            return;
+        }
+
         log.debug("[onMessage][接收到上行消息, messageId: {}, method: {}, deviceId: {}, serverId: {}]",
                 message.getId(), message.getMethod(), message.getDeviceId(), message.getServerId());
 
         try {
-            // 1. 校验消息
-            if (message == null || message.getMethod() == null) {
+            if (message.getMethod() == null) {
                 log.warn("[onMessage][消息或方法为空, messageId: {}, deviceId: {}]",
-                        message != null ? message.getId() : null,
-                        message != null ? message.getDeviceId() : null);
+                        message.getId(), message.getDeviceId());
                 return;
             }
 
-            // 2. 委托给上行消息处理器处理业务逻辑
             if (upstreamMessageHandlers != null && !upstreamMessageHandlers.isEmpty()) {
+                boolean handled = false;
                 for (IotUpstreamMessageHandler handler : upstreamMessageHandlers) {
                     try {
                         boolean success = handler.handleUpstreamMessage(message);
                         if (success) {
+                            handled = true;
                             log.debug("[onMessage][上行消息处理成功, messageId: {}, method: {}, deviceId: {}, handler: {}]",
                                     message.getId(), message.getMethod(), message.getDeviceId(),
                                     handler.getClass().getSimpleName());
-                        } else {
-                            log.warn("[onMessage][上行消息处理失败, messageId: {}, method: {}, deviceId: {}, handler: {}]",
-                                    message.getId(), message.getMethod(), message.getDeviceId(),
-                                    handler.getClass().getSimpleName());
+                            break;
                         }
+                        log.debug("[onMessage][处理器未匹配上行消息, messageId: {}, method: {}, deviceId: {}, handler: {}]",
+                                message.getId(), message.getMethod(), message.getDeviceId(),
+                                handler.getClass().getSimpleName());
                     } catch (Exception e) {
                         log.error("[onMessage][上行消息处理器执行异常, messageId: {}, method: {}, deviceId: {}, handler: {}]",
                                 message.getId(), message.getMethod(), message.getDeviceId(),
                                 handler.getClass().getSimpleName(), e);
                     }
+                }
+                if (!handled) {
+                    log.warn("[onMessage][没有处理器接收上行消息, messageId: {}, method: {}, deviceId: {}, topic: {}]",
+                            message.getId(), message.getMethod(), message.getDeviceId(), message.getTopic());
                 }
             } else {
                 log.debug("[onMessage][未配置上行消息处理器，跳过处理, messageId: {}]", message.getId());
@@ -92,6 +100,4 @@ public class IotUpstreamMessageSubscriber implements IotMessageSubscriber<IotDev
                     message.getId(), message.getMethod(), message.getDeviceId(), e);
         }
     }
-
 }
-

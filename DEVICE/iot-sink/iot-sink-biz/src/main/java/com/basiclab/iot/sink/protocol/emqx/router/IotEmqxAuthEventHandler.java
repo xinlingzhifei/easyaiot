@@ -180,7 +180,7 @@ public class IotEmqxAuthEventHandler {
     private boolean handleDeviceAuth(String clientId, String username, String password) {
         try {
             return deviceAuthService.authDevice(new IotDeviceAuthReqDTO()
-                    .setClientId(clientId).setUsername(username).setPassword(password));
+                    .setClientId(clientId).setUsername(username).setPassword(password).setProtocolType("MQTT"));
         } catch (Exception e) {
             log.error("[handleDeviceAuth][设备({}) 认证失败]", username, e);
             throw e;

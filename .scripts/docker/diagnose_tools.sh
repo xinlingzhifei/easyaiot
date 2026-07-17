@@ -51,6 +51,8 @@ _print_deploy_header() {
     echo "  9) 检查 Docker 环境是否就绪"
     echo "  10) 查看当前部署形态（mini/standard/full）"
     echo "  11) 显示完整命令行帮助"
+    echo "  12) 清理 build-runtime 构建产物"
+    echo "     说明：先停止业务服务（DEVICE/AI/VIDEO/WEB/APP），再删打包镜像/构建缓存；中间件不停"
     echo ""
     echo "  0) 返回上级菜单"
     echo ""
@@ -80,7 +82,7 @@ run_deploy_interactive_menu() {
     local choice=""
     while true; do
         _print_deploy_header
-        read -r -p "请输入部署选项 [0-11]: " choice || choice=""
+        read -r -p "请输入部署选项 [0-12]: " choice || choice=""
         if [ -z "$choice" ]; then
             continue
         fi
@@ -127,6 +129,10 @@ run_deploy_interactive_menu() {
                 ;;
             11)
                 show_help
+                ;;
+            12)
+                print_info "即将执行：清理 build-runtime 构建产物（先停业务服务，保留中间件）"
+                easyaiot_run_command clean-build-runtime
                 ;;
             0|q|Q|exit|b|B)
                 return 0

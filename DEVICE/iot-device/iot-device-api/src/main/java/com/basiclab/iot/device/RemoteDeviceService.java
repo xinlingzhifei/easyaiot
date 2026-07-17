@@ -4,6 +4,8 @@ import com.basiclab.iot.common.constant.ServiceNameConstants;
 import com.basiclab.iot.common.domain.AjaxResult;
 import com.basiclab.iot.common.domain.R;
 import com.basiclab.iot.device.domain.device.vo.Device;
+import com.basiclab.iot.device.domain.device.vo.EnsureDeviceOnUplinkParam;
+import com.basiclab.iot.device.domain.device.vo.EnsureGatewaySubDeviceParam;
 import com.basiclab.iot.device.factory.RemoteDeviceFallbackFactory;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -90,4 +92,30 @@ public interface RemoteDeviceService {
     @ApiOperation("通过设备标识查询设备")
     @GetMapping(value = "/findOneByDeviceIdentification/{deviceIdentification}")
     public AjaxResult findOneByDeviceIdentification(@PathVariable("deviceIdentification") String deviceIdentification);
+
+    /**
+     * 上行时确保设备存在（GATEWAY / COMMON 自动建档）
+     */
+    @PostMapping("/device/ensureDeviceOnUplink")
+    R<Device> ensureDeviceOnUplink(@RequestBody EnsureDeviceOnUplinkParam param);
+
+    /**
+     * 网关代报时确保子设备存在（自动创建 SUBSET 并绑定网关）
+     */
+    @PostMapping("/device/ensureGatewaySubDevice")
+    R<Device> ensureGatewaySubDevice(@RequestBody EnsureGatewaySubDeviceParam param);
+
+    /**
+     * 网关删除子设备拓扑
+     */
+    @PostMapping("/device/detachGatewaySubDevices")
+    R<Integer> detachGatewaySubDevices(@RequestParam("gatewayIdentification") String gatewayIdentification,
+                                       @RequestBody List<String> subDeviceIdentifications);
+
+    /**
+     * 网关上报子设备在线状态
+     */
+    @PostMapping("/device/updateGatewaySubDeviceStatus")
+    R<Integer> updateGatewaySubDeviceStatus(@RequestParam("gatewayIdentification") String gatewayIdentification,
+                                            @RequestBody List<Map<String, Object>> statusItems);
 }

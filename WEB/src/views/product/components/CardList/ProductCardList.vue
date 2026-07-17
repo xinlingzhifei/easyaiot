@@ -20,9 +20,9 @@
             </div>
           </template>
           <template #renderItem="{ item }">
-            <ListItem :class="item.status == 0? 'product-item normal' : 'product-item error'">
+            <ListItem :class="item.status === '0' || item.status === 0 ? 'product-item normal' : 'product-item error'">
               <div class="product-info">
-                <div class="status">{{item.status == 0? '启用' : '禁用'}}</div>
+                <div class="status">{{ item.status === '0' || item.status === 0 ? '启用' : '停用' }}</div>
                 <div class="title o2">{{item.productName}}</div>
                 <div class="props">
                   <div class="flex" style="justify-content: space-between;">
@@ -145,7 +145,7 @@ async function fetch(p = {}) {
   if (api && isFunction(api)) {
     try {
       state.loading = true;
-      const res = await api({...params, pageNo: page.value, pageSize: pageSize.value, ...p});
+      const res = await api({...params, pageNum: page.value, pageSize: pageSize.value, ...p});
       // 根据表格配置，返回格式为 { data: [...], total: ... }
       data.value = res.data || [];
       total.value = res.total || 0;

@@ -1,314 +1,337 @@
 <template>
-  <BasicModal
+  <BasicDrawer
+    v-bind="$attrs"
     @register="register"
     :title="getTitle"
-    :width="700"
-    @cancel="handleCancel"
-    @ok="handleOk"
-    :canFullscreen="false"
+    width="1400"
+    placement="right"
+    :showFooter="true"
+    :showCancelBtn="false"
+    :showOkBtn="false"
+    destroy-on-close
   >
-    <div class="product-modal">
-      <Spin :spinning="state.editLoading">
+    <template #footer>
+      <div class="footer-buttons">
+        <Button @click="handleCancel">取消</Button>
+        <Button type="primary" :loading="state.editLoading" @click="handleOk">保存</Button>
+      </div>
+    </template>
+
+    <Spin :spinning="state.editLoading">
+      <div class="product-drawer-content">
+        <Divider orientation="left">基础信息</Divider>
         <Form
-          :labelCol="{ span: 6 }"
-          :model="validateInfos"
-          :wrapperCol="{ span: 16 }"
+          :label-col="SETUP_FORM_LABEL_COL"
+          :wrapper-col="SETUP_FORM_WRAPPER_COL"
+          class="section-form"
         >
-          <Row :gutter="0">
+          <Row :gutter="16">
             <Col :span="12">
-              <FormItem label="产品模板" name="templateIdentification" v-bind=validateInfos.templateIdentification>
+              <FormItem label="产品名称" required v-bind="validateInfos.productName">
+                <Input v-model:value="modelRef.productName" placeholder="支持中文、英文、数字、下划线和中划线" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="产品类型" required v-bind="validateInfos.productType">
                 <Select
-                placeholder="产品模板"
-                :options="state.productTemplateList"
-                @change="handleCLickChange"
-                v-model:value="modelRef.templateIdentification"
-                allowClear
+                  v-model:value="modelRef.productType"
+                  placeholder="请选择产品类型"
+                  :options="productTypeList"
+                  :disabled="state.isEdit"
+                  allowClear
                 />
               </FormItem>
             </Col>
-            <Col :span="12">
-              <FormItem label="应用场景" name="appId" v-bind=validateInfos.appId>
-               <Input v-model:value="modelRef.appId" />
+            <Col v-if="state.isEdit" :span="12">
+              <FormItem label="产品标识">
+                <Input :value="modelRef.productIdentification" disabled />
               </FormItem>
             </Col>
             <Col :span="12">
-              <FormItem label="产品名称" name="productName" v-bind=validateInfos.productName>
-               <Input v-model:value="modelRef.productName" />
+              <FormItem label="应用场景" v-bind="validateInfos.appId">
+                <Input v-model:value="modelRef.appId" placeholder="请输入应用场景" />
               </FormItem>
             </Col>
             <Col :span="12">
-              <FormItem label="产品类型" name="productType" v-bind=validateInfos.productType>
+              <FormItem label="产品型号" v-bind="validateInfos.model">
+                <Input v-model:value="modelRef.model" placeholder="建议包含字母或数字" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="厂商ID" v-bind="validateInfos.manufacturerId">
+                <Input v-model:value="modelRef.manufacturerId" placeholder="支持英文、数字、下划线和中划线" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="厂商名称" v-bind="validateInfos.manufacturerName">
+                <Input v-model:value="modelRef.manufacturerName" placeholder="请输入厂商名称" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="设备类型" v-bind="validateInfos.deviceType">
                 <Select
-                placeholder="产品类型"
-                :options="productTypeList"
-                @change="handleCLickChange"
-                v-model:value="modelRef.productType"
-                allowClear
-                />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="厂商ID" name="manufacturerId" v-bind=validateInfos.manufacturerId>
-               <Input v-model:value="modelRef.manufacturerId" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="厂商名称" name="manufacturerName" v-bind=validateInfos.manufacturerName>
-               <Input v-model:value="modelRef.manufacturerName" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="产品型号" name="model" v-bind=validateInfos.model>
-                <Input v-model:value="modelRef.model" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="数据格式" name="dataFormat" v-bind=validateInfos.dataFormat>
-                <Select
-                placeholder="数据格式"
-                :options="dataTypeList"
-                @change="handleCLickChange"
-                v-model:value="modelRef.dataFormat"
-                allowClear
-                />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="设备类型" name="deviceType" v-bind=validateInfos.deviceType>
-               <Input v-model:value="modelRef.deviceType" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="认证方式" name="authMode" v-bind=validateInfos.authMode>
-                <Input v-model:value="modelRef.authMode" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="用户名" name="userName" v-bind=validateInfos.userName>
-               <Input v-model:value="modelRef.userName" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="密码" name="password" v-bind=validateInfos.password>
-                <Input v-model:value="modelRef.password" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="连接实例" name="connector" v-bind=validateInfos.connector>
-                <Input v-model:value="modelRef.connector" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="签名密钥" name="signKey" v-bind=validateInfos.signKey>
-                <Input v-model:value="modelRef.signKey" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="传输加密" name="encryptMethod" v-bind=validateInfos.encryptMethod>
-                <Select
-                  placeholder="协议类型"
-                  :options="encryptMethodList"
-                  @change="handleCLickChange"
-                  v-model:value="modelRef.encryptMethod"
+                  v-model:value="modelRef.deviceType"
+                  placeholder="请选择设备类型"
+                  :options="deviceType"
                   allowClear
                 />
               </FormItem>
             </Col>
             <Col :span="12">
-              <FormItem label="加密密钥" name="encryptKey" v-bind=validateInfos.encryptKey>
-                <Input v-model:value="modelRef.encryptKey" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="加密向量" name="encryptVector" v-bind=validateInfos.encryptVector>
-                <Input v-model:value="modelRef.encryptVector" />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="协议类型" name="protocolType" v-bind=validateInfos.protocolType>
+              <FormItem label="状态" v-bind="validateInfos.status">
                 <Select
-                placeholder="协议类型"
-                :options="protoTypeList"
-                @change="handleCLickChange"
-                v-model:value="modelRef.protocolType"
-                allowClear
+                  v-model:value="modelRef.status"
+                  placeholder="请选择状态"
+                  :options="statusList"
                 />
               </FormItem>
             </Col>
-            <Col :span="12">
-              <FormItem label="状态" name="status" v-bind=validateInfos.status>
-                <Select
-                placeholder="产品类型"
-                :options="statusList"
-                @change="handleCLickChange"
-                v-model:value="modelRef.status"
-                allowClear
-                />
-              </FormItem>
-            </Col>
-            <Col :span="12">
-              <FormItem label="产品描述" name="remark" v-bind=validateInfos.remark>
-                <Input v-model:value="modelRef.remark" />
+            <Col :span="24">
+              <FormItem label="产品描述" v-bind="validateInfos.remark">
+                <Textarea v-model:value="modelRef.remark" placeholder="请输入产品描述" :rows="3" />
               </FormItem>
             </Col>
           </Row>
         </Form>
-      </Spin>
-    </div>
-  </BasicModal>
+
+        <Divider orientation="left">接入配置</Divider>
+        <Form
+          :label-col="SETUP_FORM_LABEL_COL"
+          :wrapper-col="SETUP_FORM_WRAPPER_COL"
+          class="section-form"
+        >
+          <Row :gutter="16">
+            <Col :span="12">
+              <FormItem label="协议类型" required v-bind="validateInfos.protocolType">
+                <Select
+                  v-model:value="modelRef.protocolType"
+                  placeholder="请选择协议类型"
+                  :options="protoTypeList"
+                  allowClear
+                />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="数据格式" v-bind="validateInfos.dataFormat">
+                <Select
+                  v-model:value="modelRef.dataFormat"
+                  placeholder="请选择数据格式"
+                  :options="dataTypeList"
+                />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="连接实例" v-bind="validateInfos.connector">
+                <Input v-model:value="modelRef.connector" placeholder="MQTT 连接实例标识" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="认证方式" v-bind="validateInfos.authMode">
+                <Select
+                  v-model:value="modelRef.authMode"
+                  placeholder="请选择认证方式"
+                  :options="authModeList"
+                  allowClear
+                />
+              </FormItem>
+            </Col>
+          </Row>
+        </Form>
+
+        <Divider orientation="left">认证信息</Divider>
+        <Form
+          :label-col="SETUP_FORM_LABEL_COL"
+          :wrapper-col="SETUP_FORM_WRAPPER_COL"
+          class="section-form"
+        >
+          <Row :gutter="16">
+            <Col :span="12">
+              <FormItem label="用户名" v-bind="validateInfos.userName">
+                <Input v-model:value="modelRef.userName" placeholder="设备接入用户名" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="密码" v-bind="validateInfos.password">
+                <InputPassword v-model:value="modelRef.password" placeholder="设备接入密码" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="签名密钥" v-bind="validateInfos.signKey">
+                <Input v-model:value="modelRef.signKey" placeholder="签名密钥（可选）" />
+              </FormItem>
+            </Col>
+          </Row>
+        </Form>
+
+        <Divider orientation="left">加密配置</Divider>
+        <Form
+          :label-col="SETUP_FORM_LABEL_COL"
+          :wrapper-col="SETUP_FORM_WRAPPER_COL"
+          class="section-form"
+        >
+          <Row :gutter="16">
+            <Col :span="12">
+              <FormItem label="传输加密" v-bind="validateInfos.encryptMethod">
+                <Select
+                  v-model:value="modelRef.encryptMethod"
+                  placeholder="请选择加密方式"
+                  :options="encryptMethodList"
+                  allowClear
+                />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="加密密钥" v-bind="validateInfos.encryptKey">
+                <Input v-model:value="modelRef.encryptKey" placeholder="加密密钥" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="加密向量" v-bind="validateInfos.encryptVector">
+                <Input v-model:value="modelRef.encryptVector" placeholder="加密向量" />
+              </FormItem>
+            </Col>
+          </Row>
+          <div class="form-hint">创建后产品标识由系统自动生成；产品类型创建后不可修改。</div>
+        </Form>
+      </div>
+    </Spin>
+  </BasicDrawer>
 </template>
+
 <script lang="ts" setup>
-import {computed, onMounted, reactive} from 'vue';
-import {BasicModal, useModalInner} from '@/components/Modal';
-import {Col, Form, FormItem, Input, Row, Select, Spin,} from 'ant-design-vue';
-import {useMessage} from '@/hooks/web/useMessage';
+import { computed, reactive } from 'vue';
+import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
+import { Col, Divider, Form, FormItem, Input, Row, Select, Spin, Textarea } from 'ant-design-vue';
+import { Button } from '@/components/Button';
+import { useMessage } from '@/hooks/web/useMessage';
 import {
-  dataTypeList, encryptMethodList,
-  productModel,
+  authModeList,
+  createEmptyProduct,
+  dataTypeList,
+  deviceType,
+  encryptMethodList,
   productTypeList,
   protoTypeList,
-  statusList
-} from "@/views/product/Data";
-import {addDeviceProfile, editDeviceProfile, getProductTemplateList} from "@/api/device/product";
+  statusList,
+} from '@/views/product/Data';
+import { addDeviceProfile, editDeviceProfile } from '@/api/device/product';
+import { SETUP_FORM_LABEL_COL, SETUP_FORM_WRAPPER_COL } from '@/views/node/utils/constants';
+
+defineOptions({ name: 'ProductFormDrawer' });
 
 const { createMessage } = useMessage();
+const InputPassword = Input.Password;
 
 const state = reactive({
-  record: null,
-  productType: true,
-  fileList: [],
-  loading: false,
+  isEdit: false,
   editLoading: false,
-  defaultRule: [],
-  defaultRuleParams: {
-    pageSize: 30,
-    page: 1,
-    total: 0,
-  },
-  productTemplateList : [],
-  defaultQueue: [],
-  defaultQueueParams: {
-    pageSize: 30,
-    page: 1,
-    total: 0,
-  },
-});
-const modelRef = reactive(productModel);
-
-const getTitle = computed(() => (state.productType ? '新增产品' : '编辑产品'));
-
-onMounted(() => {
-  initProductTemplates();
-})
-
-async function initProductTemplates(){
-  const productTemplates = await getProductTemplateList();
-  state.productTemplateList = state.productTemplateList.concat(
-    productTemplates.map((item) => {
-      item.value = item.templateIdentification;
-      item.label = item.templateName;
-      return item;
-    }),
-  );
-}
-
-const [register, { closeModal }] = useModalInner((data) => {
-  const { type, record } = data;
-  state.productType = type;
-
-  !type && productEdit(record);
 });
 
-const emits = defineEmits(['update']);
+const modelRef = reactive(createEmptyProduct());
+const getTitle = computed(() => (state.isEdit ? '编辑产品' : '新增产品'));
 
-const rulesRef = reactive({ productName: [{ required: true, message: '请输入产品名称', trigger: ['change'] }],
+const emits = defineEmits(['success', 'register', 'update']);
+
+const rulesRef = reactive({
+  productName: [{ required: true, message: '请输入产品名称', trigger: ['change'] }],
   productType: [{ required: true, message: '请选择产品类型', trigger: ['change'] }],
+  protocolType: [{ required: true, message: '请选择协议类型', trigger: ['change'] }],
 });
 
-const useForm = Form.useForm;
-const { validate, resetFields, validateInfos } = useForm(modelRef, rulesRef);
+const { validate, resetFields, validateInfos } = Form.useForm(modelRef, rulesRef);
 
-function handleCLickChange(_value) {
-  //console.log('handleCLickChange', value)
-}
+const [register, { closeDrawer }] = useDrawerInner((data) => {
+  const { isEdit, record } = data || {};
+  state.isEdit = !!isEdit || !!record?.id;
 
-async function productEdit(record) {
-  try {
-    state.editLoading = true;
-    Object.keys(modelRef).forEach((item) => {
-      modelRef[item] = record[item];
-    });
-    state.editLoading = false;
-    state.record = record;
-  }catch (error) {
-    console.error(error)
-    //console.log('productEdit ...', error);
+  if (state.isEdit && record) {
+    fillProduct(record);
+  } else {
+    resetModel();
   }
-}
+});
 
-function handleCancel() {
-  //console.log('handleCancel');
+function resetModel() {
+  Object.assign(modelRef, createEmptyProduct());
   resetFields();
 }
 
-function handleOk() {
-  validate().then(async () => {
-    let api = addDeviceProfile;
-    if (modelRef?.id) {
-      api = editDeviceProfile;
+function fillProduct(record: Record<string, any>) {
+  Object.keys(modelRef).forEach((key) => {
+    if (key === 'encryptMethod') {
+      const val = record[key];
+      modelRef[key] = val === null || val === undefined || val === '' ? '' : String(val);
+      return;
     }
-    state.editLoading = true;
-    api(modelRef)
-      .then(() => {
-        closeModal();
-        resetFields();
-        emits('update');
-      })
-      .finally(() => {
-        state.editLoading = false;
-      });
-  }).catch((err) => {
-    createMessage.error('操作失败');
-    console.error(err);
+    modelRef[key] = record[key] ?? '';
   });
 }
-</script>
-<style lang="less" scoped>
-  .product-modal {
-    :deep(.ant-form-item-label) {
-      & > label::after {
-        content: '';
-      }
-    }
 
-    :deep(.ant-form-item) {
-      margin-bottom: 20px;
-    }
+function handleCancel() {
+  resetModel();
+  closeDrawer();
+}
 
-    :deep(.ant-input),
-    :deep(.ant-select-selector) {
-      border-radius: 8px;
-      transition: all 0.3s ease;
-
-      &:hover {
-        border-color: #40a9ff;
-      }
-
-      &:focus {
-        border-color: #1890ff;
-        box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
-      }
-    }
-
-    :deep(.ant-btn) {
-      border-radius: 8px;
-      font-weight: 500;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-      &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-      }
-    }
+function buildPayload() {
+  const payload: Record<string, any> = { ...modelRef };
+  delete payload.templateIdentification;
+  delete payload.createBy;
+  delete payload.createTime;
+  delete payload.updateBy;
+  delete payload.updateTime;
+  if (payload.encryptMethod !== '' && payload.encryptMethod !== null && payload.encryptMethod !== undefined) {
+    payload.encryptMethod = Number(payload.encryptMethod);
+  } else {
+    payload.encryptMethod = null;
   }
+  return payload;
+}
+
+async function handleOk() {
+  try {
+    await validate();
+    state.editLoading = true;
+    const payload = buildPayload();
+    const api = modelRef.id ? editDeviceProfile : addDeviceProfile;
+    await api(payload);
+    createMessage.success('操作成功');
+    closeDrawer();
+    resetModel();
+    emits('success');
+    emits('update');
+  } catch (err: any) {
+    if (!err?.errorFields) {
+      createMessage.error(err?.response?.data?.msg || err?.message || '操作失败');
+    }
+  } finally {
+    state.editLoading = false;
+  }
+}
+</script>
+
+<style lang="less" scoped>
+.product-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-form {
+  :deep(.ant-form-item) {
+    margin-bottom: 16px;
+  }
+}
+
+.form-hint {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.footer-buttons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
 </style>
