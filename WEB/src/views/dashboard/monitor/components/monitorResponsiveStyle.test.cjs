@@ -6,33 +6,33 @@ const test = require('node:test')
 const monitorDir = __dirname
 const read = (file) => readFileSync(join(monitorDir, file), 'utf8')
 
-test('video monitor toolbar keeps labels readable while allowing controls to wrap', () => {
+test('single-focus video monitor keeps labels readable while allowing controls to wrap', () => {
   const source = read('VideoMonitor.vue')
 
+  assert.match(source, /class="video-monitor single-focus"/)
   assert.match(source, /\.monitor-header\s*\{[\s\S]*height:\s*auto;/)
   assert.match(source, /\.monitor-header\s*\{[\s\S]*flex-wrap:\s*wrap;/)
   assert.match(source, /\.header-title\s*\{[\s\S]*white-space:\s*nowrap;/)
   assert.match(source, /\.header-time\s*\{[\s\S]*white-space:\s*nowrap;/)
   assert.match(source, /\.header-location\s*\{[\s\S]*white-space:\s*nowrap;/)
-  assert.match(source, /\.split-toolbar\s*\{[\s\S]*flex-wrap:\s*wrap;/)
+  assert.match(source, /\.monitor-content\s*\{[\s\S]*display:\s*grid;/)
+  assert.doesNotMatch(source, /data-testid="monitor-split-toolbar"/)
 })
 
-test('dashboard frame keeps the original big-screen layout outside the red-box toolbar text', () => {
+test('dashboard frame uses the responsive single-focus command-center grid', () => {
   const dashboard = read('../index.vue')
-  const sidebar = read('Sidebar.vue')
-  const alarmPanel = read('AlarmPanel.vue')
   const topHeader = read('Header.vue')
 
-  assert.match(dashboard, /\.monitor-content\s*\{[\s\S]*display:\s*flex;/)
-  assert.doesNotMatch(dashboard, /grid-template-columns:\s*clamp\(/)
-  assert.doesNotMatch(dashboard, /@media\s*\(max-width:\s*1280px\)/)
-  assert.match(sidebar, /\.monitor-sidebar\s*\{[\s\S]*width:\s*350px;/)
-  assert.doesNotMatch(sidebar, /width:\s*clamp\(/)
-  assert.match(alarmPanel, /\.alarm-panel\s*\{[\s\S]*width:\s*320px;/)
-  assert.doesNotMatch(alarmPanel, /width:\s*clamp\(/)
+  assert.match(dashboard, /class="command-center-grid"/)
+  assert.match(dashboard, /\.command-center-grid\s*\{[\s\S]*display:\s*grid;/)
+  assert.match(
+    dashboard,
+    /grid-template-columns:\s*minmax\(240px,\s*300px\)\s*minmax\(0,\s*1fr\)\s*minmax\(280px,\s*340px\);/,
+  )
+  assert.match(dashboard, /@media\s*\(max-width:\s*1366px\)/)
+  assert.match(dashboard, /@media\s*\(max-width:\s*1100px\)/)
   assert.match(topHeader, /\.monitor-header\s*\{[\s\S]*display:\s*flex;/)
   assert.match(topHeader, /\.platform-title\s*\{[\s\S]*font-size:\s*32px;/)
-  assert.doesNotMatch(topHeader, /grid-template-columns:\s*minmax\(/)
 })
 
 test('big-screen admin entry releases the overlay so normal navigation can be clicked', () => {
@@ -61,9 +61,11 @@ test('dashboard controls expose stable selectors and keep text rendering crisp',
   assert.match(dashboard, /data-testid="monitor-dashboard"/)
   assert.match(topHeader, /data-testid="monitor-platform-title"/)
   assert.match(sidebar, /data-testid="monitor-sidebar"/)
-  assert.match(videoMonitor, /data-testid="monitor-split-toolbar"/)
-  assert.match(videoMonitor, /:data-testid="`monitor-split-\$\{layout\.value\}`"/)
+  assert.match(videoMonitor, /data-testid="monitor-video"/)
+  assert.match(videoMonitor, /class="video-monitor single-focus"/)
+  assert.match(videoMonitor, /:data-testid="`monitor-video-window-\$\{index\}`"/)
   assert.match(videoMonitor, /data-testid="monitor-ai-toggle"/)
+  assert.doesNotMatch(videoMonitor, /data-testid="monitor-split-toolbar"/)
 
   assert.match(dashboard, /text-rendering:\s*geometricPrecision;/)
   assert.match(dashboard, /-webkit-font-smoothing:\s*antialiased;/)
