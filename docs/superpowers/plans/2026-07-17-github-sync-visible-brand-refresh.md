@@ -74,6 +74,26 @@ git -C '.worktrees/github-sync-yfeieye-20260717' status --short --branch
 
 Expected: the new worktree is on `codex/github-sync-yfeieye-20260717` with no tracked or untracked changes.
 
+- [ ] **Step 5: Install isolated WEB dependencies and verify the pre-merge baseline**
+
+Run from `E:\yFeiEye\.worktrees\github-sync-yfeieye-20260717\WEB`:
+
+```powershell
+$env:CI = 'true'
+pnpm install --frozen-lockfile
+pnpm exec tsx tests/visibleBrandingResidue.test.ts
+pnpm exec tsx tests/loginPageRestoration.test.ts
+pnpm exec tsx tests/streamUrlRewrite.test.ts
+```
+
+Then run from the isolated worktree root:
+
+```powershell
+python -m pytest 'VIDEO/tests/test_algorithm_task_migrations.py' -q
+```
+
+Expected: dependency installation exits 0 and all four focused baseline tests pass before `origin/main` is merged. A genuine baseline failure must be recorded and diagnosed before merge work starts.
+
 ### Task 2: Start the three-way merge and resolve runtime conflicts
 
 **Files:**
