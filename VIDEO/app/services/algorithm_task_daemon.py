@@ -20,6 +20,14 @@ import app.utils.nvidia_lib_path  # noqa: F401  子进程 run_deploy 继承 LD_L
 # 不再需要导入数据库模型，所有信息都通过参数传入
 
 
+def _resolve_video_heartbeat_host() -> str:
+    for key in ('VIDEO_SERVICE_HOST', 'FLASK_RUN_HOST', 'POD_IP', 'HOST_IP'):
+        host = (os.getenv(key) or '').strip()
+        if host and host not in ('0.0.0.0', '::'):
+            return host
+    return '127.0.0.1'
+
+
 class AlgorithmTaskDaemon:
     """算法任务守护进程，管理算法任务服务进程，支持自动重启
     
@@ -509,7 +517,7 @@ class AlgorithmTaskDaemon:
         gateway = os.getenv('JAVA_BACKEND_URL', os.getenv('GATEWAY_URL', 'http://localhost:48080')).rstrip('/')
         env['VIDEO_CONTROL_URL'] = f'{gateway}/admin-api/video'
         # 心跳直连本机 VIDEO 服务（host 网络 / 同机部署），避免经网关鉴权导致 500
-        video_host = (os.getenv('POD_IP') or os.getenv('HOST_IP') or '127.0.0.1').strip()
+        video_host = _resolve_video_heartbeat_host()
         if self._task_type == 'patrol':
             env['VIDEO_HEARTBEAT_URL'] = f'http://{video_host}:{video_service_port}/video/algorithm/heartbeat/patrol'
         else:
