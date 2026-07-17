@@ -250,7 +250,7 @@ yFeiEye是一个云边端一体化的智能物联网平台，专注于AI与IoT�
 Java擅长构建稳定可靠的平台架构，但不适合网络编程和AI编程；Python擅长网络编程和AI算法开发，但在高性能任务执行方面存在瓶颈；C++擅长高性能任务执行，但在平台开发和AI编程方面不如前两者。yFeiEye采用三合一语言混编架构，充分发挥各语言优势，构建一个实现颇具挑战，但使用极其便捷的AIoT平台。
 </p>
 
-![yFeiEye平台架构.jpg](.image/iframe2.jpg)
+![yFeiEye平台架构](.image/iframe2-yfeieye.png)
 
 ### 🔄 模块数据流转
 

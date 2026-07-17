@@ -249,7 +249,7 @@ Nous pensons qu'aucun langage de programmation n'excelle en toute chose, mais gr
 Java excelle pour construire une architecture de plateforme stable et fiable, mais il n'est pas adapté à la programmation réseau et à l'IA ; Python excelle en programmation réseau et développement d'algorithmes d'IA, mais présente des limites pour l'exécution de tâches haute performance ; C++ excelle pour l'exécution de tâches haute performance, mais il est moins bon que les deux précédents pour le développement de plateformes et la programmation IA. yFeiEye adopte une architecture hybride trilingue, exploitant pleinement les avantages de chaque langage, pour construire une plateforme AIoT dont la réalisation est ambitieuse mais l'utilisation extrêmement simple.
 </p>
 
-![Architecture de la plateforme yFeiEye.jpg](.image/iframe2.jpg)
+![Architecture de la plateforme yFeiEye](.image/iframe2-yfeieye.png)
 
 ### 🔄 Flux de données entre modules
 

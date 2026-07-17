@@ -161,19 +161,19 @@ CONTENT = {
 </td>""",
         "contributor_chen": """<tr style="background-color: #f8f9fa;">
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>陈家林</nobr></td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance EasyAIoT in IoT device interoperability and air–ground video fusion, delivered a closed loop for device commands and status data so the platform can truly “send down, see through, and stay in control”; also contributed DJI FlightHub dock and drone video access, bringing aerial patrol views into the unified video and alert system—significantly expanding the platform’s value in wide-area patrol, emergency reconnaissance, and air–ground collaborative sensing.</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in IoT device interoperability and air–ground video fusion, delivered a closed loop for device commands and status data so the platform can truly “send down, see through, and stay in control”; also contributed DJI FlightHub dock and drone video access, bringing aerial patrol views into the unified video and alert system—significantly expanding the platform’s value in wide-area patrol, emergency reconnaissance, and air–ground collaborative sensing.</td>
 </tr>
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>NULL</nobr></td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance EasyAIoT in industrial field device access, delivered Modbus upstream data collection so meters, sensors, controllers, and other industrial devices can be unified for aggregation, monitoring, and linkage—completing the critical piece of “seeing the scene and hearing the devices,” and providing a solid foundation for industrial data acquisition, production-line intelligent control, and security linkage scenarios.</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in industrial field device access, delivered Modbus upstream data collection so meters, sensors, controllers, and other industrial devices can be unified for aggregation, monitoring, and linkage—completing the critical piece of “seeing the scene and hearing the devices,” and providing a solid foundation for industrial data acquisition, production-line intelligent control, and security linkage scenarios.</td>
 </tr>
 """,
         "thanks_old": (
-            "EasyAIoT-Edge end-to-end integration linking camera access with AI, "
+            "yFeiEye-Edge end-to-end integration linking camera access with AI, "
             "and campus developer community organization and youth collaborative ecosystem building."
         ),
         "thanks_new": (
-            "EasyAIoT-Edge end-to-end integration linking camera access with AI, "
+            "yFeiEye-Edge end-to-end integration linking camera access with AI, "
             "campus developer community organization and youth collaborative ecosystem building, "
             "IoT device uplink/downlink closed loop with DJI FlightHub aerial-view access, "
             "and industrial Modbus device upstream collection."

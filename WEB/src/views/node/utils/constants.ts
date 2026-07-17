@@ -1239,7 +1239,7 @@ export function buildMqttStackInstallScript(params: MqttStackScriptParams = {}):
   const seeds = params.emqxClusterSeeds || '';
 
   return `#!/usr/bin/env bash
-# EasyAIoT MQTT 网关节点 — EMQX 一键部署
+# yFeiEye MQTT 网关节点 — EMQX 一键部署
 set -euo pipefail
 
 export MQTT_CLUSTER_ROOT="/opt/easyaiot/mqtt-cluster"

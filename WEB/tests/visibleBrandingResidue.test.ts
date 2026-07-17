@@ -15,9 +15,6 @@ assert.equal(listed.status, 0, listed.stderr || 'git ls-files failed')
 
 const protectedLiterals = [
   'EasyAIoT2025',
-  'EasyAIoT_Media_Secret',
-  'EasyAIoT-AI/1.0',
-  'EasyAIoT-VIDEO/1.0',
 ]
 const oldBrand = /EasyAIoT|Easy AI Internet of Things/
 const violations: string[] = []

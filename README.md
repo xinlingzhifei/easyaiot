@@ -249,7 +249,7 @@ We believe no single programming language excels at everything, but through the 
 Java excels at building stable and reliable platform architectures but is not suitable for network programming and AI development; Python excels at network programming and AI algorithm development but has bottlenecks in high-performance task execution; C++ excels at high-performance task execution but is less suitable than the other two for platform development and AI programming. yFeiEye adopts a tri-lingual mixed programming architecture, fully leveraging the strengths of each language to build an AIoT platform that's challenging to implement but extremely easy to use.
 </p>
 
-![yFeiEye Platform Architecture.jpg](.image/iframe2.jpg)
+![yFeiEye Platform Architecture](.image/iframe2-yfeieye.png)
 
 ### 🔄 Module Data Flow
 

@@ -1,7 +1,7 @@
 # MQTT 上下行联调演示 — 详细设计文档
 
 > 目录：`.scripts/mqtt-demo/`  
-> 目的：用可运行的 Python 脚本模拟真实设备，验证 EasyAIoT「设备 ↔ EMQX ↔ iot-sink ↔ Kafka ↔ PG/TDengine ↔ Web」链路已打通，并在管理端页面看到可观察的数据变化。
+> 目的：用可运行的 Python 脚本模拟真实设备，验证 yFeiEye「设备 ↔ EMQX ↔ iot-sink ↔ Kafka ↔ PG/TDengine ↔ Web」链路已打通，并在管理端页面看到可观察的数据变化。
 
 ---
 
@@ -629,5 +629,5 @@ python3 03_full_loop.py \
 
 **文档版本**：1.3  
 **变更摘要（1.3）**：演示脚本 params 对齐物模型；说明运行状态空值与 TDengine NCHAR 引号问题。  
-**适用范围**：EasyAIoT 当前 `/iot` + EMQX + sink 消息总线架构  
+**适用范围**：yFeiEye 当前 `/iot` + EMQX + sink 消息总线架构
 **维护**：换联调设备/物模型时同步更新 §4.2、6.3、6.4、附录 B、`01_uplink_property.py` 与 `env.example`

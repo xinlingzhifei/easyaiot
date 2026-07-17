@@ -248,7 +248,7 @@ def cmd_task(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog='edge', description='EasyAIoT EDGE — 无界面边缘算法运行时')
+    p = argparse.ArgumentParser(prog='edge', description='yFeiEye EDGE — 无界面边缘算法运行时')
     p.add_argument('--version', action='version', version=f'edge {__version__}')
     sub = p.add_subparsers(dest='command', required=True)
 

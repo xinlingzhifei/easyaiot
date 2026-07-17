@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================
-# EasyAIoT build-runtime 构建产物清理工具
+# yFeiEye build-runtime 构建产物清理工具
 # ============================================
 # 清理 build-runtime / runtime_image.sh 构建过程中产生的：
 #   - 本地运行时镜像（ai-service / video-service / web-service / iot-* 等）

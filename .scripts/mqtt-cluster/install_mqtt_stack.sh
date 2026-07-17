@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# EasyAIoT MQTT 网关节点 — EMQX 一键部署
+# yFeiEye MQTT 网关节点 — EMQX 一键部署
 # 若服务已在运行且健康检查通过则自动跳过。
 #
 # 用法（在目标 MQTT 网关节点上）:
@@ -197,7 +197,7 @@ deploy_emqx() {
 
 main() {
   echo "========================================"
-  echo " EasyAIoT MQTT 网关部署 — ${MQTT_NODE_NAME} @ ${MQTT_NODE_HOST}"
+  echo " yFeiEye MQTT 网关部署 — ${MQTT_NODE_NAME} @ ${MQTT_NODE_HOST}"
   echo "========================================"
   require_docker
   resolve_compose_cmd
