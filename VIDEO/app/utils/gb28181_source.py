@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlparse, urlunparse
 
 import requests
 
@@ -31,7 +31,7 @@ def parse_gb28181_source(source: Optional[str]) -> Optional[Tuple[str, str]]:
     return device_id, channel_id
 
 
-def prefer_h264_http_flv_for_opencv(url: Optional[str]) -> Optional[str]:
+def prefer_hevc_http_ts_for_ffmpeg(url: Optional[str]) -> Optional[str]:
     if not url:
         return url
     parsed = urlparse(url)
@@ -40,17 +40,14 @@ def prefer_h264_http_flv_for_opencv(url: Optional[str]) -> Optional[str]:
     if not parsed.path.lower().endswith('.flv'):
         return url
 
-    changed = False
-    query_pairs = []
+    has_hevc = False
     for key, value in parse_qsl(parsed.query, keep_blank_values=True):
         if key.lower() == 'videocodec' and value.lower() in ('h265', 'hevc'):
-            query_pairs.append((key, 'H264'))
-            changed = True
-        else:
-            query_pairs.append((key, value))
-    if not changed:
+            has_hevc = True
+            break
+    if not has_hevc:
         return url
-    return urlunparse(parsed._replace(query=urlencode(query_pairs)))
+    return urlunparse(parsed._replace(path=f'{parsed.path[:-4]}.ts'))
 
 
 def _gb28181_http_timeout(default: int = 60) -> int:

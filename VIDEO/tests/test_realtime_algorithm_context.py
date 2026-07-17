@@ -36,7 +36,7 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertIn("using generated GB28181 HTTP stream", source)
         self.assertIn("for cached_attr in ('http_stream', 'rtmp_stream')", source)
         self.assertIn("using cached {cached_attr}", source)
-        self.assertIn("prefer_h264_http_flv_for_opencv", source)
+        self.assertIn("prefer_hevc_http_ts_for_ffmpeg", source)
         self.assertIn("rtsp_url = _normalize_gb28181_opencv_input_url(rtsp_url)", source)
 
     def test_realtime_detection_uses_model_allowed_class_filter(self):

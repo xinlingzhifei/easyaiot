@@ -100,7 +100,12 @@ def use_ffmpeg_raw_capture_for_url(url: str) -> bool:
         "yes",
         "on",
     )
-    return enabled and (url or "").lower().startswith(("http://", "https://")) and ".flv" in (url or "").lower()
+    normalized = (url or "").lower()
+    return (
+        enabled
+        and normalized.startswith(("http://", "https://"))
+        and (".flv" in normalized or ".live.ts" in normalized)
+    )
 
 
 class FfmpegRawVideoCapture:

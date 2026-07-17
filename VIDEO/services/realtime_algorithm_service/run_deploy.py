@@ -50,7 +50,7 @@ import app.utils.nvidia_lib_path  # noqa: F401  须在 import onnxruntime 之前
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
 from app.utils.gb28181_source import (
-    prefer_h264_http_flv_for_opencv,
+    prefer_hevc_http_ts_for_ffmpeg,
     resolve_gb28181_alternate_pull_url,
     resolve_gb28181_source,
 )
@@ -804,9 +804,9 @@ PLATE_CLASS_KEYWORDS = ('plate', 'license_plate', 'licence_plate', 'car_plate', 
 
 
 def _normalize_gb28181_opencv_input_url(url: Optional[str]) -> Optional[str]:
-    converted = prefer_h264_http_flv_for_opencv(url)
+    converted = prefer_hevc_http_ts_for_ffmpeg(url)
     if converted and url and converted != url:
-        logger.info(f"GB28181 OpenCV HTTP-FLV input switched to H264: {url} -> {converted}")
+        logger.info(f"GB28181 HEVC input switched from HTTP-FLV to HTTP-TS: {url} -> {converted}")
     return converted
 
 
