@@ -432,6 +432,8 @@ services:
       - SPRING_PROFILES_ACTIVE=local # 指定程序运行环境
       - MEDIA_SDP_IP=1.95.118.210 # GB28181 SDP 公网收流地址，避免摄像头向内网地址推流
       - MEDIA_STREAM_IP=eye.yfeiai.com # 播放地址对外展示域名
+      - MEDIA_RTP_ENABLE=${GB28181_RTP_ENABLE:-true} # 生产受限网络可切换为单端口收流
+      - MEDIA_RTP_PUBLIC_PORT=${GB28181_RTP_PUBLIC_PORT:-0} # 单端口模式下 SDP 对外宣告端口
       - SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=localhost:8848 # 配置中心地址（使用host网络模式，通过localhost访问）
       - SPRING_CLOUD_NACOS_CONFIG_NAMESPACE= # 使用默认命名空间（public）
       - SPRING_CLOUD_NACOS_SERVER_ADDR=localhost:8848 # 注册中心地址（使用host网络模式，通过localhost访问）

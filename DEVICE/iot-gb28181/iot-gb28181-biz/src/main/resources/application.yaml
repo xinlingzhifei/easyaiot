@@ -146,6 +146,8 @@ media:
   rtp:
     # [可选] 是否启用多端口模式, 开启后会在portRange范围内选择端口用于媒体流传输
     enable: true
+    # [可选] 单端口模式下 SDP 对外宣告的公网端口；0 表示使用 ZLM 本地 rtp_proxy.port
+    public-port: 0
     # [可选] 在此范围内选择端口用于媒体流传输, 必须提前在zlm上配置该属性，不然自动配置此属性可能不成功
     port-range: 30000,30500 # 端口范围
     # [可选] 国标级联在此范围内选择端口发送媒体流,
@@ -206,4 +208,3 @@ xxl:
     accessToken: default_token # 执行器通讯TOKEN
 
 debug: false
-
