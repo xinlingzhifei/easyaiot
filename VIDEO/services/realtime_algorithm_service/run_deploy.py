@@ -465,7 +465,10 @@ def _alert_event_suppress_seconds() -> float:
 # 观感推流帧率（与 AI 抽帧完全解耦）：默认 25fps
 AI_OUTPUT_FPS = int(os.getenv(
     'AI_OUTPUT_FPS',
-    os.getenv('AI_SOURCE_FPS', os.getenv('VIEW_OUTPUT_FPS', os.getenv('VIEW_SOURCE_FPS', '25'))),
+    os.getenv(
+        'AI_SOURCE_FPS',
+        os.getenv('VIEW_OUTPUT_FPS', os.getenv('VIEW_SOURCE_FPS', os.getenv('SOURCE_FPS', '25'))),
+    ),
 ))
 TARGET_WIDTH = int(os.getenv('AI_TARGET_WIDTH', os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280'))))
 TARGET_HEIGHT = int(os.getenv('AI_TARGET_HEIGHT', os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720'))))
@@ -712,7 +715,7 @@ def _get_effective_realtime_stream_params():
     if not AUTO_QUALITY_ENABLED or MANUAL_QUALITY_CONFIGURED:
         return (
             'manual',
-            int(SOURCE_FPS),
+            int(AI_OUTPUT_FPS),
             int(TARGET_WIDTH),
             int(TARGET_HEIGHT),
             str(FFMPEG_VIDEO_BITRATE),
