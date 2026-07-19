@@ -7,6 +7,7 @@
     <!-- 顶部头部 -->
     <MonitorHeader
       :active-videos="activeVideos"
+      :statistics="statistics"
       :today-alarm-count="todayAlarmCount"
       :dashboard-health="dashboardHealth"
       :last-updated-text="lastUpdatedText"
@@ -16,9 +17,9 @@
     <!-- 主体内容 -->
     <div class="monitor-content">
       <!-- 左侧导航 -->
-      <MonitorSidebar 
+      <MonitorSidebar
+        class="monitor-devices"
         :selected-device="selectedDevice"
-        :statistics="statistics"
         @device-change="handleDeviceChange"
         @device-play="handleDevicePlay"
       />
@@ -35,7 +36,8 @@
       </div>
       
       <!-- 右侧告警信息 -->
-      <AlarmPanel 
+      <AlarmPanel
+        class="monitor-alarms"
         :alarm-list="alarmList"
         :today-alarm-count="todayAlarmCount"
         @play-alarm="handlePlayAlarm"
@@ -181,19 +183,23 @@ const handleVideoListChange = (videos: any[]) => {
 
 <style lang="less">
 .monitor-dashboard {
-  --dashboard-bg: #07111f;
-  --dashboard-bg-soft: #0c1b2d;
-  --dashboard-panel: rgba(9, 25, 45, 0.86);
-  --dashboard-panel-strong: rgba(11, 30, 53, 0.94);
-  --dashboard-border: rgba(95, 174, 229, 0.24);
-  --dashboard-border-strong: rgba(116, 197, 242, 0.45);
-  --dashboard-accent: #f59e0b;
-  --dashboard-blue: #38bdf8;
-  --dashboard-green: #22c55e;
-  --dashboard-danger: #f97373;
-  --dashboard-text: #e6f1ff;
-  --dashboard-muted: rgba(184, 203, 224, 0.68);
-  --dashboard-radius: 6px;
+  --dashboard-bg: #061017;
+  --dashboard-bg-soft: #08151d;
+  --dashboard-panel: #0a1720;
+  --dashboard-panel-strong: #0e202b;
+  --dashboard-border: #1d3541;
+  --dashboard-border-strong: #2d5967;
+  --dashboard-cyan: #26d5e4;
+  --dashboard-blue: var(--dashboard-cyan);
+  --dashboard-green: #3ddc97;
+  --dashboard-amber: #f5b942;
+  --dashboard-accent: var(--dashboard-amber);
+  --dashboard-red: #ff5f6d;
+  --dashboard-danger: var(--dashboard-red);
+  --dashboard-text: #edf7fa;
+  --dashboard-muted: #91a8b4;
+  --dashboard-weak: #617a86;
+  --dashboard-radius: 2px;
 
   position: fixed;
   top: 0;
@@ -201,10 +207,7 @@ const handleVideoListChange = (videos: any[]) => {
   width: 100vw;
   height: 100vh;
   max-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 30rem),
-    radial-gradient(circle at 86% 6%, rgba(245, 158, 11, 0.13), transparent 24rem),
-    linear-gradient(180deg, var(--dashboard-bg) 0%, var(--dashboard-bg-soft) 48%, #050d18 100%);
+  background: var(--dashboard-bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -218,32 +221,9 @@ const handleVideoListChange = (videos: any[]) => {
   -moz-osx-font-smoothing: grayscale;
   isolation: isolate;
 
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -2;
-    background:
-      linear-gradient(rgba(95, 174, 229, 0.055) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(95, 174, 229, 0.045) 1px, transparent 1px);
-    background-size: 48px 48px;
-    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.35));
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background:
-      linear-gradient(90deg, rgba(0, 0, 0, 0.42), transparent 24%, transparent 76%, rgba(0, 0, 0, 0.38)),
-      radial-gradient(circle at center, transparent 42%, rgba(0, 0, 0, 0.36));
-    pointer-events: none;
-  }
-
   a {
     text-decoration: none;
-    color: var(--dashboard-blue);
+    color: var(--dashboard-cyan);
   }
 }
 
@@ -255,19 +235,76 @@ const handleVideoListChange = (videos: any[]) => {
 .monitor-content {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 284px minmax(0, 1fr) 328px;
+  grid-template-areas: 'devices center alarms';
   overflow: hidden;
-  padding: 0 18px 18px;
-  gap: 14px;
+  padding: 12px 16px 16px;
+  gap: 12px;
   box-sizing: border-box;
-  margin-top: 10px;
 }
 
 .monitor-center {
-  flex: 1;
+  grid-area: center;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.monitor-devices {
+  grid-area: devices;
+  min-width: 0;
+  min-height: 0;
+}
+
+.monitor-alarms {
+  grid-area: alarms;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 1600px) {
+  .monitor-content {
+    grid-template-columns: 248px minmax(0, 1fr) 300px;
+    gap: 10px;
+    padding: 10px 12px 12px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .monitor-content {
+    grid-template-columns: minmax(220px, 26vw) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(220px, 0.72fr);
+    grid-template-areas:
+      'devices center'
+      'alarms center';
+    gap: 8px;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 767px) {
+  .monitor-content {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      'center'
+      'alarms'
+      'devices';
+    align-content: start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 8px;
+    gap: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dashboard-border-strong) transparent;
+  }
+
+  .monitor-center {
+    height: min(64vh, 560px);
+    min-height: 480px;
+  }
 }
 </style>

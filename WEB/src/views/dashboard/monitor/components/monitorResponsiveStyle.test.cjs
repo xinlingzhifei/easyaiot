@@ -17,22 +17,32 @@ test('video monitor toolbar keeps labels readable while allowing controls to wra
   assert.match(source, /\.split-toolbar\s*\{[\s\S]*flex-wrap:\s*wrap;/)
 })
 
-test('dashboard frame keeps the original big-screen layout outside the red-box toolbar text', () => {
+test('dashboard uses a video-first command-center grid with desktop and mobile breakpoints', () => {
   const dashboard = read('../index.vue')
   const sidebar = read('Sidebar.vue')
   const alarmPanel = read('AlarmPanel.vue')
   const topHeader = read('Header.vue')
 
-  assert.match(dashboard, /\.monitor-content\s*\{[\s\S]*display:\s*flex;/)
-  assert.doesNotMatch(dashboard, /grid-template-columns:\s*clamp\(/)
-  assert.doesNotMatch(dashboard, /@media\s*\(max-width:\s*1280px\)/)
-  assert.match(sidebar, /\.monitor-sidebar\s*\{[\s\S]*width:\s*350px;/)
-  assert.doesNotMatch(sidebar, /width:\s*clamp\(/)
-  assert.match(alarmPanel, /\.alarm-panel\s*\{[\s\S]*width:\s*320px;/)
-  assert.doesNotMatch(alarmPanel, /width:\s*clamp\(/)
-  assert.match(topHeader, /\.monitor-header\s*\{[\s\S]*display:\s*flex;/)
-  assert.match(topHeader, /\.platform-title\s*\{[\s\S]*font-size:\s*32px;/)
-  assert.doesNotMatch(topHeader, /grid-template-columns:\s*minmax\(/)
+  assert.match(dashboard, /grid-template-columns:\s*284px\s+minmax\(0,\s*1fr\)\s+328px;/)
+  assert.match(dashboard, /grid-template-areas:\s*'devices center alarms';/)
+  assert.match(dashboard, /@media\s*\(max-width:\s*1180px\)/)
+  assert.match(dashboard, /@media\s*\(max-width:\s*767px\)/)
+  assert.match(dashboard, /grid-template-areas:\s*'center'\s*'alarms'\s*'devices';/)
+  assert.match(sidebar, /\.monitor-sidebar\s*\{[\s\S]*width:\s*100%;/)
+  assert.match(alarmPanel, /\.alarm-panel\s*\{[\s\S]*width:\s*100%;/)
+  assert.match(topHeader, /class="global-bar"/)
+  assert.match(topHeader, /class="kpi-rail"/)
+  assert.match(topHeader, /v-for="metric in kpiMetrics"/)
+})
+
+test('mobile command center promotes one active video and keeps controls reachable', () => {
+  const videoMonitor = read('VideoMonitor.vue')
+
+  assert.match(videoMonitor, /@media\s*\(max-width:\s*767px\)/)
+  assert.match(videoMonitor, /\.video-window\s*\{[\s\S]*display:\s*none;/)
+  assert.match(videoMonitor, /\.video-window\.active\s*\{[\s\S]*display:\s*block(?:\s*!important)?;/)
+  assert.match(videoMonitor, /\.split-toolbar\s*\{[\s\S]*overflow-x:\s*auto;/)
+  assert.match(videoMonitor, />活跃事件</)
 })
 
 test('big-screen admin entry releases the overlay so normal navigation can be clicked', () => {

@@ -1,56 +1,13 @@
 <template>
   <div class="monitor-sidebar" data-testid="monitor-sidebar">
-    <!-- 全局总览 -->
-    <div class="sidebar-section overview-section">
-      <div class="section-header">
-        <Icon icon="ant-design:dashboard-outlined" :size="16" class="header-icon" />
-        <span class="section-title">全局总览</span>
-      </div>
-      <div class="statistics-cards">
-        <div class="stat-card">
-          <div class="stat-icon alarm">
-            <Icon icon="ant-design:warning-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">告警数量</div>
-            <div class="stat-value">{{ statistics.alarmCount }}</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon camera">
-            <Icon icon="ant-design:video-camera-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">摄像头数量</div>
-            <div class="stat-value">{{ statistics.cameraCount }}</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon algorithm">
-            <Icon icon="ant-design:code-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">算法数量</div>
-            <div class="stat-value">{{ statistics.algorithmCount }}</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon model">
-            <Icon icon="ant-design:database-outlined" :size="24" />
-          </div>
-          <div class="stat-content">
-            <div class="stat-label">模型数量</div>
-            <div class="stat-value">{{ statistics.modelCount }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 设备目录 -->
     <div class="sidebar-section directory-section">
       <div class="section-header">
-        <Icon icon="ant-design:folder-outlined" :size="16" class="header-icon" />
-        <span class="section-title">设备目录</span>
+        <Icon icon="ant-design:apartment-outlined" :size="17" class="header-icon" />
+        <div class="section-heading">
+          <span class="section-kicker">DEVICE DIRECTORY</span>
+          <span class="section-title">设备导航</span>
+        </div>
         <div class="header-actions">
           <span class="device-count" v-if="!loading && treeData.length > 0">
             {{ playableLeafCount }} 个通道
@@ -105,7 +62,6 @@ import {
 } from '@/views/camera/utils/monitorGbDisplay'
 import { useMessage } from '@/hooks/web/useMessage'
 import type { TreeProps } from 'ant-design-vue'
-import type { DashboardStatistics } from '../useDashboardData'
 
 defineOptions({
   name: 'MonitorSidebar'
@@ -113,7 +69,6 @@ defineOptions({
 
 defineProps<{
   selectedDevice?: any
-  statistics?: DashboardStatistics
 }>()
 
 const emit = defineEmits<{
@@ -127,16 +82,6 @@ const expandedKeys = ref<string[]>([])
 const selectedKeys = ref<string[]>([])
 const treeData = ref<TreeItem[]>([])
 const loading = ref(false)
-
-const DEFAULT_STATISTICS: DashboardStatistics = {
-  alarmCount: 0,
-  todayAlarmCount: 0,
-  cameraCount: 0,
-  algorithmCount: 0,
-  modelCount: 0
-}
-
-const statistics = computed(() => props.statistics ?? DEFAULT_STATISTICS)
 
 const playableLeafCount = computed(() => countMonitorTreePlayableLeaves(treeData.value))
 
@@ -350,12 +295,12 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .monitor-sidebar {
-  width: 350px;
+  width: 100%;
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   overflow: hidden;
 }
 
@@ -363,24 +308,14 @@ onMounted(() => {
   background: var(--dashboard-panel);
   border-radius: var(--dashboard-radius);
   border: 1px solid var(--dashboard-border);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 
   &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background:
-      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
-      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
-    pointer-events: none;
-    border-radius: var(--dashboard-radius);
+    display: none;
   }
 }
 
@@ -389,23 +324,37 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px;
+  min-height: 58px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--dashboard-border);
-  background: rgba(8, 22, 39, 0.72);
+  background: var(--dashboard-panel-strong);
   position: relative;
   z-index: 1;
 
   .header-icon {
-    color: var(--dashboard-blue);
-    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.3));
+    color: var(--dashboard-cyan);
+    filter: none;
+  }
+
+  .section-heading {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .section-kicker {
+    color: var(--dashboard-weak);
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-size: 8px;
+    letter-spacing: 0.1em;
   }
 
   .section-title {
-    font-size: 15px;
-    font-weight: 600;
     color: var(--dashboard-text);
-    letter-spacing: 0;
-    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
   }
 
   .header-actions {
@@ -414,18 +363,14 @@ onMounted(() => {
     gap: 8px;
 
     .device-count {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--dashboard-muted);
-      padding: 2px 8px;
-      background: rgba(56, 189, 248, 0.1);
-      border-radius: var(--dashboard-radius);
+      padding: 3px 7px;
+      background: rgba(38, 213, 228, 0.06);
+      border-radius: 999px;
       border: 1px solid var(--dashboard-border);
     }
   }
-}
-
-.overview-section {
-  flex-shrink: 0;
 }
 
 .directory-section {
@@ -433,117 +378,6 @@ onMounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.statistics-cards {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 8px;
-  padding: 12px;
-  position: relative;
-  z-index: 1;
-}
-
-.stat-card {
-  background: rgba(7, 19, 34, 0.72);
-  border: 1px solid var(--dashboard-border);
-  border-radius: var(--dashboard-radius);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: border-color 0.2s, background 0.2s, transform 0.2s;
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.11), transparent);
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  &:hover {
-    border-color: var(--dashboard-border-strong);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-
-    &::before {
-      opacity: 1;
-    }
-
-    .stat-icon {
-      transform: scale(1.1);
-    }
-  }
-
-  .stat-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: var(--dashboard-radius);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s;
-    position: relative;
-    z-index: 1;
-
-    &.alarm {
-      background: rgba(249, 115, 115, 0.12);
-      color: var(--dashboard-danger);
-      border: 1px solid rgba(249, 115, 115, 0.3);
-    }
-
-    &.camera {
-      background: rgba(56, 189, 248, 0.12);
-      color: var(--dashboard-blue);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-
-    &.algorithm {
-      background: rgba(34, 197, 94, 0.12);
-      color: var(--dashboard-green);
-      border: 1px solid rgba(34, 197, 94, 0.3);
-    }
-
-    &.model {
-      background: rgba(245, 158, 11, 0.12);
-      color: var(--dashboard-accent);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-    }
-  }
-
-  .stat-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    position: relative;
-    z-index: 1;
-
-    .stat-label {
-      font-size: 11px;
-      color: var(--dashboard-muted);
-      white-space: nowrap;
-    }
-
-    .stat-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--dashboard-text);
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-    }
-  }
 }
 
 .sidebar-tree {
@@ -555,7 +389,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: rgba(5, 14, 26, 0.42);
+  background: #071219;
 }
 
 .sidebar-tree-scroll {
@@ -754,6 +588,109 @@ onMounted(() => {
 
   :deep(.scrollbar__thumb:hover) {
     background-color: rgba(56, 189, 248, 0.7);
+  }
+}
+
+.sidebar-tree-scroll {
+  :deep(.tree-header) {
+    margin: 0 0 8px !important;
+    padding: 8px 0 !important;
+    background: transparent !important;
+  }
+
+  :deep(.xingyuv-tree-header) {
+    margin-bottom: 8px !important;
+  }
+
+  :deep(.tree-header-search .ant-input) {
+    height: 34px;
+    color: var(--dashboard-text);
+    background: #0a1820 !important;
+    border-color: var(--dashboard-border);
+    border-radius: 2px;
+
+    &:hover,
+    &:focus {
+      background: #0d2029 !important;
+      border-color: var(--dashboard-cyan);
+      box-shadow: 0 0 0 2px rgba(38, 213, 228, 0.08);
+    }
+  }
+
+  :deep(.xingyuv-tree-header .ant-input-affix-wrapper),
+  :deep(.xingyuv-tree-header .ant-input) {
+    color: var(--dashboard-text) !important;
+    background: #0a1820 !important;
+  }
+
+  :deep(.xingyuv-tree-header .ant-input-affix-wrapper) {
+    border-color: var(--dashboard-border) !important;
+    border-radius: 2px 0 0 2px !important;
+    box-shadow: none !important;
+
+    &:hover,
+    &:focus,
+    &:focus-within {
+      border-color: var(--dashboard-cyan) !important;
+    }
+  }
+
+  :deep(.xingyuv-tree-header .ant-input::placeholder) {
+    color: var(--dashboard-weak) !important;
+  }
+
+  :deep(.xingyuv-tree-header .ant-input-group-addon),
+  :deep(.xingyuv-tree-header .ant-input-search-button) {
+    color: var(--dashboard-muted) !important;
+    background: #0a1820 !important;
+    border-color: var(--dashboard-border) !important;
+    border-radius: 0 2px 2px 0 !important;
+  }
+
+  :deep(.xingyuv-tree-header .ant-input-search-button:hover) {
+    color: var(--dashboard-cyan) !important;
+    border-color: var(--dashboard-cyan) !important;
+  }
+
+  :deep(.ant-tree-node-content-wrapper) {
+    color: var(--dashboard-muted);
+    border-radius: 1px;
+    transition: color 0.18s, background 0.18s;
+
+    &:hover {
+      color: var(--dashboard-text);
+      background: rgba(38, 213, 228, 0.07) !important;
+    }
+  }
+
+  :deep(.ant-tree-treenode-selected .ant-tree-node-content-wrapper),
+  :deep(.ant-tree-node-selected) {
+    color: var(--dashboard-cyan) !important;
+    background: rgba(38, 213, 228, 0.1) !important;
+    box-shadow: inset 2px 0 0 var(--dashboard-cyan);
+  }
+
+  :deep(.ant-tree-switcher) {
+    color: var(--dashboard-weak);
+  }
+
+  :deep(.ant-empty-description) {
+    color: var(--dashboard-weak) !important;
+  }
+
+  :deep(.scrollbar__thumb) {
+    background-color: var(--dashboard-border-strong);
+  }
+}
+
+@media (max-width: 767px) {
+  .monitor-sidebar {
+    height: 360px;
+    min-height: 360px;
+  }
+
+  .section-header {
+    min-height: 52px;
   }
 }
 </style>

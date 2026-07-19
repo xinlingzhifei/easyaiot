@@ -1,9 +1,14 @@
 <template>
   <div class="alarm-panel">
     <div class="panel-header">
-      <div class="header-title">告警事件</div>
+      <div class="header-copy">
+        <span class="header-kicker">INCIDENT QUEUE</span>
+        <div class="header-title">告警处置队列</div>
+      </div>
       <div class="header-count">
-        今日告警 <span class="count-number">{{ todayAlarmCount }}</span> 次
+        <span>今日</span>
+        <strong class="count-number">{{ todayAlarmCount }}</strong>
+        <span>次</span>
       </div>
     </div>
     
@@ -11,7 +16,7 @@
       <div
         v-for="alarm in alarmList"
         :key="alarm.id"
-        class="alarm-item"
+        :class="['alarm-item', `alarm-item--${getDispositionStatus(alarm)}`]"
         @click="handleAlarmClick(alarm)"
       >
         <div class="alarm-image">
@@ -33,7 +38,10 @@
         </div>
         
         <div class="alarm-info">
-          <div class="alarm-title">{{ alarm.title || alarm.event || '未知事件' }}</div>
+          <div class="alarm-title-row">
+            <span class="alarm-status-dot" aria-hidden="true"></span>
+            <div class="alarm-title">{{ alarm.title || alarm.event || '未知事件' }}</div>
+          </div>
           <div class="alarm-meta">
             <span 
               :class="['task-type-tag', getTaskTypeClass(alarm)]"
@@ -45,7 +53,13 @@
             </span>
             <span class="alarm-location">{{ alarm.device_name || alarm.location || '未知设备' }}</span>
           </div>
-          <div class="alarm-time">{{ alarm.time }}</div>
+          <div class="alarm-footer">
+            <span class="alarm-time">{{ alarm.time }}</span>
+            <span class="alarm-action">
+              查看画面
+              <Icon icon="ant-design:right-outlined" :size="10" />
+            </span>
+          </div>
         </div>
       </div>
       
@@ -54,7 +68,6 @@
         <div class="empty-text">暂无告警信息</div>
       </div>
     </div>
-    <div class="boxfoot"></div>
   </div>
 </template>
 
@@ -234,7 +247,7 @@ const handleImageLoad = (alarm: any) => {
 
 <style lang="less" scoped>
 .alarm-panel {
-  width: 320px;
+  width: 100%;
   height: 100%;
   padding: 0;
   background: var(--dashboard-panel);
@@ -243,32 +256,25 @@ const handleImageLoad = (alarm: any) => {
   overflow: hidden;
   position: relative;
   border: 1px solid var(--dashboard-border);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: none;
   border-radius: var(--dashboard-radius);
-  padding: 3px;
+  padding: 0;
 
   &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(90deg, rgba(56, 189, 248, 0.08), transparent 34%, transparent 70%, rgba(245, 158, 11, 0.05)),
-      radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 46%);
-    pointer-events: none;
-    border-radius: var(--dashboard-radius);
+    display: none;
   }
 }
 
 .panel-header {
   text-align: left;
-  background: rgba(8, 22, 39, 0.72);
+  background: var(--dashboard-panel-strong);
   border-bottom: 1px solid var(--dashboard-border);
   color: var(--dashboard-text);
   font-size: 16px;
-  height: 60px;
+  min-height: 58px;
   line-height: 1.2;
   letter-spacing: 0;
-  padding: 10px 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: row;
   gap: 4px;
@@ -276,6 +282,20 @@ const handleImageLoad = (alarm: any) => {
   align-items: center;
   position: relative;
   z-index: 1;
+
+  .header-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .header-kicker {
+    color: var(--dashboard-weak);
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+  }
 
   .header-title {
     font-size: 16px;
@@ -285,12 +305,20 @@ const handleImageLoad = (alarm: any) => {
   }
 
   .header-count {
-    font-size: 12px;
+    height: 28px;
+    padding: 0 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-size: 10px;
     color: var(--dashboard-muted);
     line-height: 1.2;
+    background: rgba(245, 185, 66, 0.08);
+    border: 1px solid rgba(245, 185, 66, 0.28);
+    border-radius: 999px;
 
     .count-number {
-      color: var(--dashboard-accent);
+      color: var(--dashboard-amber);
       font-weight: 700;
       font-size: 18px;
       font-variant-numeric: tabular-nums;
@@ -301,7 +329,7 @@ const handleImageLoad = (alarm: any) => {
 .panel-content {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 0;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -309,15 +337,15 @@ const handleImageLoad = (alarm: any) => {
 
   &::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.04);
-    border-radius: 3px;
+    border-radius: 0;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(56, 189, 248, 0.36);
-    border-radius: 3px;
+    background: var(--dashboard-border-strong);
+    border-radius: 0;
 
     &:hover {
-      background: rgba(56, 189, 248, 0.58);
+      background: var(--dashboard-cyan);
     }
   }
 }
@@ -326,32 +354,43 @@ const handleImageLoad = (alarm: any) => {
   display: flex;
   gap: 12px;
   padding: 12px;
-  margin-bottom: 12px;
-  background: rgba(7, 19, 34, 0.76);
-  border: 1px solid var(--dashboard-border);
-  border-radius: var(--dashboard-radius);
-  border-left: 3px solid var(--dashboard-accent);
-  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  margin-bottom: 0;
+  background: #091820;
+  border: 0;
+  border-bottom: 1px solid var(--dashboard-border);
+  border-left: 2px solid var(--dashboard-amber);
+  border-radius: 0;
+  transition: background 0.18s, border-color 0.18s;
   position: relative;
   cursor: pointer;
 
   &:hover {
-    background: rgba(12, 31, 55, 0.92);
-    border-color: var(--dashboard-border-strong);
-    transform: translateX(3px);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+    background: #0d222c;
+    border-left-color: var(--dashboard-cyan);
   }
 
   &:last-child {
-    margin-bottom: 0;
+    border-bottom: 0;
   }
 }
 
+.alarm-item--confirmed {
+  border-left-color: var(--dashboard-cyan);
+}
+
+.alarm-item--processed {
+  border-left-color: var(--dashboard-green);
+}
+
+.alarm-item--false-positive {
+  border-left-color: var(--dashboard-weak);
+}
+
 .alarm-image {
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 54px;
   flex-shrink: 0;
-  border-radius: var(--dashboard-radius);
+  border-radius: 1px;
   overflow: hidden;
   background: rgba(56, 189, 248, 0.08);
   border: 1px solid rgba(56, 189, 248, 0.16);
@@ -377,15 +416,47 @@ const handleImageLoad = (alarm: any) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
 }
 
+.alarm-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.alarm-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  background: var(--dashboard-amber);
+  border-radius: 50%;
+}
+
+.alarm-item--confirmed .alarm-status-dot {
+  background: var(--dashboard-cyan);
+}
+
+.alarm-item--processed .alarm-status-dot {
+  background: var(--dashboard-green);
+}
+
+.alarm-item--false-positive .alarm-status-dot {
+  background: var(--dashboard-weak);
+}
+
 .alarm-title {
+  min-width: 0;
+  flex: 1;
   font-size: 14px;
   font-weight: 600;
   color: var(--dashboard-text);
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .alarm-meta {
@@ -483,6 +554,22 @@ const handleImageLoad = (alarm: any) => {
   font-variant-numeric: tabular-nums;
 }
 
+.alarm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alarm-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--dashboard-cyan);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -494,6 +581,28 @@ const handleImageLoad = (alarm: any) => {
   .empty-text {
     margin-top: 16px;
     font-size: 14px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .alarm-item {
+    padding: 10px;
+  }
+
+  .alarm-image {
+    width: 60px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 767px) {
+  .alarm-panel {
+    height: 340px;
+    min-height: 340px;
+  }
+
+  .panel-header {
+    min-height: 52px;
   }
 }
 

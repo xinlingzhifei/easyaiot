@@ -1,7 +1,7 @@
 <template>
   <div class="video-monitor" :class="{ 'preset-panel-open': presetPanelOpen }" data-testid="monitor-video">
     <div class="monitor-header" :class="{ 'panel-open': presetPanelOpen }">
-      <div class="header-title">实时监控</div>
+      <div class="header-title">实时画面</div>
       <div class="enable-ai-wrap" data-testid="monitor-ai-toggle">
         <a-checkbox v-model:checked="enableAi">启用 AI</a-checkbox>
       </div>
@@ -119,10 +119,10 @@
       </div>
     </div>
     
-    <!-- 告警录像列表 -->
+    <!-- 活跃事件列表 -->
     <div class="alert-record-list">
       <div class="alert-record-header">
-        <span class="header-title">告警录像</span>
+        <span class="header-title">活跃事件</span>
         <span class="header-count">共 {{ alertRecordList.length }} 条</span>
       </div>
       <div class="alert-record-wrapper">
@@ -165,7 +165,7 @@
           </div>
           <div v-if="alertRecordList.length === 0" class="empty-records">
             <Icon icon="ant-design:inbox-outlined" :size="32" />
-            <span>暂无告警录像</span>
+            <span>暂无活跃事件</span>
           </div>
         </div>
       </div>
@@ -2477,6 +2477,359 @@ watch(() => alertRecordList.value, () => {
   &:after {
     border-right: 2px solid var(--dashboard-border-strong);
     right: -2px;
+  }
+}
+
+/* Command-center visual layer: preserve playback behavior, clarify hierarchy. */
+.video-monitor {
+  padding: 0;
+  background: var(--dashboard-panel);
+  border-color: var(--dashboard-border);
+  border-radius: 2px;
+  box-shadow: none;
+
+  &::before {
+    display: none;
+  }
+}
+
+.monitor-header {
+  min-height: 54px;
+  padding: 8px 12px;
+  gap: 8px 10px;
+  background: var(--dashboard-panel-strong);
+  border-color: var(--dashboard-border);
+
+  .header-title {
+    position: relative;
+    padding-left: 11px;
+    color: var(--dashboard-text);
+    font-size: 14px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 9px;
+      bottom: 9px;
+      left: 0;
+      width: 2px;
+      background: var(--dashboard-cyan);
+    }
+  }
+
+  .header-time {
+    color: var(--dashboard-weak);
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-size: 12px;
+  }
+
+  .header-location {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+  }
+
+  .enable-ai-wrap,
+  .toolbar-trigger,
+  .split-toolbar .split-btn {
+    background: #0a1921;
+    border-color: var(--dashboard-border);
+    border-radius: 2px;
+    box-shadow: none;
+  }
+
+  .enable-ai-wrap {
+    padding: 0 10px;
+  }
+
+  .split-toolbar {
+    gap: 4px;
+
+    .split-btn {
+      min-width: 52px;
+      transition: color 0.18s, border-color 0.18s, background 0.18s;
+
+      &:hover {
+        color: var(--dashboard-text);
+        background: rgba(38, 213, 228, 0.07);
+        border-color: var(--dashboard-border-strong);
+        transform: none;
+      }
+
+      &.active {
+        color: var(--dashboard-cyan);
+        background: rgba(38, 213, 228, 0.09);
+        border-color: var(--dashboard-cyan);
+        box-shadow: inset 0 -2px 0 var(--dashboard-cyan);
+      }
+    }
+  }
+
+  .toolbar-trigger:hover,
+  .toolbar-trigger.open {
+    color: var(--dashboard-cyan);
+    background: rgba(38, 213, 228, 0.08);
+    border-color: var(--dashboard-cyan);
+    transform: none;
+  }
+}
+
+.monitor-content {
+  gap: 6px;
+  padding: 6px;
+  background: #03090d;
+}
+
+.video-window {
+  background: #010506;
+  border-color: #17333e;
+  border-radius: 0;
+  transition: border-color 0.18s, box-shadow 0.18s;
+
+  &:hover {
+    border-color: var(--dashboard-border-strong);
+    transform: none;
+  }
+
+  &.active {
+    border-color: var(--dashboard-cyan);
+    box-shadow: inset 0 0 0 1px var(--dashboard-cyan);
+  }
+
+  &.drag-over {
+    border-color: var(--dashboard-green);
+    box-shadow: inset 0 0 0 1px var(--dashboard-green);
+  }
+
+  .video-container {
+    .video-label {
+      top: auto;
+      right: 0;
+      bottom: 0;
+      padding: 18px 10px 7px;
+      color: var(--dashboard-text);
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.82), transparent);
+      font-family: 'IBM Plex Mono', Consolas, monospace;
+      font-size: 11px;
+    }
+
+    .video-active-indicator {
+      top: 8px;
+      left: 8px;
+      width: 7px;
+      height: 7px;
+      background: var(--dashboard-cyan);
+      box-shadow: 0 0 0 3px rgba(38, 213, 228, 0.12);
+    }
+
+    .ai-status-tag {
+      border-radius: 999px;
+      box-shadow: none;
+    }
+  }
+}
+
+.alert-record-list {
+  height: 126px;
+  min-height: 126px;
+  background: #071219;
+  border-color: var(--dashboard-border);
+}
+
+.alert-record-header {
+  height: 34px;
+  padding: 0 12px;
+  background: var(--dashboard-panel-strong);
+  border-color: var(--dashboard-border);
+
+  .header-title {
+    position: relative;
+    padding-left: 10px;
+    font-size: 12px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 5px;
+      height: 5px;
+      background: var(--dashboard-amber);
+      border-radius: 50%;
+      transform: translateY(-50%);
+    }
+  }
+}
+
+.alert-record-scroll {
+  gap: 0;
+  padding: 0;
+  align-items: stretch;
+}
+
+.alert-record-item {
+  width: 224px;
+  height: auto;
+  padding: 10px 12px;
+  gap: 4px;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--dashboard-border);
+  border-radius: 0;
+  transition: color 0.18s, background 0.18s;
+
+  &:hover {
+    background: rgba(245, 185, 66, 0.06);
+    border-color: var(--dashboard-border);
+    box-shadow: inset 0 -2px 0 var(--dashboard-amber);
+    transform: none;
+  }
+}
+
+.record-title {
+  font-size: 12px;
+}
+
+.record-meta {
+  .record-time {
+    color: var(--dashboard-muted);
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-size: 11px;
+  }
+
+  .play-icon {
+    color: var(--dashboard-cyan);
+  }
+}
+
+.scroll-btn {
+  width: 30px;
+  height: 44px;
+  color: var(--dashboard-cyan);
+  background: rgba(6, 16, 23, 0.9);
+  border-color: var(--dashboard-border-strong);
+  border-radius: 1px;
+  backdrop-filter: none;
+
+  &:hover {
+    background: #0d222c;
+    border-color: var(--dashboard-cyan);
+    transform: translateY(-50%);
+  }
+}
+
+.boxfoot {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  .monitor-header {
+    .header-time {
+      min-width: 126px;
+    }
+
+    .header-location {
+      max-width: 126px;
+    }
+
+    .header-toolbar {
+      width: 100%;
+    }
+
+    .split-toolbar {
+      flex-basis: auto;
+      min-width: 0;
+      justify-content: flex-start;
+      margin-left: 0;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .video-monitor {
+    height: 100%;
+    min-height: 480px;
+  }
+
+  .monitor-header {
+    min-height: 98px;
+    align-items: center;
+    padding: 7px 8px;
+
+    .header-title {
+      line-height: 30px;
+    }
+
+    .header-time,
+    .header-location {
+      display: none;
+    }
+
+    .enable-ai-wrap {
+      margin-left: auto;
+    }
+
+    .header-toolbar {
+      width: 100%;
+      min-width: 0;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .split-toolbar {
+      flex: 1 1 auto;
+      min-width: 0;
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+      margin-left: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+
+      .split-btn {
+        flex: 0 0 auto;
+        min-width: 54px;
+      }
+    }
+
+    .layout-preset-trigger {
+      flex: 0 0 auto;
+
+      .trigger-badge {
+        display: none;
+      }
+    }
+  }
+
+  .monitor-content {
+    flex: 1 1 auto;
+    min-height: 238px;
+    display: block;
+  }
+
+  .monitor-content .video-window {
+    display: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    inset: auto !important;
+    position: relative !important;
+  }
+
+  .monitor-content .video-window.active {
+    display: block !important;
+  }
+
+  .alert-record-list {
+    height: 142px;
+    min-height: 142px;
+  }
+
+  .alert-record-item {
+    width: 210px;
   }
 }
 </style>
