@@ -107,6 +107,29 @@
             <artifactId>vertx-mqtt</artifactId>
         </dependency>
 
+        <!-- Industrial device protocols -->
+        <dependency>
+            <groupId>com.digitalpetri.modbus</groupId>
+            <artifactId>modbus-tcp</artifactId>
+            <version>2.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.ghgande</groupId>
+            <artifactId>j2mod</artifactId>
+            <version>3.2.1</version>
+        </dependency>
+        <!-- Align with Eclipse Milo 1.0.x (modbus-tcp otherwise pins 1.0.0) -->
+        <dependency>
+            <groupId>com.digitalpetri.netty</groupId>
+            <artifactId>netty-channel-fsm</artifactId>
+            <version>1.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.milo</groupId>
+            <artifactId>milo-sdk-client</artifactId>
+            <version>1.0.5</version>
+        </dependency>
+
         <!-- MinIO 相关 -->
         <dependency>
             <groupId>io.minio</groupId>

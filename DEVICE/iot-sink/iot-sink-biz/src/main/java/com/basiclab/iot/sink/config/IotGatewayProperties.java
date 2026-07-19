@@ -93,6 +93,19 @@ private RpcProperties rpc;
         private TcpProperties tcp;
 
         /**
+         * Modbus TCP 主动采集配置
+         */
+        private PollingProtocolProperties modbus;
+
+        /** Modbus RTU active polling configuration. */
+        private PollingProtocolProperties modbusRtu;
+
+        /**
+         * OPC UA 主动采集配置
+         */
+        private PollingProtocolProperties opcua;
+
+        /**
          * MQTT 组件配置
          */
         private MqttProperties mqtt;
@@ -339,6 +352,32 @@ private RpcProperties rpc;
          * SSL私钥路径
          */
         private String sslKeyPath;
+
+    }
+
+    @Data
+    public static class PollingProtocolProperties {
+
+        /**
+         * 是否开启协议轮询
+         */
+        @NotNull(message = "是否开启不能为空")
+        private Boolean enabled = false;
+
+        /**
+         * 扫描数据库中协议设备的周期
+         */
+        private Long scanIntervalMs = 1000L;
+
+        /**
+         * 单次连接或读取超时
+         */
+        private Long requestTimeoutMs = 5000L;
+
+        /**
+         * 并发采集线程数
+         */
+        private Integer workerThreads = 4;
 
     }
 

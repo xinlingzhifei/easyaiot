@@ -322,6 +322,21 @@ basiclab:
           ssl-enabled: false # 是否启用 SSL
           ssl-cert-path: # SSL 证书路径
           ssl-key-path: # SSL 私钥路径
+        modbus:
+          enabled: true # 是否开启 Modbus TCP 主动采集
+          scan-interval-ms: 1000
+          request-timeout-ms: 5000
+          worker-threads: 4
+        modbus-rtu:
+          enabled: true # 是否开启 Modbus RTU 主动采集
+          scan-interval-ms: 1000
+          request-timeout-ms: 5000
+          worker-threads: 2
+        opcua:
+          enabled: true # 是否开启 OPC UA 主动采集
+          scan-interval-ms: 1000
+          request-timeout-ms: 5000
+          worker-threads: 4
         mqtt:
           enabled: false # 是否开启 MQTT 协议（作为 MQTT Broker 接收设备连接）
           port: 1883 # MQTT 服务器端口

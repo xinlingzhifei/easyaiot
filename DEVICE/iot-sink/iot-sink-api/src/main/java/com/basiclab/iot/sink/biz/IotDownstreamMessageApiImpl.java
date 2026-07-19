@@ -47,8 +47,14 @@ public class IotDownstreamMessageApiImpl implements IotDownstreamMessageApi {
         // 数据下行前置处理：根据 Topic 标准映射验证并标准化 method 字段
         normalizeDownstreamMethodByTopic(message);
 
-        // 如果消息中指定了 serverId，则发送到对应的网关
+        // 优先使用消息中的 serverId；否则按设备 ID 从 Redis 解析（工业轮询 / MQTT 网关）
         String serverId = message.getServerId();
+        if (StrUtil.isBlank(serverId)) {
+            serverId = resolveServerId(message.getDeviceId());
+            if (StrUtil.isNotBlank(serverId)) {
+                message.setServerId(serverId);
+            }
+        }
         if (StrUtil.isNotBlank(serverId)) {
             log.debug("[sendDownstreamMessage][发送下行消息到指定网关，设备 ID: {}，serverId: {}，消息 ID: {}]",
                     message.getDeviceId(), serverId, message.getId());
@@ -58,6 +64,27 @@ public class IotDownstreamMessageApiImpl implements IotDownstreamMessageApi {
             log.debug("[sendDownstreamMessage][发送下行消息到通用 Topic，设备 ID: {}，消息 ID: {}]",
                     message.getDeviceId(), message.getId());
             deviceMessageProducer.sendDeviceMessage(message);
+        }
+    }
+
+    private String resolveServerId(String deviceIdText) {
+        Long deviceId = null;
+        try {
+            if (StrUtil.isNotBlank(deviceIdText)) {
+                deviceId = Long.parseLong(deviceIdText.trim());
+            }
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+        if (deviceId == null) {
+            return null;
+        }
+        try {
+            DeviceServerIdService deviceServerIdService = SpringUtil.getBean(DeviceServerIdService.class);
+            return deviceServerIdService != null ? deviceServerIdService.getDeviceServerId(deviceId) : null;
+        } catch (Exception e) {
+            log.debug("[resolveServerId][DeviceServerIdService 不可用，deviceId: {}]", deviceId);
+            return null;
         }
     }
 

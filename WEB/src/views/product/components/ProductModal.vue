@@ -122,7 +122,7 @@
             </Col>
             <Col :span="12">
               <FormItem label="连接实例" v-bind="validateInfos.connector">
-                <Input v-model:value="modelRef.connector" placeholder="MQTT 连接实例标识" />
+                <Input v-model:value="modelRef.connector" :placeholder="connectorPlaceholder" />
               </FormItem>
             </Col>
             <Col :span="12">
@@ -199,7 +199,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import { Col, Divider, Form, FormItem, Input, Row, Select, Spin, Textarea } from 'ant-design-vue';
 import { Button } from '@/components/Button';
@@ -210,6 +210,7 @@ import {
   dataTypeList,
   deviceType,
   encryptMethodList,
+  isIndustrialProtocol,
   productTypeList,
   protoTypeList,
   statusList,
@@ -229,6 +230,25 @@ const state = reactive({
 
 const modelRef = reactive(createEmptyProduct());
 const getTitle = computed(() => (state.isEdit ? '编辑产品' : '新增产品'));
+const industrialProduct = computed(() => isIndustrialProtocol(modelRef.protocolType));
+const connectorPlaceholder = computed(() =>
+  industrialProduct.value
+    ? '工业协议可留空（Sink 主动轮询）'
+    : 'MQTT 连接实例标识',
+);
+
+watch(
+  () => modelRef.protocolType,
+  (protocol) => {
+    if (isIndustrialProtocol(protocol)) {
+      if (!modelRef.dataFormat || modelRef.dataFormat === 'JSON') {
+        modelRef.dataFormat = 'BINARY';
+      }
+    } else if (!state.isEdit && modelRef.dataFormat === 'BINARY') {
+      modelRef.dataFormat = 'JSON';
+    }
+  },
+);
 
 const emits = defineEmits(['success', 'register', 'update']);
 

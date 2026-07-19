@@ -1446,19 +1446,15 @@ export const getBasicColumns = (functionType : String): BasicColumn[] => {
       title: '数据类型',
       dataIndex: 'datatype',
       customRender({ text }) {
-        if (text === 'TEXT' || text === 'string' || text === 'String' || text ===  'text') {
-          return 'text（字符串）';
-        } else if (text === 'INT' || text === 'int' || text === 'Int' || text === 'int32') {
-          return 'int32（整数型）';
-        } else if (text === 'DOUBLE' || text === 'double' || text === 'Double') {
-          return 'double（双精度浮点型）';
-        } else if (text === 'BOOL' || text ===  'bool' || text ===  'Bool' || text ===  'boolean' || text === 'Boolean') {
-          return 'bool（布尔型）'
-        } else if (text === 'SUBUCT' || text === 'struct' || text === 'Struct') {
-          return 'struct（结构体）'
-        } else{
-          return text ?? '--';
-        }
+        return formatPropertyDataType(text);
+      },
+    },
+    {
+      title: '读写类型',
+      dataIndex: 'method',
+      width: 100,
+      customRender({ text }) {
+        return formatPropertyMethod(text);
       },
     },
     {
@@ -1470,6 +1466,45 @@ export const getBasicColumns = (functionType : String): BasicColumn[] => {
     },
   ];
 };
+
+/** 统一物模型数据类型展示（兼容工业种子 float/int/bool 与平台 INT/DOUBLE/BOOL） */
+export function formatPropertyDataType(text?: string) {
+  const value = String(text || '').trim();
+  const upper = value.toUpperCase();
+  if (['TEXT', 'STRING'].includes(upper) || value === 'text') return 'text（字符串）';
+  if (['INT', 'INT32', 'INTEGER', 'LONG'].includes(upper) || value === 'int') return 'int32（整数型）';
+  if (['DOUBLE', 'FLOAT', 'DECIMAL', 'NUMBER'].includes(upper) || value === 'double' || value === 'float') {
+    return 'double（双精度浮点型）';
+  }
+  if (['BOOL', 'BOOLEAN'].includes(upper) || value === 'bool') return 'bool（布尔型）';
+  if (['SUBUCT', 'STRUCT'].includes(upper) || value === 'struct') return 'struct（结构体）';
+  return value || '--';
+}
+
+/** 读写类型：r 只读；w / rw 读写 */
+export function formatPropertyMethod(text?: string) {
+  const mode = String(text || '').trim().toLowerCase();
+  if (!mode) return '--';
+  if (mode.includes('w')) return '读写';
+  if (mode === 'r') return '只读';
+  return text || '--';
+}
+
+/** 编辑表单归一化：小写/别名 → 平台枚举 */
+export function normalizePropertyDatatype(text?: string) {
+  const upper = String(text || 'INT').trim().toUpperCase();
+  if (['TEXT', 'STRING'].includes(upper)) return 'TEXT';
+  if (['INT', 'INT32', 'INTEGER', 'LONG'].includes(upper)) return 'INT';
+  if (['DOUBLE', 'FLOAT', 'DECIMAL', 'NUMBER'].includes(upper)) return 'DOUBLE';
+  if (['BOOL', 'BOOLEAN'].includes(upper)) return 'BOOL';
+  if (['SUBUCT', 'STRUCT'].includes(upper)) return 'SUBUCT';
+  return upper || 'INT';
+}
+
+export function normalizePropertyMethod(text?: string) {
+  const mode = String(text || 'r').trim().toLowerCase();
+  return mode.includes('w') ? 'w' : 'r';
+}
 
 export function getFormConfig(): Partial<FormProps> {
   return {
@@ -1804,6 +1839,8 @@ export const PropsSchemas = ({ handleChange, isInner }: SchemasFn): FormSchema[]
             value: 'r',
           },
         ],
+        // 兼容历史/种子数据 method=rw
+        optionFilterProp: 'label',
       },
       defaultValue: 'r',
     },

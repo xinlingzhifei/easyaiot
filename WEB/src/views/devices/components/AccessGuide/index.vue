@@ -3,8 +3,50 @@
     <Tabs v-model:activeKey="activeTab" class="access-guide-tabs" size="small">
       <TabPane v-for="tab in visibleTabs" :key="tab.key" :tab="tab.label">
         <div class="guide-tab-body">
+          <!-- 工业协议接入 -->
+          <template v-if="tab.key === 'industrial'">
+            <Alert :type="overview.type" show-icon :message="overview.message" class="guide-alert" />
+            <CollapseContainer :title="`${industrialLabel} 接入步骤`" :can-expan="false">
+              <List :data-source="industrialSteps" bordered size="small">
+                <template #renderItem="{ item }">
+                  <List.Item>
+                    <Tag color="blue">{{ item.index }}</Tag>
+                    <div class="guide-industrial-step">
+                      <strong>{{ item.title }}</strong>
+                      <span>{{ item.desc }}</span>
+                    </div>
+                  </List.Item>
+                </template>
+              </List>
+            </CollapseContainer>
+            <CollapseContainer title="注意事项" :can-expan="false">
+              <List :data-source="industrialNotes" bordered size="small">
+                <template #renderItem="{ item }">
+                  <List.Item>
+                    <Icon icon="ant-design:info-circle-outlined" class="guide-check-icon" />
+                    <span>{{ item }}</span>
+                  </List.Item>
+                </template>
+              </List>
+            </CollapseContainer>
+            <CollapseContainer title="验收清单" :can-expan="false">
+              <List :data-source="industrialVerify" bordered size="small">
+                <template #renderItem="{ item }">
+                  <List.Item>
+                    <Icon icon="ant-design:check-circle-outlined" class="guide-check-icon" />
+                    <span>{{ item }}</span>
+                  </List.Item>
+                </template>
+              </List>
+            </CollapseContainer>
+            <p class="guide-hint">
+              完整联调文档与模拟脚本见仓库
+              <code>docs/industrial/Modbus设备测试/</code>
+            </p>
+          </template>
+
           <!-- 推荐命令 -->
-          <template v-if="tab.key === 'cmd'">
+          <template v-else-if="tab.key === 'cmd'">
             <Alert
               v-if="isVideo"
               type="info"
@@ -267,11 +309,17 @@ import {
   buildCredentials,
   buildDirectTopics,
   buildGatewayProxyTopics,
+  buildIndustrialGuideSteps,
+  buildIndustrialNotes,
+  buildIndustrialVerifySteps,
   buildVerifySteps,
   gatewaySubPropertyPayload,
   gatewayTopoAddPayload,
+  industrialProtocolLabel,
+  isIndustrialProtocol,
   nodeTypeLabel,
   normalizeNodeType,
+  overviewAlert,
   propertyReportPayload,
   resolveIds,
 } from './guideContent';
@@ -299,6 +347,7 @@ const props = withDefaults(defineProps<AccessGuideProps>(), {
 });
 
 const ALL_TABS = [
+  { key: 'industrial', label: '工业接入', industrialOnly: true },
   { key: 'cmd', label: '推荐命令', mqttOnly: true },
   { key: 'params', label: '联调参数', mqttOnly: true },
   { key: 'auth', label: '连接鉴权', mqttOnly: false },
@@ -315,12 +364,21 @@ const typeLabel = computed(() => nodeTypeLabel(props.nodeType));
 const isSubset = computed(() => nodeType.value === 'SUBSET');
 const isGateway = computed(() => nodeType.value === 'GATEWAY');
 const isVideo = computed(() => nodeType.value === 'VIDEO_COMMON');
+const isIndustrial = computed(() => isIndustrialProtocol(props.protocolType));
+const industrialLabel = computed(() => industrialProtocolLabel(props.protocolType));
+const industrialSteps = computed(() => buildIndustrialGuideSteps(props.protocolType));
+const industrialNotes = computed(() => buildIndustrialNotes(props.protocolType));
+const industrialVerify = computed(() => buildIndustrialVerifySteps(props.protocolType));
+const overview = computed(() => overviewAlert(props));
 
 const visibleTabs = computed(() => {
-  if (isVideo.value) {
-    return ALL_TABS.filter((t) => !t.mqttOnly);
+  if (isIndustrial.value) {
+    return ALL_TABS.filter((t) => t.key === 'industrial' || t.key === 'verify');
   }
-  return ALL_TABS;
+  if (isVideo.value) {
+    return ALL_TABS.filter((t) => !t.mqttOnly && !(t as any).industrialOnly);
+  }
+  return ALL_TABS.filter((t) => !(t as any).industrialOnly);
 });
 
 const demoOpts = reactive({
@@ -464,6 +522,7 @@ watch(
     props.deviceIdentification,
     props.parentIdentification,
     props.tenantId,
+    props.protocolType,
   ],
   () => syncDefaults(),
   { immediate: true },
@@ -507,6 +566,14 @@ const paramWarnings = computed(() => {
 });
 
 const observeHints = computed(() => {
+  if (isIndustrial.value) {
+    return [
+      '「运行状态」按点位绑定的物模型属性（propertyCode）展示',
+      '「点位影子」显示最新上报快照',
+      '设备连接状态 ONLINE',
+      '「寄存器操作」写入后可在写入日志 / 通信日志核对',
+    ];
+  }
   if (isGateway.value) {
     return [
       '网关连接状态变为在线',
@@ -532,7 +599,9 @@ const observeHints = computed(() => {
 });
 
 const credentials = computed(() => buildCredentials(props));
-const verifySteps = computed(() => buildVerifySteps(props));
+const verifySteps = computed(() =>
+  isIndustrial.value ? buildIndustrialVerifySteps(props.protocolType) : buildVerifySteps(props),
+);
 
 const authDescData = computed(() => {
   const data: Record<string, string> = {};
@@ -681,6 +750,9 @@ const payloadSamples = computed(() => {
 });
 
 const verifyIntro = computed(() => {
+  if (isIndustrial.value) {
+    return `完成 ${industrialLabel.value} 连接配置与点位后，按下列清单逐项核对。`;
+  }
   if (isSubset.value) return '跑通 06/07 脚本后，按下列清单逐项核对。';
   if (isGateway.value) return '跑通 06 → 07 脚本后，按下列清单逐项核对。';
   return '跑通 01 → 02 脚本后，按下列清单逐项核对。';

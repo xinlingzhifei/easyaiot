@@ -2,8 +2,14 @@
   <div class="ops-page">
     <div class="ops-header">
       <div class="ops-header-main">
-        <h2 class="ops-header-title">指令日志</h2>
-        <p class="ops-header-desc">跟踪属性设置与服务调用的 PENDING / ACK；下发请前往「功能调用」</p>
+        <h2 class="ops-header-title">{{ isIndustrialProtocol ? '写入日志' : '指令日志' }}</h2>
+        <p class="ops-header-desc">
+          {{
+            isIndustrialProtocol
+              ? '寄存器与线圈写入请求和响应'
+              : '跟踪属性设置与服务调用的 PENDING / ACK；下发请前往「功能调用」'
+          }}
+        </p>
         <div class="ops-header-meta">
           <span class="ops-meta-item">共 <strong>{{ logList.length }}</strong> 条</span>
           <span class="ops-meta-item">成功 <strong>{{ successCount }}</strong></span>
@@ -80,8 +86,14 @@
       <div class="ops-surface-body" ref="logContainerRef">
         <div v-if="filteredLogs.length === 0" class="ops-empty">
           <Icon icon="ant-design:inbox-outlined" class="ops-empty-icon" />
-          <p>暂无指令日志</p>
-          <p class="ops-empty-hint">在「功能调用」下发属性或服务后，此处显示 PENDING / 设备 ACK</p>
+          <p>{{ isIndustrialProtocol ? '暂无点位写入记录' : '暂无指令日志' }}</p>
+          <p class="ops-empty-hint">
+            {{
+              isIndustrialProtocol
+                ? '在「寄存器操作」写入点位后，此处显示请求与响应'
+                : '在「功能调用」下发属性或服务后，此处显示 PENDING / 设备 ACK'
+            }}
+          </p>
         </div>
         <div v-else class="ops-list">
           <div
@@ -136,6 +148,20 @@ import { Button } from '@/components/Button';
 const { RangePicker } = DatePicker;
 
 defineOptions({ name: 'DeviceService' });
+
+const props = defineProps<{ device?: Record<string, any> }>();
+const isIndustrialProtocol = computed(() => {
+  if (['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(props.device?.protocolType)) return true;
+  try {
+    const extension =
+      props.device?.extension && props.device.extension !== '--'
+        ? JSON.parse(props.device.extension)
+        : {};
+    return ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(extension.protocolConfig?.type);
+  } catch (_) {
+    return false;
+  }
+});
 
 const route = useRoute();
 const { createMessage } = useMessage();

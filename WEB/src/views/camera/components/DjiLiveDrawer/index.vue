@@ -1,128 +1,165 @@
 <template>
   <BasicDrawer
+    v-bind="$attrs"
     @register="register"
-    title="接入大疆直播"
-    width="760"
+    :title="drawerTitle"
+    width="1400"
     placement="right"
     :showFooter="true"
-    :showCancelBtn="true"
-    :showOkBtn="!isViewMode"
-    :confirmLoading="loading"
-    @ok="handleSubmit"
+    :showCancelBtn="false"
+    :showOkBtn="false"
+    destroy-on-close
   >
-    <div class="dji-live">
-      <div v-if="loading" class="dji-live__loading">
-        <Spin size="large" tip="正在开启司空直播并创建本地 SRS 桥接任务..." />
+    <template #footer>
+      <div class="footer-buttons">
+        <Button @click="closeDrawer">{{ isViewMode ? '关闭' : '取消' }}</Button>
+        <Button v-if="!isViewMode" type="primary" :loading="loading" @click="handleSubmit">
+          {{ drawerMode === 'edit' ? '保存' : '接入' }}
+        </Button>
       </div>
-      <div class="dji-live__hero">
-        <div class="dji-live__mark">
-          <Icon icon="material-symbols:flight-takeoff-rounded" />
-        </div>
-        <div>
-          <div class="dji-live__title">大疆司空直播接入</div>
-          <div class="dji-live__desc">
-            司空返回直播供应商地址后，系统会将其作为上游源接入，并通过本地 SRS 转发播放。
-          </div>
-        </div>
-      </div>
+    </template>
 
-      <Form ref="formRef" layout="vertical" :model="formState" :rules="rules" :disabled="isViewMode">
-        <div class="form-section">
-          <div class="section-title">
-            <Icon icon="ant-design:cloud-server-outlined" />
-            <span>司空 API 配置</span>
-          </div>
-          <div class="dji-live__grid">
-            <FormItem label="API Host" name="api_host">
-              <Input v-model:value="formState.api_host" placeholder="es-flight-api-cn.djigate.com" />
-            </FormItem>
-            <FormItem label="项目编号 X-Project-Uuid" name="project_uuid">
-              <Input v-model:value="formState.project_uuid" placeholder="e7b81eec-f182-473a-9368-9e220e46f9d9" />
-            </FormItem>
-          </div>
-          <FormItem label="开启直播接口路径" name="api_path">
-            <Input v-model:value="formState.api_path" placeholder="/openapi/v0.1/live-stream/start" />
-          </FormItem>
-          <FormItem label="X-User-Token" name="user_token">
-            <InputPassword v-model:value="formState.user_token" placeholder="请输入司空 X-User-Token" />
-          </FormItem>
-          <div class="dji-live__grid">
-            <FormItem label="工作空间名称">
-              <Input v-model:value="formState.workspace_name" placeholder="金鼎飞控" />
-            </FormItem>
-            <FormItem label="平台名称">
-              <Input v-model:value="formState.platform_name" placeholder="金鼎飞控" />
-            </FormItem>
-          </div>
-        </div>
+    <Spin :spinning="loading" tip="正在开启司空直播并创建本地 SRS 桥接任务...">
+      <div class="dji-drawer-content">
+        <Alert
+          class="dji-hint"
+          type="info"
+          show-icon
+          message="大疆司空直播接入"
+          description="司空返回直播供应商地址后，系统会将其作为上游源接入，并通过本地 SRS 转发播放；火山 RTC 型地址由前端 SDK 播放。"
+        />
 
-        <div class="form-section">
-          <div class="section-title">
-            <Icon icon="ant-design:video-camera-outlined" />
-            <span>直播参数</span>
-          </div>
-          <FormItem label="接入方式" name="use_skylink_api">
-            <RadioGroup v-model:value="formState.use_skylink_api" button-style="solid">
-              <RadioButton :value="true">司空 API 开启直播</RadioButton>
-              <RadioButton :value="false">手动直播源</RadioButton>
-            </RadioGroup>
-          </FormItem>
+        <Form
+          ref="formRef"
+          :model="formState"
+          :rules="rules"
+          :disabled="isViewMode"
+          :label-col="SETUP_FORM_LABEL_COL"
+          :wrapper-col="SETUP_FORM_WRAPPER_COL"
+          class="section-form"
+        >
+          <Divider orientation="left">司空 API 配置</Divider>
+          <Row :gutter="16">
+            <Col :span="12">
+              <FormItem label="API Host" name="api_host">
+                <Input v-model:value="formState.api_host" placeholder="es-flight-api-cn.djigate.com" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="项目编号" name="project_uuid">
+                <Input
+                  v-model:value="formState.project_uuid"
+                  placeholder="X-Project-Uuid，例如 e7b81eec-f182-473a-9368-9e220e46f9d9"
+                />
+              </FormItem>
+            </Col>
+            <Col :span="24">
+              <FormItem label="开启直播接口" name="api_path">
+                <Input v-model:value="formState.api_path" placeholder="/openapi/v0.1/live-stream/start" />
+              </FormItem>
+            </Col>
+            <Col :span="24">
+              <FormItem label="X-User-Token" name="user_token">
+                <InputPassword v-model:value="formState.user_token" placeholder="请输入司空 X-User-Token" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="工作空间名称">
+                <Input v-model:value="formState.workspace_name" placeholder="金鼎飞控" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="平台名称">
+                <Input v-model:value="formState.platform_name" placeholder="金鼎飞控" />
+              </FormItem>
+            </Col>
+          </Row>
 
-          <div class="dji-live__grid">
-            <FormItem label="设备类型" name="device_type">
-              <RadioGroup v-model:value="formState.device_type" button-style="solid">
-                <RadioButton value="dock">大疆机场</RadioButton>
-                <RadioButton value="drone">无人机</RadioButton>
-              </RadioGroup>
-            </FormItem>
-            <FormItem label="设备名称" name="name">
-              <Input v-model:value="formState.name" placeholder="例如：机场 1 号直播" />
-            </FormItem>
-          </div>
+          <Divider orientation="left">直播参数</Divider>
+          <Row :gutter="16">
+            <Col :span="12">
+              <FormItem label="接入方式" name="use_skylink_api">
+                <RadioGroup v-model:value="formState.use_skylink_api" button-style="solid">
+                  <RadioButton :value="true">司空 API 开启直播</RadioButton>
+                  <RadioButton :value="false">手动直播源</RadioButton>
+                </RadioGroup>
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="设备类型" name="device_type">
+                <RadioGroup v-model:value="formState.device_type" button-style="solid">
+                  <RadioButton value="dock">大疆机场</RadioButton>
+                  <RadioButton value="drone">无人机</RadioButton>
+                </RadioGroup>
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="设备名称" name="name">
+                <Input v-model:value="formState.name" placeholder="例如：机场 1 号直播" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="设备 SN" name="sn">
+                <Input v-model:value="formState.sn" placeholder="例如：8UUDMAQ00A0133" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="camera_index" name="camera_index">
+                <Input v-model:value="formState.camera_index" placeholder="例如：165-0-7" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="位置备注" name="address">
+                <Input v-model:value="formState.address" placeholder="例如：金鼎基地东侧机场" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="机场 SN">
+                <Input v-model:value="formState.dock_sn" placeholder="可选" />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="无人机 SN">
+                <Input v-model:value="formState.drone_sn" placeholder="可选" />
+              </FormItem>
+            </Col>
+            <template v-if="formState.use_skylink_api">
+              <Col :span="12">
+                <FormItem label="Token 有效期" name="video_expire">
+                  <InputNumber
+                    v-model:value="formState.video_expire"
+                    :min="60"
+                    :max="86400"
+                    class="w-full"
+                    addon-after="秒"
+                  />
+                </FormItem>
+              </Col>
+              <Col :span="12">
+                <FormItem label="直播清晰度" name="quality_type">
+                  <Select v-model:value="formState.quality_type" :options="qualityOptions" />
+                </FormItem>
+              </Col>
+            </template>
+            <Col v-else :span="24">
+              <FormItem label="直播源地址" name="source">
+                <Input
+                  v-model:value="formState.source"
+                  placeholder="rtmp:// / rtsp:// / https://...m3u8 / http://...flv"
+                />
+              </FormItem>
+            </Col>
+            <Col :span="12">
+              <FormItem label="自动创建转发" name="enable_forward">
+                <Switch v-model:checked="formState.enable_forward" />
+              </FormItem>
+            </Col>
+          </Row>
 
-          <div class="dji-live__grid">
-            <FormItem label="设备 SN" name="sn">
-              <Input v-model:value="formState.sn" placeholder="例如：8UUDMAQ00A0133" />
-            </FormItem>
-            <FormItem label="camera_index" name="camera_index">
-              <Input v-model:value="formState.camera_index" placeholder="例如：165-0-7" />
-            </FormItem>
+          <div class="form-hint">
+            司空 API 模式会调用开启直播接口并自动登记设备；手动模式直接以 RTSP/RTMP/HTTP-FLV/HLS 源接入流媒体。
           </div>
-
-          <div class="dji-live__grid">
-            <FormItem label="机场 SN">
-              <Input v-model:value="formState.dock_sn" placeholder="可选" />
-            </FormItem>
-            <FormItem label="无人机 SN">
-              <Input v-model:value="formState.drone_sn" placeholder="可选" />
-            </FormItem>
-          </div>
-
-          <div v-if="formState.use_skylink_api" class="dji-live__grid">
-            <FormItem label="Token 有效期（秒）" name="video_expire">
-              <InputNumber v-model:value="formState.video_expire" :min="60" :max="86400" style="width: 100%" />
-            </FormItem>
-            <FormItem label="直播清晰度" name="quality_type">
-              <Select v-model:value="formState.quality_type" :options="qualityOptions" />
-            </FormItem>
-          </div>
-
-          <FormItem v-else label="直播源地址" name="source">
-            <Input
-              v-model:value="formState.source"
-              placeholder="rtmp:// / rtsp:// / https://...m3u8 / http://...flv"
-            />
-          </FormItem>
-
-          <div class="dji-live__grid">
-            <FormItem label="位置备注" name="address">
-              <Input v-model:value="formState.address" placeholder="例如：金鼎基地东侧机场" />
-            </FormItem>
-            <FormItem label="自动创建转发任务" name="enable_forward">
-              <Switch v-model:checked="formState.enable_forward" />
-            </FormItem>
-          </div>
-        </div>
+        </Form>
 
         <Alert
           v-if="liveIssue"
@@ -132,8 +169,8 @@
           :message="liveIssue.title"
           :description="liveIssue.description"
         />
-      </Form>
-    </div>
+      </div>
+    </Spin>
   </BasicDrawer>
 </template>
 
@@ -141,19 +178,22 @@
 import { computed, reactive, ref } from 'vue';
 import {
   Alert,
+  Col,
+  Divider,
   Form,
   FormItem,
   Input,
   InputNumber,
   RadioButton,
   RadioGroup,
+  Row,
   Select,
   Spin,
   Switch,
 } from 'ant-design-vue';
 import type { Rule } from 'ant-design-vue/es/form';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
-import { Icon } from '@/components/Icon';
+import { Button } from '@/components/Button';
 import { useMessage } from '@/hooks/web/useMessage';
 import {
   getFlighthubConfig,
@@ -162,6 +202,7 @@ import {
   startDjiSkylinkLive,
   type DjiSkylinkStartPayload,
 } from '@/api/device/camera';
+import { SETUP_FORM_LABEL_COL, SETUP_FORM_WRAPPER_COL } from '@/views/node/utils/constants';
 
 defineOptions({ name: 'DjiLiveDrawer' });
 
@@ -174,6 +215,11 @@ const formRef = ref();
 const liveIssue = ref<{ title: string; description: string } | null>(null);
 const drawerMode = ref<'create' | 'view' | 'edit'>('create');
 const isViewMode = computed(() => drawerMode.value === 'view');
+const drawerTitle = computed(() => {
+  if (drawerMode.value === 'view') return '查看大疆直播';
+  if (drawerMode.value === 'edit') return '编辑大疆直播';
+  return '接入大疆直播';
+});
 
 const qualityOptions = [
   { label: '自适应', value: 'adaptive' },
@@ -467,85 +513,50 @@ async function handleSubmit() {
 </script>
 
 <style lang="less" scoped>
-.dji-live {
-  position: relative;
-  padding: 4px 4px 24px;
+.dji-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-  &__loading {
-    position: absolute;
-    z-index: 5;
-    inset: -2px;
-    display: grid;
-    place-items: center;
-    border-radius: 12px;
-    background: rgba(248, 252, 255, 0.76);
-    backdrop-filter: blur(2px);
+.dji-hint {
+  margin-bottom: 4px;
+}
+
+.section-form {
+  :deep(.ant-form-item) {
+    margin-bottom: 16px;
   }
 
-  &__hero {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 18px;
-    margin-bottom: 18px;
-    border: 1px solid #d8ebff;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #f7fbff 0%, #eaf6ff 100%);
+  :deep(.ant-input-number) {
+    width: 100%;
   }
 
-  &__mark {
-    display: grid;
-    flex: 0 0 52px;
-    width: 52px;
-    height: 52px;
-    place-items: center;
-    color: #1476e8;
-    font-size: 28px;
-    border-radius: 16px;
-    background: #fff;
-    box-shadow: 0 10px 24px rgba(31, 126, 230, 0.14);
-  }
-
-  &__title {
-    color: #13233f;
-    font-size: 17px;
-    font-weight: 700;
-  }
-
-  &__desc {
-    margin-top: 6px;
-    color: #64748b;
-    font-size: 13px;
-  }
-
-  &__grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+  :deep(.ant-divider) {
+    margin: 8px 0 20px;
+    font-weight: 600;
   }
 }
 
-.form-section {
-  padding: 16px;
-  margin-bottom: 16px;
-  border: 1px solid #e1efff;
-  border-radius: 12px;
-  background: #fbfdff;
-}
-
-.section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  color: #0d4f99;
-  font-weight: 700;
+.form-hint {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: 150px;
 }
 
 .live-issue {
-  margin-top: 14px;
-  border: 1px solid #b8ddff;
-  border-radius: 10px;
-  background: #f4faff;
+  margin-top: 4px;
+}
+
+.footer-buttons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.w-full {
+  width: 100%;
 }
 </style>

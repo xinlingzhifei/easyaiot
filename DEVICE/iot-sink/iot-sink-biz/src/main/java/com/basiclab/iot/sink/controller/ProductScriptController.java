@@ -3,6 +3,9 @@ package com.basiclab.iot.sink.controller;
 import cn.hutool.core.util.StrUtil;
 import com.basiclab.iot.common.domain.R;
 import com.basiclab.iot.common.utils.json.JsonUtils;
+import com.basiclab.iot.device.RemoteProductService;
+import com.basiclab.iot.device.domain.device.vo.Product;
+import com.basiclab.iot.device.enums.device.ProtocolTypeEnum;
 import com.basiclab.iot.sink.controller.vo.ProductScriptSimulateReqVO;
 import com.basiclab.iot.sink.controller.vo.ProductScriptSimulateRespVO;
 import com.basiclab.iot.sink.dal.dataobject.ProductScriptDO;
@@ -33,6 +36,7 @@ import java.util.Map;
  * 产品 JS 编解码脚本管理。
  * <p>
  * 标准 JSON（Topic Codec）可不配脚本；私有协议需配置 rawDataToProtocol / protocolToRawData。
+ * Modbus / OPC UA 等工业轮询协议由 sink 直连采集，禁止配置协议脚本。
  */
 @Tag(name = "产品协议脚本")
 @RestController
@@ -44,6 +48,7 @@ public class ProductScriptController {
     private final ProductScriptService productScriptService;
     private final ProductScriptMapper productScriptMapper;
     private final JsScriptManager jsScriptManager;
+    private final RemoteProductService remoteProductService;
     private final JsUtilFunction jsUtilFunction = new JsUtilFunction();
 
     @Resource
@@ -79,6 +84,10 @@ public class ProductScriptController {
     @Operation(summary = "按产品标识查询脚本（含未启用）")
     @GetMapping("/{productIdentification}")
     public R<ProductScriptDO> get(@PathVariable String productIdentification) {
+        String reject = rejectIndustrialScript(productIdentification);
+        if (reject != null) {
+            return R.fail(reject);
+        }
         return R.ok(productScriptMapper.selectByProductIdentification(productIdentification));
     }
 
@@ -87,6 +96,10 @@ public class ProductScriptController {
     public R<?> save(@RequestBody ProductScriptDO script) throws ScriptException {
         if (script == null || StrUtil.isBlank(script.getProductIdentification())) {
             return R.fail("productIdentification 不能为空");
+        }
+        String reject = rejectIndustrialScript(script.getProductIdentification());
+        if (reject != null) {
+            return R.fail(reject);
         }
         if (StrUtil.isNotBlank(script.getScriptContent())) {
             JsScriptManager.CheckResult checkResult = jsScriptManager.checkScript(script.getScriptContent());
@@ -207,6 +220,29 @@ public class ProductScriptController {
             return R.fail(resp, result.getMessage());
         }
         return R.ok(resp);
+    }
+
+    /**
+     * @return 拒绝原因；允许配置脚本时返回 null
+     */
+    private String rejectIndustrialScript(String productIdentification) {
+        if (StrUtil.isBlank(productIdentification) || remoteProductService == null) {
+            return null;
+        }
+        try {
+            R<Product> result = remoteProductService.selectByProductIdentification(productIdentification);
+            if (result == null || !result.isSuccess() || result.getData() == null) {
+                return null;
+            }
+            String protocolType = result.getData().getProtocolType();
+            if (ProtocolTypeEnum.isIndustrial(protocolType)) {
+                return "工业轮询协议（" + protocolType + "）由网关直连采集点位，无需也不支持配置协议脚本";
+            }
+        } catch (Exception e) {
+            log.warn("[rejectIndustrialScript][查询产品协议类型失败 product={}]: {}",
+                    productIdentification, e.getMessage());
+        }
+        return null;
     }
 
     private static Map<String, String> templateItem(String id, String name, String description, String content) {

@@ -188,7 +188,11 @@ const handleRefresh = () => {
 //详情按钮事件
 function handleView(record) {
   openModal(true, {
-    data: record,
+    data: {
+      ...record,
+      deviceIdentification:
+        record?.deviceIdentification || route.params.deviceIdentification || '',
+    },
   });
 }
 

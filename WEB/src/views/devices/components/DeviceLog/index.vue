@@ -2,7 +2,7 @@
   <div class="ops-page">
     <div class="ops-header">
       <div class="ops-header-main">
-        <h2 class="ops-header-title">设备日志</h2>
+        <h2 class="ops-header-title">{{ isIndustrialProtocol ? '通信日志' : '设备日志' }}</h2>
         <div class="ops-header-meta">
           <span class="ops-meta-item">共 <strong>{{ logList.length }}</strong> 条</span>
           <span class="ops-meta-item">错误 <strong>{{ errorCount }}</strong></span>
@@ -66,8 +66,14 @@
       <div class="ops-surface-body" ref="logContainerRef">
         <div v-if="logList.length === 0" class="ops-empty">
           <Icon icon="ant-design:inbox-outlined" class="ops-empty-icon" />
-          <p>暂无设备日志</p>
-          <p class="ops-empty-hint">请确认设备或 mqtt-demo 已上报 /log/upstream/report</p>
+          <p>{{ isIndustrialProtocol ? '暂无原始通信报文，请等待点位采集' : '暂无设备日志' }}</p>
+          <p class="ops-empty-hint">
+            {{
+              isIndustrialProtocol
+                ? '工业协议原始通信报文会显示在此'
+                : '请确认设备或 mqtt-demo 已上报 /log/upstream/report'
+            }}
+          </p>
         </div>
         <div v-else class="ops-list">
           <div
@@ -112,6 +118,20 @@ import { Button } from '@/components/Button';
 const { RangePicker } = DatePicker;
 
 defineOptions({ name: 'DeviceLog' });
+
+const props = defineProps<{ device?: Record<string, any> }>();
+const isIndustrialProtocol = computed(() => {
+  if (['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(props.device?.protocolType)) return true;
+  try {
+    const extension =
+      props.device?.extension && props.device.extension !== '--'
+        ? JSON.parse(props.device.extension)
+        : {};
+    return ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(extension.protocolConfig?.type);
+  } catch (_) {
+    return false;
+  }
+});
 
 const route = useRoute();
 const { createMessage } = useMessage();

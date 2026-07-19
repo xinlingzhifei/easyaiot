@@ -31,7 +31,7 @@
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
 #   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra）
 #   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/NodeRED（含 EMQX）
-#   full(3)     - 全量（默认，约 20G）
+#   full(3)     - 全量（默认，约 20G）；启动后自动拉起工业协议演示（Modbus TCP/RTU + OPC UA）
 # ============================================
 
 set -e
@@ -101,6 +101,47 @@ ensure_mqtt_demo_after_stack() {
     else
         print_warning "mqtt-demo 启动未完全成功，可稍后手动: bash ${starter}"
     fi
+}
+
+# full 形态：启动工业协议演示从站（Modbus TCP/RTU + OPC UA），让页面有采集数据。
+# 关闭：EASYAIOT_ENABLE_INDUSTRIAL_DEMO=0；跳过种子：EASYAIOT_APPLY_INDUSTRIAL_SEED=0
+ensure_industrial_demo_after_stack() {
+    local demo_dir="${PROJECT_ROOT}/.scripts/industrial-demo"
+    local starter="${demo_dir}/start_industrial_demo.sh"
+    ensure_deploy_profile
+    if ! is_full_deploy_profile; then
+        print_info "跳过工业协议演示（仅 full 形态自动启动，当前: ${EASYAIOT_DEPLOY_PROFILE}）"
+        return 0
+    fi
+    if [ "${EASYAIOT_ENABLE_INDUSTRIAL_DEMO:-1}" = "0" ]; then
+        print_info "跳过工业协议演示自动启动（EASYAIOT_ENABLE_INDUSTRIAL_DEMO=0）"
+        return 0
+    fi
+    if [ ! -x "$starter" ] && [ -f "$starter" ]; then
+        chmod +x "$starter" "${demo_dir}/stop_industrial_demo.sh" 2>/dev/null || true
+    fi
+    if [ ! -f "$starter" ]; then
+        print_warning "未找到 ${starter}，跳过工业协议演示"
+        return 0
+    fi
+    print_section "启动工业协议演示（Modbus TCP / RTU / OPC UA）"
+    if bash "$starter"; then
+        print_success "industrial-demo 已启动（日志: ${demo_dir}/run/logs/）"
+    else
+        print_warning "industrial-demo 启动未完全成功，可稍后手动: bash ${starter}"
+    fi
+}
+
+stop_industrial_demo_before_stack() {
+    local stopper="${PROJECT_ROOT}/.scripts/industrial-demo/stop_industrial_demo.sh"
+    [ -f "$stopper" ] || return 0
+    ensure_deploy_profile
+    if ! is_full_deploy_profile && [ "${EASYAIOT_ENABLE_INDUSTRIAL_DEMO:-1}" != "1" ]; then
+        return 0
+    fi
+    chmod +x "$stopper" 2>/dev/null || true
+    print_info "停止工业协议演示进程..."
+    bash "$stopper" || true
 }
 
 # 日志文件配置
@@ -876,6 +917,7 @@ install_linux() {
         print_success "所有模块安装成功！"
         ensure_platform_agent_after_stack
         ensure_mqtt_demo_after_stack
+        ensure_industrial_demo_after_stack
     else
         echo ""
         print_warning "部分模块安装失败，请检查日志"
@@ -1232,6 +1274,7 @@ start_all() {
     print_success "所有服务启动完成"
     ensure_platform_agent_after_stack
     ensure_mqtt_demo_after_stack
+    ensure_industrial_demo_after_stack
 }
 
 # 停止所有服务
@@ -1240,6 +1283,8 @@ stop_all() {
     
     check_docker "$@"
     check_docker_compose
+
+    stop_industrial_demo_before_stack
     
     # 逆序停止（尽力而为：单个失败不阻断其余模块停止）
     for ((idx=${#MODULES[@]}-1 ; idx>=0 ; idx--)); do
@@ -1303,6 +1348,7 @@ restart_all() {
     print_success "所有服务重启完成"
     ensure_platform_agent_after_stack
     ensure_mqtt_demo_after_stack
+    ensure_industrial_demo_after_stack
 }
 
 # 查看所有服务状态
@@ -1498,6 +1544,7 @@ update_all() {
     print_success "所有服务更新完成"
     ensure_platform_agent_after_stack
     ensure_mqtt_demo_after_stack
+    ensure_industrial_demo_after_stack
 }
 
 # 验证所有服务
@@ -1661,6 +1708,8 @@ show_help() {
     echo "  PARALLEL_BUILD=true          - build 时并行构建各模块（默认串行，防小内存并行 OOM）"
     echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 yfeieye-network（宿主机 IP 变更后使用）"
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
+    echo "  EASYAIOT_ENABLE_INDUSTRIAL_DEMO=0 - full 形态下跳过工业协议演示（Modbus/OPC UA）自动启动"
+    echo "  EASYAIOT_APPLY_INDUSTRIAL_SEED=0   - 启动演示时不写入/刷新工业协议演示设备种子"
     echo "  EASYAIOT_RUNTIME_REGISTRY    - 运行时镜像仓库（默认见 runtime_registry.conf）"
     echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
     echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP"

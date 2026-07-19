@@ -67,11 +67,13 @@
         </TabPane>
         <TabPane key="3" tab="模型定义">
           <PhysicalModal
+            v-if="state.activeKey === '3' && state.record.productIdentification"
             :product-identification="state.record.productIdentification"
             :device-profile-name="state.record.productName"
+            :protocol-type="state.record.protocolType"
           />
         </TabPane>
-        <TabPane key="script" tab="协议脚本">
+        <TabPane v-if="!industrialProduct" key="script" tab="协议脚本">
           <ProductScript
             v-if="state.activeKey === 'script'"
             :product-id="state.record.id"
@@ -91,14 +93,14 @@
   </div>
 </template>
 <script lang="ts" setup>
-import { onMounted, reactive } from 'vue';
+import { computed, onMounted, reactive, watch } from 'vue';
 import { Card, TabPane, Tabs } from 'ant-design-vue';
 import ProductDetail from './ProductDetail.vue';
 import PhysicalModal from './PhysicalModal.vue';
 import ProductScript from './ProductScript.vue';
 import RelatedDevices from './RelatedDevices.vue';
 import AccessGuide from '@/views/devices/components/AccessGuide/index.vue';
-import { productModel } from '@/views/product/Data';
+import { isIndustrialProtocol, productModel } from '@/views/product/Data';
 import { getDeviceProfileDetail } from '@/api/device/product';
 import { useRoute } from 'vue-router';
 
@@ -114,6 +116,8 @@ const state = reactive({
   record: productModel,
 });
 
+const industrialProduct = computed(() => isIndustrialProtocol(state.record.protocolType));
+
 async function initProductDetail(record) {
   try {
     state.record.id = record.id;
@@ -126,8 +130,17 @@ async function initProductDetail(record) {
 }
 
 const handleTabClick = (activeKey) => {
+  if (activeKey === 'script' && industrialProduct.value) {
+    return;
+  }
   state.activeKey = activeKey;
 };
+
+watch(industrialProduct, (industrial) => {
+  if (industrial && state.activeKey === 'script') {
+    state.activeKey = '1';
+  }
+});
 
 onMounted(() => {
   initProductDetail(route.params);

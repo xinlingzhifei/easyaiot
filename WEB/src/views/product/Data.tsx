@@ -201,8 +201,19 @@ export const dataTypeList = [
   {
     label: 'JSON',
     value: 'JSON',
-  }
+  },
+  {
+    label: '二进制（BINARY）',
+    value: 'BINARY',
+  },
 ];
+
+/** 工业轮询协议：物模型以属性为主，点位映射在设备侧配置；无需 JS 协议脚本 */
+export const INDUSTRIAL_PROTOCOLS = ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA', 'MODBUS'];
+
+export function isIndustrialProtocol(protocolType?: string) {
+  return INDUSTRIAL_PROTOCOLS.includes(String(protocolType || '').toUpperCase());
+}
 
 
 export const protoTypeList = [
@@ -225,6 +236,10 @@ export const protoTypeList = [
   {
     label: 'Modbus TCP',
     value: 'MODBUS_TCP',
+  },
+  {
+    label: 'Modbus RTU',
+    value: 'MODBUS_RTU',
   },
   {
     label: 'OPC UA',

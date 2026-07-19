@@ -79,6 +79,25 @@ ensure_mqtt_demo_after_business_stack() {
     fi
 }
 
+ensure_industrial_demo_after_business_stack() {
+    local demo_dir="${PROJECT_ROOT}/.scripts/industrial-demo"
+    local starter="${demo_dir}/start_industrial_demo.sh"
+    ensure_deploy_profile
+    if ! is_full_deploy_profile; then
+        print_info "跳过工业协议演示（仅 full 形态，当前: ${EASYAIOT_DEPLOY_PROFILE}）"
+        return 0
+    fi
+    if [ "${EASYAIOT_ENABLE_INDUSTRIAL_DEMO:-1}" = "0" ]; then
+        print_info "跳过工业协议演示（EASYAIOT_ENABLE_INDUSTRIAL_DEMO=0）"
+        return 0
+    fi
+    if [ -f "$starter" ]; then
+        chmod +x "$starter" "${demo_dir}/stop_industrial_demo.sh" 2>/dev/null || true
+        print_info "启动工业协议演示（Modbus TCP / RTU / OPC UA）..."
+        bash "$starter" || print_warning "industrial-demo 启动未完全成功，可手动: bash ${starter}"
+    fi
+}
+
 # 业务模块（按依赖顺序：网关/微服务 -> AI/视频 -> 前端）
 ALL_MODULES=(DEVICE AI VIDEO WEB APP)
 
@@ -517,6 +536,7 @@ run_on_modules() {
         install|start|restart|update)
             ensure_platform_agent_after_business_stack
             ensure_mqtt_demo_after_business_stack
+            ensure_industrial_demo_after_business_stack
             ;;
     esac
     return 0

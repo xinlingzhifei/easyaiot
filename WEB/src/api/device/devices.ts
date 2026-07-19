@@ -91,6 +91,26 @@ export const updateDevices = (params) => {
   return commonApi('put', API.Devices, params);
 };
 
+/** 工业协议测试连接（Modbus TCP/RTU / OPC UA） */
+export const testModbusConnection = (params) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: '/sink/modbus/test-connection',
+      data: params,
+      timeout: 8 * 1000,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    {
+      isTransformResponse: true,
+      errorMessageMode: 'none',
+    },
+  );
+};
+
 export const getDevicesInfo = (id) => {
   return commonApi('get', API.Devices + '/' + id, {});
 };

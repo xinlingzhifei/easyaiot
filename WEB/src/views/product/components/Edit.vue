@@ -4,14 +4,18 @@
       <Typography v-if="!hideTab">
         <TypographyParagraph>
           <blockquote>
-            属性一般是设备的运行状态，如当前温度等；服务是设备可被调用的方法，支持定义参数，如执行某项任务；事件则是设备上报的
-            通知，如告警，需要被及时处理。
+            {{ tipText }}
           </blockquote>
         </TypographyParagraph>
       </Typography>
 
-      <Tabs v-if="!hideTab" v-model:activeKey="tabsActive" type="card" @change="handleTabsChange">
-        <TabPane v-for="v in tabsOptions" :key="v.key" :tab="v.label" />
+      <Tabs
+        v-if="!hideTab && visibleTabs.length > 1"
+        v-model:activeKey="tabsActive"
+        type="card"
+        @change="handleTabsChange"
+      >
+        <TabPane v-for="v in visibleTabs" :key="v.key" :tab="v.label" />
       </Tabs>
       <EditInner
         ref="formRef"
@@ -62,12 +66,14 @@ import {BasicModal, useModal, useModalInner} from '@/components/Modal';
 import {TabPane, Tabs, Typography, TypographyParagraph} from 'ant-design-vue';
 import EditInner from './EditInner.vue';
 import EditChild from './EditChild.vue';
-import {nextTick, ref, withDefaults} from 'vue';
+import {computed, nextTick, ref, withDefaults} from 'vue';
 import {
   BoolFormSchemas,
   EditFormSchemas,
   EventSchemas,
   IntFormSchemas,
+  normalizePropertyDatatype,
+  normalizePropertyMethod,
   PropsSchemas,
   ServerSchemas,
   ServiceParamSchemas,
@@ -79,16 +85,29 @@ import {
 import {FormSchema} from '@/components/Form/index';
 import {checkIdentifier} from '@/api/device/phsyicalModal';
 import {throttle} from 'lodash-es';
+import { isIndustrialProtocol } from '../Data';
 
   interface Props {
     title: string;
     productIdentification: string;
+    protocolType?: string;
   }
 
   const props = withDefaults(defineProps<Props>(), {
     title: '物模型',
     productIdentification: '',
+    protocolType: '',
   });
+
+  const industrial = computed(() => isIndustrialProtocol(props.protocolType));
+  const visibleTabs = computed(() =>
+    industrial.value ? tabsOptions.filter((item) => item.key === 'properties') : tabsOptions,
+  );
+  const tipText = computed(() =>
+    industrial.value
+      ? '工业协议物模型只需定义属性。属性标识必须与设备点位 identifier 一致；寄存器地址 / NodeId 在设备点位管理中配置。'
+      : '属性一般是设备的运行状态，如当前温度等；服务是设备可被调用的方法，支持定义参数，如执行某项任务；事件则是设备上报的通知，如告警，需要被及时处理。',
+  );
 
   const emit = defineEmits(['submit', 'register', 'update:editFunctionType']);
 
@@ -126,10 +145,21 @@ import {throttle} from 'lodash-es';
     });
     await nextTick();
 
+    // 工业协议仅支持属性，避免新增时切到服务/事件
+    let resolvedType = functionType ?? 'properties';
+    if (industrial.value) {
+      resolvedType = 'properties';
+    }
+
     //console.log(modalType, 'modalType', functionType, obj);
     // alert(functionType)
+    // 工业/历史数据归一化：float→DOUBLE、rw→w 等，保证表单可正确回显
+    if (resolvedType === 'properties') {
+      obj.datatype = normalizePropertyDatatype(obj.datatype);
+      obj.method = normalizePropertyMethod(obj.method);
+    }
     // 根据功能类型切换
-    handleTabsChange(functionType ?? 'properties', obj['datatype'] ?? 'INT');
+    handleTabsChange(resolvedType, obj['datatype'] ?? 'INT');
     // 没有该字段表示为新增模式
     if (!obj?.id) return;
 
@@ -140,13 +170,13 @@ import {throttle} from 'lodash-es';
       obj['boolClose'] = tmp['0'];
       obj['boolOpen'] = tmp['1'];
     }
-    if(functionType == 'services') {
+    if(resolvedType == 'services') {
       obj['propertyName'] = obj['serviceName']
       obj['propertyCode'] = obj['serviceCode']
       // 保证参数数组存在，便于增加参数
       if (!obj.inputParams) obj.inputParams = [];
       if (!obj.outParams) obj.outParams = [];
-    } else if(functionType == 'events') {
+    } else if(resolvedType == 'events') {
       obj['propertyName'] = obj['eventName']
       obj['propertyCode'] = obj['eventCode']
     }
@@ -155,7 +185,7 @@ import {throttle} from 'lodash-es';
 
     // 判断是否为结构体参数
     let field;
-    switch (functionType) {
+    switch (resolvedType) {
       case 'properties':
         field = ['innerJson'];
         break;
@@ -168,7 +198,7 @@ import {throttle} from 'lodash-es';
     }
     field.forEach((e) => {
       // 服务参数始终绑定渲染，便于空列表时也能「增加参数」
-      if (functionType === 'services' || obj[e]?.length) {
+      if (resolvedType === 'services' || obj[e]?.length) {
         setTimeout(() => {
           formRef.value.updateSchema({
             field: e,

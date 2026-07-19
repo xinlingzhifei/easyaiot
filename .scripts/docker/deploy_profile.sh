@@ -102,6 +102,11 @@ is_mini_deploy_profile() {
     [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "mini" ]
 }
 
+# full 形态：含 TDengine / iot-sink 工业协议演示等完整能力
+is_full_deploy_profile() {
+    [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ]
+}
+
 # 按部署形态判断业务模块是否启用（APP 仅 full 全量形态）
 module_enabled_for_deploy_profile() {
     case "$1" in

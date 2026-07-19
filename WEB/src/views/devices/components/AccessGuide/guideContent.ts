@@ -433,9 +433,98 @@ export function buildJourney(props: AccessGuideProps): JourneyStep[] {
   ];
 }
 
+export const INDUSTRIAL_PROTOCOLS = ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'] as const;
+
+export function isIndustrialProtocol(protocolType?: string): boolean {
+  return INDUSTRIAL_PROTOCOLS.includes(String(protocolType || '').toUpperCase() as any);
+}
+
+export function industrialProtocolLabel(protocolType?: string): string {
+  const type = String(protocolType || '').toUpperCase();
+  if (type === 'MODBUS_TCP') return 'Modbus TCP';
+  if (type === 'MODBUS_RTU') return 'Modbus RTU';
+  if (type === 'OPCUA') return 'OPC UA';
+  return protocolType || '工业协议';
+}
+
+/** 工业协议接入指引步骤（参考 Modbus 设备测试） */
+export function buildIndustrialGuideSteps(protocolType?: string): Array<{
+  index: string;
+  title: string;
+  desc: string;
+}> {
+  const type = String(protocolType || '').toUpperCase();
+  if (type === 'MODBUS_RTU') {
+    return [
+      { index: '01', title: '配置串口参数', desc: '填写 Sink 主机可见串口（如 /dev/ttyUSB0），波特率/校验与从站一致' },
+      { index: '02', title: '配置采集点位', desc: '绑定物模型属性，并填写功能区、地址、数据类型' },
+      { index: '03', title: '测试连接', desc: '仅验证串口可打开，不校验站号与寄存器' },
+      { index: '04', title: '验收采集', desc: 'Sink 周期轮询后运行状态有值，设备变为 ONLINE' },
+      { index: '05', title: '可写点位下发', desc: '在「寄存器操作」写入保持寄存器/线圈并核对设备侧值' },
+    ];
+  }
+  if (type === 'OPCUA') {
+    return [
+      { index: '01', title: '填写 Endpoint', desc: '如 opc.tcp://192.168.1.100:4840；匿名可留空用户名密码' },
+      { index: '02', title: '配置 NodeId 点位', desc: 'NodeId 与现场一致，并绑定产品物模型属性' },
+      { index: '03', title: '启用 Sink OPC UA', desc: 'basiclab.iot.sink.protocol.opcua.enabled=true' },
+      { index: '04', title: '验收采集', desc: '运行状态/点位影子刷新，设备 ONLINE' },
+      { index: '05', title: '可写节点下发', desc: '在「寄存器操作」向可写 NodeId 写入并核对' },
+    ];
+  }
+  return [
+    { index: '01', title: '配置主机端口', desc: '填写设备或串口服务器 IP，端口通常 502，站号通常 1' },
+    { index: '02', title: '配置采集点位', desc: '绑定物模型属性，并填写功能区、地址、数据类型' },
+    { index: '03', title: '测试连接', desc: '验证 TCP 端口可达，不校验具体寄存器地址' },
+    { index: '04', title: '验收采集', desc: 'Sink 周期轮询后运行状态有值，设备变为 ONLINE' },
+    { index: '05', title: '可写点位下发', desc: '在「寄存器操作」写入并在属性历史查看寄存器值/PDU' },
+  ];
+}
+
+export function buildIndustrialVerifySteps(protocolType?: string): string[] {
+  const label = industrialProtocolLabel(protocolType);
+  return [
+    `产品协议类型为 ${label}，设备连接参数与点位已保存并可回显`,
+    '「测试连接」结果符合预期（TCP 可达 / 串口可开；OPC UA 以采集为准）',
+    'Sink 对应协议开关已启用，设备 ONLINE 且运行状态有最新值',
+    '可写点位经「寄存器操作」写入成功；采集事件/通信日志有记录',
+    '属性历史可展示解析值；Modbus 可额外看到寄存器值与原始 PDU',
+  ];
+}
+
+export function buildIndustrialNotes(protocolType?: string): string[] {
+  const type = String(protocolType || '').toUpperCase();
+  if (type === 'MODBUS_RTU') {
+    return [
+      'Sink 进程必须能访问串口；容器部署需映射设备节点',
+      '同一 RS-485 总线上站号必须唯一（常用 1-247）',
+      '详细步骤见仓库 .scripts/industrial-README.md 与 modbus-rtu-demo',
+    ];
+  }
+  if (type === 'OPCUA') {
+    return [
+      'Endpoint 需从 Sink 所在网络可达',
+      '点位需绑定物模型属性（propertyCode）；旧配置仅有 identifier 时仍兼容',
+      '匿名访问可留空用户名密码；需鉴权时填写服务器账号',
+    ];
+  }
+  return [
+    '容器内勿用 127.0.0.1 指向宿主机设备，应使用宿主机 IP 或 host 网络',
+    '点位需绑定物模型属性（propertyCode）；旧配置仅有 identifier 时仍兼容',
+    '详细步骤见仓库 .scripts/industrial-README.md 与各协议 demo',
+  ];
+}
+
 export function overviewAlert(props: AccessGuideProps): { type: 'info' | 'warning' | 'success'; message: string } {
   const nodeType = normalizeNodeType(props.nodeType);
   const name = props.scope === 'device' ? props.deviceName || '当前设备' : props.productName || '当前产品';
+  if (isIndustrialProtocol(props.protocolType)) {
+    const label = industrialProtocolLabel(props.protocolType);
+    return {
+      type: 'info',
+      message: `${name} 使用 ${label} 工业协议：由 Sink 主动轮询采集，无需设备侧 MQTT 连接。请在设备编辑中配置连接参数与点位，并确保 Sink 协议开关已启用。`,
+    };
+  }
   if (nodeType === 'GATEWAY') {
     return {
       type: 'info',

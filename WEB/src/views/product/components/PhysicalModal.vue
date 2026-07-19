@@ -1,5 +1,12 @@
 <template>
   <div class="phsyical-modal">
+    <Alert
+      v-if="isIndustrialProtocol"
+      class="industrial-tip"
+      type="info"
+      show-icon
+      message="工业协议物模型以属性为主：设备点位通过 propertyCode 绑定此处属性。采集与写入由 Sink 轮询完成，无需定义 MQTT 服务/事件。"
+    />
     <div class="toolbar">
       <RadioGroup
         :value="state.functionType"
@@ -8,7 +15,7 @@
         @change="handleTypeChange"
       >
         <RadioButton
-          v-for="item in typeOptions"
+          v-for="item in visibleTypeOptions"
           :key="item.key"
           :value="item.key"
         >
@@ -48,71 +55,72 @@
       </div>
     </div>
 
-    <div v-show="viewMode === 'table'" class="table-view">
-      <BasicTable @register="registerTable">
-        <template #action="{ record }">
-          <TableAction :actions="actionsBtn(record)" />
-        </template>
-      </BasicTable>
-    </div>
-
-    <div v-show="viewMode === 'card'" class="card-view">
-      <div class="card-search-form">
-        <BasicTable @register="registerTable" />
+    <!-- 仅注册一张表：卡片模式隐藏表格本体，避免双 register 导致 reload 丢失 -->
+    <div :class="viewMode === 'card' ? 'card-view' : 'table-view'">
+      <div :class="{ 'card-search-form': viewMode === 'card' }">
+        <BasicTable @register="registerTable">
+          <template #action="{ record }">
+            <TableAction v-if="viewMode === 'table'" :actions="actionsBtn(record)" />
+          </template>
+        </BasicTable>
       </div>
-      <div class="card-container">
-        <div v-if="cardData.length === 0" class="empty-state">
-          <Empty description="暂无数据" />
-        </div>
-        <div v-else class="card-grid">
-          <div v-for="record in cardData" :key="record.id" class="prop-card">
-            <div class="card-header">
-              <div class="title-wrap">
-                <span class="title">
-                  <span class="name">{{ getCardTitle(record) }}</span>
-                  <span v-if="getCardCode(record)" class="code">({{ getCardCode(record) }})</span>
-                </span>
-              </div>
-              <Tag :color="record.templateIdentification ? 'success' : 'orange'">
-                {{ record.templateIdentification ? '标准' : '自定义' }}
-              </Tag>
-            </div>
 
-            <div class="card-body">
-              <div class="primary-line">{{ getPrimaryValue(record) }}</div>
-              <div v-if="getSecondaryHint(record)" class="secondary-line">
-                {{ getSecondaryHint(record) }}
+      <template v-if="viewMode === 'card'">
+        <div class="card-container">
+          <div v-if="cardData.length === 0" class="empty-state">
+            <Empty description="暂无数据" />
+          </div>
+          <div v-else class="card-grid">
+            <div v-for="record in cardData" :key="record.id" class="prop-card">
+              <div class="card-header">
+                <div class="title-wrap">
+                  <span class="title">
+                    <span class="name">{{ getCardTitle(record) }}</span>
+                    <span v-if="getCardCode(record)" class="code">({{ getCardCode(record) }})</span>
+                  </span>
+                </div>
+                <Tag :color="record.templateIdentification ? 'success' : 'orange'">
+                  {{ record.templateIdentification ? '标准' : '自定义' }}
+                </Tag>
               </div>
-            </div>
 
-            <div class="card-footer">
-              <div class="meta-hint">
-                <span v-if="record.templateIdentification">来自标准模板</span>
-                <span v-else>产品自定义</span>
+              <div class="card-body">
+                <div class="primary-line">{{ getPrimaryValue(record) }}</div>
+                <div v-if="getSecondaryHint(record)" class="secondary-line">
+                  {{ getSecondaryHint(record) }}
+                </div>
               </div>
-              <div class="footer-actions" @click.stop>
-                <TableAction :actions="actionsBtn(record)" />
+
+              <div class="card-footer">
+                <div class="meta-hint">
+                  <span v-if="record.templateIdentification">来自标准模板</span>
+                  <span v-else>产品自定义</span>
+                </div>
+                <div class="footer-actions" @click.stop>
+                  <TableAction :actions="actionsBtn(record)" />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-      <div v-if="cardData.length > 0" class="card-pagination">
-        <Pagination
-          v-model:current="pagination.current"
-          v-model:pageSize="pagination.pageSize"
-          :total="pagination.total"
-          :showSizeChanger="true"
-          :showTotal="(total) => `共 ${total} 条`"
-          @change="handlePageChange"
-          @showSizeChange="handlePageSizeChange"
-        />
-      </div>
+        <div v-if="cardData.length > 0" class="card-pagination">
+          <Pagination
+            v-model:current="pagination.current"
+            v-model:pageSize="pagination.pageSize"
+            :total="pagination.total"
+            :showSizeChanger="true"
+            :showTotal="(total) => `共 ${total} 条`"
+            @change="handlePageChange"
+            @showSizeChange="handlePageSizeChange"
+          />
+        </div>
+      </template>
     </div>
 
     <Edit
       :title="state.editModelTitle"
       :productIdentification="props.productIdentification"
+      :protocol-type="props.protocolType"
       @register="registerEditModal"
       @submit="handleSubmit"
       @update:edit-function-type="updateEditFunctionType"
@@ -125,7 +133,7 @@ import {BasicTable, TableAction, useTable, type ActionItem} from '@/components/T
 import {getBasicColumns, getFormConfig} from '../data/ProductData';
 import {useModal} from '@/components/Modal';
 import Edit from './Edit.vue';
-import { onMounted, reactive, ref, withDefaults, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, withDefaults, watch } from 'vue';
 import {
   delPhsyicalEvent,
   delPhsyicalProperties,
@@ -145,16 +153,21 @@ import {
 import { getCommandsList } from '@/api/device/command';
 import { getCommandsRequestList } from '@/api/device/command-parameter';
 import {useMessage} from '@/hooks/web/useMessage';
-import { Empty, Pagination, RadioButton, RadioGroup, Tag } from 'ant-design-vue';
+import { Alert, Empty, Pagination, RadioButton, RadioGroup, Tag } from 'ant-design-vue';
 import { Button } from '@/components/Button';
+
+const INDUSTRIAL_PROTOCOLS = ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA', 'MODBUS'];
+
 interface Props {
     productIdentification: string;
     deviceProfileName: string;
+    protocolType?: string;
   }
 
   const props = withDefaults(defineProps<Props>(), {
     productIdentification: '',
     deviceProfileName: '',
+    protocolType: '',
   });
 
   const state = reactive({
@@ -168,6 +181,15 @@ interface Props {
     { key: 'services', label: '服务' },
     { key: 'events', label: '事件' },
   ];
+
+  const isIndustrialProtocol = computed(() =>
+    INDUSTRIAL_PROTOCOLS.includes(String(props.protocolType || '').toUpperCase()),
+  );
+  const visibleTypeOptions = computed(() =>
+    isIndustrialProtocol.value
+      ? typeOptions.filter((item) => item.key === 'properties')
+      : typeOptions,
+  );
 
   const { createMessage } = useMessage();
   // 是否处理编辑物模型
@@ -183,7 +205,7 @@ interface Props {
     total: 0,
   });
 
-  const [registerTable, { reload, setColumns, getDataSource, getPaginationRef }] = useTable({
+  const [registerTable, { reload, setColumns, getPaginationRef }] = useTable({
     canResize: true,
     showIndexColumn: false,
     columns: getBasicColumns('properties'),
@@ -197,11 +219,25 @@ interface Props {
       slots: { customRender: 'action' },
     },
     api: getPropertiesList,
+    immediate: false,
     beforeFetch(params) {
+      if (!props.productIdentification) {
+        return false;
+      }
+      const listApi =
+        state.functionType === 'properties'
+          ? getPropertiesList
+          : state.functionType === 'services'
+            ? getServicesList
+            : getEventsList;
       return {
         ...params,
         productIdentification: props.productIdentification,
-        customApi: state.functionType == 'properties' ? getPropertiesList : state.functionType == 'services' ? getServicesList : getEventsList,
+        // 供 useDataSource 切换 API；真正发请求前会剔除，避免 axios 序列化函数
+        customApi: (requestParams: Record<string, any>) => {
+          const { customApi: _ignored, ...query } = requestParams || {};
+          return listApi(query);
+        },
       };
     },
     fetchSetting: {
@@ -210,11 +246,10 @@ interface Props {
     },
     pagination: true,
     afterFetch: async (data) => {
-      let rows = data || [];
+      let rows = Array.isArray(data) ? data : [];
       if (state.functionType === 'services' && rows.length) {
         rows = await enrichServiceParamCounts(rows);
       }
-      // 更新卡片数据
       cardData.value = rows;
       const paginationInfo = getPaginationRef();
       if (paginationInfo && typeof paginationInfo === 'object') {
@@ -225,6 +260,22 @@ interface Props {
       return rows;
     },
   });
+
+  /** 等表格 register 完成后再 reload，避免 immediate watch 空跑导致一直「暂无数据」 */
+  async function safeReload() {
+    if (!props.productIdentification) return;
+    await nextTick();
+    try {
+      await reload();
+    } catch (_) {
+      await nextTick();
+      try {
+        await reload();
+      } catch (error) {
+        console.warn('物模型列表加载失败', error);
+      }
+    }
+  }
 
   const normalizeList = (response: any) => {
     if (Array.isArray(response)) return response;
@@ -328,7 +379,7 @@ interface Props {
     state.functionType = type;
     setColumns(getBasicColumns(state.functionType ?? 'properties'));
     pagination.current = 1;
-    reload();
+    safeReload();
   };
 
   const handleTypeChange = (e) => {
@@ -374,24 +425,34 @@ interface Props {
   };
 
   const getSecondaryHint = (record: any) => {
-    if (record.description) return record.description;
-    if (state.functionType === 'properties' && record.accessMode) {
-      return `访问模式：${record.accessMode}`;
+    if (state.functionType === 'properties') {
+      const mode = formatAccessMode(record.method || record.accessMode);
+      if (record.description) return `${mode} · ${record.description}`;
+      return mode;
     }
+    if (record.description) return record.description;
     return '';
+  };
+
+  const formatAccessMode = (text?: string) => {
+    const mode = String(text || '').toLowerCase();
+    if (mode === 'r' || mode === 'read' || mode === 'ro') return '只读';
+    if (mode === 'w' || mode === 'rw' || mode === 'wr' || mode === 'write') return '读写';
+    return text ? `访问：${text}` : '';
   };
 
   // 格式化数据类型
   const formatDataType = (text: string) => {
-    if (text === 'TEXT' || text === 'string' || text === 'String' || text === 'text') {
+    const value = String(text || '').toLowerCase();
+    if (['text', 'string'].includes(value)) {
       return 'text（字符串）';
-    } else if (text === 'INT' || text === 'int' || text === 'Int' || text === 'int32') {
+    } else if (['int', 'int32', 'integer', 'long'].includes(value)) {
       return 'int32（整数型）';
-    } else if (text === 'DOUBLE' || text === 'double' || text === 'Double') {
+    } else if (['double', 'float', 'decimal', 'number'].includes(value)) {
       return 'double（双精度浮点型）';
-    } else if (text === 'BOOL' || text === 'bool' || text === 'Bool' || text === 'boolean' || text === 'Boolean') {
+    } else if (['bool', 'boolean'].includes(value)) {
       return 'bool（布尔型）';
-    } else if (text === 'SUBUCT' || text === 'struct' || text === 'Struct') {
+    } else if (['subuct', 'struct'].includes(value)) {
       return 'struct（结构体）';
     }
     return text || '--';
@@ -413,32 +474,15 @@ interface Props {
   const handlePageChange = (page: number, pageSize: number) => {
     pagination.current = page;
     pagination.pageSize = pageSize;
-    reload();
+    safeReload();
   }
 
   // 页面大小变化处理
   const handlePageSizeChange = (current: number, size: number) => {
     pagination.current = current;
     pagination.pageSize = size;
-    reload();
+    safeReload();
   }
-
-  // 监听视图模式变化，加载卡片数据
-  watch(viewMode, (newMode) => {
-    if (newMode === 'card') {
-      // 延迟获取数据，确保表格已加载
-      setTimeout(() => {
-        const data = getDataSource();
-        cardData.value = data || [];
-        const paginationInfo = getPaginationRef();
-        if (paginationInfo && typeof paginationInfo === 'object') {
-          pagination.total = paginationInfo.total || 0;
-          pagination.current = paginationInfo.current || 1;
-          pagination.pageSize = paginationInfo.pageSize || 12;
-        }
-      }, 100);
-    }
-  }, { immediate: true });
 
   //更新物模型编辑功能类型
   const updateEditFunctionType = (type) => {
@@ -675,7 +719,36 @@ interface Props {
         return obj;
     }
   };
-  onMounted(() => {});
+  watch(
+    () => props.productIdentification,
+    (value) => {
+      if (!value) return;
+      if (isIndustrialProtocol.value && state.functionType !== 'properties') {
+        state.functionType = 'properties';
+        setColumns(getBasicColumns('properties'));
+      }
+      safeReload();
+    },
+  );
+
+  watch(
+    () => props.protocolType,
+    () => {
+      if (isIndustrialProtocol.value && state.functionType !== 'properties') {
+        state.functionType = 'properties';
+        setColumns(getBasicColumns('properties'));
+        safeReload();
+      }
+    },
+  );
+
+  onMounted(() => {
+    if (isIndustrialProtocol.value && state.functionType !== 'properties') {
+      state.functionType = 'properties';
+      setColumns(getBasicColumns('properties'));
+    }
+    safeReload();
+  });
 </script>
 
 <style lang="less" scoped>
@@ -692,6 +765,10 @@ interface Props {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+
+  .industrial-tip {
+    margin: 0 0 12px;
+  }
 
   .toolbar {
     display: flex;

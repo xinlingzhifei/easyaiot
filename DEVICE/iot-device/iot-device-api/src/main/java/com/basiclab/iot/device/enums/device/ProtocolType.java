@@ -28,7 +28,19 @@ public enum ProtocolType {
     /**
      * MODBUS协议
      */
-    MODBUS("MODBUS","MODBUS"),
+    MODBUS("MODBUS", "MODBUS"),
+
+    MODBUS_TCP("MODBUS_TCP", "Modbus TCP"),
+
+    /**
+     * Modbus RTU over RS-485
+     */
+    MODBUS_RTU("MODBUS_RTU", "Modbus RTU"),
+
+    /**
+     * OPC UA 协议
+     */
+    OPCUA("OPCUA", "OPC UA"),
 
     /**
      * HTTP协议
@@ -37,4 +49,11 @@ public enum ProtocolType {
 
     private  String key;
     private  String value;
+
+    /**
+     * 工业轮询协议：由 sink 直连采集点位，无需 JS 协议脚本编解码。
+     */
+    public static boolean isIndustrial(String protocolType) {
+        return ProtocolTypeEnum.isIndustrial(protocolType);
+    }
 }

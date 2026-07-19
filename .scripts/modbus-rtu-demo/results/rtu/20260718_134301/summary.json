@@ -1,0 +1,30 @@
+{
+  "run_id": "20260718_134301",
+  "started_at": "2026-07-18T13:43:01+08:00",
+  "finished_at": "2026-07-18T13:43:02+08:00",
+  "interrupted": false,
+  "configuration": {
+    "port": "/tmp/easyaiot-modbus-rtu",
+    "baudrate": 9600,
+    "bytesize": 8,
+    "parity": "N",
+    "stopbits": 1,
+    "unit": 1,
+    "address": 0,
+    "quantity": 3,
+    "count": 2,
+    "interval": 0.3,
+    "timeout": 1.5,
+    "output_dir": "/projects/new/easyaiot/.scripts/modbus-rtu-demo/results/rtu"
+  },
+  "result": {
+    "total": 2,
+    "success": 2,
+    "failure": 0,
+    "success_rate": 1.0
+  },
+  "files": {
+    "jsonl": "/projects/new/easyaiot/.scripts/modbus-rtu-demo/results/rtu/20260718_134301/records.jsonl",
+    "csv": "/projects/new/easyaiot/.scripts/modbus-rtu-demo/results/rtu/20260718_134301/records.csv"
+  }
+}

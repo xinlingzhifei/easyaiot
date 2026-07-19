@@ -2,7 +2,7 @@
   <div class="ops-page shadow-page">
     <div class="ops-header">
       <div class="ops-header-main">
-        <h2 class="ops-header-title">设备影子</h2>
+        <h2 class="ops-header-title">{{ isIndustrialProtocol ? '点位影子' : '设备影子' }}</h2>
         <div class="ops-header-meta">
           <span class="ops-meta-item">设备标识<strong>{{ deviceId || '--' }}</strong></span>
           <span class="ops-meta-item">版本<strong>{{ shadowVersion || '--' }}</strong></span>
@@ -87,13 +87,28 @@ import moment from 'moment';
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button';
+import { getDevicethingModels } from '@/api/device/devices';
 
 defineOptions({ name: 'DeviceShadow' });
+
+const props = defineProps<{ device?: Record<string, any> }>();
 
 const route = useRoute();
 const { createMessage } = useMessage();
 
 const deviceId = computed(() => route.params?.id as string);
+const isIndustrialProtocol = computed(() => {
+  if (['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(props.device?.protocolType)) return true;
+  try {
+    const extension =
+      props.device?.extension && props.device.extension !== '--'
+        ? JSON.parse(props.device.extension)
+        : {};
+    return ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(extension.protocolConfig?.type);
+  } catch (_) {
+    return false;
+  }
+});
 
 const shadowData = ref<any>(null);
 const reportedData = ref<Record<string, any>>({});
@@ -148,11 +163,55 @@ const formatValue = (value: any) => {
   return String(value);
 };
 
+async function fetchIndustrialShadow() {
+  const response: any = await getDevicethingModels({ id: deviceId.value, pageNum: 1, pageSize: 1000 });
+  const reported: Record<string, any> = {};
+  let latestTimestamp = 0;
+  (response?.data || []).forEach((item) => {
+    reported[item.propertyCode] = {
+      value: item.dataValue,
+      timestamp: item.ts || null,
+      unit: item.unit || '',
+      status: item.dataValue == null ? 'NO_DATA' : 'REPORTED',
+      rawData: item.rawData || null,
+    };
+    latestTimestamp = Math.max(latestTimestamp, Number(item.ts || 0));
+  });
+  let protocolConfig: Record<string, any> = {};
+  try {
+    protocolConfig = JSON.parse(props.device?.extension || '{}').protocolConfig || {};
+  } catch (_) {
+    protocolConfig = {};
+  }
+  reportedData.value = reported;
+  desiredData.value = {};
+  deltaData.value = {};
+  shadowData.value = {
+    protocol: protocolConfig.type || props.device?.protocolType,
+    connection: {
+      status: props.device?.connectStatus,
+      host: protocolConfig.host,
+      port: protocolConfig.port,
+      serialPort: protocolConfig.serialPort,
+      unitId: protocolConfig.unitId,
+      endpointUrl: protocolConfig.endpointUrl,
+      pollIntervalMs: protocolConfig.pollIntervalMs,
+    },
+    reported,
+  };
+  shadowVersion.value = String(latestTimestamp || '--');
+  lastUpdateTime.value = latestTimestamp ? moment(latestTimestamp).format('YYYY-MM-DD HH:mm:ss') : '--';
+}
+
 const fetchShadowData = async () => {
   loading.value = true;
   try {
     shadowVersion.value = '';
     lastUpdateTime.value = '';
+    if (isIndustrialProtocol.value) {
+      await fetchIndustrialShadow();
+      return;
+    }
     defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
 
     const response = await defHttp.get(

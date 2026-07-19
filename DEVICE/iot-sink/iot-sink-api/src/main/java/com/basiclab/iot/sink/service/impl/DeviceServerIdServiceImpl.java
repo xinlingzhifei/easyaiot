@@ -1,29 +1,21 @@
-package com.basiclab.iot.sink.service.device;
+package com.basiclab.iot.sink.service.impl;
 
 import com.basiclab.iot.common.service.RedisService;
 import com.basiclab.iot.sink.service.DeviceServerIdService;
 import com.basiclab.iot.sink.util.IotSinkRedisKeyConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
 
 /**
- * DeviceServerIdServiceImpl
- *
- * @author reese
- * @email reese
+ * 设备 ↔ 网关 serverId 映射（Redis）。
+ * 放在 sink-api，供 device-server / sink-server 共用，保证下行可按 serverId 路由。
  */
-
-@Service
 @Slf4j
 @RequiredArgsConstructor
 public class DeviceServerIdServiceImpl implements DeviceServerIdService {
 
-    /**
-     * 映射过期时间：7天（设备可能长时间在线）
-     */
     private static final long EXPIRE_TIME = IotSinkRedisKeyConstants.DEVICE_SERVER_ID_EXPIRE_DAYS;
     private static final TimeUnit EXPIRE_TIME_UNIT = TimeUnit.DAYS;
 
@@ -68,6 +60,4 @@ public class DeviceServerIdServiceImpl implements DeviceServerIdService {
         redisService.deleteObject(redisKey);
         log.debug("[removeDeviceServerId][删除设备 serverId 映射，设备 ID: {}]", deviceId);
     }
-
 }
-

@@ -36,6 +36,12 @@ public class TDDeviceDataResp {
     private String dataValue;
 
     /**
+     * 工业协议采集时保存的原始响应数据段。
+     */
+    @ApiModelProperty("原始响应数据")
+    private String rawData;
+
+    /**
      * 指示单位。支持长度不超过50。
      取值根据参数确定，如：
      •温度单位：“C”或“K”

@@ -10,13 +10,22 @@ import com.basiclab.iot.sink.protocol.mqtt.IotMqttDownstreamSubscriber;
 import com.basiclab.iot.sink.protocol.mqtt.IotMqttUpstreamProtocol;
 import com.basiclab.iot.sink.protocol.mqtt.manager.IotMqttConnectionManager;
 import com.basiclab.iot.sink.protocol.mqtt.router.IotMqttDownstreamHandler;
+import com.basiclab.iot.sink.protocol.modbus.IotModbusPollingProtocol;
+import com.basiclab.iot.sink.protocol.modbus.IotModbusRtuPollingProtocol;
+import com.basiclab.iot.sink.protocol.opcua.IotOpcUaPollingProtocol;
 import com.basiclab.iot.sink.protocol.tcp.IotTcpDownstreamSubscriber;
 import com.basiclab.iot.sink.protocol.tcp.IotTcpUpstreamProtocol;
 import com.basiclab.iot.sink.protocol.tcp.manager.IotTcpConnectionManager;
+import com.basiclab.iot.common.service.RedisService;
 import com.basiclab.iot.sink.messagebus.publisher.IotDeviceService;
 import com.basiclab.iot.sink.messagebus.publisher.message.IotDeviceMessageService;
+import com.basiclab.iot.sink.dal.mapper.DeviceMapper;
+import com.basiclab.iot.sink.util.IotDeviceMessageUtils;
+import com.basiclab.iot.sink.service.DeviceServerIdService;
+import com.basiclab.iot.sink.service.impl.DeviceServerIdServiceImpl;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -34,6 +43,12 @@ public class IotGatewayConfiguration {
  * @author reese
  * @email reese
  */
+
+    @Bean
+    @ConditionalOnMissingBean(DeviceServerIdService.class)
+    public DeviceServerIdService deviceServerIdService(RedisService redisService) {
+        return new DeviceServerIdServiceImpl(redisService);
+    }
 
 @Configuration
     @ConditionalOnProperty(prefix = "basiclab.iot.sink.protocol.http", name = "enabled", havingValue = "true")
@@ -117,6 +132,52 @@ public class IotGatewayConfiguration {
                     messageBus);
         }
 
+    }
+
+    @Configuration
+    @ConditionalOnProperty(prefix = "basiclab.iot.sink.protocol.modbus", name = "enabled", havingValue = "true")
+    public static class ModbusProtocolConfiguration {
+
+        @Bean
+        public IotModbusPollingProtocol iotModbusPollingProtocol(IotGatewayProperties gatewayProperties,
+                                                                  DeviceMapper deviceMapper,
+                                                                  IotDeviceMessageService messageService,
+                                                                  @Lazy IotMessageBus messageBus,
+                                                                  DeviceServerIdService deviceServerIdService) {
+            return new IotModbusPollingProtocol(gatewayProperties.getProtocol().getModbus(), deviceMapper,
+                    messageService, messageBus, deviceServerIdService, IotDeviceMessageUtils.generateServerId(1502));
+        }
+    }
+
+    @Configuration
+    @ConditionalOnProperty(prefix = "basiclab.iot.sink.protocol.modbus-rtu", name = "enabled", havingValue = "true")
+    public static class ModbusRtuProtocolConfiguration {
+
+        @Bean
+        public IotModbusRtuPollingProtocol iotModbusRtuPollingProtocol(IotGatewayProperties gatewayProperties,
+                                                                        DeviceMapper deviceMapper,
+                                                                        IotDeviceMessageService messageService,
+                                                                        @Lazy IotMessageBus messageBus,
+                                                                        DeviceServerIdService deviceServerIdService) {
+            return new IotModbusRtuPollingProtocol(gatewayProperties.getProtocol().getModbusRtu(), deviceMapper,
+                    messageService, messageBus, deviceServerIdService,
+                    IotDeviceMessageUtils.generateServerId(1503));
+        }
+    }
+
+    @Configuration
+    @ConditionalOnProperty(prefix = "basiclab.iot.sink.protocol.opcua", name = "enabled", havingValue = "true")
+    public static class OpcUaProtocolConfiguration {
+
+        @Bean
+        public IotOpcUaPollingProtocol iotOpcUaPollingProtocol(IotGatewayProperties gatewayProperties,
+                                                                DeviceMapper deviceMapper,
+                                                                IotDeviceMessageService messageService,
+                                                                @Lazy IotMessageBus messageBus,
+                                                                DeviceServerIdService deviceServerIdService) {
+            return new IotOpcUaPollingProtocol(gatewayProperties.getProtocol().getOpcua(), deviceMapper,
+                    messageService, messageBus, deviceServerIdService, IotDeviceMessageUtils.generateServerId(14840));
+        }
     }
 
     /**

@@ -11,6 +11,14 @@
         <result column="datavalue" property="dataValue" />
     </resultMap>
 
+    <resultMap id="deviceHistoryDataMap" type="com.basiclab.iot.device.domain.device.vo.TDDeviceDataResp">
+        <result column="ts" property="ts" />
+        <result column="propertycode" property="propertyCode" />
+        <result column="datatype" property="datatype" />
+        <result column="datavalue" property="dataValue" />
+        <result column="rawdata" property="rawData" />
+    </resultMap>
+
     <update id="createDatabase" parameterType="String">
         create
         database if not exists
@@ -267,13 +275,11 @@
         order by report_time desc
         limit 10
     </select>
-    <select id="getDeviceHistory"
-            resultType="com.basiclab.iot.device.domain.device.vo.TDDeviceDataResp">
+    <select id="getDeviceHistory" resultMap="deviceHistoryDataMap">
         select cast(report_time as bigint) as ts,
-               'properties' as functiontype,
                method as propertycode,
                'JSON' as datatype,
-               params as datavalue
+               coalesce(params, data) as datavalue
         from ${tdDatabaseName}.${tdSuperTableName}
         <where>
             device_identification = #{deviceIdentification}
@@ -283,6 +289,8 @@
             <if test="endTime != null and endTime != ''">
                 AND #{endTime} >= report_time
             </if>
+            and coalesce(params, data) is not null
+            and coalesce(params, data) != ''
         </where>
         order by report_time desc
     </select>

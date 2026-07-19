@@ -1,9 +1,11 @@
 package com.basiclab.iot.device.service.device.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.basiclab.iot.common.domain.R;
+import com.basiclab.iot.common.service.RedisService;
 import com.basiclab.iot.device.constant.FunctionTypeConstant;
 import com.basiclab.iot.device.constant.TdengineConstant;
 import com.basiclab.iot.device.domain.device.vo.Device;
@@ -14,6 +16,7 @@ import com.basiclab.iot.device.service.device.DeviceService;
 import com.basiclab.iot.device.service.device.DeviceThingModelService;
 import com.basiclab.iot.device.service.product.ProductPropertiesService;
 import com.basiclab.iot.device.service.product.ProductService;
+import com.basiclab.iot.sink.util.IotSinkRedisKeyConstants;
 import com.basiclab.iot.tdengine.RemoteTdEngineService;
 import com.basiclab.iot.tdengine.constant.SuperTableTypeConstant;
 import com.basiclab.iot.tdengine.domain.DeviceData;
@@ -51,6 +54,8 @@ public class DeviceThingModelServiceImpl implements DeviceThingModelService {
     private DeviceService deviceService;
     @Resource
     private ProductService productService;
+    @Resource
+    private RedisService redisService;
 
     //设备详情-运行状态
     @Override
@@ -117,21 +122,90 @@ public class DeviceThingModelServiceImpl implements DeviceThingModelService {
         }
 
         if (params != null) {
-            for (TDDeviceDataResp resp : result) {
-                if (params.containsKey(resp.getPropertyCode())) {
-                    Object value = params.get(resp.getPropertyCode());
-                    resp.setDataValue(value == null ? null : String.valueOf(value));
-                    resp.setTs(ts);
-                } else if (params.size() == 1 && propertyCode.size() == 1) {
-                    // 单属性时兼容直接上报标量/数组
-                    Object value = params.values().iterator().next();
-                    resp.setDataValue(value == null ? null : String.valueOf(value));
-                    resp.setTs(ts);
-                }
-            }
+            applyParams(result, params, propertyCode, ts);
             result.sort(Comparator.comparing(TDDeviceDataResp::getTs, Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
         }
+
+        // 3) 仍有缺失时，使用 Sink 维护的最新属性缓存（工业协议轮询）
+        fillMissingValuesFromRedis(id, result);
         return result;
+    }
+
+    private void applyParams(List<TDDeviceDataResp> result, JSONObject params,
+                             List<String> propertyCode, long ts) {
+        Object rawObj = params.get("_raw");
+        JSONObject rawMap = rawObj instanceof JSONObject ? (JSONObject) rawObj
+                : (rawObj instanceof Map ? new JSONObject((Map<String, Object>) rawObj) : null);
+        for (TDDeviceDataResp resp : result) {
+            if (params.containsKey(resp.getPropertyCode())) {
+                Object value = params.get(resp.getPropertyCode());
+                resp.setDataValue(value == null ? null : String.valueOf(value));
+                resp.setTs(ts);
+            } else if (params.size() == 1 && propertyCode.size() == 1) {
+                Object value = params.values().iterator().next();
+                resp.setDataValue(value == null ? null : String.valueOf(value));
+                resp.setTs(ts);
+            }
+            if (rawMap != null && rawMap.containsKey(resp.getPropertyCode())) {
+                Object raw = rawMap.get(resp.getPropertyCode());
+                resp.setRawData(raw == null ? null : String.valueOf(raw));
+            }
+        }
+    }
+
+    /**
+     * TDengine / 影子不可用或尚未写入时，使用 Sink 维护的最新属性缓存。
+     */
+    @SuppressWarnings("unchecked")
+    private void fillMissingValuesFromRedis(Long deviceId, List<TDDeviceDataResp> result) {
+        if (CollectionUtils.isEmpty(result)) {
+            return;
+        }
+        String redisKey = IotSinkRedisKeyConstants.buildDeviceDataKey(deviceId);
+        String extensionJson = redisService.getCacheMapValue(
+                redisKey, IotSinkRedisKeyConstants.DEVICE_DATA_FIELD_EXTENSION);
+        if (StrUtil.isBlank(extensionJson)) {
+            return;
+        }
+
+        Map<String, Object> extension;
+        try {
+            extension = JSON.parseObject(extensionJson, Map.class);
+        } catch (Exception e) {
+            log.warn("[fillMissingValuesFromRedis][解析设备属性缓存失败，deviceId: {}]", deviceId, e);
+            return;
+        }
+        if (extension == null) {
+            return;
+        }
+        Object propertiesValue = extension.get("properties");
+        if (!(propertiesValue instanceof Map)) {
+            return;
+        }
+        Map<String, Object> properties = (Map<String, Object>) propertiesValue;
+        Object rawObj = properties.get("_raw");
+        Map<String, Object> rawMap = rawObj instanceof Map ? (Map<String, Object>) rawObj : null;
+        long timestamp = toEpochMilli(properties.get("timestamp"));
+        boolean filled = false;
+        for (TDDeviceDataResp item : result) {
+            if (item.getDataValue() == null && properties.containsKey(item.getPropertyCode())) {
+                Object value = properties.get(item.getPropertyCode());
+                if (value != null) {
+                    item.setDataValue(String.valueOf(value));
+                    item.setTs(timestamp);
+                    filled = true;
+                }
+            }
+            if (item.getRawData() == null && rawMap != null && rawMap.containsKey(item.getPropertyCode())) {
+                Object raw = rawMap.get(item.getPropertyCode());
+                if (raw != null) {
+                    item.setRawData(String.valueOf(raw));
+                }
+            }
+        }
+        if (filled) {
+            result.sort(Comparator.comparing(TDDeviceDataResp::getTs, Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
+        }
     }
 
     private boolean isUsableParams(JSONObject params, List<String> propertyCodes) {

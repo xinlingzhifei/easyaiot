@@ -2,7 +2,7 @@
   <div class="ops-page">
     <div class="ops-header">
       <div class="ops-header-main">
-        <h2 class="ops-header-title">事件日志</h2>
+        <h2 class="ops-header-title">{{ isIndustrialProtocol ? '采集事件' : '事件日志' }}</h2>
         <div class="ops-header-meta">
           <span class="ops-meta-item">共 <strong>{{ logList.length }}</strong> 条</span>
         </div>
@@ -64,8 +64,10 @@
       <div class="ops-surface-body" ref="logContainerRef">
         <div v-if="logList.length === 0" class="ops-empty">
           <Icon icon="ant-design:inbox-outlined" class="ops-empty-icon" />
-          <p>暂无事件日志</p>
-          <p class="ops-empty-hint">请确认设备或 mqtt-demo 已上报 /event/upstream/report</p>
+          <p>{{ isIndustrialProtocol ? '暂无采集异常，当前未产生工业协议事件' : '暂无事件日志' }}</p>
+          <p class="ops-empty-hint">
+            {{ isIndustrialProtocol ? '连接、轮询和点位采集异常会显示在此' : '请确认设备或 mqtt-demo 已上报 /event/upstream/report' }}
+          </p>
         </div>
         <div v-else class="ops-list">
           <div
@@ -112,6 +114,11 @@ import { Button } from '@/components/Button';
 const { RangePicker } = DatePicker;
 
 defineOptions({ name: 'DeviceEvent' });
+
+const props = defineProps<{ device?: Record<string, any> }>();
+const isIndustrialProtocol = computed(() =>
+  ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'].includes(props.device?.protocolType),
+);
 
 const route = useRoute();
 const { createMessage } = useMessage();

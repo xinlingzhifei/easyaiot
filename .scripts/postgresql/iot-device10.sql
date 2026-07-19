@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
+\restrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-device20";
 CREATE DATABASE "iot-device20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
+\unrestrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-device20'"
-\restrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
+\restrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -5478,7 +5478,10 @@ COPY public.dataset_video (id, dataset_id, video_path, cover_path, description, 
 --
 
 COPY public.device (id, client_id, app_id, device_identification, device_name, device_description, device_status, connect_status, is_will, product_identification, create_by, create_time, update_by, update_time, remark, device_version, device_sn, ip_address, mac_address, active_status, extension, activated_time, last_online_time, parent_identification, device_type, tenant_id, deleted) FROM stdin;
-57038	\N	默认场景	9720084293632004	储能设备	\N	ENABLE	ONLINE	\N	9820630576939008	admin	2024-10-13 10:56:28	1	2026-07-16 17:34:08.478078	\N	\N	9720084293632005	\N	\N	1	{"shadow": {"RSSI": "-64", "Vbatt": "3.89", "deviceId": "9720084293632004", "PVAngle_X": "2.89", "PVAngle_Y": "-0.95", "PVAngle_Z": "-1.26", "eventTime": "2026-07-16T09:34:07Z", "serviceId": "demo-svc"}, "shadowUpdateTime": "2026-07-16T17:34:08.478078+08:00"}	2026-07-16 09:42:08.230075	2026-07-16 17:34:08.460709	\N	GATEWAY	1	0
+920001	mtcp01	demo	DEV_MTCP_001	Modbus TCP 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_MODBUS_TCP_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 15:06:32.589048	\N	\N	SN_MTCP_001	127.0.0.1	\N	1	{"protocolConfig":{"type":"MODBUS_TCP","enabled":true,"host":"192.168.1.100","port":502,"unitId":1,"pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","function":"HOLDING_REGISTER","address":0,"dataType":"UINT16","scale":0.1,"writable":false},{"propertyCode":"setpoint","identifier":"setpoint","function":"HOLDING_REGISTER","address":1,"dataType":"UINT16","scale":1,"writable":true},{"propertyCode":"running","identifier":"running","function":"COIL","address":0,"dataType":"UINT16","writable":true}]}}	2026-07-18 13:46:50.294541	2026-07-18 14:22:42.284	\N	COMMON	1	0
+920002	mrtu01	demo	DEV_MRTU_001	Modbus RTU 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_MODBUS_RTU_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 15:06:29.655484	\N	\N	SN_MRTU_001	\N	\N	1	{"protocolConfig":{"type":"MODBUS_RTU","enabled":true,"serialPort":"/dev/ttyUSB0","baudRate":9600,"dataBits":8,"stopBits":"1","parity":"NONE","unitId":1,"transmitDelayMs":0,"pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","function":"HOLDING_REGISTER","address":0,"dataType":"UINT16","scale":0.1,"writable":false},{"propertyCode":"setpoint","identifier":"setpoint","function":"HOLDING_REGISTER","address":1,"dataType":"UINT16","scale":1,"writable":true},{"propertyCode":"running","identifier":"running","function":"COIL","address":0,"dataType":"UINT16","writable":true}]}}	2026-07-18 13:47:21.800345	2026-07-18 14:22:48.789	\N	COMMON	1	0
+920003	opcua01	demo	DEV_OPCUA_001	OPC UA 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_OPCUA_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 15:06:27.584948	\N	\N	SN_OPCUA_001	127.0.0.1	\N	1	{"protocolConfig":{"type":"OPCUA","enabled":true,"endpointUrl":"opc.tcp://192.168.1.100:4840/freeopcua/server/","pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","nodeId":"ns=2;s=Temperature","dataType":"FLOAT","writable":false},{"propertyCode":"setpoint","identifier":"setpoint","nodeId":"ns=2;s=Setpoint","dataType":"FLOAT","writable":true},{"propertyCode":"running","identifier":"running","nodeId":"ns=2;s=Running","dataType":"BOOLEAN","writable":true}]}}	2026-07-18 14:11:02.027991	2026-07-18 14:22:48.292	\N	COMMON	1	0
+57038	\N	默认场景	9720084293632004	储能设备	\N	ENABLE	ONLINE	\N	9820630576939008	admin	2024-10-13 10:56:28	1	2026-07-20 13:50:15.997	\N	\N	9720084293632005	\N	\N	1	{"shadow": {"RSSI": "-60", "Vbatt": "3.58", "deviceId": "9720084293632004", "PVAngle_X": "-0.58", "PVAngle_Y": "-2.99", "PVAngle_Z": "-0.79", "eventTime": "2026-07-17T05:50:15Z", "serviceId": "demo-svc"}, "shadowUpdateTime": "2026-07-17T13:50:15.997613+08:00"}	2026-07-16 09:42:08.230075	2026-07-17 13:50:15.991042	\N	GATEWAY	1	0
 \.
 
 
@@ -5545,7 +5548,10 @@ COPY public.ota_packages (id, app_id, package_name, package_type, product_identi
 --
 
 COPY public.product (id, app_id, template_identification, product_name, product_identification, product_type, manufacturer_id, manufacturer_name, model, data_format, device_type, protocol_type, status, remark, create_by, create_time, update_by, update_time, auth_mode, user_name, password, connector, sign_key, encrypt_method, encrypt_key, encrypt_vector, tenant_id, public_key, private_key) FROM stdin;
-22	智能家居	3ff77a5289144dacbb6d32bee107f90f	智能网关	9820630576939008	COMMON	12321	华科南航科技有限公司	32423	JSON	32423	GB28181	0	23432	admin	2024-07-04 17:35:50.852	admin	2024-07-04 17:35:50.852	32423	32432	32423	432432	32423	0	32432	23432	1	\N	\N
+22	智能家居	3ff77a5289144dacbb6d32bee107f90f	智能网关	9820630576939008	COMMON	12321	华科南航科技有限公司	32423	JSON	32423	GB28181	0	23432	admin	2024-07-04 17:35:50.852	admin	2026-07-19 17:35:50.852	32423	32432	32423	432432	32423	0	32432	23432	1	\N	\N
+910001	demo	\N	Modbus TCP 演示产品	IND_MODBUS_TCP_DEMO	COMMON	demo	yFeiEye	modbus-tcp	BINARY	COMMON	MODBUS_TCP	0	industrial demo	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 14:54:09.154464	\N	\N	\N	\N	\N	0	\N	\N	1	\N	\N
+910002	demo	\N	Modbus RTU 演示产品	IND_MODBUS_RTU_DEMO	COMMON	demo	yFeiEye	modbus-rtu	BINARY	COMMON	MODBUS_RTU	0	industrial demo	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 14:54:09.154464	\N	\N	\N	\N	\N	0	\N	\N	1	\N	\N
+910003	demo	\N	OPC UA 演示产品	IND_OPCUA_DEMO	COMMON	demo	yFeiEye	opcua	BINARY	COMMON	OPCUA	0	industrial demo	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 14:54:09.154464	\N	\N	\N	\N	\N	0	\N	\N	1	\N	\N
 \.
 
 
@@ -5602,6 +5608,19 @@ COPY public.product_properties (id, property_name, property_code, datatype, desc
 51	电量	Vbatt	TEXT	\N		\N	10240	r	\N	\N	\N	\N	admin	2024-06-18 15:32:13.564	admin	2024-06-18 15:32:13.565	\N	9820630576939008	1
 52	服务ID	serviceId	TEXT	\N		\N	10240	r	\N	\N	\N	\N	admin	2024-06-18 15:32:45.728	admin	2024-06-18 15:32:45.728	\N	9820630576939008	1
 53	设备ID	deviceId	TEXT	\N		\N	10240	r	\N	\N	\N	\N	admin	2024-06-18 15:32:59.716	admin	2024-06-18 15:32:59.716	\N	9820630576939008	1
+900101	温度	temperature	double	Modbus 演示温度	\N	\N	\N	R	\N	\N	\N	°	admin	2026-07-18 13:18:46.937229	\N	\N	\N	8700054938017792	1
+900102	设定点	setpoint	double	Modbus 演示设定点	\N	\N	\N	RW	\N	\N	\N	°	admin	2026-07-18 13:18:46.937229	\N	\N	\N	8700054938017792	1
+900111	温度	temperature	double	OPC UA 演示温度	\N	\N	\N	R	\N	\N	\N	°	admin	2026-07-18 13:18:46.94235	\N	\N	\N	9030000000000001	1
+900112	设定点	setpoint	double	OPC UA 演示设定点	\N	\N	\N	RW	\N	\N	\N	°	admin	2026-07-18 13:18:46.94235	\N	\N	\N	9030000000000001	1
+911001	温度	temperature	DOUBLE	演示温度	\N	\N	\N	r	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_MODBUS_TCP_DEMO	1
+911002	设定值	setpoint	INT	演示设定值	\N	\N	\N	w	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_MODBUS_TCP_DEMO	1
+911003	运行	running	BOOL	演示运行状态	\N	\N	\N	w	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_MODBUS_TCP_DEMO	1
+911011	温度	temperature	DOUBLE	演示温度	\N	\N	\N	r	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_MODBUS_RTU_DEMO	1
+911012	设定值	setpoint	INT	演示设定值	\N	\N	\N	w	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_MODBUS_RTU_DEMO	1
+911013	运行	running	BOOL	演示运行状态	\N	\N	\N	w	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_MODBUS_RTU_DEMO	1
+911021	温度	temperature	DOUBLE	演示温度	\N	\N	\N	r	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_OPCUA_DEMO	1
+911022	设定值	setpoint	DOUBLE	演示设定值	\N	\N	\N	w	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_OPCUA_DEMO	1
+911023	运行	running	BOOL	演示运行状态	\N	\N	\N	w	\N	0	\N	\N	admin	2026-07-18 13:29:08.165384	\N	\N	\N	IND_OPCUA_DEMO	1
 \.
 
 
@@ -6751,5 +6770,5 @@ CREATE TRIGGER update_iot_app_updated_time BEFORE UPDATE ON public.app FOR EACH 
 -- PostgreSQL database dump complete
 --
 
-\unrestrict iUQOyXfbz483QCV1Z0UTQgNMSwgfe9lWXyKxf8FW1Xkog3egYphfH1OpTkO7iOv
+\unrestrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
 

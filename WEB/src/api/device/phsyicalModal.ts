@@ -154,7 +154,9 @@ export const delPhsyicalEvent = (params) => {
 }
 
 // 发布物模型
-export const releasePhsyical = (params) => commonApi('put', API.RELEASE, params);
+export const releasePhsyical = (productIdentification: string) =>
+  commonApi('put', `${API.RELEASE}${productIdentification}`, {});
 
 // 获取物模型
-export const getPhsyical = (params) => commonApi('get', API.DETAIL, params);
+export const getPhsyical = (productIdentification: string) =>
+  commonApi('get', `${API.DETAIL}${productIdentification}`, {});

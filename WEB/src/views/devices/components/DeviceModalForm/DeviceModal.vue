@@ -87,15 +87,35 @@
           class="section-form"
         >
           <Alert
-            v-if="selectedProtocol"
+            v-if="selectedProtocol && !isIndustrialProtocol"
             class="protocol-alert"
             type="info"
             show-icon
             :message="`接入协议：${selectedProtocolLabel}`"
           />
 
-          <template v-if="selectedProtocol === 'MODBUS_TCP'">
-            <Row :gutter="16">
+          <template v-if="isModbusProtocol">
+            <div class="protocol-toolbar">
+              <span class="protocol-toolbar__title">{{ selectedProtocolLabel }} 连接配置</span>
+              <div class="protocol-toolbar__actions">
+                <Button type="link" size="small" @click="state.showProtocolGuide = !state.showProtocolGuide">
+                  配置说明
+                </Button>
+                <Button size="small" :loading="state.testingConnection" @click="handleTestConnection">
+                  测试连接
+                </Button>
+              </div>
+            </div>
+            <Alert
+              v-if="state.showProtocolGuide"
+              class="protocol-alert"
+              type="info"
+              show-icon
+              :message="protocolGuide"
+              closable
+              @close="state.showProtocolGuide = false"
+            />
+            <Row v-if="selectedProtocol === 'MODBUS_TCP'" :gutter="16">
               <Col :span="10">
                 <FormItem label="主机地址" required>
                   <Input v-model:value="protocolConfig.host" placeholder="192.168.1.100" />
@@ -117,26 +137,168 @@
                 </FormItem>
               </Col>
             </Row>
-            <div class="point-header">
-              <span>采集点位</span>
-              <Button type="dashed" size="small" preIcon="ant-design:plus-outlined" @click="addModbusPoint">
-                添加点位
-              </Button>
-            </div>
-            <div v-for="(point, index) in protocolConfig.points" :key="index" class="point-row modbus-point-row">
-              <Input v-model:value="point.identifier" placeholder="物模型标识" />
-              <Select v-model:value="point.function" :options="modbusFunctionOptions" />
-              <InputNumber v-model:value="point.address" :min="0" :max="65535" placeholder="地址" />
-              <Select v-model:value="point.dataType" :options="modbusDataTypeOptions" />
-              <InputNumber v-model:value="point.scale" :step="0.1" placeholder="倍率" />
-              <Tooltip title="允许平台写入"><Switch v-model:checked="point.writable" size="small" /></Tooltip>
-              <Tooltip title="删除点位">
-                <Button danger type="text" preIcon="ant-design:delete-outlined" @click="removePoint(index)" />
-              </Tooltip>
+            <template v-else>
+              <Row :gutter="16">
+                <Col :span="8">
+                  <FormItem label="串口" required>
+                    <Input v-model:value="protocolConfig.serialPort" placeholder="COM3 或 /dev/ttyUSB0" />
+                  </FormItem>
+                </Col>
+                <Col :span="6">
+                  <FormItem label="波特率">
+                    <Select v-model:value="protocolConfig.baudRate" :options="baudRateOptions" class="w-full" />
+                  </FormItem>
+                </Col>
+                <Col :span="5">
+                  <FormItem label="站号">
+                    <InputNumber v-model:value="protocolConfig.unitId" :min="1" :max="247" class="w-full" />
+                  </FormItem>
+                </Col>
+                <Col :span="5">
+                  <FormItem label="周期(ms)">
+                    <InputNumber v-model:value="protocolConfig.pollIntervalMs" :min="1000" :step="1000" class="w-full" />
+                  </FormItem>
+                </Col>
+              </Row>
+              <Row :gutter="16">
+                <Col :span="6">
+                  <FormItem label="数据位">
+                    <Select v-model:value="protocolConfig.dataBits" :options="dataBitOptions" class="w-full" />
+                  </FormItem>
+                </Col>
+                <Col :span="6">
+                  <FormItem label="停止位">
+                    <Select v-model:value="protocolConfig.stopBits" :options="stopBitOptions" class="w-full" />
+                  </FormItem>
+                </Col>
+                <Col :span="6">
+                  <FormItem label="校验">
+                    <Select v-model:value="protocolConfig.parity" :options="parityOptions" class="w-full" />
+                  </FormItem>
+                </Col>
+                <Col :span="6">
+                  <FormItem label="发送延时">
+                    <InputNumber v-model:value="protocolConfig.transmitDelayMs" :min="0" class="w-full" addon-after="ms" />
+                  </FormItem>
+                </Col>
+              </Row>
+            </template>
+            <Alert
+              v-if="state.connectionResult"
+              class="protocol-alert"
+              show-icon
+              :type="state.connectionResult.success ? 'success' : 'error'"
+              :message="state.connectionResult.message"
+            />
+            <div class="point-section">
+              <div class="point-section__header">
+                <div>
+                  <div class="point-section__title">采集点位</div>
+                  <div class="point-section__subtitle">
+                    点位需绑定物模型属性 · 已配置 {{ protocolConfig.points.length }} 个
+                  </div>
+                </div>
+                <Button type="primary" ghost preIcon="ant-design:plus-outlined" @click="addModbusPoint">
+                  添加点位
+                </Button>
+              </div>
+
+              <div v-if="!protocolConfig.points.length" class="point-empty">
+                <div class="point-empty__title">暂无采集点位</div>
+                <div class="point-empty__hint">点击右上角「添加点位」，将寄存器映射到物模型属性</div>
+              </div>
+
+              <div
+                v-for="(point, index) in protocolConfig.points"
+                :key="index"
+                class="point-card"
+              >
+                <div class="point-card__header">
+                  <div class="point-card__meta">
+                    <span class="point-card__index">点位 {{ index + 1 }}</span>
+                    <span v-if="resolvePointPropertyCode(point)" class="point-card__badge">
+                      {{ resolvePointPropertyCode(point) }}
+                    </span>
+                  </div>
+                  <div class="point-card__actions">
+                    <span class="point-card__writable">
+                      允许写入
+                      <Switch v-model:checked="point.writable" />
+                    </span>
+                    <Tooltip title="删除点位">
+                      <Button danger type="text" preIcon="ant-design:delete-outlined" @click="removePoint(index)" />
+                    </Tooltip>
+                  </div>
+                </div>
+                <Row :gutter="[20, 4]">
+                  <Col :span="8">
+                    <FormItem label="绑定物模型属性" required>
+                      <Select
+                        v-model:value="point.propertyCode"
+                        show-search
+                        option-filter-prop="label"
+                        :options="propertyBindOptions"
+                        :loading="propertyLoading"
+                        placeholder="请选择物模型属性"
+                        class="w-full"
+                        @change="(code) => handlePointPropertyBind(point, code)"
+                      />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="点位名称">
+                      <Input v-model:value="point.identifier" placeholder="默认与绑定属性相同" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="功能码" required>
+                      <Select v-model:value="point.function" :options="modbusFunctionOptions" class="w-full" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="寄存器地址" required>
+                      <InputNumber v-model:value="point.address" :min="0" :max="65535" class="w-full" placeholder="0" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="数据类型">
+                      <Select v-model:value="point.dataType" :options="modbusDataTypeOptions" class="w-full" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="显示进制">
+                      <Select v-model:value="point.valueRadix" :options="radixOptions" class="w-full" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="倍率">
+                      <InputNumber v-model:value="point.scale" :step="0.1" class="w-full" placeholder="1" />
+                    </FormItem>
+                  </Col>
+                </Row>
+              </div>
             </div>
           </template>
 
           <template v-else-if="selectedProtocol === 'OPCUA'">
+            <Alert
+              v-if="state.showProtocolGuide"
+              class="protocol-alert"
+              type="info"
+              show-icon
+              message="填写 OPC UA Endpoint（如 opc.tcp://host:4840）。匿名访问可留空用户名密码；NodeId 需与现场服务器一致，点位需绑定产品物模型属性。"
+            />
+            <div class="protocol-toolbar">
+              <span class="protocol-toolbar__title">OPC UA 连接配置</span>
+              <div class="protocol-toolbar__actions">
+                <Button type="link" size="small" @click="state.showProtocolGuide = !state.showProtocolGuide">
+                  配置说明
+                </Button>
+                <Button size="small" :loading="state.testingConnection" @click="handleTestConnection">
+                  测试连接
+                </Button>
+              </div>
+            </div>
             <FormItem label="Endpoint" required>
               <Input v-model:value="protocolConfig.endpointUrl" placeholder="opc.tcp://192.168.1.100:4840" />
             </FormItem>
@@ -157,20 +319,85 @@
                 </FormItem>
               </Col>
             </Row>
-            <div class="point-header">
-              <span>采集节点</span>
-              <Button type="dashed" size="small" preIcon="ant-design:plus-outlined" @click="addOpcUaPoint">
-                添加节点
-              </Button>
-            </div>
-            <div v-for="(point, index) in protocolConfig.points" :key="index" class="point-row opcua-point-row">
-              <Input v-model:value="point.identifier" placeholder="物模型标识" />
-              <Input v-model:value="point.nodeId" placeholder="ns=2;s=Temperature" />
-              <Select v-model:value="point.dataType" :options="opcUaDataTypeOptions" />
-              <Tooltip title="允许平台写入"><Switch v-model:checked="point.writable" size="small" /></Tooltip>
-              <Tooltip title="删除节点">
-                <Button danger type="text" preIcon="ant-design:delete-outlined" @click="removePoint(index)" />
-              </Tooltip>
+            <Alert
+              v-if="state.connectionResult"
+              class="protocol-alert"
+              show-icon
+              :type="state.connectionResult.success ? 'success' : 'error'"
+              :message="state.connectionResult.message"
+            />
+            <div class="point-section">
+              <div class="point-section__header">
+                <div>
+                  <div class="point-section__title">采集节点</div>
+                  <div class="point-section__subtitle">
+                    点位需绑定物模型属性 · 已配置 {{ protocolConfig.points.length }} 个
+                  </div>
+                </div>
+                <Button type="primary" ghost preIcon="ant-design:plus-outlined" @click="addOpcUaPoint">
+                  添加节点
+                </Button>
+              </div>
+
+              <div v-if="!protocolConfig.points.length" class="point-empty">
+                <div class="point-empty__title">暂无采集节点</div>
+                <div class="point-empty__hint">点击右上角「添加节点」，将 NodeId 映射到物模型属性</div>
+              </div>
+
+              <div
+                v-for="(point, index) in protocolConfig.points"
+                :key="index"
+                class="point-card"
+              >
+                <div class="point-card__header">
+                  <div class="point-card__meta">
+                    <span class="point-card__index">节点 {{ index + 1 }}</span>
+                    <span v-if="resolvePointPropertyCode(point)" class="point-card__badge">
+                      {{ resolvePointPropertyCode(point) }}
+                    </span>
+                  </div>
+                  <div class="point-card__actions">
+                    <span class="point-card__writable">
+                      允许写入
+                      <Switch v-model:checked="point.writable" />
+                    </span>
+                    <Tooltip title="删除节点">
+                      <Button danger type="text" preIcon="ant-design:delete-outlined" @click="removePoint(index)" />
+                    </Tooltip>
+                  </div>
+                </div>
+                <Row :gutter="[20, 4]">
+                  <Col :span="8">
+                    <FormItem label="绑定物模型属性" required>
+                      <Select
+                        v-model:value="point.propertyCode"
+                        show-search
+                        option-filter-prop="label"
+                        :options="propertyBindOptions"
+                        :loading="propertyLoading"
+                        placeholder="请选择物模型属性"
+                        class="w-full"
+                        @change="(code) => handlePointPropertyBind(point, code)"
+                      />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="点位名称">
+                      <Input v-model:value="point.identifier" placeholder="默认与绑定属性相同" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="8">
+                    <FormItem label="数据类型">
+                      <Select v-model:value="point.dataType" :options="opcUaDataTypeOptions" class="w-full" />
+                    </FormItem>
+                  </Col>
+                  <Col :span="24">
+                    <FormItem label="NodeId" required>
+                      <Input v-model:value="point.nodeId" placeholder="ns=2;s=Temperature" />
+                    </FormItem>
+                  </Col>
+                </Row>
+              </div>
             </div>
           </template>
 
@@ -225,7 +452,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { BasicDrawer, useDrawerInner } from '@/components/Drawer';
 import {
   Alert, Col, Divider, Form, FormItem, Input, InputNumber, Row, Select, Spin, Switch, Textarea, Tooltip,
@@ -233,7 +460,8 @@ import {
 import { Button } from '@/components/Button';
 import { useMessage } from '@/hooks/web/useMessage';
 import { getDeviceProfiles } from '@/api/device/product';
-import { getDevicesInfo, saveDevices, updateDevices } from '@/api/device/devices';
+import { getDevicesInfo, saveDevices, testModbusConnection, updateDevices } from '@/api/device/devices';
+import { getPropertiesList } from '@/api/device/phsyicalModal';
 import { SETUP_FORM_LABEL_COL, SETUP_FORM_WRAPPER_COL } from '@/views/node/utils/constants';
 
 defineOptions({ name: 'DeviceDrawer' });
@@ -248,12 +476,27 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
   VIDEO_COMMON: '视频设备',
 };
 
+const INDUSTRIAL_PROTOCOLS = ['MODBUS_TCP', 'MODBUS_RTU', 'OPCUA'];
+
 const state = reactive({
   productList: [] as any[],
   isEdit: false,
   editLoading: false,
   lockProduct: false,
+  testingConnection: false,
+  showProtocolGuide: false,
+  connectionResult: null as null | { success: boolean; message: string },
+  propertyLoading: false,
 });
+
+const productProperties = ref<any[]>([]);
+const propertyLoading = computed(() => state.propertyLoading);
+const propertyBindOptions = computed(() =>
+  productProperties.value.map((item) => ({
+    label: `${item.propertyName || item.propertyCode}（${item.propertyCode}）`,
+    value: item.propertyCode,
+  })),
+);
 
 function createEmptyModel() {
   return {
@@ -279,10 +522,26 @@ const selectedProduct = computed(() =>
   state.productList.find((item: any) => item.value === modelRef.productIdentification),
 );
 const selectedProtocol = computed(() => selectedProduct.value?.protocolType || '');
+const isModbusProtocol = computed(() =>
+  ['MODBUS_TCP', 'MODBUS_RTU'].includes(selectedProtocol.value),
+);
+const isIndustrialProtocol = computed(() =>
+  INDUSTRIAL_PROTOCOLS.includes(selectedProtocol.value),
+);
 const protocolLabels: Record<string, string> = {
-  MQTT: 'MQTT', HTTP: 'HTTP', TCP: 'TCP', MODBUS_TCP: 'Modbus TCP', OPCUA: 'OPC UA',
+  MQTT: 'MQTT',
+  HTTP: 'HTTP',
+  TCP: 'TCP',
+  MODBUS_TCP: 'Modbus TCP',
+  MODBUS_RTU: 'Modbus RTU',
+  OPCUA: 'OPC UA',
 };
 const selectedProtocolLabel = computed(() => protocolLabels[selectedProtocol.value] || selectedProtocol.value);
+const protocolGuide = computed(() =>
+  selectedProtocol.value === 'MODBUS_RTU'
+    ? '串口名称填写 Sink 服务所在主机可见的端口，例如 COM3 或 /dev/ttyUSB0。波特率、数据位、停止位和校验方式必须与从站一致；同一 RS-485 总线上的站号应保持唯一。测试连接仅验证串口能否打开。'
+    : '填写设备或串口服务器的 IP 地址，端口通常为 502，站号通常为 1。请确认 Sink 服务所在网络能够访问该地址。测试连接验证主机端口可达，不校验具体寄存器地址。',
+);
 const deviceTypeLabel = computed(() =>
   PRODUCT_TYPE_LABELS[modelRef.deviceType] || modelRef.deviceType || '-',
 );
@@ -296,8 +555,82 @@ const modbusFunctionOptions = [
 ];
 const modbusDataTypeOptions = ['INT16', 'UINT16', 'INT32', 'UINT32', 'FLOAT32', 'INT64', 'FLOAT64']
   .map((value) => ({ label: value, value }));
+const radixOptions = [
+  { label: 'BIN', value: 2 },
+  { label: 'OCT', value: 8 },
+  { label: 'DEC', value: 10 },
+  { label: 'HEX', value: 16 },
+];
+const baudRateOptions = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map((value) => ({
+  label: String(value),
+  value,
+}));
+const dataBitOptions = [7, 8].map((value) => ({ label: String(value), value }));
+const stopBitOptions = ['1', '1.5', '2'].map((value) => ({ label: value, value }));
+const parityOptions = ['NONE', 'EVEN', 'ODD'].map((value) => ({ label: value, value }));
 const opcUaDataTypeOptions = ['AUTO', 'BOOLEAN', 'INT32', 'INT64', 'FLOAT', 'DOUBLE', 'STRING']
   .map((value) => ({ label: value, value }));
+
+watch(
+  () => [
+    protocolConfig.host,
+    protocolConfig.port,
+    protocolConfig.serialPort,
+    protocolConfig.baudRate,
+    protocolConfig.dataBits,
+    protocolConfig.stopBits,
+    protocolConfig.parity,
+    protocolConfig.unitId,
+  ],
+  () => {
+    state.connectionResult = null;
+  },
+);
+
+watch(
+  () => modelRef.productIdentification,
+  (productIdentification) => {
+    if (productIdentification && isIndustrialProtocol.value) {
+      loadProductProperties(productIdentification);
+    } else {
+      productProperties.value = [];
+    }
+  },
+);
+
+function resolvePointPropertyCode(point?: { propertyCode?: string; identifier?: string } | null) {
+  return String(point?.propertyCode || point?.identifier || '').trim();
+}
+
+function handlePointPropertyBind(point: any, code: string) {
+  const previous = String(point._lastBoundPropertyCode || '').trim();
+  point.propertyCode = code;
+  if (!point.identifier || point.identifier === previous) {
+    point.identifier = code;
+  }
+  point._lastBoundPropertyCode = code;
+}
+
+async function loadProductProperties(productIdentification?: string) {
+  const code = productIdentification || modelRef.productIdentification;
+  if (!code) {
+    productProperties.value = [];
+    return;
+  }
+  state.propertyLoading = true;
+  try {
+    const response: any = await getPropertiesList({
+      productIdentification: code,
+      pageNum: 1,
+      pageSize: 1000,
+    });
+    productProperties.value = response?.data || response?.rows || response?.list || [];
+  } catch (_) {
+    productProperties.value = [];
+  } finally {
+    state.propertyLoading = false;
+  }
+}
 
 const emits = defineEmits(['success', 'register']);
 
@@ -351,8 +684,15 @@ function createProtocolConfig(type: string) {
     type,
     enabled: true,
     host: '',
-    port: type === 'MODBUS_TCP' ? 502 : 4840,
+    port: type === 'MODBUS_TCP' ? 502 : type === 'OPCUA' ? 4840 : undefined,
     unitId: 1,
+    serialPort: '',
+    baudRate: 9600,
+    dataBits: 8,
+    stopBits: '1',
+    parity: 'NONE',
+    transmitDelayMs: 0,
+    rs485Mode: true,
     endpointUrl: '',
     username: '',
     password: '',
@@ -374,17 +714,72 @@ function handleProductChange() {
   if (!state.isEdit) {
     replaceProtocolConfig(createProtocolConfig(selectedProtocol.value));
   }
+  state.connectionResult = null;
+  state.showProtocolGuide = false;
+  if (isIndustrialProtocol.value) {
+    loadProductProperties(modelRef.productIdentification);
+  } else {
+    productProperties.value = [];
+  }
+}
+
+async function handleTestConnection() {
+  if (!isIndustrialProtocol.value) return;
+  if (selectedProtocol.value === 'MODBUS_TCP' && !protocolConfig.host) {
+    createMessage.warning('请先填写主机地址');
+    return;
+  }
+  if (selectedProtocol.value === 'MODBUS_RTU' && !protocolConfig.serialPort) {
+    createMessage.warning('请先填写串口名称');
+    return;
+  }
+  if (selectedProtocol.value === 'OPCUA' && !protocolConfig.endpointUrl) {
+    createMessage.warning('请先填写 Endpoint URL');
+    return;
+  }
+  state.testingConnection = true;
+  state.connectionResult = null;
+  try {
+    const result = await testModbusConnection({ ...protocolConfig, type: selectedProtocol.value });
+    state.connectionResult = { success: true, message: result?.msg || '连接成功' };
+  } catch (error: any) {
+    const isTimeout = error?.code === 'ECONNABORTED' || /timeout/i.test(error?.message || '');
+    state.connectionResult = {
+      success: false,
+      message: isTimeout
+        ? '连接测试超时，请确认目标可达，且 Sink 服务可以访问该地址/串口'
+        : error?.msg || error?.message || '连接失败，请检查参数和设备状态',
+    };
+  } finally {
+    state.testingConnection = false;
+  }
 }
 
 function addModbusPoint() {
   protocolConfig.points.push({
-    identifier: '', function: 'HOLDING_REGISTER', address: 0, quantity: 1,
-    dataType: 'UINT16', byteOrder: 'BIG_ENDIAN', wordOrder: 'BIG_ENDIAN', scale: 1, offset: 0, writable: false,
+    propertyCode: undefined,
+    identifier: '',
+    function: 'HOLDING_REGISTER',
+    address: 0,
+    quantity: 1,
+    dataType: 'UINT16',
+    valueRadix: 16,
+    byteOrder: 'BIG_ENDIAN',
+    wordOrder: 'BIG_ENDIAN',
+    scale: 1,
+    offset: 0,
+    writable: false,
   });
 }
 
 function addOpcUaPoint() {
-  protocolConfig.points.push({ identifier: '', nodeId: '', dataType: 'AUTO', writable: false });
+  protocolConfig.points.push({
+    propertyCode: undefined,
+    identifier: '',
+    nodeId: '',
+    dataType: 'AUTO',
+    writable: false,
+  });
 }
 
 function removePoint(index: number) {
@@ -404,11 +799,23 @@ function loadProtocolConfig(record: any) {
   } catch (_) {
     extension = {};
   }
+  const points = (extension.protocolConfig?.points || []).map((point: any) => {
+    const propertyCode = point.propertyCode || point.identifier || '';
+    return {
+      ...point,
+      propertyCode: propertyCode || undefined,
+      identifier: point.identifier || propertyCode,
+      _lastBoundPropertyCode: propertyCode,
+    };
+  });
   replaceProtocolConfig({
     ...createProtocolConfig(selectedProtocol.value),
     ...(extension.protocolConfig || {}),
-    points: extension.protocolConfig?.points || [],
+    points,
   });
+  if (modelRef.productIdentification) {
+    loadProductProperties(modelRef.productIdentification);
+  }
 }
 
 async function loadDeviceForEdit(id: number | string) {
@@ -438,13 +845,27 @@ function validateProtocolConfig() {
     createMessage.error('请输入 Modbus TCP 主机地址');
     return false;
   }
+  if (selectedProtocol.value === 'MODBUS_RTU' && !protocolConfig.serialPort) {
+    createMessage.error('请输入 Modbus RTU 串口名称');
+    return false;
+  }
   if (selectedProtocol.value === 'OPCUA' && !protocolConfig.endpointUrl) {
     createMessage.error('请输入 OPC UA Endpoint');
     return false;
   }
-  if (['MODBUS_TCP', 'OPCUA'].includes(selectedProtocol.value)) {
-    if (!protocolConfig.points.length || protocolConfig.points.some((point: any) => !point.identifier)) {
-      createMessage.error('请至少配置一个完整的采集点位');
+  if (INDUSTRIAL_PROTOCOLS.includes(selectedProtocol.value)) {
+    if (!protocolConfig.points.length) {
+      createMessage.error('请至少配置一个采集点位');
+      return false;
+    }
+    const unbound = protocolConfig.points.some((point: any) => !resolvePointPropertyCode(point));
+    if (unbound) {
+      createMessage.error('请为每个点位绑定物模型属性');
+      return false;
+    }
+    const codes = protocolConfig.points.map((point: any) => resolvePointPropertyCode(point));
+    if (new Set(codes).size !== codes.length) {
+      createMessage.error('同一设备内不可重复绑定同一物模型属性');
       return false;
     }
     if (selectedProtocol.value === 'OPCUA' && protocolConfig.points.some((point: any) => !point.nodeId)) {
@@ -467,8 +888,17 @@ async function handleOk() {
     } catch (_) {
       extension = {};
     }
-    if (['MODBUS_TCP', 'OPCUA'].includes(selectedProtocol.value)) {
-      extension.protocolConfig = { ...protocolConfig, type: selectedProtocol.value };
+    if (INDUSTRIAL_PROTOCOLS.includes(selectedProtocol.value)) {
+      const points = (protocolConfig.points || []).map((point: any) => {
+        const propertyCode = resolvePointPropertyCode(point);
+        const { _lastBoundPropertyCode, ...rest } = point;
+        return {
+          ...rest,
+          propertyCode,
+          identifier: String(point.identifier || propertyCode).trim() || propertyCode,
+        };
+      });
+      extension.protocolConfig = { ...protocolConfig, type: selectedProtocol.value, points };
       payload.extension = JSON.stringify(extension);
       if (selectedProtocol.value === 'MODBUS_TCP') payload.ipAddress = protocolConfig.host;
     } else {
@@ -497,12 +927,13 @@ async function handleOk() {
 .device-drawer-content {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
+  padding-bottom: 8px;
 }
 
 .section-form {
   :deep(.ant-form-item) {
-    margin-bottom: 16px;
+    margin-bottom: 18px;
   }
 
   :deep(.ant-input-number) {
@@ -511,30 +942,144 @@ async function handleOk() {
 }
 
 .protocol-alert {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
-.point-header {
+.protocol-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 8px 0;
-  font-weight: 600;
+  margin-bottom: 16px;
+  padding: 4px 0;
 }
 
-.point-row {
-  display: grid;
+.protocol-toolbar__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #141414;
+}
+
+.protocol-toolbar__actions {
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
 }
 
-.modbus-point-row {
-  grid-template-columns: 1.2fr 1.25fr 84px 100px 76px 40px 32px;
+.point-section {
+  margin-top: 8px;
+  padding: 20px 22px 8px;
+  background: #fafbfc;
+  border: 1px solid #eef0f4;
+  border-radius: 10px;
 }
 
-.opcua-point-row {
-  grid-template-columns: 1fr 1.8fr 100px 40px 32px;
+.point-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eef0f4;
+}
+
+.point-section__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #141414;
+  line-height: 24px;
+}
+
+.point-section__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #8c8c8c;
+  line-height: 20px;
+}
+
+.point-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 140px;
+  margin-bottom: 12px;
+  padding: 24px;
+  background: #fff;
+  border: 1px dashed #d9d9d9;
+  border-radius: 8px;
+}
+
+.point-empty__title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #595959;
+}
+
+.point-empty__hint {
+  font-size: 13px;
+  color: #bfbfbf;
+}
+
+.point-card {
+  margin-bottom: 16px;
+  padding: 18px 20px 4px;
+  background: #fff;
+  border: 1px solid #e8ecf1;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.point-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.point-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.point-card__index {
+  font-size: 14px;
+  font-weight: 600;
+  color: #141414;
+}
+
+.point-card__badge {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.point-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.point-card__writable {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #595959;
 }
 
 .form-hint {
@@ -547,7 +1092,7 @@ async function handleOk() {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .w-full {
