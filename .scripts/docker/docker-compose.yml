@@ -70,7 +70,7 @@ services:
     container_name: postgres-server
     restart: always
     ports:
-      - "0.0.0.0:5432:5432"
+      - "0.0.0.0:15432:5432"
     environment:
       - TZ=Asia/Shanghai
       - POSTGRES_USER=postgres

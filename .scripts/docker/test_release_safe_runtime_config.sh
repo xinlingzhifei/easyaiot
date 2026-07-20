@@ -27,6 +27,7 @@ reject_contains() {
 require_contains "${MIDDLEWARE_COMPOSE}" '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/redis_data/data:/data:rw'
 require_contains "${MIDDLEWARE_COMPOSE}" '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/redis_data/logs:/logs:rw'
 require_contains "${MIDDLEWARE_COMPOSE}" '${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/mq_data/data:/var/lib/kafka/data:rw'
+require_contains "${MIDDLEWARE_COMPOSE}" '      - "0.0.0.0:15432:5432"'
 
 reject_contains "${MIDDLEWARE_COMPOSE}" './redis_data/data:/data:rw'
 reject_contains "${MIDDLEWARE_COMPOSE}" './redis_data/logs:/logs:rw'
