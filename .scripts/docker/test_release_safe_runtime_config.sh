@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MIDDLEWARE_COMPOSE="${ROOT_DIR}/.scripts/docker/docker-compose.yml"
 DEVICE_COMPOSE="${ROOT_DIR}/DEVICE/docker-compose.yml"
+DEVICE_INSTALL="${ROOT_DIR}/DEVICE/install_linux.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -20,7 +21,7 @@ reject_contains() {
   local file="$1"
   local needle="$2"
   if grep -Fq "$needle" "$file"; then
-    fail "${file} must not contain release-relative runtime mount: ${needle}"
+    fail "${file} must not contain: ${needle}"
   fi
 }
 
@@ -35,5 +36,6 @@ reject_contains "${MIDDLEWARE_COMPOSE}" './mq_data/data:/var/lib/kafka/data:rw'
 
 require_contains "${DEVICE_COMPOSE}" 'http://localhost:48093/actuator/health'
 reject_contains "${DEVICE_COMPOSE}" 'http://localhost:48093"]'
+reject_contains "${DEVICE_INSTALL}" '${EASYAIOT_ROOT}'
 
 echo "release-safe runtime config checks passed"

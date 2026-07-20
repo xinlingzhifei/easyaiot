@@ -21,7 +21,7 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 MIDDLEWARE_ENV_FILE="${YFEIEYE_MIDDLEWARE_ENV_FILE:-${YFEIEYE_ROOT}/.scripts/docker/.env.docker}"
 DEVICE_COMPOSE_ENV_FILE="${YFEIEYE_DEVICE_COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env}"
 # shellcheck source=../.scripts/docker/deploy_profile.sh
-source "${EASYAIOT_ROOT}/.scripts/docker/deploy_profile.sh"
+source "${YFEIEYE_ROOT}/.scripts/docker/deploy_profile.sh"
 DEVICE_COMPOSE_PROFILE_ARGS=()
 
 refresh_device_compose_profile_args() {
@@ -419,7 +419,7 @@ show_unhealthy_containers() {
 
 # 容器部署后同步宿主机控制面 Agent 凭据（数据库重建后 agent.env 令牌可能过期）
 # shellcheck source=../.scripts/node/ensure_platform_agent_invoke.sh
-source "${EASYAIOT_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
+source "${YFEIEYE_ROOT}/.scripts/node/ensure_platform_agent_invoke.sh"
 
 _ensure_platform_agent_info() { print_info "$1"; }
 _ensure_platform_agent_ok() { print_success "$1"; }
@@ -1597,7 +1597,7 @@ main() {
 
                 if [ "$_do_local_build" -eq 0 ]; then
                     print_info "正在拉取预构建镜像..."
-                    if bash "${EASYAIOT_ROOT}/.scripts/docker/runtime_image.sh" pull; then
+                    if bash "${YFEIEYE_ROOT}/.scripts/docker/runtime_image.sh" pull; then
                         print_success "预构建镜像拉取成功"
                         export EASYAIOT_SKIP_BUILD=1
                     else
