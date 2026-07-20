@@ -114,7 +114,7 @@
         <TabPane key="RelatedCameras" tab="关联摄像头">
           <RelatedCameras
             v-if="activeKey === 'RelatedCameras'"
-            :iot-device-id="route.params.id"
+            :iot-device-id="String(route.params.id ?? '')"
             :device-name="description.deviceName"
           />
         </TabPane>

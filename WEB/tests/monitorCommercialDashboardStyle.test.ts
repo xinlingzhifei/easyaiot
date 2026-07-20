@@ -15,10 +15,10 @@ assert.match(dashboard, /<VideoMonitor/)
 assert.match(dashboard, /<AlarmPanel/)
 
 assert.match(dashboard, /:today-alarm-count="todayAlarmCount"/)
-assert.match(header, /实时监控运维中心/)
-assert.match(header, /播放中/)
+assert.match(header, /dashboardTitle/)
+assert.match(header, /实时画面/)
 assert.match(header, /今日告警/)
-assert.match(header, /activeVideoCount/)
+assert.match(header, /props\.activeVideos\.length/)
 
 assert.match(dashboard, /--dashboard-bg:/)
 assert.match(dashboard, /--dashboard-panel:/)

@@ -44,20 +44,20 @@
       <MonitorControlPanel
         v-if="showControlPanel"
         :talk-protocol="talkProtocol"
-        :talk-status="activeTalk.status"
-        :talk-info-text="activeTalk.infoText"
-        :talk-volume="activeTalk.volume"
-        :talk-noise-suppression="activeTalk.noiseSuppression"
-        :talk-echo-cancellation="activeTalk.echoCancellation"
-        :talk-level="activeTalk.level"
+        :talk-status="activeTalkStatus"
+        :talk-info-text="activeTalkInfoText"
+        :talk-volume="activeTalkVolume"
+        :talk-noise-suppression="activeTalkNoiseSuppression"
+        :talk-echo-cancellation="activeTalkEchoCancellation"
+        :talk-level="activeTalkLevel"
         :show-presets="state.isGb28181 || state.isOnvif"
         :presets="state.presets"
         :preset-loading="state.presetLoading"
         @talk-start="handleStartTalk"
         @talk-stop="handleStopTalk"
         @talk-volume-change="activeTalk.updateVolume"
-        @talk-noise-change="(v) => (activeTalk.noiseSuppression = v)"
-        @talk-echo-change="(v) => (activeTalk.echoCancellation = v)"
+        @talk-noise-change="handleTalkNoiseChange"
+        @talk-echo-change="handleTalkEchoChange"
         @ptz="handlePtzCamera"
         @aux="handleAuxControl"
         @preset-call="handlePresetCall"
@@ -207,7 +207,7 @@ const state = reactive({
   recordPath: '',
 });
 
-let aiFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let aiFallbackTimer: number | null = null;
 
 function clearAiFallbackTimer() {
   if (aiFallbackTimer != null) {
@@ -290,6 +290,20 @@ const gbTalk = useGb28181AudioTalk(
 
 const audioTalk = computed(() => (talkProtocol.value === 'gb28181' ? gbTalk : onvifTalk));
 const activeTalk = computed(() => audioTalk.value);
+const activeTalkStatus = computed(() => activeTalk.value.status.value);
+const activeTalkInfoText = computed(() => activeTalk.value.infoText.value);
+const activeTalkVolume = computed(() => activeTalk.value.volume.value);
+const activeTalkNoiseSuppression = computed(() => activeTalk.value.noiseSuppression.value);
+const activeTalkEchoCancellation = computed(() => activeTalk.value.echoCancellation.value);
+const activeTalkLevel = computed(() => activeTalk.value.level.value);
+
+function handleTalkNoiseChange(value: boolean) {
+  activeTalk.value.noiseSuppression.value = value;
+}
+
+function handleTalkEchoChange(value: boolean) {
+  activeTalk.value.echoCancellation.value = value;
+}
 
 const showControlPanel = computed(() => supportsMonitorControl(state.record, state.vodMode));
 const showEnableAiToggle = computed(

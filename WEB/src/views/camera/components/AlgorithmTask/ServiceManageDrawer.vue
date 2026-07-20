@@ -200,8 +200,7 @@ import {
   VideoCameraOutlined,
   FolderOutlined,
 } from '@ant-design/icons-vue';
-import { Tag, Empty, Spin, RadioGroup, Radio } from 'ant-design-vue';
-import {Icon} from '@/components/Icon';
+import { Tag, Empty, Spin } from 'ant-design-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import {rewriteStreamHostToPageHost} from '@/views/camera/utils/devicePlay';
 import {

@@ -1923,7 +1923,7 @@ export const ServiceParamSchemas = ({ handleChange, isInner }: SchemasFn): FormS
 };
 
 // 服务
-export const ServerSchemas = ({ btnClick, list, handleCheckSubuct }: SchemasFn): FormSchema[] => {
+export const ServerSchemas = ({ btnClick, list }: SchemasFn): FormSchema[] => {
   return [
     {
       field: 'serviceName',

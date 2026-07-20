@@ -226,16 +226,6 @@ import Jessibuca from '@/components/Player/module/jessibuca.vue';
 import { Button } from '@/components/Button';
 import LayoutPresetPanel from './LayoutPresetPanel.vue';
 import {
-  createPatrolSession,
-  createPatrolProgressEventSource,
-  getPatrolDirectoryDevices,
-  getPatrolSessionStats,
-  startPatrolSession,
-  stopPatrolSession,
-  type PatrolSession,
-} from '@/api/device/patrol';
-import { getModelPage } from '@/api/device/model';
-import {
   createAlgorithmTask,
   listAlgorithmTasks,
   startAlgorithmTask,
@@ -432,9 +422,9 @@ function resolveDeviceForCell(cell: PlayCell): MonitorTreeDeviceNode | undefined
   if (playId.startsWith('gb_ch_')) {
     const gb = parseGbChannelKey(playId);
     if (!gb) return undefined;
-    return findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId);
+    return findMonitorGbDeviceByChannel(treeData.value, gb.sipDeviceId, gb.channelId) ?? undefined;
   }
-  return findMonitorDeviceById(treeData.value, playId);
+  return findMonitorDeviceById(treeData.value, playId) ?? undefined;
 }
 
 function buildCurrentLayoutSlots(): CameraMonitorLayoutSlot[] {
@@ -1234,7 +1224,6 @@ onUnmounted(() => {
   aiFallbackTimers.forEach((id) => window.clearTimeout(id));
   aiFallbackTimers.clear();
   aiFallbackPlayingUrls.clear();
-  stopPatrolProgressStream();
   playerRefs.value.forEach((p) => p?.destroy?.());
 });
 

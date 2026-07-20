@@ -118,7 +118,12 @@ import { isIndustrialProtocol } from '../Data';
   //
   const innerInsideRef = ref();
   // 最终参数
-  const params = ref<{ innerJson: any[]; id: string }>({
+  const params = ref<{
+    innerJson: any[];
+    inputParams?: any[];
+    outParams?: any[];
+    id: string;
+  }>({
     innerJson: [],
     id: '',
   });

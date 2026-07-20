@@ -115,6 +115,19 @@ export interface AlgorithmTask {
     trigger?: 'always' | 'on_interval' | 'on_person';
     interval_frames?: number;
   };
+  /** 是否启用场景姿态意图匹配 */
+  pose_intent_enabled?: boolean;
+  /** 关联的场景姿态库 ID */
+  pose_library_ids?: number[];
+  /** 场景姿态意图匹配阈值 */
+  pose_intent_threshold?: number;
+  /** 场景姿态意图匹配配置 */
+  pose_intent_config?: {
+    suppress_same_intent_sec?: number;
+    draw_skeleton_on_alert?: boolean;
+    temporal_dtw_enabled?: boolean;
+    temporal_window_frames?: number;
+  };
   service_names?: string; // 关联的算法服务名称列表（逗号分隔，冗余字段，用于快速显示）
   defense_mode?: string; // 布防模式: full(全防), half(半防), day(白天), night(夜间)
   defense_schedule?: string | number[][]; // 布防时段: JSON字符串或二维数组，7天×24小时

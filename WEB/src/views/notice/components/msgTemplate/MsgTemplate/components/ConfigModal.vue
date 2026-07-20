@@ -18,7 +18,7 @@
             <Select
               v-model:value="model[field]"
               :options="formData.agent"
-              @focus="getMessageConfigQuery"
+              @focus="() => getMessageConfigQuery()"
               placeholder="请选择"
             />
           </FormItemRest>
@@ -28,7 +28,7 @@
             <Select
               v-model:value="model[field]"
               :options="formData.userGroupList"
-              @focus="getUserGroupQueryByMsgType"
+              @focus="() => getUserGroupQueryByMsgType()"
               placeholder="请选择"
               allow-clear
             />

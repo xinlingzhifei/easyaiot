@@ -73,7 +73,7 @@ export function hasDirectPlayStream(record: Record<string, any>, ai = false): bo
 }
 
 /** 设备是否具备可播放流（原始流、AI 流或国标点播） */
-export function hasPlayableStream(record: DeviceInfo): boolean {
+export function hasPlayableStream(record: Record<string, any>): boolean {
   if (shouldPlayViaGb28181(record)) return true;
   return hasDirectPlayStream(record) || hasDirectPlayStream(record, true);
 }
@@ -114,8 +114,25 @@ export function rewriteStreamUrlForBrowser(url: string): string {
  * forcePageProxy 用于明确知道当前页面 nginx 已代理媒体路径的入口，避免反向代理页面
  * 仍按服务端返回的远端 host:port 直连媒体服务。
  */
-export function rewriteStreamHostToPageHost(url: string): string {
-  return rewriteStreamUrlForBrowserForBrowser(url);
+export function rewriteStreamHostToPageHost(
+  url: string,
+  options?: { forcePageProxy?: boolean },
+): string {
+  const trimmed = url?.trim();
+  if (!options?.forcePageProxy || !trimmed || typeof window === 'undefined') {
+    return rewriteStreamUrlForBrowserForBrowser(trimmed);
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const pageHostname = window.location.hostname;
+    if (!pageHostname) return trimmed;
+    parsed.hostname = pageHostname;
+    parsed.port = window.location.port || '';
+    return parsed.toString();
+  } catch {
+    return trimmed;
+  }
 }
 
 /**
@@ -390,10 +407,10 @@ function buildManualWvpPlaySource(url?: string | null): GbChannelPlayUrlResult {
 export async function loadGbChannelSyncedDevice(
   sipDeviceId: string,
   channelId: string,
-  synced?: MonitorTreeDeviceNode | null,
+  synced?: Record<string, any> | null,
 ): Promise<MonitorTreeDeviceNode | null> {
   if (synced?.ai_http_stream?.trim() || synced?.ai_rtmp_stream?.trim()) {
-    return synced;
+    return synced as MonitorTreeDeviceNode;
   }
   const syncedId = String(synced?.id ?? '').trim();
   const lookupId =
@@ -403,9 +420,11 @@ export async function loadGbChannelSyncedDevice(
   try {
     const res = await getDeviceInfo(lookupId);
     const device = (res as any)?.data ?? res;
-    return device?.id ? (device as MonitorTreeDeviceNode) : synced ?? null;
+    return device?.id
+      ? (device as MonitorTreeDeviceNode)
+      : (synced as MonitorTreeDeviceNode | null | undefined) ?? null;
   } catch {
-    return synced ?? null;
+    return (synced as MonitorTreeDeviceNode | null | undefined) ?? null;
   }
 }
 
@@ -417,7 +436,7 @@ export async function resolveGbChannelPlayUrls(
   channelId: string,
   options?: {
     enableAi?: boolean;
-    synced?: MonitorTreeDeviceNode | null;
+    synced?: Record<string, any> | null;
     wvpUrl?: string | null;
   },
 ): Promise<GbChannelPlayUrlResult> {
@@ -480,7 +499,7 @@ export interface DialogPlayerOpenOptions {
 
 export async function openDeviceInDialogPlayer(
   openModal: DevicePlayModalOpener,
-  record: DeviceInfo,
+  record: Record<string, any>,
   options?: DialogPlayerOpenOptions,
 ): Promise<boolean> {
   const enableAi = options?.enableAi ?? true;

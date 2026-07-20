@@ -89,7 +89,7 @@
                 </div>
                 <div class="config-options">
                   <ApiSelect
-                    v-model:value="state.selectedDeployServiceId"
+                    v-model:value="selectedDeployServiceId"
                     allow-clear
                     placeholder="请选择模型服务"
                     class="class-select"
@@ -108,7 +108,7 @@
                 </div>
                 <div class="config-options">
                   <ApiSelect
-                    v-model:value="state.selectedLLMId"
+                    v-model:value="selectedLLMId"
                     allow-clear
                     placeholder="请选择大模型"
                     class="class-select"
@@ -521,7 +521,7 @@ import Jessibuca from '@/components/Player/module/jessibuca.vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import { ApiSelect } from '@/components/Form';
 import { BasicHelp } from '@/components/Basic';
-import { InputNumber, Tooltip } from 'ant-design-vue';
+import { InputNumber } from 'ant-design-vue';
 import {
   SettingOutlined,
   AppstoreOutlined,
@@ -538,8 +538,7 @@ import {
   SearchOutlined,
   ReloadOutlined,
   SyncOutlined,
-  HistoryOutlined,
-  QuestionCircleOutlined
+  HistoryOutlined
 } from '@ant-design/icons-vue';
 import { formatModelVersionDisplay } from '../../utils/modelVersionUtils';
 
@@ -747,6 +746,20 @@ const classNameOptions = computed(() =>
   state.availableClassNames.map((name) => ({ label: name, value: name })),
 );
 
+const selectedDeployServiceId = computed<number | undefined>({
+  get: () => state.selectedDeployServiceId ?? undefined,
+  set: (value) => {
+    state.selectedDeployServiceId = value ?? null;
+  },
+});
+
+const selectedLLMId = computed<number | undefined>({
+  get: () => state.selectedLLMId ?? undefined,
+  set: (value) => {
+    state.selectedLLMId = value ?? null;
+  },
+});
+
 const deployServiceOptions = computed(() =>
   state.deployServices.map((service) => ({
     label: `${service.model_name}服务（${formatVersion(service.model_version)}）`,
@@ -761,10 +774,12 @@ const formatLLMTypeLabel = (modelType?: string) => {
 };
 
 const llmOptions = computed(() =>
-  state.llms.map((llm) => ({
-    label: `${llm.name} (${formatLLMTypeLabel(llm.model_type)})`,
-    value: llm.id,
-  })),
+  state.llms
+    .filter((llm): llm is LLMModel & { id: number } => typeof llm.id === 'number')
+    .map((llm) => ({
+      label: `${llm.name} (${formatLLMTypeLabel(llm.model_type)})`,
+      value: llm.id,
+    })),
 );
 
 const getCameraRtspUrl = (device: DeviceInfo): string | null => {
@@ -810,9 +825,6 @@ const selectedCamera = computed(() =>
 const selectedCameraRtsp = computed(() =>
   selectedCamera.value ? getCameraRtspUrl(selectedCamera.value) : null,
 );
-
-const maskRtspUrl = (url: string): string =>
-  url.replace(/\/\/([^:@/]+):([^@/]+)@/, '//$1:***@');
 
 const getCameraOnlineLabel = (device: DeviceInfo): string => {
   if (device.connection_status === 'online' || device.channel_online === true) {

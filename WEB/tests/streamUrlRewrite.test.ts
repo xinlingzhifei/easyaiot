@@ -50,8 +50,8 @@ assert.equal(
 
 assert.match(
   devicePlaySource,
-  /export function rewriteStreamHostToPageHost\(url: string\): string \{\s*return rewriteStreamUrlForBrowserForBrowser\(url\);\s*\}/,
-  'The playback path should use the same public URL rewrite as the pure URL helper.',
+  /export function rewriteStreamHostToPageHost\([\s\S]*options\?: \{ forcePageProxy\?: boolean \}[\s\S]*if \(!options\?\.forcePageProxy[\s\S]*return rewriteStreamUrlForBrowserForBrowser\(trimmed\);[\s\S]*parsed\.hostname = pageHostname;[\s\S]*parsed\.port = window\.location\.port \|\| '';/,
+  'The playback path should preserve normal cluster routing and support explicit page-proxy host rewriting.',
 )
 
 assert.match(

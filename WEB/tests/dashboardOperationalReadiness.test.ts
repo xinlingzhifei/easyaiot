@@ -48,8 +48,12 @@ assert.match(dashboard, /:dashboard-health="dashboardHealth"/, 'Header should re
 assert.match(dashboard, /:last-updated-text="lastUpdatedText"/, 'Header should receive the shared last update text.')
 assert.match(header, /dashboardHealth/, 'Header should expose a dashboardHealth prop.')
 assert.doesNotMatch(header, />\s*大屏模式\s*<[\s\S]*>\s*在线\s*</, 'Header should not present static online status.')
-assert.match(header, /status-metric--online[\s\S]*status-metric--degraded[\s\S]*status-metric--offline/, 'Header should style real health states.')
-assert.match(header, /@media\s*\(max-width:\s*1366px\)/, 'Header should have a 1366px commercial screen rule.')
+assert.match(header, /health-status--online[\s\S]*health-status--degraded[\s\S]*health-status--offline/, 'Header should style real health states.')
+assert.match(
+  header,
+  /@media\s*\(max-width:\s*1440px\)[\s\S]*@media\s*\(max-width:\s*1180px\)[\s\S]*@media\s*\(max-width:\s*767px\)/,
+  'Header should adapt across desktop, compact browser, and mobile breakpoints.',
+)
 
 assert.match(alarmPanel, /getDispositionStatus/, 'Alarm panel should derive a read-only disposition status.')
 assert.match(alarmPanel, /getDispositionStatusText/, 'Alarm panel should render disposition text.')

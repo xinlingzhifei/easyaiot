@@ -225,7 +225,6 @@ import {
   type RecordVideoDate,
   type RecordSessionGroup,
 } from '@/api/device/record';
-import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage';
 import { resolveAlertVideoUrl } from '@/utils/alertRecord';
 import {
   buildCameraStorageQuery,

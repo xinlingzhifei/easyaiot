@@ -809,7 +809,7 @@ const getTableActions = (record: Record<string, any>): ActionItem[] => {
     actions.push({
       icon: 'octicon:play-16',
       tooltip: enableAi.value ? '播放（优先 AI 流）' : supportsRtspForward(record) ? '播放视频流' : '播放国标通道',
-      onClick: () => handlePlayStream(record),
+      onClick: () => handlePlayStream(deviceRecord),
     });
   }
 
@@ -828,7 +828,7 @@ const getTableActions = (record: Record<string, any>): ActionItem[] => {
       icon: 'ant-design:eye-filled',
       tooltip: '详情',
       onClick: () => {
-        if (isDjiLiveRecord(record)) {
+        if (isDjiLiveRecord(deviceRecord)) {
           openDjiLiveDrawer(true, { record, isView: true, type: 'view' });
           return;
         }
@@ -839,7 +839,7 @@ const getTableActions = (record: Record<string, any>): ActionItem[] => {
       icon: 'ant-design:edit-filled',
       tooltip: '编辑',
       onClick: () => {
-        if (isDjiLiveRecord(record)) {
+        if (isDjiLiveRecord(deviceRecord)) {
           openDjiLiveDrawer(true, { record, isEdit: true, type: 'edit' });
           return;
         }
@@ -1012,7 +1012,7 @@ const handleCardView = (record: Record<string, any>) => {
     handleTableViewGbDevice(record);
     return;
   }
-  if (isDjiLiveRecord(record)) {
+  if (isDjiLiveRecord(record as DeviceInfo)) {
     openDjiLiveDrawer(true, { record, isView: true, type: 'view' });
     return;
   }
@@ -1024,7 +1024,7 @@ const handleCardEdit = (record: Record<string, any>) => {
     handleTableEditGbDevice(record);
     return;
   }
-  if (isDjiLiveRecord(record)) {
+  if (isDjiLiveRecord(record as DeviceInfo)) {
     openDjiLiveDrawer(true, { record, isEdit: true, type: 'edit' });
     return;
   }
@@ -1047,7 +1047,7 @@ async function handleNvrChannelDelete(record: DeviceInfo) {
 }
 
 const handleCardPlay = (record: Record<string, any>) => {
-  handlePlayStream(record);
+  handlePlayStream(record as DeviceInfo);
 };
 
 /** 根据路由 query 切换 Camera 一级 Tab（子 Tab 如 storage 由 StorageSpace 自行同步，不触发整页刷新） */

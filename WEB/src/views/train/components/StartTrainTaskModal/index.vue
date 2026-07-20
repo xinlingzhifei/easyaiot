@@ -805,7 +805,9 @@ async function initTrainDrawer(data: Record<string, unknown> = {}) {
   if ((data?.isRetrain || data?.isResume) && data?.record) {
     const hp = parseTrainHyperparameters((data.record as Record<string, unknown>).hyperparameters);
     if (hp.use_gpu !== undefined) {
-      const savedGpuIds = hasManualGpuSelection(data.record.hyperparameters)
+      const savedGpuIds = hasManualGpuSelection(
+        (data.record as Record<string, unknown>).hyperparameters,
+      )
       && Array.isArray(hp.gpu_ids)
         ? hp.gpu_ids
           .map((gpuId) => Number(gpuId))
