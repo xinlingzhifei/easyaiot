@@ -14,7 +14,7 @@ class VideoProductionMigrationRunnerTest(unittest.TestCase):
 
         plan = build_migration_plan(Path(__file__).resolve().parent)
 
-        self.assertEqual(3, len(plan))
+        self.assertEqual(4, len(plan))
         self.assertEqual(
             'V20260711__device_detection_region_rule_fields.sql',
             plan[0].version,
@@ -34,6 +34,13 @@ class VideoProductionMigrationRunnerTest(unittest.TestCase):
         )
         self.assertRegex(plan[2].checksum, r'^[a-f0-9]{64}$')
         self.assertIn('ck_playback_tenant_positive', plan[2].sql)
+        self.assertEqual(
+            'V20260722__nvr_rtsp_fields.sql',
+            plan[3].version,
+        )
+        self.assertRegex(plan[3].checksum, r'^[a-f0-9]{64}$')
+        self.assertIn('ADD COLUMN IF NOT EXISTS rtsp_template TEXT', plan[3].sql)
+        self.assertIn('ADD COLUMN IF NOT EXISTS rtsp_port SMALLINT', plan[3].sql)
 
     def test_runner_strips_only_outer_transaction_for_atomic_history_insert(self):
         from apply_migrations import strip_outer_transaction

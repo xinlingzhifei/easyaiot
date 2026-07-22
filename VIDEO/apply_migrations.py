@@ -18,6 +18,7 @@ MIGRATION_FILES = (
     'migrations/V20260711__device_detection_region_rule_fields.sql',
     'migrations/V20260712__record_snapshot_tenant_scope.sql',
     'migrations/V20260713__alert_image_playback_tenant_scope.sql',
+    'migrations/V20260722__nvr_rtsp_fields.sql',
 )
 HISTORY_TABLE = 'yfeieye_video_schema_history'
 _MIGRATION_NAME = re.compile(r'^(V[0-9][A-Za-z0-9_]*)__([A-Za-z0-9_-]+)\.sql$')
