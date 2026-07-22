@@ -21,8 +21,13 @@ NETWORK_NAME="yfeieye-network"
 ARCH_FILE="${SCRIPT_DIR}/.env.arch"
 ENV_FILE="${SCRIPT_DIR}/.env.docker"
 COMPOSE_CMD=()
+COMPOSE_PROFILE_ARGS=()
 DOCKER_PLATFORM=""
 BASE_IMAGE=""
+
+# shellcheck source=deploy_profile.sh
+source "${SCRIPT_DIR}/deploy_profile.sh"
+ensure_deploy_profile
 
 ensure_env_var() {
   local key="$1" value="$2"
@@ -33,7 +38,7 @@ ensure_env_var() {
   echo "${key}=${value}" >> "${ENV_FILE}"
 }
 
-SERVICES=(Nacos PostgresSQL TDengine Redis Kafka MinIO SRS NodeRED EMQX)
+SERVICES=(Nacos PostgresSQL TDengine Redis Kafka MinIO SRS NodeRED FUXA EMQX)
 MINIO_BUCKETS=(
   "dataset" "datasets" "export-bucket" "inference-inputs" "inference-results" "models" "snap-space" "alert-images"
   "plate-models" "plate-train-results" "plate-train-logs" "plate-inference-results"
@@ -49,6 +54,7 @@ service_port() {
     MinIO) echo 9000 ;;
     SRS) echo 1935 ;;
     NodeRED) echo 1880 ;;
+    FUXA) echo 1881 ;;
     EMQX) echo 1883 ;;
     *) echo "" ;;
   esac
@@ -60,6 +66,7 @@ service_health() {
     MinIO) echo "/minio/health/live" ;;
     SRS) echo "/api/v1/versions" ;;
     NodeRED) echo "/" ;;
+    FUXA) echo "/" ;;
     EMQX) echo "/api/v5/status" ;;
     *) echo "" ;;
   esac
@@ -100,7 +107,56 @@ compose() {
   (cd "${SCRIPT_DIR}" && \
     DOCKER_PLATFORM="${DOCKER_PLATFORM}" \
     BASE_IMAGE="${BASE_IMAGE}" \
-    "${COMPOSE_CMD[@]}" "${env_args[@]}" -f "${COMPOSE_FILE}" "$@")
+    "${COMPOSE_CMD[@]}" ${COMPOSE_PROFILE_ARGS[@]+"${COMPOSE_PROFILE_ARGS[@]}"} "${env_args[@]}" -f "${COMPOSE_FILE}" "$@")
+}
+
+# 按部署形态启动中间件（mini/standard 跳过 FUXA/NodeRED 等，且不拉取其镜像）
+compose_up_for_profile() {
+  apply_deploy_profile
+  COMPOSE_PROFILE_ARGS=()
+  local flags
+  flags=$(compose_profile_flags)
+  if [ -n "$flags" ]; then
+    # shellcheck disable=SC2206
+    COMPOSE_PROFILE_ARGS=($flags)
+  fi
+
+  local -a skip_services=()
+  local -a up_services=()
+  local svc should_skip
+  # shellcheck disable=SC2206
+  skip_services=($(middleware_skipped_services))
+
+  while IFS= read -r svc; do
+    [ -z "$svc" ] && continue
+    should_skip=0
+    for s in "${skip_services[@]}"; do
+      [ "$svc" = "$s" ] && should_skip=1 && break
+    done
+    [ "$should_skip" -eq 0 ] && up_services+=("$svc")
+  done < <(compose config --services 2>/dev/null)
+
+  if [ ${#skip_services[@]} -gt 0 ]; then
+    warn "当前形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过中间件: ${skip_services[*]}"
+    local -a lingering=()
+    for svc in "${skip_services[@]}"; do
+      if compose ps -q "$svc" 2>/dev/null | grep -q .; then
+        lingering+=("$svc")
+      fi
+    done
+    if [ ${#lingering[@]} -gt 0 ]; then
+      info "停止并移除形态外中间件: ${lingering[*]}"
+      compose stop "${lingering[@]}" >/dev/null 2>&1 || true
+      compose rm -f "${lingering[@]}" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if [ ${#up_services[@]} -eq 0 ]; then
+    err "没有可启动的中间件服务"
+    return 1
+  fi
+  info "启动中间件: ${up_services[*]}"
+  compose up -d "${up_services[@]}"
 }
 
 detect_arch() {
@@ -123,6 +179,7 @@ ensure_dirs() {
     "static/models" "temp_uploads" "model"
     "standalone-logs" "db_data" "redis_data" "taos_data" "mq_data"
     "minio_data" "srs_data" "nodered_data"
+    "fuxa_data/appdata" "fuxa_data/db" "fuxa_data/logs" "fuxa_data/images"
   )
   for d in "${dirs[@]}"; do mkdir -p "${SCRIPT_DIR}/${d}"; done
   # SRS 容器绑定宿主机数据目录 -> 容器 /data（见 docker-compose.yml）；若失败请手动创建
@@ -262,7 +319,7 @@ cmd_install() {
   info "构建镜像..."
   compose build --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg DOCKER_PLATFORM="${DOCKER_PLATFORM}"
   info "启动服务..."
-  compose up -d
+  compose_up_for_profile
   ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"
   update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"
   sleep 5
@@ -271,9 +328,9 @@ cmd_install() {
   cmd_status
 }
 
-cmd_start()  { ensure_ready; info "启动服务..."; compose up -d; ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已启动"; }
+cmd_start()  { ensure_ready; info "启动服务..."; compose_up_for_profile; ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已启动"; }
 cmd_stop()   { ensure_ready; info "停止服务..."; compose down; ok "已停止"; }
-cmd_restart(){ ensure_ready; info "重启服务..."; compose down; compose up -d; ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已重启"; }
+cmd_restart(){ ensure_ready; info "重启服务..."; compose down; compose_up_for_profile; ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已重启"; }
 cmd_status() { ensure_ready; compose ps; echo ""; docker ps --filter "name=ai-service" --format "table {{.Names}}\t{{.Status}}"; }
 
 cmd_logs() {
@@ -301,7 +358,7 @@ cmd_update() {
   (cd "${SCRIPT_DIR}" && git pull || warn "git pull 失败，继续使用现有代码")
   info "重新构建并启动..."
   compose build --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg DOCKER_PLATFORM="${DOCKER_PLATFORM}"
-  compose up -d
+  compose_up_for_profile
   ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"
   update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"
   sleep 5

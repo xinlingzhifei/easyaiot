@@ -370,6 +370,21 @@ function stripLocationFromPayload(data: Record<string, unknown>) {
   delete data.has_location;
 }
 
+/** 规范化布尔字段：空字符串转为 false，确保后端布尔字段不报错 */
+function normalizeBoolFields(data: Record<string, unknown>) {
+  const boolFields = ['support_move', 'support_zoom', 'enable_forward'];
+  for (const field of boolFields) {
+    if (field in data) {
+      const val = data[field];
+      if (val === '' || val === null || val === undefined) {
+        data[field] = false;
+      } else if (typeof val === 'string') {
+        data[field] = val === 'true' || val === '1' || val === 'yes';
+      }
+    }
+  }
+}
+
 const [registerVideoRegisterModal, {openModal: openVideoRegisterModal}] = useModal();
 
 const [registerOnvifTable, {reload: reloadOnvifTable}] = useTable({
@@ -857,7 +872,8 @@ function handleOk() {
         }
         stripReadOnlyFromPayload(updateData);
         stripLocationFromPayload(updateData);
-        await updateDevice(modelRef.id, updateData as any);
+        normalizeBoolFields(updateData);
+        await updateDevice(modelRef.id, updateData);
       } else if (state.type === 'camera') {
         // 摄像头处理
         if (modelRef.id) {
@@ -875,9 +891,15 @@ function handleOk() {
           }
           stripReadOnlyFromPayload(updateData);
           stripLocationFromPayload(updateData);
-          await updateDevice(modelRef.id, updateData as any);
+          normalizeBoolFields(updateData);
+          await updateDevice(modelRef.id, updateData);
         } else {
-          const response = await registerDevice(modelRef as any);
+          const saveData: Parameters<typeof registerDevice>[0] = {
+            ...modelRef,
+            name: String(modelRef.name || '').trim(),
+          };
+          normalizeBoolFields(saveData);
+          const response = await registerDevice(saveData);
           const deviceId = resolveRegisteredDeviceId(response);
           
           // 检查并确保推流转发任务存在
@@ -892,7 +914,12 @@ function handleOk() {
         }
       } else if (state.type === 'source') {
         // 独立摄像头处理
-        const response = await registerDevice(modelRef as any);
+        const saveData: Parameters<typeof registerDevice>[0] = {
+          ...modelRef,
+          name: String(modelRef.name || '').trim(),
+        };
+        normalizeBoolFields(saveData);
+        const response = await registerDevice(saveData);
         const deviceId = resolveRegisteredDeviceId(response);
         
         // 检查并确保推流转发任务存在
@@ -921,7 +948,8 @@ function handleOk() {
           }
           stripReadOnlyFromPayload(updateData);
           stripLocationFromPayload(updateData);
-          await updateDevice(modelRef.id, updateData as any);
+          normalizeBoolFields(updateData);
+          await updateDevice(modelRef.id, updateData);
           
           // 检查并确保推流转发任务存在
           try {
@@ -931,7 +959,12 @@ function handleOk() {
             console.warn('检查推流转发任务失败:', error);
           }
         } else {
-          const response = await registerDevice(modelRef as any);
+          const saveData: Parameters<typeof registerDevice>[0] = {
+            ...modelRef,
+            name: String(modelRef.name || '').trim(),
+          };
+          normalizeBoolFields(saveData);
+          const response = await registerDevice(saveData);
           const deviceId = resolveRegisteredDeviceId(response);
           
           // 检查并确保推流转发任务存在

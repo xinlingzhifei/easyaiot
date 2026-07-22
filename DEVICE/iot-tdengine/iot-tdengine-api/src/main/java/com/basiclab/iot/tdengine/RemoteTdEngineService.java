@@ -218,4 +218,11 @@ public interface RemoteTdEngineService {
     @PostMapping("/getLastRowsListByIdentifier")
     R<List<DeviceData>> getLastRowsListByIdentifier(@RequestBody TDDeviceDataRequest tdDeviceDataRequest);
 
+    /**
+     * 查询设备属性历史（供预测诊断等内部调用）
+     */
+    @PostMapping("/deviceInfo/history")
+    com.basiclab.iot.common.domain.TableDataInfo deviceInfoHistoryPage(
+            @RequestBody com.basiclab.iot.tdengine.domain.query.TDDeviceDataHistoryRequest request);
+
 }

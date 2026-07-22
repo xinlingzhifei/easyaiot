@@ -95,6 +95,10 @@ declare global {
     VITE_GLOB_DEPLOY_PROFILE?: string
     /** 数据集批量上传最大并发数 */
     VITE_UPLOAD_MAX_CONCURRENCY?: string
+    /** VISUALIZE 大屏编辑器基址 */
+    VITE_GLOB_VISUALIZE_URL?: string
+    /** FUXA 组态编辑器基址 */
+    VITE_GLOB_FUXA_URL?: string
   }
 
   declare function parseInt(s: string | number, radix?: number): number

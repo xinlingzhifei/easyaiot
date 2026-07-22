@@ -3,16 +3,16 @@
 # ============================================
 # yFeiEye 业务系统统一管理脚本
 # ============================================
-# 管理模块: DEVICE、AI、VIDEO、WEB、APP（不含中间件；APP 仅 full 全量形态）
+# 管理模块: DEVICE、AI、VIDEO、WEB、APP、VISUALIZE（不含中间件；APP/VISUALIZE 仅 full 全量形态）
 # 各模块实际逻辑委托给对应目录下的 install_linux.sh
 #
 # 用法:
 #   ./install_business_linux.sh <命令> [选项] [模块...]
 #
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
-#   mini(1)     - 4G：iot-system + VIDEO/AI/WEB
-#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine 等（含 EMQX）
-#   full(3)     - 全量（默认，约 20G）
+#   mini(1)     - 4G：iot-system + VIDEO/AI/WEB（无可视化）
+#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/iot-visualize 等（含 EMQX）
+#   full(3)     - 全量（默认，约 20G；含 iot-visualize/VISUALIZE）
 #
 # 示例:
 #   ./install_business_linux.sh install              # 安装全部业务模块
@@ -99,7 +99,7 @@ ensure_industrial_demo_after_business_stack() {
 }
 
 # 业务模块（按依赖顺序：网关/微服务 -> AI/视频 -> 前端）
-ALL_MODULES=(DEVICE AI VIDEO WEB APP)
+ALL_MODULES=(DEVICE AI VIDEO WEB APP VISUALIZE)
 
 declare -A MODULE_NAMES=(
     [DEVICE]="Device 服务"
@@ -107,6 +107,7 @@ declare -A MODULE_NAMES=(
     [VIDEO]="Video 服务"
     [WEB]="Web 前端"
     [APP]="App 移动端 H5"
+    [VISUALIZE]="可视化编辑器"
 )
 
 declare -A MODULE_PORTS=(
@@ -115,6 +116,7 @@ declare -A MODULE_PORTS=(
     [VIDEO]="6000"
     [WEB]="8888"
     [APP]="9010"
+    [VISUALIZE]="8002"
 )
 
 declare -A MODULE_HEALTH_ENDPOINTS=(
@@ -123,6 +125,7 @@ declare -A MODULE_HEALTH_ENDPOINTS=(
     [VIDEO]="/actuator/health"
     [WEB]="/health"
     [APP]="/health"
+    [VISUALIZE]="/health"
 )
 
 LOG_DIR="${SCRIPT_DIR}/logs"
@@ -619,7 +622,7 @@ usage() {
     cat <<EOF
 yFeiEye 业务系统统一管理脚本
 
-管理模块: DEVICE、AI、VIDEO、WEB、APP（不含 Nacos/PostgreSQL 等中间件；APP 仅 full）
+管理模块: DEVICE、AI、VIDEO、WEB、APP、VISUALIZE（不含 Nacos/PostgreSQL 等中间件；APP/VISUALIZE 仅 full）
 
 用法:
   $0 <命令> [选项] [模块...]
@@ -648,7 +651,7 @@ yFeiEye 业务系统统一管理脚本
   --continue-on-error    某模块失败后继续执行其余模块
 
 模块:
-  未指定时默认全部（按部署形态过滤），顺序为 DEVICE -> AI -> VIDEO -> WEB -> APP
+  未指定时默认全部（按部署形态过滤），顺序为 DEVICE -> AI -> VIDEO -> WEB -> APP -> VISUALIZE
   stop / clean / clean-all 时自动逆序执行
 
 示例:

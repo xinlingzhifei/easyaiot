@@ -1,25 +1,36 @@
 <template>
-  <BasicModal
+  <BasicDrawer
+    v-bind="$attrs"
     @register="register"
     :title="getTitle"
-    @cancel="handleCancel"
-    :width="700"
-    @ok="handleOk"
-    :canFullscreen="false"
+    width="1400"
+    placement="right"
+    :showFooter="true"
+    :showCancelBtn="false"
+    :showOkBtn="false"
+    destroy-on-close
   >
-    <div class="product-modal">
-      <Spin :spinning="state.editLoading">
+    <template #footer>
+      <div class="footer-buttons">
+        <Button @click="handleCancel">{{ state.isView ? '关闭' : '取消' }}</Button>
+        <Button v-if="!state.isView" type="primary" :loading="state.editLoading" @click="handleOk">
+          保存
+        </Button>
+      </div>
+    </template>
+
+    <Spin :spinning="state.editLoading">
+      <div class="dataset-drawer-content">
         <Form
-          :labelCol="{ span: 3 }"
+          :label-col="{ style: { width: '150px' } }"
+          :wrapper-col="{ span: 21 }"
           :model="validateInfos"
-          :wrapperCol="{ span: 21 }"
           :disabled="state.isView"
         >
-          <FormItem label="数据集名称" name="name" v-bind=validateInfos.name>
+          <FormItem label="数据集名称" name="name" v-bind="validateInfos.name">
             <Input v-model:value="modelRef.name"/>
           </FormItem>
-          <FormItem label="数据集类型" name="datasetType"
-                    v-bind=validateInfos.datasetType>
+          <FormItem label="数据集类型" name="datasetType" v-bind="validateInfos.datasetType">
             <Select
               placeholder="数据集类型"
               :options="state.datasetTypeList"
@@ -28,13 +39,13 @@
               allowClear
             />
           </FormItem>
-          <FormItem label="数据集版本" name="version" v-bind=validateInfos.version>
+          <FormItem label="数据集版本" name="version" v-bind="validateInfos.version">
             <Input v-model:value="modelRef.version" placeholder="例如 v1.0.0"/>
           </FormItem>
-          <FormItem label="数据集描述" name="description" v-bind=validateInfos.description>
+          <FormItem label="数据集描述" name="description" v-bind="validateInfos.description">
             <Input v-model:value="modelRef.description" placeholder="选填"/>
           </FormItem>
-          <FormItem label="数据集封面" name="coverPath" v-bind=validateInfos.coverPath>
+          <FormItem label="数据集封面" name="coverPath" v-bind="validateInfos.coverPath">
             <Upload
               name="file"
               :max-count="1"
@@ -51,14 +62,14 @@
             </Upload>
           </FormItem>
         </Form>
-      </Spin>
-    </div>
-  </BasicModal>
+      </div>
+    </Spin>
+  </BasicDrawer>
 </template>
 
 <script lang="ts" setup>
 import {computed, reactive} from 'vue';
-import {BasicModal, useModalInner} from '@/components/Modal';
+import {BasicDrawer, useDrawerInner} from '@/components/Drawer';
 import {Form, FormItem, Input, Select, Spin, Upload,} from 'ant-design-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import {useI18n} from "@/hooks/web/useI18n";
@@ -132,7 +143,7 @@ function handleFileChange(info: Record<string, any>) {
   }
 }
 
-const [register, {closeModal}] = useModalInner((data) => {
+const [register, {closeDrawer}] = useDrawerInner((data) => {
   const {isEdit, isView, record} = data;
   state.isEdit = isEdit;
   state.isView = isView;
@@ -174,13 +185,12 @@ async function datasetEdit(record) {
     state.record = record;
   } catch (error) {
     console.error(error)
-    //console.log('datasetEdit ...', error);
   }
 }
 
 function handleCancel() {
-  //console.log('handleCancel');
   resetFields();
+  closeDrawer();
 }
 
 function handleOk() {
@@ -193,7 +203,7 @@ function handleOk() {
     api(modelRef)
       .then(() => {
         createMessage.success('操作成功');
-        closeModal();
+        closeDrawer();
         resetFields();
         emits('success');
       })
@@ -209,11 +219,19 @@ function handleOk() {
 }
 </script>
 <style lang="less" scoped>
-.product-modal {
+.dataset-drawer-content {
+  padding: 8px 16px 0;
+
   :deep(.ant-form-item-label) {
     & > label::after {
       content: '';
     }
   }
+}
+
+.footer-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>

@@ -380,6 +380,40 @@ services:
     networks:
       - yfeieye-network
 
+  # FUXA Web SCADA / HMI（组态编辑器 + 运行态；仅 full 形态启动，mini/standard 跳过且不拉取镜像）
+  # 编辑器: http://localhost:1881/editor  运行态: http://localhost:1881/home
+  # 默认经 proxy.vvvv.ee 拉取（实测 docker.1ms.run 对 FUXA 易卡住/401）
+  FUXA:
+    image: ${FUXA_IMAGE:-proxy.vvvv.ee/frangoteam/fuxa:1.3.3}
+    container_name: fuxa-server
+    restart: always
+    ports:
+      - "0.0.0.0:1881:1881"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/fuxa_data/appdata:/usr/src/app/FUXA/server/_appdata:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/fuxa_data/db:/usr/src/app/FUXA/server/_db:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/fuxa_data/logs:/usr/src/app/FUXA/server/_logs:rw"
+      - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/fuxa_data/images:/usr/src/app/FUXA/server/_images:rw"
+      # yFeiEye → FUXA 免登桥接页（写入 sessionStorage 后跳转编辑器/运行态）
+      - "../fuxa/easyaiot-sso.html:/usr/src/app/FUXA/client/dist/easyaiot-sso.html:ro"
+    healthcheck:
+      # 官方镜像无 curl；用 Node 探测 HTTP 200
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:1881/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - yfeieye-network
+
   # EMQX MQTT Broker（mini 默认不启动；standard/full 或 EASYAIOT_ENABLE_EMQX=1 / --profile emqx）
   EMQX:
     profiles: ["emqx"]

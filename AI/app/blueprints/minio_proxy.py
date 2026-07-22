@@ -4,10 +4,11 @@ import os
 import posixpath
 import re
 import tempfile
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from flask import Blueprint, Response, after_this_request, jsonify, request, send_file
 from minio.error import S3Error
+from werkzeug.utils import secure_filename
 
 from app.services.minio_service import ModelService, parse_minio_download_url
 
@@ -23,6 +24,28 @@ _PROTECTED_MEDIA_BUCKETS = frozenset({
     'snap-archive',
     'review-evidence',
 })
+
+
+def _build_content_disposition(disposition: str, filename: str) -> str:
+    fallback = secure_filename(filename)
+    extension = os.path.splitext(filename)[1]
+    if not (
+        extension.startswith('.')
+        and len(extension) <= 16
+        and extension[1:].isascii()
+        and extension[1:].isalnum()
+    ):
+        extension = ''
+    if not fallback or fallback == extension.lstrip('.'):
+        fallback = f'download{extension}'
+
+    if filename.isascii() and fallback == filename:
+        return f'{disposition}; filename="{fallback}"'
+    encoded_filename = quote(filename, safe='')
+    return (
+        f'{disposition}; filename="{fallback}"; '
+        f"filename*=UTF-8''{encoded_filename}"
+    )
 
 
 def _download_from_minio(bucket_name, object_name, destination_path):
@@ -83,7 +106,7 @@ def download_bucket_object(bucket_name):
         filename = os.path.basename(object_name) or 'download'
         response = Response(
             content, mimetype=content_type or 'application/octet-stream')
-        response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+        response.headers['Content-Disposition'] = _build_content_disposition('inline', filename)
         response.headers['Content-Length'] = str(len(content))
         return response
 
@@ -112,13 +135,17 @@ def download_bucket_object(bucket_name):
             return response
 
         mimetype = mimetypes.guess_type(object_name)[0] or 'application/octet-stream'
-        return send_file(
+        filename = posixpath.basename(object_name) or 'download'
+        response = send_file(
             temp_path,
             mimetype=mimetype,
-            download_name=posixpath.basename(object_name) or 'download',
-            as_attachment=False,
+            download_name=filename,
+            as_attachment=True,
             conditional=True,
         )
+        response.headers['Content-Disposition'] = _build_content_disposition(
+            'attachment', filename)
+        return response
     except S3Error as exc:
         logger.error(
             'MinIO download failed: %s/%s, %s',

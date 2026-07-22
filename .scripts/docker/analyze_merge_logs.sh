@@ -46,10 +46,10 @@ EASYAIOT_DATA_DIR="${EASYAIOT_DATA_DIR:-${HOME}/easyaiot/data}"
 # 日志采集单元顺序（menu 与输出均按此顺序）
 ALL_LOG_UNITS=(
     mw-nacos mw-postgres-init mw-postgres mw-redis mw-kafka mw-minio mw-milvus
-    mw-srs mw-nodered mw-tdengine mw-tdengine-init mw-emqx mw-zlmediakit
+    mw-srs mw-nodered mw-fuxa mw-tdengine mw-tdengine-init mw-emqx mw-zlmediakit
     dev-iot-gateway dev-iot-system dev-iot-infra dev-iot-device dev-iot-dataset
-    dev-iot-node dev-iot-tdengine dev-iot-file dev-iot-message dev-iot-sink dev-iot-gb28181
-    biz-ai biz-video biz-web biz-app
+    dev-iot-node dev-iot-visualize dev-iot-tdengine dev-iot-file dev-iot-message dev-iot-sink dev-iot-gb28181
+    biz-ai biz-video biz-web biz-app biz-visualize
     mw-install-logs
 )
 
@@ -63,6 +63,7 @@ declare -A UNIT_DISPLAY=(
     [mw-milvus]="基础/Milvus 向量库 (milvus-server)"
     [mw-srs]="基础/SRS 流媒体 (srs-server)"
     [mw-nodered]="基础/NodeRED (nodered-server)"
+    [mw-fuxa]="基础/FUXA 组态 (fuxa-server)"
     [mw-tdengine]="基础/TDengine (tdengine-server)"
     [mw-tdengine-init]="基础/TDengine 初始化 (tdengine-init)"
     [mw-emqx]="基础/EMQX MQTT (emqx-server)"
@@ -73,6 +74,7 @@ declare -A UNIT_DISPLAY=(
     [dev-iot-device]="DEVICE/设备服务 (iot-device)"
     [dev-iot-dataset]="DEVICE/数据集 (iot-dataset)"
     [dev-iot-node]="DEVICE/Node (iot-node)"
+    [dev-iot-visualize]="DEVICE/可视化后台 (iot-visualize)"
     [dev-iot-tdengine]="DEVICE/TDengine 对接 (iot-tdengine)"
     [dev-iot-file]="DEVICE/文件服务 (iot-file)"
     [dev-iot-message]="DEVICE/消息服务 (iot-message)"
@@ -82,6 +84,7 @@ declare -A UNIT_DISPLAY=(
     [biz-video]="Video 服务 (video-service 等)"
     [biz-web]="Web 前端 (web-service)"
     [biz-app]="App 移动端 H5 (app-service)"
+    [biz-visualize]="可视化编辑器 (visualize-service)"
     [mw-install-logs]="基础/安装脚本日志 (.scripts/docker/logs)"
 )
 
@@ -96,6 +99,7 @@ declare -A UNIT_COMPOSE_SERVICE=(
     [mw-milvus]=Milvus
     [mw-srs]=SRS
     [mw-nodered]=NodeRED
+    [mw-fuxa]=FUXA
     [mw-tdengine]=TDengine
     [mw-tdengine-init]=TDengine-init
     [mw-emqx]=EMQX
@@ -106,6 +110,7 @@ declare -A UNIT_COMPOSE_SERVICE=(
     [dev-iot-device]=iot-device
     [dev-iot-dataset]=iot-dataset
     [dev-iot-node]=iot-node
+    [dev-iot-visualize]=iot-visualize
     [dev-iot-tdengine]=iot-tdengine
     [dev-iot-file]=iot-file
     [dev-iot-message]=iot-message
@@ -115,6 +120,7 @@ declare -A UNIT_COMPOSE_SERVICE=(
     [biz-video]=video-service
     [biz-web]=web-service
     [biz-app]=app-service
+    [biz-visualize]=visualize-service
 )
 
 declare -A UNIT_CONTAINERS=(
@@ -127,6 +133,7 @@ declare -A UNIT_CONTAINERS=(
     [mw-milvus]=milvus-server
     [mw-srs]=srs-server
     [mw-nodered]=nodered-server
+    [mw-fuxa]=fuxa-server
     [mw-tdengine]=tdengine-server
     [mw-tdengine-init]=tdengine-init
     [mw-emqx]=emqx-server
@@ -137,6 +144,7 @@ declare -A UNIT_CONTAINERS=(
     [dev-iot-device]=iot-device
     [dev-iot-dataset]=iot-dataset
     [dev-iot-node]=iot-node
+    [dev-iot-visualize]=iot-visualize
     [dev-iot-tdengine]=iot-tdengine
     [dev-iot-file]=iot-file
     [dev-iot-message]=iot-message
@@ -146,6 +154,7 @@ declare -A UNIT_CONTAINERS=(
     [biz-video]="video-service pusher-service sorter-service frame-extractor-service"
     [biz-web]=web-service
     [biz-app]=app-service
+    [biz-visualize]=visualize-service
 )
 
 declare -A UNIT_FILE_LOG_DIRS=(
@@ -173,6 +182,7 @@ declare -A UNIT_LOG_FILE_SPEC=(
     [dev-iot-gb28181]="${DEVICE_LOG_DIR}|iot-gb28181.log*"
     [biz-web]="${PROJECT_ROOT}/WEB/logs|runtime.log*"
     [biz-app]="${PROJECT_ROOT}/APP/logs|runtime.log*"
+    [biz-visualize]="${PROJECT_ROOT}/VISUALIZE/logs|runtime.log*"
 )
 
 declare -A UNIT_COMPOSE_FILE=(
@@ -185,6 +195,7 @@ declare -A UNIT_COMPOSE_FILE=(
     [mw-milvus]="${MW_COMPOSE_FILE}"
     [mw-srs]="${MW_COMPOSE_FILE}"
     [mw-nodered]="${MW_COMPOSE_FILE}"
+    [mw-fuxa]="${MW_COMPOSE_FILE}"
     [mw-tdengine]="${MW_COMPOSE_FILE}"
     [mw-tdengine-init]="${MW_COMPOSE_FILE}"
     [mw-emqx]="${MW_COMPOSE_FILE}"
@@ -204,17 +215,19 @@ declare -A UNIT_COMPOSE_FILE=(
     [biz-video]="${VIDEO_COMPOSE_FILE}"
     [biz-web]="${WEB_COMPOSE_FILE}"
     [biz-app]="${PROJECT_ROOT}/APP/docker-compose.yaml"
+    [biz-visualize]="${PROJECT_ROOT}/VISUALIZE/docker-compose.yaml"
 )
 
 # 旧版模块 ID → 展开为子单元
 LEGACY_MODULE_EXPAND=(
-    ".scripts/docker:mw-nacos,mw-postgres-init,mw-postgres,mw-redis,mw-kafka,mw-minio,mw-milvus,mw-srs,mw-nodered,mw-tdengine,mw-tdengine-init,mw-emqx,mw-zlmediakit,mw-install-logs"
-    "middleware:mw-nacos,mw-postgres-init,mw-postgres,mw-redis,mw-kafka,mw-minio,mw-milvus,mw-srs,mw-nodered,mw-tdengine,mw-tdengine-init,mw-emqx,mw-zlmediakit,mw-install-logs"
+    ".scripts/docker:mw-nacos,mw-postgres-init,mw-postgres,mw-redis,mw-kafka,mw-minio,mw-milvus,mw-srs,mw-nodered,mw-fuxa,mw-tdengine,mw-tdengine-init,mw-emqx,mw-zlmediakit,mw-install-logs"
+    "middleware:mw-nacos,mw-postgres-init,mw-postgres,mw-redis,mw-kafka,mw-minio,mw-milvus,mw-srs,mw-nodered,mw-fuxa,mw-tdengine,mw-tdengine-init,mw-emqx,mw-zlmediakit,mw-install-logs"
     "DEVICE:dev-iot-gateway,dev-iot-system,dev-iot-infra,dev-iot-device,dev-iot-dataset,dev-iot-node,dev-iot-tdengine,dev-iot-file,dev-iot-message,dev-iot-sink,dev-iot-gb28181"
     "AI:biz-ai"
     "VIDEO:biz-video"
     "WEB:biz-web"
     "APP:biz-app"
+    "VISUALIZE:biz-visualize"
 )
 
 print_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -313,6 +326,7 @@ log_unit_enabled() {
         biz-video) module_enabled_for_deploy_profile VIDEO ;;
         biz-web) module_enabled_for_deploy_profile WEB ;;
         biz-app) module_enabled_for_deploy_profile APP ;;
+        biz-visualize) module_enabled_for_deploy_profile VISUALIZE ;;
         *) return 1 ;;
     esac
 }

@@ -20,7 +20,7 @@ pg_dump: detail: server version: 18.1; pg_dump version: 16.11
 - ✅ 检查数据库是否存在，跳过不存在的数据库
 - ✅ 使用 Docker 容器内的 `pg_dump`（版本匹配）
 - ✅ 按时间戳创建备份目录
-- ✅ 备份多个数据库（iot-ai20、iot-device20、iot-video20、iot-message20、ruoyi-vue-pro20）
+- ✅ 备份多个数据库（iot-ai20、iot-device20、iot-video20、iot-message20、iot-node20、iot-visualize20、ruoyi-vue-pro20）
 - ✅ 彩色日志输出，清晰显示备份状态
 - ✅ 备份统计信息
 
@@ -84,6 +84,8 @@ DATABASES=(
     "iot-device20"
     "iot-video20"
     "iot-message20"
+    "iot-node20"
+    "iot-visualize20"
     "ruoyi-vue-pro20"
 )
 ```

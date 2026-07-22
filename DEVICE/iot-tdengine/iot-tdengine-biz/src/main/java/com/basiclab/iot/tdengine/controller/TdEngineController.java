@@ -458,7 +458,14 @@ public class TdEngineController extends BaseController {
     @ApiOperation("查询运行时属性历史数据")
     @RequestMapping(value = "/deviceInfo/history", method = RequestMethod.POST)
     public TableDataInfo deviceInfoHistoryPage(@RequestBody TDDeviceDataHistoryRequest request) {
-        startPage();
+        // 无分页参数时拉最近 1000 条，避免 Feign/脏分页导致偶发空结果
+        Integer pageNum = com.basiclab.iot.common.utils.ServletUtils.getParameterToInt("pageNum");
+        Integer pageSize = com.basiclab.iot.common.utils.ServletUtils.getParameterToInt("pageSize");
+        if (pageNum == null || pageSize == null) {
+            com.github.pagehelper.PageHelper.startPage(1, 1000, false);
+        } else {
+            startPage();
+        }
         List<TDDeviceDataResp> list = tdEngineService.deviceInfoHistoryPage(request);
         return getDataTable(list);
     }

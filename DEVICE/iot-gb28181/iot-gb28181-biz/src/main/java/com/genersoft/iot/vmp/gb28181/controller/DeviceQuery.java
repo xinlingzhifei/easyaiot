@@ -492,7 +492,8 @@ public class DeviceQuery {
 			// 每次随机生成 10 位数字后缀，保证 20 位国标 ID 且每次请求都随机
 			String suffix = randomDigits(rng, 10);
 			String deviceId = domainPrefix + suffix;
-			String password = sharedPassword != null ? sharedPassword : randomAlphanumeric(rng, 32);
+			// 配置了统一认证密码时必须原样使用；随机兜底限制为多数摄像头可录入的 16 位。
+			String password = sharedPassword != null ? sharedPassword : randomAlphanumeric(rng, 16);
 
 			out.append("========== 设备组 #").append(i).append(" ==========\n");
 			out.append("传输协议：").append(transport).append("\n");

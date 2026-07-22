@@ -3,9 +3,9 @@
     v-bind="$attrs"
     @register="register"
     :width="modalWidth"
-    :min-height="720"
+    :min-height="640"
     :can-fullscreen="true"
-    :default-fullscreen="true"
+    :default-fullscreen="false"
     :show-ok-btn="false"
     :show-cancel-btn="false"
     :footer="null"
@@ -225,7 +225,7 @@ const emit = defineEmits<{ success: [] }>();
 
 const { createMessage } = useMessage();
 
-const modalWidth = '100vw';
+const modalWidth = '1180px';
 
 const DEVICE_KIND_LABEL: Record<string, string> = {
   direct: '直连',
@@ -595,7 +595,7 @@ function onModalClose() {
 .geo-loc-spin {
   display: block;
   height: 100%;
-  min-height: calc(100vh - 120px);
+  min-height: 640px;
 
   :deep(.ant-spin-container) {
     height: 100%;
@@ -607,7 +607,7 @@ function onModalClose() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: calc(100vh - 120px);
+  min-height: 640px;
   background: @surface;
   animation: geo-loc-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -1028,46 +1028,21 @@ function onModalClose() {
 @primary: #266cfb;
 
 .geo-loc-modal-wrap {
-  &.fullscreen-modal {
-    .ant-modal {
-      top: 0 !important;
-      max-width: 100vw !important;
-      width: 100vw !important;
-      padding: 0;
-      margin: 0;
-    }
-
-    .ant-modal-content {
-      border-radius: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .ant-modal-body {
-      flex: 1;
-      min-height: 0;
-      max-height: none;
-    }
-
-    .scroll-container {
-      height: 100% !important;
-      max-height: none !important;
-    }
-  }
-
   .ant-modal {
-    top: 0;
-    max-width: 100vw;
-    width: 100vw !important;
+    top: 40px;
+    max-width: calc(100vw - 48px);
     padding-bottom: 0;
     margin: 0 auto;
   }
 
   .ant-modal-content {
-    border-radius: 0;
+    border-radius: 12px;
     overflow: hidden;
-    min-height: calc(100vh - 2px);
+    min-height: 720px;
+    max-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
     transition: opacity 0.25s ease;
   }
 
@@ -1085,9 +1060,15 @@ function onModalClose() {
 
   .ant-modal-body {
     flex: 1;
+    min-height: 0;
     padding: 0;
     overflow: hidden;
     background: #fff;
+  }
+
+  .scroll-container {
+    height: 100% !important;
+    max-height: none !important;
   }
 
   .ant-modal-footer {
@@ -1111,7 +1092,7 @@ function onModalClose() {
 
   .geo-loc-panel__textarea.ant-input {
     border-color: #e4e9f2;
-    border-radius: 6px;
+    border-radius: 8px;
 
     &:hover {
       border-color: #c5cdd9;
@@ -1123,8 +1104,27 @@ function onModalClose() {
     }
   }
 
-  .geo-loc-panel__textarea.ant-input {
-    border-radius: 8px;
+  &.fullscreen-modal {
+    .ant-modal {
+      top: 0 !important;
+      max-width: 100vw !important;
+      width: 100vw !important;
+      padding: 0;
+      margin: 0;
+    }
+
+    .ant-modal-content {
+      border-radius: 0;
+      min-height: 100vh;
+      max-height: 100vh;
+      box-shadow: none;
+    }
+
+    .ant-modal-body {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+    }
   }
 }
 </style>

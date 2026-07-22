@@ -374,5 +374,22 @@ public interface DeviceService extends IService<Device> {
      * 解绑流媒体摄像头
      */
     int disassociateCameras(List<Long> linkIds);
+
+    /**
+     * 查询设备地图分布点位
+     *
+     * @param hasLocationOnly true 时仅返回已配置经纬度的设备
+     */
+    List<DeviceMapLocationVO> listDevicesForMap(boolean hasLocationOnly);
+
+    /**
+     * 按设备主键查询地图位置
+     */
+    DeviceMapLocationVO getDeviceMapLocation(Long deviceId);
+
+    /**
+     * 保存或更新设备地图坐标
+     */
+    int saveOrUpdateDeviceMapLocation(Long deviceId, DeviceLocationUpdateParam param);
 }
 

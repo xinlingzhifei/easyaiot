@@ -1,315 +1,394 @@
 <template>
-  <div class="ops-page">
-    <div class="ops-header">
-      <div class="ops-header-main">
-        <div class="ops-header-meta">
-          <span class="ops-meta-item">已绑定 <strong>{{ pagination.total }}</strong></span>
-          <span class="ops-meta-item">网关标识 <strong>{{ gatewayIdentification || '--' }}</strong></span>
+  <div ref="assocPageRef" class="assoc-page" :class="{ 'is-fullscreen': isFullscreen }">
+    <div class="assoc-layout">
+      <aside class="device-rail">
+        <div class="rail-head">
+          <div class="rail-title">
+            <Icon icon="ant-design:apartment-outlined" />
+            <span>设备总览</span>
+          </div>
+          <Button size="small" type="link" @click="openBindModal">添加</Button>
         </div>
-      </div>
-      <div class="ops-header-actions">
-        <Button @click="loadBoundList" :loading="loading" preIcon="ant-design:reload-outlined">
-          刷新
-        </Button>
-        <Button type="primary" @click="openBindModal" preIcon="ant-design:link-outlined">
-          绑定子设备
-        </Button>
-        <Popconfirm
-          title="确认解绑选中的子设备？"
-          :disabled="!selectedRowKeys.length"
-          @confirm="handleUnbind"
-        >
-          <Button
-            danger
-            :disabled="!selectedRowKeys.length"
-            :loading="unbinding"
-            preIcon="ant-design:disconnect-outlined"
-          >
-            批量解绑
-          </Button>
-        </Popconfirm>
-      </div>
-    </div>
 
-    <div class="ops-surface">
-      <div class="ops-surface-head">
-        <div class="ops-surface-title">
-          已绑定列表
-          <span class="ops-count">({{ pagination.total }})</span>
+        <div class="rail-scroll">
+          <button
+            type="button"
+            class="rail-item all-item"
+            :class="{ active: selectedKey === 'ALL' }"
+            @click="selectedKey = 'ALL'"
+          >
+            <span class="all-icon">
+              <Icon icon="ant-design:appstore-outlined" :size="15" />
+            </span>
+            <span class="rail-copy">
+              <strong>全部设备</strong>
+              <small>共 {{ deviceList.length }} 台</small>
+            </span>
+          </button>
+
+          <button
+            v-for="item in deviceList"
+            :key="item.deviceIdentification"
+            type="button"
+            class="rail-item"
+            :class="{ active: selectedKey === item.deviceIdentification }"
+            @click="selectedKey = item.deviceIdentification"
+          >
+            <span
+              class="status-dot"
+              :class="item.connectStatus === 'ONLINE' ? 'online' : 'offline'"
+            ></span>
+            <span class="rail-copy">
+              <strong :title="item.deviceName">
+                {{ item.deviceName }}
+                <em v-if="item._isCenter">中心</em>
+              </strong>
+              <small :title="item.deviceIdentification">{{ item.deviceIdentification }}</small>
+            </span>
+            <Tag :color="item.connectStatus === 'ONLINE' ? 'success' : 'error'" class="status-tag">
+              {{ item.connectStatus === 'ONLINE' ? '在线' : '离线' }}
+            </Tag>
+          </button>
         </div>
-      </div>
-      <div class="ops-surface-body">
-        <Table
-          rowKey="id"
-          size="middle"
-          :loading="loading"
-          :columns="columns"
-          :dataSource="boundList"
-          :rowSelection="{ selectedRowKeys, onChange: onSelectChange }"
-          :pagination="false"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'connectStatus'">
-              <Tag :color="record.connectStatus === 'ONLINE' ? 'green' : 'red'">
-                {{ record.connectStatus === 'ONLINE' ? '在线' : '离线' }}
-              </Tag>
-            </template>
-            <template v-else-if="column.key === 'action'">
-              <a style="margin-right: 12px" @click="openSubDevice(record)">管控</a>
-              <Popconfirm title="确认解绑该子设备？" @confirm="handleUnbindOne(record)">
-                <a class="danger-link">解绑</a>
-              </Popconfirm>
-            </template>
-          </template>
-        </Table>
-        <div v-if="!loading && boundList.length === 0" class="ops-empty">
-          <Icon icon="ant-design:cluster-outlined" class="ops-empty-icon" />
-          <p>暂无已绑定子设备</p>
-          <p class="ops-empty-hint">
-            可手动绑定，或由网关上报 topo/upstream/add、sub/property 自动创建并出现在此列表
-          </p>
+      </aside>
+
+      <section class="status-panel">
+        <div class="panel-toolbar">
+          <div class="panel-heading">
+            <h3>设备状态</h3>
+            <p>{{ selectedLabel }}</p>
+          </div>
+          <div class="panel-actions">
+            <label class="threshold-filter">
+              <Checkbox v-model:checked="onlyThreshold">仅显示配置阈值的属性</Checkbox>
+            </label>
+            <Button @click="openAlarmStrategy" preIcon="ant-design:alert-outlined">告警策略</Button>
+            <Button @click="reloadAll" :loading="loading" preIcon="ant-design:reload-outlined">刷新</Button>
+            <Button
+              @click="toggleFullscreen"
+              :preIcon="isFullscreen ? 'ant-design:fullscreen-exit-outlined' : 'ant-design:fullscreen-outlined'"
+            >
+              {{ isFullscreen ? '退出全屏' : '全屏' }}
+            </Button>
+            <Button type="primary" @click="openBindModal" preIcon="ant-design:link-outlined">关联设备</Button>
+          </div>
         </div>
-        <div v-if="pagination.total > 0" class="table-pagination">
-          <Pagination
-            v-model:current="pagination.current"
-            v-model:pageSize="pagination.pageSize"
-            :total="pagination.total"
-            :showSizeChanger="true"
-            :showTotal="(total) => `共 ${total} 条`"
-            @change="handlePageChange"
-            @showSizeChange="handlePageChange"
-          />
+
+        <div class="panel-scroll">
+          <Spin :spinning="loading">
+            <div v-if="displayDevices.length === 0" class="empty-wrap">
+              <Icon icon="ant-design:cluster-outlined" class="empty-icon" />
+              <p>暂无设备</p>
+              <p class="hint">可添加任意已存在设备；网关拓扑子设备会自动合并显示</p>
+            </div>
+
+            <div class="device-sections">
+              <article
+                v-for="dev in displayDevices"
+                :key="dev.deviceIdentification"
+                class="device-section"
+              >
+                <header class="section-head">
+                  <div class="section-title">
+                    <span
+                      class="status-dot"
+                      :class="dev.connectStatus === 'ONLINE' ? 'online' : 'offline'"
+                    ></span>
+                    <strong>{{ dev.deviceName }}</strong>
+                    <Tag v-if="dev._isCenter" color="blue">中心设备</Tag>
+                    <Tag :color="dev.connectStatus === 'ONLINE' ? 'success' : 'error'">
+                      {{ dev.connectStatus === 'ONLINE' ? '在线' : '离线' }}
+                    </Tag>
+                    <span class="device-id">{{ dev.deviceIdentification }}</span>
+                  </div>
+                  <div class="section-actions">
+                    <a @click="openDeviceThresholdStrategy(dev)">告警策略</a>
+                    <a @click="jumpDevice(dev)">完整详情</a>
+                    <a v-if="!dev._isCenter" class="danger" @click="unbindOne(dev)">解除关联</a>
+                  </div>
+                </header>
+
+                <div class="prop-panel">
+                  <TingModelCardList
+                    v-if="dev.id"
+                    :key="dev.deviceIdentification"
+                    :params="{ id: dev.id }"
+                    :api="fetchThingModels"
+                    :threshold-map="thresholdMaps[dev.deviceIdentification] || {}"
+                    :only-threshold="onlyThreshold"
+                    @getMethod="(reload) => onCardMethod(dev.deviceIdentification, reload)"
+                    @view="(item) => openHistory(dev, item)"
+                    @threshold="(item) => openThreshold(dev, item)"
+                    @refresh="() => loadThresholds(dev)"
+                  />
+                  <div v-else class="prop-empty">设备主键缺失，无法加载运行状态</div>
+                </div>
+              </article>
+            </div>
+          </Spin>
         </div>
-      </div>
+      </section>
     </div>
 
     <Modal
       v-model:visible="bindVisible"
+      title="关联设备"
       :width="'90vw'"
-      :style="{ maxWidth: '1360px' }"
-      wrap-class-name="device-bind-modal"
-      :body-style="{ padding: 0, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
+      :style="{ maxWidth: '1200px' }"
       :confirmLoading="binding"
       destroy-on-close
-      @cancel="closeBindModal"
+      @ok="handleBind"
+      @cancel="bindVisible = false"
     >
-      <template #title>
-        <div class="bind-modal-title">
-          <span class="bind-modal-title-main">绑定子设备</span>
-          <span class="bind-modal-title-sub">从未关联网关的子设备中选择，绑定到当前网关</span>
-        </div>
-      </template>
-
-      <div class="bind-modal-shell">
-        <div class="bind-modal-context">
-          <div class="bind-modal-context-left">
-            <span class="bind-modal-context-item">
-              目标网关<strong>{{ gatewayIdentification || '--' }}</strong>
-            </span>
-            <span class="bind-modal-context-badge">网关子设备 · 未绑定</span>
-          </div>
-          <span class="bind-modal-context-item">
-            候选总数<strong>{{ bindPagination.total }}</strong>
-          </span>
-        </div>
-
-        <div class="bind-modal-panel">
-          <div class="bind-modal-toolbar">
-            <Input
-              v-model:value="bindKeyword"
-              allowClear
-              class="bind-modal-search"
-              placeholder="搜索设备名称，回车查询"
-              @pressEnter="loadUnboundList"
-            />
-            <Button type="primary" @click="loadUnboundList" :loading="bindLoading" preIcon="ant-design:search-outlined">
-              查询
-            </Button>
-          </div>
-
-          <div class="bind-modal-table-wrap">
-            <Table
-              rowKey="id"
-              size="middle"
-              :loading="bindLoading"
-              :columns="bindColumns"
-              :dataSource="unboundList"
-              :rowSelection="{ selectedRowKeys: bindSelectedKeys, onChange: onBindSelectChange }"
-              :pagination="false"
-            >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'connectStatus'">
-                  <Tag :color="record.connectStatus === 'ONLINE' ? 'green' : 'red'">
-                    {{ record.connectStatus === 'ONLINE' ? '在线' : '离线' }}
-                  </Tag>
-                </template>
-              </template>
-            </Table>
-            <div v-if="!bindLoading && unboundList.length === 0" class="bind-modal-empty">
-              <Icon icon="ant-design:cluster-outlined" class="bind-modal-empty-icon" />
-              <p>暂无可绑定的子设备</p>
-              <p class="bind-modal-empty-hint">需设备类型为「网关子设备」且未关联网关</p>
-            </div>
-          </div>
-
-          <div v-if="bindPagination.total > 0" class="bind-modal-pagination">
-            <Pagination
-              v-model:current="bindPagination.current"
-              v-model:pageSize="bindPagination.pageSize"
-              :total="bindPagination.total"
-              :showSizeChanger="true"
-              :showTotal="(total) => `共 ${total} 条`"
-              @change="handleBindPageChange"
-              @showSizeChange="handleBindPageChange"
-            />
-          </div>
-        </div>
+      <div class="bind-toolbar">
+        <Input
+          v-model:value="bindKeyword"
+          allow-clear
+          placeholder="搜索设备名称，回车查询"
+          style="max-width: 320px"
+          @pressEnter="loadCandidates"
+        />
+        <Button type="primary" :loading="bindLoading" @click="loadCandidates">查询</Button>
       </div>
-
-      <template #footer>
-        <div class="bind-modal-footer">
-          <span class="bind-modal-footer-extra">
-            已选择 <strong>{{ bindSelectedKeys.length }}</strong> 个子设备
-          </span>
-          <Space :size="12">
-            <Button @click="closeBindModal">取消</Button>
-            <Button type="primary" :loading="binding" @click="handleBind">确认绑定</Button>
-          </Space>
-        </div>
-      </template>
+      <Table
+        rowKey="id"
+        size="middle"
+        :loading="bindLoading"
+        :columns="bindColumns"
+        :dataSource="candidateList"
+        :rowSelection="{ selectedRowKeys: bindSelectedKeys, onChange: onBindSelect }"
+        :pagination="{
+          current: bindPagination.current,
+          pageSize: bindPagination.pageSize,
+          total: bindPagination.total,
+          showSizeChanger: true,
+          onChange: onBindPage,
+        }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'connectStatus'">
+            <Tag :color="record.connectStatus === 'ONLINE' ? 'green' : 'red'">
+              {{ record.connectStatus === 'ONLINE' ? '在线' : '离线' }}
+            </Tag>
+          </template>
+          <template v-else-if="column.key === 'deviceType'">
+            {{ deviceTypeLabel(record.deviceType) }}
+          </template>
+        </template>
+      </Table>
     </Modal>
+
+    <ThresholdModal ref="thresholdModalRef" @saved="reloadAll" />
+    <AlarmStrategyModal ref="alarmStrategyRef" />
+    <Detail @register="registerHistoryModal" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { Modal, Pagination, Popconfirm, Space, Table, Tag, Input } from 'ant-design-vue';
+import { Checkbox, Input, Modal, Spin, Table, Tag } from 'ant-design-vue';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
+import { useModal } from '@/components/Modal';
 import {
-  associateGatewayDevices,
-  disassociateGatewayDevices,
-  getGatewaySubDevices,
-  getUnboundSubDevices,
+  associateDevices,
+  disassociateDevices,
+  getAssociatedCandidates,
+  getAssociatedDevices,
+  getDeviceThresholds,
+  getDevicethingModels,
 } from '@/api/device/devices';
+import ThresholdModal from '../Model/components/ThresholdModal.vue';
+import AlarmStrategyModal from '../AlarmStrategyModal.vue';
+import Detail from '../Model/components/Detail.vue';
+import TingModelCardList from '../Model/components/CardList/TingModelCardList.vue';
 
-defineOptions({ name: 'DeviceSubDevice' });
+defineOptions({ name: 'DeviceAssociatedSubDevice' });
 
 const props = defineProps<{
-  gatewayIdentification: string;
+  centerDeviceIdentification: string;
+  centerDeviceId?: string | number;
+  centerDeviceName?: string;
+  centerConnectStatus?: string;
 }>();
 
 const { createMessage } = useMessage();
 const router = useRouter();
-
-const openSubDevice = (record: any) => {
-  if (!record?.id) return;
-  router.push({ name: 'DeviceDetail', params: { id: String(record.id) } });
-};
+const [registerHistoryModal, { openModal: openHistoryModal }] = useModal();
 
 const loading = ref(false);
-const unbinding = ref(false);
 const binding = ref(false);
 const bindLoading = ref(false);
 const bindVisible = ref(false);
 const bindKeyword = ref('');
-
-const boundList = ref<any[]>([]);
-const unboundList = ref<any[]>([]);
-const selectedRowKeys = ref<Array<string | number>>([]);
+const onlyThreshold = ref(false);
+const selectedKey = ref('ALL');
+const isFullscreen = ref(false);
+const assocPageRef = ref<HTMLElement | null>(null);
+const associatedList = ref<any[]>([]);
+const candidateList = ref<any[]>([]);
 const bindSelectedKeys = ref<Array<string | number>>([]);
+const thresholdMaps = reactive<Record<string, Record<string, any>>>({});
+const cardReloadMap = reactive<Record<string, Function>>({});
+const thresholdModalRef = ref<any>(null);
+const alarmStrategyRef = ref<any>(null);
+let refreshTimer: any = null;
 
-const pagination = reactive({
-  current: 1,
-  pageSize: 10,
-  total: 0,
-});
-
-const bindPagination = reactive({
-  current: 1,
-  pageSize: 10,
-  total: 0,
-});
-
-const gatewayIdentification = computed(() => props.gatewayIdentification || '');
-
-const columns = [
-  { title: '设备名称', dataIndex: 'deviceName', key: 'deviceName', ellipsis: true },
-  { title: '设备标识', dataIndex: 'deviceIdentification', key: 'deviceIdentification', ellipsis: true },
-  { title: '产品标识', dataIndex: 'productIdentification', key: 'productIdentification', ellipsis: true },
-  { title: '连接状态', dataIndex: 'connectStatus', key: 'connectStatus', width: 100 },
-  { title: '操作', key: 'action', width: 140 },
-];
+const bindPagination = reactive({ current: 1, pageSize: 10, total: 0 });
 
 const bindColumns = [
   { title: '设备名称', dataIndex: 'deviceName', key: 'deviceName', ellipsis: true },
   { title: '设备标识', dataIndex: 'deviceIdentification', key: 'deviceIdentification', ellipsis: true },
-  { title: '产品标识', dataIndex: 'productIdentification', key: 'productIdentification', ellipsis: true },
+  { title: '设备类型', dataIndex: 'deviceType', key: 'deviceType', width: 110 },
   { title: '连接状态', dataIndex: 'connectStatus', key: 'connectStatus', width: 90 },
 ];
 
-const onSelectChange = (keys: Array<string | number>) => {
-  selectedRowKeys.value = keys;
-};
+const centerDevice = computed(() => ({
+  id: props.centerDeviceId,
+  deviceIdentification: props.centerDeviceIdentification,
+  deviceName: props.centerDeviceName || '中心设备',
+  connectStatus: props.centerConnectStatus || 'OFFLINE',
+  _isCenter: true,
+}));
 
-const onBindSelectChange = (keys: Array<string | number>) => {
-  bindSelectedKeys.value = keys;
-};
+const deviceList = computed(() => {
+  const list = [centerDevice.value, ...associatedList.value.map((d) => ({ ...d, _isCenter: false }))];
+  return list.filter((d) => d.deviceIdentification);
+});
 
-async function loadBoundList() {
-  if (!gatewayIdentification.value) {
-    boundList.value = [];
-    pagination.total = 0;
-    return;
+const displayDevices = computed(() => {
+  if (selectedKey.value === 'ALL') return deviceList.value;
+  return deviceList.value.filter((d) => d.deviceIdentification === selectedKey.value);
+});
+
+const selectedLabel = computed(() => {
+  if (selectedKey.value === 'ALL') return `全部设备 · 共 ${deviceList.value.length} 台`;
+  const hit = deviceList.value.find((d) => d.deviceIdentification === selectedKey.value);
+  return hit ? `${hit.deviceName} · ${hit.deviceIdentification}` : selectedKey.value;
+});
+
+function deviceTypeLabel(t: string) {
+  return ({ GATEWAY: '网关', COMMON: '普通设备', SUBSET: '子设备', VIDEO_COMMON: '视频设备' } as any)[t] || t || '--';
+}
+
+async function fetchThingModels(params: Record<string, any>) {
+  return getDevicethingModels(params);
+}
+
+function onCardMethod(deviceIdentification: string, reload: Function) {
+  cardReloadMap[deviceIdentification] = reload;
+}
+
+function handleFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement;
+}
+
+async function toggleFullscreen() {
+  try {
+    if (!document.fullscreenElement) {
+      const el = assocPageRef.value;
+      if (el?.requestFullscreen) {
+        await el.requestFullscreen();
+      } else {
+        isFullscreen.value = true;
+      }
+    } else {
+      await document.exitFullscreen?.();
+      isFullscreen.value = false;
+    }
+  } catch (e) {
+    // 浏览器不支持 Fullscreen API 时，退化为 CSS 全屏
+    isFullscreen.value = !isFullscreen.value;
   }
+}
+
+async function loadAssociated() {
+  if (!props.centerDeviceIdentification || props.centerDeviceIdentification === '--') return;
   loading.value = true;
   try {
-    const res = await getGatewaySubDevices({
-      gatewayIdentification: gatewayIdentification.value,
-      pageNum: pagination.current,
-      pageSize: pagination.pageSize,
+    const res = await getAssociatedDevices({
+      centerDeviceIdentification: props.centerDeviceIdentification,
     });
-    boundList.value = res?.data || res?.rows || [];
-    pagination.total = res?.total || 0;
-    selectedRowKeys.value = [];
+    associatedList.value = res?.data || res?.rows || [];
   } catch (e) {
     console.error(e);
-    createMessage.error('加载子设备列表失败');
+    createMessage.error('加载设备总览失败');
   } finally {
     loading.value = false;
   }
 }
 
-async function loadUnboundList() {
-  bindLoading.value = true;
+async function loadThresholds(dev: any) {
+  if (!dev?.deviceIdentification) return;
   try {
-    const res = await getUnboundSubDevices({
-      pageNum: bindPagination.current,
-      pageSize: bindPagination.pageSize,
-      deviceName: bindKeyword.value || undefined,
+    const thRes = await getDeviceThresholds(dev.deviceIdentification);
+    const thList = thRes?.data || thRes || [];
+    const map: Record<string, any> = {};
+    (Array.isArray(thList) ? thList : []).forEach((t: any) => {
+      if (t?.propertyCode) map[t.propertyCode] = t;
     });
-    unboundList.value = res?.data || res?.rows || [];
-    bindPagination.total = res?.total || 0;
+    thresholdMaps[dev.deviceIdentification] = map;
   } catch (e) {
     console.error(e);
-    createMessage.error('加载可绑定子设备失败');
-  } finally {
-    bindLoading.value = false;
+    thresholdMaps[dev.deviceIdentification] = {};
   }
 }
 
-function handlePageChange(page: number, pageSize: number) {
-  pagination.current = page;
-  pagination.pageSize = pageSize;
-  loadBoundList();
+async function reloadAll() {
+  await loadAssociated();
+  await Promise.all(deviceList.value.map((d) => loadThresholds(d)));
+  // 属性卡自行拉取；关联列表变化后强制刷新已挂载卡片
+  deviceList.value.forEach((d) => {
+    cardReloadMap[d.deviceIdentification]?.({}, { silent: true });
+  });
 }
 
-function handleBindPageChange(page: number, pageSize: number) {
-  bindPagination.current = page;
-  bindPagination.pageSize = pageSize;
-  loadUnboundList();
+function jumpDevice(dev: any) {
+  if (!dev?.id) {
+    createMessage.warning('设备主键缺失，无法跳转');
+    return;
+  }
+  router.push({ name: 'DeviceDetail', params: { id: String(dev.id) } });
+}
+
+function openThreshold(dev: any, prop: any) {
+  thresholdModalRef.value?.open({
+    deviceIdentification: dev.deviceIdentification,
+    propertyCode: prop.propertyCode,
+    propertyName: prop.propertyName,
+    currentValue: prop.dataValue,
+  });
+}
+
+function openHistory(dev: any, prop: any) {
+  openHistoryModal(true, {
+    data: {
+      ...prop,
+      deviceIdentification: dev.deviceIdentification,
+    },
+  });
+}
+
+function openAlarmStrategy() {
+  alarmStrategyRef.value?.open(props.centerDeviceIdentification);
+}
+
+function openDeviceThresholdStrategy(dev: any) {
+  alarmStrategyRef.value?.open(dev.deviceIdentification);
+}
+
+async function unbindOne(dev: any) {
+  if (!dev?.id) return;
+  try {
+    await disassociateDevices([dev.id], props.centerDeviceIdentification);
+    createMessage.success('已解除关联');
+    if (selectedKey.value === dev.deviceIdentification) selectedKey.value = 'ALL';
+    await reloadAll();
+  } catch (e: any) {
+    createMessage.error(e?.message || '解绑失败');
+  }
 }
 
 function openBindModal() {
@@ -317,92 +396,419 @@ function openBindModal() {
   bindSelectedKeys.value = [];
   bindKeyword.value = '';
   bindPagination.current = 1;
-  loadUnboundList();
+  loadCandidates();
 }
 
-function closeBindModal() {
-  bindVisible.value = false;
-  bindSelectedKeys.value = [];
+function onBindSelect(keys: Array<string | number>) {
+  bindSelectedKeys.value = keys;
+}
+
+function onBindPage(page: number, pageSize: number) {
+  bindPagination.current = page;
+  bindPagination.pageSize = pageSize;
+  loadCandidates();
+}
+
+async function loadCandidates() {
+  bindLoading.value = true;
+  try {
+    const res = await getAssociatedCandidates({
+      centerDeviceIdentification: props.centerDeviceIdentification,
+      deviceName: bindKeyword.value || undefined,
+      pageNum: bindPagination.current,
+      pageSize: bindPagination.pageSize,
+    });
+    candidateList.value = res?.data || res?.rows || [];
+    bindPagination.total = res?.total || 0;
+  } catch (e) {
+    console.error(e);
+    createMessage.error('加载候选设备失败');
+  } finally {
+    bindLoading.value = false;
+  }
 }
 
 async function handleBind() {
   if (!bindSelectedKeys.value.length) {
-    createMessage.warning('请选择要绑定的子设备');
-    return;
-  }
-  if (!gatewayIdentification.value) {
-    createMessage.error('网关设备标识缺失');
+    createMessage.warning('请选择要关联的设备');
     return;
   }
   binding.value = true;
   try {
-    await associateGatewayDevices(bindSelectedKeys.value, gatewayIdentification.value);
-    createMessage.success('绑定成功');
-    closeBindModal();
-    await loadBoundList();
+    await associateDevices(bindSelectedKeys.value, props.centerDeviceIdentification);
+    createMessage.success('关联成功');
+    bindVisible.value = false;
+    await reloadAll();
   } catch (e: any) {
-    console.error(e);
-    createMessage.error(e?.message || '绑定失败');
+    createMessage.error(e?.message || '关联失败');
   } finally {
     binding.value = false;
   }
 }
 
-async function handleUnbind() {
-  if (!selectedRowKeys.value.length) return;
-  unbinding.value = true;
-  try {
-    await disassociateGatewayDevices(selectedRowKeys.value);
-    createMessage.success('解绑成功');
-    await loadBoundList();
-  } catch (e: any) {
-    console.error(e);
-    createMessage.error(e?.message || '解绑失败');
-  } finally {
-    unbinding.value = false;
-  }
-}
-
-async function handleUnbindOne(record: any) {
-  try {
-    await disassociateGatewayDevices([record.id]);
-    createMessage.success('解绑成功');
-    await loadBoundList();
-  } catch (e: any) {
-    console.error(e);
-    createMessage.error(e?.message || '解绑失败');
-  }
-}
-
 watch(
-  () => props.gatewayIdentification,
-  (val) => {
+  () => props.centerDeviceIdentification,
+  async (val) => {
     if (val && val !== '--') {
-      pagination.current = 1;
-      loadBoundList();
+      selectedKey.value = 'ALL';
+      await reloadAll();
     }
   },
 );
 
-onMounted(() => {
-  loadBoundList();
+onMounted(async () => {
+  await reloadAll();
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
+  refreshTimer = setInterval(() => {
+    deviceList.value.forEach((d) => {
+      loadThresholds(d);
+      cardReloadMap[d.deviceIdentification]?.({}, { silent: true });
+    });
+  }, 8000);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.();
+  }
+  if (refreshTimer) clearInterval(refreshTimer);
 });
 </script>
 
 <style lang="less" scoped>
-@import '../styles/device-ops.less';
+@ink: #17233d;
+@muted: #8c8c8c;
+@line: #e8ecf2;
+@accent: #266cfb;
+@surface: #ffffff;
 
-.danger-link {
-  color: #ff4d4f;
-}
-
-.table-pagination {
+.assoc-page {
+  height: 100%;
+  min-height: 0;
+  background: @surface;
+  overflow: hidden;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-</style>
+  flex-direction: column;
 
-<style lang="less">
-@import '../styles/device-bind-modal.less';
+  &.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    height: 100vh;
+    max-height: 100vh;
+    padding: 12px;
+    background: @surface;
+  }
+}
+
+.assoc-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.device-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: @surface;
+  border: 1px solid @line;
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 10px 10px 0;
+}
+
+.rail-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 12px;
+  border-bottom: 1px solid @line;
+  margin-bottom: 10px;
+
+  .rail-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: @ink;
+  }
+}
+
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 10px;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 10px;
+  margin-bottom: 8px;
+  border: 1px solid @line;
+  border-radius: 8px;
+  background: @surface;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+
+  &:hover,
+  &.active {
+    border-color: #7aa5ff;
+    background: #eef4ff;
+    box-shadow: 0 2px 8px rgba(38, 108, 251, 0.08);
+  }
+
+  &.all-item .all-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    color: @accent;
+    background: #eaf1ff;
+    flex-shrink: 0;
+  }
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+
+  &.online {
+    background: #52c41a;
+    box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.15);
+  }
+  &.offline {
+    background: #ff4d4f;
+    box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.15);
+  }
+}
+
+.rail-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+
+  strong,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: @ink;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    em {
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 500;
+      color: @accent;
+      background: #eaf1ff;
+      border-radius: 4px;
+      padding: 0 5px;
+      line-height: 18px;
+    }
+  }
+
+  small {
+    margin-top: 2px;
+    color: @muted;
+    font-size: 11px;
+  }
+}
+
+.status-tag {
+  flex-shrink: 0;
+  margin: 0;
+  transform: scale(0.92);
+}
+
+.status-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: @surface;
+  border: 1px solid @line;
+  border-radius: 10px;
+  padding: 16px 18px 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid @line;
+  flex-wrap: wrap;
+}
+
+.panel-heading {
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: @ink;
+    line-height: 24px;
+  }
+  p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: @muted;
+  }
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.threshold-filter {
+  margin-right: 4px;
+  color: #595959;
+  font-size: 13px;
+}
+
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 16px;
+
+  :deep(.ant-spin-nested-loading),
+  :deep(.ant-spin-container) {
+    min-height: 100%;
+  }
+}
+
+.device-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.device-section {
+  border: 1px solid @line;
+  border-radius: 10px;
+  overflow: hidden;
+  background: @surface;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: @surface;
+  border-bottom: 1px solid @line;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  strong {
+    color: @ink;
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .device-id {
+    color: @muted;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.section-actions {
+  display: flex;
+  gap: 14px;
+  flex-shrink: 0;
+
+  a {
+    font-size: 13px;
+    color: @accent;
+  }
+  .danger {
+    color: #ff4d4f;
+  }
+}
+
+.prop-panel {
+  padding: 14px;
+  background: @surface;
+  min-width: 0;
+}
+
+.prop-empty,
+.empty-wrap {
+  text-align: center;
+  color: @muted;
+  padding: 36px 0;
+}
+
+.empty-wrap .empty-icon {
+  font-size: 40px;
+  color: #d0d5dd;
+  margin-bottom: 10px;
+}
+
+.empty-wrap .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #bfbfbf;
+}
+
+.bind-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 960px) {
+  .assoc-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 32%) minmax(0, 1fr);
+  }
+}
 </style>

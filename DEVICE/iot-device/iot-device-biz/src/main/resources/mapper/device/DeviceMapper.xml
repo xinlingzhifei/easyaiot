@@ -1649,5 +1649,55 @@
         from device
     </select>
 
+    <!-- 设备地图分布：关联 device_location（每设备取最新一条坐标） -->
+    <select id="selectDevicesForMap"
+            resultType="com.basiclab.iot.device.domain.device.vo.DeviceMapLocationVO">
+        SELECT
+            d.id,
+            d.device_identification AS deviceIdentification,
+            d.device_name AS deviceName,
+            d.connect_status AS connectStatus,
+            CASE WHEN d.connect_status = 'ONLINE' THEN TRUE ELSE FALSE END AS online,
+            d.device_type AS deviceType,
+            d.product_identification AS productIdentification,
+            dl.longitude,
+            dl.latitude,
+            dl.full_name AS address,
+            CASE
+                WHEN dl.longitude IS NOT NULL AND dl.latitude IS NOT NULL THEN TRUE
+                ELSE FALSE
+            END AS hasLocation,
+            dl.update_time AS locationUpdatedAt
+        FROM device d
+        <choose>
+            <when test="hasLocationOnly != null and hasLocationOnly == true">
+                INNER JOIN (
+                    SELECT DISTINCT ON (device_identification)
+                        device_identification,
+                        longitude,
+                        latitude,
+                        full_name,
+                        update_time
+                    FROM device_location
+                    WHERE longitude IS NOT NULL
+                      AND latitude IS NOT NULL
+                    ORDER BY device_identification, update_time DESC NULLS LAST
+                ) dl ON d.device_identification = dl.device_identification
+            </when>
+            <otherwise>
+                LEFT JOIN (
+                    SELECT DISTINCT ON (device_identification)
+                        device_identification,
+                        longitude,
+                        latitude,
+                        full_name,
+                        update_time
+                    FROM device_location
+                    ORDER BY device_identification, update_time DESC NULLS LAST
+                ) dl ON d.device_identification = dl.device_identification
+            </otherwise>
+        </choose>
+        ORDER BY COALESCE(dl.update_time, d.update_time) DESC
+    </select>
 
 </mapper>

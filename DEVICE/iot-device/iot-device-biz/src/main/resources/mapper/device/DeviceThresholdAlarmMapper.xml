@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.basiclab.iot.device.dal.pgsql.device.DeviceThresholdAlarmMapper">
+
+    <resultMap id="BaseResultMap" type="com.basiclab.iot.device.domain.device.vo.DeviceThresholdAlarm">
+        <id column="id" property="id"/>
+        <result column="device_identification" property="deviceIdentification"/>
+        <result column="device_name" property="deviceName"/>
+        <result column="property_code" property="propertyCode"/>
+        <result column="property_name" property="propertyName"/>
+        <result column="alarm_value" property="alarmValue"/>
+        <result column="min_value" property="minValue"/>
+        <result column="max_value" property="maxValue"/>
+        <result column="alarm_level" property="alarmLevel"/>
+        <result column="alarm_status" property="alarmStatus"/>
+        <result column="message" property="message"/>
+        <result column="kafka_sent" property="kafkaSent"/>
+        <result column="tenant_id" property="tenantId"/>
+        <result column="create_time" property="createTime"/>
+        <result column="clear_time" property="clearTime"/>
+    </resultMap>
+
+    <select id="selectOpenByDevice" resultMap="BaseResultMap">
+        SELECT *
+        FROM device_threshold_alarm
+        WHERE device_identification = #{deviceIdentification}
+          AND alarm_status = 'OPEN'
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectLatestOpen" resultMap="BaseResultMap">
+        SELECT *
+        FROM device_threshold_alarm
+        WHERE device_identification = #{deviceIdentification}
+          AND property_code = #{propertyCode}
+          AND alarm_status = 'OPEN'
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <select id="countOpenByDevice" resultType="int">
+        SELECT COUNT(1)
+        FROM device_threshold_alarm
+        WHERE device_identification = #{deviceIdentification}
+          AND alarm_status = 'OPEN'
+    </select>
+
+    <select id="countOpenSince" resultType="int">
+        SELECT COUNT(1)
+        FROM device_threshold_alarm
+        WHERE device_identification = #{deviceIdentification}
+          AND property_code = #{propertyCode}
+          AND create_time &gt;= #{since}
+    </select>
+</mapper>

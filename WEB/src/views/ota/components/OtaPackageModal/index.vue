@@ -1,27 +1,39 @@
 <template>
-  <BasicModal
+  <BasicDrawer
+    v-bind="$attrs"
     @register="register"
     :title="getTitle"
-    @cancel="handleCancel"
-    :width="700"
-    @ok="handleOk"
-    :canFullscreen="false"
+    width="1400"
+    placement="right"
+    :showFooter="true"
+    :showCancelBtn="false"
+    :showOkBtn="false"
+    destroy-on-close
   >
-    <div class="product-modal">
-      <Spin :spinning="state.editLoading">
+    <template #footer>
+      <div class="footer-buttons">
+        <Button @click="handleCancel">{{ state.isView ? '关闭' : '取消' }}</Button>
+        <Button v-if="!state.isView" type="primary" :loading="state.editLoading" @click="handleOk">
+          保存
+        </Button>
+      </div>
+    </template>
+
+    <Spin :spinning="state.editLoading">
+      <div class="ota-drawer-content">
         <Form
-          :labelCol="{ span: 3 }"
+          :label-col="{ style: { width: '150px' } }"
+          :wrapper-col="{ span: 21 }"
           :model="validateInfos"
-          :wrapperCol="{ span: 21 }"
           :disabled="state.isView"
         >
-          <FormItem label="包版本号" name="version" v-bind=validateInfos.version>
+          <FormItem label="包版本号" name="version" v-bind="validateInfos.version">
             <Input v-model:value="modelRef.version"/>
           </FormItem>
-          <FormItem label="包名称" name="name" v-bind=validateInfos.name>
+          <FormItem label="包名称" name="name" v-bind="validateInfos.name">
             <Input v-model:value="modelRef.name"/>
           </FormItem>
-          <FormItem label="包类型" name="type" v-bind=validateInfos.type>
+          <FormItem label="包类型" name="type" v-bind="validateInfos.type">
             <Select
               placeholder="包类型"
               :options="state.typeList"
@@ -30,7 +42,7 @@
               allowClear
             />
           </FormItem>
-          <FormItem label="包位置" name="url" v-bind=validateInfos.url>
+          <FormItem label="包位置" name="url" v-bind="validateInfos.url">
             <Upload
               name="file"
               multiple
@@ -46,7 +58,7 @@
               </Button>
             </Upload>
           </FormItem>
-          <FormItem label="关键版本" name="type" v-bind=validateInfos.keyVersionFlag>
+          <FormItem label="关键版本" name="type" v-bind="validateInfos.keyVersionFlag">
             <Select
               placeholder="关键版本"
               :options="state.keyVersionFlagList"
@@ -55,7 +67,7 @@
               allowClear
             />
           </FormItem>
-          <FormItem label="备注" name="remark" v-bind=validateInfos.remark>
+          <FormItem label="备注" name="remark" v-bind="validateInfos.remark">
             <Textarea
               placeholder="请输入备注"
               v-model:value="modelRef.remark"
@@ -65,13 +77,13 @@
             />
           </FormItem>
         </Form>
-      </Spin>
-    </div>
-  </BasicModal>
+      </div>
+    </Spin>
+  </BasicDrawer>
 </template>
 <script lang="ts" setup>
 import {computed, reactive, ref} from 'vue';
-import {BasicModal, useModalInner} from '@/components/Modal';
+import {BasicDrawer, useDrawerInner} from '@/components/Drawer';
 import {Form, FormItem, Input, Select, Spin, Textarea, Upload,} from 'ant-design-vue';
 import {useMessage} from '@/hooks/web/useMessage';
 import {getDeviceProfiles} from "@/api/device/product";
@@ -190,7 +202,7 @@ function handleFileChange(info: Record<string, any>) {
   }
 }
 
-const [register, {closeModal}] = useModalInner((data) => {
+const [register, {closeDrawer}] = useDrawerInner((data) => {
   const {isEdit, isView, record} = data;
   state.isEdit = isEdit;
   state.isView = isView;
@@ -229,13 +241,12 @@ async function productEdit(record) {
     state.record = record;
   }catch (error) {
     console.error(error)
-    //console.log('productEdit ...', error);
   }
 }
 
 function handleCancel() {
-  //console.log('handleCancel');
   resetFields();
+  closeDrawer();
 }
 
 function handleOk() {
@@ -248,7 +259,7 @@ function handleOk() {
     api(modelRef)
       .then(() => {
         createMessage.success('操作成功');
-        closeModal();
+        closeDrawer();
         resetFields();
         emits('success');
       })
@@ -262,11 +273,19 @@ function handleOk() {
 }
 </script>
 <style lang="less" scoped>
-.product-modal {
+.ota-drawer-content {
+  padding: 8px 16px 0;
+
   :deep(.ant-form-item-label) {
     & > label::after {
       content: '';
     }
   }
+}
+
+.footer-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>

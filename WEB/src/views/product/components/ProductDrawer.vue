@@ -1,47 +1,6 @@
 <!-- eslint-disable vue/v-on-event-hyphenation -->
 <template>
   <div class="product-drawer-warpper">
-    <Card class="detail-info" size="small">
-      <div class="device_title">
-        <span class="name">{{ state.record.productName }}</span>
-        <span :class="state.record.status == '0' ? 'green' : 'red'">
-          {{ state.record.status == '0' ? '启用' : '禁用' }}
-        </span>
-      </div>
-      <div class="base_data">
-        <div class="item">
-          <span>状态：</span>
-          <span :class="state.record.status == '0' ? 'green' : 'red'">
-            {{ state.record.status == '0' ? '启用' : '禁用' }}
-          </span>
-        </div>
-        <div class="item">
-          <span>应用场景：</span>
-          <span>{{ state.record.appId }}</span>
-        </div>
-        <div class="item">
-          <span>产品名称：</span>
-          <span>{{ state.record.productName }}</span>
-        </div>
-        <div class="item">
-          <span>产品标识：</span>
-          <span>{{ state.record.productIdentification }}</span>
-        </div>
-        <div class="item">
-          <span>用户名：</span>
-          <span>{{ state.record.userName }}</span>
-        </div>
-        <div class="item">
-          <span>密码：</span>
-          <span>{{ state.record.password }}</span>
-        </div>
-        <div class="item">
-          <span>厂商名称：</span>
-          <span>{{ state.record.manufacturerName }}</span>
-        </div>
-      </div>
-    </Card>
-
     <Card class="product-tabs" ref="cardRef">
       <Tabs
         :animated="{ inkBar: true, tabPane: false }"
@@ -157,98 +116,22 @@ onMounted(() => {
 }
 
 .product-drawer-warpper {
-  height: 100%;
+  /* 与设备详情一致：视口高度锁死，避免整页外滚 */
+  height: calc(100vh - 80px);
+  max-height: calc(100vh - 80px);
   overflow: hidden;
-  background: #f5f7fa;
-  padding: 16px 20px 20px;
+  background: #ffffff;
+  padding: 12px 16px 12px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
 
-  .detail-info {
-    margin-bottom: 16px;
-    flex-shrink: 0;
-
-    :deep(.ant-card-body) {
-      padding: 16px 20px;
-    }
-
-    .device_title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-
-      .name {
-        font-size: 15px;
-        font-weight: 600;
-        color: #1a1a1a;
-        line-height: 24px;
-      }
-
-      .green {
-        color: #52c41a;
-        font-weight: 500;
-        font-size: 13px;
-      }
-
-      .red {
-        color: #ff4d4f;
-        font-weight: 500;
-        font-size: 13px;
-      }
-    }
-
-    .base_data {
-      display: flex;
-      align-items: center;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      font-size: 13px;
-      color: #666;
-      line-height: 22px;
-
-      .item:first-child {
-        border-left: none;
-        padding-left: 0;
-      }
-
-      .item {
-        padding-left: 16px;
-        padding-right: 16px;
-        border-left: 1px solid #e8e8e8;
-        flex: 0 0 auto;
-        white-space: nowrap;
-
-        span:first-child {
-          color: #999;
-          margin-right: 4px;
-        }
-
-        span:last-child {
-          color: #1a1a1a;
-          font-weight: 500;
-        }
-
-        .red {
-          color: #ff4d4f;
-          font-weight: 500;
-        }
-
-        .green {
-          color: #52c41a;
-          font-weight: 500;
-        }
-      }
-    }
-  }
-
   .product-tabs {
     margin: 0;
     background: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
     overflow: hidden;
     flex: 1;
     display: flex;
@@ -262,21 +145,25 @@ onMounted(() => {
       display: flex;
       flex-direction: column;
       min-height: 0;
+      height: 100%;
+      overflow: hidden;
     }
 
     :deep(.ant-tabs) {
       background-color: #ffffff;
-      padding: 12px 20px 12px;
+      padding: 0;
       margin: 0;
       flex: 1;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      height: 100%;
+      overflow: hidden;
     }
 
     :deep(.ant-tabs-nav) {
-      margin-bottom: 12px;
-      padding: 0;
+      margin-bottom: 10px;
+      padding: 0 4px;
       flex-shrink: 0;
     }
 
@@ -301,6 +188,7 @@ onMounted(() => {
         height: 100%;
         min-height: 0;
         overflow-y: auto;
+        background: #ffffff;
       }
 
       > .product-script,

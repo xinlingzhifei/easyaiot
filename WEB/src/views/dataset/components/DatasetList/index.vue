@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="page-unified-wrap">
     <BasicTable @register="registerTable" v-if="state.isTableMode">
       <template #toolbar>
         <Button type="primary" @click="openAddModal(true, { type: 'add' })">新增数据集
@@ -53,7 +53,7 @@
         </template>
       </template>
     </BasicTable>
-    <div v-else>
+    <div v-else class="page-card-wrap">
       <DatasetCardList :params="params" :api="getDatasetPage" @get-method="getMethod"
                        @delete="handleDel"
                        @view="handleView" @edit="handleEdit" @verif="handleAudit">
@@ -79,12 +79,13 @@ import {getBasicColumns, getFormConfig} from "./Data";
 import DatasetModal from "@/views/dataset/components/DatasetModal/index.vue";
 import DatasetAuditModal from "@/views/dataset/components/DatasetAuditModal/index.vue";
 import {useModal} from "@/components/Modal";
+import {useDrawer} from "@/components/Drawer";
 import {useRouter} from "vue-router";
 import {deleteDataset, getDatasetPage} from "@/api/device/dataset";
 
 import DatasetCardList from "@/views/dataset/components/DatasetCardList/index.vue";
 import { Button } from '@/components/Button'
-const [registerAddModel, {openModal: openAddModal}] = useModal();
+const [registerAddModel, {openDrawer: openAddModal}] = useDrawer();
 const [registerAuditModel, {openModal: openAuditModal}] = useModal();
 
 const router = useRouter();
@@ -197,3 +198,36 @@ const handleDelete = async (record) => {
   }
 };
 </script>
+
+<style lang="less" scoped>
+.page-unified-wrap {
+  background: #fff;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  :deep(.iot-basic-table-form-container) {
+    padding: 0;
+    background: #fff;
+    .ant-form {
+      margin-bottom: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 16px 16px 0;
+    }
+  }
+  :deep(.ant-table-wrapper) {
+    border-radius: 0;
+    background: #fff;
+    padding: 8px 16px 16px;
+  }
+  .page-card-wrap {
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+}
+</style>

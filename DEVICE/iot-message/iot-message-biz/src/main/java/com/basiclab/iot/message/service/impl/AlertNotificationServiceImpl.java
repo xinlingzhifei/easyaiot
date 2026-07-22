@@ -206,6 +206,19 @@ public class AlertNotificationServiceImpl implements AlertNotificationService {
             params.put("image_path", alert.getImagePath() != null ? alert.getImagePath() : "");
             params.put("record_path", alert.getRecordPath() != null ? alert.getRecordPath() : "");
             params.put("task_type", alert.getTaskType() != null ? alert.getTaskType() : "");
+
+            // 设备阈值告警占位符（与算法任务共用同一套渲染）
+            String property = alert.getProperty() != null ? alert.getProperty()
+                    : (alert.getRegion() != null ? alert.getRegion() : "");
+            String propertyName = alert.getPropertyName() != null ? alert.getPropertyName() : property;
+            String value = alert.getValue() != null ? alert.getValue() : "";
+            String alarmLevel = alert.getAlarmLevel() != null ? alert.getAlarmLevel() : "";
+            params.put("property", property);
+            params.put("property_code", property);
+            params.put("property_name", propertyName);
+            params.put("value", value);
+            params.put("alarm_value", value);
+            params.put("alarm_level", alarmLevel);
         }
 
         params.put("alert_id", notificationMessage.getAlertId());

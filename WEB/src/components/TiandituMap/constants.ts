@@ -30,6 +30,7 @@ export const MAP_LAYER_ZINDEX = {
 
 export const MARKER_COLORS: Record<MapMarkerKind, string> = {
   camera: '#1677ff',
+  device: '#13c2c2',
   alert: '#ff4d4f',
   track: '#52c41a',
   picker: '#e63946',

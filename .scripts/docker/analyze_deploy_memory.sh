@@ -76,12 +76,12 @@ print_section() {
 
 MIDDLEWARE_CONTAINERS=(
     nacos-server postgres-server postgres-init redis-server kafka-server
-    minio-server milvus-server srs-server nodered-server emqx-server
+    minio-server milvus-server srs-server nodered-server fuxa-server emqx-server
     zlmediakit-server tdengine-server tdengine-init
 )
 DEVICE_CONTAINERS=(
     iot-gateway iot-system iot-infra iot-device iot-dataset iot-node
-    iot-tdengine iot-file iot-message iot-sink iot-gb28181
+    iot-visualize iot-tdengine iot-file iot-message iot-sink iot-gb28181
 )
 APP_CONTAINERS=(
     ai-service video-service web-service app-service
@@ -190,7 +190,7 @@ infer_profile_from_containers() {
 
     for name in "${running[@]}"; do
         case "$name" in
-            tdengine-server|nodered-server)
+            tdengine-server|nodered-server|iot-visualize|fuxa-server)
                 echo "full"
                 return 0
                 ;;

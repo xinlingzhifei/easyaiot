@@ -32,7 +32,7 @@ public class SecurityConfiguration {
                 registry.antMatchers(ApiConstants.PREFIX + "/**").permitAll();
                 // Webhook 测试接口的安全配置
                 registry.antMatchers("/message/webhook/test/**").permitAll();
-                // VIDEO 告警通知链路内网调用：读取模板与用户分组（无需登录 Token）
+                // VIDEO / iot-device 告警通知链路内网调用：读取模板与用户分组（无需登录 Token）
                 registry.antMatchers(
                         "/message/template/get",
                         "/message/preview/user/group/query",

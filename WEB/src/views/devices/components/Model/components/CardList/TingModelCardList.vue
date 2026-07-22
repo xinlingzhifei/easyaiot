@@ -9,7 +9,7 @@
       >
         <template #renderItem="{ item }">
           <ListItem class="model-item">
-            <div class="prop-card">
+            <div class="prop-card" :class="{ 'is-breach': isBreached(item) }">
               <div class="card-header">
                 <div class="title-wrap">
                   <Tooltip :title="fullTitle(item)" placement="topLeft">
@@ -24,7 +24,7 @@
 
               <div class="card-body">
                 <Tooltip :title="fullValue(item)" placement="top">
-                  <div class="value-line" :class="valueClass(item)">
+                  <div class="value-line" :class="[valueClass(item), { 'is-breach-value': isBreached(item) }]">
                     <span class="value">{{ fullValue(item) }}</span>
                   </div>
                 </Tooltip>
@@ -33,9 +33,13 @@
               <div class="card-footer">
                 <div class="time">
                   <Icon icon="ant-design:clock-circle-outlined" class="time-icon" />
-                  <span>{{ item.ts == 0 ? '--' : formatTime(item.ts) }}</span>
+                  <span>{{ hasValidTs(item.ts) ? formatTime(item.ts) : '--' }}</span>
                 </div>
                 <div class="footer-actions" @click.stop>
+                  <button type="button" class="history-btn" @click="handleThreshold(item)">
+                    <Icon icon="ant-design:setting-outlined" />
+                    <span>阈值</span>
+                  </button>
                   <button type="button" class="history-btn" @click="handleView(item)">
                     <Icon icon="ant-design:line-chart-outlined" />
                     <span>历史</span>
@@ -69,20 +73,62 @@ const props = defineProps({
   api: propTypes.func,
   activeKey: propTypes.string.def('card'),
   searchParams: propTypes.object.def({}),
+  /** propertyCode -> { minValue, maxValue, enabled } */
+  thresholdMap: propTypes.object.def({}),
+  onlyThreshold: propTypes.bool.def(false),
 });
 
-const emit = defineEmits(['getMethod', 'refresh', 'view', 'tabChange', 'loaded']);
+const emit = defineEmits(['getMethod', 'refresh', 'view', 'threshold', 'tabChange', 'loaded']);
 
-const data = ref([]);
+function isBreached(item: any) {
+  const th = props.thresholdMap?.[item?.propertyCode];
+  if (!th || th.enabled === 0) return false;
+  const num = Number(item?.dataValue);
+  if (!Number.isFinite(num)) return false;
+  if (th.minValue != null && num < Number(th.minValue)) return true;
+  if (th.maxValue != null && num > Number(th.maxValue)) return true;
+  return false;
+}
+
+const data = ref<any[]>([]);
 const total = ref(0);
 
 const state = reactive({
   loading: true,
 });
 
-function formatTime(ts: number) {
-  if (!ts) return '--';
-  return formatToDateTime(ts);
+function formatTime(ts: number | string | null | undefined) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return '--';
+  return formatToDateTime(n);
+}
+
+function hasValidTs(ts: unknown) {
+  const n = Number(ts);
+  return Number.isFinite(n) && n > 0;
+}
+
+function mergeRuntimeList(nextList: any[], prevList: any[]) {
+  if (!Array.isArray(nextList) || !nextList.length) return nextList || [];
+  const prevMap = new Map<string, any>();
+  (prevList || []).forEach((item) => {
+    if (item?.propertyCode) prevMap.set(String(item.propertyCode), item);
+  });
+  return nextList.map((item) => {
+    const prev = item?.propertyCode ? prevMap.get(String(item.propertyCode)) : null;
+    if (!prev) return item;
+    const merged = { ...item };
+    // 新接口偶发丢时间戳时，保留上一轮有效时间，避免卡片时间闪烁成 --
+    if (!hasValidTs(merged.ts) && hasValidTs(prev.ts)) {
+      merged.ts = prev.ts;
+    }
+    // 值短暂为空时也保留上一轮，减少整卡闪烁
+    if ((merged.dataValue == null || merged.dataValue === '') && prev.dataValue != null && prev.dataValue !== '') {
+      merged.dataValue = prev.dataValue;
+      if (prev.unit != null) merged.unit = prev.unit;
+    }
+    return merged;
+  });
 }
 
 function displayValue(item: any) {
@@ -126,9 +172,13 @@ async function fetch(p: Record<string, any> = {}, options: { silent?: boolean } 
         pageSize: pageSize.value,
         ...p,
       });
-      data.value = res.data;
-      total.value = res.total;
-      emit('loaded', res.total ?? 0);
+      let list = res.data || [];
+      if (props.onlyThreshold) {
+        list = list.filter((item: any) => props.thresholdMap?.[item?.propertyCode]);
+      }
+      data.value = mergeRuntimeList(list, data.value);
+      total.value = props.onlyThreshold ? list.length : res.total;
+      emit('loaded', total.value ?? 0);
     } finally {
       state.loading = false;
     }
@@ -145,6 +195,11 @@ onMounted(() => {
 });
 
 watch(() => props.searchParams, () => {
+  page.value = 1;
+  fetch();
+}, { deep: true });
+
+watch(() => [props.onlyThreshold, props.thresholdMap], () => {
   page.value = 1;
   fetch();
 }, { deep: true });
@@ -181,6 +236,10 @@ async function handleRefresh(record: object) {
 
 async function handleView(record: object) {
   emit('view', record);
+}
+
+async function handleThreshold(record: object) {
+  emit('threshold', record);
 }
 </script>
 <style lang="less" scoped>
@@ -229,6 +288,11 @@ async function handleView(record: object) {
     &:hover {
       border-color: #91caff;
       box-shadow: 0 2px 8px rgba(24, 144, 255, 0.12);
+    }
+
+    &.is-breach {
+      border-color: #ffa39e;
+      background: #fff2f0;
     }
 
     .card-header {
@@ -325,6 +389,10 @@ async function handleView(record: object) {
             font-size: 24px;
             font-weight: 400;
           }
+        }
+
+        &.is-breach-value {
+          color: #cf1322;
         }
       }
     }

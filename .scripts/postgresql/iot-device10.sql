@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
+\restrict eVkDLU4byUDs23k117BLqeKfezjF6qopUnOwMELF388guHgojes8k1TinZ9hQwB
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "iot-device20";
 CREATE DATABASE "iot-device20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
+\unrestrict eVkDLU4byUDs23k117BLqeKfezjF6qopUnOwMELF388guHgojes8k1TinZ9hQwB
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='iot-device20'"
-\restrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
+\restrict eVkDLU4byUDs23k117BLqeKfezjF6qopUnOwMELF388guHgojes8k1TinZ9hQwB
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1914,6 +1914,125 @@ COMMENT ON COLUMN public.device.deleted IS '是否删除';
 
 
 --
+-- Name: device_alarm_strategy; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_alarm_strategy (
+    id bigint NOT NULL,
+    device_identification character varying(255) NOT NULL,
+    strategy_name character varying(255) DEFAULT '默认告警策略'::character varying NOT NULL,
+    enabled smallint DEFAULT 1 NOT NULL,
+    notify_methods text,
+    notify_users text,
+    channels text,
+    silence_seconds integer DEFAULT 300 NOT NULL,
+    include_offline smallint DEFAULT 1 NOT NULL,
+    remark character varying(500),
+    tenant_id bigint NOT NULL,
+    create_by character varying(64),
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    update_by character varying(64),
+    update_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: TABLE device_alarm_strategy; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.device_alarm_strategy IS '设备告警策略（以设备为单位）';
+
+
+--
+-- Name: COLUMN device_alarm_strategy.notify_methods; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_alarm_strategy.notify_methods IS '通知方式JSON数组 sms/email/wxcp/ding/feishu/http';
+
+
+--
+-- Name: COLUMN device_alarm_strategy.notify_users; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_alarm_strategy.notify_users IS '通知人JSON（由消息模板用户分组解析写入）';
+
+
+--
+-- Name: COLUMN device_alarm_strategy.channels; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_alarm_strategy.channels IS '渠道模板配置JSON [{method,template_id,template_name,userless?}]';
+
+
+--
+-- Name: COLUMN device_alarm_strategy.silence_seconds; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_alarm_strategy.silence_seconds IS '同类告警静默秒数';
+
+
+--
+-- Name: device_alarm_strategy_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.device_alarm_strategy_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: device_alarm_strategy_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.device_alarm_strategy_id_seq OWNED BY public.device_alarm_strategy.id;
+
+
+--
+-- Name: device_associated_link; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_associated_link (
+    id bigint NOT NULL,
+    center_device_identification character varying(255) NOT NULL,
+    associated_device_id bigint NOT NULL,
+    associated_device_identification character varying(255) CONSTRAINT device_associated_link_associated_device_identificatio_not_null NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL,
+    tenant_id bigint NOT NULL,
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    update_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: COLUMN device_associated_link.associated_device_identification; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_associated_link.associated_device_identification IS '关联设备标识';
+
+
+--
+-- Name: device_associated_link_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.device_associated_link_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: device_associated_link_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.device_associated_link_id_seq OWNED BY public.device_associated_link.id;
+
+
+--
 -- Name: device_camera_link; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2480,6 +2599,85 @@ CREATE SEQUENCE public.device_ota_version_verify_id_seq
 
 
 --
+-- Name: device_property_threshold; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_property_threshold (
+    id bigint NOT NULL,
+    device_identification character varying(255) NOT NULL,
+    property_code character varying(255) NOT NULL,
+    property_name character varying(255),
+    min_value double precision,
+    max_value double precision,
+    enabled smallint DEFAULT 1 NOT NULL,
+    alarm_level character varying(32) DEFAULT 'WARNING'::character varying NOT NULL,
+    remark character varying(500),
+    rules_json text,
+    health_weight integer DEFAULT 10 NOT NULL,
+    critical smallint DEFAULT 0 NOT NULL,
+    tenant_id bigint NOT NULL,
+    create_by character varying(64),
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    update_by character varying(64),
+    update_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: TABLE device_property_threshold; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.device_property_threshold IS '设备属性阈值配置';
+
+
+--
+-- Name: COLUMN device_property_threshold.alarm_level; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_property_threshold.alarm_level IS '告警级别 INFO/WARNING/CRITICAL';
+
+
+--
+-- Name: COLUMN device_property_threshold.rules_json; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_property_threshold.rules_json IS '运算符阈值规则JSON数组';
+
+
+--
+-- Name: COLUMN device_property_threshold.health_weight; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_property_threshold.health_weight IS '健康权重1-100';
+
+
+--
+-- Name: COLUMN device_property_threshold.critical; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.device_property_threshold.critical IS '关键属性超限健康归零';
+
+
+--
+-- Name: device_property_threshold_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.device_property_threshold_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: device_property_threshold_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.device_property_threshold_id_seq OWNED BY public.device_property_threshold.id;
+
+
+--
 -- Name: device_service_invoke_response; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2631,6 +2829,55 @@ CREATE SEQUENCE public.device_service_invoke_response_id_seq
 --
 
 ALTER SEQUENCE public.device_service_invoke_response_id_seq OWNED BY public.device_service_invoke_response.id;
+
+
+--
+-- Name: device_threshold_alarm; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_threshold_alarm (
+    id bigint NOT NULL,
+    device_identification character varying(255) NOT NULL,
+    device_name character varying(255),
+    property_code character varying(255) NOT NULL,
+    property_name character varying(255),
+    alarm_value character varying(255),
+    min_value double precision,
+    max_value double precision,
+    alarm_level character varying(32) DEFAULT 'WARNING'::character varying NOT NULL,
+    alarm_status character varying(32) DEFAULT 'OPEN'::character varying NOT NULL,
+    message character varying(1000),
+    kafka_sent smallint DEFAULT 0 NOT NULL,
+    tenant_id bigint NOT NULL,
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    clear_time timestamp without time zone
+);
+
+
+--
+-- Name: TABLE device_threshold_alarm; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.device_threshold_alarm IS '设备阈值告警记录';
+
+
+--
+-- Name: device_threshold_alarm_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.device_threshold_alarm_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: device_threshold_alarm_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.device_threshold_alarm_id_seq OWNED BY public.device_threshold_alarm.id;
 
 
 --
@@ -5265,6 +5512,20 @@ ALTER TABLE ONLY public.device ALTER COLUMN id SET DEFAULT nextval('public.devic
 
 
 --
+-- Name: device_alarm_strategy id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_alarm_strategy ALTER COLUMN id SET DEFAULT nextval('public.device_alarm_strategy_id_seq'::regclass);
+
+
+--
+-- Name: device_associated_link id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_associated_link ALTER COLUMN id SET DEFAULT nextval('public.device_associated_link_id_seq'::regclass);
+
+
+--
 -- Name: device_camera_link id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -5293,10 +5554,24 @@ ALTER TABLE ONLY public.device_ota_pkg ALTER COLUMN id SET DEFAULT nextval('publ
 
 
 --
+-- Name: device_property_threshold id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_property_threshold ALTER COLUMN id SET DEFAULT nextval('public.device_property_threshold_id_seq'::regclass);
+
+
+--
 -- Name: device_service_invoke_response id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.device_service_invoke_response ALTER COLUMN id SET DEFAULT nextval('public.device_service_invoke_response_id_seq'::regclass);
+
+
+--
+-- Name: device_threshold_alarm id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_threshold_alarm ALTER COLUMN id SET DEFAULT nextval('public.device_threshold_alarm_id_seq'::regclass);
 
 
 --
@@ -5478,10 +5753,26 @@ COPY public.dataset_video (id, dataset_id, video_path, cover_path, description, 
 --
 
 COPY public.device (id, client_id, app_id, device_identification, device_name, device_description, device_status, connect_status, is_will, product_identification, create_by, create_time, update_by, update_time, remark, device_version, device_sn, ip_address, mac_address, active_status, extension, activated_time, last_online_time, parent_identification, device_type, tenant_id, deleted) FROM stdin;
-920001	mtcp01	demo	DEV_MTCP_001	Modbus TCP 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_MODBUS_TCP_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 15:06:32.589048	\N	\N	SN_MTCP_001	127.0.0.1	\N	1	{"protocolConfig":{"type":"MODBUS_TCP","enabled":true,"host":"192.168.1.100","port":502,"unitId":1,"pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","function":"HOLDING_REGISTER","address":0,"dataType":"UINT16","scale":0.1,"writable":false},{"propertyCode":"setpoint","identifier":"setpoint","function":"HOLDING_REGISTER","address":1,"dataType":"UINT16","scale":1,"writable":true},{"propertyCode":"running","identifier":"running","function":"COIL","address":0,"dataType":"UINT16","writable":true}]}}	2026-07-18 13:46:50.294541	2026-07-18 14:22:42.284	\N	COMMON	1	0
-920002	mrtu01	demo	DEV_MRTU_001	Modbus RTU 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_MODBUS_RTU_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 15:06:29.655484	\N	\N	SN_MRTU_001	\N	\N	1	{"protocolConfig":{"type":"MODBUS_RTU","enabled":true,"serialPort":"/dev/ttyUSB0","baudRate":9600,"dataBits":8,"stopBits":"1","parity":"NONE","unitId":1,"transmitDelayMs":0,"pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","function":"HOLDING_REGISTER","address":0,"dataType":"UINT16","scale":0.1,"writable":false},{"propertyCode":"setpoint","identifier":"setpoint","function":"HOLDING_REGISTER","address":1,"dataType":"UINT16","scale":1,"writable":true},{"propertyCode":"running","identifier":"running","function":"COIL","address":0,"dataType":"UINT16","writable":true}]}}	2026-07-18 13:47:21.800345	2026-07-18 14:22:48.789	\N	COMMON	1	0
-920003	opcua01	demo	DEV_OPCUA_001	OPC UA 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_OPCUA_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-18 15:06:27.584948	\N	\N	SN_OPCUA_001	127.0.0.1	\N	1	{"protocolConfig":{"type":"OPCUA","enabled":true,"endpointUrl":"opc.tcp://192.168.1.100:4840/freeopcua/server/","pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","nodeId":"ns=2;s=Temperature","dataType":"FLOAT","writable":false},{"propertyCode":"setpoint","identifier":"setpoint","nodeId":"ns=2;s=Setpoint","dataType":"FLOAT","writable":true},{"propertyCode":"running","identifier":"running","nodeId":"ns=2;s=Running","dataType":"BOOLEAN","writable":true}]}}	2026-07-18 14:11:02.027991	2026-07-18 14:22:48.292	\N	COMMON	1	0
+920001	mtcp01	demo	DEV_MTCP_001	Modbus TCP 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_MODBUS_TCP_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-20 15:34:34.923061	\N	\N	SN_MTCP_001	127.0.0.1	\N	1	{"protocolConfig":{"type":"MODBUS_TCP","enabled":true,"host":"192.168.1.100","port":502,"unitId":1,"pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","function":"HOLDING_REGISTER","address":0,"dataType":"UINT16","scale":0.1,"writable":false},{"propertyCode":"setpoint","identifier":"setpoint","function":"HOLDING_REGISTER","address":1,"dataType":"UINT16","scale":1,"writable":true},{"propertyCode":"running","identifier":"running","function":"COIL","address":0,"dataType":"UINT16","writable":true}]}}	2026-07-18 13:46:50.294541	2026-07-18 14:22:42.284	\N	COMMON	1	0
+920002	mrtu01	demo	DEV_MRTU_001	Modbus RTU 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_MODBUS_RTU_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-20 15:34:36.270664	\N	\N	SN_MRTU_001	\N	\N	1	{"protocolConfig":{"type":"MODBUS_RTU","enabled":true,"serialPort":"/dev/ttyUSB0","baudRate":9600,"dataBits":8,"stopBits":"1","parity":"NONE","unitId":1,"transmitDelayMs":0,"pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","function":"HOLDING_REGISTER","address":0,"dataType":"UINT16","scale":0.1,"writable":false},{"propertyCode":"setpoint","identifier":"setpoint","function":"HOLDING_REGISTER","address":1,"dataType":"UINT16","scale":1,"writable":true},{"propertyCode":"running","identifier":"running","function":"COIL","address":0,"dataType":"UINT16","writable":true}]}}	2026-07-18 13:47:21.800345	2026-07-18 14:22:48.789	\N	COMMON	1	0
+920003	opcua01	demo	DEV_OPCUA_001	OPC UA 演示设备	industrial demo	ENABLE	OFFLINE	\N	IND_OPCUA_DEMO	admin	2026-07-18 13:29:08.165384	admin	2026-07-20 15:34:32.917993	\N	\N	SN_OPCUA_001	127.0.0.1	\N	1	{"protocolConfig":{"type":"OPCUA","enabled":true,"endpointUrl":"opc.tcp://192.168.1.100:4840/freeopcua/server/","pollIntervalMs":5000,"points":[{"propertyCode":"temperature","identifier":"temperature","nodeId":"ns=2;s=Temperature","dataType":"FLOAT","writable":false},{"propertyCode":"setpoint","identifier":"setpoint","nodeId":"ns=2;s=Setpoint","dataType":"FLOAT","writable":true},{"propertyCode":"running","identifier":"running","nodeId":"ns=2;s=Running","dataType":"BOOLEAN","writable":true}]}}	2026-07-18 14:11:02.027991	2026-07-18 14:22:48.292	\N	COMMON	1	0
 57038	\N	默认场景	9720084293632004	储能设备	\N	ENABLE	ONLINE	\N	9820630576939008	admin	2024-10-13 10:56:28	1	2026-07-20 13:50:15.997	\N	\N	9720084293632005	\N	\N	1	{"shadow": {"RSSI": "-60", "Vbatt": "3.58", "deviceId": "9720084293632004", "PVAngle_X": "-0.58", "PVAngle_Y": "-2.99", "PVAngle_Z": "-0.79", "eventTime": "2026-07-17T05:50:15Z", "serviceId": "demo-svc"}, "shadowUpdateTime": "2026-07-17T13:50:15.997613+08:00"}	2026-07-16 09:42:08.230075	2026-07-17 13:50:15.991042	\N	GATEWAY	1	0
+\.
+
+
+--
+-- Data for Name: device_alarm_strategy; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.device_alarm_strategy (id, device_identification, strategy_name, enabled, notify_methods, notify_users, channels, silence_seconds, include_offline, remark, tenant_id, create_by, create_time, update_by, update_time) FROM stdin;
+\.
+
+
+--
+-- Data for Name: device_associated_link; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.device_associated_link (id, center_device_identification, associated_device_id, associated_device_identification, sort_order, tenant_id, create_time, update_time) FROM stdin;
 \.
 
 
@@ -5520,10 +5811,26 @@ COPY public.device_ota_pkg (id, type, name, version, upgrade_mode, url, key_vers
 
 
 --
+-- Data for Name: device_property_threshold; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.device_property_threshold (id, device_identification, property_code, property_name, min_value, max_value, enabled, alarm_level, remark, rules_json, health_weight, critical, tenant_id, create_by, create_time, update_by, update_time) FROM stdin;
+\.
+
+
+--
 -- Data for Name: device_service_invoke_response; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.device_service_invoke_response (id, message_id, device_id, device_identification, product_identification, service_identifier, request_id, method, response_data, response_code, response_msg, topic, report_time, tenant_id, create_time) FROM stdin;
+\.
+
+
+--
+-- Data for Name: device_threshold_alarm; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.device_threshold_alarm (id, device_identification, device_name, property_code, property_name, alarm_value, min_value, max_value, alarm_level, alarm_status, message, kafka_sent, tenant_id, create_time, clear_time) FROM stdin;
 \.
 
 
@@ -5835,6 +6142,20 @@ SELECT pg_catalog.setval('public.datasource_seq', 1, false);
 
 
 --
+-- Name: device_alarm_strategy_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.device_alarm_strategy_id_seq', 1, false);
+
+
+--
+-- Name: device_associated_link_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.device_associated_link_id_seq', 1, false);
+
+
+--
 -- Name: device_camera_link_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
@@ -5905,10 +6226,24 @@ SELECT pg_catalog.setval('public.device_ota_version_verify_id_seq', 11, true);
 
 
 --
+-- Name: device_property_threshold_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.device_property_threshold_id_seq', 1, false);
+
+
+--
 -- Name: device_service_invoke_response_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.device_service_invoke_response_id_seq', 1, false);
+
+
+--
+-- Name: device_threshold_alarm_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.device_threshold_alarm_id_seq', 1, false);
 
 
 --
@@ -6332,6 +6667,22 @@ ALTER TABLE ONLY public.dataset_video
 
 
 --
+-- Name: device_alarm_strategy device_alarm_strategy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_alarm_strategy
+    ADD CONSTRAINT device_alarm_strategy_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: device_associated_link device_associated_link_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_associated_link
+    ADD CONSTRAINT device_associated_link_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: device_camera_link device_camera_link_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6356,11 +6707,27 @@ ALTER TABLE ONLY public.device_ota_pkg
 
 
 --
+-- Name: device_property_threshold device_property_threshold_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_property_threshold
+    ADD CONSTRAINT device_property_threshold_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: device_service_invoke_response device_service_invoke_response_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.device_service_invoke_response
     ADD CONSTRAINT device_service_invoke_response_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: device_threshold_alarm device_threshold_alarm_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_threshold_alarm
+    ADD CONSTRAINT device_threshold_alarm_pkey PRIMARY KEY (id);
 
 
 --
@@ -6436,6 +6803,30 @@ ALTER TABLE ONLY public.app
 
 
 --
+-- Name: device_alarm_strategy uk_device_alarm_strategy; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_alarm_strategy
+    ADD CONSTRAINT uk_device_alarm_strategy UNIQUE (device_identification);
+
+
+--
+-- Name: device_associated_link uk_device_associated_link; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_associated_link
+    ADD CONSTRAINT uk_device_associated_link UNIQUE (center_device_identification, associated_device_identification);
+
+
+--
+-- Name: device_property_threshold uk_device_property_threshold; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_property_threshold
+    ADD CONSTRAINT uk_device_property_threshold UNIQUE (device_identification, property_code);
+
+
+--
 -- Name: warehouse_dataset warehouse_dataset_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6470,6 +6861,27 @@ COMMENT ON INDEX public.idx_app_id IS '应用ID';
 --
 
 CREATE INDEX idx_created_time ON public.app USING btree (created_time);
+
+
+--
+-- Name: idx_dal_associated; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dal_associated ON public.device_associated_link USING btree (associated_device_identification);
+
+
+--
+-- Name: idx_dal_center; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dal_center ON public.device_associated_link USING btree (center_device_identification);
+
+
+--
+-- Name: idx_das_device; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_das_device ON public.device_alarm_strategy USING btree (device_identification);
 
 
 --
@@ -6547,6 +6959,41 @@ CREATE INDEX idx_device_service_invoke_response_message_id ON public.device_serv
 --
 
 CREATE INDEX idx_device_service_invoke_response_tenant_id ON public.device_service_invoke_response USING btree (tenant_id);
+
+
+--
+-- Name: idx_dpt_device; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dpt_device ON public.device_property_threshold USING btree (device_identification);
+
+
+--
+-- Name: idx_dpt_enabled; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dpt_enabled ON public.device_property_threshold USING btree (device_identification, enabled);
+
+
+--
+-- Name: idx_dta_create; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dta_create ON public.device_threshold_alarm USING btree (create_time);
+
+
+--
+-- Name: idx_dta_device; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dta_device ON public.device_threshold_alarm USING btree (device_identification);
+
+
+--
+-- Name: idx_dta_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_dta_status ON public.device_threshold_alarm USING btree (device_identification, alarm_status);
 
 
 --
@@ -6770,5 +7217,5 @@ CREATE TRIGGER update_iot_app_updated_time BEFORE UPDATE ON public.app FOR EACH 
 -- PostgreSQL database dump complete
 --
 
-\unrestrict gxZlMvE2ZLwp6eIJUJzBvEFYV9BQCPG6ae7ef73hdggQ2Orwbzv6iedLVn412Iz
+\unrestrict eVkDLU4byUDs23k117BLqeKfezjF6qopUnOwMELF388guHgojes8k1TinZ9hQwB
 

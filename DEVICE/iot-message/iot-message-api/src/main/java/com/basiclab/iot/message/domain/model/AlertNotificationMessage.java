@@ -128,10 +128,26 @@ public class AlertNotificationMessage {
         private String time;
         
         /**
-         * 告警事件类型[realtime:实时算法任务,snap:抓拍算法任务]
+         * 告警事件类型[realtime:实时算法任务,snap:抓拍算法任务,threshold:设备阈值]
          */
         @JsonAlias("task_type")
         private String taskType;
+
+        /** 设备属性标识（阈值告警） */
+        @JsonAlias({"property_code", "property"})
+        private String property;
+
+        /** 设备属性名称（阈值告警） */
+        @JsonAlias("property_name")
+        private String propertyName;
+
+        /** 触发时的属性值（阈值告警） */
+        @JsonAlias("alarm_value")
+        private String value;
+
+        /** 告警级别 INFO/WARNING/CRITICAL */
+        @JsonAlias("alarm_level")
+        private String alarmLevel;
     }
 }
 

@@ -1,94 +1,107 @@
 <template>
   <div class="device-wrapper">
-    <BasicTable @register="registerTable" v-if="state.isTableMode">
-      <template #toolbar>
-        <Button type="primary" @click="handleOpenProductDrawer(true, { isEdit: false })"
-                  preIcon="ant-design:plus-outlined">
-          添加产品
-        </Button>
-        <Button type="default" @click="handleClickSwap"
-                  preIcon="ant-design:swap-outlined">切换视图
-        </Button>
-        <PopConfirmButton
-          placement="topRight"
-          @confirm="handleDeleteAll"
-          type="primary"
-          color="error"
-          :disabled="!checkedKeys.length"
-          :title="`您确定要批量删除数据?`"
-          preIcon="ant-design:delete-outlined"
-        >批量删除
-        </PopConfirmButton
-        >
-      </template>
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'action'">
-          <TableAction
-            :actions="[
-              {
-                icon: 'ant-design:eye-outlined',
-                tooltip: {
-                  title: '详情',
-                  placement: 'top',
-                },
-                onClick: goProductDrawer.bind(null, record),
-              },
-              {
-                icon: 'ant-design:edit-filled',
-                tooltip: {
-                  title: '编辑',
-                  placement: 'top',
-                },
-                onClick: handleOpenProductDrawer.bind(null, true, { isEdit: true, record }),
-              },
-              {
-                tooltip: {
-                  title: '删除',
-                  placement: 'top',
-                },
-                icon: 'material-symbols:delete-outline-rounded',
+    <div class="device-tab page-content-card">
+      <Tabs
+        v-model:activeKey="state.activeKey"
+        :animated="{ inkBar: true, tabPane: false }"
+        :destroyInactiveTabPane="true"
+        :tabBarGutter="60"
+      >
+        <TabPane key="list" tab="产品列表">
+          <div class="device-list-pane">
+            <BasicTable @register="registerTable" v-if="state.isTableMode">
+              <template #toolbar>
+                <Button type="primary" @click="handleOpenProductDrawer(true, { isEdit: false })"
+                          preIcon="ant-design:plus-outlined">
+                  添加产品
+                </Button>
+                <Button type="default" @click="handleClickSwap"
+                          preIcon="ant-design:swap-outlined">切换视图
+                </Button>
+                <PopConfirmButton
+                  placement="topRight"
+                  @confirm="handleDeleteAll"
+                  type="primary"
+                  color="error"
+                  :disabled="!checkedKeys.length"
+                  :title="`您确定要批量删除数据?`"
+                  preIcon="ant-design:delete-outlined"
+                >批量删除
+                </PopConfirmButton>
+              </template>
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.dataIndex === 'action'">
+                  <TableAction
+                    :actions="[
+                      {
+                        icon: 'ant-design:eye-outlined',
+                        tooltip: {
+                          title: '详情',
+                          placement: 'top',
+                        },
+                        onClick: goProductDrawer.bind(null, record),
+                      },
+                      {
+                        icon: 'ant-design:edit-filled',
+                        tooltip: {
+                          title: '编辑',
+                          placement: 'top',
+                        },
+                        onClick: handleOpenProductDrawer.bind(null, true, { isEdit: true, record }),
+                      },
+                      {
+                        tooltip: {
+                          title: '删除',
+                          placement: 'top',
+                        },
+                        icon: 'material-symbols:delete-outline-rounded',
 
-                popConfirm: {
-                  placement: 'topRight',
-                  title: '是否确认删除？',
-                  confirm: handleDeleteProduct.bind(null, record),
-                },
-              },
-            ]"
-          />
-        </template>
-      </template>
-    </BasicTable>
-    <div v-else>
-      <ProductCardList :params="params" :api="getDeviceProfiles" @get-method="getMethod"
-                       @delete="handleDel" @edit="handleEdit" @view="handleView">
-        <template #header>
-          <Button type="primary" @click="handleOpenProductDrawer(true, { isEdit: false })"
-                    preIcon="ant-design:plus-outlined">
-            添加产品
-          </Button>
-          <Button type="default" @click="handleClickSwap"
-                    preIcon="ant-design:swap-outlined">切换视图
-          </Button>
-          <PopConfirmButton
-            placement="topRight"
-            @confirm="handleDeleteAll"
-            type="primary"
-            color="error"
-            :disabled="!checkedKeys.length"
-            :title="`您确定要批量删除数据?`"
-            preIcon="ant-design:delete-outlined"
-          >批量删除
-          </PopConfirmButton>
-        </template>
-      </ProductCardList>
+                        popConfirm: {
+                          placement: 'topRight',
+                          title: '是否确认删除？',
+                          confirm: handleDeleteProduct.bind(null, record),
+                        },
+                      },
+                    ]"
+                  />
+                </template>
+              </template>
+            </BasicTable>
+            <div v-else class="device-card-wrap">
+              <ProductCardList :params="params" :api="getDeviceProfiles" @get-method="getMethod"
+                               @delete="handleDel" @edit="handleEdit" @view="handleView">
+                <template #header>
+                  <Button type="primary" @click="handleOpenProductDrawer(true, { isEdit: false })"
+                            preIcon="ant-design:plus-outlined">
+                    添加产品
+                  </Button>
+                  <Button type="default" @click="handleClickSwap"
+                            preIcon="ant-design:swap-outlined">切换视图
+                  </Button>
+                  <PopConfirmButton
+                    placement="topRight"
+                    @confirm="handleDeleteAll"
+                    type="primary"
+                    color="error"
+                    :disabled="!checkedKeys.length"
+                    :title="`您确定要批量删除数据?`"
+                    preIcon="ant-design:delete-outlined"
+                  >批量删除
+                  </PopConfirmButton>
+                </template>
+              </ProductCardList>
+            </div>
+            <ProductModal @register="productDrawerRegister" @success="reloadList"/>
+          </div>
+        </TabPane>
+      </Tabs>
     </div>
-    <ProductModal @register="productDrawerRegister" @success="reloadList"/>
   </div>
 </template>
 
 <script lang="ts" setup name="productPage">
 import {reactive, ref} from 'vue';
+import {Tabs} from 'ant-design-vue';
 import {BasicTable, TableAction, useTable} from '@/components/Table';
 import {Button, PopConfirmButton} from '@/components/Button';
 import {getBasicColumns, getFormConfig} from './Data';
@@ -102,6 +115,8 @@ import ProductCardList from "@/views/product/components/CardList/ProductCardList
 
 defineOptions({name: 'Product'})
 
+const TabPane = Tabs.TabPane;
+
 const checkedKeys = ref<Array<string | number>>([]);
 const {createMessage} = useMessage();
 const [productDrawerRegister, {openDrawer: handleOpenProductDrawer}] = useDrawer();
@@ -109,6 +124,7 @@ const router = useRouter();
 
 const state = reactive({
   isTableMode: false,
+  activeKey: 'list',
 });
 
 const [
@@ -301,24 +317,59 @@ function handleDel(record) {
 }
 
 .device-wrapper {
-  :deep(.ant-tabs-nav) {
-    padding: 5px 0 0 25px;
+  padding: 16px;
+  box-sizing: border-box;
+  min-height: calc(100vh - 88px);
+  background: transparent;
+
+  .page-content-card {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .device-tab {
+    :deep(.ant-tabs-nav) {
+      padding: 5px 0 0 25px;
+      margin-bottom: 0;
+    }
+
+    :deep(.ant-tabs) {
+      background-color: #fff;
+    }
+  }
+
+  .device-list-pane {
+    min-height: calc(100vh - 200px);
+  }
+
+  .device-card-wrap {
+    min-height: calc(100vh - 200px);
+    background: #fff;
+    display: flex;
+    flex-direction: column;
   }
 
   :deep(.ant-form-item) {
     margin-bottom: 10px;
   }
 
-  .device-tab {
-    padding: 16px 19px 0 15px;
+  :deep(.iot-basic-table-form-container) {
+    padding: 0;
+    background: #fff;
 
-    .ant-tabs {
-      background-color: #FFFFFF;
-
-      :deep(.ant-tabs-nav) {
-        padding: 5px 0 0 25px;
-      }
+    .ant-form {
+      margin-bottom: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 16px 16px 0;
     }
+  }
+
+  :deep(.ant-table-wrapper) {
+    border-radius: 0;
+    background: #fff;
+    padding: 8px 16px 16px;
   }
 }
 </style>

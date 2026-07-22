@@ -36,7 +36,7 @@ Many smart IoT projects hit the same wall at deployment: video systems, device p
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-The platform comprises eight core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, and EDGE</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side: GB28181 / ONVIF multi-protocol camera access, <strong>DJI dock and drone aerial view access</strong>, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and <strong>Infinite Federated Edge Cluster mode</strong> (~512MB memory, Ceph with zero local disk at the edge, one-line command turns ordinary boards intelligent, sprawl compute and aggregate to the cloud), and MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA IoT device lifecycle management. On the experience side: the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
+The platform comprises nine core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, EDGE, and VISUALIZE</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side, the platform covers GB28181 / ONVIF multi-protocol camera access, <strong>DJI dock and drone aerial view access</strong>, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and <strong>Infinite Federated Edge Cluster mode</strong> (ordinary development boards ready out of the box, on-site intelligence for local decisions, alerts and evidence automatically aggregated to the cloud, compute scaling with business as needed), plus MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA IoT device lifecycle management, and <strong>visualization dashboards and Web SCADA configuration</strong>, so device data can be displayed as command-center situational awareness and mapped back to process screens. On the experience side, the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
@@ -55,7 +55,7 @@ The platform comprises eight core modules—<strong>WEB, APP, DEVICE, NODE, VIDE
 yFeiEye is a cloud-edge-device integrated intelligent IoT platform that focuses on the deep integration of AI and IoT. Through core capabilities such as algorithm task management, real-time stream analysis, and model service cluster inference, the platform achieves a complete closed-loop from device access to data collection, AI analysis, and intelligent decision-making, truly realizing interconnected everything and intelligent control of everything.
 </p>
 
-### 🎯 Three Tiers, One Platform
+### 🎯 Three Hardware Tiers, One Platform
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
 Many intelligent IoT projects stall at deployment: <strong>full features won't fit on small machines; to make them fit, you cut capabilities, split versions, and maintain multiple deployment packages.</strong> yFeiEye resolves this with one platform—<strong>edge boxes for point intelligence, AI all-in-one cameras for on-wall analysis, AIoT full-stack all-in-ones for the complete stack in one box</strong>. Pick the tier that matches your field hardware; the same software runs from single-site pilots through floor coverage to full-stack delivery—no split versions.
@@ -117,7 +117,7 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
   <li><strong>Multi-Central-Node × Multi-Worker-Node Federated Cluster</strong>: Designed for cross-region, multi-datacenter, and cloud-edge collaborative deployments, the platform adopts an "N central nodes + N worker nodes" federated architecture—central nodes serve as the unified control plane while worker nodes act as the compute and media execution plane, building a horizontally scalable distributed scheduling system. Each central node manages its own worker cluster, supporting runtime distribution and one-click remote deployment of monitoring agents, distributed storage, streaming engines, FFmpeg transcoding, video analytics runtimes, and model inference/training workloads. Multiple central nodes can interconnect and synchronize; the cluster swimlane view intuitively presents "central—worker" topology and resource levels, with lane-level batch maintenance and component distribution. Algorithm tasks, auto-labeling pipelines, and stream relay workloads are intelligently scheduled by node role and GPU capability with elastic queue dispatch—enabling massive stream ingestion, high-concurrency inference, and distributed training to run together in one cluster, truly delivering "onboard easily, schedule clearly, scale openly, govern completely"</li>
   <li><strong>SAM Zero-Start Auto-Labeling Orchestration Pipeline</strong>: Built for cold-start scenarios with no annotated samples and no usable detection model, the platform integrates SAM open-vocabulary segmentation with an intelligent orchestration engine to deliver a one-click, unattended labeling pipeline. Per strategy, the system automatically chains camera frame extraction, SAM text-prompt bootstrap labeling, YOLO fine-tuning once thresholds are met, production-phase YOLO high-speed inference with intelligent SAM fallback for missed detections, periodic iterative training, and automatic dataset packaging and export—closing the full "capture-annotate-train-export" loop. The orchestration hub continuously tracks pipeline phase and labeling progress, autonomously deciding among SAM, YOLO, and hybrid supplement modes and when to trigger training; supports pause/resume and elastic scheduling on local or cluster compute queues. With visual strategy configuration and run logs, users can grow a custom detection capability from zero samples and zero models, making "define categories in words, watch the model take shape" the default path for dataset building</li>
   <li><strong>Ten-Thousand-Node Elastic Compute Cluster & Horizontal Scaling Pool</strong>: Built for hyperscale AI and video workloads, the platform provides a cloud-edge-end distributed compute foundation that unifies algorithm tasks, stream relay, algorithm services, model training, and inference under one horizontal load-balancing and elastic scaling fabric. New servers join the fleet with one-click onboarding and immediately become schedulable compute units—the control plane automatically dispatches work and balances load based on resource levels and business pressure, enabling linear scaling from hundreds to tens of thousands of camera streams and from a single machine to ten-thousand-node clusters without redeployment or manual tuning. Massive stream ingestion, high-concurrency inference, and distributed training run together in a shared compute pool—truly delivering "scale on demand, run reliably, govern with confidence"</li>
-  <li><strong>Infinite Federated Edge Cluster (EDGE)</strong>: For ordinary development boards such as RK3588 and Raspberry Pi and on-site compute nodes, delivers a lightweight headless edge algorithm runtime at about <strong>512MB</strong> memory—<strong>one command</strong> writes the control-plane address and starts, turning ordinary boards intelligent; sprawl compute deployment by site while alerts and events aggregate to the cloud. Alert images and snapshots write to shared Ceph and are archived by the center sink—<strong>Ceph with zero local disk at the edge</strong> for business storage (no local business disk, no direct MinIO upload). Extracts the algorithm execution plane from the VIDEO control plane into a dedicated <code>EDGE</code> module—no WEB UI, no local business database, focused on "receive commands, run inference, report events." On site configure only <code>EDGE_NODE_URL</code>; via enroll / runtime-config, auto-provision EMQX cluster endpoints, MQTT credentials, Ceph hot-buffer paths, and Topic contracts. Any number of nodes share one EMQX bus; the control plane schedules realtime / snapshot / patrol algorithm tasks by node capability. Start/stop commands arrive on <code>mqtt/iot-algo-task-cmd</code>; heartbeat, ack, alert, and postprocess flow back on the same bus—truly "512MB to start, Ceph zero local disk at the edge, one command online, infinite federated scale-out, on-site intelligence and cloud aggregation together"</li>
+  <li><strong>Infinite Federated Edge Cluster Mode</strong>: For wide-area deployment, weak-network sites, and phased scale-out, intelligence is deployed where the business is—ordinary development boards and edge compute nodes can become on-duty units at any time. The center distributes tasks and policies uniformly; the field performs perception and judgment locally, with alerts and evidence automatically reported and aggregated back—no need to stack heavy servers and complex ops at every site. As business grows, add nodes on demand to linearly extend coverage—"add a little, gain a lot; add a stream, gain more assurance"—truly achieving compute that grows with the scenario and intelligence that spreads with the business</li>
   <li><strong>Tianditu Spatial Visualization & Map-Based Analysis</strong>: Integrated with China's national Tianditu map service, the platform brings cameras, alerts, and person/vehicle recognition onto a single map—upgrading surveillance from "watching feeds" to "seeing the big picture." Both the streaming media and alert modules offer a "Map Distribution" view with a device directory tree for regional focus, giving instant visibility into checkpoint layout and online status. Map click-to-pin, location search, and batch coordinate import help GB channels, NVR channels, and direct-connect cameras get mapped quickly so every feed has clear spatial context. Alerts are automatically placed on the map via linked camera coordinates; filter by time, event type, task, and business tags, then open snapshots and recordings in one click—helping operators move fast from "where did it happen" to action. Combined with face and plate libraries, hits across multiple sites can be woven into spatial trails—<strong>trace by person</strong> to reconstruct movement and presence within a monitored area; <strong>trace by vehicle</strong> to link passing records and pinpoint routes and stop zones for find-person/find-vehicle, patrol deployment, and post-incident review. Mobile devices also support track playback to replay patrol and travel paths on a timeline. Switch freely between vector and satellite basemaps with auto-fit view, so managers use the map as the anchor to spot anomalies, lock onto targets, and coordinate response faster</li>
   <li><strong>Qwen / DeepSeek Multi-GPU Deployment</strong>: Supports deploying Qwen, DeepSeek, and other large language models across multiple GPUs in parallel. GPU resources can be scheduled flexibly at the cluster and Worker level, enabling elastic scaling and load balancing of model instances to deliver stable inference under high concurrency and long-context workloads</li>
   <li><strong>Vision Large Model Intelligent Understanding</strong>: Integrated with QwenVL3 vision large model, supports deep visual reasoning and semantic understanding of real-time video frames, enabling intelligent analysis and scene comprehension of frame content, providing richer visual cognitive capabilities, achieving a leap from pixel-level perception to semantic-level understanding</li>
@@ -161,10 +161,17 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
 #### 🌐 IoT Capabilities
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 12px 0 8px 0;">
-Many projects reduce IoT to a “device ledger + message relay”—devices connect, yet remain unmanaged; data reports, yet cannot drive action; alerts fire, yet the site stays invisible. yFeiEye positions IoT as the <strong>execution nerve</strong> in a <strong>sense—understand—decide—act</strong> loop: sensors and actuators provide “numbers,” cameras and AI provide “pictures,” while rules and device shadows turn both into operable business actions—so the platform not only “sees,” but also “manages, controls precisely, and scales.”
+Many projects reduce IoT to a "device ledger + message relay"—devices connect but cannot be governed; data reports but cannot drive action; alerts fire but the site stays invisible; you have data but cannot build screens or align with process flows. yFeiEye positions IoT as the <strong>execution nerve</strong> in a <strong>sense—understand—decide—act</strong> closed loop: sensors and actuators provide "numbers," cameras and AI provide "pictures," visualization dashboards and SCADA configuration turn "numbers" into commandable situational awareness, and rules plus device shadows weave both into operable business actions—so the platform not only "sees clearly," but also "displays on screen, understands the process, governs effectively, controls precisely, and scales openly."
 </p>
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>Visual Management</strong>: When device metrics, alerts, and business KPIs stay trapped in lists and message payloads, leadership cannot see the full picture, duty staff cannot read the situation, and reports still need separate PPTs—data value stalls at "collected but not displayed." The platform consolidates visualization projects, template center, asset library, data sources, and service deployment into one capability: drag IoT data into operational dashboards for campus situational awareness, production-line KPIs, equipment operations, and more—draft, refine, publish, and deploy—upgrading IoT from "data in the back office" to "screens in the front office," without bolting on a separate dashboard tool for command and display</li>
+  <li><strong>Visualization Project Full Lifecycle</strong>: When dashboard projects live on personal PCs and temporary links, handoffs get messy, versions get lost, and go-live becomes contentious. The platform manages dashboard project creation, editing, preview, publishing, and retirement in one place—table/card views for inventory, published vs. unpublished at a glance—who is working on what, how far along, and whether it can go on the wall; project status is trackable, handoff-ready, and acceptance-ready, turning "build one screen" into a deliverable operational asset</li>
+  <li><strong>Visualization Template Center</strong>: Starting every project from a blank canvas inevitably stretches delivery with design and integration. Mature templates for campus overview, factory situational awareness, equipment boards, and more can be reused—create a new project, apply a template, fine-tune—fewer blank-canvas starts for similar scenarios, faster PoC and multi-project replication with consistent metrics, turning "did it once" into "can deliver many times"</li>
+  <li><strong>Visualization Assets & Data Source Governance</strong>: When icons, backgrounds, and video assets are hoarded per project and data APIs are rewritten per screen, styles clash and fields drift. The asset library centralizes reusable visual assets; data sources uniformly connect device and business APIs—the same visual style and data definitions serve multiple dashboards; change once, benefit everywhere, with less duplicate build and fewer metric disputes</li>
+  <li><strong>Visualization Publishing & Service Deployment</strong>: A dashboard that cannot be deployed is wasted effort. After confirmation, projects link to service deployment and go live in command centers, duty rooms, or public display entry points—preview and production use the same project—from "edit mode" to "on-duty mode" with a clear path; acceptance and daily watch no longer rely on temporary links and verbal agreements</li>
+  <li><strong>SCADA Configuration Management</strong>: Industrial and building sites fear "gauges everywhere but process unreadable"—meters, valves, and tank levels have readings, yet duty staff cannot map them to pipelines and steps, and anomalies are guessed from experience. The platform provides Web SCADA capability, binding device metrics to water-plant process overviews, production-line boards, plant network topology, electrical room monitoring, and more—edit and preview in one entry, publish for duty—so "numbers" return to "diagrams," process state is obvious at a glance, and watch shifts from flipping tables to reading process diagrams for judgment and action</li>
+  <li><strong>SCADA Screen Real-Time Monitoring & Limited Control</strong>: Pure list monitoring "shows points but not the process"—slow anomaly localization, hard shift handoffs, and on-site training by senior staff only. SCADA runtime animates key metrics onto tanks, valve groups, motors, and switches; trends and status refresh on one screen; limited start/stop and reset actions can be done from the diagram when needed—newcomers learn from the diagram, shifts hand off on the same screen, and anomalies compress from "find the point" to "read the process," bringing industrial sites into daily operations that are watchable, accountable, and extensible</li>
   <li><strong>Product Model Management</strong>: The costliest part of IoT rollout is often not buying devices, but rebuilding profiles for every new device class. Products serve as templates for similar devices—create, enable/disable, search, and switch between table/card views; configure application scenarios, vendor, and model once—then scale by reusing the product template instead of filling each unit from scratch. Define once, reuse many times, and turn linear access cost into a reusable asset</li>
   <li><strong>Multi-Type Product Modeling</strong>: When direct terminals, edge gateways, gateway sub-devices, and video devices coexist, forcing one access path mixes topology and breaks protocols. Model four forms separately—direct-connected, gateway, gateway sub-device, and video—so edge aggregation, direct terminals, and video devices each follow their own path. Topology stays clean, protocols stay correct, and large-scale onboarding starts from the right product skeleton</li>
   <li><strong>Product Access Protocol & Auth Configuration</strong>: Agreeing protocol and auth per device is a classic source of integration rework. Finalize access protocol (MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA), data format, authentication, and encryption/decryption at the product level; child devices inherit the same rules—no more per-device auth or payload negotiations. Access norms shift from “oral tradition” to an inheritable product-level contract</li>
@@ -185,6 +192,10 @@ Many projects reduce IoT to a “device ledger + message relay”—devices conn
   <li><strong>Device Basic Profile</strong>: If replacement, accountability, and reconciliation rely on verbal “who is this,” the responsibility chain breaks. Persist name, identifier, SN, product, version, IP, and other one-device-one-record fields—open the profile to confirm identity, with less verbal chasing and on-site digging</li>
   <li><strong>Device Access Guide</strong>: If field integration still means hunting thick docs and asking experts, go-live stretches endlessly. Per device type: recommended commands, integration parameters, auth, messages, and acceptance notes; copy commands after parameter edits—integration becomes copy-command acceptance, and go-live/PoC pace tightens</li>
   <li><strong>Real-Time Running Status</strong>: If operators must log into devices and parse raw payloads every time to judge metrics, duty cost stays high. Spread current property live values by thing model, with table/card views and refresh—judge key metrics at a glance without logging into devices or reading raw messages</li>
+  <li><strong>Sensor Float Data Prediction</strong>: If key metrics can only be reviewed after the fact on historical curves, anomalies often stay invisible until they have already crossed the line. The platform forecasts trends for sensor float properties, turning past readings into forward-looking trajectories—ops upgrades from “looking at numbers after the fact” to “seeing ahead,” buying time to act</li>
+  <li><strong>Running-Status Property Thresholds</strong>: If health boundaries live only in code or oral agreements, every new model or scenario means rework. Configure upper/lower thresholds for running-status properties by thing model—boundaries become definable, reusable, and fine-grained, turning each device’s “normal range” into a governable asset instead of scattered tribal knowledge</li>
+  <li><strong>Threshold Alarms & Threshold Rules</strong>: Thresholds are decoration if crossings go unnoticed or cannot be linked. Out-of-bound metrics trigger alerts automatically and can drive rule-based actions—“know when crossed, manage when known,” closing health boundaries into an operable loop</li>
+  <li><strong>Central-Device Associated Sub-Device One-Screen Control</strong>: If subordinate health must be checked device by device, inspection and incident response always lag. From the central-device view, survey associated sub-device running status on one screen—no device-by-device switching, faster field inspection and anomaly localization, so the device side truly closes the loop of “see the numbers, govern the bounds, raise the alerts, and grasp the whole picture”</li>
   <li><strong>Device Shadow Comparison</strong>: Classic troubleshooting pain is not knowing whether “desired” matches “actual.” View reported state, desired state, and diffs side by side, with full JSON retained—troubleshooting shifts from guessing to comparing, and consistency is obvious at a glance</li>
   <li><strong>Desired Property Push</strong>: Driving to site just to change one parameter is classic scale-out waste. Batch-edit desired values for writable properties and push in one click; track processing/success/failure—remote tuning has receipts, no truck roll for a parameter change, fewer wasted trips</li>
   <li><strong>Thing Model Service Invocation</strong>: If start/stop or reset cannot confirm execution after issue, disposal falls back to verbal accounting. Fill parameters for published services and invoke; track command receipts—actions confirm whether they executed, disposal is auditable, and “we said we controlled it” upgrades to a closed loop with receipts</li>
@@ -274,7 +285,7 @@ Innovatively leveraging large models to construct a zero-shot labeling technical
 ### 🏗️ Project Architecture Features
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye is not actually one project; it is eight distinct projects.
+yFeiEye is not actually one project; it is nine distinct projects.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -311,10 +322,10 @@ yFeiEye actively responds to localization strategies, providing comprehensive su
 <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 <h4 style="margin-top: 0; color: white; font-size: 18px;">📱 Edge-Side Support</h4>
 <ul style="font-size: 14px; line-height: 1.8; margin: 10px 0; padding-left: 20px;">
-  <li>Infinite federated edge cluster: join with ~512MB memory</li>
-  <li>Ceph: zero local disk footprint—business objects never land on local disks</li>
-  <li>One command turns RK3588 and similar boards intelligent</li>
-  <li>Sprawl compute by site; alerts and events aggregate to the cloud</li>
+  <li>Ordinary development boards can perform on-site intelligent watch duty</li>
+  <li>Lightweight deployment on site—no need to stack heavy storage at every site</li>
+  <li>Intelligence out of the box, shortening edge go-live cycles</li>
+  <li>Compute scales with deployment points; alerts and evidence automatically aggregate to the cloud</li>
 </ul>
 </div>
 
@@ -337,7 +348,7 @@ yFeiEye actively responds to localization strategies, providing comprehensive su
 ## 🧩 Project Structure
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye consists of eight core projects:
+yFeiEye consists of nine core projects:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -376,6 +387,7 @@ yFeiEye consists of eight core projects:
     <li><strong>Rule Engine</strong>: Data flow rules, message routing, data transformation</li>
     <li><strong>Data Collection</strong>: Device data collection, storage, query, and analysis</li>
     <li><strong>Node Control Plane</strong>: Built-in <code>iot-node</code> microservice providing unified control plane for compute/media node CRUD, SSH connectivity testing, Agent registration and heartbeat, workload scheduling, and media node pool allocation</li>
+    <li><strong>Visualization Backend</strong>: Built-in <code>iot-visualize</code> microservice (database <code>iot-visualize20</code>), unified management of dashboard/SCADA projects, templates, assets, data sources, and service deployment, providing project metadata and publishing for the VISUALIZE editor and FUXA SCADA</li>
   </ul>
 </td>
 </tr>
@@ -422,20 +434,30 @@ yFeiEye consists of eight core projects:
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>EDGE Module</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
   <ul style="margin: 5px 0; padding-left: 20px;">
-    <li><strong>Infinite Federated Edge Cluster Mode</strong>: The eighth core module—~512MB memory; Ceph zero local disk at the edge; one command turns ordinary boards intelligent; sprawl compute deployment with alerts and events aggregating to the cloud; infinite federated scale-out</li>
-    <li><strong>Headless Edge Algorithm Runtime</strong>: Algorithm execution surface extracted from VIDEO; pure CLI / systemd with no WEB UI and no local business database, focused on edge inference and event reporting</li>
-    <li><strong>Single Config Entry</strong>: On site configure only <code>EDGE_NODE_URL</code> (iot-node control-plane address); via <code>/admin-api/node/edge/enroll</code> and <code>runtime-config</code>, automatically receive MQTT broker list, tenant credentials, clientId, Ceph hot-buffer paths, and algorithm Topic contracts</li>
-    <li><strong>All-MQTT Bus</strong>: Subscribes to <code>mqtt/iot-algo-task-cmd</code> for start/stop commands (filtered by <code>targetNodeId</code>); publishes heartbeat / ack / alert / postprocess; no direct Kafka and no HTTP management plane</li>
-    <li><strong>Ceph: Zero Local Disk at the Edge</strong>: Alert images and snapshots write to shared Ceph paths; center-side <code>iot-sink</code> archives to MinIO—no local business disk at the edge, no MinIO sync-upload responsibility on EDGE</li>
-    <li><strong>Infinite Cluster Scale-Out</strong>: Any number of EDGE nodes join the same EMQX cluster; ordered broker probing with head-of-list retry on failure; supports realtime / snapshot / patrol algorithm task scale-out</li>
-    <li><strong>Clear Control-Plane Split</strong>: VIDEO keeps task CRUD, scheduling policy, and log query; EDGE owns the <code>runtime/</code> inference loops and workload launch, and can coexist with the NODE Agent (generic HTTP workloads)</li>
+    <li><strong>Infinite Federated Edge Cluster Mode</strong>: The eighth core module—extends intelligence from the center to the field; ordinary development boards and edge nodes can join the watch network at any time, compute scales with business, alerts and evidence automatically aggregate to the cloud</li>
+    <li><strong>Lightweight On-Site Watch</strong>: Focuses on nearby perception and judgment with feedback—without carrying heavy control UI or local business systems, lowering edge deployment barriers and long-term ops burden</li>
+    <li><strong>Out-of-the-Box Access, Unified Management</strong>: Field nodes join quickly and are orchestrated by the center for tasks and policies, reducing manual configuration and per-site build costs</li>
+    <li><strong>Seamless Business Extension</strong>: The center sees the big picture and sets rules; edges watch the field and respond fast; node count grows with coverage, supporting horizontal scale-out for real-time analysis, patrol, and snapshot scenarios</li>
+    <li><strong>Lightweight Deployment</strong>: Edge focuses on "doing the work" rather than "stacking equipment," making wide-area deployment easier to land and replicate</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>VISUALIZE Module</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Drag-and-Drop Dashboard Editor</strong>: The ninth core module—a high-performance low-code visualization editor based on GoView, focused on canvas editing and preview, without standalone login or project management</li>
+    <li><strong>Integrated with WEB</strong>: Project creation, templates, assets, data sources, publishing, and deployment are done in the admin console "Visualization" menu; click "Open Editor" to jump to this module (default <code>:8002</code>) with Token for canvas editing</li>
+    <li><strong>Dashboard Delivery</strong>: Drag-and-drop charts, metrics, and layouts; components can connect to platform data sources and IoT metrics, supporting rapid command dashboards for campus situational awareness, production-line KPIs, equipment ops, energy consumption, and more</li>
+    <li><strong>Clear Division with SCADA</strong>: Dashboards use this module; process SCADA uses FUXA Web SCADA; project metadata is unified under DEVICE <code>iot-visualize</code></li>
+    <li><strong>Deployment Profile</strong>: Same as APP as a full-edition capability; mini / standard can skip per field hardware, reducing edge lite deployment size</li>
   </ul>
 </td>
 </tr>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-For an in-depth analysis of each module's tech stack, microservice decomposition, middleware topology, and data flows, see <a href=".doc/架构设计/项目架构设计分析_en.md" style="color: #3498db; text-decoration: none; font-weight: 600;">Project Architecture Analysis</a>.
+For an in-depth analysis of each module's tech stack, microservice decomposition, middleware topology, and data flows, see <a href=".doc/架构设计/项目架构设计分析.md" style="color: #3498db; text-decoration: none; font-weight: 600;">Project Architecture Analysis</a>.
 </p>
 
 ## 🖥️ Cross-Platform Deployment Advantages
@@ -482,14 +504,14 @@ yFeiEye supports deployment on Linux, Mac, and Windows, providing flexible and c
 <strong>Unified Experience</strong>: Regardless of the operating system chosen, yFeiEye provides consistent installation scripts and deployment documentation, ensuring a uniform cross-platform deployment experience.
 </p>
 
-## ☁️ yFeiEye = AI + IoT = Cloud-Edge Integrated Solution
+## ☁️ yFeiEye = AI + IoT = Cloud-Edge-Device Integrated Solution
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Supports thousands of vertical scenarios with customizable AI models and algorithm development.
+Supports thousands of vertical scenarios, with customizable AI models and algorithm development, deeply integrated.
 </p>
 
 <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3498db;">
-<h3 style="color: #2c3e50; margin-top: 0;">Deep Integration Empowers Intelligent Vision for Everything</h3>
+<h3 style="color: #2c3e50; margin-top: 0;">Empowering Intelligent Vision for Everything: yFeiEye</h3>
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 10px 0;">
 yFeiEye constructs an efficient access and management network for IoT devices (especially massive cameras). We deeply integrate real-time streaming technology with cutting-edge AI to create a unified service core. This solution not only enables interoperability across heterogeneous devices but also deeply integrates HD video streams with powerful AI analytics engines, giving surveillance systems "intelligent eyes" – accurately enabling facial recognition, abnormal behavior analysis, risk personnel monitoring, and perimeter intrusion detection.
 </p>
@@ -512,8 +534,8 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 
 ## 📚 Deployment Documentation
 
-- [Platform Deployment Documentation](.doc/部署文档/平台部署文档.md) — Step-by-step deployment guide for Linux / Mac / Windows
-- [Deployment Best Practices](.doc/部署文档/部署最佳实践_en.md) — Environment requirements, one-click deployment, troubleshooting, and production recommendations
+- [Platform Deployment Documentation](.doc/部署文档/平台部署文档_zh.md) — Step-by-step deployment guide for Linux / Mac / Windows
+- [Deployment Best Practices](.doc/部署文档/部署最佳实践.md) — Environment requirements, one-click deployment, troubleshooting, and production recommendations
 
 ## ⚙️ Project Repositories
 
@@ -521,326 +543,124 @@ compensate third parties for damages caused by usage. All yFeiEye-related resour
 - Github: [yFeiEye](https://github.com/reese/easyaiot)
 
 ## 📸 Screenshots
-<div>
-  <img src=".image/banner/banner-video1000.gif" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner-video1001.gif" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1091.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1092.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1143.jpg" alt="Platform branding settings" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1144.jpg" alt="Platform branding reset" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1001.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1076.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1074.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1075.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1095.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1096.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1127.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1128.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1145.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1146.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1147.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1148.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1129.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1130.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1131.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1132.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1133.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1134.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1135.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1136.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1093.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1094.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1085.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1086.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1087.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1088.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1089.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1090.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1078.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1077.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1079.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1080.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1081.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1082.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1006.jpg" alt="Screenshot 3" width="49%">
-  <img src=".image/banner/banner1009.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-</div>
-<div>
-  <img src=".image/banner/banner1051.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1053.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1062.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1063.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1064.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1065.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1066.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1067.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1052.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1054.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1083.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1084.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1121.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1122.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1123.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1124.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1125.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1126.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1057.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1058.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1068.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1069.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1026.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1028.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1029.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1030.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1072.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1031.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1070.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1071.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1033.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1035.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1034.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1036.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1037.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1038.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1015.png" alt="Screenshot 5" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1010.jpg" alt="Screenshot 3" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1027.png" alt="Screenshot 2" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1016.jpg" alt="Screenshot 6" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1059.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1060.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1107.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1108.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1111.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1112.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1109.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1110.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1007.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1008.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1103.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1104.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1105.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1106.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1019.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1020.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1099.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1100.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1101.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1102.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1023.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1024.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1017.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1018.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1097.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1098.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1039.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1061.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1040.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1042.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1043.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1044.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1021.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1022.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1045.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1046.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1047.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1048.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1049.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1050.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1013.jpg" alt="Screenshot 9" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1014.png" alt="Screenshot 10" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1003.png" alt="Screenshot 13" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1004.png" alt="Screenshot 14" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1149.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1150.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1151.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1152.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1153.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1154.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1155.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1156.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1157.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1158.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1159.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1160.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1161.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1162.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1163.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1164.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1165.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1166.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1167.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1168.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1169.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1170.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1171.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1172.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1000.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1001.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1002.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1003.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1004.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1005.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1006.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1007.jpg" alt="Screenshot 1" width="49%">
-</div>
+
+<div>
+  <img src=".image/banner/banner-video1000.gif" alt="Demo" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner-video1001.gif" alt="Demo" width="49%">
+</div>
+
+#### 🖥️ Monitoring Dashboard
+
+| | | |
+|:---:|:---:|:---:|
+| ![Situational Awareness](.image/banner/banner1001.png) | ![Overview](.image/banner/banner1076.jpg) | ![Alerts](.image/banner/banner1074.jpg) |
+| ![Dashboard](.image/banner/banner1075.jpg) | ![Multi-Dimensional](.image/banner/banner1095.jpg) | ![Comprehensive](.image/banner/banner1096.jpg) |
+| ![Monitoring](.image/banner/banner1078.jpg) | ![Real-Time](.image/banner/banner1077.jpg) |  |
+
+#### 📺 Visualization & SCADA
+
+| | | |
+|:---:|:---:|:---:|
+| ![Project](.image/banner/banner1185.png) | ![SCADA](.image/banner/banner1186.png) | ![Editor](.image/banner/banner1187.png) |
+| ![Preview](.image/banner/banner1188.png) | ![Components](.image/banner/banner1189.png) | ![Data Source](.image/banner/banner1190.png) |
+| ![Publish](.image/banner/banner1191.png) | ![Runtime](.image/banner/banner1192.png) | ![Template](.image/banner/banner1193.png) |
+| ![Assets](.image/banner/banner1194.png) | ![Big Screen](.image/banner/banner1195.png) | ![Display](.image/banner/banner1196.png) |
+
+#### 📹 Video Surveillance
+
+| | | |
+|:---:|:---:|:---:|
+| ![Live Stream](.image/banner/banner1145.jpg) | ![Preview](.image/banner/banner1146.jpg) | ![Camera](.image/banner/banner1051.jpg) |
+| ![List](.image/banner/banner1053.jpg) | ![Stream Push](.image/banner/banner1083.jpg) | ![Relay](.image/banner/banner1084.jpg) |
+| ![Storage](.image/banner/banner1121.png) | ![Snapshot](.image/banner/banner1122.png) | ![Recording](.image/banner/banner1123.png) |
+| ![Configuration](.image/banner/banner1124.png) | ![Capacity](.image/banner/banner1125.png) | ![Playback](.image/banner/banner1126.png) |
+| ![Snapshot](.image/banner/banner1117.png) | ![Files](.image/banner/banner1118.png) | ![Policy](.image/banner/banner1119.png) |
+| ![Quota](.image/banner/banner1120.png) | ![Gallery](.image/banner/banner1057.jpg) | ![Archive](.image/banner/banner1058.jpg) |
+| ![Monitoring](.image/banner/banner1068.jpg) | ![Statistics](.image/banner/banner1069.jpg) | ![Map](.image/banner/banner1113.png) |
+| ![Location](.image/banner/banner1114.png) | ![Distribution](.image/banner/banner1115.png) | ![Points](.image/banner/banner1116.png) |
+| ![Live View](.image/banner/banner1026.jpg) | ![Multi-Stream](.image/banner/banner1028.jpg) | ![Stream Push](.image/banner/banner1103.png) |
+| ![Preview](.image/banner/banner1104.png) | ![Access](.image/banner/banner1105.png) | ![NVR](.image/banner/banner1106.png) |
+| ![Live View](.image/banner/banner1183.jpg) | ![Map](.image/banner/banner1184.jpg) |  |
+
+#### 🧠 AI Models
+
+| | | |
+|:---:|:---:|:---:|
+| ![Qwen](.image/banner/banner1093.jpg) | ![Vision Model](.image/banner/banner1094.jpg) | ![List](.image/banner/banner1099.png) |
+| ![Configuration](.image/banner/banner1100.png) | ![Details](.image/banner/banner1101.png) | ![Invocation](.image/banner/banner1102.png) |
+| ![Training](.image/banner/banner1019.jpg) | ![Task](.image/banner/banner1020.jpg) | ![List](.image/banner/banner1023.jpg) |
+| ![Progress](.image/banner/banner1024.jpg) | ![Parameters](.image/banner/banner1017.jpg) | ![Evaluation](.image/banner/banner1018.jpg) |
+| ![Details](.image/banner/banner1021.jpg) | ![Logs](.image/banner/banner1022.jpg) | ![Management](.image/banner/banner1097.png) |
+| ![Repository](.image/banner/banner1098.png) | ![Version](.image/banner/banner1039.jpg) | ![Assets](.image/banner/banner1061.jpg) |
+| ![Inference](.image/banner/banner1040.jpg) | ![Configuration](.image/banner/banner1042.jpg) | ![Results](.image/banner/banner1043.jpg) |
+| ![Online](.image/banner/banner1044.jpg) | ![Batch](.image/banner/banner1047.jpg) | ![Monitoring](.image/banner/banner1048.jpg) |
+| ![Service](.image/banner/banner1045.jpg) | ![Deployment](.image/banner/banner1046.jpg) | ![Cluster](.image/banner/banner1049.jpg) |
+| ![Invocation](.image/banner/banner1050.jpg) | ![Weights](.image/banner/banner1111.png) | ![Download](.image/banner/banner1112.png) |
+| ![Pose](.image/banner/banner1147.jpg) | ![Recognition](.image/banner/banner1148.jpg) | ![Task](.image/banner/banner1085.jpg) |
+| ![Configuration](.image/banner/banner1086.jpg) | ![Details](.image/banner/banner1087.jpg) | ![Runtime](.image/banner/banner1088.jpg) |
+| ![Region](.image/banner/banner1079.jpg) | ![Detection Box](.image/banner/banner1080.jpg) | ![Defense](.image/banner/banner1081.jpg) |
+| ![Preview](.image/banner/banner1082.jpg) | ![Algorithm](.image/banner/banner1062.jpg) | ![Create](.image/banner/banner1063.png) |
+| ![Frame](.image/banner/banner1064.jpg) | ![Analysis](.image/banner/banner1065.jpg) | ![Results](.image/banner/banner1066.jpg) |
+| ![Playback](.image/banner/banner1067.jpg) | ![Live View](.image/banner/banner1052.jpg) | ![Intelligent](.image/banner/banner1054.jpg) |
+
+#### 📦 Datasets
+
+| | | |
+|:---:|:---:|:---:|
+| ![Management](.image/banner/banner1015.png) | ![List](.image/banner/banner1010.jpg) | ![Annotation](.image/banner/banner1027.png) |
+| ![Task](.image/banner/banner1016.jpg) | ![Tools](.image/banner/banner1059.jpg) | ![Preview](.image/banner/banner1060.jpg) |
+| ![Details](.image/banner/banner1107.png) | ![Import](.image/banner/banner1108.png) | ![Project](.image/banner/banner1109.png) |
+| ![Review](.image/banner/banner1110.png) | ![Create](.image/banner/banner1007.jpg) | ![Samples](.image/banner/banner1008.jpg) |
+
+#### 🔌 IoT
+
+| | | |
+|:---:|:---:|:---:|
+| ![Thing Model](.image/banner/banner1149.jpg) | ![Definition](.image/banner/banner1150.jpg) | ![Product](.image/banner/banner1151.jpg) |
+| ![Details](.image/banner/banner1152.jpg) | ![Device](.image/banner/banner1153.jpg) | ![Details](.image/banner/banner1154.jpg) |
+| ![Status](.image/banner/banner1155.jpg) | ![Properties](.image/banner/banner1156.jpg) | ![Service](.image/banner/banner1157.jpg) |
+| ![Events](.image/banner/banner1158.jpg) | ![Shadow](.image/banner/banner1159.jpg) | ![Topology](.image/banner/banner1160.jpg) |
+| ![Sub-Devices](.image/banner/banner1161.jpg) | ![Groups](.image/banner/banner1162.jpg) | ![Control](.image/banner/banner1163.jpg) |
+| ![Telemetry](.image/banner/banner1164.jpg) | ![History](.image/banner/banner1165.jpg) | ![Protocol](.image/banner/banner1166.jpg) |
+| ![Connection](.image/banner/banner1167.jpg) | ![Authentication](.image/banner/banner1168.jpg) | ![Debug](.image/banner/banner1169.jpg) |
+| ![Functions](.image/banner/banner1170.jpg) | ![Read/Write](.image/banner/banner1171.jpg) | ![Service](.image/banner/banner1172.jpg) |
+| ![Subscribe](.image/banner/banner1173.jpg) | ![Logs](.image/banner/banner1174.jpg) | ![Online](.image/banner/banner1175.jpg) |
+| ![Statistics](.image/banner/banner1176.jpg) | ![Overview](.image/banner/banner1177.jpg) | ![Dashboard](.image/banner/banner1178.jpg) |
+| ![Product](.image/banner/banner1006.jpg) | ![Device](.image/banner/banner1009.jpg) | ![OTA](.image/banner/banner1179.jpg) |
+| ![Firmware](.image/banner/banner1180.jpg) | ![Task](.image/banner/banner1181.jpg) | ![Progress](.image/banner/banner1182.jpg) |
+| ![Rules](.image/banner/banner1013.jpg) | ![Orchestration](.image/banner/banner1014.png) |  |
+
+#### 🖥️ Cluster
+
+| | | |
+|:---:|:---:|:---:|
+| ![Overview](.image/banner/banner1127.jpg) | ![Compute](.image/banner/banner1128.jpg) | ![Node](.image/banner/banner1129.jpg) |
+| ![Details](.image/banner/banner1130.jpg) | ![Monitoring](.image/banner/banner1131.jpg) | ![Scheduling](.image/banner/banner1132.jpg) |
+| ![List](.image/banner/banner1133.jpg) | ![Status](.image/banner/banner1134.jpg) | ![Configuration](.image/banner/banner1135.jpg) |
+| ![Allocation](.image/banner/banner1136.jpg) |  |  |
+
+#### 🔔 Alerts
+
+| | | |
+|:---:|:---:|:---:|
+| ![Events](.image/banner/banner1089.jpg) | ![Processing](.image/banner/banner1090.jpg) | ![Notification](.image/banner/banner1029.jpg) |
+| ![Configuration](.image/banner/banner1030.jpg) | ![List](.image/banner/banner1072.jpg) | ![Details](.image/banner/banner1031.jpg) |
+| ![Handling](.image/banner/banner1070.jpg) | ![Statistics](.image/banner/banner1071.jpg) |  |
+
+#### ⚙️ System
+
+| | | |
+|:---:|:---:|:---:|
+| ![Branding](.image/banner/banner1143.jpg) | ![Reset](.image/banner/banner1144.jpg) | ![Users](.image/banner/banner1003.png) |
+| ![Permissions](.image/banner/banner1004.png) | ![Menu](.image/banner/banner1005.png) | ![Configuration](.image/banner/banner1002.png) |
+
+#### 📱 APP
+
+| | | |
+|:---:|:---:|:---:|
+| ![Home](.image/banner/app/app_1000.jpg) | ![Monitoring](.image/banner/app/app_1001.jpg) | ![Preview](.image/banner/app/app_1002.jpg) |
+| ![Alerts](.image/banner/app/app_1003.jpg) | ![Playback](.image/banner/app/app_1004.jpg) | ![Device](.image/banner/app/app_1005.jpg) |
+| ![Messages](.image/banner/app/app_1006.jpg) | ![Profile](.image/banner/app/app_1007.jpg) |  |
 
 ## 📞 Contact Information
 
@@ -877,7 +697,7 @@ After following the official account, scan the QR code below to add us as a WeCh
 ## 🪐 Knowledge Planet:
 
 <p>
-  <img src=".image/知识星球.jpg" alt="知识星球" width="30%">
+  <img src=".image/知识星球.jpg" alt="Knowledge Planet" width="30%">
 </p>
 
 ## 💰 Sponsorship
@@ -887,7 +707,7 @@ After following the official account, scan the QR code below to add us as a WeCh
     <img src=".image/支付宝支付.jpg" alt="Alipay" width="30%" height="10%">
 </div>
 
-## 🤝 Contributing
+## 🤝 Contributing Guide
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
 We welcome all forms of contributions! Whether you are a code developer, documentation writer, or issue reporter, your contribution will help make yFeiEye better. Here are the main ways to contribute:
@@ -917,7 +737,7 @@ We welcome all forms of contributions! Whether you are a code developer, documen
 </div>
 
 <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-<h4 style="margin-top: 0; color: white; font-size: 18px;">🌟 Other Ways to Contribute</h4>
+<h4 style="margin-top: 0; color: white; font-size: 18px;">🌟 Other Contribution Methods</h4>
 <ul style="font-size: 14px; line-height: 1.8; margin: 10px 0; padding-left: 20px;">
   <li>Report and fix bugs</li>
   <li>Suggest feature improvements</li>
@@ -998,11 +818,19 @@ The following are outstanding contributors who have made significant contributio
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>NULL</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in industrial field device access, delivered Modbus protocol uplink acquisition so data from meters, sensors, controllers and other industrial equipment can be unified for aggregation, monitoring and linkage—completing the key puzzle of “seeing the scene and hearing the devices,” and providing a solid foundation for industrial data acquisition, production-line intelligence, and security linkage scenarios.</td>
 </tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>空空</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye in camera direct-connect from “discoverable” to “production-ready,” closed critical gaps in authentication, channel sync, config changes, and multi-vendor stream URLs so the platform is deliverable on real NVR / multi-vendor sites: made device login credentials reliable so username/password auth works and direct-connect devices can truly “log in and stay managed”; rebuilt the post-NVR-sync pull model—previously sync wrote each channel camera’s own IP as the RTSP host, which badly mismatched the real “pull via NVR” topology, so sync looked successful while live play failed; after the fix, channel RTSP URLs are generated from the NVR host IP so batch-synced streams play and scale; fixed device edit save failures so access parameters remain maintainable instead of “write once, never change again”; built an RTSP URL rule library for common domestic camera brands and opened custom brand rules so heterogeneous devices can assemble stream URLs in one click without manual address trials or platform code changes per brand—moving direct-connect from “devices can be scanned” to “login works, sync is accurate, configs can be changed, and multi-brand streams play,” laying a solid foundation for later PTZ and zoom controls.</td>
+</tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>狗娃</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">To advance yFeiEye toward "IoT data displayed on screen," proactively proposed the product vision of a visualization Board (drag-and-drop dashboard) module based on open-source GoView: traditional dashboards often require hand-written SQL for every screen and component, slowing delivery, making every change ripple across the stack, and leaving business users unable to self-serve. The Board approach puts charts, metrics, and layout on a drag-and-drop canvas and binds component variables directly to platform IoT thing-model metrics—real-time and historical values pulled from devices in one step, without bespoke queries per dashboard; campus situational awareness, production-line KPIs, equipment operations, and similar screens upgrade from "developers write SQL to get a screen" to "pick metrics, drag components, screen done," significantly shortening visualization delivery and turning IoT "data in the back office" into an operational "screens in the front office" capability. Previously also contributed sensor float data prediction, running-status property threshold configuration, threshold alarms with rule linkage, and one-screen running-status views for central-device associated sub-devices—closing the device operations loop of "predict—bound—alert—rule—one-screen control" so the device side can "see the numbers, govern the bounds, raise the alerts, and grasp the whole picture."</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Special Thanks</strong>: The work of the above contributors has advanced yFeiEye in many ways, including cross-platform deployment documentation and scripts, delivery of national-standard video capabilities (including GB28181), AI integration testing, multi-GPU training usability and checkpoint resume, multi-vendor camera direct discovery and batch onboarding, production-ready Tianditu spatial visualization, heterogeneous streaming media cluster deployment and scheduling architecture, production-ready license plate recognition algorithm and complete implementation, yFeiEye-Edge end-to-end integration linking camera access with AI, campus developer community organization and youth collaborative ecosystem building, IoT device uplink/downlink closed loop and DJI FlightHub aerial view integration, and Modbus-TCP / Modbus-RTU / OPC UA industrial protocol access. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
+<strong>Special Thanks</strong>: The above contributors have advanced yFeiEye in cross-platform deployment documentation and scripts, national-standard video capability delivery and AI integration verification, multi-GPU training usability and checkpoint resume, multi-vendor camera direct discovery and batch onboarding, production-ready Tianditu spatial visualization, heterogeneous streaming media cluster deployment and scheduling architecture, production-ready license plate recognition algorithm and complete implementation, yFeiEye-Edge end-to-end edge-side integration, campus developer community organization and youth collaborative ecosystem building, IoT device uplink/downlink closed loop and DJI FlightHub aerial view integration, Modbus-TCP / Modbus-RTU / OPC UA industrial protocol access, the production-ready closed loop of camera direct-connect from discovery through login/sync/config/multi-brand streaming, the GoView-based drag-and-drop Board vision with IoT metric real-time/historical value integration, and sensor float data prediction with threshold alarm rules plus one-screen running-status views for central-device associated sub-devices. Their professionalism and selfless dedication are worthy of our learning and respect. Once again, we express our most sincere gratitude to these outstanding contributors! 🙏
 </p>
 
 ## 💝 Open Source Guardians
@@ -1363,6 +1191,7 @@ Thanks to the following contributors for code, feedback, donations, and support 
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嘎嗝.jpg" width="80px;" alt="嘎嗝"/><br /><sub><b>嘎嗝</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/曹.jpg" width="80px;" alt="曹"/><br /><sub><b>曹</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/滔滔.jpg" width="80px;" alt="滔滔"/><br /><sub><b>滔滔</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/狗娃.jpg" width="80px;" alt="狗娃"/><br /><sub><b>狗娃</b></sub></a></td>
     </tr>
   </tbody>
 </table>

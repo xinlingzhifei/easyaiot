@@ -123,7 +123,7 @@ public class DeviceThingModelServiceImpl implements DeviceThingModelService {
 
         if (params != null) {
             applyParams(result, params, propertyCode, ts);
-            result.sort(Comparator.comparing(TDDeviceDataResp::getTs, Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
+            result.sort(Comparator.comparingLong(TDDeviceDataResp::getTs).reversed());
         }
 
         // 3) 仍有缺失时，使用 Sink 维护的最新属性缓存（工业协议轮询）
@@ -140,11 +140,15 @@ public class DeviceThingModelServiceImpl implements DeviceThingModelService {
             if (params.containsKey(resp.getPropertyCode())) {
                 Object value = params.get(resp.getPropertyCode());
                 resp.setDataValue(value == null ? null : String.valueOf(value));
-                resp.setTs(ts);
+                if (ts > 0) {
+                    resp.setTs(ts);
+                }
             } else if (params.size() == 1 && propertyCode.size() == 1) {
                 Object value = params.values().iterator().next();
                 resp.setDataValue(value == null ? null : String.valueOf(value));
-                resp.setTs(ts);
+                if (ts > 0) {
+                    resp.setTs(ts);
+                }
             }
             if (rawMap != null && rawMap.containsKey(resp.getPropertyCode())) {
                 Object raw = rawMap.get(resp.getPropertyCode());
@@ -192,7 +196,12 @@ public class DeviceThingModelServiceImpl implements DeviceThingModelService {
                 Object value = properties.get(item.getPropertyCode());
                 if (value != null) {
                     item.setDataValue(String.valueOf(value));
-                    item.setTs(timestamp);
+                    // 缓存无有效时间戳时不要写成 0，避免前端时间在有效值/-- 之间闪烁
+                    if (timestamp > 0) {
+                        item.setTs(timestamp);
+                    } else if (item.getTs() <= 0) {
+                        item.setTs(System.currentTimeMillis());
+                    }
                     filled = true;
                 }
             }
@@ -204,7 +213,7 @@ public class DeviceThingModelServiceImpl implements DeviceThingModelService {
             }
         }
         if (filled) {
-            result.sort(Comparator.comparing(TDDeviceDataResp::getTs, Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
+            result.sort(Comparator.comparingLong(TDDeviceDataResp::getTs).reversed());
         }
     }
 

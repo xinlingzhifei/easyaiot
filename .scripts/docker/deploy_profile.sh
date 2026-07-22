@@ -62,10 +62,10 @@ middleware_skipped_services() {
     local -a skips=()
     case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
         mini)
-            skips+=(Nacos MinIO Milvus ZLMediaKit NodeRED TDengine TDengine-init EMQX Kafka)
+            skips+=(Nacos MinIO Milvus ZLMediaKit NodeRED FUXA TDengine TDengine-init EMQX Kafka)
             ;;
         standard)
-            skips+=(NodeRED TDengine TDengine-init)
+            skips+=(NodeRED FUXA TDengine TDengine-init)
             ;;
         full)
             ;;
@@ -78,10 +78,10 @@ device_skipped_services() {
     local -a skips=()
     case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
         mini)
-            skips+=(iot-gateway iot-infra iot-device iot-dataset iot-node iot-file iot-message iot-gb28181 iot-tdengine iot-sink)
+            skips+=(iot-gateway iot-infra iot-device iot-dataset iot-node iot-visualize iot-file iot-message iot-gb28181 iot-tdengine iot-sink)
             ;;
         standard)
-            skips+=(iot-device iot-tdengine)
+            skips+=(iot-device iot-tdengine iot-visualize)
             ;;
         full)
             ;;
@@ -107,16 +107,24 @@ is_full_deploy_profile() {
     [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ]
 }
 
-# 按部署形态判断业务模块是否启用（APP 仅 full 全量形态）
+# 按部署形态判断业务模块是否启用（APP / VISUALIZE 仅 full 全量形态）
 module_enabled_for_deploy_profile() {
     case "$1" in
-        APP) [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] ;;
+        APP|VISUALIZE) [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] ;;
         *) return 0 ;;
     esac
 }
 
 # mini / standard 形态均不部署 TDengine 中间件
 is_tdengine_disabled_deploy_profile() {
+    case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
+        mini|standard) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# mini / standard 形态均不部署可视化（iot-visualize / VISUALIZE 编辑器 / FUXA / 相关菜单）
+is_visualize_disabled_deploy_profile() {
     case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
         mini|standard) return 0 ;;
         *) return 1 ;;
@@ -226,15 +234,15 @@ print_deploy_profile_summary() {
     mini)
       echo "  业务: iot-system（48099）, VIDEO, AI, WEB（告警由 VIDEO 直连落库，无需 iot-sink/Kafka）"
       echo "  中间件: PostgreSQL, Redis, SRS"
-      echo "  不启动: Kafka, iot-sink, Nacos, MinIO, iot-gateway, iot-infra, Milvus, ZLMediaKit, NodeRED, TDengine, EMQX 及多数 DEVICE 模块"
+      echo "  不启动: Kafka, iot-sink, Nacos, MinIO, iot-gateway, iot-infra, Milvus, ZLMediaKit, NodeRED, FUXA, TDengine, EMQX、iot-visualize/VISUALIZE 及多数 DEVICE 模块"
       echo "  API 路由: nginx 将 /admin-api、/dev-api 直连宿主机 iot-system:48099（登录鉴权由 system 自身处理）"
       ;;
     standard)
-      echo "  不启动: TDengine, NodeRED, iot-device, iot-tdengine"
+      echo "  不启动: TDengine, NodeRED, FUXA, iot-device, iot-tdengine, iot-visualize/VISUALIZE（可视化管理菜单亦不启用）"
       echo "  其余模块与中间件全部启动（含 EMQX）"
       ;;
     full)
-      echo "  启动全部业务模块与中间件（含 APP 移动端 H5，推荐宿主机内存 ≥ 20 GB）"
+      echo "  启动全部业务模块与中间件（含 APP 移动端 H5、iot-visualize/VISUALIZE、FUXA，推荐宿主机内存 ≥ 20 GB）"
       ;;
   esac
 }

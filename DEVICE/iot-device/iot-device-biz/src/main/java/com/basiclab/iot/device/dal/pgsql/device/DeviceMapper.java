@@ -5,6 +5,7 @@ import com.basiclab.iot.common.core.aop.TenantIgnore;
 import com.basiclab.iot.device.domain.device.vo.Device;
 import com.basiclab.iot.device.dal.dataobject.DmDevicePackagePo;
 import com.basiclab.iot.device.domain.device.vo.ConnectStatusStatisticsVo;
+import com.basiclab.iot.device.domain.device.vo.DeviceMapLocationVO;
 import com.basiclab.iot.device.domain.device.vo.DeviceStatisticsVo;
 import com.basiclab.iot.device.domain.device.vo.DeviceStatusStatisticsVo;
 import org.apache.ibatis.annotations.Mapper;
@@ -114,6 +115,14 @@ public interface DeviceMapper extends BaseMapper<Device> {
      * @return 设备管理集合
      */
     public List<Device> selectDeviceList(Device device);
+
+    /**
+     * 查询设备地图分布点位（关联 device_location）
+     *
+     * @param hasLocationOnly true 时仅返回已配置经纬度的设备
+     * @return 地图点位列表
+     */
+    List<DeviceMapLocationVO> selectDevicesForMap(@Param("hasLocationOnly") Boolean hasLocationOnly);
 
     /**
      * 新增设备管理

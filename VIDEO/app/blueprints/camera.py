@@ -28,6 +28,7 @@ from urllib.parse import quote, urlparse, parse_qs, urlencode, urlunparse
 from app.services.camera_service import *
 from app.services.camera_service import (
     register_camera, register_camera_by_onvif, get_camera_info, update_camera, delete_camera,
+    batch_delete_cameras,
     search_camera,
     get_snapshot_uri, refresh_camera, _to_dict
 )
@@ -1089,6 +1090,16 @@ def update_device(device_id):
         data = request.get_json()
         if not data:
             return jsonify({'code': 400, 'msg': '请求数据不能为空'}), 400
+
+        # 规范化布尔字段：空字符串 / None 统一转为 False，字符串 'true'/'false' 转为布尔值
+        bool_fields = ['support_move', 'support_zoom', 'enable_forward']
+        for field in bool_fields:
+            if field in data:
+                val = data[field]
+                if val is None or val == '':
+                    data[field] = False
+                elif isinstance(val, str):
+                    data[field] = val.lower() in ('true', '1', 'yes', 'on')
         
         # 如果更新manufacturer或model字段为空，使用默认值
         if 'manufacturer' in data:
@@ -1146,6 +1157,36 @@ def delete_device(device_id):
     except RuntimeError as e:
         logger.error(f'删除设备失败: {str(e)}')
         return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/devices/batch-delete', methods=['POST'])
+def batch_delete_devices():
+    """批量删除摄像头设备。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        device_ids = data.get('device_ids') or data.get('deviceIds') or []
+        if not isinstance(device_ids, list) or not device_ids:
+            return jsonify({'code': 400, 'msg': 'device_ids 不能为空'}), 400
+
+        for raw_id in device_ids:
+            device_id = str(raw_id or '').strip()
+            if not device_id:
+                continue
+            if device_id in ffmpeg_processes:
+                try:
+                    stop_ffmpeg_stream(device_id)
+                except Exception as e:
+                    logger.warning(f'批量删除前停止推流失败 {device_id}: {e}')
+
+        result = batch_delete_cameras(device_ids)
+        return jsonify({
+            'code': 0,
+            'msg': '批量删除完成',
+            'data': result,
+        })
+    except Exception as e:
+        logger.error(f'批量删除设备失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'批量删除失败: {str(e)}'}), 500
 
 
 # ------------------------- PTZ控制接口 -------------------------
@@ -1900,58 +1941,83 @@ def register_nvr_channels_device():
         if credentials is not None and not isinstance(credentials, list):
             return jsonify({'code': 400, 'msg': 'credentials 须为数组'}), 400
 
+        vendor = (data.get('vendor') or '').strip() or None
+        rtsp_template = (data.get('rtsp_template') or '').strip() or None
+        rtsp_port = data.get('rtsp_port')
+        if rtsp_port is not None:
+            try:
+                rtsp_port = int(rtsp_port)
+            except (TypeError, ValueError):
+                rtsp_port = None
+        channel_count = data.get('channel_count')
+        if channel_count is not None:
+            try:
+                channel_count = int(channel_count)
+            except (TypeError, ValueError):
+                channel_count = None
+
         channels = data.get('channels')
         enum_error: str | None = None
-        if channels is None:
-            from app.services.nvr_service import merge_nvr_enum_credentials
 
-            username, password, credentials = merge_nvr_enum_credentials(
-                ip,
-                port,
-                username=username,
-                password=password,
-                credentials=credentials,
-            )
-            if not credentials and not username:
-                return jsonify({'code': 400, 'msg': '请至少填写一组用户名和密码'}), 400
-            has_password = bool(password) or any(
-                isinstance(c, dict) and c.get('password')
-                for c in (credentials or [])
-            )
-            if not has_password:
-                return jsonify({
-                    'code': 400,
-                    'msg': '请填写 NVR Web 登录密码（枚举通道需 ISAPI 认证）',
-                }), 400
-            if password and not data.get('password'):
-                data['password'] = password
-            if username and not data.get('username'):
-                data['username'] = username
-            timeout = max(float(data.get('timeout') or 5.0), 10.0)
-            vendor = (data.get('vendor') or '').strip() or None
-            inv = enumerate_nvr_channels(
-                ip,
-                port,
-                username=username,
-                password=password,
-                credentials=credentials,
-                timeout=timeout,
-                vendor=vendor,
-                probe_cameras=False,
-                channel_filter='registerable',
-            )
-            channels = inv.get('channels') or []
-            enum_error = inv.get('error')
-            if inv.get('auth_username') and not username:
-                username = inv.get('auth_username')
-            if not data.get('name') and inv.get('nvr_device_name'):
-                data['name'] = inv.get('nvr_device_name')
-            if not data.get('model') and inv.get('nvr_model'):
-                data['model'] = inv.get('nvr_model')
-            if not data.get('vendor') and inv.get('nvr_vendor'):
-                data['vendor'] = inv.get('nvr_vendor')
-            if not data.get('serial_number') and inv.get('nvr_serial'):
-                data['serial_number'] = inv.get('nvr_serial')
+        is_custom = vendor == 'custom' or (rtsp_template is not None)
+
+        if channels is None:
+            if is_custom:
+                if not channel_count or channel_count <= 0:
+                    return jsonify({'code': 400, 'msg': '自定义品牌请填写通道数量'}), 400
+                channels = [
+                    {'channel_id': i, 'name': f'通道{i}'}
+                    for i in range(1, channel_count + 1)
+                ]
+            else:
+                from app.services.nvr_service import merge_nvr_enum_credentials
+
+                username, password, credentials = merge_nvr_enum_credentials(
+                    ip,
+                    port,
+                    username=username,
+                    password=password,
+                    credentials=credentials,
+                )
+                if not credentials and not username:
+                    return jsonify({'code': 400, 'msg': '请至少填写一组用户名和密码'}), 400
+                has_password = bool(password) or any(
+                    isinstance(c, dict) and c.get('password')
+                    for c in (credentials or [])
+                )
+                if not has_password:
+                    return jsonify({
+                        'code': 400,
+                        'msg': '请填写 NVR Web 登录密码（枚举通道需 ISAPI 认证）',
+                    }), 400
+                if password and not data.get('password'):
+                    data['password'] = password
+                if username and not data.get('username'):
+                    data['username'] = username
+                timeout = max(float(data.get('timeout') or 5.0), 10.0)
+                inv = enumerate_nvr_channels(
+                    ip,
+                    port,
+                    username=username,
+                    password=password,
+                    credentials=credentials,
+                    timeout=timeout,
+                    vendor=vendor,
+                    probe_cameras=False,
+                    channel_filter='registerable',
+                )
+                channels = inv.get('channels') or []
+                enum_error = inv.get('error')
+                if inv.get('auth_username') and not username:
+                    username = inv.get('auth_username')
+                if not data.get('name') and inv.get('nvr_device_name'):
+                    data['name'] = inv.get('nvr_device_name')
+                if not data.get('model') and inv.get('nvr_model'):
+                    data['model'] = inv.get('nvr_model')
+                if not data.get('vendor') and inv.get('nvr_vendor'):
+                    data['vendor'] = inv.get('nvr_vendor')
+                if not data.get('serial_number') and inv.get('nvr_serial'):
+                    data['serial_number'] = inv.get('nvr_serial')
         elif not isinstance(channels, list):
             return jsonify({'code': 400, 'msg': 'channels 须为数组'}), 400
 
@@ -1961,6 +2027,8 @@ def register_nvr_channels_device():
             username=username or '',
             password=password or '',
             vendor=(data.get('vendor') or '').strip() or None,
+            rtsp_template=rtsp_template,
+            rtsp_port=rtsp_port,
         )
         stats = row.pop('register_stats', {})
         msg = f"已挂载 {stats.get('registered', 0)} 路通道"
@@ -1999,6 +2067,28 @@ def delete_nvr_device(nvr_id: int):
     except Exception as e:
         logger.error(f'删除 NVR 失败: {e}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'删除 NVR 失败: {e}'}), 500
+
+
+@camera_bp.route('/nvr/batch-delete', methods=['POST'])
+def batch_delete_nvr_devices():
+    """批量删除 NVR 记录。"""
+    try:
+        from app.services.nvr_service import batch_delete_nvrs
+
+        data = request.get_json(silent=True) or {}
+        nvr_ids = data.get('nvr_ids') or data.get('nvrIds') or []
+        if not isinstance(nvr_ids, list) or not nvr_ids:
+            return jsonify({'code': 400, 'msg': 'nvr_ids 不能为空'}), 400
+
+        result = batch_delete_nvrs(nvr_ids)
+        return jsonify({
+            'code': 0,
+            'msg': '批量删除完成',
+            'data': result,
+        })
+    except Exception as e:
+        logger.error(f'批量删除 NVR 失败: {e}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'批量删除 NVR 失败: {e}'}), 500
 
 
 # ------------------------- 网段扫描（hiktools） -------------------------

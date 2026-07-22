@@ -69,6 +69,41 @@ export function createCameraIconStyle(color: string, structure: CameraStructure 
   return style;
 }
 
+/** IoT 设备水滴图标：芯片字形 */
+const deviceIconCache = new Map<string, Style>();
+
+function devicePin(color: string): string {
+  const inner = `<rect x="9" y="10.5" width="12" height="10" rx="1.6" fill="#fff"/>`
+    + `<rect x="11" y="12.5" width="3.2" height="2.4" rx="0.4" fill="${color}"/>`
+    + `<rect x="15.8" y="12.5" width="3.2" height="2.4" rx="0.4" fill="${color}"/>`
+    + `<rect x="11" y="16.2" width="8" height="2.2" rx="0.4" fill="${color}" opacity="0.55"/>`
+    + `<rect x="13.4" y="8.2" width="3.2" height="2.4" rx="0.5" fill="#fff"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="38" viewBox="0 0 30 38">`
+    + `<path d="M15 1C7.3 1 1 7.3 1 15c0 9 12.4 21 13.6 21.8a.8.8 0 0 0 .8 0C16.6 36 29 24 29 15 29 7.3 22.7 1 15 1z" fill="${color}" stroke="#fff" stroke-width="1.5"/>`
+    + inner
+    + `</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+export function deviceIconUri(color: string): string {
+  return devicePin(color);
+}
+
+export function createDeviceIconStyle(color: string): Style {
+  let style = deviceIconCache.get(color);
+  if (!style) {
+    style = new Style({
+      image: new Icon({
+        src: devicePin(color),
+        anchor: [0.5, 1],
+        scale: 1,
+      }),
+    });
+    deviceIconCache.set(color, style);
+  }
+  return style;
+}
+
 export function createCircleMarkerStyle(options: MapMarkerStyle & { label?: string } = {}): Style {
   const {
     color = MARKER_COLORS.custom,
@@ -167,6 +202,25 @@ export function styleForMarkerKind(
       }));
     }
     return styles.length === 1 ? styles[0] : styles;
+  }
+
+  // IoT 设备：水滴形芯片图标
+  if (kind === 'device') {
+    const color = online === false ? MARKER_OFFLINE_COLOR : MARKER_COLORS.device;
+    const icon = createDeviceIconStyle(color);
+    if (!label) return icon;
+    return [
+      icon,
+      new Style({
+        text: new Text({
+          text: label,
+          offsetY: 8,
+          font: '12px sans-serif',
+          fill: new Fill({ color: '#333' }),
+          stroke: new Stroke({ color: '#fff', width: 3 }),
+        }),
+      }),
+    ];
   }
 
   const color = MARKER_COLORS[kind] || MARKER_COLORS.custom;

@@ -17,6 +17,11 @@
 #   clean      - 清理所有容器和镜像
 #   update     - 更新并重启所有服务
 #   verify     - 验证所有服务是否启动成功
+#
+# 部署形态（EASYAIOT_DEPLOY_PROFILE）：
+#   mini(1)     - 4G：iot-system + VIDEO/AI/WEB（无可视化）
+#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/iot-visualize 等（含 EMQX）
+#   full(3)     - 全量（默认；含 iot-visualize/VISUALIZE）
 # ============================================
 
 # 确保使用 bash 执行此脚本
@@ -72,6 +77,7 @@ MODULES=(
      "AI"               # AI服务
      "VIDEO"            # Video服务
     "WEB"              # Web前端服务
+    "VISUALIZE"        # 可视化编辑器（仅 full 全量形态）
 )
 
 # 模块信息（使用函数兼容 bash 3.2）
@@ -82,6 +88,7 @@ get_module_name() {
          "AI") echo "AI服务" ;;
          "VIDEO") echo "Video服务" ;;
         "WEB") echo "Web前端服务" ;;
+        "VISUALIZE") echo "可视化编辑器" ;;
         *) echo "$1" ;;
     esac
 }
@@ -93,6 +100,7 @@ get_module_port() {
         "AI") echo "5000" ;;
         "VIDEO") echo "6000" ;;
         "WEB") echo "8888" ;;
+        "VISUALIZE") echo "8002" ;;
         *) echo "" ;;
     esac
 }
@@ -104,6 +112,7 @@ get_module_health() {
         "AI") echo "/actuator/health" ;;
         "VIDEO") echo "/actuator/health" ;;
         "WEB") echo "/health" ;;
+        "VISUALIZE") echo "/health" ;;
         *) echo "" ;;
     esac
 }
@@ -699,6 +708,10 @@ install_mac() {
     local total_count=${#MODULES[@]}
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            print_info "跳过 $(get_module_name "$module")（当前部署形态 ${EASYAIOT_DEPLOY_PROFILE} 不包含此模块）"
+            continue
+        fi
         print_section "安装 $(get_module_name "$module")"
         if [ "$_skip_build" -eq 1 ] && [ "$module" != ".scripts/docker" ]; then
             print_info "镜像已从远程拉取，跳过 docker build，直接启动 $(get_module_name "$module")"
@@ -805,6 +818,9 @@ start_all() {
         if [ "$module" = ".scripts/docker" ]; then
             continue
         fi
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         execute_module_command "$module" "start"
         echo ""
     done
@@ -839,6 +855,9 @@ restart_all() {
     create_network
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         execute_module_command "$module" "restart"
         echo ""
     done
@@ -891,6 +910,9 @@ build_all() {
     check_docker_compose
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         execute_module_command "$module" "build"
         echo ""
     done
@@ -1066,6 +1088,9 @@ update_all() {
     create_network
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         execute_module_command "$module" "update"
         echo ""
     done
@@ -1085,6 +1110,9 @@ verify_all() {
     local failed_modules=()
     
     for module in "${MODULES[@]}"; do
+        if ! module_enabled_for_deploy_profile "$module"; then
+            continue
+        fi
         if verify_service_health "$module"; then
             success_count=$((success_count + 1))
         else

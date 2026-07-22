@@ -1,0 +1,2889 @@
+{
+  "editCanvasConfig": {
+    "projectName": "智慧园区运行监测",
+    "width": 1920,
+    "height": 1080,
+    "filterShow": false,
+    "hueRotate": 0,
+    "saturate": 1,
+    "contrast": 1,
+    "brightness": 1,
+    "opacity": 1,
+    "rotateZ": 0,
+    "rotateX": 0,
+    "rotateY": 0,
+    "skewX": 0,
+    "skewY": 0,
+    "blendMode": "normal",
+    "background": "#070b14",
+    "backgroundImage": null,
+    "selectColor": true,
+    "chartThemeColor": "dark",
+    "chartThemeSetting": {},
+    "vChartThemeName": "vScreenVolcanoBlue",
+    "previewScaleType": "fit"
+  },
+  "requestGlobalConfig": {
+    "requestDataPond": [],
+    "requestOriginUrl": "",
+    "requestInterval": 30,
+    "requestIntervalUnit": "second",
+    "requestParams": {
+      "Body": {
+        "form-data": {},
+        "x-www-form-urlencoded": {},
+        "json": "",
+        "xml": ""
+      },
+      "Header": {},
+      "Params": {}
+    }
+  },
+  "componentList": [
+    {
+      "id": "park-Decorates01-1",
+      "isGroup": false,
+      "key": "Decorates01",
+      "attr": {
+        "x": 80,
+        "y": 18,
+        "w": 1760,
+        "h": 18,
+        "zIndex": 1,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Decorates01",
+        "chartKey": "VDecorates01",
+        "conKey": "VCDecorates01",
+        "title": "装饰-01",
+        "category": "Decorates",
+        "categoryName": "装饰",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "decorates01.png"
+      },
+      "option": {
+        "colors": [
+          "#86efac",
+          "#ffffff"
+        ],
+        "dur": 3,
+        "lineHeight": 2,
+        "endWidth": 5
+      }
+    },
+    {
+      "id": "park-TextCommon-2",
+      "isGroup": false,
+      "key": "TextCommon",
+      "attr": {
+        "x": 460,
+        "y": 36,
+        "w": 1000,
+        "h": 56,
+        "zIndex": 2,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TextCommon",
+        "chartKey": "VTextCommon",
+        "conKey": "VCTextCommon",
+        "title": "文字",
+        "category": "Texts",
+        "categoryName": "文本",
+        "package": "Informations",
+        "chartFrame": "common",
+        "image": "text_static.png"
+      },
+      "option": {
+        "link": "",
+        "linkHead": "http://",
+        "dataset": "智慧园区运行监测",
+        "fontSize": 40,
+        "fontColor": "#ffffff",
+        "paddingX": 6,
+        "paddingY": 4,
+        "textAlign": "center",
+        "fontWeight": "bold",
+        "borderWidth": 0,
+        "borderColor": "#ffffff",
+        "borderRadius": 5,
+        "letterSpacing": 2,
+        "writingMode": "horizontal-tb",
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TextCommon-3",
+      "isGroup": false,
+      "key": "TextCommon",
+      "attr": {
+        "x": 560,
+        "y": 92,
+        "w": 800,
+        "h": 32,
+        "zIndex": 3,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TextCommon",
+        "chartKey": "VTextCommon",
+        "conKey": "VCTextCommon",
+        "title": "文字",
+        "category": "Texts",
+        "categoryName": "文本",
+        "package": "Informations",
+        "chartFrame": "common",
+        "image": "text_static.png"
+      },
+      "option": {
+        "link": "",
+        "linkHead": "http://",
+        "dataset": "yFeiEye · Smart Park Operations Monitor",
+        "fontSize": 16,
+        "fontColor": "#86efac",
+        "paddingX": 6,
+        "paddingY": 4,
+        "textAlign": "center",
+        "fontWeight": "normal",
+        "borderWidth": 0,
+        "borderColor": "#ffffff",
+        "borderRadius": 5,
+        "letterSpacing": 2,
+        "writingMode": "horizontal-tb",
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TimeCommon-4",
+      "isGroup": false,
+      "key": "TimeCommon",
+      "attr": {
+        "x": 1580,
+        "y": 48,
+        "w": 280,
+        "h": 48,
+        "zIndex": 4,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TimeCommon",
+        "chartKey": "VTimeCommon",
+        "conKey": "VCTimeCommon",
+        "title": "通用时间",
+        "category": "Mores",
+        "categoryName": "更多",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "time.png"
+      },
+      "option": {
+        "timeSize": 20,
+        "timeLineHeight": 48,
+        "timeTextIndent": 2,
+        "timeColor": "#E6F7FF",
+        "fontWeight": "normal",
+        "showShadow": true,
+        "hShadow": 0,
+        "vShadow": 0,
+        "blurShadow": 8,
+        "colorShadow": "#15803d"
+      }
+    },
+    {
+      "id": "park-Border06-5",
+      "isGroup": false,
+      "key": "Border06",
+      "attr": {
+        "x": 80,
+        "y": 140,
+        "w": 420,
+        "h": 120,
+        "zIndex": 5,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border06",
+        "chartKey": "VBorder06",
+        "conKey": "VCBorder06",
+        "title": "边框-06",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border06.png"
+      },
+      "option": {
+        "colors": [
+          "#15803d",
+          "#86efac"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TextCommon-6",
+      "isGroup": false,
+      "key": "TextCommon",
+      "attr": {
+        "x": 100,
+        "y": 152,
+        "w": 380,
+        "h": 28,
+        "zIndex": 6,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TextCommon",
+        "chartKey": "VTextCommon",
+        "conKey": "VCTextCommon",
+        "title": "文字",
+        "category": "Texts",
+        "categoryName": "文本",
+        "package": "Informations",
+        "chartFrame": "common",
+        "image": "text_static.png"
+      },
+      "option": {
+        "link": "",
+        "linkHead": "http://",
+        "dataset": "在园人数",
+        "fontSize": 15,
+        "fontColor": "#9ec9e8",
+        "paddingX": 6,
+        "paddingY": 4,
+        "textAlign": "left",
+        "fontWeight": "normal",
+        "borderWidth": 0,
+        "borderColor": "#ffffff",
+        "borderRadius": 5,
+        "letterSpacing": 2,
+        "writingMode": "horizontal-tb",
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-Number-7",
+      "isGroup": false,
+      "key": "Number",
+      "attr": {
+        "x": 104,
+        "y": 178,
+        "w": 372,
+        "h": 64,
+        "zIndex": 7,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Number",
+        "chartKey": "VNumber",
+        "conKey": "VCNumber",
+        "title": "数字计数",
+        "category": "Mores",
+        "categoryName": "更多",
+        "package": "Decorates",
+        "chartFrame": "common",
+        "image": "number.png"
+      },
+      "option": {
+        "dataset": 3246,
+        "from": 0,
+        "dur": 2.2,
+        "precision": 0,
+        "showSeparator": true,
+        "numberSize": 34,
+        "numberColor": "#86efac",
+        "prefixText": "",
+        "prefixColor": "#86efac",
+        "suffixText": "人",
+        "suffixColor": "#86efac"
+      }
+    },
+    {
+      "id": "park-Border06-8",
+      "isGroup": false,
+      "key": "Border06",
+      "attr": {
+        "x": 520,
+        "y": 140,
+        "w": 420,
+        "h": 120,
+        "zIndex": 8,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border06",
+        "chartKey": "VBorder06",
+        "conKey": "VCBorder06",
+        "title": "边框-06",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border06.png"
+      },
+      "option": {
+        "colors": [
+          "#15803d",
+          "#86efac"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TextCommon-9",
+      "isGroup": false,
+      "key": "TextCommon",
+      "attr": {
+        "x": 540,
+        "y": 152,
+        "w": 380,
+        "h": 28,
+        "zIndex": 9,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TextCommon",
+        "chartKey": "VTextCommon",
+        "conKey": "VCTextCommon",
+        "title": "文字",
+        "category": "Texts",
+        "categoryName": "文本",
+        "package": "Informations",
+        "chartFrame": "common",
+        "image": "text_static.png"
+      },
+      "option": {
+        "link": "",
+        "linkHead": "http://",
+        "dataset": "车位占用",
+        "fontSize": 15,
+        "fontColor": "#9ec9e8",
+        "paddingX": 6,
+        "paddingY": 4,
+        "textAlign": "left",
+        "fontWeight": "normal",
+        "borderWidth": 0,
+        "borderColor": "#ffffff",
+        "borderRadius": 5,
+        "letterSpacing": 2,
+        "writingMode": "horizontal-tb",
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-Number-10",
+      "isGroup": false,
+      "key": "Number",
+      "attr": {
+        "x": 544,
+        "y": 178,
+        "w": 372,
+        "h": 64,
+        "zIndex": 10,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Number",
+        "chartKey": "VNumber",
+        "conKey": "VCNumber",
+        "title": "数字计数",
+        "category": "Mores",
+        "categoryName": "更多",
+        "package": "Decorates",
+        "chartFrame": "common",
+        "image": "number.png"
+      },
+      "option": {
+        "dataset": 78.5,
+        "from": 0,
+        "dur": 2.2,
+        "precision": 1,
+        "showSeparator": true,
+        "numberSize": 34,
+        "numberColor": "#4ade80",
+        "prefixText": "",
+        "prefixColor": "#4ade80",
+        "suffixText": "%",
+        "suffixColor": "#4ade80"
+      }
+    },
+    {
+      "id": "park-Border06-11",
+      "isGroup": false,
+      "key": "Border06",
+      "attr": {
+        "x": 960,
+        "y": 140,
+        "w": 420,
+        "h": 120,
+        "zIndex": 11,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border06",
+        "chartKey": "VBorder06",
+        "conKey": "VCBorder06",
+        "title": "边框-06",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border06.png"
+      },
+      "option": {
+        "colors": [
+          "#15803d",
+          "#86efac"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TextCommon-12",
+      "isGroup": false,
+      "key": "TextCommon",
+      "attr": {
+        "x": 980,
+        "y": 152,
+        "w": 380,
+        "h": 28,
+        "zIndex": 12,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TextCommon",
+        "chartKey": "VTextCommon",
+        "conKey": "VCTextCommon",
+        "title": "文字",
+        "category": "Texts",
+        "categoryName": "文本",
+        "package": "Informations",
+        "chartFrame": "common",
+        "image": "text_static.png"
+      },
+      "option": {
+        "link": "",
+        "linkHead": "http://",
+        "dataset": "今日能耗",
+        "fontSize": 15,
+        "fontColor": "#9ec9e8",
+        "paddingX": 6,
+        "paddingY": 4,
+        "textAlign": "left",
+        "fontWeight": "normal",
+        "borderWidth": 0,
+        "borderColor": "#ffffff",
+        "borderRadius": 5,
+        "letterSpacing": 2,
+        "writingMode": "horizontal-tb",
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-Number-13",
+      "isGroup": false,
+      "key": "Number",
+      "attr": {
+        "x": 984,
+        "y": 178,
+        "w": 372,
+        "h": 64,
+        "zIndex": 13,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Number",
+        "chartKey": "VNumber",
+        "conKey": "VCNumber",
+        "title": "数字计数",
+        "category": "Mores",
+        "categoryName": "更多",
+        "package": "Decorates",
+        "chartFrame": "common",
+        "image": "number.png"
+      },
+      "option": {
+        "dataset": 42.6,
+        "from": 0,
+        "dur": 2.2,
+        "precision": 1,
+        "showSeparator": true,
+        "numberSize": 34,
+        "numberColor": "#34d399",
+        "prefixText": "",
+        "prefixColor": "#34d399",
+        "suffixText": "MWh",
+        "suffixColor": "#34d399"
+      }
+    },
+    {
+      "id": "park-Border06-14",
+      "isGroup": false,
+      "key": "Border06",
+      "attr": {
+        "x": 1400,
+        "y": 140,
+        "w": 420,
+        "h": 120,
+        "zIndex": 14,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border06",
+        "chartKey": "VBorder06",
+        "conKey": "VCBorder06",
+        "title": "边框-06",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border06.png"
+      },
+      "option": {
+        "colors": [
+          "#15803d",
+          "#86efac"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TextCommon-15",
+      "isGroup": false,
+      "key": "TextCommon",
+      "attr": {
+        "x": 1420,
+        "y": 152,
+        "w": 380,
+        "h": 28,
+        "zIndex": 15,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TextCommon",
+        "chartKey": "VTextCommon",
+        "conKey": "VCTextCommon",
+        "title": "文字",
+        "category": "Texts",
+        "categoryName": "文本",
+        "package": "Informations",
+        "chartFrame": "common",
+        "image": "text_static.png"
+      },
+      "option": {
+        "link": "",
+        "linkHead": "http://",
+        "dataset": "安防事件",
+        "fontSize": 15,
+        "fontColor": "#9ec9e8",
+        "paddingX": 6,
+        "paddingY": 4,
+        "textAlign": "left",
+        "fontWeight": "normal",
+        "borderWidth": 0,
+        "borderColor": "#ffffff",
+        "borderRadius": 5,
+        "letterSpacing": 2,
+        "writingMode": "horizontal-tb",
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-Number-16",
+      "isGroup": false,
+      "key": "Number",
+      "attr": {
+        "x": 1424,
+        "y": 178,
+        "w": 372,
+        "h": 64,
+        "zIndex": 16,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Number",
+        "chartKey": "VNumber",
+        "conKey": "VCNumber",
+        "title": "数字计数",
+        "category": "Mores",
+        "categoryName": "更多",
+        "package": "Decorates",
+        "chartFrame": "common",
+        "image": "number.png"
+      },
+      "option": {
+        "dataset": 7,
+        "from": 0,
+        "dur": 2.2,
+        "precision": 0,
+        "showSeparator": true,
+        "numberSize": 34,
+        "numberColor": "#fbbf24",
+        "prefixText": "",
+        "prefixColor": "#fbbf24",
+        "suffixText": "起",
+        "suffixColor": "#fbbf24"
+      }
+    },
+    {
+      "id": "park-Border04-17",
+      "isGroup": false,
+      "key": "Border04",
+      "attr": {
+        "x": 80,
+        "y": 290,
+        "w": 580,
+        "h": 420,
+        "zIndex": 17,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border04",
+        "chartKey": "VBorder04",
+        "conKey": "VCBorder04",
+        "title": "边框-04",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border04.png"
+      },
+      "option": {
+        "borderTitle": "楼宇能耗对比",
+        "borderTitleWidth": 140,
+        "borderTitleHeight": 32,
+        "borderTitleSize": 16,
+        "borderTitleColor": "#fff",
+        "colors": [
+          "#86efac",
+          "#15803d"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-BarCommon-18",
+      "isGroup": false,
+      "key": "BarCommon",
+      "attr": {
+        "x": 110,
+        "y": 340,
+        "w": 520,
+        "h": 340,
+        "zIndex": 18,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "BarCommon",
+        "chartKey": "VBarCommon",
+        "conKey": "VCBarCommon",
+        "title": "柱状图",
+        "category": "Bars",
+        "categoryName": "柱状图",
+        "package": "Charts",
+        "chartFrame": "echarts",
+        "image": "bar_x.png"
+      },
+      "option": {
+        "backgroundColor": "rgba(0,0,0,0)",
+        "tooltip": {
+          "show": true,
+          "trigger": "axis",
+          "axisPointer": {
+            "show": true,
+            "type": "shadow"
+          }
+        },
+        "legend": {
+          "show": true,
+          "textStyle": {
+            "color": "#cfe8ff"
+          }
+        },
+        "xAxis": {
+          "show": true,
+          "type": "category"
+        },
+        "yAxis": {
+          "show": true,
+          "type": "value"
+        },
+        "grid": {
+          "left": 50,
+          "right": 20,
+          "top": 40,
+          "bottom": 30
+        },
+        "dataset": {
+          "dimensions": [
+            "product",
+            "data1",
+            "data2"
+          ],
+          "source": [
+            {
+              "product": "A座",
+              "data1": 420,
+              "data2": 400
+            },
+            {
+              "product": "B座",
+              "data1": 380,
+              "data2": 360
+            },
+            {
+              "product": "C座",
+              "data1": 310,
+              "data2": 300
+            },
+            {
+              "product": "研发楼",
+              "data1": 290,
+              "data2": 270
+            },
+            {
+              "product": "数据中心",
+              "data1": 560,
+              "data2": 540
+            },
+            {
+              "product": "食堂",
+              "data1": 180,
+              "data2": 170
+            }
+          ]
+        },
+        "series": [
+          {
+            "type": "bar",
+            "barWidth": 14,
+            "label": {
+              "show": false,
+              "position": "top",
+              "color": "#fff",
+              "fontSize": 12
+            },
+            "itemStyle": {
+              "color": null,
+              "borderRadius": 2
+            },
+            "name": "今日"
+          },
+          {
+            "type": "bar",
+            "barWidth": 14,
+            "label": {
+              "show": false,
+              "position": "top",
+              "color": "#fff",
+              "fontSize": 12
+            },
+            "itemStyle": {
+              "color": null,
+              "borderRadius": 2
+            },
+            "name": "昨日"
+          }
+        ]
+      }
+    },
+    {
+      "id": "park-Border04-19",
+      "isGroup": false,
+      "key": "Border04",
+      "attr": {
+        "x": 680,
+        "y": 290,
+        "w": 560,
+        "h": 420,
+        "zIndex": 19,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border04",
+        "chartKey": "VBorder04",
+        "conKey": "VCBorder04",
+        "title": "边框-04",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border04.png"
+      },
+      "option": {
+        "borderTitle": "人流趋势",
+        "borderTitleWidth": 140,
+        "borderTitleHeight": 32,
+        "borderTitleSize": 16,
+        "borderTitleColor": "#fff",
+        "colors": [
+          "#86efac",
+          "#15803d"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-LineCommon-20",
+      "isGroup": false,
+      "key": "LineCommon",
+      "attr": {
+        "x": 710,
+        "y": 340,
+        "w": 500,
+        "h": 340,
+        "zIndex": 20,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "LineCommon",
+        "chartKey": "VLineCommon",
+        "conKey": "VCLineCommon",
+        "title": "折线图",
+        "category": "Lines",
+        "categoryName": "折线图",
+        "package": "Charts",
+        "chartFrame": "echarts",
+        "image": "line.png"
+      },
+      "option": {
+        "backgroundColor": "rgba(0,0,0,0)",
+        "tooltip": {
+          "show": true,
+          "trigger": "axis",
+          "axisPointer": {
+            "type": "line"
+          }
+        },
+        "legend": {
+          "show": true,
+          "textStyle": {
+            "color": "#cfe8ff"
+          }
+        },
+        "xAxis": {
+          "show": true,
+          "type": "category"
+        },
+        "yAxis": {
+          "show": true,
+          "type": "value"
+        },
+        "grid": {
+          "left": 50,
+          "right": 20,
+          "top": 40,
+          "bottom": 30
+        },
+        "dataset": {
+          "dimensions": [
+            "product",
+            "data1",
+            "data2"
+          ],
+          "source": [
+            {
+              "product": "08:00",
+              "data1": 120,
+              "data2": 100
+            },
+            {
+              "product": "09:00",
+              "data1": 260,
+              "data2": 240
+            },
+            {
+              "product": "10:00",
+              "data1": 480,
+              "data2": 450
+            },
+            {
+              "product": "11:00",
+              "data1": 620,
+              "data2": 600
+            },
+            {
+              "product": "12:00",
+              "data1": 580,
+              "data2": 560
+            },
+            {
+              "product": "13:00",
+              "data1": 540,
+              "data2": 520
+            },
+            {
+              "product": "14:00",
+              "data1": 610,
+              "data2": 590
+            },
+            {
+              "product": "15:00",
+              "data1": 690,
+              "data2": 670
+            },
+            {
+              "product": "16:00",
+              "data1": 640,
+              "data2": 620
+            },
+            {
+              "product": "17:00",
+              "data1": 520,
+              "data2": 500
+            },
+            {
+              "product": "18:00",
+              "data1": 380,
+              "data2": 360
+            },
+            {
+              "product": "19:00",
+              "data1": 210,
+              "data2": 200
+            }
+          ]
+        },
+        "series": [
+          {
+            "type": "line",
+            "label": {
+              "show": false,
+              "position": "top",
+              "color": "#fff",
+              "fontSize": 12
+            },
+            "symbolSize": 6,
+            "itemStyle": {
+              "color": null,
+              "borderRadius": 0
+            },
+            "lineStyle": {
+              "type": "solid",
+              "width": 2,
+              "color": null
+            },
+            "areaStyle": {
+              "opacity": 0.12
+            },
+            "name": "进园"
+          },
+          {
+            "type": "line",
+            "label": {
+              "show": false,
+              "position": "top",
+              "color": "#fff",
+              "fontSize": 12
+            },
+            "symbolSize": 6,
+            "itemStyle": {
+              "color": null,
+              "borderRadius": 0
+            },
+            "lineStyle": {
+              "type": "solid",
+              "width": 2,
+              "color": null
+            },
+            "areaStyle": {
+              "opacity": 0.12
+            },
+            "name": "出园"
+          }
+        ]
+      }
+    },
+    {
+      "id": "park-Border04-21",
+      "isGroup": false,
+      "key": "Border04",
+      "attr": {
+        "x": 1260,
+        "y": 290,
+        "w": 580,
+        "h": 420,
+        "zIndex": 21,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border04",
+        "chartKey": "VBorder04",
+        "conKey": "VCBorder04",
+        "title": "边框-04",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border04.png"
+      },
+      "option": {
+        "borderTitle": "空间占用",
+        "borderTitleWidth": 140,
+        "borderTitleHeight": 32,
+        "borderTitleSize": 16,
+        "borderTitleColor": "#fff",
+        "colors": [
+          "#86efac",
+          "#15803d"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-PieCommon-22",
+      "isGroup": false,
+      "key": "PieCommon",
+      "attr": {
+        "x": 1290,
+        "y": 340,
+        "w": 520,
+        "h": 340,
+        "zIndex": 22,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "PieCommon",
+        "chartKey": "VPieCommon",
+        "conKey": "VCPieCommon",
+        "title": "饼图",
+        "category": "Pies",
+        "categoryName": "饼图",
+        "package": "Charts",
+        "chartFrame": "echarts",
+        "image": "pie.png"
+      },
+      "option": {
+        "backgroundColor": "rgba(0,0,0,0)",
+        "isCarousel": false,
+        "type": "ring",
+        "tooltip": {
+          "show": true,
+          "trigger": "item"
+        },
+        "legend": {
+          "show": true,
+          "textStyle": {
+            "color": "#cfe8ff"
+          },
+          "orient": "vertical",
+          "right": 8,
+          "top": "middle"
+        },
+        "dataset": {
+          "dimensions": [
+            "product",
+            "data1"
+          ],
+          "source": [
+            {
+              "product": "办公",
+              "data1": 46
+            },
+            {
+              "product": "研发",
+              "data1": 22
+            },
+            {
+              "product": "仓储",
+              "data1": 14
+            },
+            {
+              "product": "配套",
+              "data1": 12
+            },
+            {
+              "product": "空置",
+              "data1": 6
+            }
+          ]
+        },
+        "series": [
+          {
+            "type": "pie",
+            "radius": [
+              "42%",
+              "68%"
+            ],
+            "center": [
+              "38%",
+              "52%"
+            ],
+            "roseType": false,
+            "avoidLabelOverlap": true,
+            "itemStyle": {
+              "show": true,
+              "borderRadius": 6,
+              "borderColor": "#0b1220",
+              "borderWidth": 2
+            },
+            "label": {
+              "show": false,
+              "position": "center",
+              "formatter": "{b}",
+              "fontWeight": "normal",
+              "fontSize": 14,
+              "color": "#E6F7FF",
+              "textBorderColor": "#00000000",
+              "textBorderWidth": 0
+            },
+            "emphasis": {
+              "label": {
+                "show": true,
+                "fontSize": 18,
+                "fontWeight": "bold",
+                "color": "#fff"
+              }
+            },
+            "labelLine": {
+              "show": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "park-Border04-23",
+      "isGroup": false,
+      "key": "Border04",
+      "attr": {
+        "x": 80,
+        "y": 740,
+        "w": 900,
+        "h": 300,
+        "zIndex": 23,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border04",
+        "chartKey": "VBorder04",
+        "conKey": "VCBorder04",
+        "title": "边框-04",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border04.png"
+      },
+      "option": {
+        "borderTitle": "停车分区占用",
+        "borderTitleWidth": 140,
+        "borderTitleHeight": 32,
+        "borderTitleSize": 16,
+        "borderTitleColor": "#fff",
+        "colors": [
+          "#86efac",
+          "#15803d"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-CapsuleChart-24",
+      "isGroup": false,
+      "key": "CapsuleChart",
+      "attr": {
+        "x": 120,
+        "y": 790,
+        "w": 820,
+        "h": 220,
+        "zIndex": 24,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "CapsuleChart",
+        "chartKey": "VCapsuleChart",
+        "conKey": "VCCapsuleChart",
+        "title": "胶囊柱图",
+        "category": "Bars",
+        "categoryName": "柱状图",
+        "package": "Charts",
+        "chartFrame": "common",
+        "image": "capsule.png"
+      },
+      "option": {
+        "dataset": {
+          "dimensions": [
+            "name",
+            "value"
+          ],
+          "source": [
+            {
+              "name": "地下一层",
+              "value": 91
+            },
+            {
+              "name": "地下二层",
+              "value": 84
+            },
+            {
+              "name": "地面南区",
+              "value": 73
+            },
+            {
+              "name": "地面北区",
+              "value": 68
+            },
+            {
+              "name": "访客区",
+              "value": 55
+            }
+          ]
+        },
+        "colors": [
+          "#3fb1e3",
+          "#6be6c1",
+          "#a0a7e6",
+          "#96dee8",
+          "#c4ebad",
+          "#f6c88d"
+        ],
+        "unit": "%",
+        "itemHeight": 12,
+        "valueFontSize": 14,
+        "paddingRight": 40,
+        "paddingLeft": 40,
+        "showValue": true
+      }
+    },
+    {
+      "id": "park-Border04-25",
+      "isGroup": false,
+      "key": "Border04",
+      "attr": {
+        "x": 1000,
+        "y": 740,
+        "w": 840,
+        "h": 300,
+        "zIndex": 25,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "Border04",
+        "chartKey": "VBorder04",
+        "conKey": "VCBorder04",
+        "title": "边框-04",
+        "category": "Borders",
+        "categoryName": "边框",
+        "package": "Decorates",
+        "chartFrame": "static",
+        "image": "border04.png"
+      },
+      "option": {
+        "borderTitle": "通行与安防",
+        "borderTitleWidth": 140,
+        "borderTitleHeight": 32,
+        "borderTitleSize": 16,
+        "borderTitleColor": "#fff",
+        "colors": [
+          "#86efac",
+          "#15803d"
+        ],
+        "backgroundColor": "#00000000"
+      }
+    },
+    {
+      "id": "park-TableScrollBoard-26",
+      "isGroup": false,
+      "key": "TableScrollBoard",
+      "attr": {
+        "x": 1030,
+        "y": 790,
+        "w": 780,
+        "h": 220,
+        "zIndex": 26,
+        "offsetX": 0,
+        "offsetY": 0
+      },
+      "styles": {
+        "filterShow": false,
+        "hueRotate": 0,
+        "saturate": 1,
+        "contrast": 1,
+        "brightness": 1,
+        "opacity": 1,
+        "rotateZ": 0,
+        "rotateX": 0,
+        "rotateY": 0,
+        "skewX": 0,
+        "skewY": 0,
+        "blendMode": "normal",
+        "animations": []
+      },
+      "preview": {
+        "overFlowHidden": false
+      },
+      "status": {
+        "lock": false,
+        "hide": false
+      },
+      "request": {
+        "requestDataType": 0,
+        "requestHttpType": "get",
+        "requestUrl": "",
+        "requestInterval": null,
+        "requestIntervalUnit": "second",
+        "requestContentType": 0,
+        "requestParamsBodyType": "none",
+        "requestSQLContent": {
+          "sql": "select * from  where"
+        },
+        "requestParams": {
+          "Body": {
+            "form-data": {},
+            "x-www-form-urlencoded": {},
+            "json": "",
+            "xml": ""
+          },
+          "Header": {},
+          "Params": {}
+        }
+      },
+      "events": {
+        "baseEvent": {
+          "onclick": null,
+          "ondblclick": null,
+          "onmouseenter": null,
+          "onmouseleave": null
+        },
+        "advancedEvents": {
+          "vnodeMounted": null,
+          "vnodeBeforeMount": null
+        },
+        "interactEvents": []
+      },
+      "chartConfig": {
+        "key": "TableScrollBoard",
+        "chartKey": "VTableScrollBoard",
+        "conKey": "VCTableScrollBoard",
+        "title": "轮播列表",
+        "category": "Tables",
+        "categoryName": "表格",
+        "package": "Tables",
+        "chartFrame": "common",
+        "image": "table_scrollboard.png"
+      },
+      "option": {
+        "header": [
+          "位置",
+          "事件",
+          "时间"
+        ],
+        "dataset": [
+          [
+            "南门闸机",
+            "访客登记",
+            "09:12"
+          ],
+          [
+            "B座电梯厅",
+            "尾随告警",
+            "09:41"
+          ],
+          [
+            "地下车库",
+            "逆行抓拍",
+            "10:05"
+          ],
+          [
+            "数据中心",
+            "门禁异常",
+            "10:33"
+          ],
+          [
+            "西门",
+            "危化车辆",
+            "11:02"
+          ],
+          [
+            "食堂后门",
+            "常开告警",
+            "11:28"
+          ],
+          [
+            "屋顶机房",
+            "烟感触发",
+            "12:01"
+          ],
+          [
+            "东门",
+            "黑名单车",
+            "12:46"
+          ]
+        ],
+        "index": true,
+        "columnWidth": [
+          40,
+          140,
+          140,
+          90
+        ],
+        "align": [
+          "center",
+          "center",
+          "center",
+          "center"
+        ],
+        "rowNum": 6,
+        "waitTime": 2.5,
+        "headerHeight": 36,
+        "carousel": "single",
+        "headerBGC": "#0E4A7B",
+        "oddRowBGC": "#0A2732",
+        "evenRowBGC": "#0D3340"
+      }
+    }
+  ]
+}

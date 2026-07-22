@@ -28,6 +28,10 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# shellcheck source=deploy_profile.sh
+source "${SCRIPT_DIR}/deploy_profile.sh"
+ensure_deploy_profile
+
 # 默认选项
 WAIT_FOR_SERVICES=true
 VERIFY_SERVICES=true
@@ -219,18 +223,19 @@ wait_for_services() {
         local running_count=0
         local total_count=0
         
-        # 检查主要服务容器
+        # 检查当前形态应启动的主要服务容器
         local services=(
-            "nacos-server"
             "postgres-server"
-            "tdengine-server"
             "redis-server"
-            "kafka-server"
-            "minio-server"
             "srs-server"
-            "nodered-server"
-            "emqx-server"
         )
+        middleware_service_enabled "Nacos" && services+=("nacos-server")
+        middleware_service_enabled "TDengine" && services+=("tdengine-server")
+        middleware_service_enabled "Kafka" && services+=("kafka-server")
+        middleware_service_enabled "MinIO" && services+=("minio-server")
+        middleware_service_enabled "NodeRED" && services+=("nodered-server")
+        middleware_service_enabled "FUXA" && services+=("fuxa-server")
+        middleware_service_enabled "EMQX" && [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ] && services+=("emqx-server")
         
         for container in "${services[@]}"; do
             total_count=$((total_count + 1))
@@ -334,8 +339,15 @@ main() {
     print_info "访问地址："
     echo "  Nacos:     http://localhost:8848/nacos (用户名/密码: nacos/nacos)"
     echo "  MinIO:     http://localhost:9001 (用户名/密码: minioadmin/basiclab@iot975248395)"
-    echo "  NodeRED:   http://localhost:1880"
-    echo "  EMQX:      http://localhost:18083 (用户名/密码: admin/basiclab@iot6874125784)"
+    if middleware_service_enabled "NodeRED"; then
+        echo "  NodeRED:   http://localhost:1880"
+    fi
+    if middleware_service_enabled "FUXA"; then
+        echo "  FUXA:      http://localhost:1881 (编辑器 /editor，运行态 /home)"
+    fi
+    if middleware_service_enabled "EMQX" && [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ]; then
+        echo "  EMQX:      http://localhost:18083 (用户名/密码: admin/basiclab@iot6874125784)"
+    fi
     echo "  SRS:       http://localhost:1985/api/v1/versions"
     echo ""
 }

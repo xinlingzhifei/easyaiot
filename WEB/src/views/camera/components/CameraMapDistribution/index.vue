@@ -1,17 +1,17 @@
 <template>
   <div class="camera-map-distribution">
-    <MapMonitorPanel ref="panelRef" />
+    <CameraMapPanel ref="panelRef" />
   </div>
 </template>
 
 <script lang="ts" setup>
 import { nextTick, onActivated, ref } from 'vue';
 import { triggerWindowResize } from '@/utils/event';
-import MapMonitorPanel from '@/views/camera/components/SplitScreenMonitor/MapMonitorPanel.vue';
+import CameraMapPanel from './CameraMapPanel.vue';
 
 defineOptions({ name: 'CameraMapDistribution' });
 
-const panelRef = ref<InstanceType<typeof MapMonitorPanel> | null>(null);
+const panelRef = ref<InstanceType<typeof CameraMapPanel> | null>(null);
 
 async function ensureMapReady() {
   await nextTick();

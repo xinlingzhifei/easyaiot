@@ -13,6 +13,13 @@
           <span class="count">({{ propertyTotal }})</span>
         </div>
         <div class="view-actions">
+          <label class="threshold-filter">
+            <input v-model="onlyThreshold" type="checkbox" />
+            仅显示配置阈值的属性
+          </label>
+          <Button @click="openAlarmStrategy" preIcon="ant-design:alert-outlined">
+            告警策略
+          </Button>
           <Button @click="handleRefresh" preIcon="ant-design:reload-outlined">
             刷新
           </Button>
@@ -29,9 +36,12 @@
           :api="fetchThingModels" 
           :active-key="activeKey"
           :search-params="searchParams"
+          :threshold-map="thresholdMap"
+          :only-threshold="onlyThreshold"
           @get-method="getMethod"
           @refresh="handleRefresh" 
           @view="handleView"
+          @threshold="handleThreshold"
           @tab-change="handleTabChange"
           @loaded="onCardLoaded"
         />
@@ -43,6 +53,11 @@
           <template #action="{ record }">
             <TableAction
               :actions="[
+                {
+                  tooltip: { title: '阈值', placement: 'top' },
+                  icon: 'ant-design:setting-outlined',
+                  onClick: () => handleThreshold(record),
+                },
                 {
                   tooltip: {
                     title: '刷新',
@@ -66,6 +81,8 @@
       </div>
     </div>
     <Detail @register="registerModal"/>
+    <ThresholdModal ref="thresholdModalRef" @saved="loadThresholds" />
+    <AlarmStrategyModal ref="alarmStrategyRef" />
   </div>
 </template>
 
@@ -74,8 +91,10 @@ import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated } fro
 import { BasicTable, TableAction, useTable } from '@/components/Table';
 import { BasicForm, useForm } from '@/components/Form';
 import { getBasicColumns, getFormConfig } from './tableData';
-import { getDevicethingModels } from '@/api/device/devices';
+import { getDeviceThresholds, getDevicethingModels } from '@/api/device/devices';
 import Detail from './components/Detail.vue';
+import ThresholdModal from './components/ThresholdModal.vue';
+import AlarmStrategyModal from '../AlarmStrategyModal.vue';
 import { useModal } from '@/components/Modal';
 import { useMessage } from '@/hooks/web/useMessage';
 import { useRoute } from "vue-router";
@@ -90,6 +109,10 @@ const { createMessage } = useMessage();
 const activeKey = ref<string>('card');
 const searchParams = reactive({});
 const propertyTotal = ref(0);
+const onlyThreshold = ref(false);
+const thresholdMap = reactive<Record<string, any>>({});
+const thresholdModalRef = ref<any>(null);
+const alarmStrategyRef = ref<any>(null);
 
 function onCardLoaded(total: number) {
   propertyTotal.value = total ?? 0;
@@ -196,6 +219,43 @@ function handleView(record) {
   });
 }
 
+function handleThreshold(record) {
+  const deviceIdentification =
+    record?.deviceIdentification || String(route.params.deviceIdentification || '');
+  thresholdModalRef.value?.open({
+    deviceIdentification,
+    propertyCode: record.propertyCode,
+    propertyName: record.propertyName,
+    currentValue: record.dataValue,
+  });
+}
+
+function openAlarmStrategy() {
+  const id = String(route.params.deviceIdentification || '');
+  if (!id) {
+    createMessage.warning('设备标识缺失');
+    return;
+  }
+  alarmStrategyRef.value?.open(id);
+}
+
+async function loadThresholds() {
+  const id = String(route.params.deviceIdentification || '');
+  if (!id) return;
+  try {
+    const res = await getDeviceThresholds(id);
+    const list = res?.data || res || [];
+    Object.keys(thresholdMap).forEach((k) => delete thresholdMap[k]);
+    (Array.isArray(list) ? list : []).forEach((item: any) => {
+      if (item?.propertyCode) {
+        thresholdMap[item.propertyCode] = item;
+      }
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 // 切换卡片/表格视图
 function handleTabChange(key: string) {
   activeKey.value = key;
@@ -244,6 +304,7 @@ function onVisibilityChange() {
 }
 
 onMounted(() => {
+  loadThresholds();
   startAutoRefresh();
   document.addEventListener('visibilitychange', onVisibilityChange);
 });
@@ -304,6 +365,18 @@ onUnmounted(() => {
         align-items: center;
         gap: 8px;
         flex-shrink: 0;
+        flex-wrap: wrap;
+
+        .threshold-filter {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: #595959;
+          cursor: pointer;
+          user-select: none;
+          white-space: nowrap;
+        }
       }
     }
   }

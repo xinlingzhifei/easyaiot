@@ -9,7 +9,8 @@
 #      仅 COPY 本机编译产物 + 拉取目标架构的 base image 完成镜像包装。
 #      ★ 跨架构构建若 Dockerfile 含 RUN 步骤，宿主机需 QEMU/binfmt（脚本会自动安装）。
 #      纯 Java JAR、纯前端 dist 等仅 COPY 的层不依赖 QEMU；含 yum/apt/pnpm 等 RUN 的层需要。
-#   3. 打标签并推送到远程仓库。
+#   3. 打标签并推送到远程仓库；推送成功后立即删除本地镜像，避免磁盘占用。
+#      WEB 本机镜像在删除前会先提取 dist，供跨架构构建复用。
 #
 # 推荐入口（交互式，无需参数，默认 full）:
 #   bash .scripts/docker/install_linux.sh pull|build-runtime
@@ -31,7 +32,7 @@
 #                    - pull:  不指定则交互选择（默认 full）；指定则直接拉取该形态
 #   --arch <arch>    指定构建架构：all | amd64 | arm64（默认 all=全部架构）
 #                    单架构模式仅构建/推送该架构镜像，跳过多架构 manifest 更新
-#   --module <mod>   指定构建模块：all | DEVICE | AI | VIDEO | WEB | APP（默认 all=全部）
+#   --module <mod>   指定构建模块：all | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE（默认 all=全部）
 #                    单模块模式仅构建/推送该模块镜像，跳过全量 install_linux.sh build
 #   --native-source  使用原始源（非国内镜像源），默认使用腾讯云镜像源加速
 #
@@ -57,13 +58,14 @@
 #   共享镜像（全形态通用，pull 时按形态跳过不会启动的 DEVICE 服务）:
 #     docker.cnb.cool/holmesian/easyaiot/aiot-ai:amd64       → ai-service:latest
 #     docker.cnb.cool/holmesian/easyaiot/aiot-video:amd64    → video-service:latest
-#     mini 仅拉 aiot-system；standard 跳过 aiot-device/aiot-tdengine；full 拉全部 DEVICE
+#     mini 仅拉 aiot-system；standard 跳过 aiot-device/aiot-tdengine/aiot-visualize；full 拉全部 DEVICE
 #   形态相关镜像（WEB，全量形态均构建/推送）:
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web:amd64          → web-service:latest          (full)
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web-mini:amd64     → web-service:latest-mini     (mini)
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web-standard:amd64 → web-service:latest-standard (standard)
-#   仅 full 形态（APP 移动端 H5）:
-#     docker.cnb.cool/holmesian/easyaiot/aiot-app:amd64          → app-service:latest
+#   仅 full 形态（APP 移动端 H5 / VISUALIZE 可视化编辑器）:
+#     docker.cnb.cool/holmesian/easyaiot/aiot-app:amd64              → app-service:latest
+#     docker.cnb.cool/holmesian/easyaiot/aiot-visualize-web:amd64    → visualize-service:latest
 #
 # 示例:
 #   bash .scripts/docker/runtime_image.sh build --push
@@ -214,7 +216,7 @@ fi
 if [ -n "${EASYAIOT_RUNTIME_BUILD_MODULE:-}" ]; then
     _bm_norm=$(runtime_normalize_build_module "$EASYAIOT_RUNTIME_BUILD_MODULE")
     if [ "$_bm_norm" = "INVALID" ]; then
-        print_error "无效的目标模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}，可选: all | DEVICE | AI | VIDEO | WEB | APP"
+        print_error "无效的目标模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}，可选: all | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE"
         exit 1
     fi
     if [ -n "$_bm_norm" ]; then
@@ -504,7 +506,8 @@ check_docker() {
 }
 
 # ★ 跨架构构建前检查磁盘空间并清理 Docker
-# PyTorch devel 基础镜像约 10GB+，多架构拉取极易打满磁盘
+# PyTorch devel 基础镜像约 10GB+，多架构拉取极易打满磁盘。
+# 清理时故意不跑 docker system prune -af，以免删掉已缓存的 ARM 基础镜像。
 ensure_docker_disk_space() {
     local target_arch="${1:-}"
     local df_path="${DOCKER_DATA_ROOT:-/var/lib/docker}"
@@ -519,14 +522,16 @@ ensure_docker_disk_space() {
     print_info "Docker 数据目录: ${df_path}, 可用空间: ${avail_gb} GB"
 
     if [ "$avail_gb" -lt "$min_gb" ]; then
-        print_warning "可用磁盘空间不足 (${avail_gb} GB < ${min_gb} GB)，尝试清理 Docker 缓存..."
-        docker system prune -af 2>/dev/null || true
+        print_warning "可用磁盘空间不足 (${avail_gb} GB < ${min_gb} GB)，尝试清理容器/悬空镜像/构建缓存（保留跨架构基础镜像）..."
+        docker container prune -f 2>/dev/null || true
+        docker image prune -f 2>/dev/null || true
+        docker builder prune -af 2>/dev/null || true
         avail_kb=$(df -k "$df_path" 2>/dev/null | awk 'NR==2{print $4}' || echo "0")
         avail_gb=$((avail_kb / 1024 / 1024))
         print_info "清理后可用空间: ${avail_gb} GB"
         if [ "$avail_gb" -lt "$min_gb" ]; then
             print_warning "清理后仍不足 ${min_gb} GB，[${target_arch}] 跨架构构建可能因磁盘满而失败"
-            print_info "建议手动清理: docker system prune -af"
+            print_info "可手动清理未用运行时镜像；请勿删除 pytorch/manylinuxaarch64-builder 等 ARM 基础镜像"
         fi
     fi
 }
@@ -534,12 +539,53 @@ ensure_docker_disk_space() {
 # ============================================================================
 # 镜像 tag & push 公共函数
 # ============================================================================
+
+# 推送成功后删除本地镜像（local + remote tag），避免 build-runtime 串行构建时磁盘被逐步占满
+cleanup_local_after_push() {
+    local local_ref="$1"
+    local remote_ref="${2:-}"
+    print_info "推送完成，删除本地镜像以释放磁盘..."
+    if [ -n "$remote_ref" ] && [ "$remote_ref" != "$local_ref" ]; then
+        docker rmi "$remote_ref" 2>/dev/null || true
+    fi
+    if docker rmi "$local_ref" 2>/dev/null; then
+        print_success "已删除本地镜像: ${local_ref}"
+    else
+        # 可能仍有其他 tag 指向同一 image id，或镜像本就不存在
+        print_warning "未能删除 ${local_ref}（可能仍有其他标签引用或不存在）"
+    fi
+}
+
+# WEB 本机镜像在推送删除前提取 dist，供后续跨架构构建复用
+extract_web_dist_before_cleanup() {
+    local lref="$1" profile="$2"
+    local dst="${PROJECT_ROOT}/WEB/dist-prebuilt-${profile}"
+    if [ -d "$dst" ]; then
+        print_info "WEB dist 已存在，跳过提取: ${dst}/"
+        return 0
+    fi
+    if ! docker image inspect "$lref" >/dev/null 2>&1; then
+        print_warning "WEB 镜像不存在，无法提取 dist: ${lref}"
+        return 0
+    fi
+    print_info "提取 WEB dist 供跨架构复用: ${lref} → ${dst}/"
+    rm -rf "$dst" 2>/dev/null || true
+    local cid
+    cid=$(docker create "$lref" 2>/dev/null) || true
+    if [ -n "$cid" ]; then
+        docker cp "${cid}:/usr/share/nginx/html/." "$dst/" 2>/dev/null || \
+            print_warning "提取 dist 失败（非致命），跨架构 WEB 将回退到完整 vite build"
+        docker rm "$cid" >/dev/null 2>&1
+    fi
+}
+
 tag_and_push() {
     local local_ref="$1" remote_ref="$2"
     print_info "打标签: ${local_ref} → ${remote_ref}"
     docker tag "$local_ref" "$remote_ref" || { print_error "打标签失败"; return 1; }
 
     local arch_suffix="${remote_ref##*:}"
+    local pushed=false
 
     # ★ 推送策略：
     #   - 带架构后缀（:amd64/:arm64/:arm32）：始终推送，manifest create 需从远程读取
@@ -558,15 +604,22 @@ tag_and_push() {
                 return 1
             fi
             print_success "推送成功: ${remote_ref}"
+            pushed=true
             ;;
         *)
             if $DO_PUSH; then
                 print_info "推送: ${remote_ref}"
                 runtime_docker_push_with_retry "$remote_ref" || { print_error "推送失败: ${remote_ref}"; return 1; }
                 print_success "推送成功: ${remote_ref}"
+                pushed=true
             fi
             ;;
     esac
+
+    # ★ 推送成功即删本地镜像，避免多模块/多架构串行构建占满磁盘
+    if $pushed; then
+        cleanup_local_after_push "$local_ref" "$remote_ref"
+    fi
     return 0
 }
 
@@ -738,17 +791,20 @@ all_build_plan_images_ready_for_arch() {
         done
     fi
 
-    if runtime_build_includes_module APP; then
+    # 仅 full 形态模块（APP / VISUALIZE）
+    for mapping in "${FULL_ONLY_MODULES[@]}"; do
+        local rname="${mapping%%|*}"
+        local tmp="${mapping#*|}"
+        local lname="${tmp%%|*}"
+        local mod="${mapping##*|}"
+        runtime_build_includes_module "$mod" || continue
         for profile in "${build_profiles[@]}"; do
             if [ "$profile" = "full" ]; then
-                for mapping in "${FULL_ONLY_MODULES[@]}"; do
-                    tmp="${mapping#*|}"; lname="${tmp%%|*}"
-                    local_image_ready "$lname" "" "$target_arch" || return 1
-                done
+                local_image_ready "$lname" "" "$target_arch" || return 1
                 break
             fi
         done
-    fi
+    done
 
     if runtime_build_includes_module DEVICE; then
         for lname in "${DEVICE_LOCAL_NAMES[@]}"; do
@@ -890,6 +946,7 @@ build_single_module() {
         aiot-video) build_module_with_install_script "VIDEO" "video-service" "$local_ref" "$target_arch" ;;
         aiot-web)   build_module_with_install_script "WEB" "web-service" "$local_ref" "$target_arch" ;;
         aiot-app)   build_module_with_install_script "APP" "app-service" "$local_ref" "$target_arch" ;;
+        aiot-visualize-web) build_module_with_install_script "VISUALIZE" "visualize-service" "$local_ref" "$target_arch" ;;
         *)
             # DEVICE 模块：统一由 build_device_all 处理
             build_device_all "$target_arch" || return 1
@@ -922,8 +979,19 @@ _build_push_track() {
         fail_label="构建/推送失败: ${rname} [${target_arch}]"
     fi
     print_step "$step_label"
-    if build_single_module "$rname" "$lref" "$target_arch" && tag_and_push "$lref" "$rref"; then
-        print_success "本地镜像已就绪: ${lref}"
+    if ! build_single_module "$rname" "$lref" "$target_arch"; then
+        print_error "$fail_label"
+        failed_all=$((failed_all + 1))
+        return 1
+    fi
+    # WEB 本机构建且还需跨架构：推送（会删本地镜像）前先提取 dist
+    if [ "$lname" = "web-service" ] && [ -n "$profile" ] && is_native_arch "$target_arch"; then
+        if declare -p cross_archs >/dev/null 2>&1 && [ ${#cross_archs[@]} -gt 0 ]; then
+            extract_web_dist_before_cleanup "$lref" "$profile"
+        fi
+    fi
+    if tag_and_push "$lref" "$rref"; then
+        print_success "已推送并清理本地镜像: ${rref}"
         _MANIFEST_ARCH_REFS["$mref"]="${_MANIFEST_ARCH_REFS["$mref"]:+${_MANIFEST_ARCH_REFS["$mref"]} }${rref}"
         success_all=$((success_all + 1))
         return 0
@@ -950,14 +1018,17 @@ count_planned_images_for_arch() {
         done
     fi
 
-    if runtime_build_includes_module APP; then
+    # full 专属：APP / VISUALIZE
+    for mapping in "${FULL_ONLY_MODULES[@]}"; do
+        local _fmod="${mapping##*|}"
+        runtime_build_includes_module "$_fmod" || continue
         for _bp in "${profiles[@]}"; do
             if [ "$_bp" = "full" ]; then
                 count=$((count + 1))
                 break
             fi
         done
-    fi
+    done
 
     if runtime_build_includes_module DEVICE; then
         count=$((count + ${#DEVICE_REMOTE_NAMES[@]}))
@@ -1040,7 +1111,7 @@ build_all_modules() {
     if runtime_is_single_module_build; then
         echo "  构建模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}（单模块）"
     else
-        echo "  构建模块: 全部 (DEVICE + AI + VIDEO + WEB + APP)"
+        echo "  构建模块: 全部 (DEVICE + AI + VIDEO + WEB + APP + VISUALIZE)"
     fi
     if runtime_is_single_arch_build; then
         echo "  架构模式: 单架构（跳过多架构 manifest 更新）"
@@ -1175,16 +1246,21 @@ build_all_modules() {
             done
         fi
 
-        # ── APP（仅 full 形态）──
-        if runtime_build_includes_module APP; then
+        # ── full 专属模块（APP / VISUALIZE）──
+        for mapping in "${FULL_ONLY_MODULES[@]}"; do
+            local _frname="${mapping%%|*}"
+            local _ftmp="${mapping#*|}"
+            local _flname="${_ftmp%%|*}"
+            local _fmod="${mapping##*|}"
+            runtime_build_includes_module "$_fmod" || continue
             local _bp
             for _bp in "${build_profiles[@]}"; do
                 if [ "$_bp" = "full" ]; then
-                    _build_push_track "aiot-app" "app-service" "" "$target_arch"
+                    _build_push_track "$_frname" "$_flname" "" "$target_arch"
                     break
                 fi
             done
-        fi
+        done
 
         # ── DEVICE ──
         if runtime_build_includes_module DEVICE; then
@@ -1242,24 +1318,17 @@ build_all_modules() {
             done
         fi
 
-        # 提取 WEB dist 供后续跨架构复用
+        # WEB dist 已在各形态推送前按需提取（推送后本地镜像会删除），此处仅作兜底提示
         if runtime_build_includes_module WEB && is_native_arch "$target_arch" && [ ${#cross_archs[@]} -gt 0 ]; then
-            echo ""
-            print_info "提取 ${target_arch} WEB dist 供跨架构复用 ..."
+            local _missing_dist=0
             for profile in "${build_profiles[@]}"; do
-                local img_ref; img_ref=$(local_ref "web-service" "$profile")
-                if docker image inspect "$img_ref" >/dev/null 2>&1; then
-                    local dst="${PROJECT_ROOT}/WEB/dist-prebuilt-${profile}"
-                    print_info "  → ${img_ref} → ${dst}/"
-                    rm -rf "$dst" 2>/dev/null || true
-                    local cid; cid=$(docker create "$img_ref" 2>/dev/null)
-                    if [ -n "$cid" ]; then
-                        docker cp "${cid}:/usr/share/nginx/html/." "$dst/" 2>/dev/null || \
-                            print_warning "提取 dist 失败（非致命），跨架构 WEB 将回退到完整 vite build"
-                        docker rm "$cid" >/dev/null 2>&1
-                    fi
+                if [ ! -d "${PROJECT_ROOT}/WEB/dist-prebuilt-${profile}" ]; then
+                    _missing_dist=$((_missing_dist + 1))
                 fi
             done
+            if [ "$_missing_dist" -gt 0 ]; then
+                print_warning "有 ${_missing_dist} 个 WEB 形态缺少预构建 dist，跨架构 WEB 可能回退到完整 vite build"
+            fi
         fi
 
         echo ""

@@ -65,6 +65,13 @@ spring:
           filters:
             - StripPrefix=1
             - RewritePath=/admin-api/node/v3/api-docs, /v3/api-docs
+        # VISUALIZE 大屏配套后台
+        - id: visualize-admin-api
+          uri: lb://visualize-server
+          predicates:
+            - Path=/admin-api/visualize/**
+          filters:
+            - RewritePath=/admin-api/visualize/v3/api-docs, /v3/api-docs
         # iot-sink 服务（算法后处理 Kafka 入队/消费/落库）
         - id: sink-admin-api
           uri: lb://sink-server
@@ -184,6 +191,9 @@ knife4j:
       - name: gb28181-server
         service-name: iot-gb28181
         url: /admin-api/gb28181/v3/api-docs
+      - name: visualize-server
+        service-name: visualize-server
+        url: /admin-api/visualize/v3/api-docs
 
 --- #################### yFeiEye相关配置 ####################
 

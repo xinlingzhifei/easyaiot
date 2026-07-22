@@ -487,6 +487,7 @@ RUNTIME_IMAGE_SPECS=(
     "iot-device/iot-device-biz/Dockerfile|iot-module-device-biz:latest"
     "iot-dataset/iot-dataset-biz/Dockerfile|iot-module-dataset-biz:latest"
     "iot-node/iot-node-biz/Dockerfile|iot-module-node-biz:latest"
+    "iot-visualize/iot-visualize-biz/Dockerfile|iot-module-visualize-biz:latest"
     "iot-tdengine/iot-tdengine-biz/Dockerfile|iot-module-tdengine-biz:latest"
     "iot-file/iot-file-biz/Dockerfile|iot-module-file-biz:latest"
     "iot-message/iot-message-biz/Dockerfile|iot-module-message-biz:latest"
@@ -502,6 +503,7 @@ REQUIRED_RUNTIME_JARS=(
     iot-device-biz.jar
     iot-dataset-biz.jar
     iot-node-biz.jar
+    iot-visualize-biz.jar
     iot-tdengine-biz.jar
     iot-file-biz.jar
     iot-message-biz.jar
@@ -1396,6 +1398,7 @@ clean() {
     local modules=(
         "iot-dataset"
         "iot-node"
+        "iot-visualize"
         "iot-device"
         "iot-file"
         "iot-gateway"
@@ -1533,7 +1536,7 @@ DEVICE模块 Docker Compose 管理脚本
     help                显示此帮助信息
 
 环境变量:
-    EASYAIOT_DEPLOY_PROFILE   部署形态: mini(1,仅 iot-system) | standard(2) | full(3，默认)
+    EASYAIOT_DEPLOY_PROFILE   部署形态: mini(1,仅 iot-system) | standard(2,跳过 device/tdengine/visualize) | full(3，默认)
     USE_MVND=1          启用 C2 常驻 mvnd 容器编译（守护进程跨次复用，更快）；不可用时自动回退 C1。
                         默认 0 走 C1（一次性 docker run 卷挂载，无常驻进程）。
                         注意：C2 会常驻一个 mvnd 容器（约 1–2GB 内存），用 builder-stop / clean 回收。
@@ -1556,6 +1559,7 @@ DEVICE模块 Docker Compose 管理脚本
     - iot-device
     - iot-dataset
     - iot-node
+    - iot-visualize
     - iot-tdengine
     - iot-file
     - iot-message

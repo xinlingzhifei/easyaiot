@@ -244,6 +244,9 @@ spring:
         session:
           timeout:
             ms: 10000
+    # 阈值告警通知推送到 iot-message
+    alert-notification:
+      send-topic: iot-alert-notification-send
 
 basiclab:
   iot:

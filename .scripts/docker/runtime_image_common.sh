@@ -21,19 +21,19 @@ RUNTIME_IMAGE_REGISTRY=""
 # ============================================================================
 DEVICE_REMOTE_NAMES=(
     aiot-gateway aiot-system aiot-infra aiot-device aiot-dataset
-    aiot-node aiot-tdengine aiot-file aiot-message aiot-sink aiot-gb28181
+    aiot-node aiot-visualize aiot-tdengine aiot-file aiot-message aiot-sink aiot-gb28181
 )
 
 DEVICE_LOCAL_NAMES=(
     iot-gateway iot-module-system-biz iot-module-infra-biz iot-module-device-biz
-    iot-module-dataset-biz iot-module-node-biz iot-module-tdengine-biz
+    iot-module-dataset-biz iot-module-node-biz iot-module-visualize-biz iot-module-tdengine-biz
     iot-module-file-biz iot-module-message-biz iot-sink-biz iot-gb28181-biz
 )
 
 # 与 DEVICE_REMOTE_NAMES / DEVICE_LOCAL_NAMES 下标一一对应（docker-compose 服务名）
 DEVICE_COMPOSE_SERVICES=(
     iot-gateway iot-system iot-infra iot-device iot-dataset
-    iot-node iot-tdengine iot-file iot-message iot-sink iot-gb28181
+    iot-node iot-visualize iot-tdengine iot-file iot-message iot-sink iot-gb28181
 )
 
 INDEPENDENT_MODULES=(
@@ -43,12 +43,14 @@ INDEPENDENT_MODULES=(
 )
 
 # 仅 full 全量形态部署（远程名 ↔ 本地名，与 INDEPENDENT_MODULES 格式相同）
+# 注意：aiot-visualize 已用于 DEVICE 后端 iot-module-visualize-biz，前端用 aiot-visualize-web
 FULL_ONLY_MODULES=(
     "aiot-app|app-service|APP"
+    "aiot-visualize-web|visualize-service|VISUALIZE"
 )
 
 PROFILE_DEPENDENT_REMOTES=(aiot-web)
-FULL_ONLY_REMOTES=(aiot-app)
+FULL_ONLY_REMOTES=(aiot-app aiot-visualize-web)
 ALL_DEPLOY_PROFILES=(mini standard full)
 ALL_RUNTIME_ARCHS=(amd64 arm64)
 
@@ -96,8 +98,8 @@ runtime_is_single_arch_build() {
     [ -n "$a" ] && [ "$a" != "all" ]
 }
 
-# build-runtime 可选单模块（DEVICE / AI / VIDEO / WEB / APP）
-ALL_RUNTIME_BUILD_MODULES=(DEVICE AI VIDEO WEB APP)
+# build-runtime 可选单模块（DEVICE / AI / VIDEO / WEB / APP / VISUALIZE）
+ALL_RUNTIME_BUILD_MODULES=(DEVICE AI VIDEO WEB APP VISUALIZE)
 
 # 规范化 build-runtime 目标模块（空/all=全部；无效返回 INVALID）
 runtime_normalize_build_module() {
@@ -110,6 +112,7 @@ runtime_normalize_build_module() {
         video|aiot-video) echo "VIDEO" ;;
         web|aiot-web) echo "WEB" ;;
         app|aiot-app) echo "APP" ;;
+        visualize|aiot-visualize-web|goview) echo "VISUALIZE" ;;
         *) echo "INVALID" ;;
     esac
 }
@@ -133,7 +136,7 @@ runtime_apply_build_module_arg() {
     local normalized
     normalized=$(runtime_normalize_build_module "$arg")
     if [ "$normalized" = "INVALID" ]; then
-        runtime_img_msg error "无效的运行时模块: ${arg}，可选: all | DEVICE | AI | VIDEO | WEB | APP"
+        runtime_img_msg error "无效的运行时模块: ${arg}，可选: all | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE"
         return 1
     fi
     if [ -n "$normalized" ]; then
@@ -145,14 +148,17 @@ runtime_apply_build_module_arg() {
     return 0
 }
 
-# 单模块 APP 与部署形态兼容性校验
+# 单模块 APP / VISUALIZE 与部署形态兼容性校验（均仅 full）
 runtime_validate_build_module_profile() {
-    [ "${EASYAIOT_RUNTIME_BUILD_MODULE:-}" != "APP" ] && return 0
+    case "${EASYAIOT_RUNTIME_BUILD_MODULE:-}" in
+        APP|VISUALIZE) ;;
+        *) return 0 ;;
+    esac
     if [ "${EASYAIOT_RUNTIME_BUILD_ALL_PROFILES:-0}" = "1" ]; then
         return 0
     fi
     if [ "${EASYAIOT_DEPLOY_PROFILE:-full}" != "full" ]; then
-        runtime_img_msg error "APP 模块仅 full 形态可用，当前形态: ${EASYAIOT_DEPLOY_PROFILE:-未设置}"
+        runtime_img_msg error "${EASYAIOT_RUNTIME_BUILD_MODULE} 模块仅 full 形态可用，当前形态: ${EASYAIOT_DEPLOY_PROFILE:-未设置}"
         return 1
     fi
     return 0
@@ -504,7 +510,7 @@ runtime_interactive_select_build_module() {
     if [ -n "${EASYAIOT_RUNTIME_BUILD_MODULE:-}" ]; then
         normalized=$(runtime_normalize_build_module "$EASYAIOT_RUNTIME_BUILD_MODULE")
         if [ "$normalized" = "INVALID" ]; then
-            runtime_img_msg error "无效的运行时模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}，可选: all | DEVICE | AI | VIDEO | WEB | APP"
+            runtime_img_msg error "无效的运行时模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}，可选: all | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE"
             exit 1
         fi
         if [ -n "$normalized" ]; then
@@ -521,16 +527,17 @@ runtime_interactive_select_build_module() {
 
     echo ""
     echo "请选择要构建/推送的运行时模块："
-    echo "  1) 全部     — DEVICE + AI + VIDEO + WEB + APP（默认）"
+    echo "  1) 全部     — DEVICE + AI + VIDEO + WEB + APP + VISUALIZE（默认）"
     idx=2
     declare -A _MODULE_CHOICES=()
     for mod in "${ALL_RUNTIME_BUILD_MODULES[@]}"; do
         case "$mod" in
-            DEVICE) echo "  ${idx}) DEVICE  — Device 微服务（11 个镜像）" ;;
-            AI)     echo "  ${idx}) AI      — AI 服务" ;;
-            VIDEO)  echo "  ${idx}) VIDEO   — Video 服务" ;;
-            WEB)    echo "  ${idx}) WEB     — Web 前端（按上方所选部署形态）" ;;
-            APP)    echo "  ${idx}) APP     — App 移动端 H5（仅 full 形态）" ;;
+            DEVICE) echo "  ${idx}) DEVICE    — Device 微服务（含 aiot-visualize 后台）" ;;
+            AI)     echo "  ${idx}) AI        — AI 服务" ;;
+            VIDEO)  echo "  ${idx}) VIDEO     — Video 服务" ;;
+            WEB)    echo "  ${idx}) WEB       — Web 前端（按上方所选部署形态）" ;;
+            APP)    echo "  ${idx}) APP       — App 移动端 H5（仅 full 形态）" ;;
+            VISUALIZE) echo "  ${idx}) VISUALIZE — 可视化编辑器（仅 full 形态）" ;;
         esac
         _MODULE_CHOICES[$idx]="$mod"
         idx=$((idx + 1))
@@ -946,13 +953,13 @@ runtime_docker_push_is_transient_error() {
 }
 
 # 带重试执行镜像上传命令（docker push / docker manifest push 等；已推送层会自动复用）
-# 环境变量: EASYAIOT_DOCKER_PUSH_RETRIES（默认 5）, EASYAIOT_DOCKER_PUSH_RETRY_DELAY（默认 10，秒，指数退避）
+# 环境变量: EASYAIOT_DOCKER_PUSH_RETRIES（默认 8）, EASYAIOT_DOCKER_PUSH_RETRY_DELAY（默认 10，秒，指数退避）
 runtime_docker_upload_with_retry() {
     local label="$1"
     shift
-    local max_retries="${EASYAIOT_DOCKER_PUSH_RETRIES:-5}"
+    local max_retries="${EASYAIOT_DOCKER_PUSH_RETRIES:-8}"
     local base_delay="${EASYAIOT_DOCKER_PUSH_RETRY_DELAY:-10}"
-    local attempt=1 rc=0 delay=0 log_file push_out
+    local attempt=1 rc=0 delay=0 log_file push_out err_tail
 
     log_file=$(mktemp "${TMPDIR:-/tmp}/easyaiot_docker_push.XXXXXX") || return 1
 
@@ -982,13 +989,23 @@ runtime_docker_upload_with_retry() {
 
         # 认证/权限错误不可重试
         if echo "$push_out" | grep -qiE 'no basic auth credentials|unauthorized|authentication required|authorization failed|push access denied|access denied|denied: requested access'; then
+            runtime_docker_log_push_failure "$label" "$push_out"
             rm -f "$log_file"
             return "$rc"
         fi
 
         if [ "$attempt" -ge "$max_retries" ] || ! runtime_docker_push_is_transient_error "$push_out"; then
+            runtime_docker_log_push_failure "$label" "$push_out"
             rm -f "$log_file"
             return "$rc"
+        fi
+
+        # 中间失败也记一行摘要，便于对照主日志
+        err_tail=$(echo "$push_out" | grep -iE 'error|denied|timeout|EOF|reset|broken pipe|unauthorized|failed' | tail -n 3)
+        if [ -n "$err_tail" ]; then
+            while IFS= read -r line; do
+                [ -n "$line" ] && runtime_img_msg warn "  → ${line}"
+            done <<< "$err_tail"
         fi
 
         attempt=$((attempt + 1))
@@ -996,6 +1013,15 @@ runtime_docker_upload_with_retry() {
 
     rm -f "$log_file"
     return 1
+}
+
+# 将 docker push 失败摘要写入主日志（tee 输出默认不进 LOG_FILE）
+runtime_docker_log_push_failure() {
+    local label="$1" push_out="$2" line
+    runtime_img_msg error "${label} 失败，docker 输出摘要:"
+    while IFS= read -r line; do
+        [ -n "$line" ] && runtime_img_msg error "  ${line}"
+    done <<< "$(echo "$push_out" | tail -n 40)"
 }
 
 # 带重试的 docker push
@@ -1072,7 +1098,7 @@ runtime_print_install_local_build_help() {
     runtime_img_msg info "  bash ${install_script} start     # 镜像就绪后启动"
     echo ""
     if [ "$install_script" = ".scripts/docker/install_business_linux.sh" ]; then
-        runtime_img_msg info "（当前脚本仅含业务模块 DEVICE/AI/VIDEO/WEB/APP，不含中间件）"
+        runtime_img_msg info "（当前脚本仅含业务模块 DEVICE/AI/VIDEO/WEB/APP/VISUALIZE，不含中间件）"
     else
         runtime_img_msg info "方案 3：仅构建/安装单个模块（示例 DEVICE）"
         runtime_img_msg info "  bash DEVICE/install_linux.sh build"
@@ -1269,13 +1295,13 @@ runtime_images_invoke() {
 # 显示运行时镜像管理用法摘要
 runtime_images_usage() {
     cat <<EOF
-运行时镜像管理（业务模块 DEVICE/AI/VIDEO/WEB/APP，不含中间件；APP 仅 full）
+运行时镜像管理（业务模块 DEVICE/AI/VIDEO/WEB/APP/VISUALIZE，不含中间件；APP/VISUALIZE 仅 full）
 
 pull 按部署形态过滤 DEVICE 镜像（与 compose 启停一致）：
-  mini     — 仅拉 aiot-system（1/11）
-  standard — 跳过 aiot-device、aiot-tdengine（9/11）
-  full     — 拉全部 DEVICE（11/11）
-  build-runtime 默认构建/推送全部模块；可指定单模块 DEVICE|AI|VIDEO|WEB|APP
+  mini     — 仅拉 aiot-system（1/12）
+  standard — 跳过 aiot-device、aiot-tdengine、aiot-visualize（9/12）
+  full     — 拉全部 DEVICE（12/12，含 aiot-visualize）
+  build-runtime 默认构建/推送全部模块；可指定单模块 DEVICE|AI|VIDEO|WEB|APP|VISUALIZE
   全量 build-runtime 仍构建/推送全量 DEVICE，供各形态共用远程仓库
 
 本地安装（含本地构建）:
@@ -1302,11 +1328,11 @@ pull 按部署形态过滤 DEVICE 镜像（与 compose 启停一致）：
   EASYAIOT_RUNTIME_PUSH=1      构建后推送（仅 build-runtime）
   EASYAIOT_RUNTIME_BUILD_ALL_PROFILES=1  构建全部形态（仅 build-runtime）
   EASYAIOT_RUNTIME_BUILD_ARCH=all|amd64|arm64  目标架构（默认 all=全部；单架构时跳过 manifest）
-  EASYAIOT_RUNTIME_BUILD_MODULE=all|DEVICE|AI|VIDEO|WEB|APP  目标模块（默认 all=全部）
+  EASYAIOT_RUNTIME_BUILD_MODULE=all|DEVICE|AI|VIDEO|WEB|APP|VISUALIZE  目标模块（默认 all=全部）
   EASYAIOT_RUNTIME_FORCE_REBUILD=1       强制重建全部镜像（忽略本地缓存）
   EASYAIOT_RUNTIME_FORCE_REBUILD=0       复用本地镜像（已存在则跳过构建，直接推送）
   EASYAIOT_SKIP_REGISTRY_AUTH_CHECK=1     跳过 build-runtime 前的远程仓库登录/推送权限检查
-  EASYAIOT_DOCKER_PUSH_RETRIES=5          推送失败时的最大重试次数（默认 5，网络抖动时自动退避重试）
+  EASYAIOT_DOCKER_PUSH_RETRIES=8          推送失败时的最大重试次数（默认 8，大镜像/网络抖动时自动退避重试）
   EASYAIOT_DOCKER_PUSH_RETRY_DELAY=10     推送重试初始间隔秒数（默认 10，指数退避，上限 120s）
 
 build-runtime 会在构建开始前校验远程仓库登录与推送权限；未登录请先 docker login。

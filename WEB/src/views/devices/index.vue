@@ -1,109 +1,126 @@
 <template>
   <div class="device-wrapper">
-    <BasicTable @register="registerTable" v-if="state.isTableMode">
-      <template #toolbar>
-        <Button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
-          添加设备
-        </Button>
-        <Button type="default" @click="handleClickSwap"
-                  preIcon="ant-design:swap-outlined">切换视图
-        </Button>
-        <PopConfirmButton
-          placement="topRight"
-          @confirm="handleClickDeleteAll"
-          type="primary"
-          color="error"
-          :disabled="!checkedKeys.length"
-          :title="`您确定要批量删除数据?`"
-          preIcon="ant-design:delete-outlined"
-        >批量删除
-        </PopConfirmButton>
-      </template>
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'connectStatus'">
-          <Tag :color="record.connectStatus === 'ONLINE' ? 'green' : 'red'">{{
-              record.connectStatus === 'ONLINE' ? '在线' : '离线'
-            }}
-          </Tag>
-        </template>
-        <template v-if="column.key === 'activeStatus'">
-          <Tag :color="record.activeStatus === 1 ? 'green' : 'red'">{{
-              record.activeStatus === 1 ? '已激活' : '未激活'
-            }}
-          </Tag>
-        </template>
-        <template v-if="column.dataIndex === 'action'">
-          <TableAction
-            :stopButtonPropagation="true"
-            :actions="[
-              {
-                icon: 'ant-design:eye-outlined',
-                tooltip: {
-                  title: '详情',
-                  placement: 'top',
-                },
-                onClick: goDeviceDrawer.bind(null, record),
-              },
-              {
-                icon: 'ant-design:edit-filled',
-                tooltip: {
-                  title: '编辑',
-                  placement: 'top',
-                },
-                onClick: openAddModal.bind(null, true, { isEdit: true, record }),
-              },
-              {
-                icon: 'material-symbols:delete-outline-rounded',
-                tooltip: {
-                  title: '删除',
-                  placement: 'top',
-                },
-                popConfirm: {
-                  title: `是否确认删除？`,
-                  placement: 'topRight',
-                  confirm: handleClickDelete.bind(null, record),
-                },
-              },
-            ]"
-          />
-        </template>
-      </template>
-    </BasicTable>
-    <div v-else>
-      <DeviceCardList :params="params" :api="getDevicesList" @get-method="getMethod"
-                      @delete="handleDel" @edit="handleEdit" @view="handleView">
-        <template #header>
-          <Button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
-            添加设备
-          </Button>
-          <Button type="default" @click="handleClickSwap"
-                    preIcon="ant-design:swap-outlined">切换视图
-          </Button>
-          <PopConfirmButton
-            placement="topRight"
-            @confirm="handleClickDeleteAll"
-            type="primary"
-            color="error"
-            :disabled="!checkedKeys.length"
-            :title="`您确定要批量删除数据?`"
-            preIcon="ant-design:delete-outlined"
-          >批量删除
-          </PopConfirmButton>
-        </template>
-      </DeviceCardList>
+    <div class="device-tab page-content-card">
+      <Tabs
+        v-model:activeKey="state.activeKey"
+        :animated="{ inkBar: true, tabPane: false }"
+        :destroyInactiveTabPane="true"
+        :tabBarGutter="60"
+        @change="handleTabChange"
+      >
+        <TabPane key="map" tab="地图分布">
+          <DeviceMapDistribution ref="deviceMapDistributionRef" />
+        </TabPane>
+        <TabPane key="list" tab="设备列表">
+          <div class="device-list-pane">
+            <BasicTable @register="registerTable" v-if="state.isTableMode">
+              <template #toolbar>
+                <Button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
+                  添加设备
+                </Button>
+                <Button type="default" @click="handleClickSwap"
+                          preIcon="ant-design:swap-outlined">切换视图
+                </Button>
+                <PopConfirmButton
+                  placement="topRight"
+                  @confirm="handleClickDeleteAll"
+                  type="primary"
+                  color="error"
+                  :disabled="!checkedKeys.length"
+                  :title="`您确定要批量删除数据?`"
+                  preIcon="ant-design:delete-outlined"
+                >批量删除
+                </PopConfirmButton>
+              </template>
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'connectStatus'">
+                  <Tag :color="record.connectStatus === 'ONLINE' ? 'green' : 'red'">{{
+                      record.connectStatus === 'ONLINE' ? '在线' : '离线'
+                    }}
+                  </Tag>
+                </template>
+                <template v-if="column.key === 'activeStatus'">
+                  <Tag :color="record.activeStatus === 1 ? 'green' : 'red'">{{
+                      record.activeStatus === 1 ? '已激活' : '未激活'
+                    }}
+                  </Tag>
+                </template>
+                <template v-if="column.dataIndex === 'action'">
+                  <TableAction
+                    :stopButtonPropagation="true"
+                    :actions="[
+                      {
+                        icon: 'ant-design:eye-outlined',
+                        tooltip: {
+                          title: '详情',
+                          placement: 'top',
+                        },
+                        onClick: goDeviceDrawer.bind(null, record),
+                      },
+                      {
+                        icon: 'ant-design:edit-filled',
+                        tooltip: {
+                          title: '编辑',
+                          placement: 'top',
+                        },
+                        onClick: openAddModal.bind(null, true, { isEdit: true, record }),
+                      },
+                      {
+                        icon: 'material-symbols:delete-outline-rounded',
+                        tooltip: {
+                          title: '删除',
+                          placement: 'top',
+                        },
+                        popConfirm: {
+                          title: `是否确认删除？`,
+                          placement: 'topRight',
+                          confirm: handleClickDelete.bind(null, record),
+                        },
+                      },
+                    ]"
+                  />
+                </template>
+              </template>
+            </BasicTable>
+            <div v-else class="device-card-wrap">
+              <DeviceCardList :params="params" :api="getDevicesList" @get-method="getMethod"
+                              @delete="handleDel" @edit="handleEdit" @view="handleView">
+                <template #header>
+                  <Button type="primary" @click="handleClickAdd" preIcon="ant-design:plus-outlined">
+                    添加设备
+                  </Button>
+                  <Button type="default" @click="handleClickSwap"
+                            preIcon="ant-design:swap-outlined">切换视图
+                  </Button>
+                  <PopConfirmButton
+                    placement="topRight"
+                    @confirm="handleClickDeleteAll"
+                    type="primary"
+                    color="error"
+                    :disabled="!checkedKeys.length"
+                    :title="`您确定要批量删除数据?`"
+                    preIcon="ant-design:delete-outlined"
+                  >批量删除
+                  </PopConfirmButton>
+                </template>
+              </DeviceCardList>
+            </div>
+            <DeviceModal @register="registerAddModel" @success="handleSuccess"/>
+          </div>
+        </TabPane>
+      </Tabs>
     </div>
-    <DeviceModal @register="registerAddModel" @success="handleSuccess"/>
   </div>
 </template>
 
 <script setup lang="ts">
 import moment from 'moment';
-import {onMounted, reactive, ref} from 'vue';
+import {nextTick, onMounted, reactive, ref} from 'vue';
 import {
   deleteDevices,
   getDevicesList,
 } from '@/api/device/devices';
-import {Tag} from 'ant-design-vue';
+import {Tabs, Tag} from 'ant-design-vue';
 import {getBasicColumns, getFormConfig} from './Data';
 import {Button, PopConfirmButton} from '@/components/Button';
 import {useMessage} from '@/hooks/web/useMessage';
@@ -113,41 +130,46 @@ import DeviceModal from "@/views/devices/components/DeviceModalForm/DeviceModal.
 import {useRouter} from "vue-router";
 import {getDeviceProfiles} from "@/api/device/product";
 import DeviceCardList from "@/views/devices/components/CardList/DeviceCardList.vue";
+import DeviceMapDistribution from "@/views/devices/components/MapDistribution/index.vue";
 
 defineOptions({name: 'Devices'})
+
+const TabPane = Tabs.TabPane;
+
+const DEVICE_TAB_KEYS = {
+  MAP: 'map',
+  LIST: 'list',
+} as const;
 
 const {createMessage} = useMessage();
 const [registerAddModel, {openDrawer: openAddModal}] = useDrawer();
 const selectDevices = ref<string>('');
 const checkedKeys = ref<Array<string | number>>([]);
+const deviceMapDistributionRef = ref<InstanceType<typeof DeviceMapDistribution> | null>(null);
 
 const state = reactive({
   isTableMode: false,
+  activeKey: DEVICE_TAB_KEYS.MAP as string,
   productMap: {} as Record<string, { productName: string; protocolType: string }>,
 });
 
-// 请求api时附带参数
 const params = {};
 
 let cardListReload = () => {
 };
 
-// 获取内部fetch方法;
 function getMethod(m: any) {
   cardListReload = m;
 }
 
-//详情按钮事件
 function handleView(record) {
   goDeviceDrawer(record);
 }
 
-//编辑按钮事件
 function handleEdit(record) {
   openAddModal(true, { isEdit: true, record });
 }
 
-//删除按钮事件
 function handleDel(record) {
   handleClickDelete(record);
   handleSuccess();
@@ -171,8 +193,6 @@ const [registerTable, {reload}] = useTable({
     };
   },
   afterFetch: (data) => {
-    //请求之后对返回值进行处理
-    //console.log('afterFetch', data);
     let list = data.map((res) => {
       const {lastUpdateTime, additionalInfo} = res;
       const newDate = new Date(lastUpdateTime);
@@ -236,14 +256,12 @@ function onSelectAll(selected, _, changeRows) {
   }
 }
 
-// 删除选中
 async function handleClickDeleteAll() {
   try {
     await Promise.all([...checkedKeys.value.map((item) => deleteDevices(item + ''))]);
     createMessage.success('删除成功');
   } catch (error) {
     console.error(error)
-    //console.log(error);
     createMessage.error('删除失败');
   }
   handleSuccess();
@@ -255,23 +273,28 @@ async function handleClickDelete(record) {
     createMessage.success('删除成功');
   } catch (error) {
     console.error(error)
-    //console.log(error);
     createMessage.error('删除失败');
   }
   handleSuccess();
 }
 
-// 新增
 function handleClickAdd() {
   openAddModal(true, { isEdit: false });
 }
 
-// 切换视图
 function handleClickSwap() {
   state.isTableMode = !state.isTableMode;
 }
 
-// 表格刷新
+function handleTabChange(key: string | number) {
+  state.activeKey = String(key);
+  if (String(key) === DEVICE_TAB_KEYS.MAP) {
+    void nextTick(() => {
+      deviceMapDistributionRef.value?.refresh?.();
+    });
+  }
+}
+
 function handleSuccess() {
   reload({
     page: 0,
@@ -300,24 +323,59 @@ onMounted(() => {
 }
 
 .device-wrapper {
-  :deep(.ant-tabs-nav) {
-    padding: 5px 0 0 25px;
+  padding: 16px;
+  box-sizing: border-box;
+  min-height: calc(100vh - 88px);
+  background: transparent;
+
+  .page-content-card {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .device-tab {
+    :deep(.ant-tabs-nav) {
+      padding: 5px 0 0 25px;
+      margin-bottom: 0;
+    }
+
+    :deep(.ant-tabs) {
+      background-color: #fff;
+    }
+  }
+
+  .device-list-pane {
+    min-height: calc(100vh - 200px);
+  }
+
+  .device-card-wrap {
+    min-height: calc(100vh - 200px);
+    background: #fff;
+    display: flex;
+    flex-direction: column;
   }
 
   :deep(.ant-form-item) {
     margin-bottom: 10px;
   }
 
-  .device-tab {
-    padding: 16px 19px 0 15px;
+  :deep(.iot-basic-table-form-container) {
+    padding: 0;
+    background: #fff;
 
-    .ant-tabs {
-      background-color: #FFFFFF;
-
-      :deep(.ant-tabs-nav) {
-        padding: 5px 0 0 25px;
-      }
+    .ant-form {
+      margin-bottom: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 16px 16px 0;
     }
+  }
+
+  :deep(.ant-table-wrapper) {
+    border-radius: 0;
+    background: #fff;
+    padding: 8px 16px 16px;
   }
 }
 </style>

@@ -27,7 +27,7 @@ export interface MapMarkerStyle {
   icon?: string;
 }
 
-export type MapMarkerKind = 'camera' | 'alert' | 'track' | 'picker' | 'custom';
+export type MapMarkerKind = 'camera' | 'device' | 'alert' | 'track' | 'picker' | 'custom';
 
 /**
  * 相机结构类型（用于地图图标区分）：

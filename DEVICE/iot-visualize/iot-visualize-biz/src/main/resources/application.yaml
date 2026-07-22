@@ -1,0 +1,89 @@
+spring:
+  main:
+    allow-circular-references: true
+    allow-bean-definition-overriding: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+  mvc:
+    pathmatch:
+      matching-strategy: ANT_PATH_MATCHER
+  jackson:
+    serialization:
+      write-dates-as-timestamps: true
+      write-date-timestamps-as-nanoseconds: false
+      write-durations-as-timestamps: true
+      fail-on-empty-beans: false
+  cache:
+    type: REDIS
+    redis:
+      time-to-live: 1h
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+  default-flat-param-object: true
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: NONE
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+    banner: false
+  type-aliases-package: ${iot.info.base-package}.dal.dataobject
+  encryptor:
+    password: XDV71a+xqStEA3WH
+
+mybatis-plus-join:
+  banner: false
+
+iot:
+  info:
+    version: 1.0.0
+    base-package: com.basiclab.iot.visualize
+  web:
+    admin-ui:
+      url: http://dashboard.iot.iocoder.cn
+  swagger:
+    title: 管理后台
+    description: VISUALIZE 可视化（大屏 / 组态）配套后台
+    version: ${iot.info.version}
+    base-package: ${iot.info.base-package}
+  captcha:
+    enable: true
+  tenant:
+    enable: true
+    ignore-urls: []
+    ignore-tables: []
+  # FUXA 组态 SSO：后端代登录后返回同源桥接 URL，前端免登打开编辑器/运行态
+  fuxa:
+    sso-enabled: true
+    # 后端访问 FUXA（本机开发用 127.0.0.1；Docker 内可改为 http://FUXA:1881）
+    base-url: ${IOT_FUXA_BASE_URL:http://127.0.0.1:1881}
+    # 浏览器打开地址
+    public-url: ${IOT_FUXA_PUBLIC_URL:http://127.0.0.1:1881}
+    username: ${IOT_FUXA_USERNAME:admin}
+    password: ${IOT_FUXA_PASSWORD:123456}
+    sso-path: /easyaiot-sso.html
+
+debug: false
+logging:
+  level:
+    com.basiclab.iot.visualize.dal.pgsql: DEBUG

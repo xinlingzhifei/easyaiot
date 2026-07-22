@@ -37,10 +37,20 @@ public abstract class AbstractIndustrialPollingProtocol implements IotMessageSub
     private final IotMessageBus messageBus;
     private final DeviceServerIdService deviceServerIdService;
 
+    /** 同一设备连续失败时，完整堆栈仅首次打印；之后按该间隔汇总，避免刷屏 */
+    private static final long FAIL_LOG_INTERVAL_MS = 60_000L;
+
     private final Map<Long, Long> nextPollTimes = new ConcurrentHashMap<>();
     private final Set<Long> inFlight = ConcurrentHashMap.newKeySet();
+    private final Map<Long, DeviceFailLogState> failLogStates = new ConcurrentHashMap<>();
     private ScheduledExecutorService scanner;
     private ExecutorService workers;
+
+    private static final class DeviceFailLogState {
+        private long consecutiveFails;
+        private long lastWarnAt;
+        private long suppressedSinceLastWarn;
+    }
 
     protected AbstractIndustrialPollingProtocol(String protocolType,
                                                 String serverId,
@@ -102,18 +112,72 @@ public abstract class AbstractIndustrialPollingProtocol implements IotMessageSub
             TenantUtils.execute(device.getTenantId(), () -> {
                 try {
                     Map<String, Object> values = poll(device, config);
+                    markPollSuccess(device.getId());
                     if (values != null && !values.isEmpty()) {
                         reportProperties(device, values);
                     }
                 } catch (Exception e) {
                     deviceMapper.updatePollingDeviceStatus(device.getId(), device.getTenantId(), "OFFLINE", null);
-                    log.warn("[pollSafely][{} device poll failed, deviceId: {}, address: {}]", protocolType,
-                            device.getId(), connectionAddress(device, config), e);
+                    logPollFailure(device, config, e);
                 }
             });
         } finally {
             inFlight.remove(device.getId());
         }
+    }
+
+    private void markPollSuccess(Long deviceId) {
+        DeviceFailLogState prev = failLogStates.remove(deviceId);
+        if (prev != null && prev.consecutiveFails > 0) {
+            log.info("[pollSafely][{} device poll recovered, deviceId: {}, previousFails: {}]",
+                    protocolType, deviceId, prev.consecutiveFails);
+        }
+    }
+
+    private void logPollFailure(DeviceDO device, IndustrialDeviceConfig config, Exception e) {
+        Long deviceId = device.getId();
+        String address = connectionAddress(device, config);
+        String errMsg = rootCauseMessage(e);
+        long now = System.currentTimeMillis();
+        DeviceFailLogState state = failLogStates.computeIfAbsent(deviceId, id -> new DeviceFailLogState());
+        state.consecutiveFails++;
+
+        if (state.consecutiveFails == 1) {
+            // 首次失败：带堆栈，便于排查
+            log.warn("[pollSafely][{} device poll failed, deviceId: {}, address: {}]",
+                    protocolType, deviceId, address, e);
+            state.lastWarnAt = now;
+            state.suppressedSinceLastWarn = 0;
+            return;
+        }
+
+        long elapsed = now - state.lastWarnAt;
+        if (elapsed >= FAIL_LOG_INTERVAL_MS) {
+            log.warn("[pollSafely][{} device poll still failing, deviceId: {}, address: {}, consecutiveFails: {}, "
+                            + "suppressed: {}, lastError: {}]",
+                    protocolType, deviceId, address, state.consecutiveFails,
+                    state.suppressedSinceLastWarn, errMsg);
+            state.lastWarnAt = now;
+            state.suppressedSinceLastWarn = 0;
+            return;
+        }
+
+        state.suppressedSinceLastWarn++;
+        if (log.isDebugEnabled()) {
+            log.debug("[pollSafely][{} device poll failed, deviceId: {}, address: {}, consecutiveFails: {}]",
+                    protocolType, deviceId, address, state.consecutiveFails, e);
+        }
+    }
+
+    private static String rootCauseMessage(Throwable e) {
+        Throwable cause = e;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        if (cause.getMessage() != null && !cause.getMessage().isEmpty()) {
+            return cause.getClass().getSimpleName() + ": " + cause.getMessage();
+        }
+        return cause.getClass().getSimpleName();
     }
 
     private void reportProperties(DeviceDO device, Map<String, Object> values) {

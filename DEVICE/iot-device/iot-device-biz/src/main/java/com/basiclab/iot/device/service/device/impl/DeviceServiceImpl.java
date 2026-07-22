@@ -1807,5 +1807,112 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
         return successCount;
     }
 
+    @Override
+    public List<DeviceMapLocationVO> listDevicesForMap(boolean hasLocationOnly) {
+        List<DeviceMapLocationVO> list = deviceMapper.selectDevicesForMap(hasLocationOnly);
+        if (list == null) {
+            return List.of();
+        }
+        for (DeviceMapLocationVO item : list) {
+            boolean located = item.getLongitude() != null && item.getLatitude() != null;
+            item.setHasLocation(located);
+            item.setOnline(DeviceConnectStatusEnum.ONLINE.getValue().equals(item.getConnectStatus()));
+        }
+        return list;
+    }
+
+    @Override
+    public DeviceMapLocationVO getDeviceMapLocation(Long deviceId) {
+        if (deviceId == null) {
+            throw new IllegalArgumentException("设备ID不能为空");
+        }
+        Device device = deviceMapper.selectDeviceById(deviceId);
+        if (device == null) {
+            throw new RuntimeException("设备不存在");
+        }
+        DeviceLocation location = deviceLocationService.findOneByDeviceIdentification(device.getDeviceIdentification());
+        DeviceMapLocationVO vo = new DeviceMapLocationVO();
+        vo.setId(device.getId());
+        vo.setDeviceIdentification(device.getDeviceIdentification());
+        vo.setDeviceName(device.getDeviceName());
+        vo.setConnectStatus(device.getConnectStatus());
+        vo.setOnline(DeviceConnectStatusEnum.ONLINE.getValue().equals(device.getConnectStatus()));
+        vo.setDeviceType(device.getDeviceType());
+        vo.setProductIdentification(device.getProductIdentification());
+        if (location != null) {
+            vo.setLongitude(location.getLongitude());
+            vo.setLatitude(location.getLatitude());
+            vo.setAddress(location.getFullName());
+            vo.setLocationUpdatedAt(location.getUpdateTime());
+            vo.setHasLocation(location.getLongitude() != null && location.getLatitude() != null);
+        } else {
+            vo.setHasLocation(false);
+        }
+        return vo;
+    }
+
+    @Override
+    public int saveOrUpdateDeviceMapLocation(Long deviceId, DeviceLocationUpdateParam param) {
+        if (deviceId == null) {
+            throw new IllegalArgumentException("设备ID不能为空");
+        }
+        if (param == null) {
+            throw new IllegalArgumentException("参数不能为空");
+        }
+        Device device = deviceMapper.selectDeviceById(deviceId);
+        if (device == null) {
+            throw new RuntimeException("设备不存在");
+        }
+        String identification = device.getDeviceIdentification();
+        DeviceLocation existing = deviceLocationService.findOneByDeviceIdentification(identification);
+
+        // 经纬度都为空：清除坐标
+        if (param.getLongitude() == null && param.getLatitude() == null) {
+            if (existing == null || existing.getId() == null) {
+                return 1;
+            }
+            return deviceLocationService.deleteDeviceLocationByIds(new Long[]{existing.getId()});
+        }
+        if (param.getLongitude() == null || param.getLatitude() == null) {
+            throw new IllegalArgumentException("经纬度需成对填写");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (existing == null) {
+            DeviceLocation location = DeviceLocation.builder()
+                    .deviceIdentification(identification)
+                    .longitude(param.getLongitude())
+                    .latitude(param.getLatitude())
+                    .fullName(param.getAddress())
+                    .provinceCode(param.getProvinceCode())
+                    .cityCode(param.getCityCode())
+                    .regionCode(param.getRegionCode())
+                    .remark(param.getRemark())
+                    .createTime(now)
+                    .updateTime(now)
+                    .build();
+            return deviceLocationService.insertDeviceLocation(location);
+        }
+        existing.setLongitude(param.getLongitude());
+        existing.setLatitude(param.getLatitude());
+        existing.setUpdateTime(now);
+        if (param.getAddress() != null) {
+            existing.setFullName(param.getAddress());
+        }
+        if (param.getProvinceCode() != null) {
+            existing.setProvinceCode(param.getProvinceCode());
+        }
+        if (param.getCityCode() != null) {
+            existing.setCityCode(param.getCityCode());
+        }
+        if (param.getRegionCode() != null) {
+            existing.setRegionCode(param.getRegionCode());
+        }
+        if (param.getRemark() != null) {
+            existing.setRemark(param.getRemark());
+        }
+        return deviceLocationService.updateDeviceLocation(existing);
+    }
+
 }
 

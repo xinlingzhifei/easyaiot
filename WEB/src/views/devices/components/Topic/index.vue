@@ -515,7 +515,7 @@ onMounted(() => {
 .device-topic-wrapper {
   padding: 0;
   margin: 0;
-  background: #f5f7fa;
+  background: #ffffff;
   height: 100%;
   display: flex;
   flex-direction: column;

@@ -174,7 +174,7 @@ services:
     user: root
     environment:
       - TZ=Asia/Shanghai # 配置程序默认时区为上海（中国标准时间）
-      - JAVA_OPTS=-Xms256m -Xmx320m
+      - JAVA_OPTS=-Xms512m -Xmx2g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/root/logs/iot-dataset-oom.hprof -XX:+ExitOnOutOfMemoryError
       - SPRING_PROFILES_ACTIVE=local # 指定程序运行环境
       - SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=Nacos:8848 # 配置中心地址（使用Docker服务名）
       - SPRING_CLOUD_NACOS_CONFIG_NAMESPACE= # 使用默认命名空间（public）
@@ -191,6 +191,7 @@ services:
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
       - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/logs:/root/logs/
+      - /data/yolo_dataset:/data/yolo_dataset:ro
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48087/actuator/health"]
@@ -229,6 +230,39 @@ services:
       - ../VIDEO:/opt/easyaiot/VIDEO
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:48094/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: always
+    networks:
+      - yfeieye-network
+    depends_on:
+      iot-infra:
+        condition: service_healthy
+
+  iot-visualize:
+    image: iot-module-visualize-biz:latest
+    container_name: iot-visualize
+    user: root
+    environment:
+      - TZ=Asia/Shanghai
+      - JAVA_OPTS=-Xms256m -Xmx320m
+      - SPRING_PROFILES_ACTIVE=local
+      - SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR=Nacos:8848
+      - SPRING_CLOUD_NACOS_CONFIG_NAMESPACE=
+      - SPRING_CLOUD_NACOS_SERVER_ADDR=Nacos:8848
+      - SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE=
+      - SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL=jdbc:postgresql://PostgresSQL:5432/iot-visualize20?autoReconnect=true&autoReconnectForPools=true&useUnicode=true&characterEncoding=utf8&createDatabaseIfNotExist=true&allowMultiQueries=true&zeroDateTimeBehavior=convertToNull&stringtype=unspecified
+      - SPRING_REDIS_HOST=Redis
+      - IOT_FUXA_BASE_URL=http://FUXA:1881
+      - IOT_FUXA_PUBLIC_URL=http://127.0.0.1:1881
+      - IOT_FUXA_USERNAME=admin
+      - IOT_FUXA_PASSWORD=123456
+    volumes:
+      - ${YFEIEYE_DEVICE_STATE_ROOT:-/opt/yfeieye-source/shared/device}/visualize-logs:/root/logs/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:48095/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5

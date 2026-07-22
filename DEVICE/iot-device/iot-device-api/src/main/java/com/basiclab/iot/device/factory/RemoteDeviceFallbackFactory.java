@@ -6,6 +6,7 @@ import com.basiclab.iot.device.RemoteDeviceService;
 import com.basiclab.iot.device.domain.device.vo.Device;
 import com.basiclab.iot.device.domain.device.vo.EnsureDeviceOnUplinkParam;
 import com.basiclab.iot.device.domain.device.vo.EnsureGatewaySubDeviceParam;
+import com.basiclab.iot.device.domain.device.vo.PropertyThresholdEvaluateParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.openfeign.FallbackFactory;
@@ -98,6 +99,11 @@ public class RemoteDeviceFallbackFactory implements FallbackFactory<RemoteDevice
             @Override
             public R<Integer> updateGatewaySubDeviceStatus(String gatewayIdentification, List<Map<String, Object>> statusItems) {
                 return R.fail("更新网关子设备状态失败:" + throwable.getMessage());
+            }
+
+            @Override
+            public R<Integer> evaluatePropertyThreshold(PropertyThresholdEvaluateParam param) {
+                return R.fail("属性阈值评估失败:" + throwable.getMessage());
             }
         };
     }

@@ -3,8 +3,9 @@
     @register="register"
     title="属性历史数据"
     width="96%"
-    :min-height="640"
+    :min-height="720"
     :centered="true"
+    wrap-class-name="property-history-modal"
     @cancel="handleCancel"
     @ok="handleSubmit"
   >
@@ -28,9 +29,16 @@
             @change="handleCustomRangeChange"
           />
         </div>
+        <div class="filter-spacer"></div>
+        <Segmented
+          v-model:value="viewMode"
+          :options="viewModeOptions"
+          class="view-switch"
+          @change="handleViewModeChange"
+        />
       </div>
 
-      <div class="history-content">
+      <div v-if="viewMode === 'history'" class="history-content">
         <section class="trend-panel">
           <div class="panel-heading">
             <div>
@@ -64,7 +72,84 @@
               </div>
             </div>
           </div>
-          <BasicTable @register="registerTable" />
+          <div class="table-body">
+            <BasicTable @register="registerTable" />
+          </div>
+        </section>
+      </div>
+
+      <div v-else class="predict-content">
+        <section class="trend-panel predict-chart-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-title">采集预测 · {{ state.propertyName }}</div>
+              <div class="panel-subtitle">融合原始历史运行数据与最新采样值，95% 预测区间</div>
+            </div>
+            <div v-if="predictResult.latestValue != null" class="latest-value">
+              <span>最新值</span>
+              <strong>{{ predictResult.latestValue }}{{ state.unit || '' }}</strong>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <div ref="predictChartRef" class="trend-chart"></div>
+            <Empty
+              v-if="!predictResult.predictReady"
+              class="chart-empty"
+              :image="Empty.PRESENTED_IMAGE_SIMPLE"
+              :description="predictResult.message || '暂无预测数据'"
+            />
+          </div>
+        </section>
+
+        <section class="predict-side">
+          <div class="panel-heading compact-heading">
+            <div>
+              <div class="panel-title">智能预测诊断</div>
+              <div class="panel-subtitle">加权数据特征，实时偏差检测，阈值风险预测</div>
+            </div>
+            <Tag :color="riskTagColor">{{ predictResult.riskMessage || '待分析' }}</Tag>
+          </div>
+
+          <div class="predict-side-body">
+            <div class="risk-card">
+              <div class="risk-title">综合故障风险 {{ predictResult.failureRisk ?? 0 }}%</div>
+              <Progress
+                :percent="predictResult.failureRisk || 0"
+                :stroke-color="riskTagColor === 'red' ? '#ff4d4f' : riskTagColor === 'orange' ? '#fa8c16' : '#52c41a'"
+                :show-info="false"
+              />
+              <div class="risk-desc">{{ predictResult.failureMessage || '等待有效样本' }}</div>
+            </div>
+
+            <div class="diag-list">
+              <div class="diag-item">
+                <div class="diag-name">异常检测</div>
+                <div class="diag-msg">{{ predictResult.anomalyMessage || '--' }}</div>
+                <div class="diag-meta">异常占比 {{ predictResult.anomalyRatio ?? 0 }}% · 灵敏度 {{ predictResult.sensitivity ?? 0 }}%</div>
+              </div>
+              <div class="diag-item">
+                <div class="diag-name">故障风险</div>
+                <div class="diag-msg">{{ predictResult.failureMessage || '--' }}</div>
+                <div class="diag-meta">预测窗口至 {{ predictEndLabel }}</div>
+              </div>
+              <div class="diag-item">
+                <div class="diag-name">性能衰减</div>
+                <div class="diag-msg">{{ predictResult.degradationMessage || '--' }}</div>
+                <div class="diag-meta">衰减 {{ predictResult.degradationDegree ?? 0 }}% · 窗口变化 {{ predictResult.windowChange ?? 0 }}</div>
+              </div>
+              <div class="diag-item">
+                <div class="diag-name">运转状态</div>
+                <div class="diag-msg">{{ predictResult.runStateMessage || '未知' }}</div>
+              </div>
+            </div>
+
+            <div class="summary-grid">
+              <div><span>有效样本</span><strong>{{ predictResult.sampleCount ?? 0 }} 条</strong></div>
+              <div><span>单位时间趋势</span><strong>{{ predictResult.hourlyTrend ?? '--' }}{{ state.unit || '' }}/时</strong></div>
+              <div><span>设备状态</span><strong>{{ predictResult.deviceStatus || '--' }}</strong></div>
+              <div><span>越限风险</span><strong>{{ predictResult.compressionRisk ?? 0 }}%</strong></div>
+            </div>
+          </div>
         </section>
       </div>
     </div>
@@ -74,13 +159,14 @@
 <script lang="ts" setup name="Detail">
 import { computed, nextTick, reactive, ref, Ref, watch } from 'vue';
 import moment from 'moment';
-import { Empty, RangePicker, Segmented } from 'ant-design-vue';
+import { Empty, Progress, RangePicker, Segmented, Tag } from 'ant-design-vue';
 import { BasicModal, useModalInner } from '@/components/Modal';
 import { BasicTable, useTable } from '@/components/Table';
 import { useECharts } from '@/hooks/web/useECharts';
-import { getDevicethingmodelsHistory } from '@/api/device/devices';
+import { getDevicethingmodelsHistory, predictPropertyTrend } from '@/api/device/devices';
 import { detailColumns } from '../tableData';
 import { useRoute } from 'vue-router';
+import { buildPredictionAnalysis } from './predictionAnalysis';
 
 interface TrendPoint {
   time: string;
@@ -90,7 +176,13 @@ interface TrendPoint {
 
 const route = useRoute();
 const chartRef = ref<HTMLDivElement | null>(null);
+const predictChartRef = ref<HTMLDivElement | null>(null);
 const { setOptions, resize, dispose: disposeChart } = useECharts(chartRef as Ref<HTMLDivElement>);
+const {
+  setOptions: setPredictOptions,
+  resize: resizePredict,
+  dispose: disposePredictChart,
+} = useECharts(predictChartRef as Ref<HTMLDivElement>);
 
 const state = reactive({
   unit: '',
@@ -98,6 +190,31 @@ const state = reactive({
   deviceIdentification: '',
   identifier: '',
   industrialPoint: null as Record<string, any> | null,
+});
+
+const viewMode = ref<'history' | 'predict'>('history');
+const viewModeOptions = [
+  { label: '历史运行数据', value: 'history' },
+  { label: '预测诊断', value: 'predict' },
+];
+
+const predictResult = reactive<Record<string, any>>({
+  predictReady: false,
+  message: '',
+  sampleCount: 0,
+});
+
+const riskTagColor = computed(() => {
+  const level = predictResult.riskLevel;
+  if (level === 'HIGH') return 'red';
+  if (level === 'MEDIUM') return 'orange';
+  if (level === 'LOW') return 'green';
+  return 'default';
+});
+
+const predictEndLabel = computed(() => {
+  if (!predictResult.predictEndTs) return '--';
+  return moment(Number(predictResult.predictEndTs)).format('YYYY-MM-DD HH:mm:ss');
 });
 
 const currentTime = ref<number | string>(1);
@@ -135,7 +252,11 @@ function getTimeRange() {
 
 function handleQuickRangeChange() {
   customTime.value = undefined;
-  reload({ page: 1 });
+  reload({ page: 1 }).then(() => {
+    if (viewMode.value === 'predict') {
+      loadPredict();
+    }
+  });
 }
 
 function calendarPriceRangeChange(date) {
@@ -153,7 +274,272 @@ function disabledDate(current) {
 function handleCustomRangeChange(dates) {
   customTime.value = dates?.length === 2 ? [dates[0], dates[1]] : undefined;
   selectPriceDate.value = '';
-  if (customTime.value?.length === 2) reload({ page: 1 });
+  if (customTime.value?.length === 2) {
+    reload({ page: 1 }).then(() => {
+      if (viewMode.value === 'predict') {
+        loadPredict();
+      }
+    });
+  }
+}
+
+function handleViewModeChange() {
+  nextTick(async () => {
+    if (viewMode.value === 'predict') {
+      await loadPredict();
+      nextTick(() => resizePredict());
+    } else {
+      disposePredictChart();
+      if (!trendData.value.length) {
+        await reload({ page: 1 });
+      } else {
+        await renderChart();
+      }
+      nextTick(() => {
+        resize();
+        redoHeight();
+      });
+    }
+  });
+}
+
+/** 用已加载的历史点做本地预测，避免后端另查 TDEngine 偶发空数据 */
+function applyLocalPredict() {
+  const source = trendData.value.map((p) => ({ ts: p.timestamp, dataValue: p.value }));
+  const analysis = buildPredictionAnalysis(
+    source,
+    latestPoint.value?.value,
+    latestPoint.value?.timestamp,
+    [],
+    undefined,
+  );
+
+  Object.keys(predictResult).forEach((k) => delete predictResult[k]);
+
+  if (!analysis.available) {
+    predictResult.predictReady = false;
+    predictResult.message = analysis.reason || '暂无预测数据';
+    predictResult.sampleCount = analysis.sampleCount;
+    predictResult.failureRisk = 0;
+    predictResult.riskMessage = '待分析';
+    predictResult.riskLevel = 'PENDING';
+    return;
+  }
+
+  const riskLevelMap: Record<string, string> = {
+    high: 'HIGH',
+    medium: 'MEDIUM',
+    low: 'LOW',
+  };
+
+  Object.assign(predictResult, {
+    predictReady: true,
+    message: '',
+    sampleCount: analysis.sampleCount,
+    latestValue: analysis.latestValue,
+    latestTs: analysis.samples[analysis.samples.length - 1]?.ts,
+    history: analysis.samples.map((s) => ({ ts: s.ts, value: s.value })),
+    prediction: analysis.forecast.map((p) => ({ ts: p.ts, value: Number(p.value.toFixed(2)) })),
+    upperBound: analysis.forecast.map((p) => ({ ts: p.ts, value: Number(p.upper.toFixed(2)) })),
+    lowerBound: analysis.forecast.map((p) => ({ ts: p.ts, value: Number(p.lower.toFixed(2)) })),
+    predictEndTs: analysis.forecastEndTs,
+    hourlyTrend: Number(analysis.slopePerHour.toFixed(2)),
+    anomalyRatio: analysis.anomalyScore,
+    sensitivity: 35,
+    anomalyMessage: analysis.anomalyText,
+    failureRisk: analysis.faultRisk,
+    compressionRisk: analysis.thresholdHitTs ? 40 : 0,
+    riskLevel: riskLevelMap[analysis.riskLevel] || 'LOW',
+    riskMessage:
+      analysis.riskLevel === 'high' ? '高风险' : analysis.riskLevel === 'medium' ? '中风险' : '低风险',
+    failureMessage: analysis.riskText,
+    degradationDegree: analysis.degradationScore,
+    degradationMessage: analysis.degradationText,
+    windowChange: Number(
+      (
+        (analysis.predictedValue ?? 0) - (analysis.latestValue ?? 0)
+      ).toFixed(2),
+    ),
+    deviceStatus: analysis.connectionStatusText,
+    runStateMessage: analysis.connectionStatusText === '在线' ? '运转正常' : analysis.connectionText || '未知',
+  });
+}
+
+async function loadPredict() {
+  predictResult.predictReady = false;
+  predictResult.message = '分析中...';
+
+  // 与历史运行数据共用同一批样本，保证「有历史就能预测」
+  if (!trendData.value.length) {
+    try {
+      await reload({ page: 1 });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  applyLocalPredict();
+  await renderPredictChart();
+
+  // 后端预测作为增强：成功且样本更多时再覆盖；失败不影响展示
+  try {
+    const [startTime, endTime] = getTimeRange();
+    const res = await predictPropertyTrend({
+      deviceIdentification: state.deviceIdentification,
+      propertyCode: state.identifier,
+      propertyName: state.propertyName,
+      unit: state.unit,
+      startTime,
+      endTime,
+      predictPoints: 12,
+    });
+    const data = res?.data || res || {};
+    if (data?.predictReady && (data.sampleCount || 0) >= (predictResult.sampleCount || 0)) {
+      Object.keys(predictResult).forEach((k) => delete predictResult[k]);
+      Object.assign(predictResult, data);
+      await renderPredictChart();
+    }
+  } catch (e) {
+    console.warn('后端预测不可用，已使用本地诊断结果', e);
+  }
+}
+
+function buildTimeAxisZoom() {
+  return [
+    {
+      type: 'inside',
+      xAxisIndex: 0,
+      filterMode: 'none',
+      zoomOnMouseWheel: true,
+      moveOnMouseMove: true,
+      moveOnMouseWheel: false,
+    },
+    {
+      type: 'slider',
+      xAxisIndex: 0,
+      filterMode: 'none',
+      height: 28,
+      bottom: 8,
+      left: 56,
+      right: 24,
+      borderColor: '#e6edf5',
+      backgroundColor: '#f8fafc',
+      fillerColor: 'rgba(22, 119, 255, 0.15)',
+      handleSize: '110%',
+      handleStyle: {
+        color: '#1677ff',
+        borderColor: '#1677ff',
+      },
+      moveHandleSize: 8,
+      moveHandleStyle: {
+        color: '#91caff',
+      },
+      dataBackground: {
+        lineStyle: { color: '#91caff', width: 1 },
+        areaStyle: { color: 'rgba(22, 119, 255, 0.08)' },
+      },
+      selectedDataBackground: {
+        lineStyle: { color: '#1677ff', width: 1.5 },
+        areaStyle: { color: 'rgba(22, 119, 255, 0.2)' },
+      },
+      textStyle: {
+        color: '#8c8c8c',
+        fontSize: 11,
+      },
+      labelFormatter: (value: number) => moment(value).format('MM-DD HH:mm'),
+      brushSelect: false,
+      showDetail: true,
+      realtime: true,
+    },
+  ];
+}
+
+async function renderPredictChart() {
+  await nextTick();
+  disposePredictChart();
+  await nextTick();
+  if (!predictResult.predictReady) return;
+
+  const history = (predictResult.history || []).map((p: any) => [p.ts, p.value]);
+  const prediction = (predictResult.prediction || []).map((p: any) => [p.ts, p.value]);
+  const upper = (predictResult.upperBound || []).map((p: any) => [p.ts, p.value]);
+  const lower = (predictResult.lowerBound || []).map((p: any) => [p.ts, p.value]);
+
+  // 置信带：用堆叠面积近似
+  const band = upper.map((u: any[], i: number) => {
+    const l = lower[i]?.[1] ?? u[1];
+    return [u[0], u[1] - l];
+  });
+
+  await setPredictOptions({
+    color: ['#1677ff', '#722ed1', '#52c41a'],
+    legend: {
+      data: ['历史运行数据', '预测趋势', '实时数据'],
+      top: 0,
+      right: 8,
+    },
+    grid: { left: 56, right: 24, top: 36, bottom: 72 },
+    tooltip: { trigger: 'axis' },
+    dataZoom: buildTimeAxisZoom(),
+    xAxis: {
+      type: 'time',
+      axisLabel: { formatter: (value: number) => moment(value).format('MM-DD HH:mm') },
+    },
+    yAxis: {
+      type: 'value',
+      name: state.unit ? `单位：${state.unit}` : undefined,
+      scale: true,
+    },
+    series: [
+      {
+        name: '历史运行数据',
+        type: 'line',
+        showSymbol: history.length < 60,
+        data: history,
+        lineStyle: { width: 2.5, color: '#1677ff' },
+        itemStyle: { color: '#1677ff' },
+      },
+      {
+        name: '置信下界',
+        type: 'line',
+        data: lower,
+        lineStyle: { opacity: 0 },
+        stack: 'confidence',
+        symbol: 'none',
+        areaStyle: { color: 'transparent' },
+      },
+      {
+        name: '95%区间',
+        type: 'line',
+        data: band,
+        lineStyle: { opacity: 0 },
+        stack: 'confidence',
+        symbol: 'none',
+        areaStyle: { color: 'rgba(114, 46, 209, 0.15)' },
+      },
+      {
+        name: '预测趋势',
+        type: 'line',
+        data: prediction,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 7,
+        lineStyle: { width: 2, type: 'dashed', color: '#722ed1' },
+        itemStyle: { color: '#722ed1', borderColor: '#fff', borderWidth: 1 },
+      },
+      {
+        name: '实时数据',
+        type: 'scatter',
+        data:
+          predictResult.latestTs != null
+            ? [[predictResult.latestTs, predictResult.latestValue]]
+            : [],
+        symbolSize: 10,
+        itemStyle: { color: '#52c41a' },
+      },
+    ],
+  } as any);
+  resizePredict();
 }
 
 interface ParsedHistoryValue {
@@ -256,11 +642,12 @@ async function renderChart() {
   }
   const sorted = [...trendData.value].sort((a, b) => a.timestamp - b.timestamp);
   await setOptions({
-    grid: { left: 56, right: 24, top: 24, bottom: 48 },
+    grid: { left: 56, right: 24, top: 24, bottom: 72 },
     tooltip: {
       trigger: 'axis',
       valueFormatter: (value) => `${value}${state.unit || ''}`,
     },
+    dataZoom: buildTimeAxisZoom(),
     xAxis: {
       type: 'time',
       axisLabel: {
@@ -298,7 +685,11 @@ const [register, { closeModal, getOpen }] = useModalInner(({ data }) => {
   customTime.value = undefined;
   trendData.value = [];
   tableRowCount.value = 0;
+  viewMode.value = 'history';
+  Object.keys(predictResult).forEach((k) => delete predictResult[k]);
+  predictResult.predictReady = false;
   disposeChart();
+  disposePredictChart();
 
   const valueTitle = state.industrialPoint
     ? `解析值${state.unit ? `（${state.unit}）` : ''}`
@@ -334,14 +725,16 @@ if (getOpen) {
   watch(getOpen, (open) => {
     if (!open) {
       disposeChart();
+      disposePredictChart();
       trendData.value = [];
       tableRowCount.value = 0;
     }
   });
 }
 
-const [registerTable, { setColumns, reload }] = useTable({
-  resizeHeightOffset: 120,
+const [registerTable, { setColumns, reload, redoHeight }] = useTable({
+  canResize: false,
+  scroll: { y: 520 },
   api: getDevicethingmodelsHistory,
   bordered: false,
   showIndexColumn: false,
@@ -383,7 +776,13 @@ const [registerTable, { setColumns, reload }] = useTable({
       }))
       .filter((item) => Number.isFinite(item.timestamp));
 
-    renderChart();
+    nextTick(() => {
+      if (viewMode.value === 'history') {
+        renderChart();
+        resize();
+        redoHeight();
+      }
+    });
     return rows.map(({ _chartValue, ...rest }) => rest);
   },
   immediate: false,
@@ -394,7 +793,9 @@ function resetAndClose() {
   tableRowCount.value = 0;
   customTime.value = undefined;
   state.industrialPoint = null;
+  viewMode.value = 'history';
   disposeChart();
+  disposePredictChart();
   closeModal();
 }
 
@@ -444,20 +845,24 @@ function buildRawDisplay(rawData: unknown, point: Record<string, any> | null): R
 .history-modal {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  min-height: 600px;
-  padding: 4px 4px 8px;
+  gap: 16px;
+  min-height: min(720px, calc(100vh - 140px));
+  height: min(780px, calc(100vh - 120px));
+  padding: 8px 8px 12px;
+  box-sizing: border-box;
 }
 
 .filter-bar {
+  flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 20px;
-  padding: 16px 20px;
-  background: #f7f9fc;
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
+  gap: 16px;
+  min-height: 58px;
+  padding: 12px 18px;
+  background: #f8fafc;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
 }
 
 .filter-group {
@@ -467,9 +872,9 @@ function buildRawDisplay(rawData: unknown, point: Record<string, any> | null): R
 }
 
 .filter-label {
-  color: rgba(0, 0, 0, 0.45);
+  color: #52657a;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .filter-divider {
@@ -478,11 +883,136 @@ function buildRawDisplay(rawData: unknown, point: Record<string, any> | null): R
   background: #e5e7eb;
 }
 
-.history-content {
+.filter-spacer {
+  flex: 1;
+  min-width: 16px;
+}
+
+.view-switch {
+  flex-shrink: 0;
+}
+
+.custom-range {
+  :deep(.ant-picker-range) {
+    width: min(360px, 42vw);
+  }
+}
+
+.history-content,
+.predict-content {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  gap: 20px;
-  min-height: 520px;
+  gap: 16px;
+}
+
+/* 历史 / 预测统一左右结构，体量对齐 */
+.history-content {
+  grid-template-columns: minmax(0, 1.28fr) minmax(420px, 0.85fr);
+}
+
+.predict-content {
+  grid-template-columns: minmax(0, 1.35fr) minmax(380px, 0.75fr);
+}
+
+.predict-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.predict-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.risk-card {
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+
+  .risk-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #262626;
+  }
+
+  .risk-desc {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #8c8c8c;
+    line-height: 1.5;
+  }
+}
+
+.diag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .diag-item {
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #fafafa;
+    border: 1px solid #f0f0f0;
+  }
+
+  .diag-name {
+    font-size: 12px;
+    color: #8c8c8c;
+  }
+
+  .diag-msg {
+    margin-top: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #262626;
+    line-height: 1.45;
+  }
+
+  .diag-meta {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #8c8c8c;
+  }
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+
+  div {
+    padding: 10px 12px;
+    background: #fafafa;
+    border-radius: 8px;
+    border: 1px solid #f0f0f0;
+
+    span {
+      display: block;
+      font-size: 12px;
+      color: #8c8c8c;
+    }
+
+    strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 14px;
+      color: #262626;
+    }
+  }
 }
 
 .trend-panel,
@@ -490,80 +1020,143 @@ function buildRawDisplay(rawData: unknown, point: Record<string, any> | null): R
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid #eef0f4;
-  border-radius: 10px;
+  min-height: 0;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
   overflow: hidden;
   background: #fff;
 }
 
 .panel-heading {
+  flex-shrink: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px 0;
+  min-height: 72px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #edf1f5;
 }
 
 .compact-heading {
-  padding-bottom: 12px;
+  min-height: 64px;
 }
 
 .panel-title {
   font-size: 16px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
+  color: #1f2937;
+  line-height: 24px;
 }
 
 .panel-subtitle {
-  margin-top: 6px;
-  color: rgba(0, 0, 0, 0.45);
-  font-size: 13px;
+  margin-top: 4px;
+  color: #98a2b3;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .latest-value {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  color: rgba(0, 0, 0, 0.45);
+  align-items: baseline;
+  gap: 10px;
+  flex-shrink: 0;
+  color: #98a2b3;
   font-size: 12px;
 
   strong {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: #1677ff;
-    font-size: 22px;
-    line-height: 1.2;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 32px;
   }
 }
 
 .chart-wrap {
   position: relative;
   flex: 1;
-  min-height: 360px;
-  padding: 12px 12px 20px;
+  min-height: 0;
+  padding: 8px 12px 12px;
 }
 
 .trend-chart {
   width: 100%;
-  height: 360px;
+  height: 100%;
+  min-height: 420px;
 }
 
 .chart-empty {
   position: absolute;
-  inset: 12px 12px 20px;
+  inset: 8px 12px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.92);
 }
 
-.table-panel {
+.table-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 8px 8px;
+
   :deep(.ant-table-wrapper) {
-    padding: 0 12px 12px;
+    padding: 0;
+    height: 100%;
+  }
+
+  :deep(.vben-basic-table) {
+    height: 100%;
+  }
+
+  :deep(.ant-table-body) {
+    max-height: 520px !important;
+  }
+
+  :deep(.ant-table-tbody > tr > td) {
+    color: #262626;
+  }
+
+  :deep(.ellipsis-span) {
+    color: inherit;
   }
 }
 
 @media (max-width: 1200px) {
-  .history-content {
+  .history-modal {
+    height: auto;
+    min-height: 560px;
+  }
+
+  .history-content,
+  .predict-content {
     grid-template-columns: 1fr;
+  }
+
+  .trend-chart {
+    min-height: 320px;
+  }
+}
+</style>
+
+<style lang="less">
+.property-history-modal {
+  .ant-modal {
+    max-width: 1600px;
+    top: 40px;
+    padding-bottom: 0;
+  }
+
+  .ant-modal-body {
+    padding: 12px 16px 8px !important;
+  }
+
+  .scrollbar__wrap {
+    margin-bottom: 0 !important;
   }
 }
 </style>

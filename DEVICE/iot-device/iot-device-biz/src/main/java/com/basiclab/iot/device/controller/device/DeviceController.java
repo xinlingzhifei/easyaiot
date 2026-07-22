@@ -132,6 +132,24 @@ public class DeviceController extends BaseController {
         return getDataTable(list);
     }
 
+    @ApiOperation("查询设备地图分布点位（供地图展示）")
+    @GetMapping("/locations")
+    public AjaxResult listDeviceLocations(
+            @RequestParam(value = "has_location", required = false, defaultValue = "true") String hasLocation) {
+        try {
+            boolean hasLocationOnly = !("false".equalsIgnoreCase(hasLocation)
+                    || "0".equals(hasLocation)
+                    || "no".equalsIgnoreCase(hasLocation));
+            List<DeviceMapLocationVO> items = deviceService.listDevicesForMap(hasLocationOnly);
+            AjaxResult result = AjaxResult.success(items);
+            result.put("total", items.size());
+            return result;
+        } catch (Exception e) {
+            log.error("查询设备地图点位失败", e);
+            return AjaxResult.error(e.getMessage());
+        }
+    }
+
     /**
      * 通过主产品标识查询产品
      *
@@ -584,5 +602,31 @@ public class DeviceController extends BaseController {
         }
     }
 
+    @ApiOperation("查询单个设备地图位置")
+    @GetMapping("/{id}/location")
+    public AjaxResult getDeviceLocation(@PathVariable("id") Long id) {
+        try {
+            return AjaxResult.success(deviceService.getDeviceMapLocation(id));
+        } catch (Exception e) {
+            log.error("查询设备地图位置失败, id={}", id, e);
+            return AjaxResult.error(e.getMessage());
+        }
+    }
+
+    @ApiOperation("保存或更新设备地图坐标")
+    @PutMapping("/{id}/location")
+    public AjaxResult updateDeviceLocation(
+            @PathVariable("id") Long id,
+            @RequestBody DeviceLocationUpdateParam param) {
+        try {
+            int rows = deviceService.saveOrUpdateDeviceMapLocation(id, param);
+            return rows > 0 ? AjaxResult.success("保存成功") : AjaxResult.error("保存失败");
+        } catch (IllegalArgumentException e) {
+            return AjaxResult.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("保存设备地图坐标失败, id={}", id, e);
+            return AjaxResult.error(e.getMessage());
+        }
+    }
 
 }

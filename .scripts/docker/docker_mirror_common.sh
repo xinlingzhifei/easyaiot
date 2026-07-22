@@ -4,7 +4,8 @@
 # （若未提供 check_command / print_*，本文件提供简易回退）
 #
 # 环境变量:
-#   DOCKER_MIRROR   镜像源，默认 https://docker.m.daocloud.io/
+#   DOCKER_MIRROR   镜像源，默认优先华为云 SWR 加速器风格回退链（见 DOCKER_MIRROR_FALLBACKS）
+#                   也可设为个人华为云加速器: https://<id>.mirror.swr.myhuaweicloud.com
 #   DOCKER_DNS      逗号分隔 DNS，默认 223.5.5.5,119.29.29.29（阿里/腾讯）
 #   EASYAIOT_FORCE_DOCKER_DNS=1  强制写入 daemon.json DNS（即使 resolv.conf 非 loopback）
 #   EASYAIOT_FORCE_HOST_DNS=1    强制重写宿主机 /etc/resolv.conf
@@ -13,7 +14,10 @@ if ! declare -f check_command >/dev/null 2>&1; then
     check_command() { command -v "$1" >/dev/null 2>&1; }
 fi
 
-DOCKER_MIRROR="${DOCKER_MIRROR:-https://docker.m.daocloud.io/}"
+# DaoCloud 对部分镜像会 403；默认改用更稳的公共代理，华为云专属加速器用 DOCKER_MIRROR 覆盖
+DOCKER_MIRROR="${DOCKER_MIRROR:-https://proxy.vvvv.ee}"
+# 拉取回退链（逗号分隔主机名，不含协议）；可通过 DOCKER_MIRROR_FALLBACKS 覆盖
+DOCKER_MIRROR_FALLBACKS="${DOCKER_MIRROR_FALLBACKS:-proxy.vvvv.ee,docker.1panel.live,docker.1ms.run,docker.m.daocloud.io}"
 # 国内公网 DNS；麒麟等系统 /etc/resolv.conf 常指向 ::1/127.0.0.53，Docker 内无法使用
 DOCKER_DNS="${DOCKER_DNS:-223.5.5.5,119.29.29.29}"
 
@@ -178,7 +182,7 @@ PYEOF
     print_warning "未安装 jq/python3 且 $config_file 已存在，跳过自动配置（请手动确认 registry-mirrors 含 $DOCKER_MIRROR，并建议添加 dns: [\"223.5.5.5\",\"119.29.29.29\"]）"
 }
 
-# 从 DaoCloud 等国内前缀直连拉取并 tag 回原名（registry-mirrors 失效时的回退）
+# 从国内镜像前缀直连拉取并 tag 回原名（registry-mirrors 失效时的回退）
 # 用法: docker_pull_with_mirror_fallback [--platform linux/arm64] image:tag
 docker_pull_with_mirror_fallback() {
     local platform_args=()
@@ -202,28 +206,47 @@ docker_pull_with_mirror_fallback() {
         return 0
     fi
 
-    local mirror_host="${DOCKER_MIRROR_HOST:-docker.m.daocloud.io}"
-    mirror_host="${mirror_host#https://}"
-    mirror_host="${mirror_host#http://}"
-    mirror_host="${mirror_host%/}"
-
-    local candidates=()
-    # 已是镜像站路径则不再套前缀
-    if [[ "$img" == "$mirror_host"/* ]]; then
-        return 1
+    local primary="${DOCKER_MIRROR_HOST:-}"
+    if [ -z "$primary" ]; then
+        primary="${DOCKER_MIRROR:-https://docker.1ms.run}"
     fi
-    # 官方库简写 postgres:18 → library/postgres:18
-    if [[ "$img" != */* ]]; then
-        candidates+=("${mirror_host}/library/${img}")
-    elif [[ "$img" == library/* ]]; then
-        candidates+=("${mirror_host}/${img}")
-    else
-        # docker hub 命名空间：emqx/emqx:5.8.7
-        candidates+=("${mirror_host}/${img}")
-    fi
+    primary="${primary#https://}"
+    primary="${primary#http://}"
+    primary="${primary%/}"
 
-    local c
-    for c in "${candidates[@]}"; do
+    local hosts=()
+    local h
+    # 主源优先
+    [ -n "$primary" ] && hosts+=("$primary")
+    # 回退链
+    IFS=',' read -r -a _fb <<< "${DOCKER_MIRROR_FALLBACKS:-proxy.vvvv.ee,docker.1panel.live,docker.1ms.run,docker.m.daocloud.io}"
+    for h in "${_fb[@]}"; do
+        h="${h#https://}"
+        h="${h#http://}"
+        h="${h%/}"
+        h="${h// /}"
+        [ -z "$h" ] && continue
+        local dup=0
+        local x
+        for x in "${hosts[@]}"; do
+            [ "$x" = "$h" ] && dup=1 && break
+        done
+        [ "$dup" -eq 0 ] && hosts+=("$h")
+    done
+
+    local mirror_host c
+    for mirror_host in "${hosts[@]}"; do
+        # 已是该镜像站路径则跳过
+        if [[ "$img" == "$mirror_host"/* ]]; then
+            continue
+        fi
+        if [[ "$img" != */* ]]; then
+            c="${mirror_host}/library/${img}"
+        elif [[ "$img" == library/* ]]; then
+            c="${mirror_host}/${img}"
+        else
+            c="${mirror_host}/${img}"
+        fi
         print_info "镜像源直连回退拉取: $c"
         if docker pull "${platform_args[@]}" "$c"; then
             docker tag "$c" "$img" 2>/dev/null || true

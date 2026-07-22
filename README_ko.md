@@ -36,7 +36,7 @@
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-플랫폼은 <strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, EDGE</strong> 여덟 핵심 모듈로 구성되며, Java로 안정적인 관제 기반을 구축하고, Python으로 AI와 네트워킹을 담당하며, C++로 고성능 컴퓨팅 작업을 구동하는 삼언어 혼합 아키텍처로 각 언어의 강점을 살립니다. 기능 측면: GB28181 / ONVIF 다중 프로토콜 카메라 접속, <strong>DJI 도크·드론 공중 시야 접속</strong>, 실시간 및 스냅샷 알고리즘 태스크, YOLO 객체 검출 및 SAM 제로샷 자동 어노테이션, 얼굴/번호판 인식, 오케스트레이션 가능한 비즈니스 후처리, 연합 컴퓨팅 클러스터 스케줄링, <strong>무한 연합 엣지 클러스터 모드</strong>(메모리 약 512MB, Ceph 엣지 로컬 디스크 점유 0, 한 줄 명령으로 일반 개발 보드를 바로 지능화, 컴퓨팅을 현장에 펼쳐 배포하고 이벤트를 클라우드로 집약), MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA IoT 디바이스 전 생애주기 관리. 경험 측면: Web 관제 콘솔과 모바일 App / 미니프로그램의 기능이 정렬되어, 지휘 센터와 현장 순찰이 동일한 비즈니스 로직으로 언제 어디서나 대응할 수 있습니다.
+플랫폼은 <strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, EDGE, VISUALIZE</strong> 아홉 핵심 모듈로 구성되며, Java로 안정적인 관제 기반을 구축하고, Python으로 AI와 네트워킹을 담당하며, C++로 고성능 컴퓨팅 작업을 구동하는 삼언어 혼합 아키텍처로 각 언어의 강점을 살립니다. 기능 측면: GB28181 / ONVIF 다중 프로토콜 카메라 접속, <strong>DJI 도크·드론 공중 시야 접속</strong>, 실시간 및 스냅샷 알고리즘 태스크, YOLO 객체 검출 및 SAM 제로샷 자동 어노테이션, 얼굴/번호판 인식, 오케스트레이션 가능한 비즈니스 후처리, 연합 컴퓨팅 클러스터 스케줄링, <strong>무한 연합 엣지 클러스터 모드</strong>(일반 개발 보드도 즉시 사용 가능, 현장에서 지능형 판단, 경보와 증거가 자동으로 클라우드에 집약, 연산 능력이 비즈니스에 따라 자유롭게 확장), <strong>시각화 대형 화면 및 Web SCADA</strong>, MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA IoT 디바이스 전 생애주기 관리. 경험 측면: Web 관제 콘솔과 모바일 App / 미니프로그램의 기능이 정렬되어, 지휘 센터와 현장 순찰이 동일한 비즈니스 로직으로 언제 어디서나 대응할 수 있습니다.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
@@ -117,7 +117,7 @@ yFeiEye는 AI와 IoT의 심층적 융합에 초점을 맞춘 클라우드-엣지
   <li><strong>다중 센터 노드 × 다중 워커 노드 연합 클러스터</strong>: 지역 간·다중 데이터센터·클라우드-엣지 협업 배포를 위해 플랫폼은 「N개 센터 노드 + N개 워커 노드」 연합 아키텍처를 채택합니다 — 센터 노드를 통합 제어 평면으로, 워커 노드를 연산·미디어 실행 평면으로 하여 수평 확장 가능한 분산 스케줄링 체계를 구축합니다. 각 센터 노드는 소속 워커 노드 클러스터를 관리하며, 모니터링 에이전트·분산 스토리지·스트리밍 엔진·FFmpeg 트랜스코딩·비디오 분석 런타임·모델 추론·학습 등의 런타임 배포와 원클릭 원격 배포를 지원합니다. 다중 센터 노드 간 상호 연동·동기화가 가능하며, 클러스터 스윔레인 뷰에서 「센터—워커」 토폴로지와 자원 수위를 직관적으로 표시하고, 레인 단위 일괄 유지보수 및 컴포넌트 배포를 지원합니다. 알고리즘 태스크·자동 라벨링 파이프라인·스트림 릴레이 등의 워크로드는 노드 역할과 GPU 역량에 따라 지능적으로 스케줄링되고 큐 탄력 분배되어, 대량 스트림 접속·고동시성 추론·분산 학습이 동일 클러스터에서 협력 실행됩니다 — 「등록 용이, 스케줄 명확, 확장 유연, 통합 관리」를 실현합니다</li>
   <li><strong>SAM 제로 스타트 자동 라벨링 오케스트레이션 파이프라인</strong>: 라벨링 샘플과 사용 가능한 검출 모델이 없는 콜드 스타트 시나리오를 위해, 플랫폼은 SAM 개방 어휘 분할 기능과 지능형 오케스트레이션 엔진을 통합하여 원클릭 무인 라벨링 파이프라인을 제공합니다. 전략에 따라 시스템은 카메라 프레임 추출, SAM 텍스트 프롬프트 초기 라벨링, 기준 달성 시 YOLO 미세 조정 학습 자동 트리거, 양산 단계에서 YOLO 고속 추론을 주력으로 하되 누락 검출에 SAM 지능 보완, 주기적 반복 학습 및 데이터셋 자동 패키징·보내기를 자동으로 연결하여 「수집—라벨링—학습—보내기」 전 과정을 완결합니다. 오케스트레이션 허브는 파이프라인 단계와 라벨링 진행을 실시간으로 감지하며, SAM / YOLO / 혼합 보완 등 라벨링 모드와 학습 트리거 시점을 자율 결정하고, 작업 일시정지·재개 및 로컬/클러스터 컴퓨팅 큐 탄력 스케줄링을 지원합니다. 시각적 전략 설정과 실행 로그와 함께, 사용자는 제로 샘플·제로 모델에서 출발하여 맞춤형 검출 역량을 빠르게 축적할 수 있으며, 「카테고리를 말로 정의하고 모델이 완성되기를 기다리기」가 데이터셋 구축의 기본 경로가 됩니다</li>
   <li><strong>만 노드급 탄력적 컴퓨팅 클러스터 및 수평 확장 풀</strong>: 초대규모 AI·영상 비즈니스를 위해 클라우드-엣지-디바이스 통합 분산 컴퓨팅 기반을 구축하고, 알고리즘 태스크·스트림 릴레이·알고리즘 서비스·모델 학습·추론을 수평 부하 분산과 탄력적 확장 체계로 통합합니다. 신규 서버는 원클릭으로 등록·연동되어 즉시 스케줄 가능한 컴퓨팅 단위가 되며, 스케줄러가 자원 수위와 업무 부하에 따라 작업을 자동 분배·균형 조정합니다. 수백~수만 대 카메라, 단일 머신~만 노드급까지 선형 확장이 가능하며, 재배포나 수동 튜닝 없이 대량 스트림 접속·고동시성 추론·분산 학습이 동일 컴퓨팅 풀에서 협력 실행되어 「확장 가능, 안정 운영, 통합 관리」를 실현합니다</li>
-  <li><strong>무한 연합 엣지 클러스터 모드 (EDGE)</strong>: RK3588, 라즈베리 파이 등 일반 개발 보드·현장 컴퓨팅 노드를 대상으로, 메모리 약 <strong>512MB</strong>의 경량 UI 없는 엣지 알고리즘 런타임을 제공합니다 — <strong>한 줄 명령</strong>으로 제어면 주소를 기록하고 시작하면 일반 개발 보드를 바로 지능화할 수 있으며, 컴퓨팅을 지점별로 펼쳐 배포하면서 알람·이벤트를 클라우드로 집약합니다; 알람 이미지·스냅샷은 공유 Ceph에 기록되고 센터 sink가 아카이브하며, 엣지 측 <strong>비즈니스 저장 0 디스크 점유</strong>(로컬 비즈니스 디스크 없음, MinIO 직접 업로드 없음). 실행면은 VIDEO 제어면에서 분리된 독립 <code>EDGE</code> 모듈: WEB 없음, 로컬 비즈니스 DB 없음, 「명령 수신·추론 실행·이벤트 회신」에 집중합니다. 현장에서는 <code>EDGE_NODE_URL</code> 한 항목만 설정하면 enroll / runtime-config를 통해 EMQX 클러스터 주소, MQTT 자격 증명, Ceph 핫 버퍼 경로, Topic 규약을 자동 수령합니다. 임의 수의 노드가 동일 EMQX 버스를 공유하고, 제어면이 역량에 따라 실시간 / 스냅샷 / 순찰 태스크를 스케줄링합니다. 시작·중지는 <code>mqtt/iot-algo-task-cmd</code>로 전달되고, 하트비트·ack·알람·후처리가 동일 경로로 회신되며, 진정으로 「512MB 시작, Ceph 엣지 0 디스크, 한 줄 명령 배포, 무한 연합 확장, 현장 지능과 클라우드 집약 일체화」를 실현합니다</li>
+  <li><strong>무한 연합 엣지 클러스터 모드</strong>: 광역 배치, 약한 네트워크 현장, 단계적 확장 시나리오를 위해 지능 분석 역량을 비즈니스 현장에 밀착 배포 — 일반 개발 보드와 엣지 연산 노드도 언제든 온라인 근무 유닛이 될 수 있습니다. 중앙이 작업·전략을 통합 하달, 현장에서 근접 인지·판단, 경보·증거 자동 회송·집약, 각 지점마다 무거운 서버·복잡한 운영 체계를 쌓을 필요 없음. 비즈니스 확장 시 노드를필요에 따라 증설하면 커버 반경을 선형 확장, 「하나 추가하면 한 구역 더, 한 채널 추가하면 한 겹 더 안전」 — 진정으로 연산이 시나리오에 따라 성장, 지능이 비즈니스에 따라 확장</li>
   <li><strong>천지도 공간 시각화 및 지도 기반 분석</strong>: 국가 천지도를 연동하여 카메라, 알람, 인·차량 인식 역량을 한 장의 지도에 모았습니다. 감시를 「화면 보기」에서 「전체 보기」로 업그레이드합니다. 스트리밍 미디어와 알람 모듈 모두 「지도 분포」 뷰를 제공하며, 장치 디렉터리 트리와 연동해 구역별로 집중 조회할 수 있어 검문소 배치와 온라인 상태를 한눈에 파악합니다. 지도 클릭, 장소 검색, 좌표 일괄 가져오기를 지원하여 GB 채널, NVR 채널, 직접 연결 카메라를 빠르게 배치할 수 있으며, 모든 영상에 명확한 공간 소속을 부여합니다. 알람 이벤트는 카메라 좌표와 자동 연계되어 지도에 표시되며, 시간·이벤트 유형·작업·업무 태그로 필터링하고 선택하면 스냅샷과 녹화를 바로 확인할 수 있어, 「어디서 발생했는지」에서 신속한 대응으로 이어집니다. 얼굴·번호판 라이브러리 인식과 결합하면 동일 대상의 다중 지점 적중 기록을 공간적 맥락으로 연결할 수 있습니다 — <strong>인물 추적</strong>으로 중점 인물의 출현 경로와 활동 범위를 복원하고, <strong>차량 추적</strong>으로 통과 기록을 연결해 차량 경로와 체류 구역을 빠르게 파악하여, 인·차량 수색, 순찰 배치, 사후 복기에 직관적 단서를 제공합니다. 이동형 장치는 궤적 재생을 지원하여 순찰·이동 경로를 시간축으로 재현합니다. 벡터 지도와 위성 영상을 자유롭게 전환하고 시야를 자동 맞춤하여, 관리자가 지도를 중심으로 이상 징후를 발견하고 목표를 잠금하며 지휘·조정할 수 있습니다</li>
   <li><strong>Qwen / DeepSeek 다중 GPU 배포</strong>: Qwen, DeepSeek 등 대규모 언어 모델을 다중 GPU 병렬 방식으로 배포할 수 있습니다. 클러스터 및 Worker 단위로 GPU 자원을 유연하게 스케줄링하여 모델 인스턴스의 탄력적 확장 및 로드 밸런싱을 실현하고, 고동시성 추론 및 긴 컨텍스트 시나리오에서 안정적인 서비스를 제공합니다</li>
   <li><strong>비전 대규모 모델 지능형 이해</strong>: QwenVL3 비전 대규모 모델을 통합하여 실시간 비디오 프레임에 대한 심층 비전 추론 및 의미론적 이해를 지원하며, 프레임 내용에 대한 지능형 분석 및 장면 이해를 수행할 수 있어 더 풍부한 시각적 인지 능력을 제공하며, 픽셀 수준의 인식에서 의미론적 수준의 이해로의 도약을 실현합니다</li>
@@ -161,10 +161,17 @@ yFeiEye는 AI와 IoT의 심층적 융합에 초점을 맞춘 클라우드-엣지
 #### 🌐 IoT 기능
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 12px 0 8px 0;">
-많은 프로젝트가 IoT를 「디바이스 대장 + 메시지 중계」로 만들고 결과는 이렇습니다: 연결은 되지만 관리되지 않고, 보고는 되지만 밀어내지 못하며, 경보는 되지만 현장을 보지 못합니다. yFeiEye는 IoT를 <strong>감지—이해—결정—실행</strong> 폐루프의 실행 신경으로 둡니다. 센서와 액추에이터가 「수치」를, 카메라와 AI가 「영상」을 제공하고, 규칙과 섀도가 둘을 운영 가능한 업무 동작으로 엮어 — 플랫폼이 「보이기만」 하는 것이 아니라 「관리하고, 정확히 제어하며, 확장할 수 있게」 합니다.
+많은 프로젝트가 IoT를 「디바이스 대장 + 메시지 중계」로 만들고 결과는 이렇습니다: 연결은 되지만 관리되지 않고, 보고는 되지만 밀어내지 못하며, 경보는 되지만 현장을 보지 못하고, 데이터는 있지만 화면으로 펼치지 못하며 공정과 맞지 않습니다. yFeiEye는 IoT를 <strong>감지—이해—결정—실행</strong> 폐루프의 실행 신경으로 둡니다. 센서와 액추에이터가 「수치」를, 카메라와 AI가 「영상」을 제공하고, 시각화 대형 화면과 SCADA가 「수치」를 지휘 가능한 상황으로, 규칙과 섀도가 둘을 운영 가능한 업무 동작으로 엮어 — 플랫폼이 「보이기만」 하는 것이 아니라 「화면으로 펼치고, 공정을 이해하고, 관리하고, 정확히 제어하며, 확장할 수 있게」 합니다.
 </p>
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>시각화 관리</strong>: 디바이스 측정점, 경보, 업무 지표가 목록과 메시지에만 머물면 리더는 전체를, 근무자는 현장을 보기 어렵고 보고용 PPT를 또 만들어야 합니다 — 데이터 가치가 「수집은 되지만 전시는 안 됨」에 막힙니다. 플랫폼은 시각화 프로젝트, 템플릿 센터, 소재 라이브러리, 데이터 소스, 서비스 배포를 하나의 역량으로 통합: IoT 데이터를 드래그하여 단지 상황, 생산라인 KPI, 장비 운행 등 운영 가능한 대형 화면을 구성, 초안 수정·성숙 후 배포·투입 가능 — IoT를 「백엔드에 데이터」에서 「프론트에 화면」으로 업그레이드, 지휘 판단과 대외 전시에 별도 대형 화면 도구 불필요</li>
+  <li><strong>시각화 프로젝트 전 생애주기</strong>: 대형 화면 프로젝트가 개인 PC와 임시 링크에 흩어지면 인수인계가 엉키고 버전이 유실되며 온라인 전환 시 분쟁이 납니다. 플랫폼은 대형 화면 프로젝트의 생성·편집·미리보기·배포·하선을 통합 관리, 테이블/카드 이중 뷰로 손쉽게 파악, 배포/미배포를 한눈에 구분 — 누가 하고, 어디까지 왔는지, 투영 가능한지, 프로젝트 상태를 파악·인수·검수 가능, 「화면 하나 만들기」를 운영 가능한 납품 자산으로</li>
+  <li><strong>시각화 템플릿 센터</strong>: 프로젝트마다 빈 캔버스부터 다시 만들면 납품 주기가 설계와 연동에 끌립니다. 성숙한 단지 종합 현황, 공장 상황, 장비 대시보드 등 템플릿을 축적·재사용, 신규 프로젝트에 원클릭 적용 후 미세 조정 — 동류 시나리오에서 처음부터 그리지 않아 PoC와 다프로젝트 복제가 더 빠르고 기준이 통일, 「한 번 할 줄 아는 것」을 「여러 번 납품할 수 있는 것」으로</li>
+  <li><strong>시각화 소재·데이터 소스 거버넌스</strong>: 아이콘, 배경, 영상 소재를 프로젝트마다 따로 보관하고 데이터 인터페이스를 화면마다 따로 쓰면 후기에 스타일 충돌, 필드 불일치가 필연입니다. 소재 라이브러리에 재사용 가능한 시각 자산을 중앙 보관, 데이터 소스를 장치·업무 인터페이스에 통합 연결 — 동일 소재 스타일·동일 데이터 기준이 여러 대형 화면에 서비스, 한 곳 수정으로 다수 혜택, 중복 구축·기준 분쟁 감소</li>
+  <li><strong>시각화 배포·서비스 배치</strong>: 대형 화면을 만들어도 투입하지 못하면 무의미합니다. 프로젝트 배포 확인 후 서비스 배치와 연계, 지휘 센터·근무실·대외 전시 입구 등 시나리오별 투입, 미리보기와 정식 투입이 동일 프로젝트 — 「편집 상태」에서 「근무 상태」로 명확한 출구, 검수와 일상 근무가 임시 링크·구두 약속에 의존하지 않음</li>
+  <li><strong>SCADA 관리</strong>: 산업·빌딩 현장에서 「계기판만 가득, 공정은 이해 못 함」이 가장 두렵습니다 — 전력량계, 밸브, 탱크 액위에 수치는 있지만 근무자는 배관·공정과 맞추지 못하고, 이상은 구두로 도면 대조·경험 추측에 의존. 플랫폼은 Web SCADA 역량 제공, 장치 측정점을 정수장 공정 개요, 생산라인 운행 대시보드, 공장 관망 토폴로지, 배전실 전력 감시 등 공정 화면에 바인딩, 편집·미리보기 동일 입구, 배포 즉시 근무 — 「수치」가 「도면」으로 돌아와 공정 상태가 한눈에, 근무가 표 넘기며 추측에서 공정도 판단·조치로</li>
+  <li><strong>SCADA 화면 실시간 감시·제한적 제어</strong>: 순수 목록 모니터링은 「측정점은 보이지만 공정은 안 보임」, 이상 위치 파악이 느리고 교대 인수가 어렵고 현장 교육은 선배에 의존. SCADA 운행 상태는 핵심 측정점을 탱크, 밸브 그룹, 모터, 스위치에 애니메이션, 추세·상태 동시 갱신, 필요 시 화면에서 시작/중지·리셋 등 제한적 조작 — 신입도 도면을 보며 시작, 팀 교대가 동일 화면, 이상이 「측정점 찾기」에서 「공정 보기」로 압축, 공장 현장을 진정으로 근무·인수·확장 가능한 일상 운영에 편입</li>
   <li><strong>제품 모델 관리</strong>: IoT 현장의 가장 큰 비용은 종종 장비 구매가 아니라, 유형을 추가할 때마다 프로필을 다시 짜는 일입니다. 플랫폼은 제품을 동종 디바이스 템플릿으로 사용 — 생성·시작/중지·검색과 테이블/카드 이중 뷰, 적용 시나리오·제조사·모델을 한 번에 구성 — 이후 확장은 제품 템플릿을 그대로 적용해 기기마다 처음부터 채울 필요 없음; 동종 디바이스를 한 번 등록해 다수에 재사용, 「접속 비용」을 선형 증가에서 복제 가능한 자산으로 압착</li>
   <li><strong>다중 유형 제품 모델링</strong>: 직결 단말·엣지 게이트웨이·게이트웨이 하위 디바이스·비디오 장비가 공존할 때 한 경로로 억지로 맞추면 토폴로지가 흔들리고 프로토콜이 틀립니다. 직결·게이트웨이·게이트웨이 하위 디바이스·비디오 네 형태로 제품을 분리 구축 — 엣지 집약·직결 단말·비디오가 각자 경로를 탐 — 토폴로지가 섞이지 않고 프로토콜이 오설정되지 않으며, 규모화 관제를 위한 올바른 제품 골격을 확보</li>
   <li><strong>제품 접속 프로토콜·인증 구성</strong>: 기기마다 프로토콜·인증을 따로 정하는 것은 연동 재작업의 온상입니다. 제품 수준에서 접속 프로토콜(MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA)·데이터 형식·인증 방식·암복호화 전략을 한 번에 확정하고 하위 디바이스가 동일 규범을 자동 상속 — 연동 시 기기마다 인증·메시지 형식을 다시 약속하지 않음; 접속 규범이 「입소문」에서 「제품급 상속 계약」으로</li>
@@ -180,11 +187,15 @@ yFeiEye는 AI와 IoT의 심층적 융합에 초점을 맞춘 클라우드-엣지
   <li><strong>제품 연동 디바이스 일람</strong>: 운영과 인수는 자주 「이 배치가 실제로 얼마나 커버하는지, 온라인율은 어떤지」로 다툽니다. 제품을 열면 소속 디바이스 목록과 온라인 상태가 보임 — 온라인율·커버리지를 한눈에; 운영·인수가 각자 구간을 맡고 책임 경계가 명확</li>
   <li><strong>디바이스 프로필 관리</strong>: 스프레드시트·채팅·현장 기억에 흩어진 장비는 재고·인계가 통제 불능입니다. CRUD, 제품/식별자/온라인 상태 검색, 테이블·카드 전환 — 흩어진 단말을 검색 가능한 대장으로; 재고·인계·확장이 한 입구로</li>
   <li><strong>온라인·활성화 상태</strong>: 문제 기기가 「전체 디바이스」에 묻히면 근무자는 맹목 검색만 합니다. 목록·상세에 연결·활성화·활성화 시각·마지막 온라인 시각을 바로 표시 — 오프라인·미활성 기기가 우선 부상; 운영 역량을 진짜 이상 장비에 먼저 집중</li>
-  <li><strong>제품별 디바이스 등록</strong>: 확장 시 기기마다 프로토콜을 다시 고르고 인증을 다시 채우는 것이 규모화 상선의 최대 마찰입니다. 생성 시 소속 제품을 바인딩해 프로토콜·시나리오를 함께 상속 — 등록과 동시에 올바른 제품 템플릿 적용; 제품 복제로 확장, 프로토콜·인증 재선택 단계 감소</li>
+  <li><strong>제품별 디바이스 등록</strong>: 확장 시 기기마다 프로토콜을 다시 고르고 인증을 다시 채우는 것이 규모화 온라인의 최대 마찰입니다. 생성 시 소속 제품을 바인딩해 프로토콜·시나리오를 함께 상속 — 등록과 동시에 올바른 제품 템플릿 적용; 제품 복제로 확장, 프로토콜·인증 재선택 단계 감소</li>
   <li><strong>산업 수집 접속 구성</strong>: 전력계·센서 측정점을 별도 수집 도구로 또 구성하면 현장이 이중 시스템이 됩니다. 산업 수집형 디바이스 등록 시 호스트·측정점·수집 주기를 함께 구성 — 현장 측정점을 한 번에 등록; 다른 수집 도구로 전환할 필요 없이 산업 수집과 플랫폼 관제를 일체로</li>
   <li><strong>디바이스 기초 정보 프로필</strong>: 교체·책임 추적·대사에서 「이것이 누구인지」를 구두로만 확인하면 책임 사슬이 끊깁니다. 이름·식별자·SN·제품·버전·IP 등 기기당 1건이 축적 — 프로필을 열어 신원 확인; 구두 확인과 현장 찾기를 줄임</li>
-  <li><strong>디바이스 접속 가이드</strong>: 현장 연동이 여전히 두꺼운 문서와 전문가 질의에 의존하면 상선 주기가 늘어납니다. 유형별 추천 명령·연동 파라미터·인증·메시지·인수 설명, 파라미터 변경 후 명령 복사 가능 — 연동이 문서 찾기에서 명령 복사 인수로; 상선·PoC 리듬이 더 타이트</li>
+  <li><strong>디바이스 접속 가이드</strong>: 현장 연동이 여전히 두꺼운 문서와 전문가 질의에 의존하면 온라인 주기가 늘어납니다. 유형별 추천 명령·연동 파라미터·인증·메시지·인수 설명, 파라미터 변경 후 명령 복사 가능 — 연동이 문서 찾기에서 명령 복사 인수로; 온라인·PoC 리듬이 더 타이트</li>
   <li><strong>실행 상태 실시간 조회</strong>: 근무자가 매번 장비에 로그인하고 원시 메시지를 씹어야 측정점 정상 여부를 판단하면 근무 비용이 치솟습니다. 사물 모델 기준으로 현재 속성 실황을 펼치고 테이블/카드·새로고침 지원 — 장비 로그인·원시 메시지 없이 핵심 측정점의 현재 정상 여부를 한눈에</li>
+  <li><strong>센서 부동 데이터 예측</strong>: 핵심 측정점을 사후에만 이력 곡선으로 본다면, 이상은 종종 「이미 경계를 넘은 뒤」에야 보입니다. 플랫폼이 센서 부동 속성의 추세를 예측해 과거 수치를 전망 가능한 궤적으로 전환 — 운영이 「사후에 숫자 보기」에서 「사전 통찰」로 올라가 조치 시간을 확보</li>
+  <li><strong>실행 상태 속성 임계값 설정</strong>: 건강 경계가 코드나 구두 약속에만 있으면 기종·시나리오가 바뀔 때마다 재작업입니다. 사물 모델 기준으로 실행 상태 속성의 상·하한 임계값을 설정 — 경계를 정의·재사용·세분화할 수 있어, 장치의 「정상 구간」이 흩어진 경험이 아닌 관리 가능한 자산이 됨</li>
+  <li><strong>임계값 알람·임계값 규칙</strong>: 초과를 모르거나 알아도 연동하지 못하면 임계값 설정은 장식에 불과합니다. 측정점 초과 시 자동 알람, 규칙 연동 조치까지 — 「경계를 넘으면 곧 알고, 알면 관리」, 건강 경계를 운영 가능한 폐루프로</li>
+  <li><strong>중심 장치 연관 하위 장치 한 화면 장악</strong>: 하위 장치 건강을 기기마다 넘겨 보면 순검과 이상 대응이 늘 반 박자 늦습니다. 중심 장치 관점에서 연관 하위 장치 실행 상태를 한 화면에 — 기기별 전환 없이 현장 순검·이상 위치 파악 효율이 크게 높아져, 장치 측이 「숫자를 보고, 경계를 관리하고, 알람을 내고, 전체를 파악하는」 역량 폐루프를 갖춤</li>
   <li><strong>디바이스 섀도 대조</strong>: 전통 장애 대응의 고통은 「원하던 것」과 「실제」를 구분하지 못하는 것입니다. 보고 상태·기대 상태·차이를 같은 화면에 두고 전체 JSON 보존 — 장애 대응이 추측에서 대조로; 기대와 실황 일치 여부를 한눈에</li>
   <li><strong>속성 기대값 하달</strong>: 파라미터 하나 바꾸려 출장하는 것은 규모화 운영의 전형적 낭비입니다. 쓰기 가능 속성의 기대값을 일괄 수정 후 원클릭 하달, 처리 중/성공/실패 전 과정 추적 — 원격 튜닝에 회신이 있어 파라미터 변경을 위해 출장할 필요 없음; 불필요 출동 감소</li>
   <li><strong>사물 모델 서비스 호출</strong>: 시작/중지·리셋을 내린 뒤 실행 여부를 확인할 수 없으면 조치는 구두 대사에만 의존합니다. 게시된 서비스에 파라미터를 채워 호출하고 명령 회신을 추적 — 동작 하달 후 실행 여부를 확인; 조치 과정이 감사 가능, 「말로 제어했다」에서 「회신 있는 폐루프」로</li>
@@ -274,7 +285,7 @@ Java는 안정적이고 신뢰할 수 있는 플랫폼 아키텍처 구축에 �
 ### 🏗️ 프로젝트 아키텍처 특징
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-yFeiEye는 사실 하나의 프로젝트가 아닌, 여덟 개의 프로젝트입니다.
+yFeiEye는 사실 하나의 프로젝트가 아닌, 아홉 개의 프로젝트입니다.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -337,7 +348,7 @@ yFeiEye는 현지화 전략에 적극적으로 대응하며, 현지화 하드웨
 ## 🧩 프로젝트 구조
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-yFeiEye는 여덟 개의 핵심 프로젝트로 구성됩니다:
+yFeiEye는 아홉 개의 핵심 프로젝트로 구성됩니다:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -376,6 +387,7 @@ yFeiEye는 여덟 개의 핵심 프로젝트로 구성됩니다:
     <li><strong>규칙 엔진</strong>: 데이터 흐름 규칙, 메시지 라우팅, 데이터 변환</li>
     <li><strong>데이터 수집</strong>: 디바이스 데이터 수집, 저장, 조회 및 분석</li>
     <li><strong>노드 제어 평면</strong>: 내장 <code>iot-node</code> 마이크로서비스로, 컴퓨트/미디어 노드 CRUD, SSH 연결 테스트, Agent 등록 및 하트비트, 워크로드 스케줄링, 미디어 노드 풀 할당 등 통합 제어 평면 기능 제공</li>
+    <li><strong>시각화 백엔드</strong>: 내장 <code>iot-visualize</code> 마이크로서비스(라이브러리 <code>iot-visualize20</code>)로, 대형 화면/SCADA 프로젝트, 템플릿, 소재, 데이터 소스, 서비스 배포를 통합 관리하며 VISUALIZE 편집기와 FUXA SCADA에 엔지니어링 메타데이터·배포 역량 제공</li>
   </ul>
 </td>
 </tr>
@@ -422,20 +434,30 @@ yFeiEye는 여덟 개의 핵심 프로젝트로 구성됩니다:
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>EDGE 모듈</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
   <ul style="margin: 5px 0; padding-left: 20px;">
-    <li><strong>무한 연합 엣지 클러스터 모드</strong>: 여덟 번째 핵심 모듈, 메모리 약 512MB; Ceph 엣지 로컬 디스크 점유 0; 한 줄 명령으로 일반 개발 보드를 바로 지능화, 컴퓨팅을 현장에 펼쳐 배포하고 클라우드로 집약, 무한 연합 확장 지원</li>
-    <li><strong>UI 없는 엣지 알고리즘 런타임</strong>: VIDEO에서 분리한 알고리즘 실행면; 순수 CLI / systemd이며 WEB·로컬 비즈니스 DB를 제공하지 않고 엣지 추론·이벤트 회신에 집중</li>
-    <li><strong>단일 설정 진입점</strong>: 현장에서는 <code>EDGE_NODE_URL</code>(iot-node 제어면 주소)만 설정하면 됩니다. <code>/admin-api/node/edge/enroll</code> 및 <code>runtime-config</code>를 통해 MQTT 브로커 목록, 테넌트 자격 증명, clientId, Ceph 핫 버퍼 경로, 알고리즘 Topic 규약을 자동 수령합니다</li>
-    <li><strong>전 구간 MQTT 버스</strong>: <code>mqtt/iot-algo-task-cmd</code>를 구독해 시작/중지 명령을 수신(<code>targetNodeId</code>로 본 노드 필터), 하트비트 / ack / 알람 / 후처리를 발행합니다. Kafka 직결·HTTP 관리면 없음</li>
-    <li><strong>Ceph 엣지 로컬 디스크 점유 0</strong>: 알람 이미지·스냅샷은 Ceph 공유 경로에 기록하고, 센터 <code>iot-sink</code>가 MinIO로 아카이브합니다. 엣지 측 로컬 비즈니스 디스크 없음, MinIO 동기 업로드 책임 없음</li>
-    <li><strong>무한 클러스터 확장</strong>: 임의 수의 EDGE 노드가 동일 EMQX 클러스터에 접속합니다. 브로커 목록 순서 탐색·장애 시 목록 선두부터 재시도로 실시간 / 스냅샷 / 순찰 알고리즘 태스크 수평 확장을 지원합니다</li>
-    <li><strong>제어면과의 명확한 분담</strong>: VIDEO는 태스크 CRUD·스케줄 정책·로그 조회를 유지하고, EDGE는 <code>runtime/</code> 추론 메인 루프와 워크로드 기동을 담당하며 NODE Agent(범용 HTTP 워크로드)와 병존할 수 있습니다</li>
+    <li><strong>무한 연합 엣지 클러스터 모드</strong>: 여덟 번째 핵심 모듈, 지능 역량을 중앙에서 현장으로 확장 — 일반 개발 보드와 엣지 노드가 언제든 근무 네트워크에 가입, 연산이 비즈니스에 따라 확장, 경보와 증거가 자동으로 클라우드에 집약</li>
+    <li><strong>현장 경량 근무</strong>: 근접 인지·판단·회송에 집중, 무거운 관제 UI와 로컬 업무 시스템을 지지 않아 엣지 배포·장기 운영 부담 감소</li>
+    <li><strong>즉시 접속·통합 관리</strong>: 현장 노드가 빠르게 가입하면 중앙이 작업·전략을 통합 오케스트레이션, 수동 구성·분점 분산 구축 비용 감소</li>
+    <li><strong>비즈니스 seamless 확장</strong>: 중앙은 전역·규칙 담당, 엣지는 현장 감시·빠른 대응; 노드 수가 커버리지에 따라 지속 확장, 실시간 분석·순찰·캡처 등 시나리오 수평 확장</li>
+    <li><strong>경량 현장 배포</strong>: 엣지는 「장비 쌓기」가 아니라 「일하기」에 집중, 광역 배치가 더 쉽게 현장화·복제 가능</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>VISUALIZE 모듈</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>드래그식 대형 화면 편집기</strong>: 아홉 번째 핵심 모듈, GoView 기반 고성능 로우코드 시각화 편집기, 캔버스 편집·미리보기에 집중, 독립 로그인·프로젝트 관리 없음</li>
+    <li><strong>WEB 일체 연동</strong>: 프로젝트 생성, 템플릿, 소재, 데이터 소스, 배포·투입은 관리 백엔드 「시각화」 메뉴에서 완료; 「편집기 열기」 클릭 시 본 모듈(기본 <code>:8002</code>)로 Token을 휴대하고 캔버스 진입</li>
+    <li><strong>대형 화면 납품 역량</strong>: 차트, 지표, 레이아웃 드래그 구성, 컴포넌트가 플랫폼 데이터 소스·IoT 측정점에 연결, 단지 상황, 생산라인 KPI, 장비 운영, 에너지·소비 등 지휘 대형 화면 빠른 완성</li>
+    <li><strong>SCADA와 역할 분담 명확</strong>: 대형 화면(dashboard)은 본 모듈 편집; 공정 SCADA(scada)는 FUXA Web SCADA; 엔지니어링 메타데이터는 DEVICE <code>iot-visualize</code>가 통합 관리</li>
+    <li><strong>배포 형태</strong>: APP와 동일하게 full 완전판 역량, mini / standard는 현장 하드웨어에 따라 생략 가능, 엣지 경량 배포 용량 감소</li>
   </ul>
 </td>
 </tr>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-각 모듈의 기술 스택, 마이크로서비스 분해, 미들웨어 토폴로지 및 데이터 흐름에 대한 심층 분석은 <a href=".doc/架构设计/项目架构设计分析_ko.md" style="color: #3498db; text-decoration: none; font-weight: 600;">프로젝트 아키텍처 설계 분석</a>을 참조하세요.
+각 모듈 기술 스택, 마이크로서비스 분해, 미들웨어 토폴로지, 데이터 흐름에 대한 심층 내용은 <a href=".doc/架构设计/项目架构设计分析.md" style="color: #3498db; text-decoration: none; font-weight: 600;">프로젝트 아키텍처 설계 분석</a>을 참조하세요.
 </p>
 
 ## 🖥️ 크로스 플랫폼 배포 장점
@@ -517,333 +539,128 @@ yFeiEye는 오픈소스 학습 프로젝트이며 상업적 행위와 무관합�
 - Gitee: [yFeiEye](https://gitee.com/reese/easyaiot)
 - Github: [yFeiEye](https://github.com/reese/easyaiot)
 
+
 ## 📸 스크린샷
+
 <div>
-  <img src=".image/banner/banner-video1000.gif" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner-video1001.gif" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1143.jpg" alt="플랫폼 식별 설정" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1144.jpg" alt="플랫폼 식별 초기화" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1001.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1076.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1074.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1075.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1095.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1096.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1127.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1128.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1145.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1146.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1147.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1148.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1129.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1130.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1131.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1132.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1133.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1134.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1135.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1136.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1093.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1094.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1085.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1086.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1087.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1088.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1089.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1090.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1078.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1077.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1079.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1080.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1081.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1082.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1006.jpg" alt="Screenshot 3" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1009.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1051.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1053.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1062.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1063.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1064.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1065.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1066.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1067.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1052.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1054.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1083.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1084.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1121.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1122.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1123.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1124.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1125.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1126.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1117.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1118.png" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1119.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1120.png" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1057.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1058.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1068.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1069.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1026.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1028.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1029.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1030.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1072.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1031.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1070.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1071.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1033.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1035.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1034.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1036.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1037.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1038.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1015.png" alt="Screenshot 5" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1010.jpg" alt="Screenshot 3" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1027.png" alt="Screenshot 2" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1016.jpg" alt="Screenshot 6" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1059.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1060.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1107.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1108.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1111.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1112.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1109.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1110.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1007.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1008.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1103.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1104.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1105.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1106.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1019.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1020.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1099.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1100.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1101.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1102.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1023.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1024.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1017.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1018.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1097.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1098.png" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1039.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1061.jpg" alt="Screenshot 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1040.jpg" alt="Screenshot 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1042.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1043.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1044.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1021.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1022.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1045.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1046.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1047.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1048.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1049.jpg" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1050.jpg" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1013.jpg" alt="Screenshot 9" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1014.png" alt="Screenshot 10" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1003.png" alt="Screenshot 13" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1004.png" alt="Screenshot 14" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1149.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1150.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1151.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1152.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1153.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1154.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1155.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1156.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1157.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1158.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1159.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1160.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1161.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1162.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1163.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1164.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1165.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1166.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1167.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1168.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1169.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1170.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1171.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1172.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1000.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1001.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1002.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1003.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1004.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1005.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1006.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1007.jpg" alt="Screenshot 1" width="49%">
+  <img src=".image/banner/banner-video1000.gif" alt="데모" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner-video1001.gif" alt="데모" width="49%">
 </div>
 
-## 🛠️ 서비스 지원
+#### 🖥️ 모니터링 대형 화면
+
+| | | |
+|:---:|:---:|:---:|
+| ![상황](.image/banner/banner1001.png) | ![개요](.image/banner/banner1076.jpg) | ![경보](.image/banner/banner1074.jpg) |
+| ![대시보드](.image/banner/banner1075.jpg) | ![다차원](.image/banner/banner1095.jpg) | ![종합](.image/banner/banner1096.jpg) |
+| ![모니터링](.image/banner/banner1078.jpg) | ![실시간](.image/banner/banner1077.jpg) |  |
+
+#### 📺 시각화 SCADA
+
+| | | |
+|:---:|:---:|:---:|
+| ![프로젝트](.image/banner/banner1185.png) | ![SCADA](.image/banner/banner1186.png) | ![편집](.image/banner/banner1187.png) |
+| ![미리보기](.image/banner/banner1188.png) | ![컴포넌트](.image/banner/banner1189.png) | ![데이터소스](.image/banner/banner1190.png) |
+| ![배포](.image/banner/banner1191.png) | ![실행](.image/banner/banner1192.png) | ![템플릿](.image/banner/banner1193.png) |
+| ![자산](.image/banner/banner1194.png) | ![대형화면](.image/banner/banner1195.png) | ![전시](.image/banner/banner1196.png) |
+
+#### 📹 영상 모니터링
+
+| | | |
+|:---:|:---:|:---:|
+| ![라이브](.image/banner/banner1145.jpg) | ![미리보기](.image/banner/banner1146.jpg) | ![카메라](.image/banner/banner1051.jpg) |
+| ![목록](.image/banner/banner1053.jpg) | ![푸시](.image/banner/banner1083.jpg) | ![전달](.image/banner/banner1084.jpg) |
+| ![저장](.image/banner/banner1121.png) | ![스냅샷](.image/banner/banner1122.png) | ![녹화](.image/banner/banner1123.png) |
+| ![구성](.image/banner/banner1124.png) | ![용량](.image/banner/banner1125.png) | ![재생](.image/banner/banner1126.png) |
+| ![스냅샷](.image/banner/banner1117.png) | ![파일](.image/banner/banner1118.png) | ![정책](.image/banner/banner1119.png) |
+| ![쿼터](.image/banner/banner1120.png) | ![갤러리](.image/banner/banner1057.jpg) | ![아카이브](.image/banner/banner1058.jpg) |
+| ![모니터링](.image/banner/banner1068.jpg) | ![통계](.image/banner/banner1069.jpg) | ![지도](.image/banner/banner1113.png) |
+| ![위치](.image/banner/banner1114.png) | ![분포](.image/banner/banner1115.png) | ![포인트](.image/banner/banner1116.png) |
+| ![실황](.image/banner/banner1026.jpg) | ![다채널](.image/banner/banner1028.jpg) | ![푸시](.image/banner/banner1103.png) |
+| ![미리보기](.image/banner/banner1104.png) | ![접속](.image/banner/banner1105.png) | ![NVR](.image/banner/banner1106.png) |
+| ![실황](.image/banner/banner1183.jpg) | ![지도](.image/banner/banner1184.jpg) |  |
+
+#### 🧠 AI 모델
+
+| | | |
+|:---:|:---:|:---:|
+| ![Qwen](.image/banner/banner1093.jpg) | ![비전모델](.image/banner/banner1094.jpg) | ![목록](.image/banner/banner1099.png) |
+| ![구성](.image/banner/banner1100.png) | ![상세](.image/banner/banner1101.png) | ![호출](.image/banner/banner1102.png) |
+| ![학습](.image/banner/banner1019.jpg) | ![작업](.image/banner/banner1020.jpg) | ![목록](.image/banner/banner1023.jpg) |
+| ![진행](.image/banner/banner1024.jpg) | ![파라미터](.image/banner/banner1017.jpg) | ![평가](.image/banner/banner1018.jpg) |
+| ![상세](.image/banner/banner1021.jpg) | ![로그](.image/banner/banner1022.jpg) | ![관리](.image/banner/banner1097.png) |
+| ![저장소](.image/banner/banner1098.png) | ![버전](.image/banner/banner1039.jpg) | ![자산](.image/banner/banner1061.jpg) |
+| ![추론](.image/banner/banner1040.jpg) | ![구성](.image/banner/banner1042.jpg) | ![결과](.image/banner/banner1043.jpg) |
+| ![온라인](.image/banner/banner1044.jpg) | ![일괄](.image/banner/banner1047.jpg) | ![모니터링](.image/banner/banner1048.jpg) |
+| ![서비스](.image/banner/banner1045.jpg) | ![배포](.image/banner/banner1046.jpg) | ![클러스터](.image/banner/banner1049.jpg) |
+| ![호출](.image/banner/banner1050.jpg) | ![가중치](.image/banner/banner1111.png) | ![다운로드](.image/banner/banner1112.png) |
+| ![자세](.image/banner/banner1147.jpg) | ![인식](.image/banner/banner1148.jpg) | ![작업](.image/banner/banner1085.jpg) |
+| ![구성](.image/banner/banner1086.jpg) | ![상세](.image/banner/banner1087.jpg) | ![실행](.image/banner/banner1088.jpg) |
+| ![영역](.image/banner/banner1079.jpg) | ![검출박스](.image/banner/banner1080.jpg) | ![경계](.image/banner/banner1081.jpg) |
+| ![미리보기](.image/banner/banner1082.jpg) | ![알고리즘](.image/banner/banner1062.jpg) | ![생성](.image/banner/banner1063.png) |
+| ![화면](.image/banner/banner1064.jpg) | ![분석](.image/banner/banner1065.jpg) | ![결과](.image/banner/banner1066.jpg) |
+| ![다시보기](.image/banner/banner1067.jpg) | ![실황](.image/banner/banner1052.jpg) | ![스마트](.image/banner/banner1054.jpg) |
+
+#### 📦 데이터셋
+
+| | | |
+|:---:|:---:|:---:|
+| ![관리](.image/banner/banner1015.png) | ![목록](.image/banner/banner1010.jpg) | ![어노테이션](.image/banner/banner1027.png) |
+| ![작업](.image/banner/banner1016.jpg) | ![도구](.image/banner/banner1059.jpg) | ![미리보기](.image/banner/banner1060.jpg) |
+| ![상세](.image/banner/banner1107.png) | ![가져오기](.image/banner/banner1108.png) | ![프로젝트](.image/banner/banner1109.png) |
+| ![심사](.image/banner/banner1110.png) | ![생성](.image/banner/banner1007.jpg) | ![샘플](.image/banner/banner1008.jpg) |
+
+#### 🔌 사물인터넷
+
+| | | |
+|:---:|:---:|:---:|
+| ![물모델](.image/banner/banner1149.jpg) | ![정의](.image/banner/banner1150.jpg) | ![제품](.image/banner/banner1151.jpg) |
+| ![상세](.image/banner/banner1152.jpg) | ![디바이스](.image/banner/banner1153.jpg) | ![상세](.image/banner/banner1154.jpg) |
+| ![상태](.image/banner/banner1155.jpg) | ![속성](.image/banner/banner1156.jpg) | ![서비스](.image/banner/banner1157.jpg) |
+| ![이벤트](.image/banner/banner1158.jpg) | ![섀도](.image/banner/banner1159.jpg) | ![토폴로지](.image/banner/banner1160.jpg) |
+| ![하위디바이스](.image/banner/banner1161.jpg) | ![그룹](.image/banner/banner1162.jpg) | ![제어](.image/banner/banner1163.jpg) |
+| ![텔레메트리](.image/banner/banner1164.jpg) | ![이력](.image/banner/banner1165.jpg) | ![프로토콜](.image/banner/banner1166.jpg) |
+| ![연결](.image/banner/banner1167.jpg) | ![인증](.image/banner/banner1168.jpg) | ![디버그](.image/banner/banner1169.jpg) |
+| ![기능](.image/banner/banner1170.jpg) | ![읽기쓰기](.image/banner/banner1171.jpg) | ![서비스](.image/banner/banner1172.jpg) |
+| ![구독](.image/banner/banner1173.jpg) | ![로그](.image/banner/banner1174.jpg) | ![온라인](.image/banner/banner1175.jpg) |
+| ![통계](.image/banner/banner1176.jpg) | ![개요](.image/banner/banner1177.jpg) | ![대시보드](.image/banner/banner1178.jpg) |
+| ![제품](.image/banner/banner1006.jpg) | ![디바이스](.image/banner/banner1009.jpg) | ![OTA](.image/banner/banner1179.jpg) |
+| ![펌웨어](.image/banner/banner1180.jpg) | ![작업](.image/banner/banner1181.jpg) | ![진행](.image/banner/banner1182.jpg) |
+| ![규칙](.image/banner/banner1013.jpg) | ![오케스트레이션](.image/banner/banner1014.png) |  |
+
+#### 🖥️ 클러스터
+
+| | | |
+|:---:|:---:|:---:|
+| ![개요](.image/banner/banner1127.jpg) | ![연산력](.image/banner/banner1128.jpg) | ![노드](.image/banner/banner1129.jpg) |
+| ![상세](.image/banner/banner1130.jpg) | ![모니터링](.image/banner/banner1131.jpg) | ![스케줄링](.image/banner/banner1132.jpg) |
+| ![목록](.image/banner/banner1133.jpg) | ![상태](.image/banner/banner1134.jpg) | ![구성](.image/banner/banner1135.jpg) |
+| ![할당](.image/banner/banner1136.jpg) |  |  |
+
+#### 🔔 경보
+
+| | | |
+|:---:|:---:|:---:|
+| ![이벤트](.image/banner/banner1089.jpg) | ![처리](.image/banner/banner1090.jpg) | ![알림](.image/banner/banner1029.jpg) |
+| ![구성](.image/banner/banner1030.jpg) | ![목록](.image/banner/banner1072.jpg) | ![상세](.image/banner/banner1031.jpg) |
+| ![조치](.image/banner/banner1070.jpg) | ![통계](.image/banner/banner1071.jpg) |  |
+
+#### ⚙️ 시스템
+
+| | | |
+|:---:|:---:|:---:|
+| ![브랜딩](.image/banner/banner1143.jpg) | ![초기화](.image/banner/banner1144.jpg) | ![사용자](.image/banner/banner1003.png) |
+| ![권한](.image/banner/banner1004.png) | ![메뉴](.image/banner/banner1005.png) | ![구성](.image/banner/banner1002.png) |
+
+#### 📱 APP
+
+| | | |
+|:---:|:---:|:---:|
+| ![홈](.image/banner/app/app_1000.jpg) | ![모니터링](.image/banner/app/app_1001.jpg) | ![미리보기](.image/banner/app/app_1002.jpg) |
+| ![경보](.image/banner/app/app_1003.jpg) | ![재생](.image/banner/app/app_1004.jpg) | ![디바이스](.image/banner/app/app_1005.jpg) |
+| ![메시지](.image/banner/app/app_1006.jpg) | ![마이](.image/banner/app/app_1007.jpg) |  |
+
+## 🛠️ 서비스 및 지원
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
 yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서비스 방식을 제공해 드립니다. 제품 문서, 기술 교류 그룹, 유료 교육 등을 통해 다음과 같은 서비스를 받으실 수 있습니다:
@@ -1036,11 +853,19 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>NULL</nobr></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">yFeiEye의 산업 현장 장치 접속 발전을 위해 Modbus 프로토콜 상행 수집 능력을 열어 전력량계·센서·컨트롤러 등 대량의 산업 장치 데이터를 플랫폼에서 통합 집계·모니터링·연동할 수 있게 하였으며, 「현장을 보고 장치도 들을 수 있는」 핵심 퍼즐을 완성해 산업 데이터 수집·라인 지능 제어·보안 연동 시나리오에 견고한 기반을 제공하였습니다.</td>
 </tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>空空</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">yFeiEye의 카메라 직접 연결을 「발견 가능」에서 「현장 배포 가능」으로 발전시키기 위해, 인증·채널 동기화·설정 변경·다중 브랜드 출류 등 핵심 공백을 보완하여 실제 NVR / 다중 벤더 현장에서 납품 가능한 가용성을 갖추게 하였습니다: 장치 로그인 자격 증명 체인을 열어 계정·비밀번호 인증이 안정적으로 동작하고 직접 연결 장치가 진정으로 「로그인되고 관리될 수 있게」 하였으며; NVR 채널 동기화 이후의 스트림 취득 모델을 재구성—이전에는 동기화 결과가 각 채널 카메라 자체의 IP를 RTSP 호스트로 기록하여 「NVR을 통한 집중 취득」이라는 현장 토폴로지와 심각하게 불일치했고, 동기화는 성공처럼 보이나 실황이 재생되지 않았습니다; 수정 후에는 NVR 호스트 IP로 채널 RTSP 주소를 통일 생성하여 일괄 동기화된 스트림이 재생·사용 가능하도록 해 NVR 규모화 접속 효율을 크게 높였으며; 장치 편집 저장 실패·오류 문제를 수정해 접속 파라미터가 「한 번 쓰고 다시 못 고치는」 상태가 아니라 지속적으로 유지보수 가능하게 하였고; 국내 주요 감시 브랜드 RTSP URL 규칙 라이브러리를 구축하고 사용자 정의 브랜드 규칙을 개방하여, 이종 벤더·이종 모델 장치가 규칙에 따라 원클릭으로 스트림 URL을 조합할 수 있게 해 수동 주소 시도나 브랜드마다 플랫폼 코드 수정에 의존하지 않도록 하였으며, 직접 연결 역량을 「장치 스캔 가능」에서 「로그인 가능·동기화 정확·설정 변경 가능·다중 브랜드 출류 가능」한 생산 가용 형태로 끌어올려 이후 PTZ·줌 등 제어 역량 고도화의 견고한 기반을 마련하였습니다.</td>
+</tr>
+<tr style="background-color: #f8f9fa;">
+<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>狗娃</nobr></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">yFeiEye의 「IoT 데이터를 화면으로 전시」 방향 발전을 위해, 오픈소스 GoView 기반 시각화 Board(드래그 대시보드) 모듈 제품 구상을 선제적으로 제안: 전통 대형 화면은 화면마다·컴포넌트마다 SQL을 따로 작성해야 해 납품이 느리고 한 번 수정하면 전체가 움직이며, 업무 담당자가 스스로 화면을 만들기 거의 불가능. Board 방안은 차트, 지표, 레이아웃을 드래그 캔버스로 구성하고, 컴포넌트 변수를 플랫폼 IoT 사물 모델 측정점에 직접 연결 — 실시간·이력 값을 장치 측에서 원클릭 취득, 대시보드마다 쿼리를 따로 짤 필요 없음; 단지 상황, 생산라인 KPI, 장비 운영 등 대형 화면을 「개발이 SQL을 써야 화면이 나옴」에서 「측정점 선택·컴포넌트 드래그로 화면 완성」으로 업그레이드, 시각화 납품 주기를 크게 단축, IoT 「백엔드에 데이터」를 「프론트에 화면」 운영 역량으로. 이전에도 센서 부동 데이터 예측, 운행 상태 속성 상·하한 임계값 설정, 임계값 알람·규칙 연동, 중심 장치 연관 하위 장치 운행 상태 한 화면 표시를 기여해 「예측—경계—알람—규칙—한 화면 장악」 장치 운행 폐루프를 열었으며, 플랫폼 장치 측이 「숫자를 보고, 경계를 관리하고, 알람을 내고, 전체를 파악하는」 역량을 갖추게 하였습니다.</td>
+</tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>특별 감사</strong>: 위 기여자들의 노력은 크로스 플랫폼 배포 문서·스크립트, 국가 표준 영상(GB28181) 역량 구현, AI 연동 검증, 멀티 GPU 학습 가용성 및 체크포인트 이어학습 역량 구현, 다중 브랜드 카메라 직접 연결 발견 및 일괄 온보딩, 천지도 공간 시각화 완전 구현, 이기종 스트리밍 미디어 클러스터 배포 및 스케줄링 아키텍처, 번호판 인식 알고리즘 및 완전한 코드 구현, yFeiEye-Edge 종단 간 연동(카메라·AI), 교내 개발자 커뮤니티 조직 및 청년 협업 생태계 구축, IoT 장치 상·하행 폐루프와 DJI FlightHub 공중 시야 접속, Modbus-TCP / Modbus-RTU / OPC UA 산업 프로토콜 접속 등 여러 측면에서 yFeiEye의 발전에 기여했습니다. 그들의 전문성과 헌신은 우리가 배우고 존경할 만합니다. 다시 한 번 이 탁월한 기여자들에게 진심으로 감사드립니다! 🙏
+<strong>특별 감사</strong>: 위 기여자들의 노력은 크로스 플랫폼 배포 문서·스크립트, 국가 표준 영상(GB28181) 역량 구현, AI 연동 검증, 멀티 GPU 학습 가용성 및 체크포인트 이어학습 역량 구현, 다중 브랜드 카메라 직접 연결 발견 및 일괄 온보딩, 천지도 공간 시각화 완전 구현, 이기종 스트리밍 미디어 클러스터 배포 및 스케줄링 아키텍처, 번호판 인식 알고리즘 및 완전한 코드 구현, yFeiEye-Edge 종단 간 연동(카메라·AI), 교내 개발자 커뮤니티 조직 및 청년 협업 생태계 구축, IoT 장치 상·하행 폐루프와 DJI FlightHub 공중 시야 접속, Modbus-TCP / Modbus-RTU / OPC UA 산업 프로토콜 접속, 카메라 직접 연결의 발견부터 로그인/동기화/설정/다중 브랜드 출류까지의 현장 폐루프, GoView 기반 드래그 대시보드(Board) 구상 및 IoT 측정점 실시간/이력 값 직접 연동, 센서 부동 데이터 예측과 임계값 알람·규칙 및 중심 장치 연관 하위 장치 운행 상태 한 화면 표시 등 여러 측면에서 yFeiEye의 발전에 기여했습니다. 그들의 전문성과 헌신은 우리가 배우고 존경할 만합니다. 다시 한 번 이 탁월한 기여자들에게 진심으로 감사드립니다! 🙏
 </p>
 
 ## 💝 오픈소스 수호자
@@ -1401,6 +1226,7 @@ yFeiEye 플랫폼과 코드를 깊이 이해하실 수 있도록 다양한 서�
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/嘎嗝.jpg" width="80px;" alt="嘎嗝"/><br /><sub><b>嘎嗝</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/曹.jpg" width="80px;" alt="曹"/><br /><sub><b>曹</b></sub></a></td>
         <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/滔滔.jpg" width="80px;" alt="滔滔"/><br /><sub><b>滔滔</b></sub></a></td>
+        <td align="center" valign="top" width="11.11%"><a href="javascript:void(0)" target="_blank"><img src="./.image/sponsor/狗娃.jpg" width="80px;" alt="狗娃"/><br /><sub><b>狗娃</b></sub></a></td>
     </tr>
   </tbody>
 </table>

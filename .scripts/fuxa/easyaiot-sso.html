@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>yFeiEye → FUXA SSO</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(145deg, #0b1220 0%, #123a5c 55%, #0f766e 100%);
+      color: #e2e8f0;
+    }
+    .box {
+      text-align: center;
+      padding: 28px 36px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.28);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    }
+    .title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .sub { font-size: 13px; opacity: 0.8; }
+    .err { color: #fca5a5; margin-top: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="title">正在进入 FUXA 组态…</div>
+    <div class="sub" id="msg">写入登录态并跳转</div>
+    <div class="err" id="err" hidden></div>
+  </div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get('token') || '';
+      var username = params.get('username') || 'admin';
+      var fullname = params.get('fullname') || username;
+      var groupsRaw = params.get('groups');
+      var groups = groupsRaw === null || groupsRaw === '' ? -1 : Number(groupsRaw);
+      var mode = (params.get('mode') || 'edit').toLowerCase();
+      var view = (params.get('view') || '').trim();
+      var target = params.get('target') || '';
+      // allowOpenWithoutToken=1：无代登录时仍可按画面名打开（鉴权关闭或已登录）
+      var allowNoToken = params.get('allowOpenWithoutToken') === '1' || params.get('notoken') === '1';
+
+      function fail(msg) {
+        document.getElementById('err').hidden = false;
+        document.getElementById('err').textContent = msg;
+        document.getElementById('msg').textContent = '跳转失败';
+      }
+
+      /** FUXA 编辑器通过该 key 恢复上次选中的画面 */
+      function selectEditorView(viewName) {
+        if (!viewName) return;
+        try {
+          localStorage.setItem('@frango.webeditor.currentview', viewName);
+        } catch (e) {}
+      }
+
+      if (token) {
+        try {
+          var user = {
+            username: username,
+            fullname: fullname,
+            groups: isNaN(groups) ? -1 : groups,
+            info: null,
+            token: token
+          };
+          sessionStorage.setItem('currentUser', JSON.stringify(user));
+          try { window.fuxaAccessToken = token; } catch (e) {}
+        } catch (e) {
+          fail('无法写入登录态: ' + (e && e.message ? e.message : e));
+          return;
+        }
+      } else if (!allowNoToken) {
+        fail('缺少 FUXA token，请从 yFeiEye 重新打开组态');
+        return;
+      }
+
+      // 编辑器打开指定画面：写入 FUXA 的 currentview，再进 /editor
+      if (view && mode !== 'preview' && mode !== 'home') {
+        selectEditorView(view);
+      }
+
+      var path;
+      if (target && target.charAt(0) === '/') {
+        path = target;
+        // 若 target 是 /editor 且带了 view，仍需选中对应画面
+        if (view && (path === '/editor' || path.indexOf('/editor?') === 0)) {
+          selectEditorView(view);
+        }
+      } else if (mode === 'preview' || mode === 'home') {
+        path = view ? ('/home?view=' + encodeURIComponent(view)) : '/home';
+      } else {
+        // 编辑模式：带 view 时加 query，避免多项目连开时浏览器复用同一 /editor 标签且不刷新
+        path = view
+          ? ('/editor?view=' + encodeURIComponent(view) + '&_ts=' + Date.now())
+          : '/editor';
+      }
+
+      document.getElementById('msg').textContent = view
+        ? ('即将打开「' + view + '」→ ' + path.split('?')[0])
+        : ('即将打开 ' + path);
+      window.location.replace(path);
+    })();
+  </script>
+</body>
+</html>

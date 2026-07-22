@@ -238,9 +238,22 @@ fi
 verify_service "SRS" "srs-server" "1935,1985,8080" \
     "curl -f http://127.0.0.1:1985/api/v1/versions > /dev/null 2>&1"
 
-# NodeRED
-verify_service "NodeRED" "nodered-server" "1880" \
-    "curl -f http://127.0.0.1:1880/ > /dev/null 2>&1"
+# NodeRED（mini/standard 不启用）
+if middleware_service_enabled "NodeRED"; then
+    verify_service "NodeRED" "nodered-server" "1880" \
+        "curl -f http://127.0.0.1:1880/ > /dev/null 2>&1"
+else
+    print_info "NodeRED 未启用（当前部署形态），跳过验证"
+fi
+
+# FUXA（Web 组态 SCADA/HMI；仅 full）
+if middleware_service_enabled "FUXA"; then
+    # 官方镜像无 curl，宿主机探测端口/HTTP 即可
+    verify_service "FUXA" "fuxa-server" "1881" \
+        "curl -sf -o /dev/null http://127.0.0.1:1881/"
+else
+    print_info "FUXA 未启用（当前部署形态），跳过验证"
+fi
 
 # EMQX（mini 不启用；standard/full 启用）
 if middleware_service_enabled "EMQX" && [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ]; then

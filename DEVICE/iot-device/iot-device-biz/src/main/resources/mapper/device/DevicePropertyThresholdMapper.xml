@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.basiclab.iot.device.dal.pgsql.device.DevicePropertyThresholdMapper">
+
+    <resultMap id="BaseResultMap" type="com.basiclab.iot.device.domain.device.vo.DevicePropertyThreshold">
+        <id column="id" property="id"/>
+        <result column="device_identification" property="deviceIdentification"/>
+        <result column="property_code" property="propertyCode"/>
+        <result column="property_name" property="propertyName"/>
+        <result column="min_value" property="minValue"/>
+        <result column="max_value" property="maxValue"/>
+        <result column="enabled" property="enabled"/>
+        <result column="alarm_level" property="alarmLevel"/>
+        <result column="remark" property="remark"/>
+        <result column="rules_json" property="rulesJson"/>
+        <result column="health_weight" property="healthWeight"/>
+        <result column="critical" property="critical"/>
+        <result column="tenant_id" property="tenantId"/>
+        <result column="create_by" property="createBy"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_by" property="updateBy"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, device_identification, property_code, property_name, min_value, max_value,
+        enabled, alarm_level, remark, rules_json, health_weight, critical,
+        tenant_id, create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectByDeviceIdentification" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM device_property_threshold
+        WHERE device_identification = #{deviceIdentification}
+        ORDER BY update_time DESC
+    </select>
+
+    <select id="selectByDeviceAndCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM device_property_threshold
+        WHERE device_identification = #{deviceIdentification}
+          AND property_code = #{propertyCode}
+        LIMIT 1
+    </select>
+
+    <select id="selectEnabledByDevice" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM device_property_threshold
+        WHERE device_identification = #{deviceIdentification}
+          AND enabled = 1
+    </select>
+</mapper>

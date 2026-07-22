@@ -6,6 +6,7 @@ import com.basiclab.iot.common.domain.R;
 import com.basiclab.iot.device.domain.device.vo.Device;
 import com.basiclab.iot.device.domain.device.vo.EnsureDeviceOnUplinkParam;
 import com.basiclab.iot.device.domain.device.vo.EnsureGatewaySubDeviceParam;
+import com.basiclab.iot.device.domain.device.vo.PropertyThresholdEvaluateParam;
 import com.basiclab.iot.device.factory.RemoteDeviceFallbackFactory;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -118,4 +119,10 @@ public interface RemoteDeviceService {
     @PostMapping("/device/updateGatewaySubDeviceStatus")
     R<Integer> updateGatewaySubDeviceStatus(@RequestParam("gatewayIdentification") String gatewayIdentification,
                                             @RequestBody List<Map<String, Object>> statusItems);
+
+    /**
+     * 属性上报后阈值评估并触发告警（Kafka → iot-message）
+     */
+    @PostMapping("/device/threshold/evaluate")
+    R<Integer> evaluatePropertyThreshold(@RequestBody PropertyThresholdEvaluateParam param);
 }

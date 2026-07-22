@@ -1,13 +1,16 @@
 <template>
   <div class="device-wrapper">
-    <div class="device-tab">
+    <div class="device-tab page-content-card">
       <Tabs
-        :animated="{ inkBar: true, tabPane: true }"
-        :activeKey="state.activeKey"
+        v-model:activeKey="state.activeKey"
+        :animated="{ inkBar: true, tabPane: false }"
+        :destroyInactiveTabPane="true"
         :tabBarGutter="60"
       >
-        <TabPane key="1" tab="数据集管理">
-          <DatasetList></DatasetList>
+        <TabPane key="list" tab="数据集管理">
+          <div class="device-list-pane">
+            <DatasetList />
+          </div>
         </TabPane>
       </Tabs>
     </div>
@@ -15,13 +18,15 @@
 </template>
 <script lang="ts" setup name="noticeSetting">
 import { reactive } from 'vue';
-import { TabPane, Tabs } from 'ant-design-vue';
+import { Tabs } from 'ant-design-vue';
 import DatasetList from '@/views/dataset/components/DatasetList/index.vue';
 
 defineOptions({ name: 'DATASET' });
 
+const TabPane = Tabs.TabPane;
+
 const state = reactive({
-  activeKey: '1',
+  activeKey: 'list',
 });
 </script>
 
@@ -31,131 +36,52 @@ const state = reactive({
 }
 
 .device-wrapper {
-  :deep(.ant-tabs-nav) {
-    padding: 5px 0 0 25px;
+  padding: 16px;
+  box-sizing: border-box;
+  min-height: calc(100vh - 88px);
+  background: transparent;
+
+  .page-content-card {
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .device-tab {
+    :deep(.ant-tabs-nav) {
+      padding: 5px 0 0 25px;
+      margin-bottom: 0;
+    }
+
+    :deep(.ant-tabs) {
+      background-color: #fff;
+    }
+  }
+
+  .device-list-pane {
+    min-height: calc(100vh - 200px);
   }
 
   :deep(.ant-form-item) {
     margin-bottom: 10px;
   }
 
-  .device-tab {
-    padding: 16px 19px 0 15px;
+  :deep(.iot-basic-table-form-container) {
+    padding: 0;
+    background: #fff;
 
-    .ant-tabs {
-      background-color: #FFFFFF;
-
-      :deep(.ant-tabs-nav) {
-        padding: 5px 0 0 25px;
-      }
+    .ant-form {
+      margin-bottom: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 16px 16px 0;
     }
   }
 
-  .device-info {
-    padding: 16px 16px 0;
-
-    .ant-row {
-      display: flex;
-      flex-flow: row wrap;
-
-      .ant-col {
-        margin-top: 6px !important;
-        margin-bottom: 6px !important;
-        position: relative;
-        min-height: 1px;
-
-        .ant-card {
-          box-sizing: border-box;
-          margin: 0;
-          padding: 0;
-          color: #000000d9;
-          font-size: 14px;
-          font-variant: tabular-nums;
-          line-height: 1.5715;
-          list-style: none;
-          font-feature-settings: tnum;
-          position: relative;
-          background: #fff;
-          border-radius: 2px;
-          box-shadow: 0 0 4px #00000026;
-
-          .ant-card-body {
-            padding: 24px;
-
-            .card-box {
-              display: flex;
-
-              .img {
-                width: 104px;
-                margin-right: 8px;
-                border-radius: 10px;
-              }
-
-              .info-box {
-                flex: 1;
-
-                .title {
-                  font-size: 12px;
-                  line-height: 1;
-                  font-weight: 600;
-                  margin-bottom: 10px;
-                  padding-left: 8px;
-                }
-
-                .list {
-                  display: flex;
-
-                  .item {
-                    flex: 1;
-                    text-align: center;
-
-                    .num {
-                      font-size: 26px;
-                      font-weight: 600;
-                    }
-
-                    .name {
-                      font-weight: 600;
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          .ant-card-body:before {
-            display: table;
-            content: "";
-          }
-
-          .ant-card-body:after {
-            display: table;
-            clear: both;
-            content: "";
-          }
-        }
-      }
-    }
-
-    .ant-col-7 {
-      display: block;
-      flex: 0 0 29.1%;
-      max-width: 29.1%;
-    }
-
-    .ant-col-10 {
-      display: block;
-      flex: 0 0 41.6%;
-      max-width: 41.6%;
-    }
-  }
-
-  .device-tab {
-    padding: 16px 19px 0 15px;
-
-    .ant-tabs {
-      background-color: #FFFFFF;
-    }
+  :deep(.ant-table-wrapper) {
+    border-radius: 0;
+    background: #fff;
+    padding: 8px 16px 16px;
   }
 }
 </style>

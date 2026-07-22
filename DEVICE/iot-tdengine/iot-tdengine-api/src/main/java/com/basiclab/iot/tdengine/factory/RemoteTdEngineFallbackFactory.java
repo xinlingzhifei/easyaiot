@@ -132,6 +132,17 @@ public class RemoteTdEngineFallbackFactory implements FallbackFactory<RemoteTdEn
                 log.error("查询最新数据失败:{}", throwable.getMessage());
                 return R.fail();
             }
+
+            @Override
+            public com.basiclab.iot.common.domain.TableDataInfo deviceInfoHistoryPage(
+                    com.basiclab.iot.tdengine.domain.query.TDDeviceDataHistoryRequest request) {
+                log.error("查询设备历史失败:{}", throwable.getMessage());
+                com.basiclab.iot.common.domain.TableDataInfo empty = new com.basiclab.iot.common.domain.TableDataInfo();
+                empty.setCode(500);
+                empty.setMsg("查询设备历史失败:" + throwable.getMessage());
+                empty.setTotal(0);
+                return empty;
+            }
         };
     }
 }

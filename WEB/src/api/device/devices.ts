@@ -509,6 +509,128 @@ export const disassociateGatewayDevices = (idList: Array<string | number>) => {
   );
 };
 
+// ==================== 关联子设备 / 阈值 / 告警策略 / 预测诊断 ====================
+
+/** 查询关联子设备（任意设备类型，含网关拓扑合并） */
+export const getAssociatedDevices = (params: { centerDeviceIdentification: string }) => {
+  return commonApi('get', API.Devices + '/associated/list', params);
+};
+
+/** 查询可添加的任意已存在设备 */
+export const getAssociatedCandidates = (params: {
+  centerDeviceIdentification: string;
+  deviceName?: string;
+  pageNum?: number;
+  pageSize?: number;
+}) => {
+  return commonApi('get', API.Devices + '/associated/candidates', params);
+};
+
+/** 添加关联子设备 */
+export const associateDevices = (idList: Array<string | number>, targetDeviceIdentification: string) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/associated/associate',
+      data: { idList, targetDeviceIdentification },
+      headers: { ignoreCancelToken: true } as any,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 解绑关联子设备 */
+export const disassociateDevices = (idList: Array<string | number>, targetDeviceIdentification: string) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/associated/disassociate',
+      data: { idList, targetDeviceIdentification },
+      headers: { ignoreCancelToken: true } as any,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 查询设备属性阈值列表 */
+export const getDeviceThresholds = (deviceIdentification: string) => {
+  return commonApi('get', API.Devices + '/threshold/list', { deviceIdentification });
+};
+
+/** 查询单个属性阈值 */
+export const getDeviceThreshold = (deviceIdentification: string, propertyCode: string) => {
+  return commonApi('get', API.Devices + '/threshold/get', { deviceIdentification, propertyCode });
+};
+
+/** 保存属性阈值 */
+export const saveDeviceThreshold = (data: Recordable) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/threshold/save',
+      data,
+      headers: { ignoreCancelToken: true } as any,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 删除属性阈值 */
+export const deleteDeviceThreshold = (id: string | number) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.delete(
+    {
+      url: API.Devices + '/threshold/' + id,
+      headers: { ignoreCancelToken: true } as any,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 获取设备告警策略 */
+export const getDeviceAlarmStrategy = (deviceIdentification: string) => {
+  return commonApi('get', API.Devices + '/threshold/strategy', { deviceIdentification });
+};
+
+/** 保存设备告警策略 */
+export const saveDeviceAlarmStrategy = (data: Recordable) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/threshold/strategy/save',
+      data,
+      headers: { ignoreCancelToken: true } as any,
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 设备健康评分 */
+export const getDeviceHealthScore = (deviceIdentification: string, includeAssociated = true) => {
+  return commonApi('get', API.Devices + '/threshold/health', {
+    deviceIdentification,
+    includeAssociated,
+  });
+};
+
+/** 未恢复阈值告警 */
+export const getOpenThresholdAlarms = (deviceIdentification: string) => {
+  return commonApi('get', API.Devices + '/threshold/alarms/open', { deviceIdentification });
+};
+
+/** 属性预测诊断 */
+export const predictPropertyTrend = (data: Recordable) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: API.Devices + '/threshold/predict',
+      data,
+      headers: { ignoreCancelToken: true } as any,
+    },
+    { isTransformResponse: true },
+  );
+};
+
 export interface DeviceCameraLink {
   id: number;
   iotDeviceId: number;
@@ -557,6 +679,84 @@ export const disassociateDeviceCameras = (linkIds: Array<string | number>) => {
     {
       url: API.Devices + '/disassociateCameras',
       data: linkIds,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 设备地图分布点位 */
+export interface IotDeviceMapLocation {
+  id: number | string;
+  deviceIdentification: string;
+  deviceName: string;
+  connectStatus?: string;
+  online?: boolean;
+  deviceType?: string;
+  productIdentification?: string;
+  longitude?: number | null;
+  latitude?: number | null;
+  address?: string | null;
+  hasLocation?: boolean;
+  locationUpdatedAt?: string | null;
+}
+
+/** 查询设备地图分布点位 */
+export const getIotDeviceLocations = (params?: { has_location?: boolean }) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    {
+      url: API.Devices + '/locations',
+      params: {
+        ...(params?.has_location === false ? { has_location: 'false' } : {}),
+      },
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+/** 查询单个设备地图位置 */
+export const getIotDeviceLocation = (id: string | number) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.get(
+    {
+      url: `${API.Devices}/${id}/location`,
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
+export interface IotDeviceLocationUpdatePayload {
+  longitude?: number | null;
+  latitude?: number | null;
+  address?: string | null;
+  provinceCode?: string | null;
+  cityCode?: string | null;
+  regionCode?: string | null;
+  remark?: string | null;
+}
+
+/** 保存或更新设备地图坐标 */
+export const updateIotDeviceLocation = (
+  id: string | number,
+  data: IotDeviceLocationUpdatePayload,
+) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.put(
+    {
+      url: `${API.Devices}/${id}/location`,
+      data,
       headers: {
         // @ts-ignore
         ignoreCancelToken: true,

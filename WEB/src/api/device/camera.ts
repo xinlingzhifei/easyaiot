@@ -100,6 +100,8 @@ export interface NvrInfo {
   mac?: string;
   rtsp_url?: string;
   source?: string;
+  rtsp_template?: string;
+  rtsp_port?: number;
   camera_count?: number;
   cameras?: Array<{
     id: string;
@@ -259,6 +261,9 @@ export const registerNvrWithChannels = (data: {
   rtsp_url?: string;
   scheme?: string;
   channels?: NvrChannelRow[];
+  rtsp_template?: string;
+  rtsp_port?: number;
+  channel_count?: number;
 }): Promise<NvrRegisterChannelsResult> => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
   return defHttp
@@ -286,6 +291,12 @@ export const registerNvrWithChannels = (data: {
 
 export const deleteNvr = (nvrId: number) => {
   return commonApi('delete', `${CAMERA_PREFIX}/nvr/${nvrId}`);
+};
+
+export const batchDeleteNvrs = (nvrIds: number[]) => {
+  return commonApi('post', `${CAMERA_PREFIX}/nvr/batch-delete`, {
+    nvr_ids: nvrIds,
+  });
 };
 
 /**
@@ -484,6 +495,12 @@ export const getDeviceTrackPoints = (params: {
 
 export const deleteDevice = (device_id: string) => {
   return commonApi('delete', `${CAMERA_PREFIX}/device/${device_id}`);
+};
+
+export const batchDeleteDevices = (deviceIds: string[]) => {
+  return commonApi('post', `${CAMERA_PREFIX}/devices/batch-delete`, {
+    device_ids: deviceIds,
+  });
 };
 
 export const getDeviceList = (params: {

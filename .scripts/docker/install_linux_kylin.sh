@@ -16,7 +16,7 @@
 #   logs       - 查看服务日志
 #   build      - 重新构建所有镜像
 #   clean      - 清理所有容器和镜像
-#   clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，再删镜像/构建缓存；不停中间件）
+#   clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，再删运行时镜像/构建缓存；保留跨架构基础镜像；不停中间件）
 #   update     - 更新镜像并重启所有服务（交互可选拉取/本地重建）
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
@@ -27,9 +27,9 @@
 #   analyze-disk   - 项目关键目录磁盘占用分析
 #
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
-#   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra）
-#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/NodeRED（含 EMQX）
-#   full(3)     - 全量（默认，约 20G）
+#   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra/可视化）
+#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/NodeRED/iot-visualize（含 EMQX）
+#   full(3)     - 全量（默认，约 20G；含 iot-visualize/VISUALIZE）
 # ============================================
 
 set -e
@@ -94,6 +94,7 @@ MODULES=(
     "VIDEO"            # Video服务
     "WEB"              # Web前端服务
     "APP"              # App移动端H5（仅 full 全量形态）
+    "VISUALIZE"        # 可视化编辑器（仅 full 全量形态）
 )
 
 # 模块名称映射
@@ -104,6 +105,7 @@ MODULE_NAMES["AI"]="AI服务"
 MODULE_NAMES["VIDEO"]="Video服务"
 MODULE_NAMES["WEB"]="Web前端服务"
 MODULE_NAMES["APP"]="App移动端H5"
+MODULE_NAMES["VISUALIZE"]="可视化编辑器"
 
 # 模块端口映射
 declare -A MODULE_PORTS
@@ -113,6 +115,7 @@ MODULE_PORTS["AI"]="5000"
 MODULE_PORTS["VIDEO"]="6000"
 MODULE_PORTS["WEB"]="8888"
 MODULE_PORTS["APP"]="9010"
+MODULE_PORTS["VISUALIZE"]="8002"
 
 # 模块健康检查端点
 declare -A MODULE_HEALTH_ENDPOINTS
@@ -122,6 +125,7 @@ MODULE_HEALTH_ENDPOINTS["AI"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["VIDEO"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["WEB"]="/health"
 MODULE_HEALTH_ENDPOINTS["APP"]="/health"
+MODULE_HEALTH_ENDPOINTS["VISUALIZE"]="/health"
 
 # 日志输出函数（去掉颜色代码后写入日志文件）
 log_to_file() {
@@ -671,7 +675,7 @@ execute_module_command() {
 
     local defer_agent_sync=0
     case "$module" in
-        DEVICE|AI|VIDEO|WEB|APP) defer_agent_sync=1 ;;
+        DEVICE|AI|VIDEO|WEB|APP|VISUALIZE) defer_agent_sync=1 ;;
     esac
     if [ "$defer_agent_sync" -eq 1 ]; then
         export EASYAIOT_DEFER_PLATFORM_AGENT_SYNC=1
@@ -1251,6 +1255,9 @@ verify_all() {
         if module_enabled_for_deploy_profile APP; then
             echo -e "  App移动端H5:           http://localhost:9010"
         fi
+        if module_enabled_for_deploy_profile VISUALIZE; then
+            echo -e "  可视化编辑器:           http://localhost:8002"
+        fi
         echo ""
         return 0
     else
@@ -1353,10 +1360,10 @@ show_help() {
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
     echo "  build           - 重新构建所有镜像（各模块本地构建）"
-    echo "  build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）"
+    echo "  build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP|VISUALIZE）"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
-    echo "  clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，默认删镜像+构建缓存）"
+    echo "  clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，默认删运行时镜像+构建缓存；保留跨架构基础镜像）"
     echo "  update          - 更新镜像并重启所有服务（交互可选拉取/本地重建）"
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
@@ -1385,7 +1392,7 @@ show_help() {
     echo "  FORCE_NETWORK_RECREATE=true  - 启动时强制重建 easyaiot-network（宿主机 IP 变更后使用）"
     echo "  HOST_IP=<ip>                 - 跳过自动探测，强制指定宿主机 IP"
     echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
-    echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP"
+    echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE"
     echo ""
 }
 

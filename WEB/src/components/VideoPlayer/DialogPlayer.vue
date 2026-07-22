@@ -177,6 +177,8 @@ import { useGb28181AudioTalk } from './monitor/useGb28181AudioTalk';
 import type { PresetItem } from './monitor/MonitorPresetPanel.vue';
 import type { WvpPlaySourceOption } from '@/views/camera/utils/livePlayer';
 
+const emit = defineEmits<{ cancel: [] }>();
+
 const { createMessage } = useMessage();
 const jessibucaRef = ref();
 const playerKey = ref(0);
@@ -797,6 +799,7 @@ function handleCancel() {
   state.vodMode = false;
   state.record = null;
   closeModal();
+  emit('cancel');
 }
 </script>
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.basiclab.iot.device.dal.pgsql.device.DeviceAlarmStrategyMapper">
+
+    <resultMap id="BaseResultMap" type="com.basiclab.iot.device.domain.device.vo.DeviceAlarmStrategy">
+        <id column="id" property="id"/>
+        <result column="device_identification" property="deviceIdentification"/>
+        <result column="strategy_name" property="strategyName"/>
+        <result column="enabled" property="enabled"/>
+        <result column="notify_methods" property="notifyMethods"/>
+        <result column="notify_users" property="notifyUsers"/>
+        <result column="channels" property="channels"/>
+        <result column="silence_seconds" property="silenceSeconds"/>
+        <result column="include_offline" property="includeOffline"/>
+        <result column="remark" property="remark"/>
+        <result column="tenant_id" property="tenantId"/>
+        <result column="create_by" property="createBy"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_by" property="updateBy"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectByDeviceIdentification" resultMap="BaseResultMap">
+        SELECT id, device_identification, strategy_name, enabled, notify_methods, notify_users,
+               channels, silence_seconds, include_offline, remark, tenant_id,
+               create_by, create_time, update_by, update_time
+        FROM device_alarm_strategy
+        WHERE device_identification = #{deviceIdentification}
+        LIMIT 1
+    </select>
+</mapper>

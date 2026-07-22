@@ -1,51 +1,22 @@
 <template>
   <div class="device-drawer-wrapper">
-    <Card class="detail-info" size="small">
-      <div class="device_title">
-        <span class="name">{{ description.deviceName || '设备详情' }}</span>
-        <span :class="description.connectStatus == 'ONLINE' ? 'green' : 'red'">
-          {{ description.connectStatus == 'ONLINE' ? '在线' : '离线' }}
-        </span>
-      </div>
-      <div class="base_data">
-        <div class="item">
-          <span>应用场景：</span>
-          <span :title="String(description.appId)">{{ description.appId }}</span>
-        </div>
-        <div class="item">
-          <span>产品名称：</span>
-          <span :title="String(description.productName)">{{ description.productName }}</span>
-        </div>
-        <div class="item">
-          <span>设备标识：</span>
-          <span :title="String(description.deviceIdentification)">{{ description.deviceIdentification }}</span>
-        </div>
-        <div class="item">
-          <span>连接实例：</span>
-          <span :title="String(description.connector)">{{ description.connector }}</span>
-        </div>
-        <div class="item">
-          <span>用户名：</span>
-          <span :title="String(description.userName)">{{ description.userName }}</span>
-        </div>
-        <div class="item">
-          <span>密码：</span>
-          <span :title="String(description.password)">{{ description.password }}</span>
-        </div>
-        <div class="item">
-          <span>厂商名称：</span>
-          <span :title="String(description.manufacturerName)">{{ description.manufacturerName }}</span>
-        </div>
-      </div>
-    </Card>
-
     <Card class="device-tabs-card">
       <Tabs
         v-model:activeKey="activeKey"
-        :animated="{ inkBar: true, tabPane: true }"
+        :animated="{ inkBar: true, tabPane: false }"
         :tabBarGutter="40"
         @tabClick="handleTabClick"
       >
+        <TabPane key="SubDevice" tab="设备总览">
+          <SubDevice
+            v-if="activeKey === 'SubDevice'"
+            :center-device-identification="description.deviceIdentification"
+            :center-device-id="String(route.params.id || description.id || '')"
+            :center-device-name="description.deviceName"
+            :center-connect-status="description.connectStatus"
+          />
+        </TabPane>
+
         <TabPane key="Detail" tab="基础信息">
           <Detail />
         </TabPane>
@@ -102,13 +73,6 @@
 
         <TabPane key="DeviceLog" :tab="isIndustrialProtocol ? '通信日志' : '设备日志'">
           <DeviceLog v-if="activeKey === 'DeviceLog'" :device="description" />
-        </TabPane>
-
-        <TabPane v-if="isGateway" key="SubDevice" tab="网关子设备">
-          <SubDevice
-            v-if="activeKey === 'SubDevice'"
-            :gateway-identification="description.deviceIdentification"
-          />
         </TabPane>
 
         <TabPane key="RelatedCameras" tab="关联摄像头">
@@ -185,8 +149,6 @@ const description = reactive({
 
 const route = useRoute();
 
-const isGateway = computed(() => description.deviceType === 'GATEWAY');
-
 const isIndustrialProtocol = computed(() => {
   if (INDUSTRIAL_PROTOCOLS.includes(description.protocolType)) return true;
   try {
@@ -222,7 +184,7 @@ onMounted(() => {
   initDeviceDetail(route.params);
 });
 
-const activeKey = ref('Detail');
+const activeKey = ref('SubDevice');
 
 const handleTabClick = (key) => {
   activeKey.value = key;
@@ -234,88 +196,22 @@ const handleTabClick = (key) => {
 
 <style lang="less" scoped>
 .device-drawer-wrapper {
-  height: 100%;
-  overflow-y: auto;
-  background: #f5f7fa;
-  padding: 16px 20px 20px;
+  /* 父级是 min-height，height:100% 无法约束；用视口高度锁死，避免整页外滚 */
+  height: calc(100vh - 80px);
+  max-height: calc(100vh - 80px);
+  overflow: hidden;
+  background: #ffffff;
+  padding: 12px 16px 12px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
 
-  .detail-info {
-    margin-bottom: 16px;
-    flex-shrink: 0;
-
-    :deep(.ant-card-body) {
-      padding: 16px 20px;
-    }
-
-    .device_title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-
-      .name {
-        font-size: 15px;
-        font-weight: 600;
-        color: #1a1a1a;
-        line-height: 24px;
-      }
-
-      .green {
-        color: #52c41a;
-        font-weight: 500;
-        font-size: 13px;
-      }
-
-      .red {
-        color: #ff4d4f;
-        font-weight: 500;
-        font-size: 13px;
-      }
-    }
-
-    .base_data {
-      display: flex;
-      align-items: center;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      font-size: 13px;
-      color: #666;
-      line-height: 22px;
-
-      .item:first-child {
-        border-left: none;
-        padding-left: 0;
-      }
-
-      .item {
-        padding-left: 16px;
-        padding-right: 16px;
-        border-left: 1px solid #e8e8e8;
-        flex: 0 0 auto;
-        white-space: nowrap;
-
-        span:first-child {
-          color: #999;
-          margin-right: 4px;
-        }
-
-        span:last-child {
-          color: #1a1a1a;
-          font-weight: 500;
-        }
-      }
-    }
-  }
-
   .device-tabs-card {
     margin: 0;
     background: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
     overflow: hidden;
     flex: 1;
     display: flex;
@@ -329,26 +225,30 @@ const handleTabClick = (key) => {
       display: flex;
       flex-direction: column;
       min-height: 0;
+      height: 100%;
+      overflow: hidden;
     }
 
     :deep(.ant-tabs) {
       background-color: #ffffff;
-      padding: 12px 20px 16px;
+      padding: 0;
       margin: 0;
       flex: 1;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      height: 100%;
+      overflow: hidden;
     }
 
     :deep(.ant-tabs-nav) {
-      margin-bottom: 16px;
-      padding: 0;
+      margin-bottom: 10px;
+      padding: 0 4px;
       flex-shrink: 0;
     }
 
     :deep(.ant-tabs-content-holder) {
-      padding: 0 0 8px;
+      padding: 0;
       background: #ffffff;
       flex: 1;
       min-height: 0;
@@ -361,10 +261,17 @@ const handleTabClick = (key) => {
 
     :deep(.ant-tabs-tabpane) {
       padding: 0;
+      height: 100%;
+      outline: none;
 
       > * {
         height: 100%;
         overflow-y: auto;
+        background: #ffffff;
+      }
+
+      > .assoc-page {
+        overflow: hidden;
       }
 
       > .access-guide {

@@ -1,9 +1,9 @@
 <template>
-  <div class="rulechain-card-list-wrapper p-2">
-    <div class="p-4 bg-white" style="margin-bottom: 10px">
+  <div class="rulechain-card-list-wrapper">
+    <div class="search-bar">
       <BasicForm @register="registerForm"/>
     </div>
-    <div class="p-2 bg-white">
+    <div class="list-panel">
       <Spin :spinning="state.loading">
         <List
           :grid="{ gutter: 2, xs: 1, sm: 2, md: 4, lg: 4, xl: 4, xxl: 4 }"
@@ -11,10 +11,9 @@
           :pagination="paginationProp"
         >
           <template #header>
-            <div
-              style="display: flex;align-items: center;justify-content: space-between;flex-direction: row;">
-              <span style="padding-left: 7px;font-size: 16px;font-weight: 500;line-height: 24px;">链式规则列表</span>
-              <div class="space-x-2">
+            <div class="list-header">
+              <span class="list-title">链式规则列表</span>
+              <div class="list-actions">
                 <slot name="header"></slot>
               </div>
             </div>
@@ -204,6 +203,71 @@ async function handleDelete(record: object) {
 </script>
 
 <style lang="less" scoped>
+.rulechain-card-list-wrapper {
+  background: #fff !important;
+  flex: 1;
+  height: 100%;
+  min-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-bar {
+  padding: 16px 16px 0;
+  margin-bottom: 10px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.list-panel {
+  background: #fff;
+  padding: 0 8px 16px;
+  flex: 1;
+  min-height: 0;
+
+  :deep(.ant-list-header) {
+    border: 0;
+    padding: 8px 12px 16px;
+    background: transparent;
+  }
+
+  :deep(.ant-list),
+  :deep(.ant-list-items),
+  :deep(.ant-row) {
+    background: #fff !important;
+  }
+
+  :deep(.ant-spin-nested-loading),
+  :deep(.ant-spin-container) {
+    background: #fff !important;
+  }
+
+  :deep(.ant-list-pagination) {
+    margin-top: 20px;
+    text-align: center;
+  }
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.list-title {
+  padding-left: 4px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  color: #181818;
+}
+
+.list-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .rulechain-card-list-wrapper {
 
   :deep(.ant-list-header) {
