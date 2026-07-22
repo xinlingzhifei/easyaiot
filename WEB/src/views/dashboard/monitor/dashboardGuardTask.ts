@@ -165,7 +165,8 @@ export function isDashboardGuardTask(task: DashboardGuardTask) {
 }
 
 export function isDashboardGuardTaskForScope(task: DashboardGuardTask, scope: DashboardGuardScope) {
-  return task.task_name === buildDashboardGuardTaskName(scope)
+  const taskName = String(task.task_name || '')
+  return isDashboardGuardTask(task) && taskName.endsWith(`(${scope.key})`)
 }
 
 function findReusableDashboardTask(tasks: DashboardGuardTask[], scope: DashboardGuardScope) {

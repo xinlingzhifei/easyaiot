@@ -7,7 +7,9 @@ import { resolveLoginBrandingValues } from '@/utils/loginBrandingDefaults'
 export const PLATFORM_BRANDING_STORAGE_KEY = 'PLATFORM_BRANDING_CONFIG'
 export const PLATFORM_BRANDING_FAB_HIDDEN_KEY = 'PLATFORM_BRANDING_FAB_HIDDEN'
 export const DEFAULT_LOGIN_NAME = '逸飞 AI 智眼管控平台'
+export const DEFAULT_DASHBOARD_TITLE = '逸飞AI智眼监控平台'
 const LEGACY_DEFAULT_LOGIN_NAME = '逸飞AI智眼系统'
+const LEGACY_DEFAULT_DASHBOARD_TITLE = '云边端一体' + '算法预警监控平台'
 
 export interface PlatformBrandingConfig {
   /** 管理后台平台名称（侧边栏、浏览器标题等） */
@@ -33,7 +35,7 @@ export function getDefaultPlatformBranding(): PlatformBrandingConfig {
   return {
     platformName: envTitle,
     platformLogo: defaultLogo,
-    dashboardTitle: '云边端一体算法预警监控平台',
+    dashboardTitle: DEFAULT_DASHBOARD_TITLE,
     loginName: DEFAULT_LOGIN_NAME,
     loginLogo: defaultLogo,
     loginFormTitle: '',
@@ -64,7 +66,7 @@ export function loadPlatformBrandingConfig(): PlatformBrandingConfig {
   return {
     platformName: pickString(data.platformName, defaults.platformName),
     platformLogo: pickString(data.platformLogo, defaults.platformLogo),
-    dashboardTitle: pickString(data.dashboardTitle, defaults.dashboardTitle),
+    dashboardTitle: resolveDashboardTitle(data.dashboardTitle, defaults.dashboardTitle),
     loginName: loginBranding.loginName,
     loginLogo: pickString(data.loginLogo, defaults.loginLogo),
     loginFormTitle: pickString(data.loginFormTitle, defaults.loginFormTitle),
@@ -97,6 +99,12 @@ export function saveFabHiddenState(hidden: boolean): void {
 
 function pickString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value : fallback
+}
+
+function resolveDashboardTitle(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim() === LEGACY_DEFAULT_DASHBOARD_TITLE)
+    return fallback
+  return pickString(value, fallback)
 }
 
 /** 使用原生 JSON，避免通用 storage 工具在退出登录时被一并清空后的二次解析问题 */
