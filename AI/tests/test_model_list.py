@@ -38,6 +38,9 @@ def import_model_blueprint_for_list(monkeypatch, items):
             self.total = len(items)
 
     class FakeQuery:
+        def order_by(self, *_args):
+            return self
+
         def paginate(self, page, per_page, error_out=False):
             assert page == 1
             assert per_page == 18
@@ -46,6 +49,7 @@ def import_model_blueprint_for_list(monkeypatch, items):
 
     class FakeModel:
         query = FakeQuery()
+        created_at = SimpleNamespace(desc=lambda: object())
 
     db_models = types.ModuleType('db_models')
     db_models.db = SimpleNamespace(session=SimpleNamespace(add=lambda *_args: None, commit=lambda: None))
@@ -69,6 +73,9 @@ def test_model_list_tolerates_models_without_class_name_fields(monkeypatch):
         image_url=None,
         model_path='/api/v1/buckets/models/objects/download?prefix=yolo/demo.pt',
         onnx_model_path=None,
+        torchscript_model_path=None,
+        tensorrt_model_path=None,
+        openvino_model_path=None,
     )
     model_module = import_model_blueprint_for_list(monkeypatch, [legacy_model])
 

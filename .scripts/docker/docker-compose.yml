@@ -120,6 +120,8 @@ services:
     restart: always
     environment:
       - TZ=Asia/Shanghai
+      # 当前部署未启动 taosKeeper，关闭 taosAdapter 的无效监控上报，避免每 15 秒连接 6043 失败。
+      - TAOS_ADAPTER_UPLOAD_KEEPER_ENABLE=false
     ports:
       - "0.0.0.0:6030:6030"
       - "0.0.0.0:6041:6041"
@@ -364,7 +366,7 @@ services:
     container_name: nodered-server
     restart: always
     ports:
-      - "0.0.0.0:1880:1880"
+      - "127.0.0.1:1880:1880"
     environment:
       - TZ=Asia/Shanghai
       - NODE_OPTIONS=--max-old-space-size=512

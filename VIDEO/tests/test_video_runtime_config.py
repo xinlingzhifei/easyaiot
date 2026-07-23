@@ -23,23 +23,32 @@ class VideoRuntimeConfigTest(unittest.TestCase):
         compose = (VIDEO_ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
 
         self.assertIn("YOLO_IMG_SIZE=640", compose)
-        self.assertIn("OVERLAY_YOLO_IMG_SIZE=640", compose)
         self.assertNotIn("YOLO_IMG_SIZE=320", compose)
-        self.assertNotIn("OVERLAY_YOLO_IMG_SIZE=320", compose)
+        self.assertNotIn("- OVERLAY_YOLO_IMG_SIZE=", compose)
 
         for env_file in (".env", ".env.docker", ".env.prod"):
             with self.subTest(env_file=env_file):
                 content = (VIDEO_ROOT / env_file).read_text(encoding="utf-8")
+                active_lines = {
+                    line.strip()
+                    for line in content.splitlines()
+                    if line.strip() and not line.lstrip().startswith("#")
+                }
                 self.assertIn("YOLO_IMG_SIZE=640", content)
-                self.assertIn("OVERLAY_YOLO_IMG_SIZE=640", content)
                 self.assertNotIn("YOLO_IMG_SIZE=320", content)
-                self.assertNotIn("OVERLAY_YOLO_IMG_SIZE=320", content)
+                self.assertFalse(
+                    any(
+                        line.startswith("OVERLAY_YOLO_IMG_SIZE=")
+                        for line in active_lines
+                    )
+                )
 
     def test_realtime_ai_docker_profile_preserves_hd_motion_quality(self):
         compose = (VIDEO_ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
         docker_env = (VIDEO_ROOT / ".env.docker").read_text(encoding="utf-8")
 
         expected_compose_defaults = (
+            "GB28181_PLAY_PROTOCOL=${GB28181_PLAY_PROTOCOL:-ts_first}",
             "AI_OUTPUT_FPS=${AI_OUTPUT_FPS:-25}",
             "AI_TARGET_WIDTH=${AI_TARGET_WIDTH:-1280}",
             "AI_TARGET_HEIGHT=${AI_TARGET_HEIGHT:-720}",
@@ -74,6 +83,7 @@ class VideoRuntimeConfigTest(unittest.TestCase):
             if line and not line.startswith("#") and "=" in line
         )
         expected_docker_values = {
+            "GB28181_PLAY_PROTOCOL": "ts_first",
             "SOURCE_FPS": "25",
             "TARGET_WIDTH": "1280",
             "TARGET_HEIGHT": "720",

@@ -152,6 +152,10 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         body.get('https_flv'),
         body.get('ws_flv'),
     ]
+    ts_block = [
+        body.get('ts'),
+        body.get('https_ts'),
+    ]
     other = [
         body.get('fmp4'),
         body.get('hls'),
@@ -170,6 +174,19 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         'hevc_hint': hevc_hint,
         'branch': 'rtmp_first',
     }
+
+    if mode in ('ts_first', 'http_ts_first', 'ts'):
+        meta['branch'] = 'ts_first'
+        candidates = [
+            *ts_block,
+            *flv_block,
+            *other,
+            body.get('rtmp'),
+            body.get('rtmps'),
+            body.get('rtsp'),
+            body.get('rtsps'),
+        ]
+        return candidates, meta
 
     if mode in ('flv_first', 'http_flv_first', 'http_first', 'flv'):
         meta['branch'] = 'flv_first'
@@ -228,6 +245,7 @@ def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
         'rtmp_first': '接口顺序优先RTMP(占读者保活)',
         'hevc_rtsp_first': 'HEVC+RTMP线索则优先RTSP(OpenCV兼容)',
         'flv_first': '接口顺序优先HTTP-FLV(OpenCV兼容)',
+        'ts_first': '接口顺序优先HTTP-TS(OpenCV兼容)',
     }.get(branch, branch)
     hevc_on = '开启' if meta.get('hevc_rtsp_first_env_on') else '关闭'
     hint = '是' if meta.get('hevc_hint') else '否'
@@ -244,7 +262,10 @@ def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
 
 def _localize_flv_pull_url(url: str) -> str:
     mode = (os.getenv('GB28181_PLAY_PROTOCOL') or '').strip().lower()
-    if mode not in ('flv_first', 'http_flv_first', 'http_first', 'flv'):
+    if mode not in (
+        'flv_first', 'http_flv_first', 'http_first', 'flv',
+        'ts_first', 'http_ts_first', 'ts',
+    ):
         return url
 
     parsed = urlparse(url)
@@ -301,6 +322,7 @@ def _all_play_urls_from_body(body: dict) -> List[str]:
     if not isinstance(body, dict):
         return []
     keys = (
+        'ts', 'https_ts',
         'rtmp', 'rtmps', 'rtsp', 'rtsps',
         'flv', 'https_flv', 'ws_flv',
         'fmp4', 'hls', 'rtc', 'rtcs',
@@ -385,6 +407,7 @@ def resolve_gb28181_alternate_pull_url(
     mode = (os.getenv('GB28181_PLAY_PROTOCOL') or '').strip().lower()
     if prefer_schemes == ('rtsp', 'rtsps') and mode in (
         'flv_first', 'http_flv_first', 'http_first', 'flv',
+        'ts_first', 'http_ts_first', 'ts',
     ):
         prefer_schemes = ('http', 'https', 'ws', 'wss', 'rtsp', 'rtsps', 'rtmp', 'rtmps')
 

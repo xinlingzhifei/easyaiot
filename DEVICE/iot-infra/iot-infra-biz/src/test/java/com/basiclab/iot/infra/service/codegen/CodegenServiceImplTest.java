@@ -346,7 +346,7 @@ public class CodegenServiceImplTest extends BaseDbUnitTest {
         // 准备参数
         CodegenTablePageReqVO reqVO = new CodegenTablePageReqVO();
         reqVO.setTableName("yunai");
-        reqVO.setTableComment("芋");
+        reqVO.setTableComment("Eye");
         reqVO.setClassName("Yunai");
         reqVO.setCreateTime(buildBetweenTime(2021, 3, 1, 2021, 3, 31));
 
@@ -516,7 +516,7 @@ public class CodegenServiceImplTest extends BaseDbUnitTest {
             return true;
         }), argThat(columns -> {
             assertEquals(1, columns.size());
-            assertPojoEquals(subColumn01, columns.size());
+            assertPojoEquals(subColumn01, columns.get(0));
             return true;
         }))).thenReturn(codes);
         // 准备参数
