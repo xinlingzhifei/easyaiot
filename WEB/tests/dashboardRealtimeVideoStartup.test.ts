@@ -94,8 +94,8 @@ assert.doesNotMatch(
 
 assert.doesNotMatch(
   videoMonitor,
-  /videoRefs\.value\[targetIndex\]\?\.play\?\.\(\)/,
-  'Dashboard AI fallback should switch the playUrl only; the player watcher owns the actual reconnect.',
+  /videoRefs\.value\[[^\]]+\]\?\.play\?\.\(\)/,
+  'Dashboard stream fallback should switch the playUrl only; the player watcher owns the actual reconnect.',
 )
 
 assert.doesNotMatch(

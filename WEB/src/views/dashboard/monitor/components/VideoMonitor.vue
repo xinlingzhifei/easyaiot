@@ -1286,7 +1286,6 @@ function handleVideoStreamError(index: number) {
     createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）')
     internalVideoList.value[index] = { ...slot, url: fallbackUrl, fallbackUrl: null, aiStatus: 'fallback' }
     persistDashboardVideoState()
-    nextTick(() => videoRefs.value[index]?.play?.())
     return
   }
 
@@ -1302,7 +1301,6 @@ function handleVideoStreamError(index: number) {
     aiStatus: slot.aiStatus === 'ai' ? 'fallback' : slot.aiStatus,
   }
   persistDashboardVideoState()
-  nextTick(() => videoRefs.value[index]?.play?.())
 }
 
 async function resolvePlayUrlsForDevice(dev: MonitorTreeDeviceNode) {
