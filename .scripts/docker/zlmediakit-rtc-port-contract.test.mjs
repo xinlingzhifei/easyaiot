@@ -12,7 +12,12 @@ assert.match(composeSource, /0\.0\.0\.0:8001:8001\/udp/);
 
 const rtcSection = installerSource.match(/\[rtc\]([\s\S]*?)\n\[/)?.[1];
 assert.ok(rtcSection, 'install_middleware_linux.sh must contain an [rtc] section');
+assert.match(rtcSection, /^externIP=$/m);
 assert.match(rtcSection, /^port=8001$/m);
 assert.match(rtcSection, /^tcpPort=8001$/m);
+assert.equal(
+  installerSource.match(/normalize_zlmediakit_rtc_config "\$zlm_config_file" "\$zlm_rtc_extern_ip"/g)?.length,
+  2,
+);
 
 console.log('ZLMediaKit WebRTC port contract passed');

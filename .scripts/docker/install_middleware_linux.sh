@@ -2280,12 +2280,53 @@ get_docker_network_gateway() {
     return 0
 }
 
+# 解析 ZLMediaKit WebRTC 对外候选 IP。
+resolve_zlmediakit_rtc_extern_ip() {
+    local rtc_extern_ip="${ZLM_RTC_EXTERN_IP:-${MEDIA_SDP_IP:-}}"
+    if [ -z "$rtc_extern_ip" ]; then
+        rtc_extern_ip=$(read_middleware_env_value ZLM_RTC_EXTERN_IP)
+    fi
+    rtc_extern_ip="${rtc_extern_ip#\"}"
+    rtc_extern_ip="${rtc_extern_ip%\"}"
+    rtc_extern_ip="${rtc_extern_ip#\'}"
+    rtc_extern_ip="${rtc_extern_ip%\'}"
+
+    if [ -n "$rtc_extern_ip" ]; then
+        is_valid_ipv4 "$rtc_extern_ip" || return 1
+        printf '%s' "$rtc_extern_ip"
+        return 0
+    fi
+
+    rtc_extern_ip=$(get_host_ip)
+    is_valid_ipv4 "$rtc_extern_ip" || return 1
+    printf '%s' "$rtc_extern_ip"
+}
+
+normalize_zlmediakit_rtc_config() {
+    local config_file="$1"
+    local rtc_extern_ip="$2"
+    sed -i "/^\[rtc\]/,/^\[rtmp\]/{
+        s/^externIP=.*/externIP=${rtc_extern_ip}/
+        s/^port=8000[[:space:]]*$/port=8001/
+        s/^tcpPort=8000[[:space:]]*$/tcpPort=8001/
+    }" "$config_file"
+}
+
 # 准备 ZLMediaKit 配置文件
 prepare_zlmediakit_config() {
     local middleware_data_root
     middleware_data_root=$(resolve_middleware_data_root) || return 1
     local zlm_config_dir="${middleware_data_root}/zlmediakit/conf"
     local zlm_config_file="${zlm_config_dir}/config.ini"
+    local zlm_rtc_extern_ip
+    if ! zlm_rtc_extern_ip=$(resolve_zlmediakit_rtc_extern_ip); then
+        print_error "ZLMediaKit WebRTC 对外候选 IP 无效，请设置 ZLM_RTC_EXTERN_IP"
+        return 1
+    fi
+    print_info "ZLMediaKit WebRTC 对外候选 IP: ${zlm_rtc_extern_ip}"
+    if [[ "$zlm_rtc_extern_ip" =~ ^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[01])\. ]]; then
+        print_warning "当前 WebRTC 候选 IP 为内网地址；公网访问请在 .env.docker 设置 ZLM_RTC_EXTERN_IP"
+    fi
     
     print_info "准备 ZLMediaKit 配置文件..."
     
@@ -2304,6 +2345,7 @@ prepare_zlmediakit_config() {
             sed -i 's/^enable_mp4=1/enable_mp4=0/' "$zlm_config_file"
             print_info "已关闭 ZLMediaKit mp4 录像: enable_mp4=0"
         fi
+        normalize_zlmediakit_rtc_config "$zlm_config_file" "$zlm_rtc_extern_ip"
         return 0
     else
         print_warning "ZLMediaKit 配置文件不存在，将创建默认配置"
@@ -2507,6 +2549,8 @@ pktBufSize=8192
 port=9000
 timeoutSec=5
 EOF
+
+    normalize_zlmediakit_rtc_config "$zlm_config_file" "$zlm_rtc_extern_ip"
     
     # 验证文件是否创建成功
     if [ -f "$zlm_config_file" ]; then
