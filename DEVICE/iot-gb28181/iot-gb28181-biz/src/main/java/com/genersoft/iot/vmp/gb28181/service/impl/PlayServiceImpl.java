@@ -60,6 +60,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @SuppressWarnings(value = {"rawtypes", "unchecked"})
 @Slf4j
@@ -125,6 +127,9 @@ public class PlayServiceImpl implements IPlayService {
 
     @Autowired
     private IRedisRpcPlayService redisRpcPlayService;
+
+    // 仅串行化同一通道的建流，避免页面重试与 ZLM 自动点播重复创建同名 RTP Server。
+    private final ConcurrentMap<Integer, Object> playRequestLocks = new ConcurrentHashMap<>();
 
     /**
      * 流到来的处理
@@ -326,6 +331,14 @@ public class PlayServiceImpl implements IPlayService {
 
     private SSRCInfo play(MediaServer mediaServerItem, Device device, DeviceChannel channel, String ssrc, Boolean record,
                           ErrorCallback<StreamInfo> callback) {
+        Object playRequestLock = playRequestLocks.computeIfAbsent(channel.getId(), key -> new Object());
+        synchronized (playRequestLock) {
+            return playWithinChannelLock(mediaServerItem, device, channel, ssrc, record, callback);
+        }
+    }
+
+    private SSRCInfo playWithinChannelLock(MediaServer mediaServerItem, Device device, DeviceChannel channel, String ssrc,
+                                           Boolean record, ErrorCallback<StreamInfo> callback) {
         if (mediaServerItem == null ) {
             if (callback != null) {
                 callback.run(InviteErrorCode.ERROR_FOR_PARAMETER_ERROR.getCode(),
