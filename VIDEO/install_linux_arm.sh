@@ -67,7 +67,8 @@ video_compose() {
         print_error "Compose 环境文件不存在: $VIDEO_COMPOSE_ENV_FILE"
         return 1
     fi
-    $COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"
+    YFEIEYE_VIDEO_COMPOSE_ENV_FILE="$VIDEO_COMPOSE_ENV_FILE" \
+        $COMPOSE_CMD --env-file "$VIDEO_COMPOSE_ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"
 }
 
 # 清理 compose recreate 被中断后遗留的「改名孤儿容器」（形如 <12位hex>_video-service）。

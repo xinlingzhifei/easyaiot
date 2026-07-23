@@ -109,6 +109,26 @@ class VideoRuntimeConfigTest(unittest.TestCase):
                 content = (VIDEO_ROOT / runtime_file).read_text(encoding="utf-8")
                 self.assertNotIn("KAFKA_BOOTSTRAP_SERVERS=localhost:9092", content)
 
+    def test_external_runtime_env_file_reaches_container_and_dotenv_mount(self):
+        compose = (VIDEO_ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
+        env_reference = "${YFEIEYE_VIDEO_COMPOSE_ENV_FILE:-.env.docker}"
+
+        self.assertEqual(compose.count(env_reference), 2)
+        self.assertIn(f"env_file:\n      - {env_reference}", compose)
+        self.assertIn(f"- {env_reference}:/app/.env:ro", compose)
+
+        for runtime_file in (
+            "install_linux.sh",
+            "install_linux_arm.sh",
+            "install_linux_kylin.sh",
+        ):
+            with self.subTest(runtime_file=runtime_file):
+                content = (VIDEO_ROOT / runtime_file).read_text(encoding="utf-8")
+                self.assertIn(
+                    'YFEIEYE_VIDEO_COMPOSE_ENV_FILE="$VIDEO_COMPOSE_ENV_FILE"',
+                    content,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

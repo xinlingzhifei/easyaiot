@@ -19,7 +19,7 @@ services:
 
     # 环境变量文件（用于Docker部署）
     env_file:
-      - .env.docker
+      - ${YFEIEYE_VIDEO_COMPOSE_ENV_FILE:-.env.docker}
 
     # 网络模式：使用host模式以访问宿主机局域网（ONVIF发现需要）
     # 注意：使用host模式后，端口映射将失效，服务直接使用宿主机网络
@@ -54,7 +54,7 @@ services:
       - /data:/data:rw
       - /data/yfeieye-record-exports:/data/yfeieye-record-exports:rw
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
-      - ./.env.docker:/app/.env:ro
+      - ${YFEIEYE_VIDEO_COMPOSE_ENV_FILE:-.env.docker}:/app/.env:ro
 
     # 环境变量
     environment:

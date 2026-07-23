@@ -145,7 +145,11 @@ class TenantMaintenanceTest(unittest.TestCase):
         self.assertNotIn('SECRET_KEY=${SECRET_KEY:-', compose)
         self.assertNotRegex(compose, r'MINIO_ACCESS_KEY=\$\{MINIO_ACCESS_KEY:-[^}]+\}')
         self.assertNotRegex(compose, r'MINIO_SECRET_KEY=\$\{MINIO_SECRET_KEY:-[^}]+\}')
-        self.assertIn('env_file:\n      - .env.docker', compose)
+        self.assertIn(
+            'env_file:\n'
+            '      - ${YFEIEYE_VIDEO_COMPOSE_ENV_FILE:-.env.docker}',
+            compose,
+        )
         self.assertIn(
             'http://$${FLASK_RUN_HOST}:$${FLASK_RUN_PORT:-6000}/actuator/health',
             compose,
