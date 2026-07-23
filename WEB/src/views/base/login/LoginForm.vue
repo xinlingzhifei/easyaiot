@@ -48,7 +48,7 @@ const captchaType = ref('blockPuzzle') // blockPuzzle 滑块 clickWord 点击文
 const formData = reactive({
   tenantName: 'Admin-IoT',
   username: 'admin',
-  password: 'admin123',
+  password: '',
   captchaVerification: '',
 })
 
