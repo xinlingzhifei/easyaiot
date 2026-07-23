@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { resolveGbAudioBroadcastStreamInfo } from '../src/components/VideoPlayer/monitor/gb28181AudioTalkResponse'
 
 const audioTalk = readFileSync(
   fileURLToPath(
@@ -11,6 +12,37 @@ const audioTalk = readFileSync(
 const gb28181Api = readFileSync(
   fileURLToPath(new URL('../src/api/device/gb28181.ts', import.meta.url)),
   'utf8',
+)
+
+assert.throws(
+  () => resolveGbAudioBroadcastStreamInfo({
+    data: {
+      code: 0,
+      data: {
+        code: 400,
+        msg: '该通道未启用语音对讲',
+      },
+    },
+  }),
+  /该通道未启用语音对讲/,
+  'Nested GB28181 business errors must keep the backend reason instead of becoming a missing WebRTC URL error.',
+)
+
+assert.deepEqual(
+  resolveGbAudioBroadcastStreamInfo({
+    data: {
+      code: 0,
+      data: {
+        streamInfo: {
+          rtcs: 'https://example.test/index/api/webrtc?type=push',
+        },
+      },
+    },
+  }),
+  {
+    rtcs: 'https://example.test/index/api/webrtc?type=push',
+  },
+  'A successful nested GB28181 response must still expose the WebRTC push stream.',
 )
 
 assert.doesNotMatch(

@@ -2,6 +2,7 @@ import { ref, onUnmounted } from 'vue';
 import { useMessage } from '@/hooks/web/useMessage';
 import { startGbAudioBroadcast, stopGbAudioBroadcast } from '@/api/device/gb28181';
 import { rewriteStreamHostToPageHost } from '@/views/camera/utils/devicePlay';
+import { resolveGbAudioBroadcastStreamInfo } from './gb28181AudioTalkResponse';
 
 export type AudioTalkStatus = 'idle' | 'connecting' | 'active' | 'error';
 
@@ -92,8 +93,7 @@ export function useGb28181AudioTalk(
     infoText.value = '启动国标语音广播...';
     try {
       const res: any = await startGbAudioBroadcast(deviceId, chId, true);
-      const body = res?.data ?? res;
-      const streamInfo = body?.streamInfo ?? body?.data?.streamInfo;
+      const streamInfo = resolveGbAudioBroadcastStreamInfo(res);
       const pushUrl = pickWebRtcPushUrl(streamInfo);
       if (!pushUrl) throw new Error('未获取到 WebRTC 推流地址');
 
