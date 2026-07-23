@@ -290,6 +290,110 @@ class TenantMaintenanceTest(unittest.TestCase):
             cluster_enable,
         )
 
+    def test_direct_service_api_proxies_require_platform_authentication(self):
+        root = Path(__file__).resolve().parents[1]
+
+        def location_block(source, prefix):
+            match = re.search(
+                rf'location\s+\^~\s+{re.escape(prefix)}\s*\{{',
+                source,
+            )
+            self.assertIsNotNone(match, prefix)
+            start = match.end() - 1
+            depth = 0
+            for index in range(start, len(source)):
+                if source[index] == '{':
+                    depth += 1
+                elif source[index] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return source[start:index + 1]
+            self.fail(f'location block is not closed: {prefix}')
+
+        configs = {
+            root / 'WEB' / 'conf' / 'nginx.conf': {
+                'prefixes': (
+                    '/yfeieye/dev-api/model/',
+                    '/yfeieye/dev-api/ai/',
+                    '/yfeieye/dev-api/video/',
+                    '/yfeieye/dev-api/srs/',
+                    '/dev-api/model/',
+                    '/dev-api/ai/',
+                    '/dev-api/video/',
+                    '/dev-api/srs/',
+                ),
+                'auth_upstream': (
+                    'http://gateway:48080/admin-api/system/auth/'
+                    'get-permission-info'
+                ),
+            },
+            root / 'WEB' / 'conf' / 'nginx.mini.conf': {
+                'prefixes': (
+                    '/admin-api/model/',
+                    '/dev-api/model/',
+                    '/dev-api/ai/',
+                    '/dev-api/video/',
+                    '/dev-api/srs/',
+                ),
+                'auth_upstream': (
+                    'http://system-host:48099/admin-api/system/auth/'
+                    'get-permission-info'
+                ),
+            },
+            root / 'APP' / 'conf' / 'nginx.conf': {
+                'prefixes': (
+                    '/dev-api/model/',
+                    '/dev-api/ai/',
+                    '/dev-api/video/',
+                    '/dev-api/srs/',
+                    '/dev-api/nodeRed/',
+                    '/nodeRed',
+                ),
+                'auth_upstream': (
+                    'http://gateway:48080/admin-api/system/auth/'
+                    'get-permission-info'
+                ),
+            },
+        }
+
+        for path, expected in configs.items():
+            source = path.read_text(encoding='utf-8')
+            self.assertRegex(
+                source,
+                r'(?s)map\s+\$http_authorization\s+\$platform_api_auth_candidate'
+                r'\s*\{.*?'
+                r"''\s+\$http_x_authorization;",
+            )
+            self.assertRegex(
+                source,
+                r'(?s)map\s+\$platform_api_auth_candidate'
+                r'\s+\$platform_api_authorization'
+                r'\s*\{.*?'
+                r"''\s+\"Bearer missing-platform-api-token\";",
+            )
+            self.assertIn('location = /_platform_api_auth {', source)
+            self.assertIn(
+                f"proxy_pass {expected['auth_upstream']};",
+                source,
+            )
+            self.assertIn(
+                'proxy_set_header Authorization $platform_api_authorization;',
+                source,
+            )
+            self.assertEqual(
+                len(expected['prefixes']),
+                source.count('auth_request /_platform_api_auth;'),
+            )
+            for prefix in expected['prefixes']:
+                block = location_block(source, prefix)
+                self.assertIn(
+                    'Authorization,X-Authorization,tenant-id',
+                    block,
+                    prefix,
+                )
+                self.assertIn('auth_request /_platform_api_auth;', block, prefix)
+                self.assertRegex(block, r'proxy_pass\s+http://[^;]+;', prefix)
+
     def test_alternate_srs_publish_hook_calls_authorized_core_without_revalidation(self):
         video_root = Path(__file__).resolve().parent
         media_tree = ast.parse(
