@@ -168,6 +168,8 @@ yfeieye:
       action-permissions:
         playback:
           - system:supervision-alert-review:media:playback
+        alert_read:
+          - system:supervision-alert-review:media:playback
         snapshot:
           - system:supervision-alert-review:media:snapshot
         coverage:

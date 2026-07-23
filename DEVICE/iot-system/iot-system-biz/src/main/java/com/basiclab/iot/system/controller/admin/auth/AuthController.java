@@ -57,8 +57,10 @@ import static com.basiclab.iot.common.utils.SecurityFrameworkUtils.getLoginUserI
 public class AuthController {
 
     private static final Set<String> MEDIA_ACTIONS = Set.of(
-            "playback", "snapshot", "coverage", "export", "download", "manifest_verify", "record_manage"
+            "playback", "snapshot", "coverage", "export", "download", "manifest_verify", "record_manage",
+            "alert_read"
     );
+    private static final Set<String> MEDIA_COLLECTION_ACTIONS = Set.of("alert_read");
 
     @Resource
     private AdminAuthService authService;
@@ -151,13 +153,26 @@ public class AuthController {
             return success(mediaPermissionDecision(false, userId, tenantId, cameraId, action,
                     "action_permission_denied"));
         }
-        if (cameraId.isEmpty()) {
+        if (cameraId.isEmpty() && !MEDIA_COLLECTION_ACTIONS.contains(action)) {
             return success(mediaPermissionDecision(false, userId, tenantId, null, action,
                     "camera_scope_required"));
         }
         List<String> allowedCameraIds = reviewCameraPermissionResolver.resolveAllowedCameraIds(
-                new ReviewCameraPermissionRequest(null, userId, tenantId, action, List.of(cameraId))
+                new ReviewCameraPermissionRequest(
+                        null, userId, tenantId, action, cameraId.isEmpty() ? List.of() : List.of(cameraId))
         );
+        if (cameraId.isEmpty()) {
+            if (allowedCameraIds == null || allowedCameraIds.isEmpty()) {
+                return success(mediaPermissionDecision(false, userId, tenantId, null, action,
+                        "camera_scope_denied"));
+            }
+            if (allowedCameraIds.size() != 1) {
+                return success(mediaPermissionDecision(false, userId, tenantId, null, action,
+                        "camera_scope_ambiguous"));
+            }
+            return success(mediaPermissionDecision(
+                    true, userId, tenantId, allowedCameraIds.get(0), action, "granted"));
+        }
         boolean allowed = allowedCameraIds != null && allowedCameraIds.stream().anyMatch(cameraId::equals);
         return success(mediaPermissionDecision(
                 allowed,

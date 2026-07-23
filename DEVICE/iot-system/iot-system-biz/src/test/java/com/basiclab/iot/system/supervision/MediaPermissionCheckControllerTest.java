@@ -112,6 +112,35 @@ class MediaPermissionCheckControllerTest {
         assertEquals("camera_scope_denied", deniedManage.getReason());
     }
 
+    @Test
+    void alertCollectionRequiresOneExplicitSuperAdminCameraScope() {
+        AtomicReference<AdminUserDO> currentUser = new AtomicReference<>(user(7L));
+        ConfiguredReviewCameraPermissionResolver resolver = new ConfiguredReviewCameraPermissionResolver();
+        resolver.setUsers(Map.of(42L, List.of("camera-01")));
+        resolver.setActionPermissions(Map.of(
+                "alert_read", List.of("system:supervision-alert-review:media:playback")));
+        resolver.setPermissionService(permissionService(true));
+        AuthController controller = new AuthController();
+        ReflectionTestUtils.setField(controller, "userService", userService(currentUser));
+        ReflectionTestUtils.setField(controller, "reviewCameraPermissionResolver", resolver);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser().setId(42L).setTenantId(7L), null, List.of()));
+
+        MediaPermissionCheckRespVO granted = controller.checkMediaPermission(
+                new MediaPermissionCheckReqVO("alert_read", null, "/video/alert/statistics", null)).getData();
+
+        assertTrue(granted.getAllowed());
+        assertEquals("camera-01", granted.getCameraId());
+        assertEquals("granted", granted.getReason());
+
+        resolver.setUsers(Map.of(42L, List.of("camera-01", "camera-02")));
+        MediaPermissionCheckRespVO ambiguous = controller.checkMediaPermission(
+                new MediaPermissionCheckReqVO("alert_read", null, "/video/alert/page", null)).getData();
+
+        assertFalse(ambiguous.getAllowed());
+        assertEquals("camera_scope_ambiguous", ambiguous.getReason());
+    }
+
     private static AdminUserDO user(Long tenantId) {
         AdminUserDO user = AdminUserDO.builder().id(42L).build();
         user.setTenantId(tenantId);
@@ -145,7 +174,7 @@ class MediaPermissionCheckControllerTest {
                 PermissionService.class.getClassLoader(),
                 new Class<?>[]{PermissionService.class},
                 (proxy, method, args) -> {
-                    if ("hasAnyPermissions".equals(method.getName())) {
+                    if ("hasAnyPermissions".equals(method.getName()) || "hasAnyRoles".equals(method.getName())) {
                         return allowed;
                     }
                     if ("toString".equals(method.getName())) {

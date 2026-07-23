@@ -223,6 +223,7 @@ class ConfiguredReviewCameraPermissionResolverTest {
         resolver.setUsers(Map.of(1L, List.of("camera-01")));
         resolver.setActionPermissions(Map.of(
                 "playback", List.of("system:supervision-alert-review:media:playback"),
+                "alert_read", List.of("system:supervision-alert-review:media:playback"),
                 "download", List.of("system:supervision-alert-review:media:download")
         ));
         CapturingPermissionService permissionService = new CapturingPermissionService();
@@ -236,6 +237,8 @@ class ConfiguredReviewCameraPermissionResolverTest {
                 new ReviewCameraPermissionRequest(1L, 1L, 1L, "playback", List.of("camera-02"))));
         assertEquals(List.of(), resolver.resolveAllowedCameraIds(
                 new ReviewCameraPermissionRequest(1L, 1L, 1L, "download", List.of("camera-01"))));
+        assertEquals(List.of("camera-01"), resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(1L, 1L, 1L, "alert_read", List.of())));
     }
 
     @Test

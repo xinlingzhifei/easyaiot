@@ -20,7 +20,7 @@ import java.util.Set;
 @ConfigurationProperties(prefix = "yfeieye.review.camera-permission")
 public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPermissionResolver {
 
-    private static final Set<String> DIRECT_SUPER_ADMIN_ACTIONS = Set.of("playback", "snapshot");
+    private static final Set<String> DIRECT_SUPER_ADMIN_ACTIONS = Set.of("playback", "snapshot", "alert_read");
 
     private Map<Long, List<String>> users = new LinkedHashMap<>();
     private Map<Long, List<String>> tenants = new LinkedHashMap<>();
