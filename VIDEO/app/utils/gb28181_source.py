@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -32,25 +32,12 @@ def parse_gb28181_source(source: Optional[str]) -> Optional[Tuple[str, str]]:
 
 
 def prefer_h264_http_flv_for_opencv(url: Optional[str]) -> Optional[str]:
-    if not url:
-        return url
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in ('http', 'https'):
-        return url
-    if not parsed.path.lower().endswith('.flv'):
-        return url
+    """保留媒体服务返回的真实编码信息。
 
-    changed = False
-    query_pairs = []
-    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
-        if key.lower() == 'videocodec' and value.lower() in ('h265', 'hevc'):
-            query_pairs.append((key, 'H264'))
-            changed = True
-        else:
-            query_pairs.append((key, value))
-    if not changed:
-        return url
-    return urlunparse(parsed._replace(query=urlencode(query_pairs)))
+    ``videoCodec`` 只是 ZLMediaKit 写入播放 URL 的元数据，改写查询参数不会
+    触发转码，反而会把真实 H265 流伪装成 H264，导致后续解码判断失真。
+    """
+    return url
 
 
 def _gb28181_http_timeout(default: int = 60) -> int:

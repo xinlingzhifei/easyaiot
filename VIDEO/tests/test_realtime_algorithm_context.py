@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import unittest
 
@@ -38,6 +39,27 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertIn("using cached {cached_attr}", source)
         self.assertIn("prefer_h264_http_flv_for_opencv", source)
         self.assertIn("rtsp_url = _normalize_gb28181_opencv_input_url(rtsp_url)", source)
+
+    def test_realtime_quality_params_do_not_reference_undefined_source_fps(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+        loaded_names = {
+            node.id
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+
+        self.assertNotIn("SOURCE_FPS", loaded_names)
+        self.assertIn("AI_OUTPUT_FPS", loaded_names)
+
+    def test_detection_worker_idle_backoff_is_bounded(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("2 ** idle_count", source)
+        self.assertEqual(source.count("2 ** min(idle_count, 5)"), 2)
 
     def test_realtime_detection_uses_model_allowed_class_filter(self):
         source = (

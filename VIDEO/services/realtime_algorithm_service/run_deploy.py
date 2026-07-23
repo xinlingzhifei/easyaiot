@@ -712,7 +712,7 @@ def _get_effective_realtime_stream_params():
     if not AUTO_QUALITY_ENABLED or MANUAL_QUALITY_CONFIGURED:
         return (
             'manual',
-            int(SOURCE_FPS),
+            int(AI_OUTPUT_FPS),
             int(TARGET_WIDTH),
             int(TARGET_HEIGHT),
             str(FFMPEG_VIDEO_BITRATE),
@@ -4421,7 +4421,7 @@ def overlay_detection_worker(worker_id: int):
                     )
             else:
                 idle_count += 1
-                sleep_time = min(0.05 * (2 ** idle_count), 1.0)
+                sleep_time = min(0.05 * (2 ** min(idle_count, 5)), 1.0)
                 time.sleep(sleep_time)
 
         except Exception as e:
@@ -4556,7 +4556,7 @@ def alert_detection_worker(worker_id: int):
                     )
             else:
                 idle_count += 1
-                sleep_time = min(0.05 * (2 ** idle_count), 1.0)
+                sleep_time = min(0.05 * (2 ** min(idle_count, 5)), 1.0)
                 time.sleep(sleep_time)
 
         except Exception as e:
