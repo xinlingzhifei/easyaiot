@@ -218,6 +218,27 @@ class ConfiguredReviewCameraPermissionResolverTest {
     }
 
     @Test
+    void explicitlyScopedSuperAdminCanPreviewCameraWithoutReviewHistory() {
+        ConfiguredReviewCameraPermissionResolver resolver = new ConfiguredReviewCameraPermissionResolver();
+        resolver.setUsers(Map.of(1L, List.of("camera-01")));
+        resolver.setActionPermissions(Map.of(
+                "playback", List.of("system:supervision-alert-review:media:playback"),
+                "download", List.of("system:supervision-alert-review:media:download")
+        ));
+        CapturingPermissionService permissionService = new CapturingPermissionService();
+        permissionService.allowed = true;
+        permissionService.superAdmin = true;
+        resolver.setPermissionService(permissionService);
+
+        assertEquals(List.of("camera-01"), resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(1L, 1L, 1L, "playback", List.of("camera-01"))));
+        assertEquals(List.of(), resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(1L, 1L, 1L, "playback", List.of("camera-02"))));
+        assertEquals(List.of(), resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(1L, 1L, 1L, "download", List.of("camera-01"))));
+    }
+
+    @Test
     void userScopeOverridesTenantAndDefaultAndNormalizesValues() {
         ConfiguredReviewCameraPermissionResolver resolver = new ConfiguredReviewCameraPermissionResolver();
         resolver.setUsers(Map.of(7L, List.of(" camera-01 ", "", "camera-01", "camera-02")));
@@ -359,6 +380,7 @@ class ConfiguredReviewCameraPermissionResolverTest {
     private static final class CapturingPermissionService implements PermissionService {
 
         private boolean allowed;
+        private boolean superAdmin;
         private Long checkedUserId;
         private List<String> checkedPermissions = List.of();
 
@@ -371,7 +393,7 @@ class ConfiguredReviewCameraPermissionResolverTest {
 
         @Override
         public boolean hasAnyRoles(Long userId, String... roles) {
-            return false;
+            return superAdmin;
         }
 
         @Override

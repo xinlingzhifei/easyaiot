@@ -1,6 +1,7 @@
 package com.basiclab.iot.system.service.supervision;
 
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewItemMapper;
+import com.basiclab.iot.system.enums.permission.RoleCodeEnum;
 import com.basiclab.iot.system.service.permission.PermissionService;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionRequest;
 import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionResolver;
@@ -18,6 +19,8 @@ import java.util.Set;
 @Service
 @ConfigurationProperties(prefix = "yfeieye.review.camera-permission")
 public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPermissionResolver {
+
+    private static final Set<String> DIRECT_SUPER_ADMIN_ACTIONS = Set.of("playback", "snapshot");
 
     private Map<Long, List<String>> users = new LinkedHashMap<>();
     private Map<Long, List<String>> tenants = new LinkedHashMap<>();
@@ -40,9 +43,6 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
     }
 
     private List<String> resolveExplicitUserCameraIds(ReviewCameraPermissionRequest request) {
-        if (reviewItemMapper == null) {
-            return List.of();
-        }
         List<String> grantedCameraIds = normalizeValues(users.get(request.operatorUserId()));
         if (grantedCameraIds == null || grantedCameraIds.isEmpty()) {
             return List.of();
@@ -60,6 +60,12 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
         if (candidateCameraIds.isEmpty()) {
             return List.of();
         }
+        if (canUseExplicitSuperAdminScope(request)) {
+            return candidateCameraIds;
+        }
+        if (reviewItemMapper == null) {
+            return List.of();
+        }
         List<String> persistedCameraIds = normalizeValues(
                 reviewItemMapper.selectExistingCameraIds(request.tenantId(), candidateCameraIds)
         );
@@ -70,6 +76,13 @@ public class ConfiguredReviewCameraPermissionResolver implements ReviewCameraPer
         return candidateCameraIds.stream()
                 .filter(persistedCameraScope::contains)
                 .toList();
+    }
+
+    private boolean canUseExplicitSuperAdminScope(ReviewCameraPermissionRequest request) {
+        return DIRECT_SUPER_ADMIN_ACTIONS.contains(normalizeActionType(request.actionType()))
+                && permissionService != null
+                && permissionService.hasAnyRoles(
+                        request.operatorUserId(), RoleCodeEnum.SUPER_ADMIN.getCode());
     }
 
     private boolean hasRequiredActionPermission(ReviewCameraPermissionRequest request) {

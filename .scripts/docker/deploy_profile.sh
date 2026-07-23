@@ -406,6 +406,7 @@ apply_python_service_deploy_env() {
             _set_env_docker_kv "$env_file" AUTH_CHECK_URL "http://localhost:48099/admin-api/system/auth/get-permission-info"
             _set_env_docker_kv "$env_file" NODE_REMOTE_DEPLOY false
             if [ "$module" = "VIDEO" ]; then
+                _set_env_docker_kv "$env_file" YFEIEYE_MEDIA_AUTHORIZATION_URL "http://localhost:48099/admin-api/system/auth/media-permission-check"
                 _set_env_docker_kv "$env_file" ALERT_KEEP_LATEST true
                 _set_env_docker_kv "$env_file" ALERT_USE_DIRECT_PERSIST true
             fi
@@ -420,6 +421,7 @@ apply_python_service_deploy_env() {
             _set_env_docker_kv "$env_file" AUTH_CHECK_URL "http://localhost:48080/admin-api/system/auth/get-permission-info"
             _set_env_docker_kv "$env_file" NODE_REMOTE_DEPLOY true
             if [ "$module" = "VIDEO" ]; then
+                _set_env_docker_kv "$env_file" YFEIEYE_MEDIA_AUTHORIZATION_URL "http://localhost:48080/admin-api/system/auth/media-permission-check"
                 _set_env_docker_kv "$env_file" ALERT_KEEP_LATEST false
                 _set_env_docker_kv "$env_file" ALERT_USE_DIRECT_PERSIST false
             fi
