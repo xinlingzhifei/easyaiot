@@ -1264,10 +1264,12 @@ public class PlayServiceImpl implements IPlayService {
         }
         String app = broadcastMode?"broadcast":"talk";
         String stream = device.getDeviceId() + "_" + deviceChannel.getDeviceId();
+        String pushToken = UUID.randomUUID().toString().replace("-", "");
+        redisCatchStorage.registerAudioBroadcastAuthority(app, stream, pushToken);
         AudioBroadcastResult audioBroadcastResult = new AudioBroadcastResult();
         audioBroadcastResult.setApp(app);
         audioBroadcastResult.setStream(stream);
-        audioBroadcastResult.setStreamInfo(new StreamContent(mediaServerService.getStreamInfoByAppAndStream(mediaServerItem, app, stream, null, null, null, false)));
+        audioBroadcastResult.setStreamInfo(new StreamContent(mediaServerService.getStreamInfoByAppAndStream(mediaServerItem, app, stream, null, null, pushToken, false)));
         audioBroadcastResult.setCodec("G.711");
         return audioBroadcastResult;
     }
