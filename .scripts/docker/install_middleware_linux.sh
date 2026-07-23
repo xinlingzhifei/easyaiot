@@ -2449,12 +2449,12 @@ nackMaxCount=15
 nackMaxMS=3000
 nackMaxSize=2048
 nackRtpSize=8
-port=8000
+port=8001
 preferredCodecA=PCMA,PCMU,opus,mpeg4-generic
 preferredCodecV=H264,H265,AV1,VP9,VP8
 rembBitRate=0
 start_bitrate=0
-tcpPort=8000
+tcpPort=8001
 timeoutSec=30
 
 [rtmp]
