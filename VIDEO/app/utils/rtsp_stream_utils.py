@@ -4,11 +4,15 @@ RTSP/FFmpeg 拉流共用工具（realtime / snapshot 算法服务对齐）。
 from __future__ import annotations
 
 import os
+import select
 import subprocess
+import time
 from typing import Any, Dict, Optional
 
 import cv2
 import numpy as np
+
+_POSIX_PIPE_SELECT_SUPPORTED = os.name == "posix"
 
 
 def build_opencv_ffmpeg_capture_options(rtsp_transport: str) -> str:
@@ -125,6 +129,13 @@ class FfmpegRawVideoCapture:
         self.width, self.height = ffmpeg_raw_capture_dimensions()
         self.fps = float(os.getenv("AI_FFMPEG_INPUT_FPS", "25"))
         self.frame_size = self.width * self.height * 3
+        try:
+            self.read_timeout_sec = max(
+                0.1,
+                float(os.getenv("AI_HTTP_FLV_READ_TIMEOUT_SEC", "5")),
+            )
+        except ValueError:
+            self.read_timeout_sec = 5.0
         ffmpeg_bin = os.getenv("FFMPEG_BIN", "ffmpeg")
         self.process = subprocess.Popen(
             [
@@ -160,12 +171,32 @@ class FfmpegRawVideoCapture:
     def read(self):
         if not self.isOpened():
             return False, None
-        data = self.process.stdout.read(self.frame_size)
+        if _POSIX_PIPE_SELECT_SUPPORTED:
+            data = self._read_posix_pipe_with_timeout()
+        else:
+            data = self.process.stdout.read(self.frame_size)
         if len(data) != self.frame_size:
             self.release()
             return False, None
         frame = np.frombuffer(data, dtype=np.uint8).reshape((self.height, self.width, 3)).copy()
         return True, frame
+
+    def _read_posix_pipe_with_timeout(self) -> bytes:
+        stdout = self.process.stdout
+        deadline = time.monotonic() + self.read_timeout_sec
+        data = bytearray()
+        while len(data) < self.frame_size:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            readable, _, _ = select.select([stdout], [], [], remaining)
+            if not readable:
+                break
+            chunk = os.read(stdout.fileno(), self.frame_size - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        return bytes(data)
 
     def release(self) -> None:
         process = self.process
