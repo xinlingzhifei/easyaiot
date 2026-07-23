@@ -324,7 +324,7 @@ class TenantMaintenanceTest(unittest.TestCase):
                 ),
                 'auth_upstream': (
                     'http://gateway:48080/admin-api/system/auth/'
-                    'get-permission-info'
+                    'check-session'
                 ),
             },
             root / 'WEB' / 'conf' / 'nginx.mini.conf': {
@@ -337,7 +337,7 @@ class TenantMaintenanceTest(unittest.TestCase):
                 ),
                 'auth_upstream': (
                     'http://system-host:48099/admin-api/system/auth/'
-                    'get-permission-info'
+                    'check-session'
                 ),
             },
             root / 'APP' / 'conf' / 'nginx.conf': {
@@ -351,7 +351,7 @@ class TenantMaintenanceTest(unittest.TestCase):
                 ),
                 'auth_upstream': (
                     'http://gateway:48080/admin-api/system/auth/'
-                    'get-permission-info'
+                    'check-session'
                 ),
             },
         }
@@ -369,8 +369,9 @@ class TenantMaintenanceTest(unittest.TestCase):
                 r'(?s)map\s+\$platform_api_auth_candidate'
                 r'\s+\$platform_api_authorization'
                 r'\s*\{.*?'
-                r"''\s+\"Bearer missing-platform-api-token\";",
+                r'default\s+\$platform_api_auth_candidate;',
             )
+            self.assertNotIn('missing-platform-api-token', source)
             self.assertIn('location = /_platform_api_auth {', source)
             self.assertIn(
                 f"proxy_pass {expected['auth_upstream']};",

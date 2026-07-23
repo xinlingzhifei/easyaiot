@@ -131,6 +131,12 @@ public class AuthController {
         return success(AuthConvert.INSTANCE.convert(user, roles, menuList));
     }
 
+    @GetMapping("/check-session")
+    @Operation(summary = "校验当前登录会话")
+    public CommonResult<Boolean> checkSession() {
+        return success(getLoginUserId() != null);
+    }
+
     @PostMapping("/media-permission-check")
     @Operation(summary = "Resolve authenticated tenant, action permission and camera scope for VIDEO")
     public CommonResult<MediaPermissionCheckRespVO> checkMediaPermission(
