@@ -86,6 +86,20 @@ assert.match(
   'Dashboard AI playback should keep the original stream fallback while the algorithm stream warms up.',
 )
 
+const pendingAiUpgradeStart = videoMonitor.indexOf('schedulePendingAiStreamUpgrade(')
+assert.notEqual(
+  pendingAiUpgradeStart,
+  -1,
+  'Dashboard playback should support upgrading a warm original stream to the AI stream.',
+)
+const pendingAiUpgradeEnd = videoMonitor.indexOf('if (!hasFallback)', pendingAiUpgradeStart)
+const pendingAiUpgradeBlock = videoMonitor.slice(pendingAiUpgradeStart, pendingAiUpgradeEnd)
+assert.match(
+  pendingAiUpgradeBlock,
+  /url:\s*pendingAi,[\s\S]*aiStatus:\s*'ai'/,
+  'Upgrading the dashboard player to the pending AI stream should update the visible AI status.',
+)
+
 assert.match(
   splitScreenMonitor,
   /const enableAi = ref\(false\)/,

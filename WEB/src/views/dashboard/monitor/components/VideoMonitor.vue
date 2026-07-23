@@ -1243,6 +1243,7 @@ async function startPlayAtScreen(
           ...slot,
           url: pendingAi,
           fallbackUrl: payload.url,
+          aiStatus: 'ai',
         }
       },
     )
