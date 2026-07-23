@@ -1,5 +1,6 @@
 import ast
 from pathlib import Path
+import typing
 import unittest
 
 
@@ -66,6 +67,42 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
             "else _runtime_extract_interval",
             source,
         )
+
+    def test_periodic_config_reload_reuses_unchanged_models(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("def _reuse_loaded_yolo_models(", source)
+        self.assertIn("reused_models = _reuse_loaded_yolo_models(model_ids)", source)
+        self.assertIn("模型配置未变化，复用已加载的", source)
+
+        helper_node = next(
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_reuse_loaded_yolo_models"
+        )
+        helper_module = ast.fix_missing_locations(
+            ast.Module(body=[helper_node], type_ignores=[])
+        )
+        model_1 = object()
+        model_6 = object()
+        namespace = {
+            "Any": typing.Any,
+            "Dict": typing.Dict,
+            "List": typing.List,
+            "Optional": typing.Optional,
+            "yolo_models": {6: model_6, 1: model_1},
+        }
+        exec(compile(helper_module, "<model-reuse-helper>", "exec"), namespace)
+        reuse = namespace["_reuse_loaded_yolo_models"]
+
+        reordered = reuse([1, 6])
+        self.assertEqual(list(reordered), [1, 6])
+        self.assertIs(reordered[1], model_1)
+        self.assertIs(reordered[6], model_6)
+        self.assertIsNone(reuse([1, 5]))
 
     def test_detection_worker_idle_backoff_is_bounded(self):
         source = (

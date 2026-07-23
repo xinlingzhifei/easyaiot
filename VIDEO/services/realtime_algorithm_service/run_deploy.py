@@ -1867,6 +1867,17 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
         return {}
 
 
+def _reuse_loaded_yolo_models(model_ids: List[int]) -> Optional[Dict[int, Any]]:
+    """模型列表未变化时复用现有实例，避免热更新周期重复加载和预热。"""
+    requested_model_ids = list(dict.fromkeys(model_ids))
+    if not yolo_models or set(requested_model_ids) != set(yolo_models):
+        return None
+    return {
+        model_id: yolo_models[model_id]
+        for model_id in requested_model_ids
+    }
+
+
 def load_task_config():
     """从数据库加载任务配置（重启时会重新加载，确保获取最新的摄像头信息）"""
     global task_config, yolo_models, yolo_model_devices, yolo_model_allowed_classes, tracker, _sam_config, _sam_client
@@ -1928,13 +1939,18 @@ def load_task_config():
             logger.error(f"任务 {TASK_ID} 没有配置模型ID列表")
             return False
 
-        # 加载YOLO模型列表
-        yolo_models = load_yolo_models(model_ids)
-        if not yolo_models:
-            logger.error(f"任务 {TASK_ID} 没有成功加载任何模型")
-            return False
-
-        logger.info(f"✅ 成功加载 {len(yolo_models)} 个YOLO模型")
+        # 热更新时模型列表通常没有变化，复用实例可避免每 30 秒重复加载和预热。
+        reused_models = _reuse_loaded_yolo_models(model_ids)
+        if reused_models is not None:
+            yolo_models = reused_models
+            logger.info(f"模型配置未变化，复用已加载的 {len(yolo_models)} 个模型")
+        else:
+            loaded_models = load_yolo_models(model_ids)
+            if not loaded_models:
+                logger.error(f"任务 {TASK_ID} 没有成功加载任何模型")
+                return False
+            yolo_models = loaded_models
+            logger.info(f"✅ 成功加载 {len(yolo_models)} 个YOLO模型")
 
         # 从摄像头列表获取输入流地址（支持RTSP和RTMP）和RTMP输出流地址（重新加载，确保获取最新地址）
         # 注意：rtmp_input_url和rtmp_output_url字段已废弃，改为从摄像头列表获取
