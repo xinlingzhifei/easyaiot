@@ -133,14 +133,10 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
     """
     按协议顺序返回候选播放地址，并附带策略元数据（用于日志与排障）。
 
-    默认 (GB28181_PLAY_PROTOCOL=rtmp_first) 将 RTMP 置于 RTSP 之前：
-    ZLMediaKit 在「RTMP 协议无读者」时会触发 on_stream_none_reader；WVP/iot-gb28181
-    在 streamOnDemand=true 时会对国标 rtp 流返回 close。若仅使用 RTSP 拉流，则
-    RTMP 侧始终无读者，约 streamNoneReaderDelayMS（常配 20s）后整路流被释放，
-    实时算法仍用 OpenCV/FFmpeg 拉流会表现为灰屏/断流。以 RTMP 作为输入时，拉流端
-    会占用 RTMP 读者，可保持流存活。
+    默认优先 fMP4。生产 H.265 国标流已验证 fMP4 可由 OpenCV/FFmpeg 稳定解码，
+    而 HTTP-TS、RTSP 与 RTMP 可能因参数集缺失、超时或 FLV/HEVC 兼容性而失败。
 
-    若环境仅通 RTSP 或拉 RTMP 失败，可设 GB28181_PLAY_PROTOCOL=rtsp_first 恢复旧顺序。
+    若特定环境仅通其它协议，可显式设置 ts_first、flv_first、rtsp_first 或 rtmp_first。
 
     GB28181_HEVC_RTSP_FIRST（默认 1）：当播放接口返回的 RTMP 地址含 HEVC/H.265 线索时，
     在仍为 rtmp_first 策略的前提下自动改为「先 RTSP」——用于规避 OpenCV VideoCapture 对
@@ -156,13 +152,15 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         body.get('ts'),
         body.get('https_ts'),
     ]
-    other = [
+    fmp4_block = [
         body.get('fmp4'),
+    ]
+    other = [
         body.get('hls'),
         body.get('rtc'),
         body.get('rtcs'),
     ]
-    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or 'rtmp_first').strip().lower()
+    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or 'fmp4_first').strip().lower()
     hevc_rtsp_first = (os.getenv('GB28181_HEVC_RTSP_FIRST', '1').strip().lower() not in (
         '0', 'false', 'no', 'off',
     ))
@@ -175,11 +173,26 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         'branch': 'rtmp_first',
     }
 
+    if mode in ('fmp4_first', 'http_fmp4_first', 'fmp4'):
+        meta['branch'] = 'fmp4_first'
+        candidates = [
+            *fmp4_block,
+            *ts_block,
+            *flv_block,
+            *other,
+            body.get('rtmp'),
+            body.get('rtmps'),
+            body.get('rtsp'),
+            body.get('rtsps'),
+        ]
+        return candidates, meta
+
     if mode in ('ts_first', 'http_ts_first', 'ts'):
         meta['branch'] = 'ts_first'
         candidates = [
             *ts_block,
             *flv_block,
+            *fmp4_block,
             *other,
             body.get('rtmp'),
             body.get('rtmps'),
@@ -192,6 +205,7 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         meta['branch'] = 'flv_first'
         candidates = [
             *flv_block,
+            *fmp4_block,
             *other,
             body.get('rtmp'),
             body.get('rtmps'),
@@ -208,6 +222,7 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
             body.get('rtmp'),
             body.get('rtmps'),
             *flv_block,
+            *fmp4_block,
             *other,
         ]
         return candidates, meta
@@ -220,6 +235,7 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
             body.get('rtmp'),
             body.get('rtmps'),
             *flv_block,
+            *fmp4_block,
             *other,
         ]
         return candidates, meta
@@ -231,6 +247,7 @@ def _gb28181_play_candidates(body: dict) -> Tuple[List[Optional[str]], Dict[str,
         body.get('rtsp'),
         body.get('rtsps'),
         *flv_block,
+        *fmp4_block,
         *other,
     ]
     return candidates, meta
@@ -246,6 +263,7 @@ def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
         'hevc_rtsp_first': 'HEVC+RTMP线索则优先RTSP(OpenCV兼容)',
         'flv_first': '接口顺序优先HTTP-FLV(OpenCV兼容)',
         'ts_first': '接口顺序优先HTTP-TS(OpenCV兼容)',
+        'fmp4_first': '接口顺序优先HTTP-fMP4(OpenCV兼容)',
     }.get(branch, branch)
     hevc_on = '开启' if meta.get('hevc_rtsp_first_env_on') else '关闭'
     hint = '是' if meta.get('hevc_hint') else '否'
@@ -261,8 +279,9 @@ def _format_gb28181_choice_log(chosen_url: str, meta: Dict[str, Any]) -> str:
 
 
 def _localize_flv_pull_url(url: str) -> str:
-    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or '').strip().lower()
+    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or 'fmp4_first').strip().lower()
     if mode not in (
+        'fmp4_first', 'http_fmp4_first', 'fmp4',
         'flv_first', 'http_flv_first', 'http_first', 'flv',
         'ts_first', 'http_ts_first', 'ts',
     ):
@@ -404,8 +423,9 @@ def resolve_gb28181_alternate_pull_url(
     current_scheme = urlparse(current).scheme.lower()
     candidates = _all_play_urls_from_body(body)
 
-    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or '').strip().lower()
+    mode = (os.getenv('GB28181_PLAY_PROTOCOL') or 'fmp4_first').strip().lower()
     if prefer_schemes == ('rtsp', 'rtsps') and mode in (
+        'fmp4_first', 'http_fmp4_first', 'fmp4',
         'flv_first', 'http_flv_first', 'http_first', 'flv',
         'ts_first', 'http_ts_first', 'ts',
     ):

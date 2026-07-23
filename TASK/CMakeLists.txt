@@ -81,7 +81,7 @@ if(BUILD_TASK_MANAGER)
 endif()
 
 if(BUILD_TASK_RUNTIME)
-    find_package(OpenCV REQUIRED)
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui videoio dnn)
     find_package(CURL REQUIRED)
     configure_jsoncpp()
 
@@ -160,13 +160,6 @@ if(BUILD_TASK_RUNTIME)
             bcrypt
         )
     else()
-        execute_process(
-            COMMAND pkg-config --libs opencv4
-            OUTPUT_VARIABLE OPENCV_PKG_LIBS
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        message(STATUS "OpenCV pkg-config libs: ${OPENCV_PKG_LIBS}")
-
         target_include_directories(${PROJECT_NAME} PRIVATE
             /usr/include
             /usr/local/include
@@ -176,7 +169,7 @@ if(BUILD_TASK_RUNTIME)
         )
 
         target_link_libraries(${PROJECT_NAME}
-            ${OPENCV_PKG_LIBS}
+            ${OpenCV_LIBS}
             avformat avcodec avutil swscale
             png z
             curl

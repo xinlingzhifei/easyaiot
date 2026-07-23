@@ -48,7 +48,7 @@ class VideoRuntimeConfigTest(unittest.TestCase):
         docker_env = (VIDEO_ROOT / ".env.docker").read_text(encoding="utf-8")
 
         expected_compose_defaults = (
-            "GB28181_PLAY_PROTOCOL=${GB28181_PLAY_PROTOCOL:-ts_first}",
+            "GB28181_PLAY_PROTOCOL=${GB28181_PLAY_PROTOCOL:-fmp4_first}",
             "AI_OUTPUT_FPS=${AI_OUTPUT_FPS:-25}",
             "AI_TARGET_WIDTH=${AI_TARGET_WIDTH:-1280}",
             "AI_TARGET_HEIGHT=${AI_TARGET_HEIGHT:-720}",
@@ -83,7 +83,7 @@ class VideoRuntimeConfigTest(unittest.TestCase):
             if line and not line.startswith("#") and "=" in line
         )
         expected_docker_values = {
-            "GB28181_PLAY_PROTOCOL": "ts_first",
+            "GB28181_PLAY_PROTOCOL": "fmp4_first",
             "SOURCE_FPS": "25",
             "TARGET_WIDTH": "1280",
             "TARGET_HEIGHT": "720",

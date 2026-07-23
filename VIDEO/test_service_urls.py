@@ -11,6 +11,7 @@ from app.utils.service_urls import (
     minio_storage_enabled,
     now_shanghai_naive,
     resolve_alert_hook_url,
+    resolve_video_service_base_url,
     shanghai_isoformat,
     should_use_gateway_for_video_api,
     is_local_filesystem_path,
@@ -83,6 +84,26 @@ class TestServiceUrls(unittest.TestCase):
             'GATEWAY_URL': 'http://localhost:48099',
         }, clear=True):
             self.assertEqual(resolve_alert_hook_url(), 'http://custom:7000/hook')
+
+    def test_video_service_uses_the_configured_flask_bind_host(self):
+        with patch.dict(os.environ, {
+            'FLASK_RUN_HOST': '172.17.0.1',
+            'FLASK_RUN_PORT': '6000',
+        }, clear=True):
+            self.assertEqual(
+                resolve_video_service_base_url(),
+                'http://172.17.0.1:6000',
+            )
+
+    def test_video_service_converts_wildcard_bind_to_loopback(self):
+        with patch.dict(os.environ, {
+            'FLASK_RUN_HOST': '0.0.0.0',
+            'FLASK_RUN_PORT': '6000',
+        }, clear=True):
+            self.assertEqual(
+                resolve_video_service_base_url(),
+                'http://127.0.0.1:6000',
+            )
 
     def test_mini_profile_disables_minio_storage(self):
         with patch.dict(os.environ, {

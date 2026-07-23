@@ -67,6 +67,39 @@ class Gb28181OpenCvInputTest(unittest.TestCase):
             ),
         )
 
+    def test_fmp4_first_chooses_local_http_fmp4_for_h265(self):
+        os.environ.pop("GB28181_PLAY_PROTOCOL", None)
+        stream_id = "44010200493432381460_34020000001320000001"
+        payload = {
+            "code": 0,
+            "data": {
+                "fmp4": (
+                    f"http://eye.yfeiai.com:6080/rtp/{stream_id}.live.mp4"
+                    "?originTypeStr=rtp_push&videoCodec=H265"
+                ),
+                "ts": (
+                    f"http://eye.yfeiai.com:6080/rtp/{stream_id}.live.ts"
+                    "?originTypeStr=rtp_push&videoCodec=H265"
+                ),
+                "rtsp": (
+                    f"rtsp://eye.yfeiai.com:554/rtp/{stream_id}"
+                    "?originTypeStr=rtp_push&videoCodec=H265"
+                ),
+            },
+        }
+
+        url, meta = _extract_stream_url_and_meta(payload)
+
+        self.assertEqual(meta["play_protocol"], "fmp4_first")
+        self.assertEqual(meta["branch"], "fmp4_first")
+        self.assertEqual(
+            url,
+            (
+                f"http://127.0.0.1:6080/rtp/{stream_id}.live.mp4"
+                "?originTypeStr=rtp_push&videoCodec=H265"
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

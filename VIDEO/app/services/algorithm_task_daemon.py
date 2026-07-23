@@ -16,8 +16,14 @@ import signal
 from datetime import datetime
 
 import app.utils.nvidia_lib_path  # noqa: F401  子进程 run_deploy 继承 LD_LIBRARY_PATH
+from app.utils.service_urls import resolve_video_service_base_url
 
 # 不再需要导入数据库模型，所有信息都通过参数传入
+
+
+def _resolve_algorithm_heartbeat_url(task_type: str) -> str:
+    endpoint = 'patrol' if task_type == 'patrol' else 'realtime'
+    return f'{resolve_video_service_base_url()}/video/algorithm/heartbeat/{endpoint}'
 
 
 class AlgorithmTaskDaemon:
@@ -509,11 +515,7 @@ class AlgorithmTaskDaemon:
         gateway = os.getenv('JAVA_BACKEND_URL', os.getenv('GATEWAY_URL', 'http://localhost:48080')).rstrip('/')
         env['VIDEO_CONTROL_URL'] = f'{gateway}/admin-api/video'
         # 心跳直连本机 VIDEO 服务（host 网络 / 同机部署），避免经网关鉴权导致 500
-        video_host = (os.getenv('POD_IP') or os.getenv('HOST_IP') or '127.0.0.1').strip()
-        if self._task_type == 'patrol':
-            env['VIDEO_HEARTBEAT_URL'] = f'http://{video_host}:{video_service_port}/video/algorithm/heartbeat/patrol'
-        else:
-            env['VIDEO_HEARTBEAT_URL'] = f'http://{video_host}:{video_service_port}/video/algorithm/heartbeat/realtime'
+        env['VIDEO_HEARTBEAT_URL'] = _resolve_algorithm_heartbeat_url(self._task_type)
         
         # 重要：realtime_algorithm_service 使用 host 网络模式，必须使用 localhost 访问 Kafka
         # 如果环境变量中配置了容器名（如 Kafka:9092），需要强制覆盖为 EXTERNAL listener

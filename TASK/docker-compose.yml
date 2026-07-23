@@ -5,8 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: taskmanager-server
     ports:
-      - "7000:7000"
+      - "127.0.0.1:7000:7000"
     volumes:
-      - ./config/generated:/app/config/generated
-      - ./build/linux/TASK:/app/bin/TASK:ro
+      - "${YFEIEYE_TASK_STATE_ROOT:-/opt/yfeieye-source/shared/task}/config/generated:/app/config/generated"
     restart: unless-stopped

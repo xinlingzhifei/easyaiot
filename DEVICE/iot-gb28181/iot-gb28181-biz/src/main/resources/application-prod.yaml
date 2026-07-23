@@ -25,7 +25,7 @@ spring:
             multi-statement-allow: true
     dynamic: # 多数据源配置
       druid:
-        initial-size: 5
+        initial-size: 0 # 由创建线程建立首连接，避免 PostgreSQL 短暂重启时 Druid 将数据源永久关闭
         min-idle: 5
         maxActive: 20
         maxWait: 60000

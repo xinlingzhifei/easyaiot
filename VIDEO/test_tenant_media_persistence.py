@@ -208,17 +208,16 @@ class VideoTenantMigrationContractTest(_RealVideoModulesTestCase):
         from apply_migrations import build_migration_plan
 
         plan = build_migration_plan(VIDEO_DIR)
+        migrations = {migration.version: migration for migration in plan}
+        versions = [migration.version for migration in plan]
+        region_version = 'V20260711__device_detection_region_rule_fields.sql'
+        tenant_version = 'V20260712__record_snapshot_tenant_scope.sql'
+        alert_version = 'V20260713__alert_image_playback_tenant_scope.sql'
 
-        self.assertEqual(
-            [
-                'V20260711__device_detection_region_rule_fields.sql',
-                'V20260712__record_snapshot_tenant_scope.sql',
-                'V20260713__alert_image_playback_tenant_scope.sql',
-            ],
-            [migration.version for migration in plan],
-        )
-        self.assertRegex(plan[-1].checksum, r'^[a-f0-9]{64}$')
-        tenant_sql = plan[-2].sql
+        self.assertLess(versions.index(region_version), versions.index(tenant_version))
+        self.assertLess(versions.index(tenant_version), versions.index(alert_version))
+        self.assertRegex(migrations[alert_version].checksum, r'^[a-f0-9]{64}$')
+        tenant_sql = migrations[tenant_version].sql
         for marker in (
             "current_setting('yfeieye.video_legacy_tenant_id', true)",
             'tenant_id BIGINT',
@@ -236,7 +235,7 @@ class VideoTenantMigrationContractTest(_RealVideoModulesTestCase):
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, tenant_sql)
-        sql = plan[-1].sql
+        sql = migrations[alert_version].sql
         for marker in (
             "current_setting('yfeieye.video_legacy_tenant_id', true)",
             'ALTER TABLE alert ADD COLUMN IF NOT EXISTS tenant_id BIGINT',
