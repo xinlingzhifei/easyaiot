@@ -199,7 +199,6 @@ function taskCoversAllDevices(task: DashboardGuardTask, deviceIds: string[]) {
 function findRunningAlertTaskCoveringScope(tasks: DashboardGuardTask[], deviceIds: string[]) {
   return tasks.find(
     (task) =>
-      !isDashboardGuardTask(task) &&
       isTaskEnabled(task) &&
       isAlertEventEnabled(task) &&
       taskCoversAllDevices(task, deviceIds),
@@ -261,9 +260,14 @@ async function stopOtherDashboardGuardTasks(
   api: DashboardGuardTaskApi,
   tasks: DashboardGuardTask[],
   scope: DashboardGuardScope,
+  preservedTaskId?: number,
 ) {
   const otherEnabledTasks = tasks.filter(
-    (task) => isDashboardGuardTask(task) && !isDashboardGuardTaskForScope(task, scope) && isTaskEnabled(task),
+    (task) =>
+      task.id !== preservedTaskId &&
+      isDashboardGuardTask(task) &&
+      !isDashboardGuardTaskForScope(task, scope) &&
+      isTaskEnabled(task),
   )
   await Promise.all(otherEnabledTasks.map((task) => api.stopAlgorithmTask(task.id)))
 }
@@ -290,7 +294,7 @@ export async function startDashboardGuardTask(options: StartDashboardGuardTaskOp
     throw new Error(formatConflictMessage(conflicts))
   }
 
-  await stopOtherDashboardGuardTasks(api, tasks, scope)
+  await stopOtherDashboardGuardTasks(api, tasks, scope, runningCoveringTask?.id)
 
   if (runningCoveringTask) {
     return { taskId: runningCoveringTask.id, reusedExistingTask: true }

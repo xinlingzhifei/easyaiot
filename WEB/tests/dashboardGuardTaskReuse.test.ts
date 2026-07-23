@@ -24,7 +24,6 @@ const api: DashboardGuardTaskApi = {
         model_ids: [1],
         alert_event_enabled: true,
         is_enabled: true,
-        run_status: 'running',
       },
     ],
     total: 1,
@@ -44,14 +43,14 @@ const api: DashboardGuardTaskApi = {
 async function main() {
   const result = await startDashboardGuardTask({
     scope: {
-      key: `monitor-ai:${deviceId}`,
+      key: `split-screen-ai:${deviceId}`,
       label: '[GB28181] test',
       deviceIds: [deviceId],
     },
     api,
   })
 
-  assert.equal(result.taskId, 1)
+  assert.deepEqual(result, { taskId: 1, reusedExistingTask: true })
   assert.deepEqual(calls, { create: 0, start: 0, stop: 0 })
 }
 
