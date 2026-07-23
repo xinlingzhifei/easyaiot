@@ -53,6 +53,20 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
         self.assertNotIn("SOURCE_FPS", loaded_names)
         self.assertIn("AI_OUTPUT_FPS", loaded_names)
 
+    def test_overlay_sampling_defaults_to_task_extract_interval(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "OVERLAY_EXTRACT_INTERVAL = int(os.getenv('OVERLAY_EXTRACT_INTERVAL', str(EXTRACT_INTERVAL)))",
+            source,
+        )
+        self.assertIn(
+            "else _runtime_extract_interval",
+            source,
+        )
+
     def test_detection_worker_idle_backoff_is_bounded(self):
         source = (
             VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"

@@ -474,8 +474,8 @@ TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
 EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '12'))
 # 运行时任务级抽帧间隔（load_task_config 后覆盖环境变量默认值）
 _runtime_extract_interval = EXTRACT_INTERVAL
-# overlay 叠框专用抽帧间隔（与告警/任务 DB extract_interval 解耦，默认每 5 帧检测一次）
-OVERLAY_EXTRACT_INTERVAL = int(os.getenv('OVERLAY_EXTRACT_INTERVAL', '5'))
+# overlay 显式配置优先；未配置时跟随任务 DB extract_interval，避免 CPU 多模型过载
+OVERLAY_EXTRACT_INTERVAL = int(os.getenv('OVERLAY_EXTRACT_INTERVAL', str(EXTRACT_INTERVAL)))
 _runtime_overlay_extract_interval = OVERLAY_EXTRACT_INTERVAL
 _runtime_alert_extract_interval = int(
     os.getenv('ALERT_EXTRACT_INTERVAL', str(max(EXTRACT_INTERVAL * 2, EXTRACT_INTERVAL)))
@@ -1203,8 +1203,11 @@ def _apply_runtime_sampling_config(task):
     global _runtime_extract_interval, _runtime_overlay_extract_interval, _runtime_alert_extract_interval, motion_gate
 
     _runtime_extract_interval = _resolve_runtime_extract_interval(task)
-    _runtime_overlay_extract_interval = max(
-        1, int(os.getenv('OVERLAY_EXTRACT_INTERVAL', str(OVERLAY_EXTRACT_INTERVAL)))
+    overlay_env = os.getenv('OVERLAY_EXTRACT_INTERVAL', '').strip()
+    _runtime_overlay_extract_interval = (
+        max(1, int(overlay_env))
+        if overlay_env
+        else _runtime_extract_interval
     )
 
     alert_env = os.getenv('ALERT_EXTRACT_INTERVAL', '').strip()
@@ -4710,7 +4713,7 @@ def main():
         f"grid={PERSON_TILE_COLUMNS}x{PERSON_TILE_ROWS}, overlap={PERSON_TILE_OVERLAP}, conf={PERSON_TILE_CONF_THRESHOLD}"
     )
     logger.info(f"   告警队列大小: {ALERT_DETECTION_QUEUE_SIZE}, Worker: {ALERT_WORKER_THREADS}, 抽帧间隔: {ALERT_EXTRACT_INTERVAL}")
-    logger.info(f"   AI检测间隔(仅推理): overlay={OVERLAY_EXTRACT_INTERVAL}, alert={ALERT_EXTRACT_INTERVAL} (告警/任务DB优先; overlay不受DB extract_interval影响)")
+    logger.info(f"   AI检测间隔(仅推理): overlay={OVERLAY_EXTRACT_INTERVAL}, alert={ALERT_EXTRACT_INTERVAL} (未显式配置时跟随任务DB extract_interval)")
     logger.info(f"   叠框追踪: OVERLAY_USE_TRACKING={OVERLAY_USE_TRACKING}")
     logger.info(f"   运动门控: MOTION_GATE_ENABLED={os.getenv('MOTION_GATE_ENABLED', 'false')}")
     logger.info(f"   Overlay保留最新帧: {OVERLAY_KEEP_LATEST} (阈值: {OVERLAY_KEEP_LATEST_THRESHOLD})")

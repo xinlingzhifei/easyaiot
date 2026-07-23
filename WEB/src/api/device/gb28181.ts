@@ -14,6 +14,7 @@ const PLAYBACK_PREFIX = '/gb28181/playback';
 const GB_RECORD_PREFIX = '/gb28181/gb_record';
 const CLOUD_RECORD_PREFIX = '/gb28181/cloud/record';
 const GB28181_PLAY_REQUEST_TIMEOUT_MS = 60 * 1000;
+const GB28181_TALK_REQUEST_TIMEOUT_MS = 12 * 1000;
 
 /**
  * 通用请求封装
@@ -235,11 +236,18 @@ export const startGbAudioBroadcast = (
     `/gb28181/play/broadcast/${deviceId}/${channelId}`,
     { broadcastMode },
     false,
+    { timeout: GB28181_TALK_REQUEST_TIMEOUT_MS },
   );
 
 /** 停止国标语音广播 */
 export const stopGbAudioBroadcast = (deviceId: string, channelId: string) =>
-  commonApi('get', `/gb28181/play/broadcast/stop/${deviceId}/${channelId}`);
+  commonApi(
+    'get',
+    `/gb28181/play/broadcast/stop/${deviceId}/${channelId}`,
+    {},
+    true,
+    { timeout: GB28181_TALK_REQUEST_TIMEOUT_MS },
+  );
 
 /**
  * 添加设备

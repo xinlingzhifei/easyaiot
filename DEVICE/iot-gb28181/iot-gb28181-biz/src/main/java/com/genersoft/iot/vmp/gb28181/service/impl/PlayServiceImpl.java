@@ -1246,6 +1246,13 @@ public class PlayServiceImpl implements IPlayService {
         if (deviceChannel == null) {
             throw new ControllerException(ErrorCode.ERROR400.getCode(), "未找到通道： " + channelDeviceId);
         }
+        CommonGBChannel commonChannel = channelService.queryCommonChannelByDeviceChannel(deviceChannel);
+        if (commonChannel != null && Integer.valueOf(0).equals(commonChannel.getEnableBroadcast())) {
+            throw new ControllerException(
+                    ErrorCode.ERROR400.getCode(),
+                    "该通道未启用语音对讲，请先确认摄像机支持并在通道配置中启用"
+            );
+        }
 
         if (!userSetting.getServerId().equals(device.getServerId())) {
             return redisRpcPlayService.audioBroadcast(device.getServerId(), deviceId, channelDeviceId, broadcastMode);

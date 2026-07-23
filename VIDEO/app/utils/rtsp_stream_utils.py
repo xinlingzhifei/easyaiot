@@ -103,11 +103,26 @@ def use_ffmpeg_raw_capture_for_url(url: str) -> bool:
     return enabled and (url or "").lower().startswith(("http://", "https://")) and ".flv" in (url or "").lower()
 
 
+def ffmpeg_raw_capture_dimensions() -> tuple[int, int]:
+    width = int(
+        os.getenv("AI_FFMPEG_INPUT_WIDTH")
+        or os.getenv("AI_TARGET_WIDTH")
+        or os.getenv("VIEW_TARGET_WIDTH")
+        or "1280"
+    )
+    height = int(
+        os.getenv("AI_FFMPEG_INPUT_HEIGHT")
+        or os.getenv("AI_TARGET_HEIGHT")
+        or os.getenv("VIEW_TARGET_HEIGHT")
+        or "720"
+    )
+    return max(1, width), max(1, height)
+
+
 class FfmpegRawVideoCapture:
     def __init__(self, url: str):
         self.url = url
-        self.width = int(os.getenv("AI_FFMPEG_INPUT_WIDTH", "1280"))
-        self.height = int(os.getenv("AI_FFMPEG_INPUT_HEIGHT", "720"))
+        self.width, self.height = ffmpeg_raw_capture_dimensions()
         self.fps = float(os.getenv("AI_FFMPEG_INPUT_FPS", "25"))
         self.frame_size = self.width * self.height * 3
         ffmpeg_bin = os.getenv("FFMPEG_BIN", "ffmpeg")
