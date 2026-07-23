@@ -405,6 +405,12 @@ const loadModels = async () => {
     // 即使加载失败，也确保默认模型显示
     modelOptions.value = defaultModels;
   }
+  updateSchema({
+    field: 'model_ids',
+    componentProps: {
+      options: modelOptions.value,
+    },
+  });
 };
 
 const refreshAlertClassOptions = async (modelIds: unknown, selectedNames?: string[]) => {
@@ -451,6 +457,12 @@ const loadFaceLibraries = async () => {
     faceLibraries.value = [];
     faceLibraryOptions.value = [];
   }
+  updateSchema({
+    field: 'face_library_ids',
+    componentProps: {
+      options: faceLibraryOptions.value,
+    },
+  });
 };
 
 const loadPlateLibraries = async () => {
@@ -467,6 +479,12 @@ const loadPlateLibraries = async () => {
     plateLibraries.value = [];
     plateLibraryOptions.value = [];
   }
+  updateSchema({
+    field: 'plate_library_ids',
+    componentProps: {
+      options: plateLibraryOptions.value,
+    },
+  });
 };
 
 const loadScenarioPoseLibraries = async () => {
@@ -483,6 +501,12 @@ const loadScenarioPoseLibraries = async () => {
     poseLibraries.value = [];
     poseLibraryOptions.value = [];
   }
+  updateSchema({
+    field: 'pose_library_ids',
+    componentProps: {
+      options: poseLibraryOptions.value,
+    },
+  });
 };
 
 // 获取渠道标签
@@ -633,7 +657,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       required: true,
       componentProps: {
         placeholder: '请选择模型（可多选）',
-        options: modelOptions,
+        options: modelOptions.value,
         mode: 'multiple',
         showSearch: true,
         allowClear: true,
@@ -871,7 +895,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       component: 'Select',
       componentProps: {
         placeholder: '请选择人脸库（可多选）',
-        options: faceLibraryOptions,
+        options: faceLibraryOptions.value,
         mode: 'multiple',
         showSearch: true,
         allowClear: true,
@@ -907,7 +931,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       component: 'Select',
       componentProps: {
         placeholder: '请选择车牌库（可多选）',
-        options: plateLibraryOptions,
+        options: plateLibraryOptions.value,
         mode: 'multiple',
         showSearch: true,
         allowClear: true,
@@ -1056,7 +1080,7 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
       component: 'Select',
       componentProps: {
         placeholder: '请选择场景姿态库（可多选）',
-        options: poseLibraryOptions,
+        options: poseLibraryOptions.value,
         mode: 'multiple',
         showSearch: true,
         allowClear: true,
