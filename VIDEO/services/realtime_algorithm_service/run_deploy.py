@@ -417,6 +417,12 @@ yolo_model_meta = {}  # {model_id: {'yolo26': bool, 'end2end': bool, 'path': str
 trackers = {}  # {device_id: SimpleTracker}
 # 为每个摄像头创建独立的帧索引计数器
 frame_counts = {}  # {device_id: int}
+_MAX_HEARTBEAT_COUNTER = 2_147_483_647
+_heartbeat_stats_lock = threading.Lock()
+_heartbeat_stats_initialized = False
+_heartbeat_total_frames_base = 0
+_heartbeat_total_detections_base = 0
+_heartbeat_session_detections = 0
 # 双检测队列：overlay（主画面叠框）与 alert（告警）完全分离
 overlay_detection_queues = {}  # {device_id: queue.Queue}
 alert_detection_queues = {}  # {device_id: queue.Queue}
@@ -447,6 +453,57 @@ device_latest_overlays = {}  # {device_id: {'detections': [...], 'timestamp': fl
 _sam_config = None
 _sam_client = None
 device_latest_overlay_locks = {}  # {device_id: threading.Lock()}
+
+
+def _initialize_heartbeat_statistics(task) -> None:
+    """仅在进程启动时读取一次持久化基线，避免热更新后重复累加。"""
+    global _heartbeat_stats_initialized
+    global _heartbeat_total_frames_base, _heartbeat_total_detections_base
+
+    with _heartbeat_stats_lock:
+        if _heartbeat_stats_initialized:
+            return
+        try:
+            _heartbeat_total_frames_base = max(0, int(getattr(task, 'total_frames', 0) or 0))
+        except (TypeError, ValueError):
+            _heartbeat_total_frames_base = 0
+        try:
+            _heartbeat_total_detections_base = max(0, int(getattr(task, 'total_detections', 0) or 0))
+        except (TypeError, ValueError):
+            _heartbeat_total_detections_base = 0
+        _heartbeat_stats_initialized = True
+
+
+def _record_realtime_detections(detections) -> None:
+    """累计 Overlay 检测的新目标数；告警队列不重复计数。"""
+    global _heartbeat_session_detections
+
+    fresh_count = sum(1 for item in detections if not item.get('is_cached'))
+    if fresh_count <= 0:
+        return
+    with _heartbeat_stats_lock:
+        _heartbeat_session_detections = min(
+            _MAX_HEARTBEAT_COUNTER,
+            _heartbeat_session_detections + fresh_count,
+        )
+
+
+def _heartbeat_statistics() -> dict:
+    session_frames = sum(
+        max(0, int(value or 0))
+        for value in list(frame_counts.values())
+    )
+    with _heartbeat_stats_lock:
+        return {
+            'total_frames': min(
+                _MAX_HEARTBEAT_COUNTER,
+                _heartbeat_total_frames_base + session_frames,
+            ),
+            'total_detections': min(
+                _MAX_HEARTBEAT_COUNTER,
+                _heartbeat_total_detections_base + _heartbeat_session_detections,
+            ),
+        }
 
 
 def _alert_event_suppress_seconds() -> float:
@@ -1899,6 +1956,7 @@ def load_task_config():
             return False
 
         task_config = task
+        _initialize_heartbeat_statistics(task)
 
         _apply_runtime_sampling_config(task)
 
@@ -2498,6 +2556,7 @@ def send_heartbeat():
                 heartbeat_url = f"http://localhost:{VIDEO_SERVICE_PORT}/video/algorithm/heartbeat/realtime"
 
         # 发送心跳
+        statistics = _heartbeat_statistics()
         response = requests.post(
             heartbeat_url,
             json={
@@ -2505,7 +2564,8 @@ def send_heartbeat():
                 'server_ip': server_ip,
                 'port': None,  # 实时算法服务不监听端口
                 'process_id': process_id,
-                'log_path': log_path
+                'log_path': log_path,
+                **statistics,
             },
             timeout=5
         )
@@ -4420,6 +4480,7 @@ def overlay_detection_worker(worker_id: int):
                         consecutive_errors = 0
                     continue
 
+                _record_realtime_detections(detections)
                 cache_updated = _update_device_latest_overlay(
                     device_id_from_data,
                     detections,

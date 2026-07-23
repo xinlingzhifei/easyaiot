@@ -1,5 +1,7 @@
 import ast
 from pathlib import Path
+import threading
+from types import SimpleNamespace
 import typing
 import unittest
 
@@ -151,6 +153,54 @@ class RealtimeAlgorithmContextTest(unittest.TestCase):
 
         self.assertIn("build_alert_ingest_process_env", source)
         self.assertIn("env.update(build_alert_ingest_process_env())", source)
+
+    def test_realtime_heartbeat_statistics_keep_persisted_baselines(self):
+        source = (
+            VIDEO_ROOT / "services" / "realtime_algorithm_service" / "run_deploy.py"
+        ).read_text(encoding="utf-8")
+        helper_names = {
+            "_initialize_heartbeat_statistics",
+            "_record_realtime_detections",
+            "_heartbeat_statistics",
+        }
+        helper_nodes = [
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef) and node.name in helper_names
+        ]
+        self.assertEqual({node.name for node in helper_nodes}, helper_names)
+
+        namespace = {
+            "_MAX_HEARTBEAT_COUNTER": 2_147_483_647,
+            "_heartbeat_stats_lock": threading.Lock(),
+            "_heartbeat_stats_initialized": False,
+            "_heartbeat_total_frames_base": 0,
+            "_heartbeat_total_detections_base": 0,
+            "_heartbeat_session_detections": 0,
+            "frame_counts": {"camera-a": 12, "camera-b": 8},
+        }
+        helper_module = ast.fix_missing_locations(
+            ast.Module(body=helper_nodes, type_ignores=[])
+        )
+        exec(compile(helper_module, "<heartbeat-statistics>", "exec"), namespace)
+
+        initialize = namespace["_initialize_heartbeat_statistics"]
+        initialize(SimpleNamespace(total_frames=100, total_detections=7))
+        namespace["_record_realtime_detections"]([
+            {"is_cached": False},
+            {"is_cached": True},
+            {"is_cached": False},
+        ])
+        self.assertEqual(
+            namespace["_heartbeat_statistics"](),
+            {"total_frames": 120, "total_detections": 9},
+        )
+
+        initialize(SimpleNamespace(total_frames=999, total_detections=999))
+        self.assertEqual(
+            namespace["_heartbeat_statistics"](),
+            {"total_frames": 120, "total_detections": 9},
+        )
 
     def test_local_algorithm_process_does_not_inherit_full_service_keyring(self):
         source = (

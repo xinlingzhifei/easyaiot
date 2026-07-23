@@ -275,6 +275,35 @@ def restart_task(task_id):
 # 新架构统一使用实时算法服务心跳接口，旧的抽帧器、排序器、推送器心跳接口已移除
 
 
+def _apply_realtime_heartbeat_statistics(task, data, now=None) -> bool:
+    """单调更新实时任务统计，忽略旧进程迟到的较小计数。"""
+    reported = {}
+    for field in ('total_frames', 'total_detections'):
+        raw = data.get(field)
+        if raw is None:
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'{field} 必须是非负整数') from exc
+        if value < 0:
+            raise ValueError(f'{field} 必须是非负整数')
+        reported[field] = min(value, 2_147_483_647)
+
+    advanced = False
+    for field, value in reported.items():
+        current = int(getattr(task, field, 0) or 0)
+        if value > current:
+            setattr(task, field, value)
+            advanced = True
+
+    if advanced:
+        processed_at = now or datetime.utcnow()
+        task.last_process_time = processed_at
+        task.last_success_time = processed_at
+    return advanced
+
+
 @algorithm_task_bp.route('/heartbeat/realtime', methods=['POST'])
 def receive_realtime_heartbeat():
     """接收实时算法服务心跳"""
@@ -319,6 +348,12 @@ def receive_realtime_heartbeat():
         # previous restart left the persisted run_status as stopped.
         if task.is_enabled:
             task.run_status = 'running'
+
+        try:
+            _apply_realtime_heartbeat_statistics(task, data)
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({'code': 400, 'msg': str(e)}), 400
         
         db.session.commit()
         
