@@ -1248,7 +1248,7 @@ public class PlayServiceImpl implements IPlayService {
         }
         CommonGBChannel commonChannel = channelService.queryCommonChannelByDeviceChannel(deviceChannel);
         if (commonChannel != null && Integer.valueOf(0).equals(commonChannel.getEnableBroadcast())) {
-            throw new ControllerException(
+            throw new com.basiclab.iot.common.exception.ControllerException(
                     ErrorCode.ERROR400.getCode(),
                     "该通道未启用语音对讲，请先确认摄像机支持并在通道配置中启用"
             );

@@ -1,6 +1,6 @@
 package com.genersoft.iot.vmp.gb28181.service.impl;
 
-import com.genersoft.iot.vmp.conf.exception.ControllerException;
+import com.basiclab.iot.common.exception.ControllerException;
 import com.genersoft.iot.vmp.gb28181.bean.CommonGBChannel;
 import com.genersoft.iot.vmp.gb28181.bean.Device;
 import com.genersoft.iot.vmp.gb28181.bean.DeviceChannel;
@@ -41,6 +41,6 @@ class PlayServiceImplTest {
                 () -> service.audioBroadcast("device", "channel", true)
         );
 
-        assertEquals("该通道未启用语音对讲，请先确认摄像机支持并在通道配置中启用", error.getMessage());
+        assertEquals("该通道未启用语音对讲，请先确认摄像机支持并在通道配置中启用", error.getMsg());
     }
 }
