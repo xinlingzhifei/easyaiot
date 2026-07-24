@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.util.Collections;
 import java.util.List;
@@ -133,8 +134,12 @@ public class AuthController {
 
     @GetMapping("/check-session")
     @Operation(summary = "校验当前登录会话")
-    public CommonResult<Boolean> checkSession() {
-        return success(getLoginUserId() != null);
+    public CommonResult<Boolean> checkSession(HttpServletResponse response) {
+        boolean authenticated = getLoginUserId() != null;
+        if (!authenticated) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        }
+        return success(authenticated);
     }
 
     @PostMapping("/media-permission-check")
