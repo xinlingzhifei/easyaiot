@@ -4,6 +4,7 @@ import com.basiclab.iot.common.config.AuthorizeRequestsCustomizer;
 import com.basiclab.iot.system.enums.ApiConstants;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.ExpressionUrlAuthorizationConfigurer;
 
@@ -22,6 +23,7 @@ public class SecurityConfiguration {
 
             @Override
             public void customize(ExpressionUrlAuthorizationConfigurer<HttpSecurity>.ExpressionInterceptUrlRegistry registry) {
+                registry.antMatchers(HttpMethod.GET, buildAdminApi("/system/auth/check-session")).permitAll();
                 // TODO yFeiEye：这个每个项目都需要重复配置，得捉摸有没通用的方案
                 // Swagger 接口文档
                 registry.antMatchers("/v3/api-docs/**").permitAll() // 元数据

@@ -134,7 +134,6 @@ public class AuthController {
     }
 
     @GetMapping("/check-session")
-    @PermitAll
     @Operation(summary = "校验当前登录会话")
     public ResponseEntity<Void> checkSession() {
         if (getLoginUserId() == null) {

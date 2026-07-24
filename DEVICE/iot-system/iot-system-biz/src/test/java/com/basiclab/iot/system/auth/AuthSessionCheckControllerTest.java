@@ -11,13 +11,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import javax.annotation.security.PermitAll;
-import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,10 +59,4 @@ class AuthSessionCheckControllerTest {
                 .andExpect(content().string(""));
     }
 
-    @Test
-    void sessionProbeBypassesPreControllerAuthenticationEntryPoint() throws NoSuchMethodException {
-        Method method = AuthController.class.getMethod("checkSession");
-
-        assertTrue(method.isAnnotationPresent(PermitAll.class));
-    }
 }
