@@ -25,13 +25,20 @@ assert.match(auth, /export function getAccessToken[\s\S]*?syncNodeRedAuthCookie\
 assert.match(auth, /export function setAccessToken[\s\S]*?syncNodeRedAuthCookie\(value\)/)
 assert.match(auth, /export function clearAuthCache[\s\S]*?syncNodeRedAuthCookie\(null\)/)
 
-function assertProtectedProxy(path: string, expectedLocations: number) {
+function assertProtectedProxy(
+  path: string,
+  expectedLocations: number,
+  expectedAuthBackends = 1,
+  authBackend = 'gateway:48080',
+) {
   const source = read(path)
   assert.match(source, /"Bearer missing-node-red-token"/)
   assert.match(source, /location = \/_node_red_auth \{[\s\S]*?internal;/)
-  assert.match(
-    source,
-    /proxy_pass http:\/\/gateway:48080\/admin-api\/system\/auth\/get-permission-info;/,
+  assert.ok(
+    source.includes(
+      `proxy_pass http://${authBackend}/admin-api/system/auth/get-permission-info;`,
+    ),
+    `${path} must route NodeRED auth checks through ${authBackend}.`,
   )
   assert.equal(
     source.match(/auth_request \/_node_red_auth;/g)?.length,
@@ -40,10 +47,10 @@ function assertProtectedProxy(path: string, expectedLocations: number) {
   )
   assert.equal(
     source.match(/proxy_set_header Cookie "";/g)?.length,
-    expectedLocations + 1,
+    expectedLocations + expectedAuthBackends,
     `${path} must not forward the platform token cookie to NodeRED or the auth backend.`,
   )
 }
 
-assertProtectedProxy('WEB/conf/nginx.conf', 3)
-assertProtectedProxy('WEB/conf/nginx.mini.conf', 2)
+assertProtectedProxy('WEB/conf/nginx.conf', 5, 2)
+assertProtectedProxy('WEB/conf/nginx.mini.conf', 2, 2, 'system-host:48099')

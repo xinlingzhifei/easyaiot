@@ -33,7 +33,7 @@
   const titleQuery = getRouteString(route.query?.title);
   const { setTitle } = useTabs();
   setTitle(
-    decodeURIComponent(String(titleQuery || index)) || 'NodeRed',
+    decodeURIComponent(String(titleQuery || index)) || 'yFeiEye',
   );
   
   // 构建完整的 iframe 路径

@@ -19,7 +19,7 @@ const rulechains: AppRouteModule = {
       name: 'RuleChainsNodeRed',
       component: () => import('@/views/system/iframe/FrameDynamic.vue'),
       meta: {
-        title: 'NodeRed',
+        title: 'yFeiEye',
         hideMenu: true,
         hideBreadcrumb: true,
       },
