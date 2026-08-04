@@ -1,7 +1,7 @@
 """Agent 子进程环境变量边界。"""
 
 import re
-from typing import Any, Dict, Iterable, Mapping
+from typing import Any, Dict, Iterable, Mapping, Optional
 
 
 _BLOCKED_ENV_KEYS = {
@@ -30,7 +30,7 @@ def validate_node_identifier(value: Any) -> str:
 
 
 def sanitize_environment_overrides(
-    values: Mapping[str, Any] | None,
+    values: Optional[Mapping[str, Any]],
     allowed_keys: Iterable[str],
 ) -> Dict[str, str]:
     if values is None:
