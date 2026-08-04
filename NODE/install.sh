@@ -133,6 +133,7 @@ sync_agent_sources() {
   fi
   echo "==> 同步 Agent 源码: ${resolved_script_dir} -> ${resolved_install_dir}"
   sudo cp "$resolved_script_dir/run_agent.py" "$resolved_script_dir/agent_server.py" \
+    "$resolved_script_dir/env_security.py" \
     "$resolved_script_dir/media_manager.py" "$resolved_script_dir/mqtt_manager.py" \
     "$resolved_script_dir/workload_manager.py" \
     "$resolved_script_dir/requirements.txt" "$resolved_script_dir/agent.env.example" \
