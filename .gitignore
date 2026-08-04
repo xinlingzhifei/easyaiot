@@ -90,6 +90,10 @@ NODE/get-pip.py
 
 # backup 文件夹
 **/backup/
+!TRANSFORM/capabilities/transform-capability-backup/src/main/java/com/basiclab/iot/transform/capability/backup/
+!TRANSFORM/capabilities/transform-capability-backup/src/main/java/com/basiclab/iot/transform/capability/backup/**
+!TRANSFORM/capabilities/transform-capability-backup/src/test/java/com/basiclab/iot/transform/capability/backup/
+!TRANSFORM/capabilities/transform-capability-backup/src/test/java/com/basiclab/iot/transform/capability/backup/**
 
 # 排除 postgresql 初始化脚本
 !.scripts/postgresql/00-init-databases.sh
@@ -127,6 +131,13 @@ APP/docs/.vitepress/dist
 APP/docs/.vitepress/cache
 APP/src/types/*
 !APP/src/types/auto-import.d.ts
+
+# SITE 构建产物、依赖与 pnpm 缓存（与 SITE/.gitignore 一致）
+SITE/node_modules/
+SITE/dist/
+SITE/dist-prebuilt/
+SITE/.pnpm-store/
+SITE/logs/
 
 # IDE / 包管理器缓存 / 测试缓存（仅本机，不随仓库分发）
 .vscode/
@@ -192,3 +203,14 @@ VIDEO/ffmpeg-master-*.tar.xz
 
 # Local camera integration credentials (use TASK/config/config.example.ini as the template)
 /TASK/config/test*.ini
+
+# TRANSFORM 本地运行与构建产物（不随仓库分发）
+TRANSFORM/.env.docker
+TRANSFORM/.idea/
+TRANSFORM/data/
+TRANSFORM/dist/
+
+# COMPILE 打包产物与临时目录（不随仓库分发）
+COMPILE/dist/
+COMPILE/work/
+COMPILE/.venv-build/

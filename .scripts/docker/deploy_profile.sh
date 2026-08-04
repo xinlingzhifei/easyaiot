@@ -107,12 +107,40 @@ is_full_deploy_profile() {
     [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ]
 }
 
-# 按部署形态判断业务模块是否启用（APP / VISUALIZE 仅 full 全量形态）
+# 按部署形态判断业务模块是否启用
+#   APP / VISUALIZE / TRANSFORM — 仅 full 全量形态
+#   PANEL — 源码/Docker 部署默认启用；安装包（deb/桌面端）本身即为 PANEL，
+#           由 systemd/二进制托管，部署时不应再拉 Docker PANEL（EASYAIOT_ENABLE_PANEL=0）。
+#           无源码 runtime 未显式开启时也默认跳过。
 module_enabled_for_deploy_profile() {
     case "$1" in
-        APP|VISUALIZE) [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] ;;
+        APP|VISUALIZE|TRANSFORM) [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] ;;
+        PANEL)
+            case "${EASYAIOT_ENABLE_PANEL:-}" in
+                0|false|FALSE|no|NO|off|OFF) return 1 ;;
+                1|true|TRUE|yes|YES|on|ON) return 0 ;;
+            esac
+            # 未显式设置：PANEL 安装包 / 无源码 runtime 默认不二次部署
+            if type runtime_is_source_free_runtime >/dev/null 2>&1 && runtime_is_source_free_runtime; then
+                return 1
+            fi
+            [ "${EASYAIOT_ENABLE_PANEL:-1}" != "0" ]
+            ;;
         *) return 0 ;;
     esac
+}
+
+# 跳过 PANEL 部署时的说明（安装包场景避免误判为“形态少装了模块”）
+panel_skip_deploy_reason() {
+    if [ "${EASYAIOT_ENABLE_PANEL:-}" = "0" ] || [ "${EASYAIOT_ENABLE_PANEL:-}" = "false" ]; then
+        echo "安装包/本机 PANEL 已在运行，部署无需再装运维控制台"
+        return
+    fi
+    if type runtime_is_source_free_runtime >/dev/null 2>&1 && runtime_is_source_free_runtime; then
+        echo "无源码 runtime（PANEL 安装包）已提供运维入口，跳过 Docker PANEL"
+        return
+    fi
+    echo "已禁用 PANEL 模块部署（EASYAIOT_ENABLE_PANEL=0）"
 }
 
 # mini / standard 形态均不部署 TDengine 中间件
@@ -233,16 +261,19 @@ print_deploy_profile_summary() {
   case "${EASYAIOT_DEPLOY_PROFILE}" in
     mini)
       echo "  业务: iot-system（48099）, VIDEO, AI, WEB（告警由 VIDEO 直连落库，无需 iot-sink/Kafka）"
+      echo "  运维: PANEL 独立控制台（:9200，所有形态默认启用）"
       echo "  中间件: PostgreSQL, Redis, SRS"
-      echo "  不启动: Kafka, iot-sink, Nacos, MinIO, iot-gateway, iot-infra, Milvus, ZLMediaKit, NodeRED, FUXA, TDengine, EMQX、iot-visualize/VISUALIZE 及多数 DEVICE 模块"
+      echo "  不启动: Kafka, iot-sink, Nacos, MinIO, iot-gateway, iot-infra, Milvus, ZLMediaKit, NodeRED, FUXA, TDengine, EMQX、iot-visualize/VISUALIZE、TRANSFORM 及多数 DEVICE 模块"
       echo "  API 路由: nginx 将 /admin-api、/dev-api 直连宿主机 iot-system:48099（登录鉴权由 system 自身处理）"
       ;;
     standard)
-      echo "  不启动: TDengine, NodeRED, FUXA, iot-device, iot-tdengine, iot-visualize/VISUALIZE（可视化管理菜单亦不启用）"
+      echo "  不启动: TDengine, NodeRED, FUXA, iot-device, iot-tdengine, iot-visualize/VISUALIZE、TRANSFORM（相关菜单不启用）"
+      echo "  运维: PANEL 独立控制台（:9200，所有形态默认启用）"
       echo "  其余模块与中间件全部启动（含 EMQX）"
       ;;
     full)
-      echo "  启动全部业务模块与中间件（含 APP 移动端 H5、iot-visualize/VISUALIZE、FUXA，推荐宿主机内存 ≥ 20 GB）"
+      echo "  启动全部业务模块与中间件（含 APP 移动端 H5、iot-visualize/VISUALIZE、TRANSFORM、FUXA，推荐宿主机内存 ≥ 20 GB）"
+      echo "  运维: PANEL 独立控制台（:9200，所有形态默认启用）"
       ;;
   esac
 }
@@ -253,19 +284,33 @@ lock_deploy_profile_for_child_installs() {
     export EASYAIOT_SKIP_PROFILE_PROMPT=1
 }
 
-# install 专用：交互终端下弹窗选择；上级已 lock 或 CI 非交互则直接沿用已选形态
+# install 专用：交互终端下弹窗选择；环境变量已指定 / 上级已 lock / 非交互则直接沿用
 select_deploy_profile_for_install() {
   if [ "${EASYAIOT_SKIP_PROFILE_PROMPT:-}" = "1" ]; then
     ensure_deploy_profile
+    lock_deploy_profile_for_child_installs
     return 0
   fi
-  if [ ! -t 0 ]; then
-    if [ -n "${EASYAIOT_DEPLOY_PROFILE:-}" ]; then
+
+  # 已通过环境变量显式指定形态时不弹菜单（含交互终端）
+  # 例: EASYAIOT_DEPLOY_PROFILE=full bash .../install_linux.sh install
+  case "${EASYAIOT_DEPLOY_PROFILE:-}" in
+    mini|standard|full)
       apply_deploy_profile
       save_deploy_profile
       lock_deploy_profile_for_child_installs
+      echo ""
+      if declare -F print_info >/dev/null 2>&1; then
+        print_info "使用环境变量指定的部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
+      else
+        echo "[INFO] 使用环境变量指定的部署形态: $(_deploy_profile_desc) (EASYAIOT_DEPLOY_PROFILE=${EASYAIOT_DEPLOY_PROFILE})"
+      fi
+      echo ""
       return 0
-    fi
+      ;;
+  esac
+
+  if [ ! -t 0 ]; then
     load_saved_deploy_profile
     [ -z "${EASYAIOT_DEPLOY_PROFILE:-}" ] && export EASYAIOT_DEPLOY_PROFILE=full
     apply_deploy_profile
@@ -356,6 +401,7 @@ sync_deploy_profile_to_modules() {
     local root="${1:-$(_deploy_profile_repo_root)}"
     apply_python_service_deploy_env "$root"
     apply_device_deploy_env "$root"
+    apply_transform_deploy_env "$root"
     sync_web_deploy_profile_env "$root"
 }
 
@@ -371,6 +417,28 @@ apply_device_deploy_env() {
         _set_env_docker_kv "$env_file" IOT_SYSTEM_SPRING_PROFILES_ACTIVE "local"
     fi
     _set_env_docker_kv "$env_file" IOT_SINK_SPRING_PROFILES_ACTIVE "$(iot_sink_spring_profiles_active)"
+}
+
+# TRANSFORM：按形态写入 .env.docker（供运行脚本统一读取）
+apply_transform_deploy_env() {
+    local root="${1:-$(_deploy_profile_repo_root)}"
+    local env_file="${root}/TRANSFORM/.env.docker"
+    [ -d "${root}/TRANSFORM" ] || return 0
+    mkdir -p "$(dirname "$env_file")"
+    touch "$env_file"
+
+    _set_env_docker_kv "$env_file" EASYAIOT_DEPLOY_PROFILE "${EASYAIOT_DEPLOY_PROFILE:-full}"
+    _set_env_docker_kv "$env_file" SPRING_PROFILES_ACTIVE "local"
+    _set_env_docker_kv "$env_file" TRANSFORM_ROLE "full"
+    _set_env_docker_kv "$env_file" TRANSFORM_BACKUP_DIR "/opt/easyaiot/TRANSFORM/data/transform-backup"
+    _set_env_docker_kv "$env_file" NACOS_ADDR "Nacos:8848"
+    _set_env_docker_kv "$env_file" NACOS_USERNAME "nacos"
+    _set_env_docker_kv "$env_file" NACOS_PASSWORD "basiclab@iot78475418754"
+    _set_env_docker_kv "$env_file" KAFKA_BOOTSTRAP "Kafka:9092"
+    _set_env_docker_kv "$env_file" POSTGRES_URL "jdbc:postgresql://PostgresSQL:5432/iot-transform20"
+    _set_env_docker_kv "$env_file" POSTGRES_USERNAME "postgres"
+    _set_env_docker_kv "$env_file" POSTGRES_PASSWORD "iot45722414822"
+    _set_env_docker_kv "$env_file" SERVER_PORT "48096"
 }
 
 # 若 WEB 镜像构建时的形态与当前不一致，提示需 rebuild（前端 VITE_GLOB_DEPLOY_PROFILE 编译进镜像）

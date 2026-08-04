@@ -86,9 +86,23 @@ APP/node_modules/** -diff
 APP/dist/** -diff
 APP/.pnpm-store/** -diff
 
+# SITE 构建产物、依赖与 pnpm 缓存：不参与 diff
+SITE/node_modules/** -diff
+SITE/dist/** -diff
+SITE/dist-prebuilt/** -diff
+SITE/.pnpm-store/** -diff
+
 # IDE / 包管理器缓存 / 测试缓存：不参与 diff
 .vscode/** -diff
 .pnpm-store/** -diff
 **/.pytest_cache/** -diff
 
 .image/ binary
+
+# TRANSFORM 运行时数据与离线构建产物：不参与 diff
+TRANSFORM/data/** -diff
+TRANSFORM/dist/** -diff
+
+# COMPILE 产物：不参与 diff（deb 与无扩展 ELF 二进制）
+COMPILE/dist/ubuntu/*.deb binary -diff
+COMPILE/dist/ubuntu/easyaiot-panel binary -diff

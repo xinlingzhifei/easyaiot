@@ -15,7 +15,7 @@
 #   status     - 查看所有服务状态
 #   logs       - 查看服务日志
 #   build           - 重新构建所有镜像（各模块本地构建）
-#   build-runtime [模块] - 构建/推送运行时镜像到远程仓库（推送成功后删除本地镜像；可选 DEVICE|AI|VIDEO|WEB|APP|VISUALIZE）
+#   build-runtime [模块] - 构建/推送运行时镜像到远程仓库（推送成功后删除本地镜像；可选 DEVICE|AI|VIDEO|WEB|APP|VISUALIZE|TRANSFORM|PANEL）
 #   pull            - 从远程仓库拉取预构建运行时镜像（等同 runtime_image.sh pull）
 #   clean      - 清理所有容器和镜像
 #   clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，再删运行时镜像/构建缓存；保留跨架构基础镜像；不停中间件）
@@ -23,6 +23,7 @@
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
 #   profile    - 显示当前部署形态与服务范围
+#   site [子命令] - 官方网站 SITE 独立部署
 #   menu       - 打开两层交互引导（同无参数）
 #   diagnose       - 问题分析定位（进入【分析】子菜单）
 #   analyze-logs   - 多模块日志合并分析（各模块约 500 行，带分割线）
@@ -31,7 +32,7 @@
 # 部署形态（EASYAIOT_DEPLOY_PROFILE）：
 #   mini(1)     - 4G：iot-system + VIDEO/AI/WEB + 最小中间件（无 Kafka/iot-sink/Nacos/Gateway/Infra/可视化）
 #   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/NodeRED/iot-visualize（含 EMQX）
-#   full(3)     - 全量（默认，约 20G）；含 iot-visualize/VISUALIZE；启动后自动拉起工业协议演示（Modbus TCP/RTU + OPC UA）
+#   full(3)     - 全量（默认，约 20G）；含 iot-visualize/VISUALIZE、TRANSFORM；启动后自动拉起工业协议演示（Modbus TCP/RTU + OPC UA）；PANEL 全形态启用
 # ============================================
 
 set -e
@@ -166,6 +167,8 @@ MODULES=(
     "WEB"              # Web前端服务
     "APP"              # App移动端H5（仅 full 全量形态）
     "VISUALIZE"        # 可视化编辑器（仅 full 全量形态）
+    "TRANSFORM"        # 系统对接（仅 full 全量形态）
+    "PANEL"            # 运维控制台：源码/Docker 可装；安装包本身即为 PANEL，部署默认跳过
 )
 
 # 模块名称映射
@@ -177,6 +180,8 @@ MODULE_NAMES["VIDEO"]="Video服务"
 MODULE_NAMES["WEB"]="Web前端服务"
 MODULE_NAMES["APP"]="App移动端H5"
 MODULE_NAMES["VISUALIZE"]="可视化编辑器"
+MODULE_NAMES["TRANSFORM"]="系统对接"
+MODULE_NAMES["PANEL"]="运维控制台"
 
 # 模块端口映射
 declare -A MODULE_PORTS
@@ -187,6 +192,8 @@ MODULE_PORTS["VIDEO"]="6000"
 MODULE_PORTS["WEB"]="8888"
 MODULE_PORTS["APP"]="9010"
 MODULE_PORTS["VISUALIZE"]="8002"
+MODULE_PORTS["TRANSFORM"]="48096"
+MODULE_PORTS["PANEL"]="9200"
 
 # 模块健康检查端点
 declare -A MODULE_HEALTH_ENDPOINTS
@@ -197,6 +204,8 @@ MODULE_HEALTH_ENDPOINTS["VIDEO"]="/actuator/health"
 MODULE_HEALTH_ENDPOINTS["WEB"]="/health"
 MODULE_HEALTH_ENDPOINTS["APP"]="/health"
 MODULE_HEALTH_ENDPOINTS["VISUALIZE"]="/health"
+MODULE_HEALTH_ENDPOINTS["TRANSFORM"]="/actuator/health"
+MODULE_HEALTH_ENDPOINTS["PANEL"]="/health"
 
 # 统计当前部署形态下参与 install 汇总的模块数（已启用且存在安装脚本）
 _count_installable_modules() {
@@ -267,6 +276,42 @@ print_section() {
     log_to_file ""
 }
 
+# 是否运行在容器内（PANEL Docker 版等：无 systemd/sysctl，且网卡 IP 为桥接地址）
+_running_in_container() {
+    [ -f /.dockerenv ] && return 0
+    if [ -r /proc/1/cgroup ] && grep -Eq '(docker|containerd|kubepods|/libpod)' /proc/1/cgroup 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Docker 默认桥接网段（容器内自动探测到的 172.17–31.x 通常不是宿主机 LAN IP）
+_is_likely_docker_bridge_ip() {
+    case "${1:-}" in
+        172.1[7-9].*|172.2[0-9].*|172.3[0-1].*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# 经 docker.sock + --network=host 探测真实宿主机出口 IP（PANEL 容器场景）
+_detect_host_ip_via_docker_host_net() {
+    check_command docker || return 1
+    docker info >/dev/null 2>&1 || return 1
+
+    local probe_img=""
+    for probe_img in alpine:latest docker.m.daocloud.io/library/alpine:latest busybox:latest; do
+        if docker image inspect "$probe_img" >/dev/null 2>&1; then
+            break
+        fi
+        probe_img=""
+    done
+    [ -n "$probe_img" ] || return 1
+
+    docker run --rm --network=host --entrypoint sh "$probe_img" -c \
+        "ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p'" \
+        2>/dev/null
+}
+
 # 检测宿主机 IPv4 地址，并导出给子模块安装脚本和 docker compose 使用
 detect_host_ip() {
     # 已显式导出 HOST_IP 时直接采用（错误提示承诺的逃生通道；也天然避免重复探测）
@@ -276,6 +321,17 @@ detect_host_ip() {
     fi
 
     local host_ip=""
+
+    # PANEL 等容器内：本机网卡是 Docker 桥接地址，需经 --network=host 探测宿主机
+    if _running_in_container; then
+        host_ip=$(_detect_host_ip_via_docker_host_net | head -n 1 | tr -d '[:space:]')
+        if [ -n "$host_ip" ] && ! _is_likely_docker_bridge_ip "$host_ip"; then
+            export HOST_IP="$host_ip"
+            print_info "检测到宿主机 IP（容器经 docker host 网络）: $HOST_IP"
+            return 0
+        fi
+        host_ip=""
+    fi
 
     if check_command ip; then
         host_ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
@@ -295,6 +351,11 @@ detect_host_ip() {
         return 1
     fi
 
+    if _is_likely_docker_bridge_ip "$host_ip"; then
+        print_warning "检测到疑似 Docker 桥接 IP: $host_ip（媒体地址可能不正确）"
+        print_warning "请在 panel.env / 环境变量中设置 HOST_IP=<宿主机局域网 IP> 后重试"
+    fi
+
     export HOST_IP="$host_ip"
     print_info "检测到宿主机 IP: $HOST_IP"
     return 0
@@ -309,9 +370,21 @@ configure_rtp_port_reservation() {
         return 0
     fi
 
+    # PANEL 容器内写 /etc/sysctl.d 与 sysctl 只作用于容器，对宿主机无效
+    if _running_in_container; then
+        print_warning "容器环境无法配置宿主机 RTP 端口预留，已跳过"
+        print_info "建议在宿主机执行: echo '$expected_config' | sudo tee $sysctl_file && sudo sysctl --system"
+        return 0
+    fi
+
     if [ "$EUID" -ne 0 ]; then
         print_warning "配置 RTP 端口预留需要 root 权限，已跳过"
         print_warning "建议使用 sudo 运行安装脚本，以固化 30000-30500 端口预留"
+        return 0
+    fi
+
+    if ! check_command sysctl; then
+        print_warning "未找到 sysctl，跳过 RTP 端口预留（可稍后手动写入 $sysctl_file）"
         return 0
     fi
 
@@ -326,7 +399,10 @@ configure_rtp_port_reservation() {
     cat > "$sysctl_file" << EOF
 $expected_config
 EOF
-    sysctl --system > /dev/null
+    if ! sysctl --system > /dev/null 2>&1; then
+        print_warning "已写入 $sysctl_file，但 sysctl --system 未成功（配置将在下次重启后生效）"
+        return 0
+    fi
     print_success "RTP 端口预留已生效"
 }
 
@@ -564,12 +640,20 @@ check_docker_compose() {
 DOCKER_MIRROR="https://docker.m.daocloud.io/"
 
 # 配置变更后按需重启 Docker（仅服务在运行时）
+# 容器 / 无 systemd 环境：静默跳过，避免 set -e 下 command not found 干扰日志
 restart_docker_if_active() {
-    if systemctl is-active --quiet docker; then
+    if ! check_command systemctl; then
+        print_warning "未找到 systemctl，跳过重启 Docker（容器或非 systemd 环境）"
+        return 0
+    fi
+    if systemctl is-active --quiet docker 2>/dev/null; then
         print_info "正在重启 Docker 服务以使配置生效..."
-        systemctl daemon-reload
-        systemctl restart docker
-        print_success "Docker 服务已重启"
+        systemctl daemon-reload 2>/dev/null || true
+        if systemctl restart docker 2>/dev/null; then
+            print_success "Docker 服务已重启"
+        else
+            print_warning "Docker 重启失败，请稍后手动执行: sudo systemctl restart docker"
+        fi
     fi
 }
 
@@ -580,6 +664,12 @@ configure_docker_mirror() {
     print_info "配置 Docker 镜像源..."
 
     local config_file="/etc/docker/daemon.json"
+
+    # PANEL 容器内写 /etc/docker 不影响宿主机 dockerd
+    if _running_in_container; then
+        print_info "容器环境跳过写入宿主机 Docker 镜像源（请在宿主机配置 /etc/docker/daemon.json）"
+        return 0
+    fi
 
     if [ "$EUID" -ne 0 ]; then
         print_warning "配置 Docker 镜像源需要 root 权限，跳过此步骤"
@@ -732,12 +822,28 @@ execute_module_command() {
     install_file=$(module_install_script "$module")
 
     if [ ! -d "$PROJECT_ROOT/$module" ]; then
+        if [ "$module" = "TRANSFORM" ]; then
+            print_info "未检测到 TRANSFORM 目录，跳过系统对接部署"
+            return 0
+        fi
+        if [ "$module" = "PANEL" ]; then
+            print_info "跳过运维控制台（PANEL）：$(panel_skip_deploy_reason)（runtime 无 PANEL 目录）"
+            return 0
+        fi
         print_warning "模块 $module 不存在，跳过"
         return 1
     fi
     cd "$PROJECT_ROOT/$module"
 
     if [ ! -f "$install_file" ]; then
+        if [ "$module" = "TRANSFORM" ]; then
+            print_info "未检测到 TRANSFORM/install_linux.sh，跳过系统对接部署"
+            return 0
+        fi
+        if [ "$module" = "PANEL" ]; then
+            print_info "跳过运维控制台（PANEL）：$(panel_skip_deploy_reason)（无 install_linux.sh）"
+            return 0
+        fi
         print_warning "模块 $module 没有 $install_file 文件，跳过"
         return 1
     fi
@@ -747,7 +853,7 @@ execute_module_command() {
 
     local defer_agent_sync=0
     case "$module" in
-        DEVICE|AI|VIDEO|WEB|APP|VISUALIZE) defer_agent_sync=1 ;;
+        DEVICE|AI|VIDEO|WEB|APP|VISUALIZE|TRANSFORM) defer_agent_sync=1 ;;
     esac
     if [ "$defer_agent_sync" -eq 1 ]; then
         export EASYAIOT_DEFER_PLATFORM_AGENT_SYNC=1
@@ -848,8 +954,11 @@ install_linux() {
     print_section "开始安装所有服务"
 
     select_deploy_profile_for_install
-    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux.sh"
-    runtime_images_acquire
+    export EASYAIOT_INSTALL_SCRIPT="${EASYAIOT_INSTALL_SCRIPT:-.scripts/docker/install_linux.sh}"
+    if ! runtime_images_acquire; then
+        print_error "预构建镜像获取失败，已中止安装"
+        return 1
+    fi
 
     check_docker "$@"
     check_docker_compose
@@ -862,6 +971,11 @@ install_linux() {
     if runtime_images_should_skip_build; then
         _skip_build=1
     else
+        if runtime_is_source_free_runtime; then
+            print_error "当前为 PANEL 无源码 runtime，禁止本地 docker build"
+            print_error "请先确保预构建镜像拉取成功后再安装（bash .scripts/docker/install_linux.sh pull）"
+            return 1
+        fi
         print_info "将进行本地构建（各模块 docker build，耗时较长）"
     fi
     
@@ -873,7 +987,11 @@ install_linux() {
     
     for module in "${MODULES[@]}"; do
         if ! module_enabled_for_deploy_profile "$module"; then
-            print_info "跳过 ${MODULE_NAMES[$module]}（当前部署形态 ${EASYAIOT_DEPLOY_PROFILE} 不包含此模块）"
+            if [ "$module" = "PANEL" ]; then
+                print_info "跳过运维控制台（PANEL）：$(panel_skip_deploy_reason)"
+            else
+                print_info "跳过 ${MODULE_NAMES[$module]}（当前部署形态 ${EASYAIOT_DEPLOY_PROFILE} 不包含此模块）"
+            fi
             continue
         fi
         print_section "安装 ${MODULE_NAMES[$module]}"
@@ -985,6 +1103,21 @@ wait_for_container_ready() {
     return 1
 }
 
+# Nacos / MinIO：宿主机端口映射滞后时，容器内探测或 Docker healthy 亦算就绪
+_check_nacos_ready() {
+    curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:8848/nacos/actuator/health" >/dev/null 2>&1 && return 0
+    docker exec nacos-server curl -sf --connect-timeout 2 --max-time 5 \
+        "http://127.0.0.1:8848/nacos/actuator/health" >/dev/null 2>&1 && return 0
+    [ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' nacos-server 2>/dev/null || echo none)" = "healthy" ]
+}
+
+_check_minio_ready() {
+    curl -sf --connect-timeout 2 --max-time 5 "http://127.0.0.1:9000/minio/health/live" >/dev/null 2>&1 && return 0
+    docker exec minio-server curl -sf --connect-timeout 2 --max-time 5 \
+        "http://127.0.0.1:9000/minio/health/live" >/dev/null 2>&1 && return 0
+    [ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' minio-server 2>/dev/null || echo none)" = "healthy" ]
+}
+
 # 仅当容器在运行时才等待（容器未启动直接跳过）
 container_running() {
     docker ps --filter "name=$1" --format "{{.Names}}" | grep -q "$1"
@@ -1067,7 +1200,7 @@ wait_for_base_services() {
 
     if container_exists nacos-server; then
         if container_running nacos-server; then
-            wait_for_container_ready "Nacos" 60 2 curl -s --connect-timeout 2 "http://localhost:8848/nacos/actuator/health" || true
+            wait_for_container_ready "Nacos" 90 2 _check_nacos_ready || true
             _nacos_ok=true
         else
             print_error "Nacos 容器已创建但未运行，请检查: docker logs nacos-server"
@@ -1089,7 +1222,7 @@ wait_for_base_services() {
 
     if container_exists minio-server; then
         if container_running minio-server; then
-            wait_for_container_ready "MinIO" 30 2 curl -sf --connect-timeout 2 "http://localhost:9000/minio/health/live" || true
+            wait_for_container_ready "MinIO" 60 2 _check_minio_ready || true
         else
             print_error "MinIO 容器已创建但未运行！WEB 服务 nginx 将无法解析 'MinIO' 主机名"
             print_info "请检查: docker logs minio-server"
@@ -1106,6 +1239,16 @@ wait_for_base_services() {
 
 # 等待 DEVICE 模块的 iot-gateway 就绪（仅非 mini 形态）
 # 必须在 WEB 模块启动前调用，否则 nginx 代理到 gateway:48080 将返回 502→503
+_check_iot_gateway_ready() {
+    # 只探 health（根路径常 404，curl -f 会失败）；加 max-time 避免半开连接挂死
+    curl -sf --connect-timeout 2 --max-time 5 \
+        "http://127.0.0.1:48080/actuator/health" >/dev/null 2>&1 && return 0
+    # host 网络下 docker exec 与宿主机等价，但可绕过 localhost→::1 解析问题
+    docker exec iot-gateway curl -sf --connect-timeout 2 --max-time 5 \
+        "http://127.0.0.1:48080/actuator/health" >/dev/null 2>&1 && return 0
+    [ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' iot-gateway 2>/dev/null || echo none)" = "healthy" ]
+}
+
 wait_for_device_gateway() {
     # mini 形态无 iot-gateway，直连 iot-system，无需等待
     if is_mini_deploy_profile; then
@@ -1140,33 +1283,32 @@ wait_for_device_gateway() {
         fi
     fi
 
-    # 等待端口 48080 可连接（网关 Spring Boot 完全启动）
-    # 使用 1s 间隔、200 次检测（最长 200s），比 3s*90=270s 更快感知就绪
-    # 同时检测 docker logs 是否已输出 "启动成功" 但端口尚未绑定（Spring Boot 特性）
+    # 等待健康检查通过（最长约 180s；Java 冷启动可能较慢）
     local _gw_port_ready=0
     local _gw_log_ready=0
     local _poll_attempt=0
     local _poll_elapsed=0
-    local _poll_max=200
+    local _poll_max="${IOT_GATEWAY_READY_MAX_ATTEMPTS:-180}"
     local _poll_interval=1
     print_info "等待 iot-gateway (48080) 服务就绪..."
     while [ $_poll_attempt -lt $_poll_max ]; do
-        if curl -sf --connect-timeout 2 -o /dev/null "http://localhost:48080/" 2>/dev/null || \
-           curl -sf --connect-timeout 2 -o /dev/null "http://localhost:48080/actuator/health" 2>/dev/null; then
+        if _check_iot_gateway_ready; then
             _gw_port_ready=1
             break
         fi
         # 检测 Spring Boot 是否已打印启动成功（提示用户只差端口绑定这一步了）
-        if [ $_gw_log_ready -eq 0 ] && docker logs iot-gateway --tail 5 2>/dev/null | grep -qE '(项目启动成功|Started .* in |JVM running for)'; then
+        if [ $_gw_log_ready -eq 0 ] && docker logs iot-gateway --tail 30 2>/dev/null | grep -qE '(项目启动成功|Started .* in |JVM running for)'; then
             _gw_log_ready=1
-            print_info "  Spring Boot 已初始化完成，正在等待 Netty 端口 48080 绑定..."
+            print_info "  Spring Boot 已初始化完成，正在等待健康检查通过..."
         fi
         _poll_attempt=$((_poll_attempt + 1))
         sleep "$_poll_interval"
         _poll_elapsed=$((_poll_elapsed + _poll_interval))
         # 每 10 秒输出友好进度提示
         if [ $((_poll_attempt % 10)) -eq 0 ] && [ $_poll_attempt -lt $_poll_max ]; then
-            print_info "  iot-gateway 仍在启动中...（已等待 ${_poll_elapsed}s，请耐心等待 Java 应用启动）"
+            local _health
+            _health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' iot-gateway 2>/dev/null || echo unknown)
+            print_info "  iot-gateway 仍在启动中...（已等待 ${_poll_elapsed}s，健康: ${_health}）"
         fi
     done
 
@@ -1174,17 +1316,18 @@ wait_for_device_gateway() {
         print_success "iot-gateway 已就绪（端口 48080 响应正常），WEB 服务可以安全启动"
     else
         print_warning "iot-gateway 在 ${_poll_elapsed}s 内未就绪，WEB 服务启动后 /dev-api/ 可能返回 503"
-        print_info "手动检查: curl -v http://localhost:48080/"
+        print_info "手动检查: curl -v http://127.0.0.1:48080/actuator/health"
         print_info "查看日志: docker logs iot-gateway --tail 50"
         # 如果日志显示启动成功但端口不通，给出明确提示
         if docker logs iot-gateway --tail 20 2>/dev/null | grep -qE '(项目启动成功|Started .* in )'; then
-            print_warning "Spring Boot 日志显示启动成功，但端口 48080 仍不可达，可能是网络或防火墙问题"
+            print_warning "Spring Boot 日志显示启动成功，但健康检查仍未通过，请检查端口 48080 / 防火墙"
         fi
         return 1
     fi
 }
 
 # 业务模块清单（MODULES 去掉基础服务，并按部署形态过滤），结果写入全局数组 BIZ_MODULES
+# PANEL 纳入启停/更新；stop_runtime_modules 单独排除（build-runtime 清理不关控制台）
 collect_biz_modules() {
     ensure_deploy_profile
     BIZ_MODULES=()
@@ -1311,9 +1454,18 @@ stop_runtime_modules() {
     local idx module
     for ((idx=${#stop_modules[@]}-1 ; idx>=0 ; idx--)); do
         module="${stop_modules[$idx]}"
+        # build-runtime 清理业务镜像时保留运维控制台
+        [ "$module" = "PANEL" ] && continue
         execute_module_command "$module" "stop" || print_warning "${MODULE_NAMES[$module]} 停止失败，继续其余模块"
         echo ""
     done
+
+    # PANEL 不在 MODULES 列表中，单独停止以便释放 easyaiot/panel 镜像
+    if [ -f "${PROJECT_ROOT}/PANEL/install.sh" ] && [ "${EASYAIOT_ENABLE_PANEL:-1}" != "0" ]; then
+        print_info "停止 PANEL 独立运维控制台..."
+        bash "${PROJECT_ROOT}/PANEL/install.sh" stop || print_warning "PANEL 停止失败，继续清理"
+        echo ""
+    fi
 
     print_success "业务运行时服务已停止（中间件未停止）"
 }
@@ -1504,7 +1656,7 @@ update_all() {
     check_docker "$@"
     check_docker_compose
     configure_docker_mirror
-    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux.sh"
+    export EASYAIOT_INSTALL_SCRIPT="${EASYAIOT_INSTALL_SCRIPT:-.scripts/docker/install_linux.sh}"
     runtime_images_acquire_for_update
     prepare_runtime_environment
     create_network
@@ -1591,6 +1743,12 @@ verify_all() {
         fi
         if module_enabled_for_deploy_profile VISUALIZE; then
             echo -e "  可视化编辑器:           http://localhost:8002"
+        fi
+        if module_enabled_for_deploy_profile TRANSFORM; then
+            echo -e "  系统对接 (TRANSFORM):   http://localhost:48096"
+        fi
+        if module_enabled_for_deploy_profile PANEL; then
+            echo -e "  运维控制台 (PANEL):     http://localhost:9200"
         fi
         echo ""
         return 0
@@ -1680,6 +1838,7 @@ show_help() {
     echo "交互引导两层结构:"
     echo "  1) 部署 — 安装/启停/更新/状态/日志等"
     echo "  2) 分析 — 日志合并/磁盘占用/健康检查等"
+    echo "  3) 官网 — SITE 官方网站独立部署"
     echo ""
     echo "可用命令:"
     echo "  install         - 安装并启动所有服务（首次运行）"
@@ -1690,7 +1849,7 @@ show_help() {
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
     echo "  build           - 重新构建所有镜像（各模块本地构建）"
-    echo "  build-runtime [模块] - 构建/推送运行时镜像（推送成功后删本地镜像；可选 DEVICE|AI|VIDEO|WEB|APP|VISUALIZE）"
+    echo "  build-runtime [模块] - 构建/推送运行时镜像（推送成功后删本地镜像；可选 DEVICE|AI|VIDEO|WEB|APP|VISUALIZE|TRANSFORM|PANEL）"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
     echo "  clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，默认删运行时镜像+构建缓存；保留跨架构基础镜像）"
@@ -1698,11 +1857,17 @@ show_help() {
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
     echo "  profile         - 显示当前部署形态与服务范围"
-    echo "  menu            - 打开两层交互引导（部署 / 分析）"
+    echo "  site [子命令]   - 官方网站 SITE 独立部署（默认 install）"
+    echo "  menu            - 打开两层交互引导（部署 / 分析 / 官网）"
     echo "  diagnose        - 进入【分析】子菜单"
     echo "  analyze-logs    - 多模块日志合并分析（各模块约 500 行，带分割线）"
     echo "  analyze-disk    - 项目关键目录磁盘占用分析"
     echo "  help            - 显示此帮助信息"
+    echo ""
+    echo "SITE 子命令（./install_linux.sh site <子命令>）:"
+    echo "  install | start | stop | restart | status | logs | build | clean | update"
+    echo "  也可直接: cd SITE && ./install_linux.sh <子命令>"
+    echo "  默认端口: http://localhost:8090"
     echo ""
     echo "模块列表:"
     for module in "${MODULES[@]}"; do
@@ -1719,8 +1884,42 @@ show_help() {
     echo "  EASYAIOT_APPLY_INDUSTRIAL_SEED=0   - 启动演示时不写入/刷新工业协议演示设备种子"
     echo "  EASYAIOT_RUNTIME_REGISTRY    - 运行时镜像仓库（默认见 runtime_registry.conf）"
     echo "  EASYAIOT_RUNTIME_BUILD_ARCH  - build-runtime 目标架构: all(默认) | amd64 | arm64"
-    echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE"
+    echo "  EASYAIOT_RUNTIME_BUILD_MODULE - build-runtime 目标模块: all(默认) | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE | TRANSFORM | PANEL"
+    echo "  SITE_PORT                    - 官网宿主机端口（默认 8090）"
     echo ""
+}
+
+# 官方网站 SITE：委托 SITE/install_linux.sh
+run_site_module() {
+    local site_cmd="${1:-install}"
+    local site_dir="${PROJECT_ROOT}/SITE"
+    local site_script="${site_dir}/install_linux.sh"
+
+    if [ ! -f "$site_script" ]; then
+        print_error "未找到官网模块脚本: ${site_script}"
+        return 1
+    fi
+    if [ ! -x "$site_script" ]; then
+        chmod +x "$site_script" || true
+    fi
+
+    case "$site_cmd" in
+        install|start|stop|restart|status|logs|build|clean|update|help|-h|--help)
+            print_section "SITE 官方网站（独立部署）"
+            print_info "执行: SITE/install_linux.sh ${site_cmd}"
+            (cd "$site_dir" && bash ./install_linux.sh "$site_cmd")
+            ;;
+        "")
+            print_section "SITE 官方网站（独立部署）"
+            print_info "执行: SITE/install_linux.sh install"
+            (cd "$site_dir" && bash ./install_linux.sh install)
+            ;;
+        *)
+            print_error "未知 SITE 子命令: ${site_cmd}"
+            echo "可用: install | start | stop | restart | status | logs | build | clean | update"
+            return 1
+            ;;
+    esac
 }
 
 # 主函数
@@ -1781,6 +1980,9 @@ main() {
         profile)
             ensure_deploy_profile
             print_deploy_profile_summary
+            ;;
+        site|website|官网)
+            run_site_module "${2:-install}"
             ;;
         diagnose|diagnose-tools)
             run_analyze_interactive_menu

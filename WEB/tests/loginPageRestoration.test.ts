@@ -54,6 +54,10 @@ function testProductionWiringUsesCameraAssetAndCoverSizing() {
     new URL('../src/hooks/web/usePlatformBranding.ts', import.meta.url),
     'utf8',
   )
+  const loginSource = readFileSync(
+    new URL('../src/views/base/login/Login.vue', import.meta.url),
+    'utf8',
+  )
 
   assert.match(
     storageSource,
@@ -65,11 +69,20 @@ function testProductionWiringUsesCameraAssetAndCoverSizing() {
   assert.match(storageSource, /loginBgDark:\s*defaultLoginBg/)
   assert.match(storageSource, /resolveLoginBrandingValues\(data,/)
 
-  const coverDeclarations = hookSource.match(
-    /background:\s*url\("\$\{(?:lightBg|darkBg)\}"\) center center \/ cover no-repeat !important;/g,
+  assert.match(
+    hookSource,
+    /setProperty\('--platform-login-bg-light', `url\("\$\{lightBg\}"\)`\)/,
+  )
+  assert.match(
+    hookSource,
+    /setProperty\('--platform-login-bg-dark', `url\("\$\{darkBg\}"\)`\)/,
+  )
+
+  const coverDeclarations = loginSource.match(
+    /background:\s*var\(--platform-login-bg-(?:light|dark), url\('@\/assets\/svg\/login-yfeiEye\.svg'\)\) center center \/ cover no-repeat;/g,
   )
   assert.equal(coverDeclarations?.length, 2)
-  assert.doesNotMatch(hookSource, /background-size:\s*100% 100% !important;/)
+  assert.doesNotMatch(loginSource, /background-size:\s*100% 100% !important;/)
 }
 
 testMissingInvalidAndLegacyValuesUseRestoredDefaults()

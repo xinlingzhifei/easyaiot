@@ -52,7 +52,7 @@ body {
 
 html[data-theme='dark'] {
   .@{prefix-cls} {
-    background: url('@/assets/svg/login-yfeiEye.svg') center center / cover no-repeat;
+    background: var(--platform-login-bg-dark, url('@/assets/svg/login-yfeiEye.svg')) center center / cover no-repeat;
 
     &::before {
       background-image: none;
@@ -95,7 +95,7 @@ html[data-theme='dark'] {
   min-height: 100dvh;
   padding: 32px;
   overflow: auto;
-  background: url('@/assets/svg/login-yfeiEye.svg') center center / cover no-repeat;
+  background: var(--platform-login-bg-light, url('@/assets/svg/login-yfeiEye.svg')) center center / cover no-repeat;
 
   &-toolbar {
     position: fixed;

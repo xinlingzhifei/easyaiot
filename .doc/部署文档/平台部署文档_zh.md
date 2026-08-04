@@ -9,6 +9,7 @@
 - [概述](#概述)
 - [两种使用模式](#两种使用模式)
 - [快速开始](#快速开始)
+- [macOS / Windows 镜像部署](#macos--windows-镜像部署)
 - [部署规格](#部署规格)
 - [脚本命令参考](#脚本命令参考)
 - [服务访问与端口](#服务访问与端口)
@@ -35,10 +36,11 @@ yFeiEye 采用 **Docker 容器化 + 统一安装脚本** 部署，平台由基�
 | 系统 | 脚本 |
 |------|------|
 | Linux x86 | `.scripts/docker/install_linux.sh` |
+| CentOS / RHEL 系 | `.scripts/docker/install_linux_centos.sh` |
 | Linux ARM | `.scripts/docker/install_linux_arm.sh` |
 | 银河麒麟 | `.scripts/docker/install_linux_kylin.sh` |
 | macOS | `.scripts/docker/install_mac.sh` |
-| Windows | `.scripts/docker/install_win.ps1` |
+| Windows | `.scripts/docker/install_windows.ps1` / `install_windows.sh` |
 
 ---
 
@@ -116,8 +118,8 @@ sudo .scripts/docker/install_linux.sh install
 
 ### 环境前提
 
-- 操作系统：**Ubuntu 24.04+**（建议 26.04）
-- Docker + Docker Compose **v2.35+**
+- 操作系统：**Ubuntu 24.04+**（建议 26.04）；亦支持 **CentOS/RHEL 系**、ARM、银河麒麟
+- Docker + Docker Compose **v2.35+**（CentOS 可用 `install_linux_centos.sh` 自动安装/升级 Docker CE）
 - 磁盘可用空间 **≥ 300 GB**
 
 ```bash
@@ -130,7 +132,12 @@ docker --version && docker compose version && docker ps
 git clone https://gitee.com/volara/easyaiot.git
 cd easyaiot
 
+# Ubuntu / 通用 Linux x86
 sudo .scripts/docker/install_linux.sh
+
+# CentOS / RHEL / Rocky / Alma（推荐；自动升级 Docker CE、配置镜像源与 firewalld）
+# sudo .scripts/docker/install_linux_centos.sh
+
 # 1 部署 → 1 首次安装 → 7 健康验证
 ```
 
@@ -144,10 +151,37 @@ cd easyaiot
 
 # 可选：拉取预构建镜像，缩短 install 耗时
 sudo .scripts/docker/install_linux.sh pull
+# CentOS：sudo .scripts/docker/install_linux_centos.sh pull
 
 sudo .scripts/docker/install_linux.sh install
+# CentOS：sudo .scripts/docker/install_linux_centos.sh install
+
 .scripts/docker/install_linux.sh verify
+# CentOS：.scripts/docker/install_linux_centos.sh verify
 ```
+
+### CentOS / RHEL 系说明
+
+适用：CentOS 7/8/Stream、Rocky Linux、AlmaLinux、RHEL 等。入口脚本会先完成环境准备，再转交 `install_linux.sh`：
+
+| 能力 | 说明 |
+|------|------|
+| Docker CE | 自动卸载 CentOS 7 自带 docker 1.13，并安装 docker-ce 20+ |
+| 镜像源 | 写入 `/etc/docker/daemon.json`（DaoCloud） |
+| firewalld | 自动放行 WEB/Gateway/媒体等常用端口（可用 `--no-firewall` 跳过） |
+| SELinux | Enforcing 时给出挂载目录提示 |
+| Agent | CentOS 7 自动使用 `ensure_platform_agent_centos7.sh` |
+
+```bash
+# 仅准备 Docker CE（不部署业务）
+sudo .scripts/docker/install_linux_centos.sh --upgrade-docker-only
+
+# 跳过防火墙放行 / 跳过 Docker 升级（高级）
+sudo .scripts/docker/install_linux_centos.sh --no-firewall install
+sudo .scripts/docker/install_linux_centos.sh --no-upgrade-docker install
+```
+
+单独中间件（CentOS 7.9）：`.scripts/docker/start_postgresql_centos7.sh`、`start_minio_centos7.sh`、`start_nodered_centos7.sh`、`start_fuxa_centos7.sh`。
 
 ### 安装耗时
 
@@ -160,15 +194,131 @@ sudo .scripts/docker/install_linux.sh install
 
 ---
 
+## macOS / Windows 镜像部署
+
+桌面端（macOS、Windows）**只支持通过预构建镜像部署**，不在本机编译业务代码或执行 `docker build`。与 Linux 服务器脚本能力对齐的启停/更新命令可用；`build` / `build-runtime` / `clean-build-runtime` **不可用**（请改在 Linux CI/服务器上构建并推送镜像）。
+
+| 平台 | 入口脚本 | 说明 |
+|------|----------|------|
+| macOS | `.scripts/docker/install_mac.sh` | 需 Docker Desktop；建议 bash 4+（`brew install bash`） |
+| Windows | `.scripts/docker/install_windows.ps1` | PowerShell 入口：检查 Docker Desktop 后转发到 bash |
+| Windows | `.scripts/docker/install_windows.sh` | Git Bash / WSL 直接调用 |
+
+分平台细节：[平台 macOS 部署文档](./平台macOS部署文档_zh.md)、[平台 Windows 部署文档](./平台Windows部署文档_zh.md)。  
+PANEL 安装包编译：[COMPILE/README.md](../../COMPILE/README.md)。
+
+### 前置条件
+
+- 已安装并启动 **Docker Desktop**（macOS 也可 Colima）
+- 已 clone 本仓库源码（用于 compose 与安装脚本；业务 JAR/前端产物来自远程镜像）
+- macOS：Homebrew bash 4+（系统自带 bash 3.2 无法运行镜像拉取脚本）
+- Windows：Git for Windows（提供 bash 4+）或 WSL；推荐启用 Docker Desktop 的 WSL2 后端
+- **国内镜像加速**：桌面脚本可自动写入用户级 `~/.docker/daemon.json`（与 Linux 同源 `DOCKER_MIRROR`）；**FUXA** 走专用 `pull_fuxa.sh`（1ms 优先）
+- **引擎内存**：按形态自动调配 — mini **4GB** / standard **16GB** / full **24GB**（主机建议分别 ≥8 / ≥24 / ≥32GB）
+
+`install` / `pull` / `update` / `start` 等会在部署前**自动做前置检测**：汇总缺少的组件并打印安装指引，然后**中止**。也可：
+
+```bash
+# macOS
+bash .scripts/docker/install_mac.sh bootstrap
+bash .scripts/docker/install_mac.sh check
+bash .scripts/docker/install_mac.sh mirrors
+bash .scripts/docker/install_mac.sh resources
+```
+
+```powershell
+# Windows
+.\.scripts\docker\install_windows.ps1 bootstrap
+.\.scripts\docker\install_windows.ps1 check
+.\.scripts\docker\install_windows.ps1 mirrors
+.\.scripts\docker\install_windows.ps1 resources
+```
+
+### 快速安装
+
+```bash
+# macOS
+bash .scripts/docker/install_mac.sh                 # 交互引导
+bash .scripts/docker/install_mac.sh pull
+EASYAIOT_DEPLOY_PROFILE=full bash .scripts/docker/install_mac.sh install
+bash .scripts/docker/install_mac.sh verify
+```
+
+```powershell
+# Windows PowerShell（推荐）
+cd easyaiot
+.\.scripts\docker\install_windows.ps1
+.\.scripts\docker\install_windows.ps1 pull
+$env:EASYAIOT_DEPLOY_PROFILE = "full"
+.\.scripts\docker\install_windows.ps1 install
+.\.scripts\docker\install_windows.ps1 verify
+```
+
+```bash
+# Windows Git Bash / WSL
+bash .scripts/docker/install_windows.sh install
+```
+
+非交互指定规格：
+
+```bash
+EASYAIOT_DEPLOY_PROFILE=mini bash .scripts/docker/install_mac.sh install
+EASYAIOT_DEPLOY_PROFILE=standard bash .scripts/docker/install_windows.sh install
+```
+
+### 桌面端命令说明
+
+| 命令 | 说明 |
+|------|------|
+| `bootstrap` | 一键安装前置依赖（并尝试 mirrors / resources） |
+| `check` | 前置自检（缺什么提示装什么） |
+| `mirrors` | 配置国内 `registry-mirrors`（对齐 Linux） |
+| `resources` | 按形态调配 Docker 引擎 CPU/内存/磁盘 |
+| `install` | 按需拉取预构建镜像并安装启动 |
+| `pull` | 仅拉取业务运行时镜像 |
+| `start` / `stop` / `restart` | 启停 |
+| `status` / `logs` / `verify` | 状态、日志、健康检查 |
+| `update` | 强制拉取最新镜像并重启 |
+| `profile` / `menu` | 规格、交互菜单 |
+| `build` / `build-runtime` | **不支持**（仅 Linux） |
+
+中间件由 `.scripts/docker/install_middleware_desktop.sh` 以「拉取官方/预置镜像 + compose up」方式启动（`install_middleware_mac.sh` 为兼容转发入口）。FUXA 使用 `pull_fuxa.sh`。
+
+环境变量（节选）：
+
+| 变量 | 说明 |
+|------|------|
+| `EASYAIOT_DEPLOY_PROFILE` | `mini` / `standard` / `full` |
+| `DOCKER_MIRROR` / `DOCKER_MIRROR_FALLBACKS` | 国内镜像主源与回退链 |
+| `EASYAIOT_DOCKER_SKIP_MIRROR=1` | 跳过自动写 registry-mirrors |
+| `EASYAIOT_DOCKER_MEMORY_GB` 等 | 覆盖引擎资源目标 |
+| `EASYAIOT_DOCKER_SKIP_RESOURCES=1` | 跳过自动调内存 |
+| `HOST_IP` | 覆盖宿主机 IP（媒体 / GB28181） |
+
+### 与 Linux 部署的差异
+
+| 项 | Linux | macOS / Windows |
+|----|-------|-----------------|
+| 本地 `docker build` | 可选 | 禁止 |
+| `build-runtime` 推送 | 支持 | 不支持 |
+| Docker 镜像加速 | 可写 `/etc/docker/daemon.json` | 自动写用户级 `~/.docker/daemon.json`（同源变量）；FUXA 仍走专用脚本 |
+| 引擎内存调配 | 宿主机即引擎 | `resources` 调 Desktop / WSL2 / Colima |
+| 宿主机 IP | `ip` / `hostname` 探测 | macOS `ipconfig`；Windows `ipconfig` / PowerShell；可用 `HOST_IP=` 覆盖 |
+| 典型场景 | 生产 / CI | 开发机、演示、PoC |
+
+访问地址与 Linux 相同，本机一般为 `http://localhost:8888`。
+
+---
+
 ## 部署规格
 
 首次 `install` 时交互选择，结果保存在 `.scripts/docker/.deploy_profile`，后续 `start` / `stop` / `update` 自动沿用。
 
-| 选项 | 名称 | 推荐内存 | 适用场景 |
-|:----:|------|----------|----------|
-| 1 | **mini** | ≥ 4 GB | 边缘节点、PoC 验证 |
-| 2 | **standard** | ≥ 16 GB | 常规生产 |
-| 3 | **full**（默认） | ≥ 20 GB | 完整功能，含 APP H5 |
+| 选项 | 名称 | Linux 主机建议 | 桌面 Docker 引擎目标 | 适用场景 |
+|:----:|------|----------------|----------------------|----------|
+| 1 | **mini** | ≥ 4 GB | 4 GB | 边缘节点、PoC 验证 |
+| 2 | **standard** | ≥ 16 GB | 16 GB | 常规生产 / 演示 |
+| 3 | **full**（默认） | ≥ 20 GB | 24 GB（主机建议 ≥32 GB） | 完整功能，含 APP H5 / FUXA |
 
 ```bash
 .scripts/docker/install_linux.sh profile                              # 查看当前规格
@@ -181,26 +331,29 @@ export EASYAIOT_DEPLOY_PROFILE=full && sudo .../install_linux.sh install  # 非�
 
 ## 脚本命令参考
 
+> 下表以 **Linux** 入口为准。macOS / Windows 见 [macOS / Windows 镜像部署](#macos--windows-镜像部署)；桌面端无 `build` / `build-runtime`。
+
 ### 命令一览
 
-| 命令 | 说明 |
-|------|------|
-| `install` | 首次安装并启动 |
-| `start` / `stop` / `restart` | 启停控制 |
-| `status` | 查看运行状态 |
-| `logs [模块]` | 查看日志，如 `logs VIDEO` |
-| `verify` | 健康检查 |
-| `check` | Docker 环境检查 |
-| `update` | 更新镜像并重启 |
-| `pull` | 拉取预构建镜像 |
-| `build` | 本地重新构建镜像 |
-| `profile` | 查看部署规格 |
-| `analyze-logs` | 多模块日志合并 |
-| `analyze-disk` | 磁盘占用分析 |
-| `diagnose` | 进入【分析】子菜单 |
-| `clean` | 清理容器与镜像 ⚠️（含数据卷） |
-| `help` | 显示帮助 |
-| `menu` | 打开交互引导 |
+| 命令 | 说明 | Linux | macOS / Windows |
+|------|------|:----:|:---------------:|
+| `install` | 首次安装并启动 | ✓ | ✓ |
+| `start` / `stop` / `restart` | 启停控制 | ✓ | ✓ |
+| `status` | 查看运行状态 | ✓ | ✓ |
+| `logs [模块]` | 查看日志，如 `logs VIDEO` | ✓ | ✓ |
+| `verify` | 健康检查 | ✓ | ✓ |
+| `check` | Docker 环境检查 | ✓ | ✓ |
+| `update` | 更新镜像并重启 | ✓ | ✓（强制 pull） |
+| `pull` | 拉取预构建镜像 | ✓ | ✓ |
+| `build` | 本地重新构建镜像 | ✓ | ✗ |
+| `build-runtime` | 构建并推送运行时镜像 | ✓ | ✗ |
+| `profile` | 查看部署规格 | ✓ | ✓ |
+| `analyze-logs` | 多模块日志合并 | ✓ | ✓ |
+| `analyze-disk` | 磁盘占用分析 | ✓ | ✓ |
+| `diagnose` | 进入【分析】子菜单 | ✓ | ✓ |
+| `clean` | 清理容器与镜像 ⚠️（含数据卷） | ✓ | ✓ |
+| `help` | 显示帮助 | ✓ | ✓ |
+| `menu` | 打开交互引导 | ✓ | ✓ |
 
 ### 非交互日志采集
 
@@ -269,9 +422,15 @@ cd AI && ./install_linux.sh install                           # 单模块
 | Docker `permission denied` | `sudo usermod -aG docker $USER && newgrp docker` |
 | Compose 版本过低 | `sudo apt install -y docker-compose-plugin` |
 | 端口被占用 | `ss -tlnp \| grep <端口>` |
-| 安装失败 | `tail .scripts/docker/logs/install_linux_*.log` |
+| 安装失败 | `tail .scripts/docker/logs/install_linux_*.log`（桌面端对应 `install_mac_*.log` / `install_windows_*.log`） |
 | 服务正常但无法访问 | `verify` + 检查防火墙 |
 | 磁盘不足 | `df -h /`，建议预留 ≥ 300 GB |
+| macOS 提示需要 bash 4+ | `brew install bash` 后用 `/opt/homebrew/bin/bash`，或先 `install_mac.sh bootstrap` |
+| Windows 找不到 bash | 安装 [Git for Windows](https://git-scm.com/download/win) 或启用 WSL，再用 `install_windows.ps1` |
+| Docker Desktop 未启动 | 先打开 Docker Desktop，待引擎就绪后再 `install` / `pull` |
+| 桌面引擎内存不够 | `install_mac.sh resources` / `install_windows.ps1 resources`（full 目标 24GB） |
+| 桌面中间件拉不动 | `mirrors` 写入国内 registry-mirrors；FUXA 走 `pull_fuxa.sh`（1ms 优先） |
+| 桌面端执行 `build` 报错 | 预期行为；请改用 `pull` + `install`，或在 Linux 上 `build-runtime` |
 
 **故障信息采集：**
 
@@ -293,9 +452,9 @@ cd .scripts/docker && ./analyze_merge_logs.sh --non-interactive --modules all --
 
 | 项目 | 要求 |
 |------|------|
-| 操作系统 | Ubuntu 24.04+（建议 26.04）；亦支持 macOS、Windows、ARM、银河麒麟 |
+| 操作系统 | Ubuntu 24.04+（建议 26.04）；亦支持 macOS、Windows、CentOS/RHEL、ARM、银河麒麟 |
 | CPU | 最低 4 核，推荐 8 核+ |
-| 内存 | 取决于部署规格（full ≥ 20 GB，推荐 32 GB） |
+| 内存 | 取决于部署规格（Linux full ≥ 20 GB；桌面 full 引擎目标 24 GB，主机建议 ≥ 32 GB） |
 | 磁盘 | 最低 300 GB 可用，推荐 500 GB+ SSD |
 | GPU | 可选；AI 训练/推理建议 NVIDIA GPU（CUDA 12.8） |
 | Docker Compose | v2.35.0+ |
@@ -316,6 +475,6 @@ sudo usermod -aG docker $USER && newgrp docker
 
 ---
 
-**文档版本**：3.1  
-**最后更新**：2026-07-08  
-**脚本入口**：`.scripts/docker/install_linux.sh`（无参数 = 交互引导；`<命令>` = 直接执行）
+**文档版本**：3.3  
+**最后更新**：2026-08-01  
+**脚本入口**：Linux `.scripts/docker/install_linux.sh`；macOS `install_mac.sh`；Windows `install_windows.ps1` / `install_windows.sh`（无参数 = 交互引导；`<命令>` = 直接执行）。桌面另支持 `bootstrap` / `mirrors` / `resources`。PANEL 编译见 `COMPILE/README.md`。

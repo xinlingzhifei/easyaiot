@@ -38,13 +38,23 @@ public class FileServiceImpl implements FileService {
     private FileMapper fileMapper;
 
     @Override
+    public FileDO getFile(Long id) {
+        return fileMapper.selectById(id);
+    }
+
+    @Override
     public PageResult<FileDO> getFilePage(FilePageReqVO pageReqVO) {
         return fileMapper.selectPage(pageReqVO);
     }
 
     @Override
-    @SneakyThrows
     public String createFile(String name, String path, byte[] content) {
+        return createFileRecord(name, path, content).getUrl();
+    }
+
+    @Override
+    @SneakyThrows
+    public FileDO createFileRecord(String name, String path, byte[] content) {
         // 计算默认的 path 名
         String type = FileTypeUtils.getMineType(content, name);
         if (StrUtil.isEmpty(path)) {
@@ -69,7 +79,7 @@ public class FileServiceImpl implements FileService {
         file.setType(type);
         file.setSize(content.length);
         fileMapper.insert(file);
-        return url;
+        return file;
     }
 
     @Override

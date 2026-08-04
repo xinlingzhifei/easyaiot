@@ -9,6 +9,7 @@
 - [概述](#概述)
 - [兩種使用模式](#兩種使用模式)
 - [快速開始](#快速開始)
+- [macOS / Windows 鏡像部署](#macos--windows-鏡像部署)
 - [部署規格](#部署規格)
 - [腳本命令參考](#腳本命令參考)
 - [服務存取與連接埠](#服務存取與連接埠)
@@ -35,10 +36,11 @@ yFeiEye 採用 **Docker 容器化 + 統一安裝腳本** 部署，平台由基�
 | 系統 | 腳本 |
 |------|------|
 | Linux x86 | `.scripts/docker/install_linux.sh` |
+| CentOS / RHEL 系 | `.scripts/docker/install_linux_centos.sh` |
 | Linux ARM | `.scripts/docker/install_linux_arm.sh` |
 | 銀河麒麟 | `.scripts/docker/install_linux_kylin.sh` |
 | macOS | `.scripts/docker/install_mac.sh` |
-| Windows | `.scripts/docker/install_win.ps1` |
+| Windows | `.scripts/docker/install_windows.ps1` / `install_windows.sh` |
 
 ---
 
@@ -116,8 +118,8 @@ sudo .scripts/docker/install_linux.sh install
 
 ### 環境前提
 
-- 作業系統：**Ubuntu 24.04+**（建議 26.04）
-- Docker + Docker Compose **v2.35+**
+- 作業系統：**Ubuntu 24.04+**（建議 26.04）；亦支援 **CentOS/RHEL 系**、ARM、銀河麒麟
+- Docker + Docker Compose **v2.35+**（CentOS 可用 `install_linux_centos.sh` 自動安裝/升級 Docker CE）
 - 磁碟可用空間 **≥ 300 GB**
 
 ```bash
@@ -130,7 +132,12 @@ docker --version && docker compose version && docker ps
 git clone https://gitee.com/volara/easyaiot.git
 cd easyaiot
 
+# Ubuntu / 通用 Linux x86
 sudo .scripts/docker/install_linux.sh
+
+# CentOS / RHEL / Rocky / Alma
+# sudo .scripts/docker/install_linux_centos.sh
+
 # 1 部署 → 1 首次安裝 → 7 健康驗證
 ```
 
@@ -144,10 +151,17 @@ cd easyaiot
 
 # 可選：拉取預建構映像，縮短 install 耗時
 sudo .scripts/docker/install_linux.sh pull
+# CentOS：sudo .scripts/docker/install_linux_centos.sh pull
 
 sudo .scripts/docker/install_linux.sh install
+# CentOS：sudo .scripts/docker/install_linux_centos.sh install
+
 .scripts/docker/install_linux.sh verify
 ```
+
+### CentOS / RHEL 系說明
+
+適用 CentOS 7/8/Stream、Rocky、Alma、RHEL。入口 `install_linux_centos.sh` 會自動升級 Docker CE、配置鏡像源與 firewalld，再轉交 `install_linux.sh`。詳見簡體中文：[平台部署文档_zh.md](./平台部署文档_zh.md#centos--rhel-系说明)。
 
 ### 安裝耗時
 
@@ -157,6 +171,31 @@ sudo .scripts/docker/install_linux.sh install
 | 本地完整建構 | 30 分鐘～數小時 |
 
 `install` 執行流程：選擇部署規格 → 環境檢查 → 建立網路 → 按序部署中介軟體與業務模組 → 健康等待。詳見 [部署最佳實踐 - 一鍵部署](./部署最佳实践_zh_tw.md#一鍵部署與分步部署)。
+
+---
+
+## macOS / Windows 鏡像部署
+
+桌面端（macOS、Windows）**僅支援預建構映像部署**，不在本機編譯。詳見簡體中文專文：
+
+- [平台部署文档_zh.md · macOS / Windows](./平台部署文档_zh.md#macos--windows-镜像部署)
+- [平台macOS部署文档_zh_tw.md](./平台macOS部署文档_zh_tw.md)（簡體：[平台macOS部署文档_zh.md](./平台macOS部署文档_zh.md)）
+- [平台Windows部署文档_zh_tw.md](./平台Windows部署文档_zh_tw.md)（簡體：[平台Windows部署文档_zh.md](./平台Windows部署文档_zh.md)）
+
+```bash
+# macOS
+bash .scripts/docker/install_mac.sh install
+
+# Windows（Git Bash / WSL）
+bash .scripts/docker/install_windows.sh install
+```
+
+```powershell
+# Windows PowerShell
+.\.scripts\docker\install_windows.ps1 install
+```
+
+不支援：`build` / `build-runtime`。訪問位址：`http://localhost:8888`。
 
 ---
 
@@ -293,7 +332,7 @@ cd .scripts/docker && ./analyze_merge_logs.sh --non-interactive --modules all --
 
 | 項目 | 要求 |
 |------|------|
-| 作業系統 | Ubuntu 24.04+（建議 26.04）；亦支援 macOS、Windows、ARM、銀河麒麟 |
+| 作業系統 | Ubuntu 24.04+（建議 26.04）；亦支援 macOS、Windows、CentOS/RHEL、ARM、銀河麒麟 |
 | CPU | 最低 4 核，建議 8 核+ |
 | 記憶體 | 取決於部署規格（full ≥ 20 GB，建議 32 GB） |
 | 磁碟 | 最低 300 GB 可用，建議 500 GB+ SSD |
@@ -316,6 +355,6 @@ sudo usermod -aG docker $USER && newgrp docker
 
 ---
 
-**文件版本**：3.1  
-**最後更新**：2026-07-08  
-**腳本入口**：`.scripts/docker/install_linux.sh`（無參數 = 互動引導；`<命令>` = 直接執行）
+**文件版本**：3.2  
+**最後更新**：2026-07-30  
+**腳本入口**：Linux `install_linux.sh`；macOS `install_mac.sh`；Windows `install_windows.ps1` / `install_windows.sh`

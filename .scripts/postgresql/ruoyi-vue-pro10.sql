@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict xPYi1EkpBOVneb5K5lQZbu9dkE0N7WecYkkbwIjnortYAlfe1m81cfmcUBmC4VP
+\restrict lHKTRHsiAYh9gijjAFrIL3pbtB0G71ugGq0SDGq6TzddFa2Xib2TZ96hG3qKwvu
 
 -- Dumped from database version 18.4 (Debian 18.4-1.pgdg13+1)
 -- Dumped by pg_dump version 18.4 (Debian 18.4-1.pgdg13+1)
@@ -27,10 +27,10 @@ DROP DATABASE IF EXISTS "ruoyi-vue-pro20";
 CREATE DATABASE "ruoyi-vue-pro20" WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.utf8';
 
 
-\unrestrict xPYi1EkpBOVneb5K5lQZbu9dkE0N7WecYkkbwIjnortYAlfe1m81cfmcUBmC4VP
+\unrestrict lHKTRHsiAYh9gijjAFrIL3pbtB0G71ugGq0SDGq6TzddFa2Xib2TZ96hG3qKwvu
 \encoding SQL_ASCII
 \connect -reuse-previous=on "dbname='ruoyi-vue-pro20'"
-\restrict xPYi1EkpBOVneb5K5lQZbu9dkE0N7WecYkkbwIjnortYAlfe1m81cfmcUBmC4VP
+\restrict lHKTRHsiAYh9gijjAFrIL3pbtB0G71ugGq0SDGq6TzddFa2Xib2TZ96hG3qKwvu
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1927,6 +1927,128 @@ CREATE SEQUENCE public.infra_job_seq
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
+
+
+--
+-- Name: infra_platform_branding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.infra_platform_branding (
+    id bigint NOT NULL,
+    platform_name character varying(100),
+    platform_logo_file_id bigint,
+    dashboard_title character varying(100),
+    login_name character varying(100),
+    login_logo_file_id bigint,
+    login_form_title character varying(100),
+    login_bg_light_file_id bigint,
+    login_bg_dark_file_id bigint,
+    default_platform_name character varying(100),
+    default_platform_logo_file_id bigint,
+    default_dashboard_title character varying(100),
+    default_login_name character varying(100),
+    default_login_logo_file_id bigint,
+    default_login_form_title character varying(100),
+    default_login_bg_light_file_id bigint,
+    default_login_bg_dark_file_id bigint,
+    creator character varying(64) DEFAULT ''::character varying,
+    create_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updater character varying(64) DEFAULT ''::character varying,
+    update_time timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted smallint DEFAULT 0 NOT NULL,
+    CONSTRAINT infra_platform_branding_singleton CHECK ((id = 1))
+);
+
+
+--
+-- Name: TABLE infra_platform_branding; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.infra_platform_branding IS '全平台唯一品牌配置表';
+
+
+--
+-- Name: COLUMN infra_platform_branding.platform_logo_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.platform_logo_file_id IS '平台 Logo 对应 infra_file.id，空值使用内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.login_logo_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.login_logo_file_id IS '登录 Logo 对应 infra_file.id，空值使用内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.login_bg_light_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.login_bg_light_file_id IS '浅色登录背景对应 infra_file.id，空值使用内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.login_bg_dark_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.login_bg_dark_file_id IS '深色登录背景对应 infra_file.id，空值使用内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_platform_name; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_platform_name IS '数据库维护的平台名称初始值，空值使用改造前内置默认值';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_platform_logo_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_platform_logo_file_id IS '数据库维护的平台 Logo 初始文件 ID，空值使用改造前内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_dashboard_title; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_dashboard_title IS '数据库维护的大屏标题初始值，空值使用改造前内置默认值';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_login_name; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_login_name IS '数据库维护的登录页名称初始值，空值使用改造前内置默认值';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_login_logo_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_login_logo_file_id IS '数据库维护的登录 Logo 初始文件 ID，空值使用改造前内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_login_form_title; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_login_form_title IS '数据库维护的登录表单标题初始值，空值使用改造前内置默认值';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_login_bg_light_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_login_bg_light_file_id IS '数据库维护的浅色登录背景初始文件 ID，空值使用改造前内置默认图片';
+
+
+--
+-- Name: COLUMN infra_platform_branding.default_login_bg_dark_file_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.infra_platform_branding.default_login_bg_dark_file_id IS '数据库维护的深色登录背景初始文件 ID，空值使用改造前内置默认图片';
 
 
 --
@@ -8367,6 +8489,14 @@ COPY public.infra_job_log (id, job_id, handler_name, handler_param, execute_inde
 
 
 --
+-- Data for Name: infra_platform_branding; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.infra_platform_branding (id, platform_name, platform_logo_file_id, dashboard_title, login_name, login_logo_file_id, login_form_title, login_bg_light_file_id, login_bg_dark_file_id, default_platform_name, default_platform_logo_file_id, default_dashboard_title, default_login_name, default_login_logo_file_id, default_login_form_title, default_login_bg_light_file_id, default_login_bg_dark_file_id, creator, create_time, updater, update_time, deleted) FROM stdin;
+\.
+
+
+--
 -- Data for Name: qrtz_blob_triggers; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -8429,8 +8559,8 @@ COPY public.qrtz_paused_trigger_grps (sched_name, trigger_group) FROM stdin;
 --
 
 COPY public.qrtz_scheduler_state (sched_name, instance_name, last_checkin_time, checkin_interval) FROM stdin;
-schedulerName	ubuntu1784610926112	1784621037936	15000
-schedulerName	ubuntu1784610868383	1784621042109	15000
+schedulerName	e2fae02ab02b1785826736637	1785827811496	15000
+schedulerName	5fd4acd179ab1785826750306	1785827812929	15000
 \.
 
 
@@ -9988,6 +10118,15 @@ COPY public.system_menu (id, name, permission, type, sort, parent_id, path, icon
 3124	部署下线	visualize:deploy:offline	3	45	3101				\N	0	t	t	t	1	2026-07-21 13:00:39.505445	1	2026-07-21 13:00:39.505445	0
 2972	集群管理	node:node:query	2	0	0	node/index	ant-design:ungroup-outlined	node/index	ComputeNodeManage	0	t	t	t	1	2026-06-11 10:46:06.011163	1	2026-07-21 13:25:53.05001	0
 3101	可视化管理	visualize:project:query	2	1	0	index	ant-design:fund-outlined	visualize/index	Visualize	0	t	t	t	1	2026-07-21 10:53:12.992697	1	2026-07-21 14:22:48.737176	0
+3200	系统对接		1	47	0	/transform	ant-design:api-outlined	\N	\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3201	系统对接	transform:pipeline:query	2	1	3200	index	ant-design:api-outlined	transform/index	Transform	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3202	对接概览查询	transform:overview:query	3	1	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3203	目标系统查询	transform:party:query	3	2	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3204	目标系统维护	transform:party:update	3	3	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3205	推送规则查询	transform:contract:query	3	4	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3206	推送规则维护	transform:contract:update	3	5	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3207	推送记录再推	transform:outbox:replay	3	6	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
+3208	失败记录再推	transform:dlq:replay	3	7	3201				\N	0	t	t	t	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0
 \.
 
 
@@ -11147,6 +11286,15 @@ COPY public.system_role_menu (id, role_id, menu_id, creator, create_time, update
 5992	1	3123	1	2026-07-21 13:00:39.505445	1	2026-07-21 13:00:39.505445	0	1
 5993	1	3124	1	2026-07-21 13:00:39.505445	1	2026-07-21 13:00:39.505445	0	1
 5969	1	3100	1	2026-07-21 10:53:12.992697	1	2026-07-21 10:53:12.992697	1	1
+5994	1	3200	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+5995	1	3201	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+5996	1	3202	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+5997	1	3203	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+5998	1	3204	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+5999	1	3205	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+6000	1	3206	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+6001	1	3207	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
+6002	1	3208	1	2026-07-28 16:09:55.955643	1	2026-07-28 16:09:55.955643	0	1
 \.
 
 
@@ -11305,7 +11453,7 @@ COPY public.system_users (id, username, password, nickname, remark, dept_id, pos
 131	hh	$2a$04$jyH9h6.gaw8mpOjPfHIpx.8as2Rzfcmdlj5rlJFwgCw4rsv/MTb2K	呵呵	\N	100	[]	777@qq.com	15601882312	1		0		\N	1	2024-04-27 08:45:56	1	2024-04-27 08:45:56	1	1	0	0
 100	yudao	$2a$10$11U48RhyJ5pSBYWSn12AD./ld671.ycSzJHbyrtpeoMeYiw31eo8a	王总	不要吓我	104	[1]	yudao@iocoder.cn	15601691300	1		1	127.0.0.1	2022-07-09 23:03:33		2021-01-07 09:07:17	1	2025-08-14 09:39:37.486	0	1	0	0
 118	goudan	$2a$04$A7vqK6hfgoPeOGDgZoC1BOnVwTpDyBtQnlsOWBIqM8Wj9A6NTr0Tq	狗蛋	\N	103	[1]		15601691239	1		0	0:0:0:0:0:0:0:1	2024-07-24 11:23:40.932	1	2022-07-09 17:44:43	1	2025-08-14 11:34:37.076	0	1	0	0
-1	admin	$2a$10$mRMIYLDtRHlf6.9ipiqH1.Z.bh/R9dO9d5iHiGYPigi6r5KOoR2Wm	IoT	管理员	103	[1]	aoteman@126.com	18818260277	1	http://test.yudao.iocoder.cn/113dcbab48d22fc988151b98be2b8b4f262effdb5305c171cf1fe9a71801377a.png	0	127.0.0.1	2026-07-17 15:02:47.585333	admin	2021-01-05 17:03:47	\N	2026-07-17 15:02:47.589157	0	1	0	0
+1	admin	$2a$10$mRMIYLDtRHlf6.9ipiqH1.Z.bh/R9dO9d5iHiGYPigi6r5KOoR2Wm	IoT	管理员	103	[1]	aoteman@126.com	18818260277	1	http://test.yudao.iocoder.cn/113dcbab48d22fc988151b98be2b8b4f262effdb5305c171cf1fe9a71801377a.png	0	172.18.0.23	2026-08-03 10:15:02.650386	admin	2021-01-05 17:03:47	\N	2026-08-03 10:15:02.651936	0	1	0	0
 \.
 
 
@@ -11516,7 +11664,7 @@ SELECT pg_catalog.setval('public.system_dict_type_seq', 620, false);
 -- Name: system_login_log_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_login_log_seq', 3082, true);
+SELECT pg_catalog.setval('public.system_login_log_seq', 3085, true);
 
 
 --
@@ -11572,7 +11720,7 @@ SELECT pg_catalog.setval('public.system_notify_template_seq', 1, false);
 -- Name: system_oauth2_access_token_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_oauth2_access_token_seq', 6058, true);
+SELECT pg_catalog.setval('public.system_oauth2_access_token_seq', 6064, true);
 
 
 --
@@ -11621,7 +11769,7 @@ SELECT pg_catalog.setval('public.system_post_seq', 6, false);
 -- Name: system_role_menu_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.system_role_menu_seq', 5993, true);
+SELECT pg_catalog.setval('public.system_role_menu_seq', 6002, true);
 
 
 --
@@ -11762,6 +11910,14 @@ SELECT pg_catalog.setval('public.yudao_demo03_grade_seq', 10, false);
 --
 
 SELECT pg_catalog.setval('public.yudao_demo03_student_seq', 10, false);
+
+
+--
+-- Name: infra_platform_branding infra_platform_branding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.infra_platform_branding
+    ADD CONSTRAINT infra_platform_branding_pkey PRIMARY KEY (id);
 
 
 --
@@ -12415,5 +12571,5 @@ ALTER TABLE ONLY public.qrtz_triggers
 -- PostgreSQL database dump complete
 --
 
-\unrestrict xPYi1EkpBOVneb5K5lQZbu9dkE0N7WecYkkbwIjnortYAlfe1m81cfmcUBmC4VP
+\unrestrict lHKTRHsiAYh9gijjAFrIL3pbtB0G71ugGq0SDGq6TzddFa2Xib2TZ96hG3qKwvu
 

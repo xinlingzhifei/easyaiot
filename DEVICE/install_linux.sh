@@ -20,6 +20,7 @@ source "${YFEIEYE_ROOT}/.scripts/docker/init-build-cache-dirs.sh"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 MIDDLEWARE_ENV_FILE="${YFEIEYE_MIDDLEWARE_ENV_FILE:-${YFEIEYE_ROOT}/.scripts/docker/.env.docker}"
 DEVICE_COMPOSE_ENV_FILE="${YFEIEYE_DEVICE_COMPOSE_ENV_FILE:-${SCRIPT_DIR}/.env}"
+COMPOSE_DESKTOP_FILE="${SCRIPT_DIR}/docker-compose.desktop.yaml"
 # shellcheck source=../.scripts/docker/deploy_profile.sh
 source "${YFEIEYE_ROOT}/.scripts/docker/deploy_profile.sh"
 DEVICE_COMPOSE_PROFILE_ARGS=()
@@ -35,8 +36,15 @@ refresh_device_compose_profile_args() {
     fi
 }
 
+# 桌面端（Windows/macOS Docker Desktop）使用 bridge override，避免 host 网络端口不可达
 device_compose() {
-    $DOCKER_COMPOSE --env-file "$MIDDLEWARE_ENV_FILE" --env-file "$DEVICE_COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" ${DEVICE_COMPOSE_PROFILE_ARGS[@]+"${DEVICE_COMPOSE_PROFILE_ARGS[@]}"} "$@"
+    local -a files=(-f "$COMPOSE_FILE")
+    if [ -f "$COMPOSE_DESKTOP_FILE" ] \
+        && { [ -n "${EASYAIOT_DESKTOP_OS:-}" ] || [ "${EASYAIOT_COMPOSE_DESKTOP:-0}" = "1" ]; }; then
+        files+=(-f "$COMPOSE_DESKTOP_FILE")
+    fi
+    $DOCKER_COMPOSE --env-file "$MIDDLEWARE_ENV_FILE" --env-file "$DEVICE_COMPOSE_ENV_FILE" \
+        "${files[@]}" ${DEVICE_COMPOSE_PROFILE_ARGS[@]+"${DEVICE_COMPOSE_PROFILE_ARGS[@]}"} "$@"
 }
 
 prepare_device_state_dirs() {

@@ -35,10 +35,11 @@ yFeiEye развёртывается с помощью **Docker-контейне
 | ОС | Скрипт |
 |----|--------|
 | Linux x86 | `.scripts/docker/install_linux.sh` |
+| CentOS / RHEL | `.scripts/docker/install_linux_centos.sh` |
 | Linux ARM | `.scripts/docker/install_linux_arm.sh` |
 | Kylin | `.scripts/docker/install_linux_kylin.sh` |
 | macOS | `.scripts/docker/install_mac.sh` |
-| Windows | `.scripts/docker/install_win.ps1` |
+| Windows | `.scripts/docker/install_windows.ps1` / `install_windows.sh` |
 
 ---
 
@@ -116,8 +117,8 @@ sudo .scripts/docker/install_linux.sh install
 
 ### Предварительные требования
 
-- ОС: **Ubuntu 24.04+** (рекомендуется 26.04)
-- Docker + Docker Compose **v2.35+**
+- ОС: **Ubuntu 24.04+** (рекомендуется 26.04); также **CentOS/RHEL**, ARM, Kylin
+- Docker + Docker Compose **v2.35+** (на CentOS: `install_linux_centos.sh` может установить/обновить Docker CE)
 - **≥ 300 ГБ** свободного места на диске
 
 ```bash
@@ -131,6 +132,7 @@ git clone https://gitee.com/volara/easyaiot.git
 cd easyaiot
 
 sudo .scripts/docker/install_linux.sh
+# CentOS / RHEL: sudo .scripts/docker/install_linux_centos.sh
 # 1 Deploy → 1 First install → 7 Health verify
 ```
 
@@ -144,10 +146,17 @@ cd easyaiot
 
 # Необязательно: загрузить предсобранные образы для сокращения времени установки
 sudo .scripts/docker/install_linux.sh pull
+# CentOS: sudo .scripts/docker/install_linux_centos.sh pull
 
 sudo .scripts/docker/install_linux.sh install
+# CentOS: sudo .scripts/docker/install_linux_centos.sh install
+
 .scripts/docker/install_linux.sh verify
 ```
+
+### Примечания CentOS / RHEL
+
+Используйте `.scripts/docker/install_linux_centos.sh` (CentOS 7/8/Stream, Rocky, Alma, RHEL). Подробности (ZH): [平台部署文档_zh.md](./平台部署文档_zh.md#centos--rhel-系说明).
 
 ### Длительность установки
 
@@ -157,6 +166,17 @@ sudo .scripts/docker/install_linux.sh install
 | Полная локальная сборка | от 30 минут до нескольких часов |
 
 Процесс `install`: выбор профиля → проверка окружения → создание сети → развёртывание middleware и модулей → ожидание health-check. См. [Развёртывание в один клик и пошаговое](./部署最佳实践_ru.md#развёртывание-в-один-клик).
+
+---
+
+## Развёртывание macOS / Windows (только образы)
+
+Настольные ОС поддерживают только **готовые образы** (`install_mac.sh` / `install_windows.ps1` / `install_windows.sh`). Локальный `build` / `build-runtime` недоступен. Подробности: [macOS](./平台macOS部署文档_ru.md), [Windows](./平台Windows部署文档_ru.md). Обзор (ZH): [平台部署文档_zh.md](./平台部署文档_zh.md#macos--windows-镜像部署).
+
+```bash
+bash .scripts/docker/install_mac.sh install
+bash .scripts/docker/install_windows.sh install
+```
 
 ---
 
@@ -293,7 +313,7 @@ cd .scripts/docker && ./analyze_merge_logs.sh --non-interactive --modules all --
 
 | Параметр | Требование |
 |------|-------------|
-| ОС | Ubuntu 24.04+ (рекомендуется 26.04); также macOS, Windows, ARM, Kylin |
+| ОС | Ubuntu 24.04+ (рекомендуется 26.04); также macOS, Windows, CentOS/RHEL, ARM, Kylin |
 | CPU | Мин. 4 ядра, рекомендуется 8+ |
 | RAM | Зависит от профиля (full ≥ 20 ГБ, рекомендуется 32 ГБ) |
 | Диск | Мин. 300 ГБ свободно, рекомендуется 500 ГБ+ SSD |

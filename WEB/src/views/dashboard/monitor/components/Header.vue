@@ -3,7 +3,14 @@
     <div class="global-bar">
       <div class="header-left">
         <div class="brand-mark" aria-hidden="true">
-          <span>yF</span>
+          <img
+            v-if="platformLogo"
+            data-testid="monitor-platform-logo"
+            class="platform-logo"
+            :src="platformLogo"
+            alt=""
+          />
+          <span v-else>yF</span>
         </div>
         <div class="brand-copy">
           <div class="title-row">
@@ -94,6 +101,8 @@ const emit = defineEmits<{
 const router = useRouter()
 const adminEntryLabel = '管理后台'
 const { config } = usePlatformBranding()
+// IOT 首页与管理后台共用平台 Logo，保存后通过响应式配置即时更新
+const platformLogo = computed(() => config.value.platformLogo)
 const dashboardTitle = computed(() => config.value.dashboardTitle)
 const safeDashboardHealth = computed<DashboardHealth>(() => props.dashboardHealth ?? {
   status: 'loading',
@@ -220,6 +229,13 @@ onUnmounted(() => {
   transform: skewX(-7deg);
 
   span {
+    transform: skewX(7deg);
+  }
+
+  .platform-logo {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
     transform: skewX(7deg);
   }
 }

@@ -57,11 +57,12 @@ FUXA_PORT=1881
 [ -n "${FUXA_IMAGE+x}" ] && _FUXA_IMAGE_FROM_ENV=1 || _FUXA_IMAGE_FROM_ENV=
 [ -n "${FUXA_TAG+x}" ] && _FUXA_TAG_FROM_ENV=1 || _FUXA_TAG_FROM_ENV=
 FUXA_TAG="${FUXA_TAG:-1.3.3}"
-FUXA_IMAGE="${FUXA_IMAGE:-proxy.vvvv.ee/frangoteam/fuxa:${FUXA_TAG}}"
+FUXA_IMAGE="${FUXA_IMAGE:-docker.1panel.live/frangoteam/fuxa:${FUXA_TAG}}"
 FUXA_IMAGE_ALIAS="${FUXA_IMAGE_ALIAS:-frangoteam/fuxa:${FUXA_TAG}}"
 SSO_HTML="${SCRIPT_DIR}/../fuxa/easyaiot-sso.html"
 SEED_SCRIPT="${SCRIPT_DIR}/../fuxa/seed_fuxa_demo.sh"
-DOCKER_MIRROR="${DOCKER_MIRROR:-https://proxy.vvvv.ee/}"
+# FUXA 专用：与通用中间件不同，优先 1ms（DaoCloud 对 frangoteam/fuxa 常 403）
+DOCKER_MIRROR="${DOCKER_MIRROR:-https://docker.1ms.run/}"
 
 FORCE_OS_CHECK=false
 WAIT_READY=true
@@ -109,7 +110,7 @@ CentOS 7.9 单独部署 FUXA（Web SCADA / HMI 组态）
   --seed-only         仅恢复演示工程（容器已运行时用；数据被改删后推荐）
 
 环境变量:
-  FUXA_IMAGE / FUXA_TAG   覆盖镜像（默认 proxy.vvvv.ee/frangoteam/fuxa:1.3.3）
+  FUXA_IMAGE / FUXA_TAG   覆盖镜像（默认 docker.1panel.live/frangoteam/fuxa:1.3.3；拉取优先 1ms）
   DOCKER_MIRROR           镜像加速器地址
   FUXA_URL                --seed/--seed-only 时覆盖导入地址（默认 http://127.0.0.1:1881）
 
@@ -367,7 +368,7 @@ configure_docker_mirror_local() {
 
     mkdir -p /etc/docker
 
-    if [ -f "$docker_config_file" ] && grep -qE 'proxy\.vvvv\.ee|docker\.m\.daocloud\.io|1panel\.live' "$docker_config_file" 2>/dev/null; then
+    if [ -f "$docker_config_file" ] && grep -qE 'docker\.m\.daocloud\.io|1panel\.live|1ms\.run' "$docker_config_file" 2>/dev/null; then
         print_success "Docker 镜像源已配置"
         return 0
     fi
@@ -507,13 +508,13 @@ ensure_fuxa_image() {
         fi
     fi
 
-    # 回退：直连常见代理
+    # 回退：直连常见代理（与 pull_fuxa.sh 顺序一致：1ms 优先）
     local candidates=(
-        "${FUXA_IMAGE}"
-        "proxy.vvvv.ee/frangoteam/fuxa:${FUXA_TAG}"
-        "docker.1panel.live/frangoteam/fuxa:${FUXA_TAG}"
         "docker.1ms.run/frangoteam/fuxa:${FUXA_TAG}"
+        "docker.1panel.live/frangoteam/fuxa:${FUXA_TAG}"
         "docker.m.daocloud.io/frangoteam/fuxa:${FUXA_TAG}"
+        "frangoteam/fuxa:${FUXA_TAG}"
+        "${FUXA_IMAGE}"
     )
 
     local pulled=false src
@@ -538,7 +539,7 @@ ensure_fuxa_image() {
 
     print_error "无法拉取 FUXA 镜像"
     print_info "可手动: bash ${SCRIPT_DIR}/pull_fuxa.sh"
-    print_info "或: docker pull proxy.vvvv.ee/frangoteam/fuxa:${FUXA_TAG}"
+    print_info "或: docker pull docker.1ms.run/frangoteam/fuxa:${FUXA_TAG} && docker tag docker.1ms.run/frangoteam/fuxa:${FUXA_TAG} ${FUXA_IMAGE}"
     exit 1
 }
 

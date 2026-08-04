@@ -35,10 +35,11 @@ yFeiEye는 **Docker 컨테이너와 통합 설치 스크립트**를 통해 배�
 | OS | 스크립트 |
 |----|--------|
 | Linux x86 | `.scripts/docker/install_linux.sh` |
+| CentOS / RHEL | `.scripts/docker/install_linux_centos.sh` |
 | Linux ARM | `.scripts/docker/install_linux_arm.sh` |
 | Kylin | `.scripts/docker/install_linux_kylin.sh` |
 | macOS | `.scripts/docker/install_mac.sh` |
-| Windows | `.scripts/docker/install_win.ps1` |
+| Windows | `.scripts/docker/install_windows.ps1` / `install_windows.sh` |
 
 ---
 
@@ -116,8 +117,8 @@ sudo .scripts/docker/install_linux.sh install
 
 ### 사전 요건
 
-- OS: **Ubuntu 24.04+** (26.04 권장)
-- Docker + Docker Compose **v2.35+**
+- OS: **Ubuntu 24.04+** (26.04 권장); **CentOS/RHEL**, ARM, Kylin도 지원
+- Docker + Docker Compose **v2.35+** (CentOS에서는 `install_linux_centos.sh`로 Docker CE 설치/업그레이드 가능)
 - **≥ 300 GB** 여유 디스크 공간
 
 ```bash
@@ -131,6 +132,7 @@ git clone https://gitee.com/volara/easyaiot.git
 cd easyaiot
 
 sudo .scripts/docker/install_linux.sh
+# CentOS / RHEL: sudo .scripts/docker/install_linux_centos.sh
 # 1 Deploy → 1 First install → 7 Health verify
 ```
 
@@ -144,10 +146,17 @@ cd easyaiot
 
 # 선택: 사전 빌드 이미지를 가져와 설치 시간 단축
 sudo .scripts/docker/install_linux.sh pull
+# CentOS: sudo .scripts/docker/install_linux_centos.sh pull
 
 sudo .scripts/docker/install_linux.sh install
+# CentOS: sudo .scripts/docker/install_linux_centos.sh install
+
 .scripts/docker/install_linux.sh verify
 ```
+
+### CentOS / RHEL 참고
+
+`.scripts/docker/install_linux_centos.sh` 사용 (CentOS 7/8/Stream, Rocky, Alma, RHEL). 상세(ZH): [平台部署文档_zh.md](./平台部署文档_zh.md#centos--rhel-系说明).
 
 ### 설치 소요 시간
 
@@ -157,6 +166,17 @@ sudo .scripts/docker/install_linux.sh install
 | 로컬 전체 빌드 | 30분~수시간 |
 
 `install` 흐름: 프로필 선택 → 환경 확인 → 네트워크 생성 → 미들웨어 및 모듈 배포 → 상태 대기. [원클릭 및 단계별 배포](./部署最佳实践_ko.md#원클릭-배포) 참조.
+
+---
+
+## macOS / Windows 이미지 전용 배포
+
+데스크톱은 **사전 빌드 이미지**만 지원합니다 (`install_mac.sh` / `install_windows.ps1` / `install_windows.sh`). 로컬 `build` / `build-runtime` 불가. 상세: [macOS](./平台macOS部署文档_ko.md), [Windows](./平台Windows部署文档_ko.md). 개요(ZH): [平台部署文档_zh.md](./平台部署文档_zh.md#macos--windows-镜像部署).
+
+```bash
+bash .scripts/docker/install_mac.sh install
+bash .scripts/docker/install_windows.sh install
+```
 
 ---
 
@@ -293,7 +313,7 @@ cd .scripts/docker && ./analyze_merge_logs.sh --non-interactive --modules all --
 
 | 항목 | 요구사항 |
 |------|----------|
-| OS | Ubuntu 24.04+ (26.04 권장); macOS, Windows, ARM, Kylin도 지원 |
+| OS | Ubuntu 24.04+ (26.04 권장); macOS, Windows, CentOS/RHEL, ARM, Kylin도 지원 |
 | CPU | 최소 4코어, 8코어 이상 권장 |
 | RAM | 프로필에 따라 다름 (full ≥ 20 GB, 32 GB 권장) |
 | 디스크 | 최소 300 GB 여유, 500 GB+ SSD 권장 |

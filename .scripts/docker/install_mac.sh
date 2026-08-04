@@ -1,51 +1,92 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 # ============================================
 # yFeiEye 统一安装脚本 (macOS 版本)
 # ============================================
 # 使用方法：
-#   ./install_mac.sh [命令]
+#   ./install_mac.sh bootstrap    # 一键安装前置依赖（bash4 + Docker Desktop）
+#   ./install_mac.sh check        # 前置环境自检（打印前置操作清单）
+#   ./install_mac.sh install      # 拉取预构建镜像并安装启动
+#   ./install_mac.sh pull         # 仅拉取预构建镜像
+#   ./install_mac.sh start|stop|restart|status|logs|update|verify
 #
-# 可用命令：
-#   install    - 安装并启动所有服务（首次运行）
-#   start      - 启动所有服务
-#   stop       - 停止所有服务
-#   restart    - 重启所有服务
-#   status     - 查看所有服务状态
-#   logs       - 查看服务日志
-#   build      - 重新构建所有镜像
-#   clean      - 清理所有容器和镜像
-#   update     - 更新并重启所有服务
-#   verify     - 验证所有服务是否启动成功
+# 首次部署建议顺序：
+#   bootstrap → check → install
 #
-# 部署形态（EASYAIOT_DEPLOY_PROFILE）：
-#   mini(1)     - 4G：iot-system + VIDEO/AI/WEB（无可视化）
-#   standard(2) - 16G：不含 TDengine/iot-device/iot-tdengine/iot-visualize 等（含 EMQX）
-#   full(3)     - 全量（默认；含 iot-visualize/VISUALIZE）
+# 说明：
+#   - 仅支持通过远程预构建镜像部署，不支持本地编译（build / build-runtime）
+#   - 部署前会做前置环境检测；不满足时打印安装指引并中止
+#   - 需要 Docker Desktop；建议 bash 4+（Homebrew: brew install bash）
 # ============================================
 
-# 确保使用 bash 执行此脚本
-if [ -z "$BASH_VERSION" ]; then
-    # 如果当前 shell 不是 bash，使用 bash 重新执行
-    if command -v bash &> /dev/null; then
-        exec bash "$0" "$@"
-    else
-        echo "错误: 需要 bash 环境，但未找到 bash 命令" >&2
+# 确保 bash 执行
+if [ -z "${BASH_VERSION:-}" ]; then
+  if command -v bash >/dev/null 2>&1; then
+    exec bash "$0" "$@"
+  fi
+  echo "错误: 需要 bash 环境" >&2
+  exit 1
+fi
+
+# macOS 自带 bash 3.2；runtime_image 等脚本需要 bash 4+（关联数组）
+# bootstrap 允许在 bash 3.2 下先装 Homebrew bash，再自动用 bash4 重入
+if [ -z "${EASYAIOT_BASH_REEXEC:-}" ]; then
+  _need_bash4=0
+  if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    _need_bash4=1
+  fi
+  if [ "$_need_bash4" -eq 1 ]; then
+    export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
+    for _b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+      if [ -x "$_b" ] && "$_b" -c '[[ ${BASH_VERSINFO[0]} -ge 4 ]]' 2>/dev/null; then
+        export EASYAIOT_BASH_REEXEC=1
+        export PATH="$(dirname "$_b"):${PATH}"
+        exec "$_b" "$0" "$@"
+      fi
+    done
+
+    # 尚未有 bash4：若是 bootstrap，先 brew install bash 再重入
+    _cmd="${1:-}"
+    if [ "$_cmd" = "bootstrap" ] || [ "$_cmd" = "deps" ]; then
+      echo "========================================="
+      echo "  macOS 前置：检测到系统 Bash ${BASH_VERSION}"
+      echo "  部署脚本需要 Bash 4+，正在通过 Homebrew 安装..."
+      echo "========================================="
+      if ! command -v brew >/dev/null 2>&1; then
+        echo "错误: 未找到 Homebrew，请先安装: https://brew.sh" >&2
+        echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" >&2
         exit 1
+      fi
+      if ! HOMEBREW_NO_AUTO_UPDATE=1 brew install bash; then
+        echo "错误: brew install bash 失败" >&2
+        exit 1
+      fi
+      for _b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        if [ -x "$_b" ] && "$_b" -c '[[ ${BASH_VERSINFO[0]} -ge 4 ]]' 2>/dev/null; then
+          export EASYAIOT_BASH_REEXEC=1
+          export PATH="$(dirname "$_b"):${PATH}"
+          echo "已安装 Bash 4+，继续 bootstrap..."
+          exec "$_b" "$0" "$@"
+        fi
+      done
+      echo "错误: brew install bash 后仍未找到 bash 4+" >&2
+      exit 1
     fi
+
+    echo "错误: macOS 部署需要 bash 4+（当前: ${BASH_VERSION}）" >&2
+    echo "" >&2
+    echo "前置操作：" >&2
+    echo "  1) 一键安装依赖:  bash .scripts/docker/install_mac.sh bootstrap" >&2
+    echo "  2) 或手动:        brew install bash" >&2
+    echo "  3) 然后用:        /opt/homebrew/bin/bash .scripts/docker/install_mac.sh check" >&2
+    echo "" >&2
+    exit 1
+  fi
 fi
 
 set -e
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# 项目根目录（从.scripts/docker回到项目根目录）
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # 脚本所在目录
@@ -1252,4 +1293,3 @@ if [ -n "$LOG_FILE" ] && [ -f "$LOG_FILE" ]; then
     echo ""
     print_info "日志文件已保存到: $LOG_FILE"
 fi
-
