@@ -145,6 +145,7 @@ AGENT_PORT="${EASYAIOT_AGENT_PORT:-9100}"
 PYTHON="$(resolve_default_python)"
 AGENT_BOOTSTRAP_WAIT_SECONDS="${AGENT_BOOTSTRAP_WAIT_SECONDS:-180}"
 AGENT_BOOTSTRAP_RETRY_INTERVAL="${AGENT_BOOTSTRAP_RETRY_INTERVAL:-3}"
+PLATFORM_AGENT_BOOTSTRAP_TOKEN="${EASYAIOT_PLATFORM_AGENT_BOOTSTRAP_TOKEN:-${PLATFORM_AGENT_BOOTSTRAP_TOKEN:-}}"
 
 # CentOS 7 bash 4.2: 用 epoch 秒数代替 SECONDS，避免嵌套/重置干扰
 now_epoch() {
@@ -250,6 +251,10 @@ read_env_credentials() {
 }
 
 fetch_platform_node_credentials() {
+  if [[ -z "${PLATFORM_AGENT_BOOTSTRAP_TOKEN:-}" ]]; then
+    print_warning "缺少 EASYAIOT_PLATFORM_AGENT_BOOTSTRAP_TOKEN，拒绝调用 bootstrap"
+    return 1
+  fi
   # 短超时：Gateway 未起时避免 curl 长时间挂死（CentOS7 默认 TCP 超时可达数分钟）
   # 使用 .format 兼容 CentOS 7 常见 Python 3.6（及更早）
   # JSON 解析优先用轻量系统 python，避免 conda 环境每次冷启动过慢
@@ -260,6 +265,7 @@ fetch_platform_node_credentials() {
     json_python="$(command -v python36)"
   fi
   curl -fsS --connect-timeout 2 --max-time 5 \
+    -H "X-Bootstrap-Token: ${PLATFORM_AGENT_BOOTSTRAP_TOKEN}" \
     "${GATEWAY_URL}/admin-api/node/platform-agent-bootstrap" 2>/dev/null \
     | PYTHONPATH= "$json_python" -c "
 import json, sys
@@ -282,6 +288,7 @@ write_agent_env() {
   local cp_url="${EASYAIOT_AGENT_CONTROL_PLANE_URL:-${GATEWAY_URL%/}/admin-api/node/agent}"
   cat >"${work_dir}/agent.env" <<EOF
 PLATFORM_AGENT=1
+PLATFORM_AGENT_BOOTSTRAP_TOKEN=${PLATFORM_AGENT_BOOTSTRAP_TOKEN}
 NODE_ID=${node_id}
 AGENT_TOKEN=${agent_token}
 CONTROL_PLANE_URL=${cp_url}
@@ -293,10 +300,11 @@ AGENT_LISTEN_PORT=${port}
 AI_ROOT=${EASYAIOT_AI_ROOT:-$ROOT/AI}
 VIDEO_ROOT=${EASYAIOT_VIDEO_ROOT:-$ROOT/VIDEO}
 MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster
-MINIO_ENDPOINT=http://localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=your-secret
+MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-}
+MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-}
 EOF
+  chmod 600 "${work_dir}/agent.env"
 }
 
 fetch_platform_node_credentials_with_wait() {

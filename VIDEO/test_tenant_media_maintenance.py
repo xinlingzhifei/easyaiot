@@ -158,10 +158,10 @@ class TenantMaintenanceTest(unittest.TestCase):
         self.assertIn('ALLOWED_HOSTS=172.17.0.1', example)
         for unsafe in (
                 'your-secret-key-please-change-this-to-a-random-string',
-                'postgresql://postgres:iot45722414822@',
-                'MINIO_ACCESS_KEY=minioadmin',
-                'MINIO_SECRET_KEY=basiclab@iot975248395'):
+                'MINIO_ACCESS_KEY=minioadmin'):
             self.assertNotIn(unsafe, example)
+        self.assertNotRegex(example, r'(?m)^DATABASE_URL=\S+')
+        self.assertNotRegex(example, r'(?m)^MINIO_SECRET_KEY=\S+')
 
     def test_srs_hooks_require_shared_token_and_public_nginx_paths_are_denied(self):
         root = Path(__file__).resolve().parents[1]

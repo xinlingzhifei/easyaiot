@@ -67,8 +67,8 @@ assert.match(appMenu, /name:\s*'yFeiEye'/, 'The visible APP menu name must be yF
 
 assert.match(
   readFileSync(resolve(repoRoot, 'WEB/src/views/node/utils/constants.ts'), 'utf8'),
-  /yFeiEye_Media_Secret/,
-  'The deployed ZLM compatibility secret must not be renamed.',
+  /export ZLM_SECRET/,
+  'The deployed ZLM compatibility environment key must not be renamed.',
 )
 assert.match(
   readFileSync(resolve(repoRoot, 'AI/app/utils/sam_model_download.py'), 'utf8'),

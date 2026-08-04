@@ -465,10 +465,10 @@ SQL dans `.scripts/tdengine/tdengine_super_tables.sql` ; initialisation automati
 | Middleware | Nom d'utilisateur | Mot de passe | Console |
 |------------|-------------------|--------------|---------|
 | Nacos | nacos | nacos | :8848/nacos |
-| PostgreSQL | postgres | iot45722414822 | — |
-| Redis | — | basiclab@iot975248395 | — |
-| MinIO | minioadmin | basiclab@iot975248395 | :9001 |
-| EMQX | admin | basiclab@iot6874125784 | :18083 |
+| PostgreSQL | postgres | <POSTGRES_PASSWORD> | — |
+| Redis | — | <REDIS_OR_MINIO_PASSWORD> | — |
+| MinIO | minioadmin | <REDIS_OR_MINIO_PASSWORD> | :9001 |
+| EMQX | admin | <EMQX_DASHBOARD_PASSWORD> | :18083 |
 | Milvus | — | — | :9091 |
 
 > **Modifiez tous les mots de passe par défaut en production.**

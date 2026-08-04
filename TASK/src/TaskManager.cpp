@@ -3,6 +3,7 @@
 
 #include <httplib.h>
 
+#include <algorithm>
 #include <cctype>
 #include <csignal>
 #include <ctime>
@@ -127,6 +128,47 @@ bool hasExtension(const std::string& path, const std::string& extension) {
     return suffix == extension;
 }
 
+bool constantTimeEqual(const std::string& left, const std::string& right) {
+    const size_t length = std::max(left.size(), right.size());
+    size_t difference = left.size() ^ right.size();
+    for (size_t i = 0; i < length; ++i) {
+        const unsigned char leftByte =
+            i < left.size() ? static_cast<unsigned char>(left[i]) : 0;
+        const unsigned char rightByte =
+            i < right.size() ? static_cast<unsigned char>(right[i]) : 0;
+        difference |= static_cast<size_t>(leftByte ^ rightByte);
+    }
+    return difference == 0;
+}
+
+std::string requestToken(const httplib::Request& req) {
+    const std::string bearer = req.get_header_value("Authorization");
+    const std::string prefix = "Bearer ";
+    if (bearer.rfind(prefix, 0) == 0) {
+        return bearer.substr(prefix.size());
+    }
+    return req.get_header_value("X-Task-Token");
+}
+
+bool isSafeIniValue(const std::string& value, size_t maxLength = 4096) {
+    if (value.size() > maxLength) {
+        return false;
+    }
+    for (unsigned char ch : value) {
+        if (ch < 0x20 || ch == 0x7f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::filesystem::path expectedConfigPath(const TaskManagerOptions& options, int taskId) {
+    return std::filesystem::absolute(
+        std::filesystem::path(options.configDir) /
+        ("task" + std::to_string(taskId) + ".ini")
+    ).lexically_normal();
+}
+
 std::string formatTime(std::chrono::system_clock::time_point value) {
     if (value.time_since_epoch().count() == 0) {
         return "";
@@ -165,6 +207,21 @@ TaskManager::~TaskManager() {
 
 bool TaskManager::run() {
     httplib::Server server;
+
+    server.set_pre_routing_handler(
+        [this](const httplib::Request& req, httplib::Response& res) {
+            if (req.path == "/health") {
+                return httplib::Server::HandlerResponse::Unhandled;
+            }
+            if (!constantTimeEqual(requestToken(req), options_.authToken)) {
+                res.status = 401;
+                res.set_header("WWW-Authenticate", "Bearer");
+                res.set_content(jsonResponse(401, "Unauthorized"), "application/json");
+                return httplib::Server::HandlerResponse::Handled;
+            }
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+    );
 
     server.Get("/health", [this](const httplib::Request&, httplib::Response& res) {
         res.set_content(handleHealth(), "application/json");
@@ -205,6 +262,7 @@ bool TaskManager::run() {
 
     server.set_read_timeout(5, 0);
     server.set_write_timeout(5, 0);
+    server.set_payload_max_length(1024 * 1024);
 
     std::cout << "TaskManager listening on " << options_.host << ":" << options_.port << std::endl;
     return server.listen(options_.host.c_str(), options_.port);
@@ -261,6 +319,33 @@ std::string TaskManager::handleGenerateConfig(const std::string& body, int& http
         return jsonResponse(400, "video.source or video.rtsp_url is required");
     }
 
+    std::string taskName = asString(root, "task_name", "task_" + std::to_string(taskId));
+    std::string modelPath = asString(model, "model_path");
+    std::string classesPath = asString(model, "classes_path");
+    std::string rtmpUrl = asString(rtmp, "rtmp_url");
+    std::string hookUrl = asString(alarm, "hook_url");
+    bool rtmpEnabled = asBool(rtmp, "enable", !rtmpUrl.empty());
+    bool alarmEnabled = asBool(alarm, "enable", false);
+    bool drawEnabled = asBool(rtmp, "enable_draw", true);
+    int defaultControlPort = taskId <= 57535 ? 8000 + taskId : 0;
+    int controlPort = asInt(root, "control_port", defaultControlPort);
+
+    if (
+        !isSafeIniValue(taskName, 128) ||
+        !isSafeIniValue(rtspUrl) ||
+        !isSafeIniValue(modelPath) ||
+        !isSafeIniValue(classesPath) ||
+        !isSafeIniValue(rtmpUrl) ||
+        !isSafeIniValue(hookUrl)
+    ) {
+        httpStatus = 400;
+        return jsonResponse(400, "Config contains control characters or exceeds length limits");
+    }
+    if (controlPort <= 0 || controlPort > 65535) {
+        httpStatus = 400;
+        return jsonResponse(400, "control_port must be between 1 and 65535");
+    }
+
     std::filesystem::path configDir(options_.configDir);
     std::error_code fsError;
     std::filesystem::create_directories(configDir, fsError);
@@ -269,21 +354,25 @@ std::string TaskManager::handleGenerateConfig(const std::string& body, int& http
         return jsonResponse(500, "Failed to create config directory: " + fsError.message());
     }
 
-    std::filesystem::path configPath = configDir / ("task" + std::to_string(taskId) + ".ini");
+    std::filesystem::path configPath = expectedConfigPath(options_, taskId);
+    const std::filesystem::file_status configStatus =
+        std::filesystem::symlink_status(configPath, fsError);
+    if (fsError == std::errc::no_such_file_or_directory) {
+        fsError.clear();
+    }
+    if (fsError) {
+        httpStatus = 500;
+        return jsonResponse(500, "Failed to inspect config path: " + fsError.message());
+    }
+    if (std::filesystem::is_symlink(configStatus)) {
+        httpStatus = 400;
+        return jsonResponse(400, "Refusing to overwrite a symlink config path");
+    }
     std::ofstream file(configPath);
     if (!file.is_open()) {
         httpStatus = 500;
         return jsonResponse(500, "Failed to open config file for writing");
     }
-
-    std::string taskName = asString(root, "task_name", "task_" + std::to_string(taskId));
-    std::string modelPath = asString(model, "model_path");
-    std::string classesPath = asString(model, "classes_path");
-    std::string rtmpUrl = asString(rtmp, "rtmp_url");
-    bool rtmpEnabled = asBool(rtmp, "enable", !rtmpUrl.empty());
-    bool alarmEnabled = asBool(alarm, "enable", false);
-    bool drawEnabled = asBool(rtmp, "enable_draw", true);
-    int controlPort = asInt(root, "control_port", 8000 + taskId);
 
     file << "[task]\n";
     file << "id=" << taskId << "\n";
@@ -312,7 +401,6 @@ std::string TaskManager::handleGenerateConfig(const std::string& body, int& http
 
     file << "[alarm]\n";
     file << "enable=" << (alarmEnabled ? "true" : "false") << "\n";
-    std::string hookUrl = asString(alarm, "hook_url");
     if (!hookUrl.empty()) {
         file << "hook_url=" << hookUrl << "\n";
     }
@@ -359,12 +447,39 @@ std::string TaskManager::handleStartTask(const std::string& body, int& httpStatu
         httpStatus = 400;
         return jsonResponse(400, "task_id and config_path are required");
     }
-    if (!std::filesystem::exists(configPath)) {
+
+    const std::filesystem::path expectedPath = expectedConfigPath(options_, taskId);
+    const std::filesystem::path suppliedPath =
+        std::filesystem::absolute(configPath).lexically_normal();
+    if (suppliedPath != expectedPath) {
+        httpStatus = 400;
+        return jsonResponse(400, "config_path must match the generated path for task_id");
+    }
+    std::error_code fsError;
+    if (std::filesystem::is_symlink(expectedPath, fsError)) {
+        httpStatus = 400;
+        return jsonResponse(400, "Symlink config paths are not allowed");
+    }
+    if (fsError) {
+        httpStatus = 500;
+        return jsonResponse(500, "Failed to inspect config_path: " + fsError.message());
+    }
+    if (!std::filesystem::is_regular_file(expectedPath, fsError)) {
         httpStatus = 404;
         return jsonResponse(404, "config_path does not exist");
     }
+    if (fsError) {
+        httpStatus = 500;
+        return jsonResponse(500, "Failed to inspect config_path: " + fsError.message());
+    }
 
     std::lock_guard<std::mutex> lock(tasksMutex_);
+    auto existing = tasks_.find(taskId);
+    const bool newTask = existing == tasks_.end();
+    if (newTask && static_cast<int>(tasks_.size()) >= options_.maxTasks) {
+        httpStatus = 429;
+        return jsonResponse(429, "Task limit exceeded");
+    }
     TaskProcess& task = tasks_[taskId];
     task.taskId = taskId;
     refreshTaskLocked(task);
@@ -374,14 +489,12 @@ std::string TaskManager::handleStartTask(const std::string& body, int& httpStatu
         response["pid"] = static_cast<double>(task.pid);
         return writeJson(response);
     }
-    if (task.configPath.empty() && static_cast<int>(tasks_.size()) > options_.maxTasks) {
-        httpStatus = 429;
-        return jsonResponse(429, "Task limit exceeded");
-    }
-
-    task.configPath = std::filesystem::absolute(configPath).string();
+    task.configPath = expectedPath.string();
     task.exitCode = 0;
     if (!startChildProcess(task)) {
+        if (newTask) {
+            tasks_.erase(taskId);
+        }
         httpStatus = 500;
         return jsonResponse(500, "Failed to start TASK process");
     }

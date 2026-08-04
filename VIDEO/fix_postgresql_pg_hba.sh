@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 # 默认配置
 POSTGRES_CONTAINER="postgres-server"
 POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="iot45722414822"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 POSTGRES_DB="iot-video20"
 
 # 从环境变量或.env文件获取配置
@@ -48,6 +48,11 @@ if [ -f .env ]; then
             fi
         fi
     fi
+fi
+
+if [ -z "$POSTGRES_PASSWORD" ]; then
+    echo -e "${RED}错误: 必须通过 POSTGRES_PASSWORD 或 DATABASE_URL 提供数据库密码${NC}"
+    exit 1
 fi
 
 # 解析命令行参数

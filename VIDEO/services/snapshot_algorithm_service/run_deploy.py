@@ -504,8 +504,11 @@ def _get_minio_client():
         from minio import Minio
     except ImportError:
         return None
-    access_key = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
-    secret_key = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
+    access_key = os.getenv('MINIO_ACCESS_KEY', '')
+    secret_key = os.getenv('MINIO_SECRET_KEY', '')
+    if not access_key or not secret_key:
+        logger.warning('MINIO_ACCESS_KEY / MINIO_SECRET_KEY 未配置')
+        return None
     secure = os.getenv('MINIO_SECURE', 'false').lower() == 'true'
     return Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
 
@@ -811,8 +814,11 @@ def _download_model_from_minio_direct(bucket_name: str, object_key: str, local_p
     except ImportError:
         logger.warning('未安装 minio 包，跳过直连 MinIO 下载')
         return False
-    access_key = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
-    secret_key = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
+    access_key = os.getenv('MINIO_ACCESS_KEY', '')
+    secret_key = os.getenv('MINIO_SECRET_KEY', '')
+    if not access_key or not secret_key:
+        logger.warning('MINIO_ACCESS_KEY / MINIO_SECRET_KEY 未配置')
+        return False
     secure = os.getenv('MINIO_SECURE', 'false').lower() == 'true'
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
     tmp_path = f"{local_path}.minio.tmp"

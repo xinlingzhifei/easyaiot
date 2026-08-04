@@ -135,10 +135,7 @@ def _forward_request_headers() -> dict:
 
 
 def _model_has_weights(model: Model) -> bool:
-    return bool(
-        model.model_path or model.onnx_model_path or model.torchscript_model_path
-        or model.tensorrt_model_path or model.openvino_model_path
-    )
+    return bool(model.onnx_model_path)
 
 
 def _resolve_model_id(data: dict) -> tuple[int | None, str | None]:

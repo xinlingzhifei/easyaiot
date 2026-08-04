@@ -255,15 +255,21 @@ def _message_service_base_url() -> str:
 
 
 def _message_internal_api_headers() -> Dict[str, str]:
-    """告警通知链路内网调用消息服务：仅传 tenant-id，不传 JWT（过期 Token 会被网关 401 拦截）。"""
+    """告警通知链路调用消息服务：使用独立服务令牌，不复用用户 JWT。"""
     import os
+    internal_token = os.getenv('IOT_MESSAGE_INTERNAL_TOKEN', '').strip()
+    if len(internal_token) < 32:
+        raise RuntimeError('IOT_MESSAGE_INTERNAL_TOKEN 未安全配置')
     tenant_id = '1'
     try:
         from flask import current_app
         tenant_id = str(current_app.config.get('TENANT_ID', os.getenv('TENANT_ID', '1')))
     except RuntimeError:
         tenant_id = str(os.getenv('TENANT_ID', '1'))
-    return {'tenant-id': tenant_id}
+    return {
+        'tenant-id': tenant_id,
+        'X-Iot-Message-Token': internal_token,
+    }
 
 
 def _message_database_url() -> str:
@@ -275,7 +281,7 @@ def _message_database_url() -> str:
     video_url = (os.getenv('DATABASE_URL') or '').strip()
     if video_url and 'iot-video' in video_url:
         return video_url.replace('iot-video20', 'iot-message20')
-    return 'postgresql://postgres:iot45722414822@localhost:5432/iot-message20'
+    return ''
 
 
 def _fetch_message_template_meta_from_db(method: str, template_id) -> Optional[Dict]:
@@ -286,7 +292,10 @@ def _fetch_message_template_meta_from_db(method: str, template_id) -> Optional[D
         import psycopg2
 
         method = (method or '').lower()
-        conn = psycopg2.connect(_message_database_url())
+        database_url = _message_database_url()
+        if not database_url:
+            return None
+        conn = psycopg2.connect(database_url)
         try:
             cur = conn.cursor()
             if method in ('wxcp', 'wechat', 'weixin'):
@@ -482,7 +491,12 @@ def _extract_notify_users_from_templates(channels: List[Dict]) -> List[Dict]:
                     logger.info(f"📥 模板API响应: code={result.get('code')}, success={result.get('success')}")
                     if result.get('code') == 0 or result.get('success'):
                         template_data = result.get('data') or result
-                        logger.info(f"📋 模板数据: {template_data}")
+                        logger.info(
+                            "📋 模板数据已返回: template_id=%s, msg_type=%s, fields=%s",
+                            template_id,
+                            msg_type,
+                            sorted(template_data.keys()),
+                        )
                         
                         # 获取userGroupId
                         user_group_id = template_data.get('userGroupId') or template_data.get('user_group_id')
@@ -508,11 +522,18 @@ def _extract_notify_users_from_templates(channels: List[Dict]) -> List[Dict]:
                                     logger.info(f"👥 用户组列表长度: {len(user_group_list)}")
                                     if user_group_list and len(user_group_list) > 0:
                                         user_group_data = user_group_list[0]
-                                        logger.info(f"📋 用户组数据: {user_group_data}")
+                                        logger.info(
+                                            "📋 用户组数据已返回: group_id=%s, fields=%s",
+                                            user_group_id,
+                                            sorted(user_group_data.keys()),
+                                        )
                                         
                                         # 优先使用用户组返回的用户列表（如果包含）
                                         t_preview_users = user_group_data.get('tPreviewUsers') or user_group_data.get('t_preview_users')
-                                        logger.info(f"👤 用户组中的用户列表: tPreviewUsers={t_preview_users}")
+                                        logger.info(
+                                            "👤 用户组内嵌用户数量: %s",
+                                            len(t_preview_users) if isinstance(t_preview_users, list) else 0,
+                                        )
                                         
                                         if t_preview_users and isinstance(t_preview_users, list) and len(t_preview_users) > 0:
                                             # 直接使用用户组返回的用户列表

@@ -156,7 +156,7 @@ F:\EASYLOT\TDengine\  #### Download yourself
 - Version: 16.x
 - Port: 5432
 - Username: postgres
-- Password: `iot45722414822`
+- Password: `<POSTGRES_PASSWORD>`
 
 #### Startup Commands
 ```powershell
@@ -169,14 +169,14 @@ net start postgresql-x64-16
 
 #### Create Databases
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE \"iot-system\";"
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE \"iot-video20\";"
 ```
 
 #### Verify Connection
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "\l"
 ```
 
@@ -186,7 +186,7 @@ $env:PGPASSWORD='iot45722414822'
 #### Installation Info
 - Version: 7.x
 - Port: 6379
-- Password: `basiclab@iot975248395`
+- Password: `<REDIS_OR_MINIO_PASSWORD>`
 
 #### Startup Commands
 ```powershell
@@ -197,7 +197,7 @@ cd F:\EASYLOT\Redis
 #### Verify Connection
 ```powershell
 cd F:\EASYLOT\Redis
-.\redis-cli.exe -a "basiclab@iot975248395" ping
+.\redis-cli.exe -a "<REDIS_OR_MINIO_PASSWORD>" ping
 # Should return PONG
 ```
 
@@ -208,7 +208,7 @@ cd F:\EASYLOT\Redis
 - Version: 2.x
 - Port: 8848
 - Username: nacos
-- Password: `basiclab@iot78475418754`
+- Password: `<NACOS_PASSWORD>`
 - Namespace: local
 
 #### Startup Commands
@@ -235,7 +235,7 @@ http://localhost:8848/nacos
 - API Port: 9000
 - Console Port: 9001
 - Username: minioadmin
-- Password: `basiclab@iot975248395`
+- Password: `<REDIS_OR_MINIO_PASSWORD>`
 
 #### Startup Commands
 ```powershell
@@ -423,18 +423,18 @@ pip install -r requirements.txt
 Edit the `VIDEO/.env` file, ensure the following configurations are correct:
 ```properties
 # Database
-DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20
+DATABASE_URL=postgresql://postgres:<POSTGRES_PASSWORD>@localhost:5432/iot-video20
 
 # Nacos
 NACOS_SERVER=localhost:8848
 NACOS_NAMESPACE=local
 NACOS_USERNAME=nacos
-NACOS_PASSWORD=basiclab@iot78475418754
+NACOS_PASSWORD=<NACOS_PASSWORD>
 
 # MinIO
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=basiclab@iot975248395
+MINIO_SECRET_KEY=<REDIS_OR_MINIO_PASSWORD>
 
 # FFmpeg Path (Must be full path on Windows)
 FFMPEG_PATH=G:/ffmpeg-7.0.2-essentials_build/bin/ffmpeg.exe
@@ -583,7 +583,7 @@ http_stream = f"http://127.0.0.1:8080/live/{short_stream_name}.flv"
 
 #### Manual Fix for Existing Data
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -d "iot-video20" -c "UPDATE device SET rtmp_stream = 'rtmp://127.0.0.1:1935/live/cam_' || SUBSTRING(id, 1, 8), http_stream = 'http://127.0.0.1:8080/live/cam_' || SUBSTRING(id, 1, 8) || '.flv';"
 ```
 
@@ -683,7 +683,7 @@ VIDEO service reports a database connection error on startup.
 #### Troubleshooting Steps
 1. Confirm PostgreSQL service is running:
    ```powershell
-   $env:PGPASSWORD='iot45722414822'
+   $env:PGPASSWORD='<POSTGRES_PASSWORD>'
    & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "\l"
    ```
 
@@ -728,7 +728,7 @@ Usually caused by the DEVICE gateway service not starting, or incorrect port con
 
 ```powershell
 # Set password environment variable
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 
 # Connect to database
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -d "iot-video20"
@@ -833,10 +833,10 @@ npm run dev
 
 | Service | Username | Password |
 |------|--------|------|
-| PostgreSQL | postgres | iot45722414822 |
-| Redis | - | basiclab@iot975248395 |
-| Nacos | nacos | basiclab@iot78475418754 |
-| MinIO | minioadmin | basiclab@iot975248395 |
+| PostgreSQL | postgres | <POSTGRES_PASSWORD> |
+| Redis | - | <REDIS_OR_MINIO_PASSWORD> |
+| Nacos | nacos | <NACOS_PASSWORD> |
+| MinIO | minioadmin | <REDIS_OR_MINIO_PASSWORD> |
 | TDengine | root | taosdata |
 | WEB Frontend | admin | admin123 |
 | Test Camera | admin | sr336699 |

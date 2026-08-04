@@ -436,7 +436,7 @@ def setup_nacos():
         nacos_server = os.getenv('NACOS_SERVER', 'localhost:8848')
         namespace = os.getenv('NACOS_NAMESPACE', '')
         username = os.getenv('NACOS_USERNAME', 'nacos')
-        password = os.getenv('NACOS_PASSWORD', 'basiclab@iot78475418754')
+        password = os.getenv('NACOS_PASSWORD', '')
         
         # 创建Nacos客户端
         nacos_client = NacosClient(
@@ -1209,4 +1209,3 @@ if __name__ == '__main__':
         traceback.print_exc(file=sys.stderr)
         print("=" * 60, file=sys.stderr)
         sys.exit(1)
-

@@ -58,7 +58,7 @@ mybatis-plus:
     banner: false # 关闭控制台的 Banner 打印
   type-aliases-package: ${iot.info.base-package}.dal.dataobject
   encryptor:
-    password: XDV71a+xqStEA3WH # 加解密的秘钥，可使用 https://www.imaegoo.com/2020/aes-key-generator/ 网站生成
+    password: ${MYBATIS_ENCRYPTOR_PASSWORD:} # 加解密的秘钥，可使用 https://www.imaegoo.com/2020/aes-key-generator/ 网站生成
 
 mybatis-plus-join:
   banner: false # 关闭控制台的 Banner 打印
@@ -110,7 +110,7 @@ xxl:
     executor:
       appname: ${spring.application.name} # 执行器 AppName
       logpath: ${user.home}/logs/xxl-job/${spring.application.name} # 执行器运行日志文件存储磁盘路径
-    accessToken: default_token # 执行器通讯TOKEN
+    accessToken: ${XXL_JOB_ACCESS_TOKEN:} # 执行器通讯TOKEN
 
 --- #################### 验证码相关配置 ####################
 
@@ -238,5 +238,8 @@ iot:
     send-maximum-quantity-per-day: 10
     begin-code: 9999 # 这里配置 9999 的原因是，测试方便。
     end-code: 9999 # 这里配置 9999 的原因是，测试方便。
+
+sms-callback:
+  token: ${SMS_CALLBACK_TOKEN}
 
 debug: false

@@ -125,7 +125,7 @@ services:
       - NACOS_SERVER=${NACOS_SERVER:-localhost:8848}
       - NACOS_NAMESPACE=${NACOS_NAMESPACE:-}
       - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
-      - NACOS_PASSWORD=${NACOS_PASSWORD:-basiclab@iot78475418754}
+      - NACOS_PASSWORD=${NACOS_PASSWORD:?NACOS_PASSWORD is required}
       - SERVICE_NAME=${SERVICE_NAME:-video-server}
       # Pod IP配置（容器内会自动获取，也可手动指定）
       - POD_IP=${POD_IP:-}
@@ -136,7 +136,7 @@ services:
       # Redis配置（使用localhost，因为使用host网络模式）
       - REDIS_HOST=${REDIS_HOST:-localhost}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-basiclab@iot975248395}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       # Kafka配置（使用host网络模式时走Kafka EXTERNAL listener，避免broker回传Kafka:9092导致DNS失败）
       # 如果Kafka运行在其他机器上，使用宿主机IP，例如：192.168.1.100:9094
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-localhost:9094}

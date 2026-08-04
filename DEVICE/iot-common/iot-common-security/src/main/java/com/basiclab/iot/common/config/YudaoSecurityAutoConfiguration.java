@@ -5,6 +5,7 @@ import com.basiclab.iot.common.context.TransmittableThreadLocalSecurityContextHo
 import com.basiclab.iot.common.filter.TokenAuthenticationFilter;
 import com.basiclab.iot.common.handler.AccessDeniedHandlerImpl;
 import com.basiclab.iot.common.handler.AuthenticationEntryPointImpl;
+import com.basiclab.iot.common.service.RpcInternalAccess;
 import com.basiclab.iot.common.service.SecurityFrameworkService;
 import com.basiclab.iot.common.service.SecurityFrameworkServiceImpl;
 import com.basiclab.iot.common.web.core.handler.GlobalExceptionHandler;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.MethodInvokingFactoryBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -42,6 +44,17 @@ public class YudaoSecurityAutoConfiguration {
 
     @Resource
     private SecurityProperties securityProperties;
+
+    @Bean
+    @ConfigurationProperties(prefix = "iot.rpc")
+    public RpcInternalTokenProperties rpcInternalTokenProperties() {
+        return new RpcInternalTokenProperties();
+    }
+
+    @Bean("rpcInternalAccess")
+    public RpcInternalAccess rpcInternalAccess(RpcInternalTokenProperties properties) {
+        return new RpcInternalAccess(properties);
+    }
 
     /**
      * 处理用户未登录拦截的切面的 Bean

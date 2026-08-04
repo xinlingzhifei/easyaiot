@@ -29,7 +29,7 @@ async function testValidFormShowsCaptchaAfterValidation() {
     captchaEnable: 'true',
     validateForm: async () => {
       events.push('validate')
-      return { username: 'admin', password: 'admin123' }
+      return { username: 'admin', password: 'test-password' }
     },
     login: async () => {
       events.push('login')
@@ -50,7 +50,7 @@ async function testValidFormLogsInWhenCaptchaDisabled() {
     captchaEnable: 'false',
     validateForm: async () => {
       events.push('validate')
-      return { username: 'admin', password: 'admin123' }
+      return { username: 'admin', password: 'test-password' }
     },
     login: async () => {
       events.push('login')

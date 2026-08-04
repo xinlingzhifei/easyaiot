@@ -415,15 +415,11 @@ create_env_file() {
             # 自动配置中间件连接信息（使用localhost，因为使用host网络模式）
             print_info "自动配置中间件连接信息（使用host网络模式，通过localhost访问中间件）..."
             
-            # 更新数据库连接（使用localhost，因为使用host网络模式）
-            sed -i 's|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20|' .env.docker
-            
             # 更新Nacos配置（使用localhost，因为使用host网络模式）
             sed -i 's|^NACOS_SERVER=.*|NACOS_SERVER=localhost:8848|' .env.docker
             
             # 更新MinIO配置（使用localhost，因为使用host网络模式）
             sed -i 's|^MINIO_ENDPOINT=.*|MINIO_ENDPOINT=localhost:9000|' .env.docker
-            sed -i 's|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=basiclab@iot975248395|' .env.docker
             
             # 更新Redis配置（使用localhost，因为使用host网络模式）
             sed -i 's|^REDIS_HOST=.*|REDIS_HOST=localhost|' .env.docker
@@ -433,9 +429,6 @@ create_env_file() {
             
             # 更新TDengine配置（使用localhost，因为使用host网络模式）
             sed -i 's|^TDENGINE_HOST=.*|TDENGINE_HOST=localhost|' .env.docker
-            
-            # 更新Nacos密码
-            sed -i 's|^NACOS_PASSWORD=.*|NACOS_PASSWORD=basiclab@iot78475418754|' .env.docker
             
             print_success "中间件连接信息已自动配置（使用host网络模式）"
             print_info "注意：使用host网络模式后，容器可以直接访问宿主机局域网，支持ONVIF摄像头发现"
@@ -450,7 +443,7 @@ create_env_file() {
         
         # 检查并更新数据库连接（如果还是旧的服务名，改为localhost）
         if grep -q "DATABASE_URL=.*PostgresSQL" .env.docker || grep -q "DATABASE_URL=.*postgres-server" .env.docker; then
-            sed -i 's|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20|' .env.docker
+            sed -i '/^DATABASE_URL=/ s|PostgresSQL:5432|localhost:5432|; /^DATABASE_URL=/ s|postgres-server:5432|localhost:5432|' .env.docker
             print_info "已更新数据库连接为 localhost:5432（host网络模式）"
         fi
         

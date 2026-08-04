@@ -182,6 +182,8 @@ def send_heartbeat(client, ip, port, stop_event):
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+    if not app.config['SECRET_KEY']:
+        raise ValueError("SECRET_KEY 环境变量未设置")
     
     # 从环境变量获取数据库URL
     database_url = os.environ.get('DATABASE_URL')
@@ -476,7 +478,7 @@ def create_app():
     service_name = os.getenv('SERVICE_NAME', 'model-server')
     port = int(os.getenv('FLASK_RUN_PORT', 5000))
     username = os.getenv('NACOS_USERNAME', 'nacos')
-    password = os.getenv('NACOS_PASSWORD', 'basiclab@iot78475418754')
+    password = os.getenv('NACOS_PASSWORD', '')
     ip = os.getenv('POD_IP') or get_local_ip()
     if not os.getenv('POD_IP'):
         print(f"WARNING: POD_IP is not configured, using LAN IP: {ip}")

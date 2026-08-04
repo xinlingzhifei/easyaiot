@@ -1,1 +1,0 @@
-const _=110,s=1080,C=480,t=560,E={span:12},o={span:24,class:"device-create-col-line"},I={style:{width:"100%"}},D={labelWidth:110,baseColProps:E,rowProps:{gutter:16},showActionButtonGroup:!1,compact:!0};export{s as D,_ as a,C as b,t as c,I as d,D as e,o as f};

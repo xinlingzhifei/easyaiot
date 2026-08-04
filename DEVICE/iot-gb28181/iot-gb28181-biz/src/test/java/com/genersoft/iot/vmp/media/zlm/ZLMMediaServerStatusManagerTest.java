@@ -37,6 +37,10 @@ class ZLMMediaServerStatusManagerTest {
         ReflectionTestUtils.setField(manager, "sslEnabled", false);
         ReflectionTestUtils.setField(manager, "serverPort", 48088);
         ReflectionTestUtils.setField(manager, "serverServletContextPath", "");
+        ReflectionTestUtils.setField(
+                manager,
+                "mediaHookToken",
+                "gb28181-media-hook-test-token-32-bytes");
 
         manager.setZLMConfig(mediaServer, false);
 

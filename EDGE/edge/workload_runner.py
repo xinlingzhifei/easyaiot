@@ -24,6 +24,22 @@ _SERVICES = {
     'patrol': 'patrol_algorithm_service',
 }
 
+_BLOCKED_ENV_KEYS = {
+    'BASH_ENV',
+    'ENV',
+    'GCONV_PATH',
+    'LD_LIBRARY_PATH',
+    'LD_PRELOAD',
+    'PATH',
+    'PYTHONEXECUTABLE',
+    'PYTHONHOME',
+    'PYTHONINSPECT',
+    'PYTHONPATH',
+    'PYTHONSTARTUP',
+    'VIRTUAL_ENV',
+}
+_BLOCKED_ENV_PREFIXES = ('DYLD_', 'LD_', 'PYTHON')
+
 _procs: Dict[int, subprocess.Popen] = {}
 
 
@@ -57,7 +73,10 @@ def _forget_pid(task_id: int) -> None:
 
 
 def _deploy_script(task_type: str) -> Path:
-    name = _SERVICES.get(task_type or 'realtime', 'realtime_algorithm_service')
+    normalized_type = str(task_type or '').strip().lower()
+    if normalized_type not in _SERVICES:
+        raise ValueError(f'不支持的 taskType: {task_type!r}')
+    name = _SERVICES[normalized_type]
     script = RUNTIME_ROOT / 'services' / name / 'run_deploy.py'
     return script
 
@@ -82,29 +101,13 @@ def start_task(cmd_payload: Dict[str, Any], runtime_env: Dict[str, str]) -> Dict
     deploy = cmd_payload.get('deploy') or {}
     script = _deploy_script(task_type)
     # 边缘执行唯一入口：EDGE/runtime（与 VIDEO 源码树解耦）。
-    # MQTT deploy.command/workDir 若指向 VIDEO 路径将被忽略（runtime 已就绪时）。
+    # MQTT 只能选择固定 taskType，不能下发 command/workDir。
     if script.is_file():
-        work_dir_hint = str(deploy.get('workDir') or '')
-        if work_dir_hint and ('/VIDEO/' in work_dir_hint or work_dir_hint.rstrip('/').endswith('/VIDEO')):
-            logger.warning(
-                '忽略 cmd.deploy.workDir=%s，改用 EDGE runtime %s',
-                work_dir_hint,
-                script,
-            )
         python_exec = sys.executable
         command = [python_exec, str(script)]
         work_dir = str(script.parent)
         return _spawn(task_id, command, work_dir, runtime_env, deploy.get('env') or {})
 
-    # runtime 缺失时才回退 deploy 自带命令（过渡兼容）
-    command = deploy.get('command')
-    work_dir = deploy.get('workDir')
-    if command and work_dir:
-        logger.warning(
-            'EDGE/runtime 缺少 %s，临时使用 cmd.deploy；请执行 EDGE/scripts/sync_runtime_from_video.sh',
-            script,
-        )
-        return _spawn(task_id, list(command), work_dir, runtime_env, deploy.get('env') or {})
     raise FileNotFoundError(
         f'未找到算法入口 {script}，请执行 EDGE/scripts/sync_runtime_from_video.sh 种子化 runtime'
     )
@@ -119,7 +122,16 @@ def _spawn(
 ) -> Dict[str, Any]:
     env = os.environ.copy()
     env.update({k: str(v) for k, v in runtime_env.items() if v is not None})
-    env.update({k: str(v) for k, v in deploy_env.items() if v is not None})
+    for key, value in deploy_env.items():
+        normalized_key = str(key).strip().upper()
+        if (
+            not normalized_key
+            or normalized_key in _BLOCKED_ENV_KEYS
+            or normalized_key.startswith(_BLOCKED_ENV_PREFIXES)
+        ):
+            logger.warning('忽略不安全的任务环境变量: %s', normalized_key or '<empty>')
+            continue
+        env[normalized_key] = str(value)
     env.setdefault('TASK_ID', str(task_id))
     # 边缘不存储：强制 Ceph 路径语义；不做 MinIO 同步上传
     env.setdefault('ALGO_MEDIA_REF_MODE', 'shared_fs')
@@ -129,14 +141,17 @@ def _spawn(
     log_dir = Path(work_dir) / 'logs' / f'task_{task_id}'
     log_dir.mkdir(parents=True, exist_ok=True)
     stdout = open(log_dir / 'edge_stdout.log', 'a', encoding='utf-8')
-    proc = subprocess.Popen(
-        command,
-        cwd=work_dir,
-        env=env,
-        stdout=stdout,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
+    try:
+        proc = subprocess.Popen(
+            command,
+            cwd=work_dir,
+            env=env,
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        stdout.close()
     _procs[task_id] = proc
     _remember_pid(task_id, proc.pid)
     logger.info('started task_id=%s pid=%s cmd=%s', task_id, proc.pid, command)

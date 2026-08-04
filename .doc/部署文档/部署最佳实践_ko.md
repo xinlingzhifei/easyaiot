@@ -465,10 +465,10 @@ SQL은 `.scripts/tdengine/tdengine_super_tables.sql`에 있으며, full 프로�
 | 미들웨어 | 사용자명 | 비밀번호 | 콘솔 |
 |----------|----------|----------|------|
 | Nacos | nacos | nacos | :8848/nacos |
-| PostgreSQL | postgres | iot45722414822 | — |
-| Redis | — | basiclab@iot975248395 | — |
-| MinIO | minioadmin | basiclab@iot975248395 | :9001 |
-| EMQX | admin | basiclab@iot6874125784 | :18083 |
+| PostgreSQL | postgres | <POSTGRES_PASSWORD> | — |
+| Redis | — | <REDIS_OR_MINIO_PASSWORD> | — |
+| MinIO | minioadmin | <REDIS_OR_MINIO_PASSWORD> | :9001 |
+| EMQX | admin | <EMQX_DASHBOARD_PASSWORD> | :18083 |
 | Milvus | — | — | :9091 |
 
 > **프로덕션에서는 모든 기본 비밀번호를 변경하세요.**

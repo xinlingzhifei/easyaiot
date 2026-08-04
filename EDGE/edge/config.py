@@ -167,6 +167,9 @@ def merge_runtime_into_state(runtime: Dict[str, Any], node_id: Optional[int] = N
         state['agentToken'] = agent_token
     state['runtimeConfig'] = runtime
     state['mqttBrokerUrls'] = runtime.get('mqttBrokerUrls') or state.get('mqttBrokerUrls')
+    edge_node_id = runtime.get('edgeNodeId')
+    if edge_node_id is not None:
+        state['edgeNodeId'] = edge_node_id
     save_state(state)
     # 同步关键项到 edge.env，便于 systemd EnvironmentFile
     brokers = runtime.get('mqttBrokerUrls') or []
@@ -186,9 +189,7 @@ def merge_runtime_into_state(runtime: Dict[str, Any], node_id: Optional[int] = N
             save_env_value(env_key, str(val))
     if node_id is not None:
         save_env_value('EDGE_NODE_ID', str(node_id))
-    edge_node_id = runtime.get('edgeNodeId')
     if edge_node_id is not None:
-        state['edgeNodeId'] = edge_node_id
         save_env_value('EDGE_EDGE_NODE_ID', str(edge_node_id))
     if agent_token:
         save_env_value('EDGE_AGENT_TOKEN', agent_token)

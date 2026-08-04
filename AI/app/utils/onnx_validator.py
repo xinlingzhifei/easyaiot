@@ -77,9 +77,7 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
         except Exception:
             pass
         
-        # 如果能成功加载，默认认为是YOLOv8（因为YOLOv8更常见）
-        # 如果用户需要YOLOv11，可以通过文件名或其他方式明确指定
-        return 'yolov8', "ultralytics库（默认推断：模型成功加载）"
+        return None, "ultralytics库（模型成功加载但版本无法确定）"
         
     except Exception as e:
         error_str = str(e).lower()
@@ -106,14 +104,5 @@ def validate_onnx_model(model_path: str) -> Tuple[Optional[str], str]:
             except Exception:
                 pass
         
-        # 检查文件名
-        model_path_lower = model_path.lower()
-        if 'yolo26' in model_path_lower:
-            return 'yolov26', "文件名"
-        elif 'yolo11' in model_path_lower:
-            return 'yolov11', "文件名"
-        elif 'yolo8' in model_path_lower or 'yolov8' in model_path_lower:
-            return 'yolov8', "文件名"
-        
-        # 如果所有方法都失败，抛出异常
+        # 文件名不是模型版本证据；加载或元数据校验失败时必须拒绝。
         raise Exception(f"无法通过ultralytics库判断ONNX模型版本: {e}")

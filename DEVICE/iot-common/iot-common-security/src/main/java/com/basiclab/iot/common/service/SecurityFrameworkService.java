@@ -9,6 +9,13 @@ package com.basiclab.iot.common.service;
 public interface SecurityFrameworkService {
 
     /**
+     * 判断当前登录用户是否为管理后台用户。
+     *
+     * @return 是否
+     */
+    boolean isAdminUser();
+
+    /**
      * 判断是否有权限
      *
      * @param permission 权限

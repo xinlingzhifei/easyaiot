@@ -163,8 +163,10 @@ def create_app(start_background_tasks=None):
     
     # MinIO对象存储配置
     app.config['MINIO_ENDPOINT'] = os.environ.get('MINIO_ENDPOINT', 'localhost:9000')
-    app.config['MINIO_ACCESS_KEY'] = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
-    app.config['MINIO_SECRET_KEY'] = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
+    app.config['MINIO_ACCESS_KEY'] = os.environ.get('MINIO_ACCESS_KEY', '')
+    app.config['MINIO_SECRET_KEY'] = os.environ.get('MINIO_SECRET_KEY', '')
+    if not app.config['MINIO_ACCESS_KEY'] or not app.config['MINIO_SECRET_KEY']:
+        raise RuntimeError('MINIO_ACCESS_KEY / MINIO_SECRET_KEY 未配置')
     app.config['MINIO_SECURE'] = os.environ.get('MINIO_SECURE', 'false').lower() == 'true'
     
     # Kafka配置
@@ -1030,7 +1032,7 @@ def create_app(start_background_tasks=None):
     service_name = os.getenv('SERVICE_NAME', 'video-server')
     port = int(os.getenv('FLASK_RUN_PORT', 6000))
     username = os.getenv('NACOS_USERNAME', 'nacos')
-    password = os.getenv('NACOS_PASSWORD', 'basiclab@iot78475418754')
+    password = os.getenv('NACOS_PASSWORD', '')
     ip = resolve_registration_ip(
         bind_host=os.getenv('FLASK_RUN_HOST', '0.0.0.0'),
         pod_ip=os.getenv('POD_IP'),

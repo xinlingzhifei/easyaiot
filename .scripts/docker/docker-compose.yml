@@ -16,9 +16,9 @@ services:
       - PREFER_HOST_MODE=hostname
       - MODE=standalone
       - NACOS_AUTH_ENABLE=true
-      - NACOS_AUTH_IDENTITY_KEY=nacos
-      - NACOS_AUTH_IDENTITY_VALUE=nacos
-      - NACOS_AUTH_TOKEN=SecretKey345901234567890126785678901234567890123901234567890123445678
+      - NACOS_AUTH_IDENTITY_KEY=${NACOS_AUTH_IDENTITY_KEY:?NACOS_AUTH_IDENTITY_KEY is required}
+      - NACOS_AUTH_IDENTITY_VALUE=${NACOS_AUTH_IDENTITY_VALUE:?NACOS_AUTH_IDENTITY_VALUE is required}
+      - NACOS_AUTH_TOKEN=${NACOS_AUTH_TOKEN:?NACOS_AUTH_TOKEN is required}
       - JVM_XMS=512m
       - JVM_XMX=512m
       - JVM_XMN=256m
@@ -74,7 +74,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=iot45722414822
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=postgres
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
@@ -120,6 +120,7 @@ services:
     restart: always
     environment:
       - TZ=Asia/Shanghai
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       # 当前部署未启动 taosKeeper，关闭 taosAdapter 的无效监控上报，避免每 15 秒连接 6043 失败。
       - TAOS_ADAPTER_UPLOAD_KEEPER_ENABLE=false
     ports:
@@ -184,12 +185,13 @@ services:
       - "0.0.0.0:6379:6379"
     environment:
       - TZ=Asia/Shanghai
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     command: >
       redis-server
       --save 60 1000
       --loglevel warning
       --appendonly yes
-      --requirepass basiclab@iot975248395
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       --maxclients 10000
       --timeout 300
       --tcp-keepalive 60
@@ -202,7 +204,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "redis-cli -a basiclab@iot975248395 ping | grep PONG || exit 1",
+          "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG || exit 1",
         ]
       interval: 10s
       timeout: 5s
@@ -437,10 +439,10 @@ services:
       - TZ=Asia/Shanghai
       - EMQX_NAME=emqx
       - EMQX_HOST=127.0.0.1
-      - EMQX_NODE__COOKIE=emqxsecretcookie
+      - EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:?EMQX_NODE_COOKIE is required}
       - EMQX_CLUSTER__DISCOVERY_STRATEGY=static
       - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
-      - EMQX_DASHBOARD__DEFAULT_PASSWORD=basiclab@iot6874125784
+      - EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD is required}
       - EMQX_LOG__LEVEL=warning
     volumes:
       - emqx_data:/opt/emqx/data
@@ -524,7 +526,7 @@ services:
       # Worker 注册地址（install 脚本会根据宿主机 IP 注入 GPUSTACK_SERVER_EXTERNAL_URL）
       - GPUSTACK_SERVER_EXTERNAL_URL=${GPUSTACK_SERVER_EXTERNAL_URL:-http://host.docker.internal:10180}
       # 默认 admin 初始密码（bootstrap 仅在首次创建数据目录时生效）
-      - GPUSTACK_BOOTSTRAP_PASSWORD=${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}
+      - GPUSTACK_BOOTSTRAP_PASSWORD=${GPUSTACK_BOOTSTRAP_PASSWORD:?GPUSTACK_BOOTSTRAP_PASSWORD is required}
     volumes:
       - "${YFEIEYE_DOCKER_DATA_ROOT:-/opt/yfeieye-source/shared/docker}/gpustack_data:/var/lib/gpustack:rw"
       # 用于在本机注册 Worker、管理推理容器

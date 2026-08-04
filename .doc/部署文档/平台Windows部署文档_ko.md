@@ -156,7 +156,7 @@ F:\EASYLOT\TDengine\  ####自行下载
 - 버전: 16.x
 - 포트: 5432
 - 사용자 이름: postgres
-- 비밀번호: `iot45722414822`
+- 비밀번호: `<POSTGRES_PASSWORD>`
 
 #### 시작 명령
 ```powershell
@@ -169,14 +169,14 @@ net start postgresql-x64-16
 
 #### 데이터베이스 생성
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE \"iot-system\";"
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE \"iot-video20\";"
 ```
 
 #### 연결 확인
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "\l"
 ```
 
@@ -186,7 +186,7 @@ $env:PGPASSWORD='iot45722414822'
 #### 설치 정보
 - 버전: 7.x
 - 포트: 6379
-- 비밀번호: `basiclab@iot975248395`
+- 비밀번호: `<REDIS_OR_MINIO_PASSWORD>`
 
 #### 시작 명령
 ```powershell
@@ -197,7 +197,7 @@ cd F:\EASYLOT\Redis
 #### 연결 확인
 ```powershell
 cd F:\EASYLOT\Redis
-.\redis-cli.exe -a "basiclab@iot975248395" ping
+.\redis-cli.exe -a "<REDIS_OR_MINIO_PASSWORD>" ping
 # PONG을 반환해야 합니다
 ```
 
@@ -208,7 +208,7 @@ cd F:\EASYLOT\Redis
 - 버전: 2.x
 - 포트: 8848
 - 사용자 이름: nacos
-- 비밀번호: `basiclab@iot78475418754`
+- 비밀번호: `<NACOS_PASSWORD>`
 - 네임스페이스: local
 
 #### 시작 명령
@@ -235,7 +235,7 @@ http://localhost:8848/nacos
 - API 포트: 9000
 - 콘솔 포트: 9001
 - 사용자 이름: minioadmin
-- 비밀번호: `basiclab@iot975248395`
+- 비밀번호: `<REDIS_OR_MINIO_PASSWORD>`
 
 #### 시작 명령
 ```powershell
@@ -423,18 +423,18 @@ pip install -r requirements.txt
 `VIDEO/.env` 파일을 편집하고 다음 구성이 올바른지 확인:
 ```properties
 # 데이터베이스
-DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20
+DATABASE_URL=postgresql://postgres:<POSTGRES_PASSWORD>@localhost:5432/iot-video20
 
 # Nacos
 NACOS_SERVER=localhost:8848
 NACOS_NAMESPACE=local
 NACOS_USERNAME=nacos
-NACOS_PASSWORD=basiclab@iot78475418754
+NACOS_PASSWORD=<NACOS_PASSWORD>
 
 # MinIO
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=basiclab@iot975248395
+MINIO_SECRET_KEY=<REDIS_OR_MINIO_PASSWORD>
 
 # FFmpeg 경로 (Windows는 전체 경로를 구성해야 함)
 FFMPEG_PATH=G:/ffmpeg-7.0.2-essentials_build/bin/ffmpeg.exe
@@ -582,7 +582,7 @@ http_stream = f"http://127.0.0.1:8080/live/{short_stream_name}.flv"
 
 #### 기존 데이터 수동 수정
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -d "iot-video20" -c "UPDATE device SET rtmp_stream = 'rtmp://127.0.0.1:1935/live/cam_' || SUBSTRING(id, 1, 8), http_stream = 'http://127.0.0.1:8080/live/cam_' || SUBSTRING(id, 1, 8) || '.flv';"
 ```
 
@@ -682,7 +682,7 @@ VIDEO 서비스 시작 시 데이터베이스 연결 오류가 발생합니다.
 #### 진단 단계
 1. PostgreSQL 서비스가 시작되었는지 확인:
    ```powershell
-   $env:PGPASSWORD='iot45722414822'
+   $env:PGPASSWORD='<POSTGRES_PASSWORD>'
    & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "\l"
    ```
 
@@ -727,7 +727,7 @@ VIDEO 서비스 시작 시 데이터베이스 연결 오류가 발생합니다.
 
 ```powershell
 # 비밀번호 환경 변수 설정
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 
 # 데이터베이스 연결
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -d "iot-video20"
@@ -832,10 +832,10 @@ npm run dev
 
 | 서비스 | 사용자 이름 | 비밀번호 |
 |--------|------------|----------|
-| PostgreSQL | postgres | iot45722414822 |
-| Redis | - | basiclab@iot975248395 |
-| Nacos | nacos | basiclab@iot78475418754 |
-| MinIO | minioadmin | basiclab@iot975248395 |
+| PostgreSQL | postgres | <POSTGRES_PASSWORD> |
+| Redis | - | <REDIS_OR_MINIO_PASSWORD> |
+| Nacos | nacos | <NACOS_PASSWORD> |
+| MinIO | minioadmin | <REDIS_OR_MINIO_PASSWORD> |
 | TDengine | root | taosdata |
 | WEB 프론트엔드 | admin | admin123 |
 | 테스트 카메라 | admin | sr336699 |

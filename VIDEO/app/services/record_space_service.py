@@ -44,8 +44,10 @@ def _record_device_prefix(device_id, record_space=None) -> str:
 def get_minio_client():
     """创建并返回Minio客户端"""
     minio_endpoint = current_app.config.get('MINIO_ENDPOINT', 'localhost:9000')
-    access_key = current_app.config.get('MINIO_ACCESS_KEY', 'minioadmin')
-    secret_key = current_app.config.get('MINIO_SECRET_KEY', 'minioadmin')
+    access_key = current_app.config.get('MINIO_ACCESS_KEY', '')
+    secret_key = current_app.config.get('MINIO_SECRET_KEY', '')
+    if not access_key or not secret_key:
+        raise RuntimeError('MINIO_ACCESS_KEY / MINIO_SECRET_KEY 未配置')
     secure_value = current_app.config.get('MINIO_SECURE', False)
     # 处理 secure 可能是布尔值或字符串的情况
     if isinstance(secure_value, bool):

@@ -14,7 +14,7 @@
 2. **全链路 MQTT**：收 `mqtt/iot-algo-task-cmd`，发 ack/heartbeat/alert/postprocess  
 3. **不存储**：告警图等只写 Ceph；不上传 MinIO  
 4. **无限集群**：任意数量 EDGE 节点挂同一 EMQX；控制面调度选节点  
-5. **单配置**：用户只配置 `EDGE_NODE_URL`；MQTT 地址、凭证、路径等全部由 NODE 动态分配  
+5. **最小配置**：用户配置 `EDGE_NODE_URL` 与 `EDGE_JOIN_TOKEN`；MQTT 地址、凭证、路径等全部由 NODE 动态分配
 
 VIDEO 保留：任务 CRUD、调度策略、列表/日志等控制面 HTTP。
 
@@ -66,7 +66,7 @@ edgectl pull-config     # POST /admin-api/node/edge/runtime-config（enroll 内�
 edgectl run             # MQTT 常驻
 ```
 
-`enroll` 成功后本地 `EDGE/state/edge.state.json`（或合并进 `edge.env`）保存 `nodeId`/`agentToken`；之后重启只需仍指向同一 `EDGE_NODE_URL` 即可 `pull-config` + `run`。
+`enroll` 成功后本地 `EDGE/state/edge.state.json`（或合并进 `edge.env`）保存 `nodeId`/`agentToken`；之后重启可用已保存的 Agent Token 执行 `pull-config` + `run`。
 
 ---
 
@@ -140,7 +140,7 @@ edgectl run             # MQTT 常驻
 
 ## 7. 安全
 
-- 生产设置 `easyaiot.edge.join-token`，EDGE 配置同名 token  
+- 所有部署设置 `easyaiot.edge.join-token`，EDGE 配置同名 token
 - `allow-open-enroll` 仅用于隔离实验网  
 - MQTT ACL：`algo-edge-*` 仅本节点相关 publish/subscribe  
 
@@ -148,7 +148,7 @@ edgectl run             # MQTT 常驻
 
 ## 8. 验收
 
-- [ ] 只配 `EDGE_NODE_URL` 可完成 enroll + 拿到非空 `mqttBrokerUrls`  
+- [ ] 配置 `EDGE_NODE_URL` 与 `EDGE_JOIN_TOKEN` 后可完成 enroll + 拿到非空 `mqttBrokerUrls`
 - [ ] `edgectl run` 收到指定本节点的 start cmd 能拉起进程  
 - [ ] 告警图落 Ceph，本机无 MinIO 上传代码路径  
 - [ ] 停掉首选 MQTT broker 后按序切换且下一轮仍从列表头探测  

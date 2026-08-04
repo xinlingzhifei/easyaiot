@@ -1,7 +1,6 @@
 package com.basiclab.iot.system.framework.security.config;
 
 import com.basiclab.iot.common.config.AuthorizeRequestsCustomizer;
-import com.basiclab.iot.system.enums.ApiConstants;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -29,12 +28,10 @@ public class SecurityConfiguration {
                 registry.antMatchers("/v3/api-docs/**").permitAll() // 元数据
                         .antMatchers("/swagger-ui.html").permitAll(); // Swagger UI
                 // Druid 监控
-                registry.antMatchers("/druid/**").anonymous();
+                registry.antMatchers("/druid/**").access("@ss.isAdminUser()");
                 // Spring Boot Actuator 的安全配置
-                registry.antMatchers("/actuator").anonymous()
-                        .antMatchers("/actuator/**").anonymous();
-                // RPC 服务的安全配置
-                registry.antMatchers(ApiConstants.PREFIX + "/**").permitAll();
+                registry.antMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .antMatchers("/actuator", "/actuator/**").access("@ss.isAdminUser()");
             }
 
         };

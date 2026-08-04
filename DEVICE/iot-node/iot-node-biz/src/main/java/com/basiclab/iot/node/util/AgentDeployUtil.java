@@ -35,8 +35,8 @@ public final class AgentDeployUtil {
                 + "MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster\n"
                 + "MQTT_CLUSTER_ROOT=/opt/easyaiot/mqtt-cluster\n"
                 + "MINIO_ENDPOINT=http://localhost:9000\n"
-                + "MINIO_ACCESS_KEY=minioadmin\n"
-                + "MINIO_SECRET_KEY=your-secret\n";
+                + "MINIO_ACCESS_KEY=\n"
+                + "MINIO_SECRET_KEY=\n";
     }
 
     public static String buildInstallScript(String envContent) {

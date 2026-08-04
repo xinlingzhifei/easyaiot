@@ -43,7 +43,7 @@ GPUSTACK_WORKER_NAME="${GPUSTACK_WORKER_NAME:-gpustack-worker}"
 GPUSTACK_WORKER_IMAGE="${GPUSTACK_WORKER_IMAGE:-quay.io/gpustack/gpustack:v2.1.2}"
 GPUSTACK_CLUSTER_NAME="${GPUSTACK_CLUSTER_NAME:-yfeieye}"
 GPUSTACK_ADMIN_USER="${GPUSTACK_ADMIN_USER:-admin}"
-GPUSTACK_ADMIN_PASSWORD="${GPUSTACK_ADMIN_PASSWORD:-${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}}"
+GPUSTACK_ADMIN_PASSWORD="${GPUSTACK_ADMIN_PASSWORD:-}"
 # GPUSTACK_TOKEN 由 API 动态获取；若已导出则优先使用环境变量中的值
 GPUSTACK_API_COOKIE_FILE="${SCRIPT_DIR}/logs/.gpustack_api_cookie"
 # 跳过 GPUStack（Server 容器、Worker、镜像拉取、数据目录递归 chmod）。
@@ -2312,6 +2312,21 @@ normalize_zlmediakit_rtc_config() {
     }" "$config_file"
 }
 
+apply_zlmediakit_api_secret() {
+    local config_file="$1"
+    local zlm_api_secret
+    zlm_api_secret=$(read_middleware_env_value ZLM_SECRET)
+    if [ -z "$zlm_api_secret" ] || [ "$zlm_api_secret" = "CHANGE_ME" ]; then
+        print_error "ZLM_SECRET 未配置，拒绝创建或沿用公开 API 密钥"
+        return 1
+    fi
+    if [[ ! "$zlm_api_secret" =~ ^[A-Za-z0-9._~-]{32,}$ ]]; then
+        print_error "ZLM_SECRET 必须至少 32 字节且仅包含 URL 安全字符"
+        return 1
+    fi
+    sed -i "/^\[api\]/,/^\[/ s|^secret=.*|secret=${zlm_api_secret}|" "$config_file"
+}
+
 # 准备 ZLMediaKit 配置文件
 prepare_zlmediakit_config() {
     local middleware_data_root
@@ -2346,6 +2361,7 @@ prepare_zlmediakit_config() {
             print_info "已关闭 ZLMediaKit mp4 录像: enable_mp4=0"
         fi
         normalize_zlmediakit_rtc_config "$zlm_config_file" "$zlm_rtc_extern_ip"
+        apply_zlmediakit_api_secret "$zlm_config_file" || return 1
         return 0
     else
         print_warning "ZLMediaKit 配置文件不存在，将创建默认配置"
@@ -2358,7 +2374,7 @@ prepare_zlmediakit_config() {
 apiDebug=1
 defaultSnap=./www/logo.png
 downloadRoot=./www;
-secret=AdJQu9CMnwZvCc139s8lF0F9dhk6sNXG
+secret=CHANGE_ME
 snapRoot=./www/snap/
 
 [cluster]
@@ -2551,6 +2567,7 @@ timeoutSec=5
 EOF
 
     normalize_zlmediakit_rtc_config "$zlm_config_file" "$zlm_rtc_extern_ip"
+    apply_zlmediakit_api_secret "$zlm_config_file" || return 1
     
     # 验证文件是否创建成功
     if [ -f "$zlm_config_file" ]; then
@@ -2634,6 +2651,13 @@ _gpustack_api_base() {
 # 登录 GPUStack 管理 API（Session Cookie）
 gpustack_api_login() {
     local api_base http_code
+    if [ -z "${GPUSTACK_ADMIN_PASSWORD}" ]; then
+        GPUSTACK_ADMIN_PASSWORD=$(read_middleware_env_value GPUSTACK_BOOTSTRAP_PASSWORD)
+    fi
+    if [ -z "${GPUSTACK_ADMIN_PASSWORD}" ] || [ "${GPUSTACK_ADMIN_PASSWORD}" = "CHANGE_ME" ]; then
+        print_gpustack_error "GPUSTACK_BOOTSTRAP_PASSWORD 未配置，拒绝使用仓库默认密码"
+        return 1
+    fi
     api_base=$(_gpustack_api_base)
     rm -f "$GPUSTACK_API_COOKIE_FILE"
 
@@ -3581,10 +3605,14 @@ reset_postgresql_password() {
     
     # wait_for_postgresql 已用 pg_isready 确认可接受连接，无需再固定等待 5s
     
-    # 从 docker-compose.yml 中读取配置的密码
-    local target_password="iot45722414822"
+    local target_password
+    target_password=$(read_middleware_env_value POSTGRES_PASSWORD)
+    if [ -z "$target_password" ] || [ "$target_password" = "CHANGE_ME" ]; then
+        print_error "POSTGRES_PASSWORD 未配置，拒绝重置数据库密码"
+        return 1
+    fi
     
-    print_info "正在重置 postgres 用户密码为: $target_password"
+    print_info "正在重置 postgres 用户密码（凭据值不输出）"
     
     # 尝试通过容器内部重置密码
     # 方法1: 使用本地连接（不需要密码，通过 Unix socket）
@@ -3636,11 +3664,11 @@ reset_postgresql_password() {
         print_info "  3. 数据库数据目录损坏"
         echo ""
         print_info "手动修复命令："
-        print_info "  docker exec postgres-server psql -U postgres -d postgres -c \"ALTER USER postgres WITH PASSWORD '$target_password';\""
+        print_info "  请通过受控环境中的密码重置脚本重试（凭据值不输出）"
         print_info "或者重启容器后重试："
         print_info "  docker restart postgres-server"
         print_info "  sleep 10"
-        print_info "  docker exec postgres-server psql -U postgres -d postgres -c \"ALTER USER postgres WITH PASSWORD '$target_password';\""
+        print_info "  请通过受控环境中的密码重置脚本重试（凭据值不输出）"
         return 1
     fi
     
@@ -3663,7 +3691,12 @@ ensure_postgresql_password() {
         return 1
     fi
     
-    local target_password="iot45722414822"
+    local target_password
+    target_password=$(read_middleware_env_value POSTGRES_PASSWORD)
+    if [ -z "$target_password" ] || [ "$target_password" = "CHANGE_ME" ]; then
+        print_error "POSTGRES_PASSWORD 未配置，无法验证数据库密码"
+        return 1
+    fi
     
     # 测试当前密码是否正确
     print_info "测试当前 PostgreSQL 密码..."
@@ -3784,7 +3817,12 @@ EOF
         
         # 测试从宿主机连接（如果 psql 可用）
         if command -v psql &> /dev/null; then
-            local test_password="iot45722414822"
+            local test_password
+            test_password=$(read_middleware_env_value POSTGRES_PASSWORD)
+            if [ -z "$test_password" ] || [ "$test_password" = "CHANGE_ME" ]; then
+                print_error "POSTGRES_PASSWORD 未配置，跳过宿主机连接测试"
+                return 1
+            fi
             export PGPASSWORD="$test_password"
             if psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "SELECT 1;" > /dev/null 2>&1; then
                 print_success "宿主机连接测试成功"
@@ -4685,11 +4723,10 @@ init_databases() {
         else
             print_section "Nacos 密码配置确认"
             print_warning "自动验证未通过：Nacos 已有 admin 账号但密码与预期不一致"
-            print_info "请登录 http://localhost:8848/nacos 将 nacos 用户密码改为："
-            print_warning "${YELLOW}basiclab@iot78475418754${NC}"
+            print_info "请登录 http://localhost:8848/nacos，将 nacos 用户密码改为安全注入的 NACOS_PASSWORD"
             echo ""
             while true; do
-                echo -ne "${YELLOW}[提示]${NC} 是否已经完成 Nacos 密码配置（密码必须为: basiclab@iot78475418754）？(y/N): "
+                echo -ne "${YELLOW}[提示]${NC} 是否已经完成 Nacos 密码配置？(y/N): "
                 read -r response
                 case "$response" in
                     [yY][eE][sS]|[yY])
@@ -6008,10 +6045,17 @@ fix_nacos_derby_corruption() {
 # 没有任何用户，业务服务登录会报 "User nacos not found"。
 # Nacos 2.2+ 在 auth 开启后 /v1/auth/users/admin 可能不支持匿名调用，需用默认 nacos/nacos 登录后创建。
 # 密码必须与各服务 bootstrap-*.yaml 的 spring.cloud.nacos.*.password 一致。
-NACOS_INIT_PASSWORD="${NACOS_INIT_PASSWORD:-basiclab@iot78475418754}"
+NACOS_INIT_PASSWORD="${NACOS_INIT_PASSWORD:-}"
 NACOS_DEFAULT_PASSWORD="${NACOS_DEFAULT_PASSWORD:-nacos}"
 ensure_nacos_admin_user() {
     docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nacos-server$' || return 0
+    if [ -z "${NACOS_INIT_PASSWORD}" ]; then
+        NACOS_INIT_PASSWORD=$(read_middleware_env_value NACOS_PASSWORD)
+    fi
+    if [ -z "${NACOS_INIT_PASSWORD}" ] || [ "${NACOS_INIT_PASSWORD}" = "CHANGE_ME" ]; then
+        print_error "NACOS_PASSWORD 未配置，拒绝初始化 Nacos 管理员"
+        return 1
+    fi
 
     print_info "初始化 Nacos 管理员账号与 dev 命名空间（用户 nacos，密码与各服务 bootstrap 一致）..."
 
@@ -6098,7 +6142,7 @@ ensure_nacos_admin_user() {
 
     print_error "Nacos admin 用户自动初始化失败，请手动配置"
     print_info "1. 登录 http://localhost:8848/nacos（默认账号 nacos/nacos）"
-    print_info "2. 将 nacos 用户密码改为: ${NACOS_INIT_PASSWORD}"
+    print_info "2. 使用已安全注入的 NACOS_INIT_PASSWORD 更新 nacos 用户密码（凭据值不输出）"
     print_info "3. 创建命名空间: namespaceId=dev, namespaceName=dev"
     print_info "4. 配置完成后可重新运行: ./install_middleware_linux.sh install"
     return 1

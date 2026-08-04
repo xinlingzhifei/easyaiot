@@ -1,5 +1,0 @@
-"""
-@author reese
-@email reese
-"""
-

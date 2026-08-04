@@ -875,10 +875,18 @@ def toggle_post_process(task_id):
         enabled = data.get('enabled')
         if enabled is None:
             return jsonify({'code': 400, 'msg': '缺少 enabled 参数'}), 400
+        script_name = None
+        if data.get('post_process_script'):
+            from app.utils.post_process_runner import get_task_script_path
+            script_name = str(data['post_process_script']).strip() or 'post_process.py'
+            try:
+                get_task_script_path(task_id, script_name)
+            except ValueError as exc:
+                return jsonify({'code': 400, 'msg': str(exc)}), 400
         task = AlgorithmTask.query.get_or_404(task_id)
         task.post_process_enabled = bool(enabled)
-        if data.get('post_process_script'):
-            task.post_process_script = str(data['post_process_script']).strip() or 'post_process.py'
+        if script_name:
+            task.post_process_script = script_name
         if data.get('post_process_replicas') is not None:
             try:
                 task.post_process_replicas = max(1, int(data['post_process_replicas']))

@@ -9,7 +9,8 @@ namespace {
 void printUsage(const char* program) {
     std::cout << "Usage: " << program
               << " [--host 0.0.0.0] [--port 7000] [--task-bin ./TASK]"
-              << " [--config-dir config/generated] [--max-tasks 50]\n";
+              << " [--config-dir config/generated] [--max-tasks 50]\n"
+              << "Environment: TASK_MANAGER_TOKEN is required\n";
 }
 
 bool readOption(int& index, int argc, char* argv[], std::string& value) {
@@ -20,10 +21,27 @@ bool readOption(int& index, int argc, char* argv[], std::string& value) {
     return true;
 }
 
+std::string readEnvironment(const char* name) {
+#ifdef _WIN32
+    char* value = nullptr;
+    size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+        return "";
+    }
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr ? std::string(value) : std::string();
+#endif
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     TaskManagerOptions options;
+    options.authToken = readEnvironment("TASK_MANAGER_TOKEN");
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -54,6 +72,10 @@ int main(int argc, char* argv[]) {
     }
     if (options.maxTasks <= 0) {
         std::cerr << "Invalid max task count: " << options.maxTasks << "\n";
+        return 1;
+    }
+    if (options.authToken.empty()) {
+        std::cerr << "TASK_MANAGER_TOKEN is required\n";
         return 1;
     }
 

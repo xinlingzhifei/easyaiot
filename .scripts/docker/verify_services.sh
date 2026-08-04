@@ -208,7 +208,7 @@ fi
 
 # Redis
 verify_service "Redis" "redis-server" "6379" \
-    "docker exec redis-server redis-cli -a 'basiclab@iot975248395' ping | grep -q PONG"
+    "docker exec redis-server sh -c 'redis-cli -a \"\$REDIS_PASSWORD\" ping | grep -q PONG'"
 
 # Kafka
 if middleware_service_enabled "Kafka"; then
@@ -296,4 +296,3 @@ else
     print_info "  5. 检查网络: docker network inspect yfeieye-network"
     exit 1
 fi
-

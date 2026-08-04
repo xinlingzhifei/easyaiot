@@ -2,11 +2,12 @@
 
 第八核心模块：**无限联邦边缘集群模式**——无界面、纯命令行边缘算法运行时。内存占用约 **512MB**，**Ceph 边缘 0 硬盘占用**，一行命令把普通开发板直接智能化，算力可铺开部署并汇聚上云；通过 MQTT/EMQX 无限扩容，算法任务从 VIDEO 控制面抽离，边缘侧 **不落本地业务盘、不直传 MinIO**。
 
-## 你只需配置 NODE；有多个 SRS 时再指定媒体节点
+## 配置 NODE 与加入令牌；有多个 SRS 时再指定媒体节点
 
 ```bash
 # edge.env
 EDGE_NODE_URL=http://<iot-node控制面主机>:48080
+EDGE_JOIN_TOKEN=<与控制面 easyaiot.edge.join-token 一致的随机令牌>
 # 可选：多媒体节点时手动指定 AI 推流目标（控制台下拉会生成命令）
 # python -m edge config set-srs --host <SRS主机> --rtmp-port 1935 --http-port 8080 --api-port 1985
 ```
@@ -27,8 +28,9 @@ cd EDGE
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 1. 写入 NODE 地址（必配）
+# 1. 写入 NODE 地址与加入令牌（均必配）
 python -m edge config set-node http://10.0.0.10:48080
+python -m edge config set-join-token <与控制面一致的令牌>
 
 # 1b. 多 SRS 时指定本台推流目标（控制台下拉生成）
 # python -m edge config set-srs --host 10.0.0.20 --rtmp-port 1935 --http-port 8080 --api-port 1985
@@ -50,13 +52,13 @@ python -m edge pull-config
 python -m edge stop   # 优雅退出本机 edge run
 ```
 
-生产环境建议在控制面配置 `easyaiot.edge.join-token`，边缘侧同步：
+控制面必须配置 `easyaiot.edge.join-token`，边缘侧同步：
 
 ```bash
 python -m edge config set-join-token <与控制面一致的令牌>
 ```
 
-私网实验室可开启控制面 `easyaiot.edge.allow-open-enroll=true`，此时仅需 `EDGE_NODE_URL`。
+`easyaiot.edge.allow-open-enroll` 默认且生产必须保持 `false`；只有物理隔离、可回滚的临时实验环境才可短时显式开启。
 
 ## 设计原则
 
@@ -67,7 +69,7 @@ python -m edge config set-join-token <与控制面一致的令牌>
 | 命令下发 | `edge task start/stop` 发 `mqtt/iot-algo-task-cmd`；与算法任务 Tab 隔离 |
 | 不存储 | 业务图写 Ceph 共享路径；归档由中心 sink 完成 |
 | 无限集群 | 多 EDGE 节点共享同一 EMQX 集群 |
-| 单配置入口 | 必配 NODE；多 SRS 时另 `set-srs` |
+| 纳管配置 | 必配 NODE 与加入令牌；多 SRS 时另 `set-srs` |
 | 与 VIDEO 解耦 | 执行包在 `EDGE/runtime`；VIDEO `algorithm_task`/`alert` **无** `edge_node_*` 字段 |
 
 ## 目录

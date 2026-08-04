@@ -74,7 +74,7 @@ POSTGRES_CONTAINER="postgres-server"
 
 # PostgreSQL 连接信息
 POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="iot45722414822"
+POSTGRES_PASSWORD="<POSTGRES_PASSWORD>"
 POSTGRES_HOST="localhost"
 POSTGRES_PORT="5432"
 
@@ -140,10 +140,10 @@ crontab -e
 
 ```bash
 # 方法1：使用本地 psql（需要版本匹配）
-PGPASSWORD=iot45722414822 psql -h localhost -U postgres -d iot-ai20 < backup_dir/iot-ai20.sql
+PGPASSWORD=<POSTGRES_PASSWORD> psql -h localhost -U postgres -d iot-ai20 < backup_dir/iot-ai20.sql
 
 # 方法2：使用 Docker 容器内的 psql（推荐，版本匹配）
-docker exec -i -e PGPASSWORD=iot45722414822 postgres-server \
+docker exec -i -e PGPASSWORD=<POSTGRES_PASSWORD> postgres-server \
     psql -U postgres -h localhost -p 5432 -d iot-ai20 < backup_dir/iot-ai20.sql
 ```
 

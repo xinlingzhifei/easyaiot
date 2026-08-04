@@ -4,6 +4,7 @@ import com.basiclab.iot.common.web.controller.BaseController;
 import com.basiclab.iot.common.domain.AjaxResult;
 import com.basiclab.iot.common.domain.TableDataInfo;
 import com.basiclab.iot.message.domain.entity.TPreviewUserGroup;
+import com.basiclab.iot.message.security.MessageInternalAccessVerifier;
 import com.basiclab.iot.message.service.TPreviewUserGroupService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.annotations.ApiOperation;
@@ -27,6 +28,8 @@ public class TPreviewUserGroupController extends BaseController {
 
     @Autowired
     private TPreviewUserGroupService tPreviewUserGroupService;
+    @Autowired
+    private MessageInternalAccessVerifier messageInternalAccessVerifier;
 
     @PostMapping("/add")
     @ApiOperation("新增")
@@ -48,7 +51,11 @@ public class TPreviewUserGroupController extends BaseController {
 
     @GetMapping("/query")
     @ApiOperation("查询")
-    public TableDataInfo query(@ModelAttribute TPreviewUserGroup tPreviewUserGroup){
+    public TableDataInfo query(
+            @RequestHeader(value = MessageInternalAccessVerifier.TOKEN_HEADER, required = false)
+            String internalToken,
+            @ModelAttribute TPreviewUserGroup tPreviewUserGroup){
+        messageInternalAccessVerifier.verify(internalToken);
         startPage();
         List<TPreviewUserGroup> query = tPreviewUserGroupService.query(tPreviewUserGroup);
         return getDataTable(query);

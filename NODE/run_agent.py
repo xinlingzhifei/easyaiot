@@ -38,6 +38,10 @@ AGENT_VERSION = '1.0.0'
 AGENT_ENV_FILE = os.environ.get('AGENT_ENV_FILE', '')
 BOOTSTRAP_WAIT_SECONDS = int(os.environ.get('BOOTSTRAP_WAIT_SECONDS', '180'))
 BOOTSTRAP_RETRY_INTERVAL = int(os.environ.get('BOOTSTRAP_RETRY_INTERVAL', '3'))
+PLATFORM_AGENT_BOOTSTRAP_TOKEN = os.environ.get(
+    'PLATFORM_AGENT_BOOTSTRAP_TOKEN',
+    os.environ.get('EASYAIOT_PLATFORM_AGENT_BOOTSTRAP_TOKEN', ''),
+).strip()
 
 
 def _detect_platform_agent() -> bool:
@@ -86,9 +90,18 @@ def persist_credentials() -> None:
 
 def try_refresh_credentials(*, allow_node_id_change: bool = False) -> bool:
     global NODE_ID, AGENT_TOKEN
+    if not PLATFORM_AGENT:
+        return False
+    if not PLATFORM_AGENT_BOOTSTRAP_TOKEN:
+        logger.error('缺少 PLATFORM_AGENT_BOOTSTRAP_TOKEN，拒绝请求平台 bootstrap 凭据')
+        return False
     url = bootstrap_url()
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(
+            url,
+            headers={'X-Bootstrap-Token': PLATFORM_AGENT_BOOTSTRAP_TOKEN},
+            timeout=10,
+        )
         if resp.status_code != 200:
             logger.debug('bootstrap 请求失败 HTTP %s: %s', resp.status_code, url)
             return False

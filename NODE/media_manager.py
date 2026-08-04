@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from typing import Any, Dict, List, Optional
 
+from env_security import sanitize_environment_overrides, validate_node_identifier
+
 logger = logging.getLogger('easyaiot-node-agent.media')
 
 MEDIA_CLUSTER_ROOT = os.environ.get('MEDIA_CLUSTER_ROOT', '/opt/easyaiot/media-cluster')
@@ -16,6 +18,28 @@ STACK_PROFILES = {
     'srs_live': {'MEDIA_NODE_TYPE': 'srs_live', 'service': 'srs'},
     'srs_ai': {'MEDIA_NODE_TYPE': 'srs_ai', 'service': 'srs'},
     'zlm': {'MEDIA_NODE_TYPE': 'zlm', 'service': 'zlm'},
+}
+ALLOWED_MEDIA_ENV_KEYS = {
+    'MEDIA_CLUSTER_ROOT',
+    'MEDIA_NODE_NAME',
+    'MEDIA_NODE_HOST',
+    'MEDIA_HOOK_HOST',
+    'MEDIA_HOOK_PORT',
+    'MEDIA_HOOK_PATH_PREFIX',
+    'SRS_CANDIDATE_IP',
+    'SRS_RTMP_PORT',
+    'SRS_HTTP_PORT',
+    'SRS_API_PORT',
+    'SRS_RTC_PORT',
+    'YFEIEYE_SRS_HOOK_TOKEN',
+    'ZLM_HTTP_PORT',
+    'ZLM_RTMP_PORT',
+    'ZLM_RTSP_PORT',
+    'ZLM_RTC_PORT',
+    'ZLM_RTC_EXTERN_IP',
+    'ZLM_RTP_PORT_MIN',
+    'ZLM_RTP_PORT_MAX',
+    'ZLM_SECRET',
 }
 
 
@@ -64,9 +88,19 @@ class MediaStackManager:
         if stack_type not in STACK_PROFILES:
             raise ValueError(f'不支持的媒体栈类型: {stack_type}')
 
-        node_id = str(spec.get('nodeId') or os.environ.get('NODE_ID', 'media-node'))
+        node_id = validate_node_identifier(
+            spec.get('nodeId') or os.environ.get('NODE_ID', 'media-node')
+        )
+        overrides = sanitize_environment_overrides(
+            spec.get('env'),
+            ALLOWED_MEDIA_ENV_KEYS,
+        )
+        requested_root = overrides.pop('MEDIA_CLUSTER_ROOT', MEDIA_CLUSTER_ROOT)
+        if os.path.realpath(requested_root) != os.path.realpath(MEDIA_CLUSTER_ROOT):
+            raise ValueError('不允许覆盖 MEDIA_CLUSTER_ROOT')
         env = os.environ.copy()
-        env.update({k: str(v) for k, v in (spec.get('env') or {}).items() if v is not None})
+        env.update(overrides)
+        env['MEDIA_CLUSTER_ROOT'] = MEDIA_CLUSTER_ROOT
         env['MEDIA_NODE_ID'] = f'{node_id}-{"srs" if STACK_PROFILES[stack_type]["service"] == "srs" else "zlm"}'
         env.setdefault('MEDIA_NODE_NAME', f'node-{node_id}')
         env['MEDIA_NODE_TYPE'] = STACK_PROFILES[stack_type]['MEDIA_NODE_TYPE']

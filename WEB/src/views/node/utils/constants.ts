@@ -1342,7 +1342,9 @@ export ZLM_RTP_PORT_MIN=${zlmRtpMin}
 export ZLM_RTP_PORT_MAX=${zlmRtpMax}
 export ZLM_RTC_PORT=${zlmRtc}
 export ZLM_RTC_EXTERN_IP="${host}"
-export ZLM_SECRET="yFeiEye_Media_Secret"
+# 请在执行前通过安全渠道注入，不得把密钥写入脚本或前端资源
+: "\${ZLM_SECRET:?请先设置 ZLM_SECRET}"
+export ZLM_SECRET
 
 # ---------- 2. 前置检查 ----------
 if ! command -v docker >/dev/null 2>&1; then
@@ -1459,8 +1461,8 @@ VIDEO_ROOT=/opt/easyaiot/VIDEO
 MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster
 MQTT_CLUSTER_ROOT=/opt/easyaiot/mqtt-cluster
 MINIO_ENDPOINT=http://localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=your-secret
+MINIO_ACCESS_KEY=
+MINIO_SECRET_KEY=
 `;
 }
 

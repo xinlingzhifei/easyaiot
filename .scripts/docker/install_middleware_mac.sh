@@ -38,6 +38,43 @@ ensure_env_var() {
   echo "${key}=${value}" >> "${ENV_FILE}"
 }
 
+read_env_var() {
+  local key="$1"
+  sed -n "s/^${key}=//p" "${ENV_FILE}" 2>/dev/null | tail -1 | tr -d '\r'
+}
+
+set_env_var() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "${ENV_FILE}" 2>/dev/null; then
+    sed -i '' "s/^${key}=.*/${key}=${value}/" "${ENV_FILE}"
+  else
+    ensure_env_var "${key}" "${value}"
+  fi
+}
+
+generate_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 24
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import secrets; print(secrets.token_hex(24))'
+    return
+  fi
+  err "无法生成随机凭据：缺少 openssl 与 python3"
+  exit 1
+}
+
+ensure_generated_secret() {
+  local key="$1" current="" value
+  current="$(grep "^${key}=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+  if [[ -n "${current}" && "${current}" != "CHANGE_ME" ]]; then
+    return
+  fi
+  value="$(generate_secret)"
+  set_env_var "${key}" "${value}"
+}
+
 SERVICES=(Nacos PostgresSQL TDengine Redis Kafka MinIO SRS NodeRED FUXA EMQX)
 MINIO_BUCKETS=(
   "dataset" "datasets" "export-bucket" "inference-inputs" "inference-results" "models" "snap-space" "alert-images"
@@ -196,15 +233,22 @@ ensure_env() {
   local example="${SCRIPT_DIR}/env.example"
   [[ -f "$example" ]] || { err "缺少 env.example"; exit 1; }
   [[ -f "${ENV_FILE}" ]] || cp "$example" "${ENV_FILE}"
-  ensure_env_var "POSTGRES_PASSWORD" "iot45722414822"
+  ensure_generated_secret "POSTGRES_PASSWORD"
   ensure_env_var "DATABASE_URL" "postgresql://postgres:\${POSTGRES_PASSWORD}@PostgresSQL:5432/iot-ai20"
   ensure_env_var "NACOS_SERVER" "Nacos:8848"
   ensure_env_var "NACOS_NAMESPACE" ""
-  ensure_env_var "NACOS_PASSWORD" "basiclab@iot78475418754"
+  ensure_generated_secret "NACOS_PASSWORD"
+  ensure_generated_secret "NACOS_AUTH_IDENTITY_KEY"
+  ensure_generated_secret "NACOS_AUTH_IDENTITY_VALUE"
+  ensure_generated_secret "NACOS_AUTH_TOKEN"
   ensure_env_var "MINIO_ENDPOINT" "MinIO:9000"
-  ensure_env_var "MINIO_SECRET_KEY" "basiclab@iot975248395"
-  ensure_env_var "REDIS_PASSWORD" "basiclab@iot975248395"
-  ensure_env_var "EMQX_DASHBOARD_PASSWORD" "basiclab@iot6874125784"
+  ensure_generated_secret "MINIO_ROOT_PASSWORD"
+  set_env_var "MINIO_SECRET_KEY" "$(read_env_var MINIO_ROOT_PASSWORD)"
+  ensure_generated_secret "REDIS_PASSWORD"
+  ensure_generated_secret "EMQX_DASHBOARD_PASSWORD"
+  ensure_generated_secret "EMQX_NODE_COOKIE"
+  ensure_generated_secret "ZLM_SECRET"
+  ensure_generated_secret "GPUSTACK_BOOTSTRAP_PASSWORD"
   ok ".env.docker 已准备"
 }
 
@@ -384,9 +428,8 @@ ensure_minio_buckets() {
     warn "MinIO 未就绪，跳过存储桶初始化"
     return 1
   fi
-
-  local access_key="${MINIO_ACCESS_KEY:-minioadmin}"
-  local secret_key="${MINIO_SECRET_KEY:-basiclab@iot975248395}"
+  local access_key="${MINIO_ACCESS_KEY:-$(read_env_var MINIO_ACCESS_KEY)}"
+  local secret_key="${MINIO_SECRET_KEY:-$(read_env_var MINIO_SECRET_KEY)}"
   local failed=0
 
   for bucket in "${MINIO_BUCKETS[@]}"; do
@@ -408,8 +451,7 @@ update_nacos_password() {
   local nacos_server="http://localhost:8848"
   local default_username="nacos"
   local default_password="nacos"
-  local new_password="${NACOS_PASSWORD:-basiclab@iot78475418754}"
-
+  local new_password="${NACOS_PASSWORD:-$(read_env_var NACOS_PASSWORD)}"
   info "检测 Nacos API 是否就绪..."
   if ! wait_for_health 8848 "/nacos/actuator/health"; then
     warn "Nacos 健康检查未通过，跳过密码修改"

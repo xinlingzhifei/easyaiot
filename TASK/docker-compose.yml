@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: taskmanager-server
+    environment:
+      - TASK_MANAGER_TOKEN=${TASK_MANAGER_TOKEN:?TASK_MANAGER_TOKEN is required}
     ports:
       - "127.0.0.1:7000:7000"
     volumes:

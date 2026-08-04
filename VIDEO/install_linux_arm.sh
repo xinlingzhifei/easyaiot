@@ -551,12 +551,9 @@ create_env_file() {
             
             print_info "自动配置中间件连接信息（使用host网络模式，通过localhost访问中间件）..."
             
-            sed -i 's|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20|' .env.docker
-            
             sed -i 's|^NACOS_SERVER=.*|NACOS_SERVER=localhost:8848|' .env.docker
             
             sed -i 's|^MINIO_ENDPOINT=.*|MINIO_ENDPOINT=localhost:9000|' .env.docker
-            sed -i 's|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=basiclab@iot975248395|' .env.docker
             
             sed -i 's|^REDIS_HOST=.*|REDIS_HOST=localhost|' .env.docker
             
@@ -564,8 +561,6 @@ create_env_file() {
             sed -i 's|^KAFKA_BOOTSTRAP_SERVERS=.*|KAFKA_BOOTSTRAP_SERVERS=localhost:9094|' .env.docker
             
             sed -i 's|^TDENGINE_HOST=.*|TDENGINE_HOST=localhost|' .env.docker
-            
-            sed -i 's|^NACOS_PASSWORD=.*|NACOS_PASSWORD=basiclab@iot78475418754|' .env.docker
             
             print_success "中间件连接信息已自动配置（使用host网络模式）"
             print_info "注意：使用host网络模式后，容器可以直接访问宿主机局域网，支持ONVIF摄像头发现"
@@ -579,7 +574,7 @@ create_env_file() {
         print_info "检查并更新中间件连接信息（使用host网络模式）..."
         
         if grep -q "DATABASE_URL=.*PostgresSQL" .env.docker || grep -q "DATABASE_URL=.*postgres-server" .env.docker; then
-            sed -i 's|^DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20|' .env.docker
+            sed -i '/^DATABASE_URL=/ s|PostgresSQL:5432|localhost:5432|; /^DATABASE_URL=/ s|postgres-server:5432|localhost:5432|' .env.docker
             print_info "已更新数据库连接为 localhost:5432（host网络模式）"
         fi
         

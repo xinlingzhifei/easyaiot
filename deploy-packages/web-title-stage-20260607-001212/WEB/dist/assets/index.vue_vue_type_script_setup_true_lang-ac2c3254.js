@@ -1,1 +1,0 @@
-import t from"./index-ae751445.js";import{d as n,o,h as a,n as s}from"./index-67156d11.js";const i=n({__name:"index",setup(c){const e=[{title:"标题",dataIndex:"title"},{title:"内容",dataIndex:"content"}];return(r,l)=>(o(),a("div",null,[s(t,{pushType:"email",columns:e})]))}});export{i as _};

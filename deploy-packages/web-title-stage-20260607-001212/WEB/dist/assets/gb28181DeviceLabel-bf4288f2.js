@@ -1,1 +1,0 @@
-function i(t){const r=(t||"").trim();return r?r.startsWith("[GB28181]")?r:`[GB28181] ${r}`:"[GB28181]"}function e(t){const r=(t||"").trim();return r?r.replace(/^\[GB28181\]\s*/,"").trim():""}export{i as f,e as s};

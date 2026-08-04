@@ -160,7 +160,7 @@ F:\EASYLOT\TDengine\  ####自行下载
 - 版本：16.x
 - 端口：5432
 - 用户名：postgres
-- 密码：`iot45722414822`
+- 密码：`<POSTGRES_PASSWORD>`
 
 #### 启动命令
 ```powershell
@@ -173,14 +173,14 @@ net start postgresql-x64-16
 
 #### 创建数据库
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE \"iot-system\";"
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE \"iot-video20\";"
 ```
 
 #### 验证连接
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "\l"
 ```
 
@@ -191,7 +191,7 @@ $env:PGPASSWORD='iot45722414822'
 #### 安装信息
 - 版本：7.x
 - 端口：6379
-- 密码：`basiclab@iot975248395`
+- 密码：`<REDIS_OR_MINIO_PASSWORD>`
 
 #### 启动命令
 ```powershell
@@ -202,7 +202,7 @@ cd F:\EASYLOT\Redis
 #### 验证连接
 ```powershell
 cd F:\EASYLOT\Redis
-.\redis-cli.exe -a "basiclab@iot975248395" ping
+.\redis-cli.exe -a "<REDIS_OR_MINIO_PASSWORD>" ping
 # 应返回 PONG
 ```
 
@@ -214,7 +214,7 @@ cd F:\EASYLOT\Redis
 - 版本：2.x
 - 端口：8848
 - 用户名：nacos
-- 密码：`basiclab@iot78475418754`
+- 密码：`<NACOS_PASSWORD>`
 - 命名空间：local
 
 #### 启动命令
@@ -242,7 +242,7 @@ http://localhost:8848/nacos
 - API端口：9000
 - 控制台端口：9001
 - 用户名：minioadmin
-- 密码：`basiclab@iot975248395`
+- 密码：`<REDIS_OR_MINIO_PASSWORD>`
 
 #### 启动命令
 ```powershell
@@ -436,18 +436,18 @@ pip install -r requirements.txt
 编辑 `VIDEO/.env` 文件，确保以下配置正确：
 ```properties
 # 数据库
-DATABASE_URL=postgresql://postgres:iot45722414822@localhost:5432/iot-video20
+DATABASE_URL=postgresql://postgres:<POSTGRES_PASSWORD>@localhost:5432/iot-video20
 
 # Nacos
 NACOS_SERVER=localhost:8848
 NACOS_NAMESPACE=local
 NACOS_USERNAME=nacos
-NACOS_PASSWORD=basiclab@iot78475418754
+NACOS_PASSWORD=<NACOS_PASSWORD>
 
 # MinIO
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=basiclab@iot975248395
+MINIO_SECRET_KEY=<REDIS_OR_MINIO_PASSWORD>
 
 # FFmpeg 路径（Windows 必须配置完整路径）
 FFMPEG_PATH=G:/ffmpeg-7.0.2-essentials_build/bin/ffmpeg.exe
@@ -600,7 +600,7 @@ http_stream = f"http://127.0.0.1:8080/live/{short_stream_name}.flv"
 
 #### 手动修复已有数据
 ```powershell
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -d "iot-video20" -c "UPDATE device SET rtmp_stream = 'rtmp://127.0.0.1:1935/live/cam_' || SUBSTRING(id, 1, 8), http_stream = 'http://127.0.0.1:8080/live/cam_' || SUBSTRING(id, 1, 8) || '.flv';"
 ```
 
@@ -705,7 +705,7 @@ VIDEO 服务启动时报数据库连接错误。
 #### 排查步骤
 1. 确认 PostgreSQL 服务已启动：
    ```powershell
-   $env:PGPASSWORD='iot45722414822'
+   $env:PGPASSWORD='<POSTGRES_PASSWORD>'
    & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -c "\l"
    ```
 
@@ -753,7 +753,7 @@ VIDEO 服务启动时报数据库连接错误。
 
 ```powershell
 # 设置密码环境变量
-$env:PGPASSWORD='iot45722414822'
+$env:PGPASSWORD='<POSTGRES_PASSWORD>'
 
 # 连接数据库
 & "F:\EASYLOT\PostgreSQL16\bin\psql.exe" -h localhost -U postgres -d "iot-video20"
@@ -859,10 +859,10 @@ npm run dev
 
 | 服务 | 用户名 | 密码 |
 |------|--------|------|
-| PostgreSQL | postgres | iot45722414822 |
-| Redis | - | basiclab@iot975248395 |
-| Nacos | nacos | basiclab@iot78475418754 |
-| MinIO | minioadmin | basiclab@iot975248395 |
+| PostgreSQL | postgres | <POSTGRES_PASSWORD> |
+| Redis | - | <REDIS_OR_MINIO_PASSWORD> |
+| Nacos | nacos | <NACOS_PASSWORD> |
+| MinIO | minioadmin | <REDIS_OR_MINIO_PASSWORD> |
 | TDengine | root | taosdata |
 | WEB 前端 | admin | admin123 |
 | 测试摄像头 | admin | sr336699 |

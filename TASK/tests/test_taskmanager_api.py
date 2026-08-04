@@ -11,6 +11,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+TASK_MANAGER_TOKEN = "taskmanager-test-token"
+
 
 def reserve_port():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -20,9 +22,11 @@ def reserve_port():
     return port
 
 
-def request_json(method, url, payload=None):
+def request_json(method, url, payload=None, auth=True):
     data = None
     headers = {}
+    if auth:
+        headers["Authorization"] = f"Bearer {TASK_MANAGER_TOKEN}"
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -78,6 +82,7 @@ class TaskManagerApiTest(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            env={**os.environ, "TASK_MANAGER_TOKEN": TASK_MANAGER_TOKEN},
         )
         self.base_url = f"http://127.0.0.1:{self.port}"
         self.wait_for_health()
@@ -103,7 +108,7 @@ class TaskManagerApiTest(unittest.TestCase):
                 output = self.proc.stdout.read() if self.proc.stdout else ""
                 self.fail(f"TaskManager exited early with code {self.proc.returncode}\n{output}")
             try:
-                status, body = request_json("GET", f"{self.base_url}/health")
+                status, body = request_json("GET", f"{self.base_url}/health", auth=False)
                 if status == 200 and body.get("service") == "TaskManager":
                     return
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
@@ -207,6 +212,64 @@ class TaskManagerApiTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(body["data"]["status"], "stopped")
+
+    def test_health_is_public_but_control_endpoints_require_token(self):
+        status, body = request_json("GET", f"{self.base_url}/health", auth=False)
+        self.assertEqual(200, status)
+        self.assertEqual("ok", body["status"])
+
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            request_json("GET", f"{self.base_url}/task/list", auth=False)
+        self.assertEqual(401, ctx.exception.code)
+
+    def test_config_rejects_ini_line_injection(self):
+        payload = {
+            "task_id": 8,
+            "task_name": "safe\n[features]\nheadless=false",
+            "video": {"source": "rtsp://127.0.0.1/live"},
+        }
+
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            request_json("POST", f"{self.base_url}/config/generate", payload)
+        self.assertEqual(400, ctx.exception.code)
+        self.assertFalse((self.config_dir / "task8.ini").exists())
+
+    def test_start_rejects_config_outside_generated_directory(self):
+        outside_config = self.root / "outside.ini"
+        outside_config.write_text("[task]\nid=9\n", encoding="utf-8")
+
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            request_json(
+                "POST",
+                f"{self.base_url}/task/start",
+                {"task_id": 9, "config_path": str(outside_config)},
+            )
+        self.assertEqual(400, ctx.exception.code)
+
+    def test_server_refuses_to_start_without_token(self):
+        env = dict(os.environ)
+        env.pop("TASK_MANAGER_TOKEN", None)
+        proc = subprocess.run(
+            [
+                self.task_manager_bin,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(reserve_port()),
+                "--task-bin",
+                str(self.fake_task_bin),
+                "--config-dir",
+                str(self.config_dir),
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=5,
+            check=False,
+        )
+
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("TASK_MANAGER_TOKEN is required", proc.stderr)
 
 
 if __name__ == "__main__":

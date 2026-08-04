@@ -1,4 +1,0 @@
-.image/公众号.jpg
-.image/交流群3群.jpg
-.image/微信联系方式.jpg
-.image/微信支付.jpg

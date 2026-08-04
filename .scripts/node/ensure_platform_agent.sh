@@ -29,6 +29,7 @@ AGENT_PORT="${EASYAIOT_AGENT_PORT:-9100}"
 PYTHON="${EASYAIOT_AGENT_LOCAL_PYTHON:-python3}"
 AGENT_BOOTSTRAP_WAIT_SECONDS="${AGENT_BOOTSTRAP_WAIT_SECONDS:-180}"
 AGENT_BOOTSTRAP_RETRY_INTERVAL="${AGENT_BOOTSTRAP_RETRY_INTERVAL:-3}"
+PLATFORM_AGENT_BOOTSTRAP_TOKEN="${EASYAIOT_PLATFORM_AGENT_BOOTSTRAP_TOKEN:-${PLATFORM_AGENT_BOOTSTRAP_TOKEN:-}}"
 
 is_port_listening() {
   local port="$1"
@@ -110,7 +111,12 @@ read_env_credentials() {
 }
 
 fetch_platform_node_credentials() {
+  if [[ -z "$PLATFORM_AGENT_BOOTSTRAP_TOKEN" ]]; then
+    echo "[platform-agent] 缺少 EASYAIOT_PLATFORM_AGENT_BOOTSTRAP_TOKEN，拒绝调用 bootstrap" >&2
+    return 1
+  fi
   curl -fsS \
+    -H "X-Bootstrap-Token: ${PLATFORM_AGENT_BOOTSTRAP_TOKEN}" \
     "${GATEWAY_URL}/admin-api/node/platform-agent-bootstrap" 2>/dev/null \
     | PYTHONPATH= python3 -c "
 import json, sys
@@ -133,6 +139,7 @@ write_agent_env() {
   local cp_url="${EASYAIOT_AGENT_CONTROL_PLANE_URL:-${GATEWAY_URL%/}/admin-api/node/agent}"
   cat >"${work_dir}/agent.env" <<EOF
 PLATFORM_AGENT=1
+PLATFORM_AGENT_BOOTSTRAP_TOKEN=${PLATFORM_AGENT_BOOTSTRAP_TOKEN}
 NODE_ID=${node_id}
 AGENT_TOKEN=${agent_token}
 CONTROL_PLANE_URL=${cp_url}
@@ -144,10 +151,11 @@ AGENT_LISTEN_PORT=${port}
 AI_ROOT=${EASYAIOT_AI_ROOT:-$ROOT/AI}
 VIDEO_ROOT=${EASYAIOT_VIDEO_ROOT:-$ROOT/VIDEO}
 MEDIA_CLUSTER_ROOT=/opt/easyaiot/media-cluster
-MINIO_ENDPOINT=http://localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=your-secret
+MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-}
+MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-}
 EOF
+  chmod 600 "${work_dir}/agent.env"
 }
 
 fetch_platform_node_credentials_with_wait() {

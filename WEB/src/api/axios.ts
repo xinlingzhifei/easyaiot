@@ -13,7 +13,7 @@ axiosInstance.interceptors.request.use(
     return config
   },
   (error: AxiosError) => {
-    Promise.reject(error)
+    return Promise.reject(error)
   }
 )
 
@@ -27,8 +27,8 @@ axiosInstance.interceptors.response.use(
     if (ErrorPageNameMap.get(code)) redirectErrorPage(code)
     return Promise.resolve(res.data)
   },
-  (err: AxiosResponse) => {
-    Promise.reject(err)
+  (err: AxiosError) => {
+    return Promise.reject(err)
   }
 )
 

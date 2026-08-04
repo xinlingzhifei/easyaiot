@@ -23,6 +23,7 @@ struct TaskManagerOptions {
     int port{7000};
     std::string taskBinary{"./TASK"};
     std::string configDir{"config/generated"};
+    std::string authToken;
     int maxTasks{50};
 };
 

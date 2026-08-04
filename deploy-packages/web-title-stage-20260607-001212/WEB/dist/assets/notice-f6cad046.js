@@ -1,1 +1,0 @@
-import{bk as t}from"./index-67156d11.js";const a=(e,r,o,n={})=>(t.setHeader({"X-Authorization":"Bearer "+localStorage.getItem("jwt_token")}),t[e]({url:r,headers:{ignoreCancelToken:!0,...n},...o},{isTransformResponse:!0})),m=e=>a("get","/message/template/queryByType",{params:e});export{m as n};
