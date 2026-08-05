@@ -199,6 +199,10 @@ VIDEO/ffmpeg-master-*.tar.xz
 /output/
 /tmp/
 /.artifacts/
+/.codex-smoke/
+/.playwright-cli/
+/.superpowers/
+/codex-smoke-screenshots-*/
 *.bak
 
 # Local camera integration credentials (use TASK/config/config.example.ini as the template)
