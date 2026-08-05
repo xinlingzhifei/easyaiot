@@ -277,3 +277,47 @@ End-to-end acceptance:
 
 Those are follow-on slices. The first slice proves the Edge path no longer
 needs inbound access to Agent `9100`.
+
+## Implementation Status
+
+First Edge RTSP outbound slice implemented:
+
+- `iot-node` has the durable `node_agent_command` queue schema, mapper, service,
+  and `/node/agent/commands/*` API for enqueue, poll, ack, and result.
+- Command polling now stops re-leasing commands after three attempts, marks
+  them `failed`, and records `agent_command_retry_exhausted`.
+- A scheduled command reclaimer marks stale `running` commands whose lease has
+  expired as `failed` with `agent_command_running_timeout`.
+- The Java command API exposes `/commands/{commandId}/heartbeat`, and the
+  Python Agent client can call it to extend a running command lease.
+- Python Agent polls commands outbound, acknowledges them, runs local command
+  executors, and reports success or failure.
+- Python Agent includes a local `stream_forward.deploy` executor that starts an
+  ffmpeg RTSP-to-RTMP pusher.
+- VIDEO exposes `/stream-forward/device/{device_id}/ensure-edge-task`, allocates
+  media URLs, and enqueues `stream_forward.deploy` instead of requiring the
+  platform to reach the customer-site Agent `9100`.
+
+Verified on 2026-06-13:
+
+- Java: `mvn -pl iot-node/iot-node-biz -am "-Dtest=NodeAgentCommandSchemaSqlTest,NodeAgentCommandServiceImplTest" -DfailIfNoTests=false test`
+- Agent: `python -m unittest NODE.tests.test_agent_commands NODE.tests.test_stream_forward_executor`
+- VIDEO: `python -m unittest VIDEO.tests.test_edge_stream_forward_service`
+- Invariant scan: Edge path contains `commands/poll`, `ensure-edge-task`, and
+  `stream_forward.deploy`; existing `/workload/deploy`, `agentPort`, and `9100`
+  matches remain in the direct managed-node Agent path.
+
+Verified on 2026-06-14:
+
+- Java retry budget and running-timeout reclaim:
+  `mvn -pl iot-node/iot-node-biz -am -Dtest=NodeAgentCommandServiceImplTest -DfailIfNoTests=false test`
+- Agent heartbeat client: `python -m unittest tests.test_agent_commands`
+
+Remaining follow-on slices:
+
+- Automatic periodic heartbeat during blocking long-running executors and
+  command-status audit/monitoring.
+- Public SRS/ZLM signed RTMP hook cutover and target-environment validation.
+- Unified access-center state integration across GB28181, RTSP, RTMP,
+  HTTP-FLV/WebRTC, and Edge Agent.
+- Production WebRTC TURN/STUN validation.

@@ -43,6 +43,15 @@ ALLOWED_MEDIA_ENV_KEYS = {
 }
 
 
+def resolve_webrtc_candidate_ip() -> str:
+    return (
+        os.environ.get('WEBRTC_PUBLIC_IP', '').strip()
+        or os.environ.get('ZLM_RTC_EXTERN_IP', '').strip()
+        or os.environ.get('SRS_CANDIDATE_IP', '').strip()
+        or os.environ.get('POD_IP', '').strip()
+    )
+
+
 def resolve_compose_cmd() -> List[str]:
     proc = subprocess.run(
         ['docker', 'compose', 'version'],
@@ -105,7 +114,10 @@ class MediaStackManager:
         env.setdefault('MEDIA_NODE_NAME', f'node-{node_id}')
         env['MEDIA_NODE_TYPE'] = STACK_PROFILES[stack_type]['MEDIA_NODE_TYPE']
         env.setdefault('MEDIA_SCHEDULER_HOST', os.environ.get('CONTROL_PLANE_HOST', '127.0.0.1'))
-        env.setdefault('SRS_CANDIDATE_IP', os.environ.get('POD_IP', ''))
+        webrtc_candidate_ip = resolve_webrtc_candidate_ip()
+        if webrtc_candidate_ip:
+            env.setdefault('SRS_CANDIDATE_IP', webrtc_candidate_ip)
+            env.setdefault('ZLM_RTC_EXTERN_IP', webrtc_candidate_ip)
         env.setdefault('ZLM_HTTP_PORT', '6080')
 
         if not os.path.isfile(COMPOSE_FILE):

@@ -135,7 +135,8 @@ sync_agent_sources() {
   sudo cp "$resolved_script_dir/run_agent.py" "$resolved_script_dir/agent_server.py" \
     "$resolved_script_dir/env_security.py" \
     "$resolved_script_dir/media_manager.py" "$resolved_script_dir/mqtt_manager.py" \
-    "$resolved_script_dir/workload_manager.py" \
+    "$resolved_script_dir/workload_manager.py" "$resolved_script_dir/agent_commands.py" \
+    "$resolved_script_dir/stream_forward_executor.py" \
     "$resolved_script_dir/requirements.txt" "$resolved_script_dir/agent.env.example" \
     "$resolved_script_dir/install.sh" "$resolved_install_dir/"
   sudo chmod +x "$resolved_install_dir/install.sh"
@@ -173,6 +174,26 @@ cmd_clean() {
     echo "==> 已删除安装目录: $INSTALL_DIR"
   fi
   echo "CLEAN_OK"
+}
+
+validate_agent_env() {
+  local env_file="$1"
+  local node_id="" agent_token=""
+  if [ ! -f "$env_file" ]; then
+    echo "INSTALL_FAIL: missing agent.env at ${env_file}" >&2
+    exit 1
+  fi
+
+  node_id="$(sudo awk -F= '$1=="NODE_ID"{print $2; exit}' "$env_file" 2>/dev/null | tr -d '[:space:]')"
+  agent_token="$(sudo awk -F= '$1=="AGENT_TOKEN"{print $2; exit}' "$env_file" 2>/dev/null | tr -d '[:space:]')"
+  if ! [[ "$node_id" =~ ^[1-9][0-9]*$ ]]; then
+    echo "INSTALL_FAIL: NODE_ID must be a positive integer in ${env_file}" >&2
+    exit 1
+  fi
+  if [ -z "$agent_token" ] || [ "$agent_token" = "your-agent-token-here" ]; then
+    echo "INSTALL_FAIL: AGENT_TOKEN must be set in ${env_file}" >&2
+    exit 1
+  fi
 }
 
 do_install() {
@@ -401,6 +422,8 @@ PY
     sudo cp agent.env.example agent.env
     echo "请编辑 $INSTALL_DIR/agent.env 填入 NODE_ID 和 AGENT_TOKEN"
   fi
+
+  validate_agent_env "$resolved_install_dir/agent.env"
 
   cat <<UNIT | sudo tee "$(service_unit_file)" > /dev/null
 [Unit]

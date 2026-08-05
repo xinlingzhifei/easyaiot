@@ -231,6 +231,7 @@ import {
   startAlgorithmTask,
   stopAlgorithmTask,
 } from '@/api/device/algorithm_task';
+import { getModelPage } from '@/api/device/model';
 import {
   extractDashboardGuardErrorMessage,
   startDashboardGuardTask,

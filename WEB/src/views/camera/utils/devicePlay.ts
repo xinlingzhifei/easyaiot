@@ -1,5 +1,5 @@
-import type { DeviceInfo, MonitorTreeDeviceNode } from '@/api/device/camera';
-import { getDeviceInfo } from '@/api/device/camera';
+import type { DeviceAccessProtocol, DeviceInfo, MonitorTreeDeviceNode } from '@/api/device/camera';
+import { getDeviceInfo, reportDevicePlayError, reportDevicePlayReady } from '@/api/device/camera';
 import { playByDeviceAndChannel } from '@/api/device/gb28181';
 import {
   formatCameraDeviceLabel,
@@ -219,6 +219,59 @@ function toBrowserPlayUrl(stream?: string | null): string | null {
   return normalizeJessibucaPlayUrl(rewriteStreamHostToPageHost(httpUrl));
 }
 
+function inferAccessProtocolFromUrl(url?: string | null): DeviceAccessProtocol {
+  const raw = url?.trim();
+  if (!raw) return 'http_flv';
+  try {
+    const parsed = new URL(raw, 'http://localhost');
+    const scheme = parsed.protocol.replace(':', '').toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    const query = parsed.search.toLowerCase();
+    if (scheme === 'rtsp') return 'rtsp';
+    if (scheme === 'rtmp') return 'rtmp';
+    if (scheme === 'webrtc' || scheme === 'rtc' || path.includes('webrtc') || query.includes('rtc')) {
+      return 'webrtc';
+    }
+    return 'http_flv';
+  } catch {
+    return 'http_flv';
+  }
+}
+
+async function safeReportDevicePlayReady(
+  deviceId: string,
+  url: string,
+  protocol?: DeviceAccessProtocol,
+  ai = false,
+) {
+  try {
+    await reportDevicePlayReady(deviceId, {
+      protocol: protocol || inferAccessProtocolFromUrl(url),
+      play_url: url,
+      ai,
+    });
+  } catch {
+    /* status reporting must not block playback */
+  }
+}
+
+async function safeReportDevicePlayError(
+  deviceId: string,
+  protocol: DeviceAccessProtocol,
+  reasonCode: string,
+  reasonMessage: string,
+) {
+  try {
+    await reportDevicePlayError(deviceId, {
+      protocol,
+      reason_code: reasonCode,
+      reason_message: reasonMessage,
+    });
+  } catch {
+    /* status reporting must not block playback */
+  }
+}
+
 /** 是否为算法任务输出的 AI 流（检测框烧录在此路流上） */
 export function isAiStreamPlayUrl(url?: string | null): boolean {
   if (!url) return false;
@@ -369,7 +422,19 @@ export async function resolveGb28181StreamUrl(
   sipDeviceId: string,
   channelId: string,
 ): Promise<string | null> {
-  return (await resolveGb28181StreamSource(sipDeviceId, channelId))?.url ?? null;
+  const deviceId = gb28181VirtualDeviceId(sipDeviceId, channelId);
+  const url = (await resolveGb28181StreamSource(sipDeviceId, channelId))?.url ?? null;
+  if (url) {
+    void safeReportDevicePlayReady(deviceId, url, 'gb28181');
+  } else {
+    void safeReportDevicePlayError(
+      deviceId,
+      'gb28181',
+      'gb28181_play_url_unavailable',
+      'WVP play returned no playable stream',
+    );
+  }
+  return url;
 }
 
 export async function resolveGb28181StreamSource(
@@ -477,6 +542,9 @@ export async function resolveGbChannelPlayUrls(
         url,
         videoCodec: wvpSource.videoCodec,
       });
+      if (synced.id) {
+        void safeReportDevicePlayReady(synced.id, url, inferAccessProtocolFromUrl(url), !!preferAi);
+      }
       return {
         url,
         fallbackUrl: preferAi ? wvpSource.url : fallbackUrl ?? wvpSource.url,
@@ -556,7 +624,13 @@ export async function resolveMonitorPlayUrl(
   streamType: 'video' | 'ai' = 'video',
 ): Promise<string | null> {
   if (streamType === 'ai') {
-    return pickAiPlayUrl(device);
+    const url = pickAiPlayUrl(device);
+    if (url) {
+      void safeReportDevicePlayReady(device.id, url, inferAccessProtocolFromUrl(url), true);
+    } else {
+      void safeReportDevicePlayError(device.id, 'http_flv', 'ai_play_url_unavailable', 'AI playback URL is not configured');
+    }
+    return url;
   }
 
   const gbIds = getGb28181PlayIds(device as Record<string, any>);
@@ -564,5 +638,11 @@ export async function resolveMonitorPlayUrl(
     return resolveGb28181StreamUrl(gbIds.sipDeviceId, gbIds.channelId);
   }
 
-  return pickVideoPlayUrl(device);
+  const url = pickVideoPlayUrl(device);
+  if (url) {
+    void safeReportDevicePlayReady(device.id, url, inferAccessProtocolFromUrl(url));
+  } else {
+    void safeReportDevicePlayError(device.id, 'http_flv', 'play_url_unavailable', 'Playback URL is not configured');
+  }
+  return url;
 }

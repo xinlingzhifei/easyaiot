@@ -38,6 +38,44 @@ _LOCATION_FIELD_KEYS = frozenset({
 })
 
 
+def get_device_access_summary(device_id: str) -> dict:
+    from app.services.device_access_state_service import get_device_access_summary as _get_device_access_summary
+
+    return _get_device_access_summary(device_id)
+
+
+def _access_protocol_for_source(source: str | None) -> str | None:
+    source_lower = (source or '').strip().lower()
+    if source_lower.startswith('gb28181://'):
+        return 'gb28181'
+    if source_lower.startswith('rtsp://'):
+        return 'rtsp'
+    if source_lower.startswith('rtmp://'):
+        return 'rtmp'
+    if source_lower.startswith(('http://', 'https://', 'ws://', 'wss://')):
+        return 'http_flv'
+    return None
+
+
+def _record_registered_access_state_for_camera(camera: Device) -> None:
+    protocol = _access_protocol_for_source(getattr(camera, 'source', None))
+    if not protocol:
+        return
+    try:
+        from app.services.device_access_state_service import record_device_access_event
+
+        record_device_access_event(
+            device_id=camera.id,
+            protocol=protocol,
+            state="registered",
+            reason_code=f"{protocol}_device_registered",
+            reason_message=f"{protocol.upper()} device registered",
+            source_event="device.register",
+        )
+    except Exception as e:
+        logger.warning('device access registered state write failed device_id=%s: %s', getattr(camera, 'id', ''), e)
+
+
 def _parse_optional_float(value):
     """解析可选浮点；空字符串/None 表示清除。"""
     if value is None or value == '':
@@ -569,6 +607,19 @@ def _to_dict(camera: Device) -> dict:
         online_status = True
     else:
         online_status = is_device_available_for_stream(camera)
+    try:
+        access_state = get_device_access_summary(camera.id)
+    except Exception as e:
+        logger.debug('device access state summary unavailable device_id=%s: %s', camera.id, e)
+        access_state = {
+            'state': 'pending_config',
+            'reason_code': 'access_state_unavailable',
+            'reason_message': 'Device access state is not available',
+            'play_ready': False,
+            'ai_ready': False,
+            'last_transition_time': None,
+            'protocols': [],
+        }
     
     source = (camera.source or '').strip()
     http_stream = camera.http_stream
@@ -604,6 +655,7 @@ def _to_dict(camera: Device) -> dict:
         'rtsp_direct': camera.rtsp_direct,
         'channel_online': camera.channel_online,
         'connection_status': camera.connection_status,
+        'access_state': access_state,
         'online': online_status,
         **_location_fields_for_device(camera),
         **nvr_fields_for_device(camera),
@@ -1167,6 +1219,7 @@ def register_camera_by_onvif(ip: str, port: int, password: str, username: str | 
     db.session.add(camera)
     try:
         db.session.commit()
+        _record_registered_access_state_for_camera(camera)
         _monitor.update(camera.id, camera.ip)
         logger.info(f'设备 {device_id} 通过ONVIF注册成功，IP: {camera.ip}, 用户名: {used_username}')
         
@@ -1375,6 +1428,7 @@ def register_camera(register_info: dict) -> str:
                 except Exception as loc_err:
                     logger.warning(f'设备 {id} 位置信息写入失败: {loc_err}')
             db.session.commit()
+            _record_registered_access_state_for_camera(camera)
             if ip and not is_nvr_channel:
                 # 自定义摄像头默认在线；NVR 通道不启动 IPC 在线探测
                 is_custom = is_custom or is_rtmp

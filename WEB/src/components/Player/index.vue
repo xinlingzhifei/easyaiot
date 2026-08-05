@@ -24,7 +24,7 @@
             <Jessibuca ref="jessibuca" :play-url="playUrl" :hasAudio="false" />
           </div>
           <div v-if="playerType === '2'" style="width: 100%; height: 30.375vw">
-            <RtcPlayer ref="rtcPlayer" :play-url="playUrl" :hasAudio="false" />
+            <RtcPlayer ref="rtcPlayer" :play-url="playUrl" :hasAudio="false" :device-id="deviceId" />
           </div>
           <div v-if="playerType === '3'" style="width: 100%; height: 30.375vw">
             <video controls autoplay style="width: 100%; height: 30.375vw">
@@ -340,6 +340,7 @@
   let title = ref<string>('')
   let timer = 0
   let streamInfo = ref<StreamInfo>()
+  let deviceId = ref<string>('')
   const jessibuca = ref()
   const rtcPlayer = ref()
   let hideControlTab = ref<boolean>(false)
@@ -349,9 +350,10 @@
   let setCruiseStaySwitch = ref<boolean>(false)
   let setScanAutoSpeedSwitch = ref<boolean>(false)
   // const presetList = ref<PresetItem[]>()
-  const play = (streamInfoParam: StreamInfo, name: string, hideControl: boolean) => {
+  const play = (streamInfoParam: StreamInfo, name: string, hideControl: boolean, currentDeviceId?: string) => {
     title.value = name
     streamInfo.value = streamInfoParam
+    deviceId.value = currentDeviceId || streamInfoParam.stream || ''
     if (hideControl) {
       hideControlTab.value = true
     } else {
@@ -531,6 +533,7 @@
     console.log('onBeforeUnmount')
     open.value = false
     playUrl.value = ''
+    deviceId.value = ''
     title.value = ''
     videoTrack.value = undefined
     audioTrack.value = undefined
