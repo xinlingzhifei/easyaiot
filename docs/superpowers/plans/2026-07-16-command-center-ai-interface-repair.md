@@ -14,7 +14,9 @@
 
 - `DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java`: accept the `alert_read` media action.
 - `DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ConfiguredReviewCameraPermissionResolver.java`: provide fail-closed default action-to-RBAC mappings.
+- `DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml`: bind `alert_read` explicitly so Spring configuration does not replace the Java default without it.
 - `DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/MediaPermissionCheckControllerTest.java`: prove alert reads require tenant, camera grant, and permission.
+- `DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/ConfiguredReviewCameraPermissionResolverTest.java`: prove runtime configuration retains the alert-read mapping.
 - `VIDEO/app/services/algorithm_task_service.py`: align task create/update validation with the documented empty alert-class behavior.
 - `VIDEO/tests/test_algorithm_task_alert_class_contract.py`: protect empty and non-empty alert-class semantics.
 - `WEB/src/api/device/calculate.ts`: use scoped, retry-free polling without the legacy `jwt_token` header side effect.
@@ -33,6 +35,8 @@
 - Modify: `DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/MediaPermissionCheckControllerTest.java`
 - Modify: `DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java`
 - Modify: `DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ConfiguredReviewCameraPermissionResolver.java`
+- Modify: `DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml`
+- Modify: `DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/ConfiguredReviewCameraPermissionResolverTest.java`
 
 - [ ] **Step 1: Write the failing authorization tests**
 
@@ -53,6 +57,7 @@ assertEquals("camera_scope_required", missingCamera.getReason());
 ```
 
 Also add a resolver test proving its default `alert_read` mapping still calls `PermissionService.hasAnyPermissions` and never grants a camera absent from the explicit user scope.
+Extend the Spring binding test to require `alert_read -> system:supervision-alert-review:media:playback` from `application.yaml`.
 
 - [ ] **Step 2: Run the test and verify RED**
 
@@ -86,6 +91,7 @@ private static Map<String, List<String>> defaultActionPermissions() {
 ```
 
 Keep `setActionPermissions()` authoritative when external configuration is present. Do not weaken tenant, permission, explicit user-camera, or persisted-camera checks.
+Add the same `alert_read` mapping to `application.yaml`; this is required because bound configuration replaces the in-code map.
 
 - [ ] **Step 4: Run the targeted DEVICE tests and verify GREEN**
 
@@ -96,7 +102,7 @@ Expected: all `MediaPermissionCheckControllerTest` tests PASS.
 - [ ] **Step 5: Commit the DEVICE slice**
 
 ```powershell
-git add DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ConfiguredReviewCameraPermissionResolver.java DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/MediaPermissionCheckControllerTest.java
+git add DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/controller/admin/auth/AuthController.java DEVICE/iot-system/iot-system-biz/src/main/java/com/basiclab/iot/system/service/supervision/ConfiguredReviewCameraPermissionResolver.java DEVICE/iot-system/iot-system-biz/src/main/resources/application.yaml DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/MediaPermissionCheckControllerTest.java DEVICE/iot-system/iot-system-biz/src/test/java/com/basiclab/iot/system/supervision/ConfiguredReviewCameraPermissionResolverTest.java
 git commit -m "fix(auth): authorize scoped dashboard alert reads"
 ```
 

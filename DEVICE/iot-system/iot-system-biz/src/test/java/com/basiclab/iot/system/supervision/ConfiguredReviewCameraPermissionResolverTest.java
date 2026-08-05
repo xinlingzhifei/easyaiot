@@ -36,7 +36,35 @@ class ConfiguredReviewCameraPermissionResolverTest {
                             List.of("system:supervision-alert-review:media:manage"),
                             resolver.getActionPermissions().get("record_manage")
                     );
+                    assertEquals(
+                            List.of("system:supervision-alert-review:media:playback"),
+                            resolver.getActionPermissions().get("alert_read")
+                    );
                 });
+    }
+
+    @Test
+    void alertReadUsesExplicitSuperAdminCameraGrantWithoutQueryingReviewHistory() {
+        ConfiguredReviewCameraPermissionResolver resolver = new ConfiguredReviewCameraPermissionResolver();
+        resolver.setUsers(Map.of(7L, List.of("camera-01")));
+        resolver.setReviewItemMapper(reviewItemMapperThatMustNotBeCalled());
+        CapturingPermissionService permissionService = new CapturingPermissionService();
+        permissionService.allowed = true;
+        permissionService.superAdmin = true;
+        resolver.setPermissionService(permissionService);
+
+        assertEquals(
+                List.of("camera-01"),
+                resolver.resolveAllowedCameraIds(
+                        new ReviewCameraPermissionRequest(
+                                1L,
+                                7L,
+                                10L,
+                                "alert_read",
+                                List.of("camera-01")
+                        )
+                )
+        );
     }
 
     @Test
@@ -364,6 +392,27 @@ class ConfiguredReviewCameraPermissionResolverTest {
                                 .filter(requestedCameraIds::contains)
                                 .distinct()
                                 .toList();
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                }
+        );
+    }
+
+    private static SupervisionAlertReviewItemMapper reviewItemMapperThatMustNotBeCalled() {
+        return (SupervisionAlertReviewItemMapper) Proxy.newProxyInstance(
+                SupervisionAlertReviewItemMapper.class.getClassLoader(),
+                new Class<?>[]{SupervisionAlertReviewItemMapper.class},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() == Object.class) {
+                        return switch (method.getName()) {
+                            case "toString" -> "ConfiguredReviewCameraPermissionResolverTest.UnusedReviewItemMapper";
+                            case "hashCode" -> System.identityHashCode(proxy);
+                            case "equals" -> proxy == args[0];
+                            default -> null;
+                        };
+                    }
+                    if ("selectExistingCameraIds".equals(method.getName())) {
+                        throw new AssertionError("alert_read must not query review history");
                     }
                     throw new UnsupportedOperationException(method.getName());
                 }

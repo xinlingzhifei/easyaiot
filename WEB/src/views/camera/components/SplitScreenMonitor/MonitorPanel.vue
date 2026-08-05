@@ -267,6 +267,10 @@ const enableAi = ref(false);
 
 const splitScreenGuardApi: DashboardGuardTaskApi = {
   listAlgorithmTasks: (params) => listAlgorithmTasks(params, { errorMessageMode: 'none' }),
+  listAvailableModels: () => getModelPage(
+    { pageNo: 1, pageSize: 1000 },
+    { errorMessageMode: 'none' },
+  ),
   createAlgorithmTask: createAlgorithmTask as DashboardGuardTaskApi['createAlgorithmTask'],
   startAlgorithmTask: (taskId) => startAlgorithmTask(taskId, { errorMessageMode: 'none' }),
   stopAlgorithmTask: (taskId) => stopAlgorithmTask(taskId, { errorMessageMode: 'none' }),

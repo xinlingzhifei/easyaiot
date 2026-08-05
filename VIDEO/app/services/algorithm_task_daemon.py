@@ -26,6 +26,14 @@ def _resolve_algorithm_heartbeat_url(task_type: str) -> str:
     return f'{resolve_video_service_base_url()}/video/algorithm/heartbeat/{endpoint}'
 
 
+def _resolve_video_heartbeat_host() -> str:
+    for key in ('VIDEO_SERVICE_HOST', 'FLASK_RUN_HOST', 'POD_IP', 'HOST_IP'):
+        host = (os.getenv(key) or '').strip()
+        if host and host not in ('0.0.0.0', '::'):
+            return host
+    return '127.0.0.1'
+
+
 class AlgorithmTaskDaemon:
     """算法任务守护进程，管理算法任务服务进程，支持自动重启
     

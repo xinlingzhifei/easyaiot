@@ -813,10 +813,6 @@ def create_algorithm_task(task_name: str,
         if task_type not in ['realtime', 'snap', 'patrol']:
             raise ValueError(f"无效的任务类型: {task_type}，必须是 'realtime'、'snap' 或 'patrol'")
 
-        from app.utils.alert_class_filter import parse_alert_class_names
-        if alert_event_enabled and not parse_alert_class_names(alert_class_names):
-            raise ValueError('启用告警事件时必须指定至少一个告警触发标签')
-        
         device_id_list = device_ids or []
         
         # 验证所有设备是否存在
@@ -1355,17 +1351,6 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
         if 'alert_class_names' in kwargs:
             kwargs['alert_class_names'] = _serialize_alert_class_names(kwargs['alert_class_names'])
 
-        if 'alert_event_enabled' in kwargs or 'alert_class_names' in kwargs:
-            from app.utils.alert_class_filter import parse_alert_class_names
-            alert_enabled = kwargs.get('alert_event_enabled', task.alert_event_enabled)
-            if alert_enabled:
-                if 'alert_class_names' in kwargs:
-                    alert_names = parse_alert_class_names(kwargs.get('alert_class_names'))
-                else:
-                    alert_names = task._parse_alert_class_names()
-                if not alert_names:
-                    raise ValueError('启用告警事件时必须指定至少一个告警触发标签')
-        
         # 处理告警通知配置（如果是字典或字符串，需要转换为JSON字符串）
         # 在保存前，从消息模板中提取通知人信息并保存到配置中
         if 'alert_notification_config' in kwargs and kwargs['alert_notification_config']:

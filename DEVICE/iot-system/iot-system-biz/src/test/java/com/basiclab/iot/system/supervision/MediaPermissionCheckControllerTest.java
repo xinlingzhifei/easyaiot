@@ -9,6 +9,7 @@ import com.basiclab.iot.system.dal.dataobject.user.AdminUserDO;
 import com.basiclab.iot.system.dal.pgsql.supervision.SupervisionAlertReviewItemMapper;
 import com.basiclab.iot.system.service.permission.PermissionService;
 import com.basiclab.iot.system.service.supervision.ConfiguredReviewCameraPermissionResolver;
+import com.basiclab.iot.system.service.supervision.SupervisionAlertReviewService.ReviewCameraPermissionRequest;
 import com.basiclab.iot.system.service.user.AdminUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -141,6 +142,24 @@ class MediaPermissionCheckControllerTest {
         assertEquals("camera_scope_ambiguous", ambiguous.getReason());
     }
 
+    @Test
+    void defaultAlertReadPermissionNeverExpandsTheExplicitCameraGrant() {
+        AtomicReference<List<String>> requestedPermissions = new AtomicReference<>();
+        ConfiguredReviewCameraPermissionResolver resolver = new ConfiguredReviewCameraPermissionResolver();
+        resolver.setUsers(Map.of(42L, List.of("camera-01")));
+        resolver.setPermissionService(permissionService(true, requestedPermissions));
+        resolver.setReviewItemMapper(reviewItemMapper(List.of("camera-01")));
+
+        List<String> granted = resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(null, 42L, 7L, "alert_read", List.of("camera-01")));
+        List<String> denied = resolver.resolveAllowedCameraIds(
+                new ReviewCameraPermissionRequest(null, 42L, 7L, "alert_read", List.of("camera-02")));
+
+        assertEquals(List.of("camera-01"), granted);
+        assertTrue(denied.isEmpty());
+        assertEquals(List.of("system:supervision-alert-review:media:playback"), requestedPermissions.get());
+    }
+
     private static AdminUserDO user(Long tenantId) {
         AdminUserDO user = AdminUserDO.builder().id(42L).build();
         user.setTenantId(tenantId);
@@ -170,11 +189,23 @@ class MediaPermissionCheckControllerTest {
     }
 
     private static PermissionService permissionService(boolean allowed) {
+        return permissionService(allowed, null);
+    }
+
+    private static PermissionService permissionService(
+            boolean allowed,
+            AtomicReference<List<String>> requestedPermissions) {
         return (PermissionService) Proxy.newProxyInstance(
                 PermissionService.class.getClassLoader(),
                 new Class<?>[]{PermissionService.class},
                 (proxy, method, args) -> {
-                    if ("hasAnyPermissions".equals(method.getName()) || "hasAnyRoles".equals(method.getName())) {
+                    if ("hasAnyPermissions".equals(method.getName())) {
+                        if (requestedPermissions != null) {
+                            requestedPermissions.set(List.of((String[]) args[1]));
+                        }
+                        return allowed;
+                    }
+                    if ("hasAnyRoles".equals(method.getName())) {
                         return allowed;
                     }
                     if ("toString".equals(method.getName())) {

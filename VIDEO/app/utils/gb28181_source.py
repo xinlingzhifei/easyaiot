@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qsl, urlparse, urlunparse
 
 import requests
 
@@ -38,6 +38,25 @@ def prefer_h264_http_flv_for_opencv(url: Optional[str]) -> Optional[str]:
     触发转码，反而会把真实 H265 流伪装成 H264，导致后续解码判断失真。
     """
     return url
+
+
+def prefer_hevc_http_ts_for_ffmpeg(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in ('http', 'https'):
+        return url
+    if not parsed.path.lower().endswith('.flv'):
+        return url
+
+    has_hevc = False
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key.lower() == 'videocodec' and value.lower() in ('h265', 'hevc'):
+            has_hevc = True
+            break
+    if not has_hevc:
+        return url
+    return urlunparse(parsed._replace(path=f'{parsed.path[:-4]}.ts'))
 
 
 def _gb28181_http_timeout(default: int = 60) -> int:

@@ -50,7 +50,7 @@ import app.utils.nvidia_lib_path  # noqa: F401  须在 import onnxruntime 之前
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
 from app.utils.gb28181_source import (
-    prefer_h264_http_flv_for_opencv,
+    prefer_hevc_http_ts_for_ffmpeg,
     resolve_gb28181_alternate_pull_url,
     resolve_gb28181_source,
 )
@@ -529,7 +529,10 @@ def _alert_event_suppress_seconds() -> float:
 # 观感推流帧率（与 AI 抽帧完全解耦）：默认 25fps
 AI_OUTPUT_FPS = int(os.getenv(
     'AI_OUTPUT_FPS',
-    os.getenv('AI_SOURCE_FPS', os.getenv('VIEW_OUTPUT_FPS', os.getenv('VIEW_SOURCE_FPS', '25'))),
+    os.getenv(
+        'AI_SOURCE_FPS',
+        os.getenv('VIEW_OUTPUT_FPS', os.getenv('VIEW_SOURCE_FPS', os.getenv('SOURCE_FPS', '25'))),
+    ),
 ))
 TARGET_WIDTH = int(os.getenv('AI_TARGET_WIDTH', os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280'))))
 TARGET_HEIGHT = int(os.getenv('AI_TARGET_HEIGHT', os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720'))))
@@ -865,9 +868,9 @@ PLATE_CLASS_KEYWORDS = ('plate', 'license_plate', 'licence_plate', 'car_plate', 
 
 
 def _normalize_gb28181_opencv_input_url(url: Optional[str]) -> Optional[str]:
-    converted = prefer_h264_http_flv_for_opencv(url)
+    converted = prefer_hevc_http_ts_for_ffmpeg(url)
     if converted and url and converted != url:
-        logger.info(f"GB28181 OpenCV HTTP-FLV input switched to H264: {url} -> {converted}")
+        logger.info(f"GB28181 HEVC input switched from HTTP-FLV to HTTP-TS: {url} -> {converted}")
     return converted
 
 
@@ -3037,11 +3040,15 @@ def _normalize_srs_api_host(host: str) -> str:
 def _resolve_ai_rtmp_push_url(device_id: str, device_ai_rtmp_stream: Optional[str] = None) -> Optional[str]:
     """解析 AI 推流 FFmpeg 地址。
 
-    远程分片在节点本机推 SRS，固定走 127.0.0.1（避免外网 IP 回环/on_publish 误判）；
+    远程分片或本机 SRS 可用时固定走 127.0.0.1（避免外网 IP 回环/on_publish 误判）；
     播放地址仍由 stream_url_sync_service 写入 device.ai_rtmp_stream（外网 IP）。
     """
     pod_ip = os.getenv('POD_IP', '').strip()
     if pod_ip:
+        rtmp_port = _srs_rtmp_port()
+        return f'rtmp://127.0.0.1:{rtmp_port}/ai/{device_id}'
+
+    if _check_srs_api_ready('127.0.0.1', _srs_api_port(), timeout=1.0):
         rtmp_port = _srs_rtmp_port()
         return f'rtmp://127.0.0.1:{rtmp_port}/ai/{device_id}'
 
