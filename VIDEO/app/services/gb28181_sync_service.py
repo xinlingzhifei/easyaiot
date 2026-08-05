@@ -311,6 +311,23 @@ def _apply_gb_attributes(device, attributes: dict) -> bool:
     return changed
 
 
+def _record_gb28181_registered(mapped_id: str, sip_device_id: str, channel_id: str) -> None:
+    try:
+        from app.services.device_access_state_service import record_device_access_event
+
+        record_device_access_event(
+            device_id=mapped_id,
+            protocol="gb28181",
+            state="registered",
+            reason_code="gb28181_channel_synced",
+            reason_message="GB28181 channel synced from WVP",
+            source_event="gb28181.channel.sync",
+            stream_id=f"{sip_device_id}/{channel_id}",
+        )
+    except Exception as e:
+        logger.warning('鍥芥爣閫氶亾鐘舵€佸啓鍏ュけ璐? device_id=%s: %s', mapped_id, e)
+
+
 def _upsert_gb_device(
     sip_device_id: str,
     channel_id: str,
@@ -353,6 +370,7 @@ def _upsert_gb_device(
             changed = True
         if changed:
             db.session.commit()
+        _record_gb28181_registered(mapped_id, sip_device_id, channel_id)
         return False
 
     loc = location or {}
@@ -386,6 +404,7 @@ def _upsert_gb_device(
     )
     db.session.add(device)
     db.session.commit()
+    _record_gb28181_registered(mapped_id, sip_device_id, channel_id)
     return True
 
 

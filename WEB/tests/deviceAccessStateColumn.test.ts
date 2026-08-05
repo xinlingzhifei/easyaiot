@@ -10,6 +10,14 @@ const cameraColumns = readFileSync(
   fileURLToPath(new URL('../src/views/camera/Data.tsx', import.meta.url)),
   'utf8',
 )
+const mixedCardList = readFileSync(
+  fileURLToPath(new URL('../src/views/camera/components/DeviceMixedCardList/index.vue', import.meta.url)),
+  'utf8',
+)
+const legacyCardList = readFileSync(
+  fileURLToPath(new URL('../src/views/camera/components/VideoCardList/index.vue', import.meta.url)),
+  'utf8',
+)
 
 assert.match(
   cameraApi,
@@ -46,3 +54,30 @@ assert.match(
   /reason_message/,
   'Access-state rendering should surface the error or blocking reason.',
 )
+for (const source of [mixedCardList, legacyCardList]) {
+  assert.match(
+    source,
+    /renderCardAccessState/,
+    'Camera card lists should render the unified access-state summary.',
+  )
+  assert.match(
+    source,
+    /access_state/,
+    'Camera card lists should read access_state from each device.',
+  )
+  assert.match(
+    source,
+    /play_ready/,
+    'Camera card lists should show play readiness.',
+  )
+  assert.match(
+    source,
+    /ai_ready/,
+    'Camera card lists should show AI readiness.',
+  )
+  assert.match(
+    source,
+    /reason_message/,
+    'Camera card lists should surface the error or blocking reason.',
+  )
+}

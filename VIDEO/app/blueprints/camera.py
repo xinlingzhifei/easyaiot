@@ -153,6 +153,129 @@ def rotate_device_rtmp_ingest_token(device_id):
         return jsonify({'code': 500, 'msg': str(e)}), 500
 
 
+@camera_bp.route('/device/<string:device_id>/access-state/play', methods=['POST'])
+def report_device_play_state(device_id):
+    if not _check_login(request):
+        return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        from app.services.device_access_state_service import (
+            record_device_play_error,
+            record_device_play_ready,
+        )
+
+        ready = data.get('ready', True)
+        protocol = data.get('protocol') or data.get('access_protocol')
+        play_url = data.get('play_url') or data.get('playUrl') or data.get('url')
+        stream_id = data.get('stream_id') or data.get('streamId')
+        node_id = data.get('node_id') or data.get('nodeId')
+        tenant_id = _tenant_id_from_request(request, data) or None
+
+        if ready:
+            result = record_device_play_ready(
+                device_id=device_id,
+                protocol=protocol,
+                play_url=play_url,
+                stream_id=stream_id,
+                node_id=int(node_id) if node_id not in (None, '') else None,
+                tenant_id=tenant_id,
+                ai=bool(data.get('ai')),
+                reason_code=data.get('reason_code') or data.get('reasonCode'),
+                reason_message=data.get('reason_message') or data.get('reasonMessage'),
+                source_event=data.get('source_event') or data.get('sourceEvent'),
+            )
+        else:
+            if not protocol:
+                return jsonify({'code': 400, 'msg': 'protocol is required for play error reports'}), 400
+            result = record_device_play_error(
+                device_id=device_id,
+                protocol=protocol,
+                reason_code=data.get('reason_code') or data.get('reasonCode'),
+                reason_message=data.get('reason_message') or data.get('reasonMessage'),
+                source_event=data.get('source_event') or data.get('sourceEvent'),
+                stream_id=stream_id,
+                node_id=int(node_id) if node_id not in (None, '') else None,
+                tenant_id=tenant_id,
+            )
+
+        current = result.get('current')
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': {
+                'device_id': device_id,
+                'protocol': getattr(current, 'protocol', protocol),
+                'state': getattr(current, 'state', None),
+                'reason_code': getattr(current, 'reason_code', None),
+                'reason_message': getattr(current, 'reason_message', None),
+            },
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error('report device play state failed device_id=%s: %s', device_id, e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/device/<string:device_id>/access-state/events', methods=['GET'])
+def get_device_access_events(device_id):
+    if not _check_login(request):
+        return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
+    try:
+        from app.services.device_access_state_service import list_device_access_events
+
+        data = list_device_access_events(
+            device_id,
+            limit=request.args.get('limit') or 20,
+            protocol=request.args.get('protocol') or request.args.get('access_protocol'),
+            tenant_id=_tenant_id_from_request(request) or None,
+        )
+        return jsonify({'code': 0, 'msg': 'success', 'data': data})
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error('get device access events failed device_id=%s: %s', device_id, e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/access-state/health', methods=['GET'])
+def get_device_access_health():
+    if not _check_login(request):
+        return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
+    try:
+        from app.services.device_access_state_service import get_device_access_health_snapshot
+
+        stale_after_seconds = int(
+            request.args.get('stale_after_seconds')
+            or request.args.get('staleAfterSeconds')
+            or 180
+        )
+        stale_after_seconds = max(30, min(stale_after_seconds, 3600))
+        data = get_device_access_health_snapshot(
+            stale_after_seconds=stale_after_seconds,
+            tenant_id=_tenant_id_from_request(request) or None,
+        )
+        return jsonify({'code': 0, 'msg': 'success', 'data': data})
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error('get device access health failed: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+@camera_bp.route('/webrtc/nat-config', methods=['GET'])
+def get_webrtc_nat_config():
+    if not _check_login(request):
+        return jsonify({'code': 401, 'msg': 'unauthorized'}), 401
+    try:
+        from app.services.webrtc_nat_config_service import build_webrtc_nat_config
+
+        return jsonify({'code': 0, 'msg': 'success', 'data': build_webrtc_nat_config()})
+    except Exception as e:
+        logger.error('get WebRTC NAT config failed: %s', e, exc_info=True)
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
 def _strip_rtsp_transport_query(source_url: str) -> tuple[str, Optional[str]]:
     """
     从 RTSP URL 查询参数中读取传输方式并剔除该参数，避免将自定义参数传给 NVR/摄像头。

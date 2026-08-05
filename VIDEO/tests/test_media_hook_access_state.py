@@ -37,7 +37,7 @@ sys.modules.setdefault(
 )
 sys.modules.setdefault(
     "app.services.device_access_state_service",
-    types.SimpleNamespace(record_srs_publish_online=Mock()),
+    types.SimpleNamespace(record_srs_publish_online=Mock(), record_media_stream_offline=Mock()),
 )
 sys.modules.setdefault(
     "app.services.rtmp_ingest_auth_service",
@@ -69,10 +69,17 @@ class MediaHookAccessStateTest(unittest.TestCase):
 
         with app.test_request_context("/hook/srs/on_publish", method="POST", json=payload):
             with patch("app.blueprints.media_hook.verify_rtmp_publish_hook", return_value={"accepted": True}) as verify:
-                response = media_hook.srs_on_publish()
+                with patch("app.blueprints.media_hook.record_srs_publish_online") as record_online:
+                    response = media_hook.srs_on_publish()
 
         self.assertEqual(200, response.status_code)
-        verify.assert_called_once_with(payload, remote_ip=None)
+        verify.assert_called_once_with(payload, remote_ip=None, source_event="srs.on_publish")
+        record_online.assert_called_once_with(
+            payload,
+            node_id=None,
+            tenant_id=None,
+            source_event="srs.on_publish",
+        )
 
     def test_srs_on_publish_rejects_unsigned_ingest_without_delegating(self):
         app = Flask(__name__)
@@ -92,10 +99,10 @@ class MediaHookAccessStateTest(unittest.TestCase):
 
         self.assertEqual(403, response[1])
         self.assertEqual({"code": 403, "msg": "RTMP ingest signature is required"}, response[0].get_json())
-        verify.assert_called_once_with(payload, remote_ip=None)
+        verify.assert_called_once_with(payload, remote_ip=None, source_event="srs.on_publish")
         camera_module.on_publish_callback.assert_not_called()
 
-    def test_zlm_on_publish_uses_same_signed_ingest_validation(self):
+    def test_zlm_on_publish_records_zlm_source_event(self):
         app = Flask(__name__)
         payload = {
             "app": "live",
@@ -104,11 +111,65 @@ class MediaHookAccessStateTest(unittest.TestCase):
         }
 
         with app.test_request_context("/hook/zlm/on_publish", method="POST", json=payload):
-            with patch("app.blueprints.media_hook.verify_rtmp_publish_hook", return_value={"accepted": True}) as verify:
-                response = media_hook.zlm_on_publish()
+            with patch(
+                "app.blueprints.media_hook.verify_rtmp_publish_hook",
+                return_value={"accepted": True, "tenant_id": "tenant-a"},
+            ) as verify:
+                with patch("app.blueprints.media_hook.record_srs_publish_online") as record_online:
+                    response = media_hook.zlm_on_publish()
 
         self.assertEqual({"code": 0, "msg": None}, response.get_json())
-        verify.assert_called_once_with(payload, remote_ip=None)
+        verify.assert_called_once_with(payload, remote_ip=None, source_event="zlm.on_publish")
+        record_online.assert_called_once_with(
+            payload,
+            node_id=None,
+            tenant_id="tenant-a",
+            source_event="zlm.on_publish",
+        )
+
+    def test_zlm_on_stream_changed_route_accepts_notifications(self):
+        app = Flask(__name__)
+        app.register_blueprint(media_hook.media_hook_bp)
+
+        response = app.test_client().post(
+            "/hook/zlm/on_stream_changed",
+            json={"schema": "rtmp", "app": "live", "stream": "cam-001", "regist": False},
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual({"code": 0, "msg": None}, response.get_json())
+
+    def test_zlm_on_stream_changed_records_offline_when_unregistered(self):
+        app = Flask(__name__)
+        payload = {"schema": "rtmp", "app": "live", "stream": "cam-001", "regist": False, "node_id": 7}
+
+        with app.test_request_context("/hook/zlm/on_stream_changed", method="POST", json=payload):
+            with patch("app.blueprints.media_hook.record_media_stream_offline") as record_offline:
+                response = media_hook.zlm_on_stream_changed()
+
+        self.assertEqual({"code": 0, "msg": None}, response.get_json())
+        record_offline.assert_called_once_with(
+            payload,
+            node_id=7,
+            tenant_id=None,
+            source_event="zlm.on_stream_changed",
+        )
+
+    def test_srs_on_unpublish_records_stream_offline(self):
+        app = Flask(__name__)
+        payload = {"app": "live", "stream": "cam-001", "node_id": 7}
+
+        with app.test_request_context("/hook/srs/on_unpublish", method="POST", json=payload):
+            with patch("app.blueprints.media_hook.record_media_stream_offline") as record_offline:
+                response = media_hook.srs_on_unpublish()
+
+        self.assertEqual({"code": 0, "msg": None}, response.get_json())
+        record_offline.assert_called_once_with(
+            payload,
+            node_id=7,
+            tenant_id=None,
+            source_event="srs.on_unpublish",
+        )
 
 
 if __name__ == "__main__":

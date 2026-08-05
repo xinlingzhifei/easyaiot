@@ -105,6 +105,10 @@ Implemented in the first TDD slice:
 - The `VIDEO/sql` DDL files for access state and signed RTMP ingest are now
   registered in `video_schema_migration_service` and executed during
   `VIDEO/run.py` database startup.
+- The full device-access E2E acceptance matrix is now executable through
+  `VIDEO/scripts/device_access_e2e_acceptance.py`, with an example config at
+  `VIDEO/config/device_access_e2e_acceptance.example.json` and a runbook at
+  `docs/superpowers/specs/2026-06-13-device-access-e2e-acceptance-runbook.md`.
 
 Still remaining:
 
@@ -115,4 +119,5 @@ Still remaining:
   RTMP signature rejection history beyond the table summary column.
 - HTTP-FLV/WebRTC playback probe writers and WebRTC NAT production rollout.
 - Target-environment migration execution verification, monitoring, alerting,
-  and real-device E2E acceptance across public/cross-network scenarios.
+  and a real-device E2E acceptance report with `status: passed` across
+  public/cross-network scenarios.

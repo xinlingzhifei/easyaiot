@@ -92,6 +92,16 @@ def enqueue_agent_command(
     return data.get('data') or {}
 
 
+def get_agent_command_by_key(command_key: str) -> Dict[str, Any]:
+    url = f'{AGENT_COMMAND_API_BASE}/by-key'
+    resp = requests.get(url, params={'commandKey': command_key}, headers=_headers(), timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get('code') != 0:
+        raise RuntimeError(data.get('msg') or f'Agent command lookup failed: {url}')
+    return data.get('data') or {}
+
+
 def stream_urls_from_binding(binding: Dict[str, Any]) -> tuple[str, str, str, str]:
     return (
         binding.get('rtmpStream') or '',

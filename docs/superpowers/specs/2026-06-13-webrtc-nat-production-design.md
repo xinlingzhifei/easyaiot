@@ -61,6 +61,26 @@ For each check capture:
 - Device id.
 - Timestamp.
 
+## Implementation Status
+
+Done in the current TDD slices:
+
+- Browser playback loads platform WebRTC NAT config and injects STUN/TURN
+  `iceServers` into `RTCPeerConnection`.
+- Browser playback rewrites WebRTC play URLs to configured public host and
+  secure protocol when HTTPS/WSS is required.
+- Media-node deployment config can propagate public candidate IPs to SRS/ZLM.
+- RTC playback now reports ICE candidate and offer-answer failures to the
+  device access state center as WebRTC `error` states with source events.
+
+Still required before calling WebRTC NAT production-ready:
+
+- Target environment STUN/TURN credential rotation.
+- HTTPS/WSS browser playback verification from same LAN, mobile hotspot, and a
+  second carrier network.
+- Captured ICE candidate pair evidence proving public candidate rewrite and
+  TURN relay behavior.
+
 ## Non-Goals
 
 - Replacing the Edge Agent outbound RTSP slice.

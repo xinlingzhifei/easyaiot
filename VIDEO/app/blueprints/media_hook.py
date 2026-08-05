@@ -17,6 +17,7 @@ from app.services.media_kafka_service import (
     publish_dvr_event,
     publish_snap_event,
 )
+from app.services.device_access_state_service import record_media_stream_offline, record_srs_publish_online
 from app.services.rtmp_ingest_auth_service import verify_rtmp_publish_hook
 from app.services.snap_upload_service import build_snap_event, process_snap_event
 
@@ -27,6 +28,40 @@ media_hook_bp = Blueprint('media_hook', __name__)
 
 def _hook_ok():
     return jsonify({'code': 0, 'msg': None})
+
+
+def _hook_node_id(data):
+    value = data.get('node_id') if data.get('node_id') is not None else data.get('nodeId')
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_publish_online(data, result, *, source_event='srs.on_publish'):
+    try:
+        record_srs_publish_online(
+            data,
+            node_id=_hook_node_id(data),
+            tenant_id=result.get('tenant_id'),
+            source_event=source_event,
+        )
+    except Exception as e:
+        logger.warning('record publish online access-state failed: %s', e, exc_info=True)
+
+
+def _record_stream_offline(data, result=None, *, source_event='srs.on_unpublish'):
+    try:
+        record_media_stream_offline(
+            data,
+            node_id=_hook_node_id(data),
+            tenant_id=(result or {}).get('tenant_id'),
+            source_event=source_event,
+        )
+    except Exception as e:
+        logger.warning('record stream offline access-state failed: %s', e, exc_info=True)
 
 
 @media_hook_bp.route('/hook/srs/on_dvr', methods=['POST'])
@@ -47,24 +82,44 @@ def srs_on_dvr():
 def srs_on_publish():
     """转发至现有 on_publish 逻辑（流冲突检测）。"""
     data = request.get_json(silent=True) or {}
-    result = verify_rtmp_publish_hook(data, remote_ip=request.headers.get('X-Forwarded-For') or request.remote_addr)
+    result = verify_rtmp_publish_hook(
+        data,
+        remote_ip=request.headers.get('X-Forwarded-For') or request.remote_addr,
+        source_event='srs.on_publish',
+    )
     if not result.get('accepted'):
         return jsonify({'code': 403, 'msg': result.get('reason_message') or result.get('reason_code')}), 403
+    _record_publish_online(data, result, source_event='srs.on_publish')
     from app.blueprints.camera import on_publish_callback
     return on_publish_callback()
 
 
 @media_hook_bp.route('/hook/srs/on_unpublish', methods=['POST'])
 def srs_on_unpublish():
+    data = request.get_json(silent=True) or {}
+    _record_stream_offline(data, source_event='srs.on_unpublish')
     return _hook_ok()
 
 
 @media_hook_bp.route('/hook/zlm/on_publish', methods=['POST'])
 def zlm_on_publish():
     data = request.get_json(silent=True) or {}
-    result = verify_rtmp_publish_hook(data, remote_ip=request.headers.get('X-Forwarded-For') or request.remote_addr)
+    result = verify_rtmp_publish_hook(
+        data,
+        remote_ip=request.headers.get('X-Forwarded-For') or request.remote_addr,
+        source_event='zlm.on_publish',
+    )
     if not result.get('accepted'):
         return jsonify({'code': 403, 'msg': result.get('reason_message') or result.get('reason_code')}), 403
+    _record_publish_online(data, result, source_event='zlm.on_publish')
+    return _hook_ok()
+
+
+@media_hook_bp.route('/hook/zlm/on_stream_changed', methods=['POST'])
+def zlm_on_stream_changed():
+    data = request.get_json(silent=True) or {}
+    if data.get('regist') is False:
+        _record_stream_offline(data, source_event='zlm.on_stream_changed')
     return _hook_ok()
 
 

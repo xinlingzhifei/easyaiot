@@ -75,7 +75,9 @@ sys.modules["models"] = types.SimpleNamespace(
     db=db,
 )
 sys.modules["app.services.device_access_state_service"] = types.SimpleNamespace(
+    record_media_stream_offline=Mock(),
     record_device_access_event=Mock(),
+    record_srs_publish_online=Mock(),
 )
 sys.modules.pop("app.services.rtmp_ingest_auth_service", None)
 
@@ -144,6 +146,79 @@ class RtmpIngestAuthServiceTest(unittest.TestCase):
             tenant_id="tenant-a",
             commit=False,
         )
+
+    def test_publish_hook_audits_params_parsed_from_stream_url(self):
+        issued = rtmp_ingest_auth_service.issue_rtmp_ingest_url(
+            "cam-001",
+            tenant_id="tenant-a",
+            ttl_seconds=60,
+            base_url="rtmp://media.example.com/live",
+            now=1_700_000_000,
+        )
+        query = urlparse(issued["push_url"]).query
+
+        result = rtmp_ingest_auth_service.verify_rtmp_publish_hook(
+            {
+                "app": "live",
+                "stream": "cam-001",
+                "stream_url": issued["push_url"],
+            },
+            remote_ip="203.0.113.9",
+            now=1_700_000_030,
+        )
+
+        self.assertTrue(result["accepted"])
+        self.assertEqual(query, FakeAudit.rows[0].raw_params)
+
+    def test_publish_hook_uses_requested_source_event(self):
+        issued = rtmp_ingest_auth_service.issue_rtmp_ingest_url(
+            "cam-001",
+            tenant_id="tenant-a",
+            ttl_seconds=60,
+            base_url="rtmp://media.example.com/live",
+            now=1_700_000_000,
+        )
+        query = parse_qs(urlparse(issued["push_url"]).query)
+
+        with patch("app.services.rtmp_ingest_auth_service.record_device_access_event") as record_state:
+            result = rtmp_ingest_auth_service.verify_rtmp_publish_hook(
+                {
+                    "app": "live",
+                    "stream": "cam-001",
+                    "param": (
+                        f"?tenant=tenant-a&exp={query['exp'][0]}"
+                        f"&ver={query['ver'][0]}&sig={query['sig'][0]}"
+                    ),
+                },
+                source_event="zlm.on_publish",
+                now=1_700_000_030,
+            )
+
+        self.assertTrue(result["accepted"])
+        self.assertEqual("zlm.on_publish", record_state.call_args.kwargs["source_event"])
+
+    def test_publish_hook_allows_non_ingest_media_apps_without_signature(self):
+        with patch("app.services.rtmp_ingest_auth_service.record_device_access_event") as record_state:
+            result = rtmp_ingest_auth_service.verify_rtmp_publish_hook(
+                {
+                    "app": "rtp",
+                    "stream": "44010200493432381460_34020000001320000001",
+                    "node_id": 9,
+                },
+                remote_ip="192.0.2.30",
+            )
+
+        self.assertTrue(result["accepted"])
+        self.assertEqual("rtmp_non_ingest_app_allowed", result["reason_code"])
+        self.assertEqual("rtp/44010200493432381460_34020000001320000001", result["stream_id"])
+        self.assertEqual(1, len(FakeAudit.rows))
+        audit = FakeAudit.rows[0]
+        self.assertTrue(audit.accepted)
+        self.assertEqual("44010200493432381460_34020000001320000001", audit.device_id)
+        self.assertIsNone(audit.tenant_id)
+        self.assertEqual("rtp", audit.app)
+        self.assertEqual(9, audit.node_id)
+        record_state.assert_not_called()
 
     def test_rejects_missing_expired_and_wrong_tenant_publish_hooks(self):
         issued = rtmp_ingest_auth_service.issue_rtmp_ingest_url(
@@ -236,6 +311,44 @@ class RtmpIngestAuthServiceTest(unittest.TestCase):
         self.assertFalse(result["accepted"])
         self.assertEqual("rtmp_token_version_revoked", result["reason_code"])
         self.assertEqual("error", record_state.call_args.kwargs["state"])
+
+    def test_forced_rotation_records_audit_and_registered_state_event(self):
+        rtmp_ingest_auth_service.issue_rtmp_ingest_url(
+            "cam-001",
+            tenant_id="tenant-a",
+            ttl_seconds=600,
+            base_url="rtmp://media.example.com/live",
+            now=1_700_000_000,
+        )
+
+        with patch("app.services.rtmp_ingest_auth_service.record_device_access_event") as record_state:
+            rotated = rtmp_ingest_auth_service.rotate_rtmp_ingest_token(
+                "cam-001",
+                tenant_id="tenant-a",
+                now=1_700_000_030,
+            )
+
+        self.assertEqual(2, rotated["token_version"])
+        self.assertEqual(1, len(FakeAudit.rows))
+        audit = FakeAudit.rows[0]
+        self.assertTrue(audit.accepted)
+        self.assertEqual("cam-001", audit.device_id)
+        self.assertEqual("tenant-a", audit.tenant_id)
+        self.assertEqual(2, audit.token_version)
+        self.assertEqual("rtmp_token_rotated", audit.reason_code)
+        self.assertEqual("RTMP ingest token rotated; previous push URLs are revoked", audit.reason_message)
+        record_state.assert_called_once_with(
+            device_id="cam-001",
+            protocol="rtmp",
+            state="registered",
+            reason_code="rtmp_token_rotated",
+            reason_message="RTMP ingest token rotated; previous push URLs are revoked",
+            source_event="rtmp.token.rotate",
+            stream_id="live/cam-001",
+            node_id=None,
+            tenant_id="tenant-a",
+            commit=False,
+        )
 
 
 if __name__ == "__main__":

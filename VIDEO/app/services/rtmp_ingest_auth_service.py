@@ -13,6 +13,7 @@ from app.services.device_access_state_service import record_device_access_event
 
 
 DEFAULT_RTMP_INGEST_BASE_URL = "rtmp://localhost/live"
+DEFAULT_RTMP_INGEST_BYPASS_APPS = {"rtp", "ai"}
 
 
 def _canonical_string(
@@ -32,6 +33,49 @@ def _canonical_string(
 
 def _sign(secret: str, canonical: str) -> str:
     return hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _ingest_bypass_apps():
+    raw = os.getenv("RTMP_INGEST_BYPASS_APPS", "rtp,ai")
+    apps = {item.strip().strip("/") for item in raw.split(",") if item.strip().strip("/")}
+    return apps or DEFAULT_RTMP_INGEST_BYPASS_APPS
+
+
+def _allow_non_ingest_publish(
+    *,
+    app: str,
+    stream: str,
+    device_id: Optional[str],
+    node_id: Optional[int],
+    remote_ip: Optional[str],
+    raw_params: Optional[str],
+    commit: bool,
+) -> Dict[str, Any]:
+    reason_code = "rtmp_non_ingest_app_allowed"
+    reason_message = "Non-ingest media app bypassed RTMP ingest signature enforcement"
+    _audit(
+        device_id=device_id,
+        tenant_id=None,
+        node_id=node_id,
+        app=app,
+        stream=stream or None,
+        token_version=None,
+        accepted=True,
+        reason_code=reason_code,
+        reason_message=reason_message,
+        remote_ip=remote_ip,
+        raw_params=raw_params,
+    )
+    if commit:
+        db.session.commit()
+    return {
+        "accepted": True,
+        "reason_code": reason_code,
+        "reason_message": reason_message,
+        "device_id": device_id,
+        "tenant_id": None,
+        "stream_id": f"{app}/{stream}" if stream else app,
+    }
 
 
 def _find_secret(device_id: str, tenant_id: str):
@@ -120,6 +164,32 @@ def rotate_rtmp_ingest_token(
     row.token_version = int(row.token_version or 1) + 1
     row.secret = secrets.token_urlsafe(32)
     row.rotated_at = datetime.utcfromtimestamp(int(now)) if now is not None else datetime.utcnow()
+    reason_message = "RTMP ingest token rotated; previous push URLs are revoked"
+    _audit(
+        device_id=clean_device_id,
+        tenant_id=clean_tenant_id,
+        node_id=None,
+        app="live",
+        stream=clean_device_id,
+        token_version=row.token_version,
+        accepted=True,
+        reason_code="rtmp_token_rotated",
+        reason_message=reason_message,
+        remote_ip=None,
+        raw_params=None,
+    )
+    record_device_access_event(
+        device_id=clean_device_id,
+        protocol="rtmp",
+        state="registered",
+        reason_code="rtmp_token_rotated",
+        reason_message=reason_message,
+        source_event="rtmp.token.rotate",
+        stream_id=f"live/{clean_device_id}",
+        node_id=None,
+        tenant_id=clean_tenant_id,
+        commit=False,
+    )
     if commit:
         db.session.commit()
     return {
@@ -187,6 +257,7 @@ def verify_rtmp_publish_hook(
     hook_payload: Dict[str, Any],
     *,
     remote_ip: Optional[str] = None,
+    source_event: str = "srs.on_publish",
     now: Optional[int] = None,
     commit: bool = True,
 ) -> Dict[str, Any]:
@@ -196,6 +267,8 @@ def verify_rtmp_publish_hook(
     tenant_id = (params.get("tenant") or "").strip()
     sig = (params.get("sig") or "").strip()
     raw_params = str(hook_payload.get("param") or hook_payload.get("params") or "")
+    if not raw_params:
+        raw_params = urlparse(str(hook_payload.get("stream_url") or "")).query
     device_id = stream.rsplit("/", 1)[-1] if stream else None
     token_version = int(params.get("ver") or "0") if str(params.get("ver") or "").isdigit() else None
     node_id = _coerce_optional_int(
@@ -224,7 +297,7 @@ def verify_rtmp_publish_hook(
                 state="error",
                 reason_code=reason_code,
                 reason_message=reason_message,
-                source_event="srs.on_publish",
+                source_event=source_event,
                 stream_id=f"{app}/{stream}" if app and stream else stream,
                 node_id=node_id,
                 tenant_id=tenant_id or None,
@@ -241,6 +314,16 @@ def verify_rtmp_publish_hook(
         }
 
     if app != "live":
+        if app and app in _ingest_bypass_apps():
+            return _allow_non_ingest_publish(
+                app=app,
+                stream=stream,
+                device_id=device_id,
+                node_id=node_id,
+                remote_ip=remote_ip,
+                raw_params=raw_params,
+                commit=commit,
+            )
         return reject("rtmp_invalid_app", "RTMP ingest app must be live")
     if not device_id:
         return reject("rtmp_missing_device", "RTMP ingest stream is required")
@@ -294,7 +377,7 @@ def verify_rtmp_publish_hook(
         state="stream_online",
         reason_code="rtmp_publish_accepted",
         reason_message="Signed RTMP publish accepted",
-        source_event="srs.on_publish",
+        source_event=source_event,
         stream_id=f"{app}/{stream}",
         node_id=node_id,
         tenant_id=tenant_id,
